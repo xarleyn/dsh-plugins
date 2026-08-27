@@ -1,0 +1,37 @@
+{
+  "name": "@scope/dsh-test-kit",
+  "version": "0.1.0",
+  "description": "Testing utilities for DSH plugins",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  },
+  "files": [
+    "lib"
+  ],
+  "dependencies": {
+    "@scope/dsh-plugin-kit": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "vitest": "catalog:tooling"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown && tsc",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

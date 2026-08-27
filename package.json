@@ -1,0 +1,28 @@
+{
+  "name": "dsh-plugins",
+  "private": true,
+  "version": "0.0.0",
+  "description": "DeepSeek Harness Plugins Monorepo",
+  "type": "module",
+  "scripts": {
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "typecheck": "nx run-many -t typecheck",
+    "lint": "nx run-many -t lint",
+    "affected:build": "nx affected -t build",
+    "affected:test": "nx affected -t test",
+    "affected:typecheck": "nx affected -t typecheck",
+    "affected:lint": "nx affected -t lint",
+    "affected:check": "nx affected -t lint,typecheck,test,build",
+    "release:plan": "nx release plan",
+    "release:check": "nx release plan:check"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "nx": "catalog:tooling",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling",
+    "tsdown": "catalog:tooling"
+  },
+  "packageManager": "pnpm@10.4.1"
+}

@@ -1,0 +1,8 @@
+# Cordis patch configuration for @scope/dsh-draft-sessions
+# This file is consumed by the DSH runtime to apply plugin patches.
+
+patch:
+  - target: "session-manager"
+    action: "extend"
+    handler: "./lib/index.js"
+    configKey: "draftSessions"

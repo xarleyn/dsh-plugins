@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+lib/
+dist/
+
+# Nx cache
+.nx/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Test coverage
+coverage/
+
+# Tarballs
+*.tgz
+*.tar.gz
+
+# Release
+.changeset/

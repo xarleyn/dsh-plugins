@@ -1,0 +1,12 @@
+{
+  "name": "@scope/dsh-plugin-generator",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.js",
+  "dependencies": {
+    "@nx/devkit": "catalog:tooling"
+  },
+  "devDependencies": {
+    "@nx/devkit": "catalog:tooling"
+  }
+}

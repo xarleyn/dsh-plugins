@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_strategy:
+        description: "Version strategy (preminor, premajor, prepatch, prerelease)"
+        required: false
+        default: "prerelease"
+        type: choice
+        options:
+          - prerelease
+          - prepatch
+          - preminor
+          - premajor
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Apply version plans and calculate versions
+        run: |
+          if [ "${{ github.event.inputs.version_strategy }}" ]; then
+            pnpm nx release version ${{ github.event.inputs.version_strategy }} --no-git-tag --skip-nx-cache
+          else
+            pnpm nx release version --skip-nx-cache
+          fi
+
+      - name: Update dependency ranges
+        run: pnpm nx release prepare
+
+      - name: Build affected packages
+        run: pnpm nx release build
+
+      - name: Pack and verify tarballs
+        run: |
+          for pkg in plugins/*; do
+            if [ -f "$pkg/package.json" ]; then
+              echo "Packing $pkg..."
+              (cd "$pkg" && pnpm pack)
+            fi
+          done
+
+      - name: Commit version and changelog changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: release [skip ci]" || echo "No changes to commit"
+
+      - name: Create Git tags and GitHub Releases
+        run: pnpm nx release publish --skip-nx-cache
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

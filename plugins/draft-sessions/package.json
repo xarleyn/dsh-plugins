@@ -1,0 +1,48 @@
+{
+  "name": "@scope/dsh-draft-sessions",
+  "version": "0.1.0",
+  "description": "Draft sessions plugin for DeepSeek Harness — manage session drafts and previews",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client.d.ts",
+      "default": "./lib/client.js"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@scope/dsh-plugin-kit": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@scope/dsh-test-kit": "workspace:^",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
