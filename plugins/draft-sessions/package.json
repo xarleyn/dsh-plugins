@@ -34,6 +34,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@scope/dsh-test-kit": "workspace:^",
+    "@types/node": "^22.0.0",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
   },
@@ -41,7 +42,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsdown",
+    "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   }

@@ -4,10 +4,10 @@
   "description": "Testing utilities for DSH plugins",
   "type": "module",
   "main": "./lib/index.js",
-  "types": "./lib/types/index.d.ts",
+  "types": "./lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
+      "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     }
   },
@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@types/node": "^22.0.0",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
   },
@@ -30,7 +31,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsdown && tsc",
+    "build": "tsc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   }

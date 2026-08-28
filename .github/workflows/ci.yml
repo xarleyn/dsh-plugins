@@ -31,6 +31,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check dependency rules
+        run: bash scripts/check-dependencies.sh
+
       - name: Affected lint
         run: pnpm nx affected -t lint
 
@@ -46,3 +49,93 @@ jobs:
       - name: Check version plans (on main push)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: pnpm nx release plan:check
+
+  tarball-verify:
+    name: Tarball verify (affected)
+    runs-on: ubuntu-latest
+    # SPEC §16: verify the actual packed package. Runs on PRs only — main
+    # pushes are covered by the release pipeline's full verification.
+    if: github.event_name == 'pull_request'
+    env:
+      NX_BASE: ${{ github.event.pull_request.base.sha }}
+      NX_HEAD: ${{ github.event.pull_request.head.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # full history so Nx affected can compute the merge base
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build affected packages
+        run: pnpm nx affected -t build
+
+      - name: Determine affected publishable packages
+        id: affected
+        run: |
+          affected_json="$(pnpm nx show projects --affected --json)"
+          echo "Affected projects: ${affected_json}"
+
+          packages="$(printf '%s' "$affected_json" | node -e '
+            const fs = require("fs");
+            const path = require("path");
+
+            let raw = "";
+            process.stdin.on("data", (chunk) => (raw += chunk));
+            process.stdin.on("end", () => {
+              let affected;
+              try {
+                affected = JSON.parse(raw || "[]");
+              } catch (err) {
+                console.error("Failed to parse nx affected output: " + String(err));
+                process.exit(1);
+              }
+              if (!Array.isArray(affected)) {
+                console.error("nx affected output is not an array: " + raw);
+                process.exit(1);
+              }
+              const out = [];
+              for (const base of ["plugins", "packages"]) {
+                if (!fs.existsSync(base)) continue;
+                for (const entry of fs.readdirSync(base, { withFileTypes: true })) {
+                  if (!entry.isDirectory()) continue;
+                  const pkgPath = path.join(base, entry.name, "package.json");
+                  if (!fs.existsSync(pkgPath)) continue;
+                  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+                  if (pkg.private === true) continue;
+                  if (affected.includes(pkg.name)) out.push(path.join(base, entry.name));
+                }
+              }
+              process.stdout.write(out.join(" "));
+            });
+          ')"
+
+          if [ -z "$packages" ]; then
+            echo "No affected publishable packages — tarball verification skipped."
+          else
+            echo "Packages to verify: $packages"
+          fi
+          echo "packages=$packages" >> "$GITHUB_OUTPUT"
+
+      - name: Run tarball verification
+        if: steps.affected.outputs.packages != ''
+        run: |
+          for pkg in ${{ steps.affected.outputs.packages }}; do
+            echo "::group::tarball-verify $pkg"
+            bash scripts/tarball-verify.sh "$pkg"
+            echo "::endgroup::"
+          done

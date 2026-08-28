@@ -14,7 +14,6 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "allowImportingTsExtensions": true,
     "noUncheckedIndexedAccess": true,
     "outDir": "lib"
   },

@@ -1,13 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "lib/types",
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "baseUrl": ".",
-    "paths": {
-      "@scope/dsh-plugin-kit": ["../plugin-kit/lib/types/index.d.ts"]
-    }
+    "outDir": "lib",
+    "rootDir": "src",
+    "types": ["node"]
   },
   "include": ["src"]
 }

@@ -11,6 +11,8 @@ nodeLinker: isolated
 catalogs:
   dsh:
     '@deepseek-ai/cordis': '^4.0.0'
+    '@deepseek-ai/dsh-tools': '^4.0.0'
+    '@deepseek-ai/dsh-settings': '^4.0.0'
 
   tooling:
     typescript: '^5.7.0'

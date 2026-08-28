@@ -40,6 +40,7 @@
       "cache": true
     },
     "typecheck": {
+      "dependsOn": ["^build"],
       "inputs": ["default", "^production"],
       "cache": true
     },

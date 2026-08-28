@@ -64,14 +64,21 @@ jobs:
       - name: Build affected packages
         run: pnpm nx release build
 
-      - name: Pack and verify tarballs
+      - name: Pack publishable tarballs
         run: |
-          for pkg in plugins/*; do
-            if [ -f "$pkg/package.json" ]; then
-              echo "Packing $pkg..."
-              (cd "$pkg" && pnpm pack)
+          mkdir -p tarballs
+          for pkg in plugins/* packages/*; do
+            [ -f "$pkg/package.json" ] || continue
+            if grep -Eq '"private"[[:space:]]*:[[:space:]]*true' "$pkg/package.json"; then
+              echo "Skipping private package $pkg"
+              continue
             fi
+            echo "Packing $pkg..."
+            (cd "$pkg" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/tarballs")
           done
+
+      - name: Verify tarballs (SPEC §16 release gates)
+        run: bash scripts/tarball-verify.sh --all
 
       - name: Commit version and changelog changes
         run: |

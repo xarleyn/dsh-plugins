@@ -45,9 +45,15 @@ importers:
 
   packages/config:
     dependencies:
+      tsdown:
+        specifier: catalog:tooling
+        version: 0.12.9(typescript@5.9.3)
       typescript:
         specifier: catalog:tooling
         version: 5.9.3
+      vitest:
+        specifier: catalog:tooling
+        version: 3.2.7(@types/node@22.20.1)(jiti@2.7.0)(yaml@2.9.0)
 
   packages/plugin-kit:
     devDependencies:
@@ -89,6 +95,9 @@ importers:
       '@scope/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.1
       typescript:
         specifier: catalog:tooling
         version: 5.9.3
