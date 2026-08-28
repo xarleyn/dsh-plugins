@@ -1,6 +1,5 @@
 import {
   addProjectConfiguration,
-  generateFiles,
   names,
   offsetFromRoot,
   Tree,
@@ -12,6 +11,8 @@ export interface Schema {
   client?: boolean;
   description?: string;
   scope?: string;
+  withUi?: boolean;
+  withTests?: boolean;
 }
 
 export default async function (tree: Tree, options: Schema) {
@@ -20,6 +21,22 @@ export default async function (tree: Tree, options: Schema) {
   const projectRoot = `plugins/${pluginName}`;
   const pkgScope = options.scope || "@scope";
   const pkgName = `${pkgScope}/dsh-${pluginName}`;
+
+  // Build dependencies list
+  const deps: Record<string, string> = {
+    "@scope/dsh-plugin-kit": "workspace:^",
+  };
+  if (options.withUi) {
+    deps["@scope/dsh-ui-kit"] = "workspace:^";
+  }
+
+  // Build devDependencies list
+  const devDeps: Record<string, string> = {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@scope/dsh-test-kit": "workspace:^",
+    typescript: "catalog:tooling",
+    vitest: "catalog:tooling",
+  };
 
   // Generate package.json
   const packageJson: Record<string, unknown> = {
@@ -41,23 +58,16 @@ export default async function (tree: Tree, options: Schema) {
         patch: "./cordis.patch.yml",
       },
     },
-    dependencies: {
-      "@scope/dsh-plugin-kit": "workspace:^",
-    },
+    dependencies: deps,
     peerDependencies: {
       "@deepseek-ai/cordis": "catalog:dsh",
     },
-    devDependencies: {
-      "@deepseek-ai/cordis": "catalog:dsh",
-      "@scope/dsh-test-kit": "workspace:^",
-      typescript: "catalog:tooling",
-      vitest: "catalog:tooling",
-    },
+    devDependencies: devDeps,
     publishConfig: {
       access: "public",
     },
     scripts: {
-      build: "tsdown",
+      build: "tsc",
       test: "vitest run",
       typecheck: "tsc --noEmit",
     },
@@ -82,35 +92,13 @@ export default async function (tree: Tree, options: Schema) {
     compilerOptions: {
       rootDir: "src",
       outDir: "lib",
-      declarationDir: "lib/types",
     },
     include: ["src"],
-    references: [],
   };
 
   tree.write(
     `${projectRoot}/tsconfig.json`,
     JSON.stringify(tsconfig, null, 2),
-  );
-
-  // Write tsdown.config.ts
-  const entries = options.client
-    ? '["src/index.ts", "src/client.ts"]'
-    : '["src/index.ts"]';
-
-  tree.write(
-    `${projectRoot}/tsdown.config.ts`,
-    `import { defineConfig } from "tsdown";
-
-export default defineConfig({
-  entry: ${entries},
-  dts: true,
-  sourcemap: true,
-  clean: true,
-  outDir: "lib",
-  declaration: true,
-});
-`,
   );
 
   // Write vitest.config.ts
@@ -128,13 +116,21 @@ export default defineConfig({
   );
 
   // Write src/index.ts
+  const clientImport = options.client
+    ? `import { createLogger } from "@scope/dsh-plugin-kit";${options.withUi ? '\nimport { usePluginTheme } from "@scope/dsh-ui-kit";' : ""}`
+    : `import { createLogger } from "@scope/dsh-plugin-kit";`;
+
+  const clientExport = options.client
+    ? `\nexport { initClient };`
+    : "";
+
   tree.write(
     `${projectRoot}/src/index.ts`,
     `/**
  * ${options.name} Plugin — ${options.description || pluginName}.
  */
 
-import { createLogger } from "@scope/dsh-plugin-kit";
+${clientImport}
 
 const logger = createLogger("${pluginName}");
 
@@ -145,19 +141,23 @@ export async function initialize(): Promise<void> {
   logger.info("${options.name} plugin initialized");
 }
 
-export { logger };
+export { logger };${clientExport}
 `,
   );
 
   // Write src/client.ts if client flag is set
   if (options.client) {
+    const uiImport = options.withUi
+      ? `import { createLogger } from "@scope/dsh-plugin-kit";\nimport { usePluginTheme } from "@scope/dsh-ui-kit";`
+      : `import { createLogger } from "@scope/dsh-plugin-kit";`;
+
     tree.write(
       `${projectRoot}/src/client.ts`,
       `/**
  * Client-side entrypoint for ${pkgName}.
  */
 
-import { createLogger } from "@scope/dsh-plugin-kit";
+${uiImport}
 
 const logger = createLogger("${pluginName}:client");
 
@@ -182,6 +182,10 @@ patch:
   );
 
   // Write README.md
+  const features = ["Feature 1", "Feature 2"];
+  if (options.withUi) features.push("Client-side UI integration");
+  if (options.client) features.push("Browser-compatible entrypoint");
+
   tree.write(
     `${projectRoot}/README.md`,
     `# ${pkgName}
@@ -190,12 +194,11 @@ ${options.description || pluginName}.
 
 ## Features
 
-- Feature 1
-- Feature 2
+${features.map((f) => `- ${f}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >= 1.0.0
+- DeepSeek Harness >= 4.0.0
 
 ## Installation
 
@@ -212,6 +215,8 @@ dsh plugin add ./package.tgz
 ## Configuration
 
 ## Compatibility
+
+- DeepSeek Harness >= 4.0.0 < 5.0.0
 
 ## Development
 
@@ -247,24 +252,21 @@ describe("${pluginName}", () => {
     sourceRoot: `${projectRoot}/src`,
     targets: {
       build: {
-        executor: "nx:run-commands",
+        executor: "nx:run-script",
         options: {
-          command: "tsdown",
-          cwd: projectRoot,
+          script: "build",
         },
       },
       test: {
-        executor: "nx:run-commands",
+        executor: "nx:run-script",
         options: {
-          command: "vitest run",
-          cwd: projectRoot,
+          script: "test",
         },
       },
       typecheck: {
-        executor: "nx:run-commands",
+        executor: "nx:run-script",
         options: {
-          command: "tsc --noEmit",
-          cwd: projectRoot,
+          script: "typecheck",
         },
       },
     },

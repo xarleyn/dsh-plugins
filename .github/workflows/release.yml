@@ -40,6 +40,8 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
+          # SPEC §19: Use npm provenance / OIDC for Trusted Publishing
+          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -80,6 +82,16 @@ jobs:
       - name: Verify tarballs (SPEC §16 release gates)
         run: bash scripts/tarball-verify.sh --all
 
+      - name: Publish to npm with provenance
+        # SPEC §19: Use OIDC Trusted Publishing — no long-lived NPM_TOKEN
+        # The registry-url above enables npm to use GitHub Actions OIDC for authentication.
+        run: |
+          # Configure npm to use the registry and enable provenance
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc 2>/dev/null || true
+          pnpm nx release publish --skip-nx-cache
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
+
       - name: Commit version and changelog changes
         run: |
           git config user.name "github-actions[bot]"
@@ -89,5 +101,3 @@ jobs:
 
       - name: Create Git tags and GitHub Releases
         run: pnpm nx release publish --skip-nx-cache
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

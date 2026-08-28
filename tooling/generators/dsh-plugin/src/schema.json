@@ -25,6 +25,16 @@
       "description": "npm scope prefix (e.g., @scope).",
       "type": "string",
       "default": "@scope"
+    },
+    "withUi": {
+      "description": "Add UI kit dependency and client-side UI scaffolding.",
+      "type": "boolean",
+      "default": false
+    },
+    "withTests": {
+      "description": "Include pre-configured test setup with fixture helpers.",
+      "type": "boolean",
+      "default": true
     }
   },
   "required": ["name"]
