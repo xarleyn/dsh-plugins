@@ -1,5 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-kit",
+  "private": true,
   "version": "0.1.0",
   "description": "Shared runtime helpers for DSH plugins",
   "license": "MIT",
@@ -26,9 +27,6 @@
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "tsc",

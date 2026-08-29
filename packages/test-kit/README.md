@@ -2,16 +2,19 @@
 
 Testing utilities for DeepSeek Harness plugins.
 
+This is a private workspace package used only inside this monorepo. It is not
+published to npm.
+
 ## Features
 
 - Mock DSH plugin context
 - Temporary fixture helpers
 - Common test assertions (extensible)
 
-## Installation
+## Workspace usage
 
-```bash
-npm install @yadsh/dsh-test-kit --save-dev
+```json
+"@yadsh/dsh-test-kit": "workspace:^"
 ```
 
 ## Development

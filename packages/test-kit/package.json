@@ -1,5 +1,6 @@
 {
   "name": "@yadsh/dsh-test-kit",
+  "private": true,
   "version": "0.1.0",
   "description": "Testing utilities for DSH plugins",
   "license": "MIT",
@@ -30,9 +31,6 @@
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "scripts": {
     "build": "tsc",

@@ -2,6 +2,9 @@
 
 Shared runtime helpers for DeepSeek Harness plugins.
 
+This is a private workspace package used only inside this monorepo. It is not
+published to npm.
+
 ## Features
 
 - Structured logging with plugin name prefix
@@ -9,10 +12,10 @@ Shared runtime helpers for DeepSeek Harness plugins.
 - Configuration validation
 - Safe feature detection utilities
 
-## Installation
+## Workspace usage
 
-```bash
-npm install @yadsh/dsh-plugin-kit
+```json
+"@yadsh/dsh-plugin-kit": "workspace:^"
 ```
 
 ## Development
