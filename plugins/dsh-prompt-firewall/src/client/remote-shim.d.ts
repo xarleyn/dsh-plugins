@@ -1,0 +1,6 @@
+declare module '@yadsh/dsh-prompt-firewall/remote' {
+  import type { TypertRemoteContribution } from '@deepseek-ai/dsh-typert-protocol'
+
+  const contribution: TypertRemoteContribution
+  export default contribution
+}
