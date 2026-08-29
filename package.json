@@ -3,26 +3,43 @@
   "private": true,
   "version": "0.0.0",
   "description": "DeepSeek Harness Plugins Monorepo",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "nx run-many -t build",
     "test": "nx run-many -t test",
     "typecheck": "nx run-many -t typecheck",
-    "lint": "nx run-many -t lint",
+    "lint": "pnpm lint:workspace && nx run-many -t lint",
+    "lint:workspace": "eslint eslint.config.js scripts",
+    "verify": "nx run-many -t verify",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify",
+    "deps:check": "node scripts/run-bash.mjs scripts/check-dependencies.sh",
+    "tarball:verify": "node scripts/run-bash.mjs scripts/tarball-verify.sh --all",
+    "tarball:verify:packages": "node scripts/run-bash.mjs scripts/tarball-verify.sh",
     "affected:build": "nx affected -t build",
     "affected:test": "nx affected -t test",
     "affected:typecheck": "nx affected -t typecheck",
     "affected:lint": "nx affected -t lint",
-    "affected:check": "nx affected -t lint,typecheck,test,build",
+    "affected:check": "nx affected -t lint typecheck test build",
     "release:plan": "nx release plan",
-    "release:check": "nx release plan:check"
+    "release:check": "nx release plan:check",
+    "release:dry-run": "nx release --dry-run"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@eslint/js": "catalog:tooling",
+    "@nx/js": "catalog:tooling",
+    "@yadsh/dsh-plugin-generator": "workspace:*",
+    "@swc-node/register": "^1.12.1",
+    "@swc/core": "^1.16.1",
+    "eslint": "catalog:tooling",
     "nx": "catalog:tooling",
     "typescript": "catalog:tooling",
-    "vitest": "catalog:tooling",
-    "tsdown": "catalog:tooling"
+    "typescript-eslint": "catalog:tooling",
+    "vitest": "catalog:tooling"
   },
   "packageManager": "pnpm@10.4.1"
 }

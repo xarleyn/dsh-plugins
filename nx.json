@@ -24,9 +24,8 @@
       "pattern": "{projectName}@{version}"
     },
     "changelog": {
-      "projectChangelogs": {
-        "createRelease": "github"
-      }
+      "workspaceChangelog": false,
+      "projectChangelogs": true
     }
   },
   "targetDefaults": {
@@ -46,6 +45,11 @@
     },
     "lint": {
       "inputs": ["default"],
+      "cache": true
+    },
+    "verify": {
+      "dependsOn": ["build"],
+      "inputs": ["production", "^production"],
       "cache": true
     }
   }
