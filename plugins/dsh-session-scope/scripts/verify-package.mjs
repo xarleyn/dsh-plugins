@@ -50,7 +50,10 @@ if (manifest.exports?.["./client"]?.default !== "./lib/client.js") {
 }
 
 const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
-if (!patch.includes("id: dsh-session-scope") || !patch.includes("name: dsh-session-scope")) {
+if (
+  !patch.includes("id: dsh-session-scope") ||
+  !patch.includes('name: "@yadsh/dsh-session-scope"')
+) {
   throw new Error("bundle patch does not mount dsh-session-scope");
 }
 if (/dsh-draft-sessions|draftSessions\//.test(JSON.stringify(manifest) + patch)) {

@@ -43,8 +43,8 @@ assert.deepEqual(
 );
 
 const patch = await readFile(new URL("cordis.patch.yml", packageRoot), "utf8");
-assert.match(patch, /id:\s*sleev/u);
-assert.match(patch, /name:\s*dsh-sleev/u);
+assert.match(patch, /id:\s*dsh-sleev/u);
+assert.match(patch, /name:\s*"@yadsh\/dsh-sleev"/u);
 
 const manifest = JSON.parse(
   await readFile(new URL("package.json", packageRoot), "utf8"),
