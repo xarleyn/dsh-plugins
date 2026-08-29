@@ -3,7 +3,7 @@
  */
 
 // Re-export from plugin-kit package
-export { createLogger } from "@scope/dsh-plugin-kit";
+export { createLogger } from "@yadsh/dsh-plugin-kit";
 
 export interface MockContext {
   pluginName: string;
@@ -35,7 +35,9 @@ export async function createTempFixture(
   const path = await import("node:path");
   const os = await import("node:os");
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-test-"));
+  const fixtureRoot = path.resolve(baseDir || os.tmpdir());
+  fs.mkdirSync(fixtureRoot, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(fixtureRoot, "dsh-test-"));
 
   return {
     dir: tmpDir,

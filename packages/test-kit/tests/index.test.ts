@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createMockContext, createLogger } from "../src/index";
 
 describe("createMockContext", () => {
