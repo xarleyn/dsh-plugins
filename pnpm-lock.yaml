@@ -222,6 +222,9 @@ importers:
       picomatch:
         specifier: ^4.0.3
         version: 4.0.7
+      pino:
+        specifier: ^10.3.1
+        version: 10.3.1
       tinyglobby:
         specifier: ^0.2.14
         version: 0.2.17

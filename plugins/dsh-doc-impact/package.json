@@ -57,14 +57,15 @@
   },
   "dependencies": {
     "picomatch": "^4.0.3",
+    "pino": "^10.3.1",
     "tinyglobby": "^0.2.14",
     "yaml": "^2.8.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
-    "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
-    "@deepseek-ai/dsh-tools": "catalog:dsh"
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -73,9 +74,9 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
-    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/picomatch": "^4.0.2",
     "eslint": "catalog:tooling",

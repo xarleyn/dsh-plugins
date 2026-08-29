@@ -3,6 +3,7 @@ import type { EngineWorkspaceConfig } from '../engine/runtime.js';
 import type { ImpactRule } from '../config/types.js';
 import { createWorkspaceConfigSource } from './config-source.js';
 import { resolvePluginConfig, type DocImpactPluginConfig } from './plugin-config.js';
+import { createEngineFileLogger } from './engine-logger.js';
 import { registerLifecycle } from './lifecycle.js';
 import { bootstrapSettings } from './settings.js';
 import { createResolveTool, createStatusTool } from './tools.js';
@@ -51,6 +52,9 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   }
 
   const logger = ctx.logger;
+  // Runtime diagnostics (engine + workspace config source) land in the
+  // plugin log directory and keep mirroring to the host console.
+  const engineLogger = createEngineFileLogger(logger);
   // The effective config is live: before the settings namespace answers it is
   // the entry config; afterwards the merged settings view (entry config as the
   // composition base, user edits on top). `enabled: false` renders the engine
@@ -62,14 +66,14 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
     logger.warn('dsh-doc-impact: settings bootstrap failed (%s)', error);
   });
 
-  const loadWorkspaceConfig = createWorkspaceConfigSource(() => readConfig(), logger);
+  const loadWorkspaceConfig = createWorkspaceConfigSource(() => readConfig(), engineLogger);
   const engine = new DocImpactEngine({
     configProvider: async (cwd: string): Promise<EngineWorkspaceConfig | undefined> => {
       const config = readConfig();
       if (!config.enabled) return undefined;
       return loadWorkspaceConfig(cwd);
     },
-    logger,
+    logger: engineLogger,
     concurrentAgents: (cwd: string): number =>
       ctx.agents?.list().filter(
         (agent) => agent.status === 'running' && agent.session.header?.cwd === cwd,

@@ -136,6 +136,9 @@ await log.close();                // в dispose-пути плагина
 
 ## 9. Вынос в отдельный пакет
 
+Копии на текущий момент: `plugins/dsh-kv-persist/src/logging`,
+`plugins/dsh-doc-impact/src/logging`.
+
 Когда копий станет больше одной-двух, папка `src/logging/` переезжает в
 пакет `@yadsh/dsh-plugin-log` без изменения кода:
 
