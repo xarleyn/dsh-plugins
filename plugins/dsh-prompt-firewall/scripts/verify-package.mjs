@@ -23,8 +23,8 @@ for (const path of [
 }
 
 const patch = await readFile(new URL('cordis.patch.yml', root), 'utf8')
-assert.match(patch, /id:\s*prompt-firewall/u)
-assert.match(patch, /name:\s*dsh-prompt-firewall/u)
+assert.match(patch, /id:\s*dsh-prompt-firewall/u)
+assert.match(patch, /name:\s*"@yadsh\/dsh-prompt-firewall"/u)
 
 const client = await readFile(new URL('lib/client.js', root), 'utf8')
 assert.match(client, /id:\s*"dsh-prompt-firewall"/u)
