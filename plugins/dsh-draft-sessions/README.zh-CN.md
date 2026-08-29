@@ -144,10 +144,10 @@ dsh --profile web --dump-config
 
 ## 配置
 
-bundle 会插入 `draft-sessions` Cordis 配置行。需要时可在 profile patch 中覆盖：
+bundle 会插入 `dsh-draft-sessions` Cordis 配置行。需要时可在 profile patch 中覆盖：
 
 ```yaml
-- id: draft-sessions
+- id: dsh-draft-sessions
   config:
     # 留空时使用 $DSH_HOME/storages/dsh-draft-sessions/drafts.json
     storagePath: ""

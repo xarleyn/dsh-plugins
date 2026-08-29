@@ -131,7 +131,7 @@ dsh --profile web --dump-config
 ## Настройки
 
 ```yaml
-- id: draft-sessions
+- id: dsh-draft-sessions
   config:
     storagePath: ""
     maxDraftsPerWorkspace: 50

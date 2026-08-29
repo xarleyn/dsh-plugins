@@ -144,10 +144,10 @@ This package uses independent Nx Version Plans from the monorepo. Add a plan wit
 
 ## Configuration
 
-The bundle inserts the `draft-sessions` Cordis row. Override it from the profile patch when needed:
+The bundle inserts the `dsh-draft-sessions` Cordis row. Override it from the profile patch when needed:
 
 ```yaml
-- id: draft-sessions
+- id: dsh-draft-sessions
   config:
     # Blank uses $DSH_HOME/storages/dsh-draft-sessions/drafts.json
     storagePath: ""
