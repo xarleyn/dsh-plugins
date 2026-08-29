@@ -23,6 +23,19 @@ rules:
     direction: code-to-docs
     relation: documents
 
+  - id: workspace-lockfile
+    description: pnpm-lock.yaml must stay in sync with every workspace manifest (CI installs with --frozen-lockfile)
+    code:
+      include:
+        - package.json
+        - plugins/*/package.json
+        - packages/*/package.json
+        - tooling/generators/*/package.json
+    docs:
+      - pnpm-lock.yaml
+    direction: code-to-docs
+    relation: synchronized
+
   - id: contributor-workflow
     description: Contributor and release docs describe repository automation and tooling
     code:
