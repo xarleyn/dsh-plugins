@@ -1,6 +1,6 @@
 # dsh-draft-sessions
 
-[![CI](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml)
+[![CI](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![npm downloads](https://img.shields.io/npm/dm/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![Node.js](https://img.shields.io/node/v/%40yadsh%2Fdsh-draft-sessions.svg)](package.json)
@@ -44,13 +44,14 @@ Automation предоставляет опциональный host для со�
 dsh plugin --profile web add @yadsh/dsh-draft-sessions
 ```
 
-Или установка свежего исходного кода напрямую с GitHub:
+Или сборка и установка пакета из локального checkout монорепозитория:
 
 ```bash
-dsh plugin --profile web add github:xarleyn/dsh-draft-sessions
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 ```
 
-GitHub-зависимость собирается из исходников, поэтому pnpm может попросить разрешить `prepare`-скрипт пакета. Если выдавать разрешение на сборку при установке не хочется, используйте npm-пакет.
+Если изменять исходный код не требуется, рекомендуется опубликованный npm-пакет.
 
 Удаление плагина:
 
@@ -101,46 +102,31 @@ my-project
 ## Требования
 
 - Node.js `^22.19.0` или `>=24.0.0`
-- pnpm 11
+- pnpm 10.4.1 для разработки
 - DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` с публичным list-slot `sidebar.footer.action`
 
 Опубликованный клиент rc.2 поддерживается без патчей. Sidebar host с вкладками определяется через опциональный версионированный протокол `__dshNativeTabs@1`; если его нет, плагин использует штатный footer action и не заменяет workspace browser.
 
 ## Локальная разработка
 
+Из корня монорепозитория:
+
 ```bash
-cd dsh-draft-sessions
-pnpm install
-pnpm check
+pnpm install --frozen-lockfile
+pnpm --filter @yadsh/dsh-draft-sessions check
 ```
 
 Сборка и подключение checkout к Web profile:
 
 ```bash
-pnpm build
-dsh plugin --profile web add .
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 dsh --profile web --dump-config
 ```
 
 ## Релизы
 
-Релизы собираются из существующих SemVer-тегов с префиксом `v` ручным [Release workflow](.github/workflows/release.yml). Workflow делает checkout точного тега, запускает полный quality gate, подставляет в пакет версию из тега, создаёт npm tarball и SHA-256 checksum, проверяет чистую установку tarball, загружает Actions artifact и оформляет GitHub Release с автоматически сгенерированными notes.
-
-Maintainer может запустить его через **Actions → Release → Run workflow** или GitHub CLI:
-
-```bash
-git tag -a v0.1.0-rc.1 -m "v0.1.0-rc.1"
-git push origin v0.1.0-rc.1
-gh workflow run release.yml -f tag=v0.1.0-rc.1 -f publish_npm=false
-```
-
-Prerelease-теги публикуются в npm dist-tag `next`, стабильные — в `latest`. Публикация в npm по умолчанию выключена. Для включения opt-in job нужно:
-
-1. Один раз опубликовать пакет в npm вручную, если его ещё не существует.
-2. Настроить npm trusted publishing для этого GitHub-репозитория, файла `release.yml`, environment `npm` и действия `npm publish`.
-3. Создать защищённый GitHub environment `npm` и запустить workflow с `publish_npm=true`.
-
-Publish job использует GitHub OIDC вместо долгоживущего npm token. GitHub Release всегда создаётся до попытки публикации в npm.
+Пакет использует независимые Nx Version Plans монорепозитория. План добавляется командой `pnpm release:plan`; maintainers публикуют проверенные tarball через общий [release workflow](../../docs/RELEASING.md).
 
 ## Настройки
 
@@ -152,6 +138,38 @@ Publish job использует GitHub OIDC вместо долгоживуще
 ```
 
 Пустой `storagePath` означает стандартный файл внутри `$DSH_HOME`.
+
+## Текущий API
+
+```ts
+await ctx.remote.draftSessions.list({ workspaceId });
+
+await ctx.draftSessionLifecycle.create({
+  workspaceId,
+  text: "",
+});
+
+await ctx.draftSessionLifecycle.ensureShell(draft);
+
+await ctx.draftComposerBridge.open(draft);
+await ctx.draftComposerBridge.flush();
+
+await ctx.draftShortcutController.create(workspaceId);
+
+await ctx.remote.draftSessions.update({
+  id,
+  expectedRevision: 4,
+  text: "Add OTEL export",
+});
+
+await ctx.remote.draftSessions.rebind({
+  id,
+  expectedRevision: 5,
+  sessionId: replacementSessionId,
+});
+```
+
+Lifecycle service отвечает за создание и восстановление оболочки blank Session. Низкоуровневые Remote-методы остаются доступны для операций с хранилищем; каждая mutation возвращает следующую `revision`, а устаревшая `expectedRevision` отклоняется вместо тихого перезаписывания правок из другого browser.
 
 ## Главные границы дизайна
 
@@ -165,6 +183,10 @@ Publish job использует GitHub OIDC вместо долгоживуще
 
 Полные критерии находятся в [SPEC.md](SPEC.md), последовательность следующих этапов — в [ROADMAP.md](ROADMAP.md).
 
+## Участие в разработке
+
+Issues и небольшие сфокусированные pull requests приветствуются. Перед отправкой изменений прочитайте [CONTRIBUTING.md](CONTRIBUTING.md) и запустите package check.
+
 ## Лицензия
 
-[MIT](LICENSE)
+[MIT](LICENSE). Это независимый community-проект, не связанный с DeepSeek и не одобренный компанией.

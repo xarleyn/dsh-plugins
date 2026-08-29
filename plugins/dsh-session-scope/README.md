@@ -1,99 +1,110 @@
 # dsh-session-scope
 
-An independent per-session workspace visibility layer for DeepSeek Harness.
-A session keeps its original workspace and cwd while exposing only explicitly
-selected workspace directories to the agent.
+[![CI](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40yadsh%2Fdsh-session-scope.svg)](https://www.npmjs.com/package/@yadsh/dsh-session-scope)
+[![npm downloads](https://img.shields.io/npm/dm/%40yadsh%2Fdsh-session-scope.svg)](https://www.npmjs.com/package/@yadsh/dsh-session-scope)
+[![Node.js](https://img.shields.io/node/v/%40yadsh%2Fdsh-session-scope.svg)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-The central policy rule is:
+Per-session workspace visibility scopes for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).
+
+`dsh-session-scope` keeps a session's original workspace and working directory while exposing only explicitly selected workspace directories to the agent. Permission controls effects; scope independently controls visibility.
 
 ```text
 Permission != Scope
 ```
 
-Permission controls effects (`read-only`, `workspace-write`, or
-`danger-full-access`). Session scope independently controls which part of the
-workspace is visible (`full`, `focused`, or Linux `isolated`).
-
-## Development status
-
-`0.5.0` implements the specification through Phase 4. It currently contains:
-
-- a TypeScript port of the reusable upstream directory picker, path safety,
-  filesystem fence, and sandbox integration;
-- a strict TypeScript session-scope domain model;
-- the durable `session-scope/set` snapshot and last-write-wins fold;
-- `full`, `focused`, and `isolated` state vocabulary;
-- canonical root validation, nested-root collapse, navigation ancestors, and
-  stable error codes;
-- typed host operations (`getScope`, `setScope`, `listScopeDirectory`, and
-  `getScopeCapabilities`) plus the `/scope` command and `session-scope`
-  projection;
-- pure visibility rules for content vs. navigation paths, filtered directory
-  listings, and scoped glob/grep/search roots;
-- runtime filesystem enforcement carried per session with `AsyncLocalStorage`,
-  including text and bounded byte reads, plus a monotonic final guard for
-  known path-aware tools;
-- broad `glob`/`grep` composition across selected content roots, including
-  fail-closed handling for an omitted path and output path revalidation;
-- model-facing scope context that exposes accessible roots without naming
-  hidden siblings;
-- an independent `Scope` chip and tree picker portaled beside Workspace on
-  blank sessions and rendered beside permission in the active composer;
-- Linux `isolated` process confinement through DSH's existing bubblewrap
-  provider for one-shot bash and persistent PTY creation;
-- an empty workspace overlay with only selected roots rebound, permission-aware
-  read-only/writable mounts, and a post-mount working directory;
-- functional backend capability detection plus fail-closed handling for
-  unknown runner profiles, partial enforcement, unsupported platforms, and
-  `danger-full-access`;
-- a process lifecycle fence that prevents scope changes while foreground or
-  background shell jobs and persistent terminals retain an old mount view;
-- scoped pre-step filesystem context for workspace instructions and project
-  skill discovery, while user/OS paths outside the workspace retain ordinary
-  DSH policy;
-- fail-closed LSP calls under selected scope because the current upstream LSP
-  provider indexes the whole session workspace;
-- fork inheritance through the durable seed plus fail-closed subagent
-  initialization before child publication, including nested and resumed
-  children;
-- compatibility folding for legacy `workspace-scope/selection` sessions;
-- Vitest coverage for the ported primitives and new scope state.
-
-Focused scope covers DSH filesystem services and known path-aware tools, but
-does not confine arbitrary shell processes. Isolated scope additionally
-confines DSH's supported bash and PTY launch paths when the Linux provider
-selects a fully enforcing, recognized bubblewrap profile. It is unavailable on
-other backends and cannot currently be combined with `danger-full-access`;
-these combinations fail closed instead of silently degrading to Focused.
+[Specification](SPEC_%20dsh-session-scope.md) · [Compatibility matrix](compatibility.json) · [Release notes](RELEASING.md)
 
 ## Installation
 
-```sh
-npm install @yadsh/dsh-session-scope
+Install the published npm package by name:
+
+```bash
+dsh plugin --profile web add @yadsh/dsh-session-scope
 ```
 
-The package ships the DSH bundle patch as `cordis.patch.yml` and exposes its
-server and web-client entry points through the package `exports` map. Node.js
-20 or newer is required.
+To remove the plugin:
+
+```bash
+dsh plugin --profile web remove @yadsh/dsh-session-scope
+```
+
+The package includes its Host and Web client entry points plus the `cordis.patch.yml` bundle patch. Restart the DeepSeek Harness host if bundle hot reload does not pick up the newly installed plugin or browser client.
+
+## Scope modes
+
+| Mode       | Visibility and enforcement                                                                                           |
+| ---------- | -------------------------------------------------------------------------------------------------------------------- |
+| `full`     | The ordinary complete workspace view                                                                                 |
+| `focused`  | Selected roots across DSH filesystem services and known path-aware tools; arbitrary shell processes are not confined |
+| `isolated` | Selected roots plus Linux process confinement through a fully enforcing, recognized bubblewrap profile               |
+
+`isolated` is unavailable on unsupported backends and cannot currently be combined with `danger-full-access`. Unsupported or partially enforced combinations fail closed instead of silently degrading to `focused`.
+
+## What works now
+
+Version `0.5.0` implements the specification through Phase 4:
+
+- durable `session-scope/set` snapshots with a last-write-wins fold;
+- canonical root validation, nested-root collapse, navigation ancestors, and stable error codes;
+- typed host operations, the `/scope` command, and a `session-scope` projection;
+- filtered directory listings and scoped glob, grep, and search roots;
+- per-session filesystem enforcement carried with `AsyncLocalStorage`;
+- a monotonic final guard for known path-aware tools;
+- model-facing context that names accessible roots without revealing hidden siblings;
+- an independent **Scope** chip and tree picker beside Workspace and permission controls;
+- Linux isolation for one-shot bash and persistent PTY creation;
+- permission-aware read-only and writable mounts in an empty workspace overlay;
+- lifecycle fences that prevent scope changes while processes retain an older mount view;
+- scoped project instructions and skill discovery;
+- fail-closed LSP calls while the upstream provider indexes the complete workspace;
+- scope inheritance for forks, nested subagents, and resumed children;
+- compatibility folding for legacy `workspace-scope/selection` sessions;
+- unit, integration, package-contract, and packed-composition coverage.
+
+## Design boundaries
+
+- `read-only`, `workspace-write`, and `danger-full-access` remain DSH permission modes; they are not scope modes.
+- Focused scope constrains supported DSH services and tools, not arbitrary child processes.
+- Isolated scope requires the supported Linux sandbox path and a recognized bubblewrap profile.
+- Unknown runner profiles, partial enforcement, and unsupported platforms fail closed.
+- Scope changes are blocked while foreground jobs, background jobs, or persistent terminals retain the previous mount view.
+
+## Requirements
+
+- Node.js 20 or newer
+- pnpm 10.4.1 for development
+- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- Linux with bubblewrap for `isolated` mode
 
 ## Development
 
-```sh
-npm install
-npm run check
+From the monorepo root:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm --filter @yadsh/dsh-session-scope check
 ```
 
-CI runs the TypeScript build, Vitest suite, package-contract checks, and a
-packed-plugin composition smoke test against the DSH releases listed in
-[`compatibility.json`](compatibility.json) on Linux, macOS, and Windows.
+The package check runs the TypeScript build, Vitest suite, client and package-contract checks, and compatibility verification. The packed-plugin smoke test can be run separately:
 
-TypeScript sources live in `src/`; `npm run build` emits distributable ES
-modules, source maps, and declarations into `lib/`. Tests run with Vitest.
+```bash
+pnpm --filter @yadsh/dsh-session-scope smoke:packed
+```
+
+## Releases
+
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
 
 ## Prior art and attribution
 
-The initial directory picker, path canonicalization, filesystem fencing, and
-sandbox integration were adapted from
-[`dsh-workspace-scope-selection`](https://github.com/jiangr100/dsh-workspace-scope-selection)
-by [jiangr100](https://github.com/jiangr100), used under the MIT License. The
-original copyright notice is preserved in [LICENSE](LICENSE).
+The initial directory picker, path canonicalization, filesystem fencing, and sandbox integration were adapted from [`dsh-workspace-scope-selection`](https://github.com/jiangr100/dsh-workspace-scope-selection) by [jiangr100](https://github.com/jiangr100), used under the MIT License. The original copyright notice is preserved in [LICENSE](LICENSE).
+
+## Contributing
+
+Issues and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package check before submitting a change.
+
+## License
+
+[MIT](LICENSE). This is an independent community project and is not affiliated with or endorsed by DeepSeek.

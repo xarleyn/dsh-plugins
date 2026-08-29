@@ -1,6 +1,6 @@
 # dsh-draft-sessions
 
-[![CI](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml)
+[![CI](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![npm downloads](https://img.shields.io/npm/dm/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![Node.js](https://img.shields.io/node/v/%40yadsh%2Fdsh-draft-sessions.svg)](package.json)
@@ -50,13 +50,14 @@ Automation 可作为可选的协作式标签页宿主。安装并启用后，Dra
 dsh plugin --profile web add @yadsh/dsh-draft-sessions
 ```
 
-或者直接从 GitHub 安装最新源码：
+或者从本地 monorepo checkout 构建并安装：
 
 ```bash
-dsh plugin --profile web add github:xarleyn/dsh-draft-sessions
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 ```
 
-GitHub 依赖会从源码构建，因此 pnpm 可能会要求你允许该包运行 `prepare` 脚本。如果你不希望在安装时授予构建权限，建议使用 npm 包。
+如果不需要修改源码，建议使用已发布的 npm 包。
 
 卸载插件：
 
@@ -115,46 +116,31 @@ flowchart LR
 ## 要求
 
 - Node.js `^22.19.0` 或 `>=24.0.0`
-- pnpm 11
+- pnpm 10.4.1（开发环境）
 - DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`，并提供公开的 `sidebar.footer.action` 列表插槽
 
 已发布的 rc.2 客户端无需补丁即可支持。侧边栏标签页宿主通过可选且带版本的 `__dshNativeTabs@1` 协作协议检测；如果没有该协议，插件会回退到原生底部入口，而不会替换 workspace 浏览器。
 
 ## 开发
 
+在 monorepo 根目录运行：
+
 ```bash
-cd dsh-draft-sessions
-pnpm install
-pnpm check
+pnpm install --frozen-lockfile
+pnpm --filter @yadsh/dsh-draft-sessions check
 ```
 
 构建项目并把当前 checkout 链接到 Web profile：
 
 ```bash
-pnpm build
-dsh plugin --profile web add .
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 dsh --profile web --dump-config
 ```
 
 ## 发布
 
-发布通过手动运行 [Release workflow](.github/workflows/release.yml)，并基于已存在、以 `v` 开头的 SemVer tag 构建。该 workflow 会 checkout 准确的 tag、运行完整质量检查、使用 tag 中的版本替换包版本、创建 npm tarball 和 SHA-256 校验文件、在干净环境中测试 tarball 安装、上传 workflow artifact，并创建带自动生成说明的 GitHub Release。
-
-维护者可以在 **Actions → Release → Run workflow** 中启动，或使用 GitHub CLI：
-
-```bash
-git tag -a v0.1.0-rc.1 -m "v0.1.0-rc.1"
-git push origin v0.1.0-rc.1
-gh workflow run release.yml -f tag=v0.1.0-rc.1 -f publish_npm=false
-```
-
-预发布 tag 会发布到 npm 的 `next` dist-tag，稳定 tag 使用 `latest`。默认不发布到 npm。要启用可选的发布 job：
-
-1. 如果 npm 上还不存在该包，先手动发布一次。
-2. 为此 GitHub 仓库配置 npm trusted publishing，workflow 文件名为 `release.yml`，environment 为 `npm`，操作为 `npm publish`。
-3. 创建名为 `npm` 的受保护 GitHub environment，然后以 `publish_npm=true` 运行 workflow。
-
-发布 job 使用 GitHub OIDC，而不是长期有效的 npm token。系统总会先创建 GitHub Release，再尝试发布到 npm。
+该包使用 monorepo 的独立 Nx Version Plans。通过 `pnpm release:plan` 添加计划；维护者通过共享的[发布流程](../../docs/RELEASING.md)发布已验证的 tarball。
 
 ## 配置
 
@@ -214,8 +200,8 @@ lifecycle 服务负责创建与恢复空白 Session 外壳。底层 Remote 方�
 
 ## 贡献
 
-欢迎提交 issue 和范围明确的 pull request。提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 并运行 `pnpm check`。
+欢迎提交 issue 和范围明确的 pull request。提交前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 并运行 package check。
 
 ## 许可证
 
-[MIT](LICENSE)
+[MIT](LICENSE)。这是一个独立的社区项目，与 DeepSeek 无隶属关系，也未获得其官方认可。

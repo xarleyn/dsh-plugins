@@ -1,6 +1,6 @@
 # dsh-draft-sessions
 
-[![CI](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-draft-sessions/actions/workflows/ci.yml)
+[![CI](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/xarleyn/dsh-plugins/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![npm downloads](https://img.shields.io/npm/dm/%40yadsh%2Fdsh-draft-sessions.svg)](https://www.npmjs.com/package/@yadsh/dsh-draft-sessions)
 [![Node.js](https://img.shields.io/node/v/%40yadsh%2Fdsh-draft-sessions.svg)](package.json)
@@ -50,13 +50,14 @@ Install the published npm package by name:
 dsh plugin --profile web add @yadsh/dsh-draft-sessions
 ```
 
-Or install the latest source directly from GitHub:
+Or build and install the package from a local monorepo checkout:
 
 ```bash
-dsh plugin --profile web add github:xarleyn/dsh-draft-sessions
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 ```
 
-GitHub dependencies are built from source, so pnpm may ask you to approve this package's `prepare` script. The npm package is the recommended option when you do not want install-time build permission.
+The published npm package is recommended when you do not need to modify the source.
 
 To remove the plugin:
 
@@ -115,46 +116,31 @@ The current implementation deliberately does not send prompts, modify ordinary S
 ## Requirements
 
 - Node.js `^22.19.0` or `>=24.0.0`
-- pnpm 11
+- pnpm 10.4.1 for development
 - DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` with the public `sidebar.footer.action` list slot
 
 The published rc.2 client is supported without patches. Sidebar tab hosts are detected through the optional versioned `__dshNativeTabs@1` cooperation protocol; the plugin falls back to the stock footer action instead of replacing the workspace browser.
 
 ## Development
 
+From the monorepo root:
+
 ```bash
-cd dsh-draft-sessions
-pnpm install
-pnpm check
+pnpm install --frozen-lockfile
+pnpm --filter @yadsh/dsh-draft-sessions check
 ```
 
 Build and link the checkout into a Web profile:
 
 ```bash
-pnpm build
-dsh plugin --profile web add .
+pnpm --filter @yadsh/dsh-draft-sessions build
+dsh plugin --profile web add ./plugins/dsh-draft-sessions
 dsh --profile web --dump-config
 ```
 
 ## Releases
 
-Releases are built from existing `v`-prefixed SemVer tags by the manual [Release workflow](.github/workflows/release.yml). The workflow checks out the exact tag, runs the full quality gate, replaces the package version with the tag version, creates an npm tarball and SHA-256 checksum, smoke-tests a clean tarball install, uploads the workflow artifact, and creates a GitHub Release with generated notes.
-
-Maintainers can start it from **Actions → Release → Run workflow**, or with GitHub CLI:
-
-```bash
-git tag -a v0.1.0-rc.1 -m "v0.1.0-rc.1"
-git push origin v0.1.0-rc.1
-gh workflow run release.yml -f tag=v0.1.0-rc.1 -f publish_npm=false
-```
-
-Prerelease tags publish to the npm `next` dist-tag; stable tags use `latest`. npm publication is disabled by default. To enable the opt-in publish job:
-
-1. Bootstrap the package on npm if it has not been published before.
-2. Configure npm trusted publishing for this GitHub repository, workflow filename `release.yml`, environment `npm`, and the `npm publish` action.
-3. Create the protected GitHub environment named `npm`, then run the workflow with `publish_npm=true`.
-
-The publish job uses GitHub OIDC instead of a long-lived npm token. A GitHub Release is always created before npm publication is attempted.
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
 
 ## Configuration
 
@@ -214,8 +200,8 @@ See [SPEC.md](SPEC.md) for acceptance criteria and [docs/architecture.md](docs/a
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) and run `pnpm check` before submitting a change.
+Issues and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). This is an independent community project and is not affiliated with or endorsed by DeepSeek.
