@@ -3,9 +3,12 @@
  *
  * Events use stable dotted names (`kv.session.restore.success`); session
  * identifiers are abbreviated hashes at normal verbosity. The management
- * API key never passes through here.
+ * API key never passes through here. Records land in
+ * `<$DSH_HOME>/logs/dsh-kv-persist/<YYYY-MM-DD>.log` (NDJSON); `warn` and
+ * above are additionally mirrored to the host context logger.
  */
 
+import { getPluginLogger } from "../logging/index.js";
 import { sha256Hex } from "../snapshots/fingerprint.js";
 
 export interface KvPersistLogger {
@@ -13,6 +16,10 @@ export interface KvPersistLogger {
   info(event: string, fields?: Record<string, unknown>): void;
   warn(event: string, fields?: Record<string, unknown>): void;
   error(event: string, fields?: Record<string, unknown>): void;
+  /** Best-effort synchronous flush of buffered file output. */
+  flush?(): void;
+  /** Flush and close the underlying destination (idempotent). */
+  close?(): Promise<void>;
 }
 
 export type KvPersistLogLevel = "debug" | "info" | "off";
@@ -42,29 +49,44 @@ interface HostLoggerLike {
   debug?(message: string, ...values: unknown[]): unknown;
 }
 
-/** Build the plugin logger on top of the host context logger. */
+/**
+ * Build the plugin logger on top of the shared pino-backed file logger
+ * (`<$DSH_HOME>/logs/dsh-kv-persist/<YYYY-MM-DD>.log`) with the host context
+ * logger as the console mirror for `warn`+ records. Sensitive fields are
+ * abbreviated here, before any record leaves the plugin (SPEC §45).
+ */
 export function createKvPersistLogger(host: HostLoggerLike, level: KvPersistLogLevel): KvPersistLogger {
-  const format = (event: string, fields?: Record<string, unknown>): string => {
-    const prepared = prepareFields(fields);
-    const parts = Object.entries(prepared).map(([key, value]) => `${key}=${String(value)}`);
-    return parts.length > 0 ? `[kv-persist] ${event} ${parts.join(" ")}` : `[kv-persist] ${event}`;
-  };
-  return {
-    debug(event, fields) {
-      if (level === "debug") {
-        const message = format(event, fields);
+  const shared = getPluginLogger({
+    pluginId: "dsh-kv-persist",
+    level: level === "off" ? "silent" : level,
+    console: level === "off" ? "silent" : "warn",
+    consoleSink: (logLevel, message) => {
+      if (logLevel === "trace" || logLevel === "debug") {
         if (typeof host.debug === "function") host.debug(message);
         else host.info(message);
-      }
+      } else if (logLevel === "info") host.info(message);
+      else if (logLevel === "warn") host.warn(message);
+      else host.error(message);
+    },
+  });
+  return {
+    debug(event, fields) {
+      shared.debug(event, prepareFields(fields));
     },
     info(event, fields) {
-      if (level === "debug" || level === "info") host.info(format(event, fields));
+      shared.info(event, prepareFields(fields));
     },
     warn(event, fields) {
-      if (level !== "off") host.warn(format(event, fields));
+      shared.warn(event, prepareFields(fields));
     },
     error(event, fields) {
-      if (level !== "off") host.error(format(event, fields));
+      shared.error(event, prepareFields(fields));
+    },
+    flush() {
+      shared.flush();
+    },
+    close() {
+      return shared.close();
     },
   };
 }

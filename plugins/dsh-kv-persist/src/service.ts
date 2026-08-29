@@ -296,6 +296,8 @@ export class KvPersistService extends Service {
       void this.coordinator.probeBackend().catch(() => undefined);
       return async () => {
         await this.coordinator.dispose();
+        // Flush and release the log file handle (no-op for injected loggers).
+        await this.logger.close?.();
       };
     }, "dsh-kv-persist.lifecycle");
   }
