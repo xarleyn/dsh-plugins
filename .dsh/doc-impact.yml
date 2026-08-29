@@ -1,0 +1,172 @@
+version: 1
+
+# Documentation-impact rules for the monorepo. Keep rules component-scoped so
+# that a change only asks for the documentation that can actually be affected.
+defaults:
+  mode: remind
+  scope: turn
+  changeDetection: auto
+
+rules:
+  - id: repository-catalog
+    description: The root README and compatibility matrix describe published workspace packages
+    code:
+      include:
+        - package.json
+        - pnpm-workspace.yaml
+        - plugins/*/package.json
+        - packages/*/package.json
+        - tooling/generators/*/package.json
+    docs:
+      - README.md
+      - docs/COMPATIBILITY.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: contributor-workflow
+    description: Contributor and release docs describe repository automation and tooling
+    code:
+      include:
+        - .github/workflows/**
+        - scripts/**
+        - tooling/**
+        - eslint.config.js
+        - nx.json
+        - package.json
+        - pnpm-workspace.yaml
+    docs:
+      - CONTRIBUTING.md
+      - docs/RELEASING.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: plugin-kit-readme
+    description: plugin-kit README documents its public API and package behavior
+    code:
+      include:
+        - packages/plugin-kit/src/**
+        - packages/plugin-kit/package.json
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - packages/plugin-kit/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: test-kit-readme
+    description: test-kit README documents its public API and package behavior
+    code:
+      include:
+        - packages/test-kit/src/**
+        - packages/test-kit/package.json
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - packages/test-kit/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-doc-impact-readme
+    description: dsh-doc-impact README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-doc-impact/src/**
+        - plugins/dsh-doc-impact/package.json
+        - plugins/dsh-doc-impact/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-doc-impact/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-draft-sessions-readme
+    description: dsh-draft-sessions README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-draft-sessions/src/**
+        - plugins/dsh-draft-sessions/package.json
+        - plugins/dsh-draft-sessions/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-draft-sessions/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-l10n-overrides-readme
+    description: dsh-l10n-overrides README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-l10n-overrides/src/**
+        - plugins/dsh-l10n-overrides/package.json
+        - plugins/dsh-l10n-overrides/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-l10n-overrides/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-prompt-firewall-readme
+    description: dsh-prompt-firewall README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-prompt-firewall/src/**
+        - plugins/dsh-prompt-firewall/package.json
+        - plugins/dsh-prompt-firewall/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-prompt-firewall/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-session-scope-readme
+    description: dsh-session-scope README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-session-scope/src/**
+        - plugins/dsh-session-scope/package.json
+        - plugins/dsh-session-scope/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-session-scope/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-sleev-readme
+    description: dsh-sleev README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-sleev/src/**
+        - plugins/dsh-sleev/package.json
+        - plugins/dsh-sleev/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-sleev/README.md
+      - plugins/dsh-sleev/docs/compatibility.md
+      - plugins/dsh-sleev/docs/development.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: monorepo-spec
+    description: The monorepo SPEC is the source of truth for repository structure and tooling
+    code:
+      include:
+        - .github/**
+        - packages/**
+        - plugins/**
+        - scripts/**
+        - tooling/**
+        - eslint.config.js
+        - nx.json
+        - package.json
+        - pnpm-workspace.yaml
+        - tsconfig.base.json
+    docs:
+      - dsh-plugins-monorepo-SPEC.md
+    direction: docs-to-code
+    relation: specification
