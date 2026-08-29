@@ -99,7 +99,10 @@ plugins/<name>/
 
 ### Manual Plugin Creation
 
-If you prefer to create a plugin manually, follow the [SPEC §9](./dsh-plugins-monorepo-SPEC.md#9-standard-plugin-package) specification for package structure and metadata.
+If you prefer to create a plugin manually, follow the
+[plugin guidelines](./docs/PLUGIN_GUIDELINES.md) for architecture, package
+structure, metadata, and verification (they also decode the SPEC §-numbers
+referenced by the dependency and tarball checks).
 
 ---
 
@@ -251,7 +254,7 @@ See [docs/RELEASING.md](./docs/RELEASING.md) for maintainer setup and recovery p
 
 ## Questions?
 
-- Check the [SPEC](./dsh-plugins-monorepo-SPEC.md) for architectural decisions
+- Check the [plugin guidelines](./docs/PLUGIN_GUIDELINES.md) for architectural decisions
 - See [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) for DSH version compatibility
 - Open an issue for questions or suggestions
 
