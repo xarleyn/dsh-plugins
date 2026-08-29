@@ -1,0 +1,139 @@
+{
+  "name": "@yadsh/dsh-draft-sessions",
+  "version": "0.1.0-alpha.0",
+  "description": "Persistent unsent draft sessions for DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xarleyn/dsh-draft-sessions.git"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-draft-sessions#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-draft-sessions/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./remote": {
+      "types": "./lib/types/remote.d.ts",
+      "default": "./lib/remote.js"
+    },
+    "./types": {
+      "types": "./lib/types/shared/types.d.ts",
+      "default": "./lib/shared/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "README.ru.md",
+    "README.zh-CN.md",
+    "docs/images/*.png",
+    "docs/images/*.jpg",
+    "SPEC.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "lint": "eslint src tests scripts",
+    "format": "prettier --check . --end-of-line auto",
+    "format:write": "prettier --write . --end-of-line auto",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
+    "e2e:browser": "node scripts/smoke-packed-dsh.mjs --browser",
+    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
+    "verify": "pnpm run test:package",
+    "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
+    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run check"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "draft",
+    "sessions",
+    "web-ui"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
+    "@deepseek-ai/dsh-client-connection": "catalog:dsh",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-sidebar": "catalog:dsh",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-connection": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-sidebar": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-registry": "catalog:dsh-dev",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "^4.1.8",
+    "jsdom": "^26.1.0",
+    "playwright": "1.62.1",
+    "eslint": "catalog:tooling",
+    "prettier": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

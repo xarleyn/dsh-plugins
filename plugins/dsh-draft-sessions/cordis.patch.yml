@@ -1,0 +1,4 @@
+# The DSH plugin manager discovers this bundle through package.json.
+- insert:
+    - id: draft-sessions
+      name: dsh-draft-sessions

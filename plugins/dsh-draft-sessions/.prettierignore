@@ -1,0 +1,6 @@
+node_modules/
+lib/
+coverage/
+start.md
+pnpm-lock.yaml
+
