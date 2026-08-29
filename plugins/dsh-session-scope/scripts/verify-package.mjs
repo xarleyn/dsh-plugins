@@ -22,8 +22,12 @@ if (
 ) {
   throw new Error("package publishing must target the public npm registry");
 }
-if (manifest.repository?.url !== "git+https://github.com/xarleyn/dsh-session-scope.git") {
-  throw new Error("package repository must match the Trusted Publisher repository");
+if (
+  manifest.repository?.type !== "git" ||
+  manifest.repository?.url !== "git+https://github.com/xarleyn/dsh-plugins.git" ||
+  manifest.repository?.directory !== "plugins/dsh-session-scope"
+) {
+  throw new Error("package repository must identify its canonical monorepo directory");
 }
 
 const requiredFiles = new Set([
