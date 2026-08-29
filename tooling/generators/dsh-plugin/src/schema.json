@@ -22,12 +22,12 @@
       "type": "string"
     },
     "scope": {
-      "description": "npm scope prefix (e.g., @scope).",
+      "description": "npm scope prefix (e.g., @yadsh).",
       "type": "string",
-      "default": "@scope"
+      "default": "@yadsh"
     },
     "withUi": {
-      "description": "Add UI kit dependency and client-side UI scaffolding.",
+      "description": "Use the repository UI kit (requires packages/ui-kit).",
       "type": "boolean",
       "default": false
     },

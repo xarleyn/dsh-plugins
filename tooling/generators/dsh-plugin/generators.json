@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/nx-generators-schema.json",
+  "generators": {
+    "dsh-plugin": {
+      "factory": "./src/index",
+      "schema": "./src/schema.json",
+      "description": "Scaffold a publishable DeepSeek Harness plugin"
+    }
+  }
+}

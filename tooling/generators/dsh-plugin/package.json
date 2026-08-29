@@ -1,12 +1,23 @@
 {
-  "name": "@scope/dsh-plugin-generator",
-  "version": "0.1.0",
+  "name": "@yadsh/dsh-plugin-generator",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "main": "./src/index.js",
+  "generators": "./generators.json",
   "dependencies": {
-    "@nx/devkit": "catalog:tooling"
+    "@nx/devkit": "catalog:tooling",
+    "@yadsh/dsh-plugin-kit": "workspace:^"
   },
   "devDependencies": {
-    "@nx/devkit": "catalog:tooling"
+    "@yadsh/dsh-config": "workspace:^",
+    "@types/node": "catalog:tooling",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  },
+  "scripts": {
+    "lint": "eslint src tests",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   }
 }

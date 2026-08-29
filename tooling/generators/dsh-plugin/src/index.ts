@@ -1,10 +1,4 @@
-import {
-  addProjectConfiguration,
-  names,
-  offsetFromRoot,
-  Tree,
-} from "@nx/devkit";
-import * as path from "node:path";
+import { formatFiles, names, type Tree } from "@nx/devkit";
 
 export interface Schema {
   name: string;
@@ -15,165 +9,156 @@ export interface Schema {
   withTests?: boolean;
 }
 
-export default async function (tree: Tree, options: Schema) {
-  const pluginName = names(options.name).fileName;
-  const projectName = `dsh-${pluginName}`;
-  const projectRoot = `plugins/${pluginName}`;
-  const pkgScope = options.scope || "@scope";
-  const pkgName = `${pkgScope}/dsh-${pluginName}`;
+type ExportTarget = { types: string; default: string };
 
-  // Build dependencies list
-  const deps: Record<string, string> = {
-    "@scope/dsh-plugin-kit": "workspace:^",
-  };
-  if (options.withUi) {
-    deps["@scope/dsh-ui-kit"] = "workspace:^";
+const DEFAULT_SCOPE = "@yadsh";
+
+export default async function generatePlugin(
+  tree: Tree,
+  options: Schema,
+): Promise<void> {
+  const pluginName = names(options.name).fileName;
+  const projectRoot = `plugins/${pluginName}`;
+  const packageScope = options.scope ?? DEFAULT_SCOPE;
+  const packageName = `${packageScope}/dsh-${pluginName}`;
+  const withTests = options.withTests ?? true;
+
+  if (!pluginName || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(pluginName)) {
+    throw new Error("Plugin name must resolve to non-empty kebab-case.");
   }
 
-  // Build devDependencies list
-  const devDeps: Record<string, string> = {
-    "@deepseek-ai/cordis": "catalog:dsh",
-    "@scope/dsh-test-kit": "workspace:^",
-    typescript: "catalog:tooling",
-    vitest: "catalog:tooling",
-  };
+  if (!/^@[a-z0-9][a-z0-9._-]*$/.test(packageScope)) {
+    throw new Error("Scope must be a valid lowercase npm scope such as @yadsh.");
+  }
 
-  // Generate package.json
-  const packageJson: Record<string, unknown> = {
-    name: pkgName,
-    version: "0.1.0",
-    description: options.description || `DSH plugin: ${pluginName}`,
-    type: "module",
-    main: "./lib/index.js",
-    types: "./lib/types/index.d.ts",
-    exports: {
-      ".": {
-        types: "./lib/types/index.d.ts",
-        default: "./lib/index.js",
-      },
-    },
-    files: ["lib", "cordis.patch.yml", "README.md"],
-    dsh: {
-      bundle: {
-        patch: "./cordis.patch.yml",
-      },
-    },
-    dependencies: deps,
-    peerDependencies: {
-      "@deepseek-ai/cordis": "catalog:dsh",
-    },
-    devDependencies: devDeps,
-    publishConfig: {
-      access: "public",
-    },
-    scripts: {
-      build: "tsc",
-      test: "vitest run",
-      typecheck: "tsc --noEmit",
+  if (tree.exists(projectRoot)) {
+    throw new Error(`Plugin directory already exists: ${projectRoot}`);
+  }
+
+  if (options.withUi && !tree.exists("packages/ui-kit/package.json")) {
+    throw new Error(
+      "--with-ui requires packages/ui-kit. Add the shared UI kit only when a real reusable UI contract exists.",
+    );
+  }
+
+  const exportsMap: Record<string, ExportTarget> = {
+    ".": {
+      types: "./lib/index.d.ts",
+      default: "./lib/index.js",
     },
   };
 
   if (options.client) {
-    packageJson.exports["./client"] = {
-      types: "./lib/types/client.d.ts",
+    exportsMap["./client"] = {
+      types: "./lib/client.d.ts",
       default: "./lib/client.js",
     };
   }
 
-  // Write package.json
+  const dependencies: Record<string, string> = {
+    "@yadsh/dsh-plugin-kit": "workspace:^",
+  };
+
+  if (options.withUi) {
+    dependencies["@yadsh/dsh-ui-kit"] = "workspace:^";
+  }
+
+  const devDependencies: Record<string, string> = {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@yadsh/dsh-config": "workspace:^",
+    eslint: "catalog:tooling",
+    typescript: "catalog:tooling",
+  };
+
+  const scripts: Record<string, string> = {
+    build: "tsc",
+    lint: withTests ? "eslint src tests" : "eslint src",
+    typecheck: "tsc --noEmit",
+  };
+
+  if (withTests) {
+    devDependencies["@yadsh/dsh-test-kit"] = "workspace:^";
+    devDependencies.vitest = "catalog:tooling";
+    scripts.test = "vitest run";
+  }
+
   tree.write(
     `${projectRoot}/package.json`,
-    JSON.stringify(packageJson, null, 2),
+    JSON.stringify(
+      {
+        name: packageName,
+        version: "0.1.0",
+        description: options.description ?? `DSH plugin: ${pluginName}`,
+        license: "MIT",
+        type: "module",
+        main: "./lib/index.js",
+        types: "./lib/index.d.ts",
+        exports: exportsMap,
+        files: ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+        dependencies,
+        peerDependencies: {
+          "@deepseek-ai/cordis": "catalog:dsh",
+        },
+        devDependencies,
+        publishConfig: { access: "public" },
+        scripts,
+      },
+      null,
+      2,
+    ),
   );
-
-  // Write tsconfig.json
-  const tsconfig = {
-    extends: `${offsetFromRoot(projectRoot)}tsconfig.base.json`,
-    compilerOptions: {
-      rootDir: "src",
-      outDir: "lib",
-    },
-    include: ["src"],
-  };
 
   tree.write(
     `${projectRoot}/tsconfig.json`,
-    JSON.stringify(tsconfig, null, 2),
+    JSON.stringify(
+      {
+        extends: "@yadsh/dsh-config/tsconfig/base",
+        compilerOptions: { rootDir: "src", outDir: "lib" },
+        include: ["src"],
+      },
+      null,
+      2,
+    ),
   );
-
-  // Write vitest.config.ts
-  tree.write(
-    `${projectRoot}/vitest.config.ts`,
-    `import { defineConfig } from "vitest/config";
-
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: "node",
-  },
-});
-`,
-  );
-
-  // Write src/index.ts
-  const clientImport = options.client
-    ? `import { createLogger } from "@scope/dsh-plugin-kit";${options.withUi ? '\nimport { usePluginTheme } from "@scope/dsh-ui-kit";' : ""}`
-    : `import { createLogger } from "@scope/dsh-plugin-kit";`;
-
-  const clientExport = options.client
-    ? `\nexport { initClient };`
-    : "";
 
   tree.write(
     `${projectRoot}/src/index.ts`,
-    `/**
- * ${options.name} Plugin — ${options.description || pluginName}.
- */
+    `import { createLogger } from "@yadsh/dsh-plugin-kit";
 
-${clientImport}
+export type ${names(pluginName).className}Config = Record<string, unknown>;
 
 const logger = createLogger("${pluginName}");
 
-/**
- * Initialize the plugin.
- */
-export async function initialize(): Promise<void> {
-  logger.info("${options.name} plugin initialized");
+export async function initialize(
+  config: ${names(pluginName).className}Config = {},
+): Promise<void> {
+  logger.info("${pluginName} plugin initialized", {
+    configKeys: Object.keys(config),
+  });
 }
 
-export { logger };${clientExport}
+export { logger };
 `,
   );
 
-  // Write src/client.ts if client flag is set
   if (options.client) {
-    const uiImport = options.withUi
-      ? `import { createLogger } from "@scope/dsh-plugin-kit";\nimport { usePluginTheme } from "@scope/dsh-ui-kit";`
-      : `import { createLogger } from "@scope/dsh-plugin-kit";`;
-
     tree.write(
       `${projectRoot}/src/client.ts`,
-      `/**
- * Client-side entrypoint for ${pkgName}.
- */
-
-${uiImport}
+      `import { createLogger } from "@yadsh/dsh-plugin-kit";
 
 const logger = createLogger("${pluginName}:client");
 
-export async function initClient(): Promise<void> {
-  logger.info("${options.name} client initialized");
+export async function initializeClient(): Promise<void> {
+  logger.info("${pluginName} client initialized");
 }
 `,
     );
   }
 
-  // Write cordis.patch.yml
   tree.write(
     `${projectRoot}/cordis.patch.yml`,
-    `# Cordis patch configuration for ${pkgName}
-
-patch:
+    `patch:
   - target: "session-manager"
     action: "extend"
     handler: "./lib/index.js"
@@ -181,38 +166,39 @@ patch:
 `,
   );
 
-  // Write README.md
-  const features = ["Feature 1", "Feature 2"];
-  if (options.withUi) features.push("Client-side UI integration");
-  if (options.client) features.push("Browser-compatible entrypoint");
+  const license = tree.read("LICENSE", "utf8");
+  if (license === null) {
+    throw new Error("Root LICENSE file is required to scaffold a plugin.");
+  }
+  tree.write(`${projectRoot}/LICENSE`, license);
+
+  const features = ["Server-side DSH entrypoint"];
+  if (options.client) features.push("Browser-compatible client entrypoint");
+  if (options.withUi) features.push("Shared DSH UI kit integration");
 
   tree.write(
     `${projectRoot}/README.md`,
-    `# ${pkgName}
+    `# ${packageName}
 
-${options.description || pluginName}.
+${options.description ?? `DSH plugin: ${pluginName}.`}
 
 ## Features
 
-${features.map((f) => `- ${f}`).join("\n")}
+${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >= 4.0.0
+- DeepSeek Harness >= 4.0.0 < 5.0.0
 
 ## Installation
 
-npm:
 \`\`\`bash
-dsh plugin add ${pkgName}
-\`\`\`
-
-Tarball:
-\`\`\`bash
-dsh plugin add ./package.tgz
+dsh plugin add ${packageName}
 \`\`\`
 
 ## Configuration
+
+Configure the plugin under the \`${pluginName}\` key in the DSH profile.
 
 ## Compatibility
 
@@ -222,9 +208,9 @@ dsh plugin add ./package.tgz
 
 \`\`\`bash
 pnpm build
-pnpm test
+pnpm lint
 pnpm typecheck
-\`\`\`
+${withTests ? "pnpm test\n" : ""}\`\`\`
 
 ## License
 
@@ -232,45 +218,24 @@ MIT
 `,
   );
 
-  // Write tests directory placeholder
-  tree.write(
-    `${projectRoot}/tests/index.test.ts`,
-    `import { describe, it, expect } from "vitest";
+  if (withTests) {
+    tree.write(
+      `${projectRoot}/vitest.config.ts`,
+      'export { default } from "@yadsh/dsh-config/vitest";\n',
+    );
+    tree.write(
+      `${projectRoot}/tests/index.test.ts`,
+      `import { describe, expect, it } from "vitest";
 import { initialize } from "../src/index";
 
 describe("${pluginName}", () => {
-  it("should initialize without errors", async () => {
-    await expect(initialize()).resolves.not.toThrow();
+  it("initializes without errors", async () => {
+    await expect(initialize()).resolves.toBeUndefined();
   });
 });
 `,
-  );
+    );
+  }
 
-  // Add to project configuration
-  addProjectConfiguration(tree, projectName, {
-    root: projectRoot,
-    sourceRoot: `${projectRoot}/src`,
-    targets: {
-      build: {
-        executor: "nx:run-script",
-        options: {
-          script: "build",
-        },
-      },
-      test: {
-        executor: "nx:run-script",
-        options: {
-          script: "test",
-        },
-      },
-      typecheck: {
-        executor: "nx:run-script",
-        options: {
-          script: "typecheck",
-        },
-      },
-    },
-  });
-
-  console.log(`Created plugin: ${pkgName} at ${projectRoot}`);
+  await formatFiles(tree);
 }

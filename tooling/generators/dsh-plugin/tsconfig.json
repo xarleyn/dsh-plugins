@@ -1,0 +1,8 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/base",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "tests"]
+}
