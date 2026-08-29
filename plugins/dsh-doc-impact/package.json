@@ -36,7 +36,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['dist', 'lib']) fs.rmSync(dir, { recursive: true, force: true })\"",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:client",
     "lint": "eslint src test scripts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -66,7 +68,8 @@
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-tools": "catalog:dsh",
-    "@deepseek-ai/schemastery": "catalog:dsh"
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "react": ">=18.2.0 <20"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -81,6 +84,7 @@
     "@types/node": "catalog:tooling",
     "@types/picomatch": "^4.0.2",
     "eslint": "catalog:tooling",
+    "react": "catalog:frontend-dev",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"
   },

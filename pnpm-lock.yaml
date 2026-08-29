@@ -253,6 +253,9 @@ importers:
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
+      react:
+        specifier: catalog:frontend-dev
+        version: 18.3.1
       typescript:
         specifier: catalog:plugin-tooling
         version: 7.0.2

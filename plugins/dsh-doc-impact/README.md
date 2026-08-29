@@ -146,6 +146,10 @@ pnpm --filter @yadsh/dsh-doc-impact check
 
 The core under `src/config`, `src/graph`, `src/changes`, and `src/engine` is DSH-independent. Only `src/dsh` imports `@deepseek-ai` packages.
 
+The browser client source lives at `src/client.js`. The build copies it to the
+ignored package artifact `lib/client.js`; edit the source file, never `lib/`
+directly.
+
 ## Releases
 
 This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
