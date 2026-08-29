@@ -5,8 +5,7 @@
   "type": "module",
   "generators": "./generators.json",
   "dependencies": {
-    "@nx/devkit": "catalog:tooling",
-    "@yadsh/dsh-plugin-kit": "workspace:^"
+    "@nx/devkit": "catalog:tooling"
   },
   "devDependencies": {
     "@yadsh/dsh-config": "workspace:^",

@@ -55,9 +55,7 @@ export default async function generatePlugin(
     };
   }
 
-  const dependencies: Record<string, string> = {
-    "@yadsh/dsh-plugin-kit": "workspace:^",
-  };
+  const dependencies: Record<string, string> = {};
 
   if (options.withUi) {
     dependencies["@yadsh/dsh-ui-kit"] = "workspace:^";
@@ -123,8 +121,32 @@ export default async function generatePlugin(
   );
 
   tree.write(
+    `${projectRoot}/src/logger.ts`,
+    `interface ConsoleLike {
+  log(...args: unknown[]): void;
+}
+
+declare const console: ConsoleLike;
+
+export interface Logger {
+  info(message: string, meta?: Record<string, unknown>): void;
+}
+
+export function createLogger(name: string): Logger {
+  const prefix = \`[dsh:\${name}]\`;
+
+  return {
+    info(message: string, meta?: Record<string, unknown>): void {
+      console.log(\`\${prefix} INFO \${message}\`, meta ?? {});
+    },
+  };
+}
+`,
+  );
+
+  tree.write(
     `${projectRoot}/src/index.ts`,
-    `import { createLogger } from "@yadsh/dsh-plugin-kit";
+    `import { createLogger } from "./logger.js";
 
 export type ${names(pluginName).className}Config = Record<string, unknown>;
 
@@ -145,7 +167,7 @@ export { logger };
   if (options.client) {
     tree.write(
       `${projectRoot}/src/client.ts`,
-      `import { createLogger } from "@yadsh/dsh-plugin-kit";
+      `import { createLogger } from "./logger.js";
 
 const logger = createLogger("${pluginName}:client");
 
@@ -158,11 +180,10 @@ export async function initializeClient(): Promise<void> {
 
   tree.write(
     `${projectRoot}/cordis.patch.yml`,
-    `patch:
-  - target: "session-manager"
-    action: "extend"
-    handler: "./lib/index.js"
-    configKey: "${pluginName}"
+    `# The DSH plugin manager discovers this bundle through package.json.
+- insert:
+    - id: dsh-${pluginName}
+      name: "${packageName}"
 `,
   );
 

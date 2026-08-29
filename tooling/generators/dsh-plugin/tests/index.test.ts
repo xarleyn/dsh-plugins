@@ -31,10 +31,19 @@ describe("dsh-plugin generator", () => {
       test: "vitest run",
       typecheck: "tsc --noEmit",
     });
+    expect(packageJson.dependencies).not.toHaveProperty(
+      "@yadsh/dsh-plugin-kit",
+    );
     expect(tree.exists(`${root}/src/index.ts`)).toBe(true);
+    expect(tree.exists(`${root}/src/logger.ts`)).toBe(true);
     expect(tree.read(`${root}/LICENSE`, "utf8")).toBe("MIT License\n");
     expect(tree.exists(`${root}/src/client.ts`)).toBe(false);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(true);
+
+    const patch = tree.read(`${root}/cordis.patch.yml`, "utf8") ?? "";
+    expect(patch).toContain("id: dsh-example-plugin");
+    // formatFiles (prettier) re-quotes the YAML scalar; accept either style.
+    expect(patch).toMatch(/name: ['"]@yadsh\/dsh-example-plugin['"]/);
   });
 
   it("supports a client entrypoint and optional tests", async () => {
