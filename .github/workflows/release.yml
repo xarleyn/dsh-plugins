@@ -3,32 +3,36 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      version_strategy:
-        description: "Version strategy (preminor, premajor, prepatch, prerelease)"
-        required: false
-        default: "prerelease"
-        type: choice
-        options:
-          - prerelease
-          - prepatch
-          - preminor
-          - premajor
+      dry_run:
+        description: Preview the release without changing GitHub or npm
+        required: true
+        default: true
+        type: boolean
+      first_release:
+        description: Resolve versions from package.json because no release tags exist yet
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
-    name: Release
+    name: Release packages
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -39,65 +43,96 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: "pnpm"
-          # SPEC §19: Use npm provenance / OIDC for Trusted Publishing
-          registry-url: "https://registry.npmjs.org"
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build all packages
-        run: pnpm build
+      - name: Require a version plan
+        shell: bash
+        run: compgen -G '.nx/version-plans/*.md' > /dev/null
 
-      - name: Run tests
-        run: pnpm test
-
-      - name: Apply version plans and calculate versions
+      - name: Preview release
+        if: inputs.dry_run
+        shell: bash
         run: |
-          if [ "${{ github.event.inputs.version_strategy }}" ]; then
-            pnpm nx release version ${{ github.event.inputs.version_strategy }} --no-git-tag --skip-nx-cache
-          else
-            pnpm nx release version --skip-nx-cache
+          args=(--dry-run)
+          if [[ "${{ inputs.first_release }}" == "true" ]]; then
+            args+=(--first-release)
           fi
+          pnpm nx release "${args[@]}"
 
-      - name: Update dependency ranges
-        run: pnpm nx release prepare
-
-      - name: Build affected packages
-        run: pnpm nx release build
-
-      - name: Pack publishable tarballs
-        run: |
-          mkdir -p tarballs
-          for pkg in plugins/* packages/*; do
-            [ -f "$pkg/package.json" ] || continue
-            if grep -Eq '"private"[[:space:]]*:[[:space:]]*true' "$pkg/package.json"; then
-              echo "Skipping private package $pkg"
-              continue
-            fi
-            echo "Packing $pkg..."
-            (cd "$pkg" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/tarballs")
-          done
-
-      - name: Verify tarballs (SPEC §16 release gates)
-        run: bash scripts/tarball-verify.sh --all
-
-      - name: Publish to npm with provenance
-        # SPEC §19: Use OIDC Trusted Publishing — no long-lived NPM_TOKEN
-        # The registry-url above enables npm to use GitHub Actions OIDC for authentication.
-        run: |
-          # Configure npm to use the registry and enable provenance
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> ~/.npmrc 2>/dev/null || true
-          pnpm nx release publish --skip-nx-cache
-        env:
-          NPM_CONFIG_PROVENANCE: "true"
-
-      - name: Commit version and changelog changes
+      - name: Apply version plans
+        if: inputs.dry_run == false
+        id: packages
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          git commit -m "chore: release [skip ci]" || echo "No changes to commit"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Create Git tags and GitHub Releases
-        run: pnpm nx release publish --skip-nx-cache
+          args=(--skip-publish --yes)
+          if [[ "${{ inputs.first_release }}" == "true" ]]; then
+            args+=(--first-release)
+          fi
+          pnpm nx release "${args[@]}"
+          node scripts/workspace-packages.mjs --release-commit --require --format=github-output >> "$GITHUB_OUTPUT"
+          node scripts/workspace-packages.mjs --release-commit --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
+
+      - name: Run release gates
+        if: inputs.dry_run == false
+        run: |
+          pnpm deps:check
+          pnpm check
+
+      - name: Pack release tarballs
+        if: inputs.dry_run == false
+        shell: bash
+        run: |
+          mkdir -p tarballs
+          for package_dir in ${{ steps.packages.outputs.directories }}; do
+            pnpm --dir "$package_dir" pack --pack-destination "$GITHUB_WORKSPACE/tarballs"
+          done
+
+      - name: Verify release tarballs
+        if: inputs.dry_run == false
+        run: pnpm tarball:verify:packages -- ${{ steps.packages.outputs.directories }}
+
+      - name: Upload release artifacts
+        if: inputs.dry_run == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarballs
+          path: tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Push release commit and tags
+        if: inputs.dry_run == false
+        run: git push origin HEAD:main --follow-tags
+
+      - name: Upgrade npm for trusted publishing
+        if: inputs.dry_run == false
+        run: npm install --global npm@latest
+
+      - name: Publish to npm with OIDC
+        if: inputs.dry_run == false
+        shell: bash
+        run: |
+          args=(--projects="${{ steps.packages.outputs.projects }}" --output-style=static)
+          if [[ "${{ inputs.first_release }}" == "true" ]]; then
+            args+=(--first-release)
+          fi
+          pnpm nx release publish "${args[@]}"
+
+      - name: Create per-package GitHub Releases
+        if: inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          while IFS=$'\t' read -r name version _directory tarball; do
+            gh release create "${name}@${version}" "tarballs/${tarball}" \
+              --verify-tag \
+              --title "${name} ${version}" \
+              --generate-notes
+          done < "$RUNNER_TEMP/release-packages.tsv"

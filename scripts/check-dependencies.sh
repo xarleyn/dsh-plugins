@@ -21,7 +21,7 @@
 #   §27.7  Hoisting must not satisfy undeclared dependencies — enforced via
 #          `nodeLinker: isolated` in pnpm-workspace.yaml plus §27.6.
 #   §27.8  No imports of another package's internal source paths
-#          (e.g. `@scope/x/src/...`).
+#          (e.g. `@yadsh/x/src/...`).
 #   §27.9  No cross-package relative imports (`../../other-plugin/src/...`).
 #   §27.10 Workspace packages must be consumed through their declared
 #          package `exports` map only.
@@ -96,11 +96,17 @@ const DEP_FIELDS = [
 const DSH_RUNTIME_PREFIXES = ["@deepseek-ai/"];
 
 // ---------------------------------------------------------------------------
-// Collect workspace members (plugins/* and packages/*)
+// Collect workspace members (publishable packages/plugins and private tooling)
 // ---------------------------------------------------------------------------
 function listMembers() {
   const members = [];
-  for (const group of ["packages", "plugins"]) {
+  const groups = [
+    { group: "packages", kind: "shared" },
+    { group: "plugins", kind: "plugin" },
+    { group: "tooling/generators", kind: "tooling" },
+  ];
+
+  for (const { group, kind } of groups) {
     const groupDir = path.join(ROOT, group);
     if (!fs.existsSync(groupDir)) continue;
     for (const entry of fs.readdirSync(groupDir, { withFileTypes: true })) {
@@ -121,7 +127,7 @@ function listMembers() {
       members.push({
         name: pkg.name || `${group}/${entry.name}`,
         group,
-        kind: group === "packages" ? "shared" : "plugin",
+        kind,
         dir,
         relDir: `${group}/${entry.name}`,
         pkg,
@@ -198,7 +204,7 @@ for (const m of members) {
 }
 
 // ---------------------------------------------------------------------------
-// Phantom workspace deps: declared '@scope/...'-style names that are not
+// Phantom workspace deps: declared '@yadsh/...'-style names that are not
 // workspace members at all
 // ---------------------------------------------------------------------------
 const workspaceScopes = new Set(
@@ -214,7 +220,7 @@ for (const m of members) {
         violation(
           "manifest",
           `'${m.name}' declares '${name}' in ${field}, but no such workspace ` +
-            `package exists under packages/* or plugins/* (${m.relDir}/package.json)`,
+            `package exists in the pnpm workspace (${m.relDir}/package.json)`,
         );
       }
     }

@@ -20,7 +20,7 @@
 #   scripts/tarball-verify.sh --all
 #
 # Examples:
-#   scripts/tarball-verify.sh plugins/draft-sessions
+#   scripts/tarball-verify.sh plugins/dsh-draft-sessions
 #   scripts/tarball-verify.sh packages/plugin-kit packages/test-kit
 #   scripts/tarball-verify.sh --all
 #
