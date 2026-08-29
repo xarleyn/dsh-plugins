@@ -1,0 +1,5 @@
+.worktrees/
+lib/
+node_modules/
+coverage/
+*.tgz

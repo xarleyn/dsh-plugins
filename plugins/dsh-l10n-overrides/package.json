@@ -1,0 +1,87 @@
+{
+  "name": "@yadsh/dsh-l10n-overrides",
+  "version": "0.1.0",
+  "description": "English localization overrides for DeepSeek Harness plugins",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md",
+    "SPEC — dsh-l10n-overrides.md",
+    "ROADMAP.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "lint": "eslint src tests scripts",
+    "format": "prettier --check . --end-of-line auto",
+    "format:write": "prettier --write . --end-of-line auto",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
+    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
+    "verify": "pnpm run test:package",
+    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run check"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "localization",
+    "web-ui"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "eslint": "catalog:tooling",
+    "jsdom": "^26.1.0",
+    "prettier": "catalog:tooling",
+    "tsdown": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

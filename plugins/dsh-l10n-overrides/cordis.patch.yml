@@ -1,0 +1,4 @@
+# The DSH plugin manager discovers this bundle through package.json.
+- insert:
+    - id: l10n-overrides
+      name: dsh-l10n-overrides
