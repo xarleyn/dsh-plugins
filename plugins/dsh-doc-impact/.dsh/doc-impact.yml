@@ -1,0 +1,33 @@
+version: 1
+
+# dsh-doc-impact monitoring its own development (dogfooding):
+# implementation changes must keep the README honest, and SPEC edits
+# must be reflected in the implementation.
+defaults:
+  mode: remind
+  scope: turn
+  changeDetection: auto
+
+rules:
+  - id: readme
+    description: README documents the implementation
+    code:
+      include:
+        - src/**
+      exclude:
+        - "**/*.test.ts"
+        - "src/dsh/**"
+    docs:
+      - README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: spec
+    description: The SPEC is the source of truth for the implementation
+    code:
+      include:
+        - src/**
+    docs:
+      - SPEC_ dsh-doc-impact.md
+    direction: docs-to-code
+    relation: specification

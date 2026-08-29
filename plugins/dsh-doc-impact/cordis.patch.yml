@@ -1,0 +1,6 @@
+# dsh-doc-impact bundle patch: inserts the plugin into the host roster
+# (SPEC §64, §94). The node half runs in the host process: agent lifecycle
+# listeners, doc_impact_* tools, and the /doc-impact command.
+- insert:
+    - id: doc-impact
+      name: dsh-doc-impact

@@ -1,0 +1,96 @@
+{
+  "name": "@yadsh/dsh-doc-impact",
+  "version": "0.2.1",
+  "description": "Deterministic documentation impact engine for DeepSeek Harness",
+  "keywords": [
+    "deepseek-harness",
+    "documentation",
+    "impact-analysis",
+    "plugin"
+  ],
+  "homepage": "https://github.com/xarleyn/dsh-doc-impact#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-doc-impact/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-doc-impact.git"
+  },
+  "license": "MIT",
+  "author": "xarleyn",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "dist",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint src test scripts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:client": "node scripts/verify-client-bundle.mjs",
+    "smoke:packed": "node scripts/smoke-packed.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "npm run verify:client && npm run verify:package",
+    "prepack": "npm run build && npm run verify:client",
+    "check": "npm run typecheck && npm test && npm run build && npm run verify",
+    "release:check": "npm run check && npm run verify:package"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "picomatch": "^4.0.3",
+    "tinyglobby": "^0.2.14",
+    "yaml": "^2.8.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/cordis": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@types/picomatch": "^4.0.2",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "platform": "web"
+    }
+  }
+}
