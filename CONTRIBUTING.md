@@ -83,7 +83,7 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 ### What the Generator Creates
 
 ```
-plugins/<name>/
+plugins/dsh-<name>/
 ├── src/
 │   ├── index.ts          # Server-side entrypoint
 │   └── client.ts         # Client-side (if --client)

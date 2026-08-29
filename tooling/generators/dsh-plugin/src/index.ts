@@ -9,16 +9,19 @@ export interface Schema {
   withTests?: boolean;
 }
 
-type ExportTarget = { types: string; default: string };
+type ExportTarget = { types: string; default: string } | string;
 
 const DEFAULT_SCOPE = "@yadsh";
+const LOGGER_TEMPLATE_ROOT = "plugins/dsh-kv-persist/src/logging";
+const LOGGER_TEMPLATE_FILES = ["dsh-home.ts", "index.ts", "plugin-logger.ts"];
 
 export default async function generatePlugin(
   tree: Tree,
   options: Schema,
 ): Promise<void> {
-  const pluginName = names(options.name).fileName;
-  const projectRoot = `plugins/${pluginName}`;
+  const normalizedName = names(options.name).fileName;
+  const pluginName = normalizedName.replace(/^dsh-/, "");
+  const projectRoot = `plugins/dsh-${pluginName}`;
   const packageScope = options.scope ?? DEFAULT_SCOPE;
   const packageName = `${packageScope}/dsh-${pluginName}`;
   const withTests = options.withTests ?? true;
@@ -41,6 +44,16 @@ export default async function generatePlugin(
     );
   }
 
+  const loggingTemplates = LOGGER_TEMPLATE_FILES.map((file) => {
+    const source = tree.read(`${LOGGER_TEMPLATE_ROOT}/${file}`, "utf8");
+    if (source === null) {
+      throw new Error(
+        `Canonical logging template is missing: ${LOGGER_TEMPLATE_ROOT}/${file}`,
+      );
+    }
+    return { file, source };
+  });
+
   const exportsMap: Record<string, ExportTarget> = {
     ".": {
       types: "./lib/index.d.ts",
@@ -54,8 +67,11 @@ export default async function generatePlugin(
       default: "./lib/client.js",
     };
   }
+  exportsMap["./package.json"] = "./package.json";
 
-  const dependencies: Record<string, string> = {};
+  const dependencies: Record<string, string> = {
+    pino: "^10.3.1",
+  };
 
   if (options.withUi) {
     dependencies["@yadsh/dsh-ui-kit"] = "workspace:^";
@@ -85,21 +101,34 @@ export default async function generatePlugin(
     JSON.stringify(
       {
         name: packageName,
-        version: "0.1.0",
+        version: "0.0.0",
         description: options.description ?? `DSH plugin: ${pluginName}`,
+        repository: {
+          type: "git",
+          url: "git+https://github.com/xarleyn/dsh-plugins.git",
+          directory: projectRoot,
+        },
+        homepage: `https://github.com/xarleyn/dsh-plugins/tree/main/${projectRoot}#readme`,
+        bugs: { url: "https://github.com/xarleyn/dsh-plugins/issues" },
         license: "MIT",
         type: "module",
         main: "./lib/index.js",
         types: "./lib/index.d.ts",
         exports: exportsMap,
         files: ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
-        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+        dsh: {
+          bundle: { patch: "./cordis.patch.yml" },
+          ...(options.client ? { client: { platform: "web" } } : {}),
+        },
         dependencies,
         peerDependencies: {
           "@deepseek-ai/cordis": "catalog:dsh",
         },
         devDependencies,
-        publishConfig: { access: "public" },
+        publishConfig: {
+          access: "public",
+          registry: "https://registry.npmjs.org/",
+        },
         scripts,
       },
       null,
@@ -120,44 +149,28 @@ export default async function generatePlugin(
     ),
   );
 
-  tree.write(
-    `${projectRoot}/src/logger.ts`,
-    `interface ConsoleLike {
-  log(...args: unknown[]): void;
-}
-
-declare const console: ConsoleLike;
-
-export interface Logger {
-  info(message: string, meta?: Record<string, unknown>): void;
-}
-
-export function createLogger(name: string): Logger {
-  const prefix = \`[dsh:\${name}]\`;
-
-  return {
-    info(message: string, meta?: Record<string, unknown>): void {
-      console.log(\`\${prefix} INFO \${message}\`, meta ?? {});
-    },
-  };
-}
-`,
-  );
+  for (const { file, source } of loggingTemplates) {
+    tree.write(`${projectRoot}/src/logging/${file}`, source);
+  }
 
   tree.write(
     `${projectRoot}/src/index.ts`,
-    `import { createLogger } from "./logger.js";
+    `import { getPluginLogger } from "./logging/index.js";
 
 export type ${names(pluginName).className}Config = Record<string, unknown>;
 
-const logger = createLogger("${pluginName}");
+const logger = getPluginLogger({ pluginId: "dsh-${pluginName}" });
 
 export async function initialize(
   config: ${names(pluginName).className}Config = {},
 ): Promise<void> {
-  logger.info("${pluginName} plugin initialized", {
+  logger.info("plugin.initialized", {
     configKeys: Object.keys(config),
   });
+}
+
+export async function dispose(): Promise<void> {
+  await logger.close();
 }
 
 export { logger };
@@ -167,12 +180,8 @@ export { logger };
   if (options.client) {
     tree.write(
       `${projectRoot}/src/client.ts`,
-      `import { createLogger } from "./logger.js";
-
-const logger = createLogger("${pluginName}:client");
-
-export async function initializeClient(): Promise<void> {
-  logger.info("${pluginName} client initialized");
+      `export function initializeClient(): void {
+  // Add browser-only initialization here. Host file logging is intentionally unavailable.
 }
 `,
     );
