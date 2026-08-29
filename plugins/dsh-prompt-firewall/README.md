@@ -58,10 +58,10 @@ Token values are estimates. Section text is hidden unless `audit.includePreview`
 
 ## Configuration
 
-The bundle inserts the `prompt-firewall` Cordis row. Override its configuration in the profile patch when needed:
+The bundle inserts the `dsh-prompt-firewall` Cordis row. Override its configuration in the profile patch when needed:
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: blocklist
     preset: clean
@@ -74,7 +74,7 @@ The bundle inserts the `prompt-firewall` Cordis row. Override its configuration 
 Audit without changing the prompt:
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: audit
     audit:
@@ -86,7 +86,7 @@ Audit without changing the prompt:
 Strict allowlist:
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: allowlist
     allowedSections:

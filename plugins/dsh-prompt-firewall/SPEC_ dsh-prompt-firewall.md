@@ -175,7 +175,7 @@ blockedSections:
 Пример полной конфигурации:
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     enabled: true
 
@@ -1228,7 +1228,7 @@ Core/tool sections unchanged.
 ## Basic
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: blocklist
 
@@ -1242,7 +1242,7 @@ Core/tool sections unchanged.
 ## Audit everything
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: audit
 
@@ -1256,7 +1256,7 @@ Core/tool sections unchanged.
 ## Strict
 
 ```yaml
-- id: prompt-firewall
+- id: dsh-prompt-firewall
   config:
     mode: allowlist
 
