@@ -3,8 +3,8 @@
   "version": "0.5.0",
   "description": "Per-session workspace visibility scopes for DeepSeek Harness.",
   "type": "module",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",

@@ -11,8 +11,8 @@
     "url": "https://github.com/xarleyn/dsh-sleev/issues"
   },
   "type": "module",
-  "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
