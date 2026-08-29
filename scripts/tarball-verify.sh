@@ -6,7 +6,8 @@
 # and smoke-installs it into a clean npm environment. Enforced gates:
 #
 #   1. lib/ exists in the tarball and contains compiled .js output
-#   2. packed package.json has a correct name and version (semver, matches source)
+#   2. packed package.json has a correct name, version, and canonical publishing
+#      metadata for this monorepo
 #   3. plugins/* declare dsh.bundle.patch (SPEC §4); packages/* must not
 #      declare it unless explicitly needed (warning)
 #   4. cordis.patch.yml is included in the tarball when required (plugins)
@@ -503,6 +504,46 @@ verify_package() {
   fi
   if [ -n "$p_name" ] && [ "$p_name" = "$name" ] && [ -n "$p_version" ] && [[ "$p_version" =~ $semver_re ]] && [ "$p_version" = "$version" ]; then
     ok "gate 2 — name and version correct ($name@$p_version)"
+  fi
+
+  if [ "$is_plugin" -eq 1 ]; then
+    local expected_name expected_repository expected_homepage
+    local repository_type repository_url repository_directory homepage bugs_url
+    local publish_access publish_registry metadata_ok=1
+    expected_name="@yadsh/${rel#plugins/}"
+    expected_repository="git+https://github.com/xarleyn/dsh-plugins.git"
+    expected_homepage="https://github.com/xarleyn/dsh-plugins/tree/main/$rel#readme"
+    repository_type="$(jsonq "$packed_pkg" repository.type)"
+    repository_url="$(jsonq "$packed_pkg" repository.url)"
+    repository_directory="$(jsonq "$packed_pkg" repository.directory)"
+    homepage="$(jsonq "$packed_pkg" homepage)"
+    bugs_url="$(jsonq "$packed_pkg" bugs.url)"
+    publish_access="$(jsonq "$packed_pkg" publishConfig.access)"
+    publish_registry="$(jsonq "$packed_pkg" publishConfig.registry)"
+
+    if [ "$p_name" != "$expected_name" ]; then
+      fail "gate 2 — plugin name must be '$expected_name', got '$p_name'"
+      metadata_ok=0
+    fi
+    if [ "$repository_type" != "git" ] || [ "$repository_url" != "$expected_repository" ] || [ "$repository_directory" != "$rel" ]; then
+      fail "gate 2 — repository must identify $expected_repository with directory '$rel'"
+      metadata_ok=0
+    fi
+    if [ "$homepage" != "$expected_homepage" ]; then
+      fail "gate 2 — homepage must be '$expected_homepage'"
+      metadata_ok=0
+    fi
+    if [ "$bugs_url" != "https://github.com/xarleyn/dsh-plugins/issues" ]; then
+      fail "gate 2 — bugs.url must point to the monorepo issue tracker"
+      metadata_ok=0
+    fi
+    if [ "$publish_access" != "public" ] || [ "$publish_registry" != "https://registry.npmjs.org/" ]; then
+      fail "gate 2 — publishConfig must use public access and the npmjs registry"
+      metadata_ok=0
+    fi
+    if [ "$metadata_ok" -eq 1 ]; then
+      ok "gate 2 — canonical monorepo publishing metadata present"
+    fi
   fi
 
   # ---- gate 3: DSH bundle metadata ----------------------------------------

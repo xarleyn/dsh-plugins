@@ -122,12 +122,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xarleyn/dsh-session-scope.git"
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-session-scope"
   },
   "bugs": {
-    "url": "https://github.com/xarleyn/dsh-session-scope/issues"
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
   },
-  "homepage": "https://github.com/xarleyn/dsh-session-scope#readme",
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-session-scope#readme",
   "author": "xarleyn",
   "publishConfig": {
     "access": "public",

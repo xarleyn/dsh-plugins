@@ -293,9 +293,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ```jsonc
 {
   "name": "@yadsh/dsh-<name>",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "…",
-  "repository": { "type": "git", "url": "…" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-<name>"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-<name>#readme",
+  "bugs": { "url": "https://github.com/xarleyn/dsh-plugins/issues" },
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
@@ -334,6 +340,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 
 Правила:
 
+- **Публикационные metadata каноничны для monorepo.** `repository.url`,
+  `repository.directory`, `homepage`, `bugs.url` и `publishConfig` должны
+  совпадать с примером выше. Это требуется для npm Trusted Publishing и
+  provenance и проверяется tarball-gate. Новый пакет начинает с `0.0.0`, а
+  первая пользовательская версия получается из обязательного Nx Version Plan.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
   — внутреннее (проверяется гейтом §27.10). Каждый вход: `types` + `default`.
   Всегда включайте `./package.json`.

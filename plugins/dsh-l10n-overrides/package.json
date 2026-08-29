@@ -2,6 +2,15 @@
   "name": "@yadsh/dsh-l10n-overrides",
   "version": "0.1.0",
   "description": "English localization overrides for DeepSeek Harness plugins",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-l10n-overrides"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-l10n-overrides#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",

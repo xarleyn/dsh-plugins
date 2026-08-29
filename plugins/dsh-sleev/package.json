@@ -4,11 +4,12 @@
   "description": "Sleev routing observability for DeepSeek Harness",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/xarleyn/dsh-sleev.git"
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-sleev"
   },
-  "homepage": "https://github.com/xarleyn/dsh-sleev#readme",
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-sleev#readme",
   "bugs": {
-    "url": "https://github.com/xarleyn/dsh-sleev/issues"
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
   },
   "type": "module",
   "main": "./lib/index.js",
