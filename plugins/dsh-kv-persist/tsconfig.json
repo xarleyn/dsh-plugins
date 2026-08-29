@@ -1,0 +1,7 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/base",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}
