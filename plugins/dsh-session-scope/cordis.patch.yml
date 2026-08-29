@@ -4,4 +4,4 @@
 # automatically on the next boot.
 - insert:
     - id: dsh-session-scope
-      name: dsh-session-scope
+      name: "@yadsh/dsh-session-scope"
