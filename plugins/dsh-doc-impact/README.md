@@ -84,10 +84,10 @@ disabledRules:
   - legacy-docs
 ```
 
-The bundle inserts the `doc-impact` Cordis row. Override its defaults in the profile patch when needed:
+The bundle inserts the `dsh-doc-impact` Cordis row. Override its defaults in the profile patch when needed:
 
 ```yaml
-- id: doc-impact
+- id: dsh-doc-impact
   config:
     enabled: true
     configFile: .dsh/doc-impact.yml
