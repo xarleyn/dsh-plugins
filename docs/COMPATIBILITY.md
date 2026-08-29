@@ -22,16 +22,17 @@ instance.
 | --- | --- |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, client runtime/connection/locale/UI, Typert protocol |
+| `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
-| `@yadsh/dsh-plugin-kit` | Cordis |
-| `@yadsh/dsh-test-kit` | Cordis, Vitest |
+| `@yadsh/dsh-plugin-kit` (private) | Cordis |
+| `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
 
-`@yadsh/dsh-config` is private build configuration and is never installed into
-a DSH profile. `plugins/dsh-ui-repair` is currently a specification, not a
-package.
+`@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, and `@yadsh/dsh-test-kit` are
+private workspace packages and are not published. `plugins/dsh-ui-repair` is
+currently a specification, not a package.
 
 ## Upgrade rules
 

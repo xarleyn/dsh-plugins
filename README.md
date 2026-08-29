@@ -10,13 +10,14 @@ package; shared build and test utilities live under `packages/`.
 | --- | --- | --- |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
+| `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
 | `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
-| `packages/plugin-kit` | `@yadsh/dsh-plugin-kit` | Shared runtime helpers |
-| `packages/test-kit` | `@yadsh/dsh-test-kit` | Shared test helpers |
+| `packages/plugin-kit` | private workspace package | Shared runtime helpers |
+| `packages/test-kit` | private workspace package | Shared test helpers |
 
 Runtime plugin IDs remain unscoped (`dsh-*`) because DSH bundle composition and
 browser module loading use those IDs. The `@yadsh` scope is the npm package
@@ -45,7 +46,11 @@ pnpm nx g dsh-plugin <name> [--client] [--description "..."]
 ```
 
 The generator defaults to the `@yadsh` npm scope and creates the package,
-Cordis patch, build configuration, tests, and public-package metadata.
+Cordis patch, build configuration, tests, and public-package metadata. The
+scaffold is a starting point: before writing code, read the
+[plugin guidelines](docs/PLUGIN_GUIDELINES.md) — the canonical architecture,
+package-content, testing, documentation, and release rules every plugin must
+follow.
 
 ## Releases
 
