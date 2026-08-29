@@ -1,7 +1,8 @@
 {
-  "name": "@scope/dsh-plugin-kit",
+  "name": "@yadsh/dsh-plugin-kit",
   "version": "0.1.0",
   "description": "Shared runtime helpers for DSH plugins",
+  "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -12,14 +13,17 @@
     }
   },
   "files": [
-    "lib"
+    "lib",
+    "LICENSE"
   ],
   "dependencies": {},
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
   },
@@ -28,6 +32,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   }

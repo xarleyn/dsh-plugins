@@ -1,5 +1,4 @@
 import {
-  defineConfig,
   mergeConfig,
   type UserConfig,
   type UserConfigExport,
@@ -15,14 +14,14 @@ import {
  *
  * ```ts
  * // vitest.config.ts
- * export { default } from "@scope/dsh-config/vitest";
+ * export { default } from "@yadsh/dsh-config/vitest";
  * ```
  *
  * Or extend with package-specific options (overrides win):
  *
  * ```ts
  * // vitest.config.ts
- * import { definePluginVitestConfig } from "@scope/dsh-config/vitest";
+ * import { definePluginVitestConfig } from "@yadsh/dsh-config/vitest";
  *
  * export default definePluginVitestConfig({
  *   test: {

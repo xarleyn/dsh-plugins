@@ -1,4 +1,4 @@
-# @scope/dsh-test-kit
+# @yadsh/dsh-test-kit
 
 Testing utilities for DeepSeek Harness plugins.
 
@@ -11,7 +11,7 @@ Testing utilities for DeepSeek Harness plugins.
 ## Installation
 
 ```bash
-npm install @scope/dsh-test-kit --save-dev
+npm install @yadsh/dsh-test-kit --save-dev
 ```
 
 ## Development

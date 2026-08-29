@@ -1,4 +1,4 @@
-# @scope/dsh-plugin-kit
+# @yadsh/dsh-plugin-kit
 
 Shared runtime helpers for DeepSeek Harness plugins.
 
@@ -12,7 +12,7 @@ Shared runtime helpers for DeepSeek Harness plugins.
 ## Installation
 
 ```bash
-npm install @scope/dsh-plugin-kit
+npm install @yadsh/dsh-plugin-kit
 ```
 
 ## Development

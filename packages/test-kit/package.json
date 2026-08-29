@@ -1,7 +1,8 @@
 {
-  "name": "@scope/dsh-test-kit",
+  "name": "@yadsh/dsh-test-kit",
   "version": "0.1.0",
   "description": "Testing utilities for DSH plugins",
+  "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -12,18 +13,21 @@
     }
   },
   "files": [
-    "lib"
+    "lib",
+    "LICENSE"
   ],
   "dependencies": {
-    "@scope/dsh-plugin-kit": "workspace:^"
+    "@yadsh/dsh-plugin-kit": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "vitest": "catalog:tooling"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "catalog:dsh",
-    "@types/node": "^22.0.0",
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@types/node": "catalog:tooling",
+    "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
   },
@@ -32,6 +36,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   }
