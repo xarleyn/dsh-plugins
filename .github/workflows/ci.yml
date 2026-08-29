@@ -60,4 +60,4 @@ jobs:
 
       - name: Verify affected tarballs
         if: steps.packages.outputs.count != '0'
-        run: pnpm tarball:verify:packages -- ${{ steps.packages.outputs.directories }}
+        run: pnpm tarball:verify:packages ${{ steps.packages.outputs.directories }}

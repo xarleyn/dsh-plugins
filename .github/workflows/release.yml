@@ -95,7 +95,7 @@ jobs:
 
       - name: Verify release tarballs
         if: inputs.dry_run == false
-        run: pnpm tarball:verify:packages -- ${{ steps.packages.outputs.directories }}
+        run: pnpm tarball:verify:packages ${{ steps.packages.outputs.directories }}
 
       - name: Upload release artifacts
         if: inputs.dry_run == false
