@@ -1,0 +1,7 @@
+# dsh-session-scope bundle patch — mounts the plugin row into the
+# profile composition. The `dsh.bundle.patch` manifest field points here, so
+# `dsh plugin --profile web add <this directory>` activates this row
+# automatically on the next boot.
+- insert:
+    - id: dsh-session-scope
+      name: dsh-session-scope

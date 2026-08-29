@@ -1,0 +1,20 @@
+{
+  "deepseekHarness": {
+    "testedReleases": [
+      "0.1.1-rc.2"
+    ],
+    "requiredHostFeatures": [
+      "fs.readBytes",
+      "tools.guard",
+      "tools/execute",
+      "agent/pre-step",
+      "sessionProjections",
+      "sandbox.confine.full-enforcement"
+    ],
+    "requiredClientFeatures": [
+      "conversation.input.left",
+      "remote.commands",
+      "session-projections"
+    ]
+  }
+}
