@@ -1,0 +1,34 @@
+# Merge one of these profiles into $DSH_HOME/settings.yaml under llm-pi-ai.
+# The credential reference is resolved by DSH; never put the literal key here.
+llm-pi-ai:
+  providers:
+    # A provider recognized by Sleev.
+    sleev-openai:
+      displayName: Sleev / OpenAI
+      apiKeyEnv: OPENAI_API_KEY
+      api: openai-completions
+      baseURL: http://127.0.0.1:17321/v1
+      headers:
+        sleev-provider: openai
+        # Experimental: Sleev has no documented DeepSeek Harness id yet.
+        # DSH currently sends this route through llm-pi-ai.
+        sleev-harness: pi
+      models:
+        - id: replace-with-upstream-model-id
+          name: Replace with upstream model
+          contextWindow: 128000
+          maxTokens: 16384
+
+    # Verified custom OpenAI-compatible upstream. Do not combine
+    # sleev-provider and sleev-base-url on the same route.
+    sleev-neuraldeep:
+      displayName: Sleev / neuraldeep
+      apiKeyEnv: NEURALDEEP_API_KEY
+      api: openai-completions
+      baseURL: http://127.0.0.1:17321/v1
+      headers:
+        sleev-base-url: https://api.neuraldeep.ru/v1
+        sleev-harness: pi
+      models:
+        - id: gpt-oss-20b
+          name: GPT OSS 20B via Sleev

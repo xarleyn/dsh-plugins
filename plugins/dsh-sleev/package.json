@@ -1,0 +1,123 @@
+{
+  "name": "@yadsh/dsh-sleev",
+  "version": "0.0.1",
+  "description": "Sleev routing observability for DeepSeek Harness",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-sleev.git"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-sleev#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-sleev/issues"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./telemetry": {
+      "types": "./lib/types/shared/telemetry.d.ts",
+      "default": "./lib/shared/telemetry.js"
+    },
+    "./sleev": {
+      "types": "./lib/types/host/optimizer/sleev/headers.d.ts",
+      "default": "./lib/host/optimizer/sleev/headers.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
+    }
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/types/**/*.d.ts",
+    "cordis.patch.yml",
+    "docs/*",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "lint": "eslint src tests scripts",
+    "format": "prettier --check . --end-of-line auto",
+    "format:write": "prettier --write . --end-of-line auto",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run test:package",
+    "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
+    "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
+    "smoke:neuraldeep": "tsx scripts/smoke-neuraldeep.ts",
+    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm run check"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "sleev",
+    "context-optimization"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-settings": "catalog:dsh",
+    "react": "^18.2.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm-pi-ai": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "eslint": "catalog:tooling",
+    "prettier": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "tsx": "4.22.4",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
