@@ -1,73 +1,65 @@
-# DeepSeek Harness Plugins Monorepo
+# @yadsh DeepSeek Harness plugins
 
-A clean, scalable monorepo for multiple DeepSeek Harness (DSH) plugins.
+`@yadsh` (Yet Another DSH) is a pnpm + Nx monorepo for independently versioned
+DeepSeek Harness plugins. Each directory under `plugins/` is its own public npm
+package; shared build and test utilities live under `packages/`.
 
-## Architecture
+## Packages
 
-```
-dsh-plugins/
-├── plugins/           # Individual DSH plugins
-│   └── draft-sessions/  # Draft sessions plugin (reference implementation)
-├── packages/          # Shared libraries
-│   ├── config/        # TypeScript and build configuration
-│   ├── plugin-kit/    # Runtime helpers for plugins
-│   └── test-kit/      # Testing utilities
-├── .nx/               # Nx cache & version plans
-├── .github/           # CI/CD workflows
-├── nx.json            # Nx configuration + release settings
-├── pnpm-workspace.yaml # Workspace definition + catalogs
-└── tsconfig.base.json  # Shared TypeScript config
-```
+| Directory | npm package | Purpose |
+| --- | --- | --- |
+| `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
+| `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
+| `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
+| `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
+| `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
+| `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
+| `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
+| `packages/plugin-kit` | `@yadsh/dsh-plugin-kit` | Shared runtime helpers |
+| `packages/test-kit` | `@yadsh/dsh-test-kit` | Shared test helpers |
 
-## Plugin Catalog
+Runtime plugin IDs remain unscoped (`dsh-*`) because DSH bundle composition and
+browser module loading use those IDs. The `@yadsh` scope is the npm package
+identity.
 
-| Plugin | Package Name | Description |
-|--------|-------------|-------------|
-| draft-sessions | `@scope/dsh-draft-sessions` | Manage session drafts and previews |
+## Development
 
-## Workspace Architecture
-
-- **pnpm workspaces** — dependency management, workspace linking, shared lockfile
-- **Nx** — project graph, affected builds, task caching, release automation
-- **TypeScript** — centralized configuration via `packages/config`
-- **Vitest** — unified testing framework
-- **tsdown** — lightweight bundler for build output
-
-## Development Setup
+Requirements: Node.js 22 or newer and pnpm 10.4.1.
 
 ```bash
-# Install dependencies
-pnpm install
-
-# Build all packages
-pnpm build
-
-# Run all tests
-pnpm test
-
-# Type-check all packages
-pnpm typecheck
-
-# Check only affected packages
-pnpm affected:check
+pnpm install --frozen-lockfile
+pnpm check
+pnpm deps:check
+pnpm tarball:verify
 ```
 
-## Adding a New Plugin
+Nx runs project-local `lint`, `typecheck`, `test`, and `build` scripts and caches
+their outputs. The dependency check enforces workspace boundaries, while the
+tarball check packs every public package, validates its manifest and exported
+files, and installs it in a clean consumer project.
+
+## Adding a plugin
 
 ```bash
 pnpm nx g dsh-plugin <name> [--client] [--description "..."]
 ```
 
-This scaffolds a new plugin with standard package metadata, DSH bundle configuration, and build/test setup.
+The generator defaults to the `@yadsh` npm scope and creates the package,
+Cordis patch, build configuration, tests, and public-package metadata.
 
-## Release Workflow
+## Releases
 
-1. Plan versions: `pnpm release:plan`
-2. Review version plans in `.nx/version-plans/`
-3. Run release: `pnpm nx release`
-4. CI will verify tarballs and publish to npm
+Packages use independent Nx Version Plans:
 
-For details, see the [release workflow](.github/workflows/release.yml).
+```bash
+pnpm release:plan
+pnpm release:check
+pnpm release:dry-run -- --first-release
+```
+
+The GitHub release workflow builds and verifies selected package tarballs before
+publishing through npm Trusted Publishing. See [the release runbook](docs/RELEASING.md)
+and [compatibility policy](docs/COMPATIBILITY.md).
 
 ## License
 

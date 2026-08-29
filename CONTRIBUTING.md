@@ -46,8 +46,12 @@ pnpm typecheck
 | Command | Description |
 |---------|-------------|
 | `pnpm build` | Build all packages |
+| `pnpm lint` | Lint repository tooling and all packages |
 | `pnpm test` | Run all tests |
 | `pnpm typecheck` | Type-check all packages |
+| `pnpm check` | Run the complete local validation pipeline |
+| `pnpm deps:check` | Enforce workspace dependency boundaries |
+| `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
 | `pnpm affected:check` | Run lint/typecheck/test/build on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
 | `pnpm release:check` | Validate version plans exist |
@@ -72,9 +76,9 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 |------|-------------|
 | `--client` | Include a client-side entrypoint (`src/client.ts`) |
 | `--description` | Short description for the plugin |
-| `--scope` | npm scope (default: `@scope`) |
-| `--with-ui` | Add UI kit dependency and client-side UI scaffolding |
-| `--with-tests` | Include a pre-configured test setup with fixture helpers |
+| `--scope` | npm scope (default: `@yadsh`) |
+| `--with-ui` | Use an existing shared UI kit; fails clearly while no UI contract exists |
+| `--with-tests=false` | Omit starter tests and the Vitest target |
 
 ### What the Generator Creates
 
@@ -86,9 +90,9 @@ plugins/<name>/
 ├── tests/
 │   └── index.test.ts     # Starter tests
 ├── cordis.patch.yml      # DSH bundle metadata
+├── LICENSE               # Repository MIT license copy
 ├── package.json          # Standardized metadata
-├── tsconfig.json         # Extends root config
-├── tsdown.config.ts      # Build configuration
+├── tsconfig.json         # Extends the shared config package
 ├── vitest.config.ts      # Test configuration
 └── README.md             # Plugin documentation
 ```
@@ -189,7 +193,7 @@ This repository uses [Conventional Commits](https://www.conventionalcommits.org/
 ### Examples
 
 ```bash
-feat(draft-sessions): add auto-save with configurable interval
+feat(dsh-draft-sessions): add auto-save with configurable interval
 fix(plugin-kit): fix version comparison for pre-release strings
 chore: update pnpm to 10.4.1
 docs: add CONTRIBUTING.md
@@ -215,22 +219,24 @@ docs: add CONTRIBUTING.md
    ```bash
    # In GitHub Actions → Release → Run workflow
    ```
-3. Choose the version strategy (prerelease, prepatch, preminor, premajor)
-4. CI will build, verify tarballs, publish to npm, create Git tags, and generate GitHub Releases
+3. Keep `dry_run=true` and inspect the complete Nx release preview
+4. Run again with `dry_run=false`; Version Plans determine all bump types
+5. Use `first_release=true` only while no package release tags exist
 
 ### Version Plan Format
 
-Plans are YAML files in `.nx/version-plans/`:
+Plans are Markdown files with YAML front matter in `.nx/version-plans/`:
 
 ```yaml
 ---
-"@scope/dsh-draft-sessions": minor
+"@yadsh/dsh-draft-sessions": minor
 ---
 
 Add session folder support.
 ```
 
 Use `pnpm nx release plan` to interactively select packages and bump types.
+See [docs/RELEASING.md](./docs/RELEASING.md) for maintainer setup and recovery procedures.
 
 ---
 
