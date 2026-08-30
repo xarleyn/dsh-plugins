@@ -69,6 +69,7 @@ export DSH_DEPS_DEDUPE_STATUS="$DEDUPE_STATUS"
 node --input-type=module <<'NODE_EOF'
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 const ROOT = process.env.DSH_DEPS_ROOT;
 if (!ROOT) {
@@ -323,12 +324,6 @@ if (process.env.DSH_DEPS_DEDUPE_STATUS === "fail-cycles") {
 // ---------------------------------------------------------------------------
 // Source scanning — §27.6, §27.8, §27.9, §27.10
 // ---------------------------------------------------------------------------
-function stripComments(source) {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1"); // keeps "https://" intact
-}
-
 function collectFiles(dir, out = []) {
   if (!fs.existsSync(dir)) return out;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -343,18 +338,38 @@ function collectFiles(dir, out = []) {
   return out;
 }
 
-function extractSpecifiers(code) {
+function extractSpecifiers(code, file) {
   const specifiers = new Set();
-  const patterns = [
-    /\bfrom\s*(['"])([^'"\n]+)\1/g,
-    /\bimport\s*(['"])([^'"\n]+)\1/g,
-    /\bimport\s*\(\s*(['"])([^'"\n]+)\1/g,
-    /\brequire\s*\(\s*(['"])([^'"\n]+)\1/g,
-  ];
-  for (const re of patterns) {
-    let match;
-    while ((match = re.exec(code))) specifiers.add(match[2]);
-  }
+  // Parse real syntax instead of grepping source text: generators legitimately
+  // contain import statements inside template literals for the files they emit.
+  const sourceFile = ts.createSourceFile(
+    file,
+    code,
+    ts.ScriptTarget.Latest,
+    false,
+  );
+  const addLiteral = (node) => {
+    if (node && ts.isStringLiteralLike(node)) specifiers.add(node.text);
+  };
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      addLiteral(node.moduleSpecifier);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      addLiteral(node.moduleReference.expression);
+    } else if (ts.isCallExpression(node) && node.arguments.length === 1) {
+      if (
+        node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) && node.expression.text === "require")
+      ) {
+        addLiteral(node.arguments[0]);
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
   return [...specifiers];
 }
 
@@ -386,9 +401,9 @@ for (const m of members) {
   for (const file of files) {
     filesScanned += 1;
     const relFile = path.relative(ROOT, file).split(path.sep).join("/");
-    const code = stripComments(fs.readFileSync(file, "utf8"));
+    const code = fs.readFileSync(file, "utf8");
 
-    for (const spec of extractSpecifiers(code)) {
+    for (const spec of extractSpecifiers(code, file)) {
       if (spec.startsWith("node:")) continue; // builtins are always available
 
       if (spec.startsWith(".")) {
