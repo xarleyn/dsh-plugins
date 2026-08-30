@@ -1,3 +1,13 @@
+## 0.2.1 (2026-08-30)
+
+### 🩹 Fixes
+
+- Adopt the @yadsh scope, import the real plugin suite, and standardize monorepo build, validation, and release infrastructure. ([dce0a77](https://github.com/xarleyn/dsh-plugins/commit/dce0a77))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 # Changelog
 
 All notable changes will be documented here. The project follows [Semantic Versioning](https://semver.org/).
