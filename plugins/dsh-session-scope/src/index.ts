@@ -252,7 +252,7 @@ const workspaceScopeSchema = {
 };
 
 /** Projection wire schema for the independent scope policy axis. */
-const sessionScopeSchema = {
+const sessionScopeStateSchema = {
   parse(value) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       throw new TypeError("session-scope projection must be an object");
@@ -267,6 +267,14 @@ const sessionScopeSchema = {
         : [],
       hasSnapshot: value.hasSnapshot === true,
     };
+  },
+};
+
+const sessionScopeViewSchema = {
+  parse(value) {
+    const state = sessionScopeStateSchema.parse(value);
+    const { hasSnapshot: _hasSnapshot, ...view } = state;
+    return view;
   },
 };
 
@@ -586,7 +594,7 @@ export function apply(ctx) {
   ctx.inject(["sessionProjections"], (projectionCtx) => {
     projectionCtx.sessionProjections.register({
       key: "session-scope",
-      schema: sessionScopeSchema,
+      stateSchema: sessionScopeStateSchema,
       init: () => ({
         mode: "full",
         workspaceRoot: "",
@@ -609,12 +617,15 @@ export function apply(ctx) {
         }
         return state;
       },
-      view: ({ hasSnapshot: _hasSnapshot, ...state }) => state,
+      wire: {
+        viewSchema: sessionScopeViewSchema,
+        view: ({ hasSnapshot: _hasSnapshot, ...state }) => state,
+      },
       stateVersion: 1,
     });
     projectionCtx.sessionProjections.register({
       key: "workspace-scope",
-      schema: workspaceScopeSchema,
+      stateSchema: workspaceScopeSchema,
       init: () => ({ workspaceRoot: "", roots: [], workspace: true }),
       apply: (state, event) => {
         if (event.type !== SELECTION_EVENT) return state;
@@ -628,7 +639,10 @@ export function apply(ctx) {
           workspace,
         };
       },
-      view: (state) => state,
+      wire: {
+        viewSchema: workspaceScopeSchema,
+        view: (state) => state,
+      },
       stateVersion: 1,
     });
   });

@@ -62,6 +62,7 @@ window.__ModuleLoader__.load({
       '.wss-mode { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); padding: 7px 8px; font: inherit; font-size: 12px; cursor: pointer; }',
       '.wss-mode:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }',
       '.wss-modeOn { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-fill-tsp-secondary); }',
+      '.wss-modeUnavailable { opacity: .55; }',
       '.wss-crumbs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; font-size: 12px; line-height: 18px; }',
       '.wss-crumb { border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 1px 4px; border-radius: 6px; font: inherit; }',
       '.wss-crumb:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }',
@@ -121,12 +122,17 @@ window.__ModuleLoader__.load({
     function sepOf(path) {
       return path.indexOf('\\') !== -1 ? '\\' : '/'
     }
+    function comparablePath(path) {
+      return sepOf(path) === '\\' ? path.toLowerCase() : path
+    }
     // Whether `path` is `root` or lies beneath it (separator-aware prefix).
     function isUnder(path, root) {
-      if (path === root) return true
+      var comparableTarget = comparablePath(path)
+      var comparableRoot = comparablePath(root)
+      if (comparableTarget === comparableRoot) return true
       var sep = sepOf(root)
-      var prefix = root.endsWith(sep) ? root : root + sep
-      return path.indexOf(prefix) === 0
+      var prefix = comparableRoot.endsWith(sep) ? comparableRoot : comparableRoot + sep
+      return comparableTarget.indexOf(prefix) === 0
     }
     // The deepest selected root that covers `path`, or undefined.
     function coveringRoot(path, roots) {
@@ -141,6 +147,16 @@ window.__ModuleLoader__.load({
       var sep = sepOf(path)
       var parts = path.split(sep).filter(Boolean)
       return parts.length === 0 ? path : parts[parts.length - 1]
+    }
+    // Render paths relative to the session workspace. Absolute paths remain
+    // host-side implementation details and never need to appear in the picker.
+    function displayPath(path, root) {
+      if (typeof path !== 'string' || typeof root !== 'string' || !isUnder(path, root)) return baseName(path)
+      if (comparablePath(path) === comparablePath(root)) return '.'
+      var relative = path.slice(root.length)
+      var sep = sepOf(root)
+      while (relative.startsWith(sep)) relative = relative.slice(1)
+      return relative.split(sep).join('/')
     }
     function normalizeDraftRoots(roots) {
       return Array.isArray(roots) ? roots.filter(function (root) { return typeof root === 'string' }) : []
@@ -452,7 +468,15 @@ window.__ModuleLoader__.load({
         }
 
         function selectMode(mode) {
-          if (mode === 'isolated' && snap.isolatedSupported === false) return
+          if (mode === 'isolated' && snap.isolatedSupported === false) {
+            patch({
+              error: L(
+                '隔离模式需要支持 bubblewrap 的 Linux 主机。此主机仍可使用聚焦模式。',
+                'Isolated mode requires a Linux host with supported bubblewrap. Focused mode remains available on this host.',
+              ),
+            })
+            return
+          }
           if (mode === 'full') {
             patch({ mode: 'full', draft: snap.root === null ? [] : [snap.root], error: null })
             return
@@ -488,6 +512,7 @@ window.__ModuleLoader__.load({
         var listing = snap.listing
         var crumbs = listing !== null ? listing.crumbs : []
         var entries = listing !== null ? listing.entries : []
+        var visibleCrumbs = snap.root === null ? [] : crumbs.filter(function (crumb) { return isUnder(crumb.path, snap.root) })
         var overlay = React.createElement('div', { className: 'wss-overlay' },
           React.createElement('div', { className: 'wss-modal', ref: modalRef, role: 'dialog', 'aria-label': L('会话范围', 'Session scope') },
             React.createElement('div', { className: 'wss-head' },
@@ -509,9 +534,10 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   role: 'radio',
                   'aria-checked': snap.mode === option.value,
-                  className: 'wss-mode' + (snap.mode === option.value ? ' wss-modeOn' : ''),
-                  disabled: snap.saving || unavailable,
-                  title: unavailable ? L('此主机不支持隔离模式', 'Isolated mode is unavailable on this host') : option.label,
+                  className: 'wss-mode' + (snap.mode === option.value ? ' wss-modeOn' : '') + (unavailable ? ' wss-modeUnavailable' : ''),
+                  disabled: snap.saving,
+                  'aria-disabled': unavailable,
+                  title: unavailable ? L('需要支持 bubblewrap 的 Linux 主机', 'Requires a Linux host with supported bubblewrap') : option.label,
                   onClick: function () { selectMode(option.value) },
                 }, option.label)
               }),
@@ -527,17 +553,17 @@ window.__ModuleLoader__.load({
               }, L('重试', 'Retry')),
             ),
             snap.root !== null && React.createElement('div', { className: 'wss-crumbs' },
-              crumbs.map(function (crumb, index) {
+              visibleCrumbs.map(function (crumb, index) {
                 return React.createElement(React.Fragment, { key: crumb.path },
                   index > 0 && React.createElement('span', { className: 'wss-crumbSep' }, '/'),
                   React.createElement('button', {
                     type: 'button',
                     className: 'wss-crumb',
-                    title: crumb.path,
+                    title: displayPath(crumb.path, snap.root),
                     onClick: function () {
                       if (crumb.path !== snap.path) enter(crumb.path)
                     },
-                  }, crumb.name),
+                  }, index === 0 ? '.' : crumb.name),
                 )
               }),
             ),
@@ -548,19 +574,19 @@ window.__ModuleLoader__.load({
                   type: 'button',
                   className: 'wss-check' + (coveringRoot(snap.path, snap.draft) !== undefined ? ' wss-checkOn' : ''),
                   disabled: snap.saving || (coveringRoot(snap.path, snap.draft) !== undefined && snap.draft.indexOf(snap.path) === -1),
-                  'aria-label': L('切换目录', 'Toggle directory') + ' ' + snap.path,
+                  'aria-label': L('切换目录', 'Toggle directory') + ' ' + displayPath(snap.path, snap.root),
                   title: coveringRoot(snap.path, snap.draft) !== undefined && snap.draft.indexOf(snap.path) === -1
                     ? L('经父目录包含：取消父目录后整个子树将不可见', 'Included via a parent directory; uncheck the parent to hide its whole subtree')
                     : snap.path === snap.root
                       ? (snap.draft.indexOf(snap.path) !== -1
                         ? L('整个工作区可见 — 取消勾选后选择聚焦范围', 'The entire workspace is visible — uncheck to choose a focused scope')
                         : L('勾选以显示整个工作区', 'Check to expose the entire workspace'))
-                      : snap.path,
+                      : displayPath(snap.path, snap.root),
                   onClick: function (ev) { ev.stopPropagation(); toggle(snap.path) },
                 }, coveringRoot(snap.path, snap.draft) !== undefined ? IconCheck() : null),
                 React.createElement('span', { className: 'wss-rowName' },
                   IconFolder(),
-                  React.createElement('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, snap.path),
+                  React.createElement('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, displayPath(snap.path, snap.root)),
                 ),
                 coveringRoot(snap.path, snap.draft) !== undefined && snap.draft.indexOf(snap.path) === -1 &&
                   React.createElement('span', { className: 'wss-hint' }, L('经父目录包含', 'via parent')),
@@ -580,8 +606,8 @@ window.__ModuleLoader__.load({
                     type: 'button',
                     className: 'wss-check' + (on ? ' wss-checkOn' : ''),
                     disabled: snap.saving || (on && !self),
-                    'aria-label': L('切换目录', 'Toggle directory') + ' ' + entry.path,
-                    title: on && !self ? L('经父目录包含：取消父目录后整个子树将不可见', 'Included via a parent directory; uncheck the parent to hide its whole subtree') : entry.path,
+                    'aria-label': L('切换目录', 'Toggle directory') + ' ' + displayPath(entry.path, snap.root),
+                    title: on && !self ? L('经父目录包含：取消父目录后整个子树将不可见', 'Included via a parent directory; uncheck the parent to hide its whole subtree') : displayPath(entry.path, snap.root),
                     onClick: function (ev) { ev.stopPropagation(); toggle(entry.path) },
                   }, on ? IconCheck() : null),
                   React.createElement('span', { className: 'wss-rowName' + (entry.hidden ? ' wss-rowNameDim' : '') },
@@ -596,7 +622,7 @@ window.__ModuleLoader__.load({
                 React.createElement('div', { className: 'wss-empty' }, L('（无子目录）', '(no subdirectories)')),
             ),
             React.createElement('div', { className: 'wss-foot' },
-              React.createElement('span', { className: 'wss-footRoots', title: snap.draft.join('\n') },
+              React.createElement('span', { className: 'wss-footRoots', title: snap.draft.map(function (root) { return displayPath(root, snap.root) }).join('\n') },
                 (snap.mode === 'full'
                   ? L('整个工作区 · ', 'entire workspace · ')
                   : (snap.mode === 'isolated' ? L('隔离 · ', 'isolated · ') : L('聚焦 · ', 'focused · '))) +
