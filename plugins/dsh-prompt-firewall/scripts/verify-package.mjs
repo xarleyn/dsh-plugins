@@ -27,6 +27,6 @@ assert.match(patch, /id:\s*dsh-prompt-firewall/u)
 assert.match(patch, /name:\s*"@yadsh\/dsh-prompt-firewall"/u)
 
 const client = await readFile(new URL('lib/client.js', root), 'utf8')
-assert.match(client, /id:\s*"dsh-prompt-firewall"/u)
+assert.match(client, /id:\s*"@yadsh\/dsh-prompt-firewall"/u)
 
 console.log('built package contract passed')

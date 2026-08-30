@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
 
 const requiredFragments = [
-  "id: 'dsh-session-scope'",
+  "id: '@yadsh/dsh-session-scope'",
   "slots.inject('conversation.input.left'",
   "data-session-scope-hero-mount",
   "button[aria-haspopup=\"menu\"]",
@@ -28,7 +28,7 @@ if (client.includes("dsh-draft-sessions") || client.includes("draftSessions/")) 
   throw new Error("client bundle contains foreign draft-sessions code");
 }
 
-const registrations = client.match(/id: 'dsh-session-scope'/g) ?? [];
+const registrations = client.match(/id: '@yadsh\/dsh-session-scope'/g) ?? [];
 if (registrations.length !== 1) {
   throw new Error(`expected one client factory registration, found ${registrations.length}`);
 }

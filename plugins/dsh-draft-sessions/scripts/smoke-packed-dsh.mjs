@@ -571,9 +571,9 @@ try {
   host = startHost(dshBin, port, hostLog);
   await waitFor(async () => (await fetch(origin)).ok, "packed DSH host");
   const clientBundle = await (
-    await fetch(`${origin}/plugins/dsh-draft-sessions/client.js`)
+    await fetch(`${origin}/plugins/@yadsh/dsh-draft-sessions/client.js`)
   ).text();
-  if (!clientBundle.includes('id: "dsh-draft-sessions"')) {
+  if (!clientBundle.includes('id: "@yadsh/dsh-draft-sessions"')) {
     throw new Error("DSH did not serve the packed client factory");
   }
   if (clientBundle.includes("dsh-client-ui-workspace")) {

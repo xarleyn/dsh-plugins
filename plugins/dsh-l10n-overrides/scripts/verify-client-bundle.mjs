@@ -7,4 +7,4 @@ const client = await readFile(
 );
 
 assert.match(client, /window\.__ModuleLoader__\.load\(\{/);
-assert.match(client, /id:\s*"dsh-l10n-overrides"/);
+assert.match(client, /id:\s*"@yadsh\/dsh-l10n-overrides"/);

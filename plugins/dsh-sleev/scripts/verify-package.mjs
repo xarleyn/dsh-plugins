@@ -58,7 +58,7 @@ assert(
 );
 
 const client = await readFile(new URL("lib/client.js", packageRoot), "utf8");
-assert.match(client, /__ModuleLoader__\.load\(\{\s*id:\s*"dsh-sleev"/u);
+assert.match(client, /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-sleev"/u);
 assert.match(client, /settings\.plugin\.item/u);
 assert.match(client, /key: SETTINGS_NAMESPACE/u);
 

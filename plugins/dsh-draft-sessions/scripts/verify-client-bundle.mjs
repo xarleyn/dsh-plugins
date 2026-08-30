@@ -4,7 +4,7 @@ const client = await readFile(
   new URL("../lib/client.js", import.meta.url),
   "utf8",
 );
-const draftRegistration = client.indexOf('id: "dsh-draft-sessions"');
+const draftRegistration = client.indexOf('id: "@yadsh/dsh-draft-sessions"');
 
 if (draftRegistration < 0) {
   throw new Error("client bundle is missing the draft-sessions factory");

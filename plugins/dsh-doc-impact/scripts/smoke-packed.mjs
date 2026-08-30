@@ -68,8 +68,8 @@ try {
 
   // 2. The client bundle registers the expected ModuleLoader id.
   const client = await readFile(join(installed, "lib/client.js"), "utf8");
-  if (!client.includes('id: "dsh-doc-impact"')) {
-    fail("client bundle does not register the dsh-doc-impact ModuleLoader id");
+  if (!client.includes('id: "@yadsh/dsh-doc-impact"')) {
+    fail("client bundle does not register the package-name ModuleLoader id");
   }
 
   // 3. The ESM entry imports and exposes the plugin contract.

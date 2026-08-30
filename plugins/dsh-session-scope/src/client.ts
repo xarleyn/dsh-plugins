@@ -29,7 +29,7 @@
 // `/scope list` host command.
 
 window.__ModuleLoader__.load({
-  id: 'dsh-session-scope',
+  id: '@yadsh/dsh-session-scope',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports

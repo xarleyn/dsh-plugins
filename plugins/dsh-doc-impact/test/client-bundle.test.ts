@@ -116,7 +116,7 @@ async function loadBundle(): Promise<LoadedBundle> {
 describe('client bundle', () => {
   it('loads as a ModuleLoader module and registers the card into the plugin config slot', async () => {
     const bundle = await loadBundle();
-    expect(bundle.id).toBe('dsh-doc-impact');
+    expect(bundle.id).toBe('@yadsh/dsh-doc-impact');
 
     const scope = fakeScope({ status: 'ready', value: {}, base: {}, user: {}, writable: true });
     const ctx = makeCtx(scope);

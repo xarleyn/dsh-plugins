@@ -1,7 +1,7 @@
 // Static guard over the shipped browser bundle (lib/client.js). These are the
 // structural mistakes a refactor could make silently, so CI checks them
 // without a browser:
-//   - the ModuleLoader id must stay "dsh-doc-impact" (the served bundle URL
+//   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
 //   - the card must claim the settings.plugin.item slot under the doc-impact
 //     settings namespace (that pairing is what the Plugin Configuration tab
@@ -24,7 +24,7 @@ function expectPresent(needle, why) {
   }
 }
 
-expectPresent('id: "dsh-doc-impact"', "the ModuleLoader factory id keys the served bundle");
+expectPresent('id: "@yadsh/dsh-doc-impact"', "the ModuleLoader factory id keys the served bundle");
 expectPresent('"settings.plugin.item"', "the card must register into the shared Plugin Configuration slot");
 expectPresent('key: SETTINGS_NS', "the card must claim the doc-impact settings namespace");
 expectPresent('namespace: SETTINGS_NS', "the form must bind the doc-impact settings scope");

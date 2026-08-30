@@ -1,6 +1,7 @@
 import { defineConfig, type UserConfig } from "tsdown";
 
 const ID = "dsh-l10n-overrides";
+const CLIENT_MODULE_ID = "@yadsh/dsh-l10n-overrides";
 const CLIENT_EXTERNALS = [
   "@deepseek-ai/cordis",
   "@deepseek-ai/dsh-client-locale/client",
@@ -34,7 +35,7 @@ const configs = [
     },
     outputOptions: {
       entryFileNames: "client.js",
-      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
+      banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(CLIENT_MODULE_ID)}, factory: (require) => {`,
       footer: "return module.exports; } });",
       intro: "var module = { exports: {} }; var exports = module.exports;",
     },

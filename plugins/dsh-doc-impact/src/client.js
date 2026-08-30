@@ -1,7 +1,7 @@
 /* global window, document */
 // dsh-doc-impact browser client source. The build copies this hand-written CJS
 // factory to lib/client.js, which the DSH web ModuleLoader serves at
-// /plugins/dsh-doc-impact/client.js.
+// /plugins/@yadsh/dsh-doc-impact/client.js.
 //
 // Registers the plugin's card into the shared "Plugins → Plugin Configuration"
 // section: the card claims the `doc-impact` settings namespace via the
@@ -23,7 +23,7 @@
 // optionally with built-in fallbacks so headless or older profiles stay safe.
 
 window.__ModuleLoader__.load({
-  id: "dsh-doc-impact",
+  id: "@yadsh/dsh-doc-impact",
   factory: (require) => {
     var module = { exports: {} };
     var React = require("react");
