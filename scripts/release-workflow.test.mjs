@@ -262,6 +262,12 @@ describe("Nx release commands", () => {
     assert.match(workflow, /publish_only:/u);
     assert.match(workflow, /npm install --global npm@\^11\.15\.0/u);
     assert.match(workflow, /npm publish "\$\{args\[@\]\}"/u);
+    assert.match(
+      workflow,
+      /tarball_path="\$GITHUB_WORKSPACE\/tarballs\/\$tarball"/u,
+    );
+    assert.match(workflow, /\[\[ ! -f "\$tarball_path" \]\]/u);
+    assert.doesNotMatch(workflow, /args=\("tarballs\/\$\{tarball\}"/u);
     assert.doesNotMatch(workflow, /pnpm nx release publish/u);
 
     const root = createFixture();

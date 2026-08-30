@@ -150,7 +150,13 @@ jobs:
               continue
             fi
 
-            args=("tarballs/${tarball}" --access public)
+            tarball_path="$GITHUB_WORKSPACE/tarballs/$tarball"
+            if [[ ! -f "$tarball_path" ]]; then
+              echo "Missing packed tarball: $tarball_path" >&2
+              exit 1
+            fi
+
+            args=("$tarball_path" --access public)
             if [[ "${{ inputs.dry_run }}" == "true" ]]; then
               args+=(--dry-run)
             fi
@@ -165,10 +171,16 @@ jobs:
         run: |
           while IFS=$'\t' read -r name version _directory tarball; do
             tag="${name}@${version}"
+            tarball_path="$GITHUB_WORKSPACE/tarballs/$tarball"
+            if [[ ! -f "$tarball_path" ]]; then
+              echo "Missing packed tarball: $tarball_path" >&2
+              exit 1
+            fi
+
             if gh release view "$tag" > /dev/null 2>&1; then
-              gh release upload "$tag" "tarballs/${tarball}" --clobber
+              gh release upload "$tag" "$tarball_path" --clobber
             else
-              gh release create "$tag" "tarballs/${tarball}" \
+              gh release create "$tag" "$tarball_path" \
                 --verify-tag \
                 --title "${name} ${version}" \
                 --generate-notes
