@@ -1,0 +1,121 @@
+{
+  "name": "@yadsh/dsh-plugin-log-ui",
+  "version": "0.1.0",
+  "description": "DSH settings UI for shared plugin logging levels and file format",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-plugin-log-ui"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-plugin-log-ui#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "lib/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
+    "lint": "eslint src tests scripts tsdown.config.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify": "node scripts/verify-package.mjs",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
+  },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
+    "@deepseek-ai/dsh-client-connection": "catalog:dsh",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
+    "react": ">=18.2.0 <20"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-connection": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "eslint": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

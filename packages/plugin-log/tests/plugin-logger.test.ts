@@ -5,13 +5,18 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createPluginLogger,
   getPluginLogger,
+  getRegisteredPluginLoggers,
+  isPluginLogFormat,
   isPluginLogLevel,
   resolveDshHome,
-} from "../../src/logging/index.js";
-import type { PluginLogLevel } from "../../src/logging/index.js";
+  setPluginLogFormat,
+  setPluginLogLevel,
+  subscribePluginLoggerRegistry,
+} from "../src/index.js";
+import type { PluginLogger, PluginLogLevel } from "../src/index.js";
 
 async function makeLogDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "dsh-kv-persist-logs-"));
+  return mkdtemp(join(tmpdir(), "dsh-plugin-log-"));
 }
 
 async function readLogLines(dir: string): Promise<Record<string, unknown>[]> {
@@ -43,6 +48,14 @@ describe("isPluginLogLevel", () => {
     expect(isPluginLogLevel("warn")).toBe(true);
     expect(isPluginLogLevel("loud")).toBe(false);
     expect(isPluginLogLevel(42)).toBe(false);
+  });
+});
+
+describe("isPluginLogFormat", () => {
+  it("accepts json and text only", () => {
+    expect(isPluginLogFormat("json")).toBe(true);
+    expect(isPluginLogFormat("text")).toBe(true);
+    expect(isPluginLogFormat("pretty")).toBe(false);
   });
 });
 
@@ -88,6 +101,28 @@ describe("createPluginLogger", () => {
     expect(record["label"]).toBe("x");
     expect(record["level"]).toBe(30);
     expect(typeof record["time"]).toBe("number");
+  });
+
+  it("writes readable text records with scope and fields", async () => {
+    const dir = await newDir();
+    const now = new Date("2026-08-30T12:34:56.789Z").getTime();
+    const logger = createPluginLogger({
+      pluginId: "dsh-readable",
+      dir,
+      level: "info",
+      format: "text",
+      console: "silent",
+      now: () => now,
+    });
+    logger.child("worker").warn("readable.event", { attempt: 2, label: "hello world" });
+    await logger.close();
+
+    const entries = await readdir(dir);
+    expect(entries).toHaveLength(1);
+    const text = await readFile(join(dir, entries[0]!), "utf8");
+    expect(text).toMatch(
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z WARN {2}\[dsh-readable\/worker\] readable\.event attempt=2 label="hello world"\n$/,
+    );
   });
 
   it("drops records below the configured level", async () => {
@@ -268,5 +303,110 @@ describe("getPluginLogger", () => {
     const second = getPluginLogger(options("info"));
     expect(second).not.toBe(first);
     await second.close();
+  });
+});
+
+describe("plugin logger registry", () => {
+  const loggers: PluginLogger[] = [];
+
+  afterEach(async () => {
+    const pending = loggers.splice(0);
+    await Promise.all(pending.map((logger) => logger.close()));
+  });
+
+  function create(pluginId: string, level: PluginLogLevel = "info"): PluginLogger {
+    const logger = createPluginLogger({
+      pluginId,
+      level,
+      file: false,
+      console: "silent",
+    });
+    loggers.push(logger);
+    return logger;
+  }
+
+  it("automatically registers root loggers and removes them on close", async () => {
+    const logger = create("dsh-registry-lifecycle");
+    const snapshot = getRegisteredPluginLoggers();
+    const registered = snapshot.filter(
+      (entry) => entry.pluginId === "dsh-registry-lifecycle",
+    );
+
+    expect(registered).toHaveLength(1);
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(registered[0])).toBe(true);
+    expect(registered[0]).toMatchObject({
+      pluginId: "dsh-registry-lifecycle",
+      level: "info",
+      format: "json",
+    });
+    expect(registered[0]?.dir).toMatch(/[\\/]logs[\\/]dsh-registry-lifecycle$/);
+    expect(Number.isInteger(registered[0]?.registrationId)).toBe(true);
+    expect(logger.child("worker")).not.toBe(logger);
+    expect(
+      getRegisteredPluginLoggers().filter(
+        (entry) => entry.pluginId === "dsh-registry-lifecycle",
+      ),
+    ).toHaveLength(1);
+
+    await logger.close();
+    expect(
+      getRegisteredPluginLoggers().some(
+        (entry) => entry.pluginId === "dsh-registry-lifecycle",
+      ),
+    ).toBe(false);
+  });
+
+  it("publishes snapshots and changes all matching logger levels", () => {
+    const snapshots: string[][] = [];
+    const unsubscribe = subscribePluginLoggerRegistry((entries) => {
+      snapshots.push(
+        entries
+          .filter((entry) => entry.pluginId.startsWith("dsh-registry-level"))
+          .map((entry) => `${entry.pluginId}:${entry.level}`),
+      );
+    });
+
+    const first = create("dsh-registry-level", "info");
+    const second = create("dsh-registry-level", "warn");
+    create("dsh-registry-level-other", "error");
+
+    expect(setPluginLogLevel("dsh-registry-level", "debug")).toBe(2);
+    expect(first.level).toBe("debug");
+    expect(second.level).toBe("debug");
+    expect(
+      getRegisteredPluginLoggers()
+        .filter((entry) => entry.pluginId === "dsh-registry-level")
+        .map((entry) => entry.level),
+    ).toEqual(["debug", "debug"]);
+    expect(snapshots.at(-1)).toEqual([
+      "dsh-registry-level:debug",
+      "dsh-registry-level:debug",
+      "dsh-registry-level-other:error",
+    ]);
+
+    unsubscribe();
+  });
+
+  it("changes the format of all active loggers", () => {
+    const first = create("dsh-registry-format-a");
+    const second = create("dsh-registry-format-b");
+
+    expect(setPluginLogFormat("text")).toBeGreaterThanOrEqual(2);
+    expect(first.format).toBe("text");
+    expect(second.format).toBe("text");
+    expect(
+      getRegisteredPluginLoggers()
+        .filter((entry) => entry.pluginId.startsWith("dsh-registry-format-"))
+        .map((entry) => entry.format),
+    ).toEqual(["text", "text"]);
+  });
+
+  it("isolates logging from registry listener failures", () => {
+    const unsubscribe = subscribePluginLoggerRegistry(() => {
+      throw new Error("observer failed");
+    });
+    expect(() => create("dsh-registry-fail-open")).not.toThrow();
+    unsubscribe();
   });
 });

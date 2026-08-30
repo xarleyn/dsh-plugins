@@ -11,7 +11,8 @@
   },
   "release": {
     "projects": [
-      "plugins/*"
+      "plugins/*",
+      "packages/plugin-log"
     ],
     "projectsRelationship": "independent",
     "versionPlans": true,

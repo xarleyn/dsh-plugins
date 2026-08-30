@@ -42,12 +42,27 @@ function run(command, args) {
 
 try {
   // pnpm rewrites catalog:/workspace: protocols to publishable semver ranges.
+  // Pack the still-local runtime dependency as well so first-release
+  // verification never relies on it already existing in the npm registry.
+  run("pnpm", [
+    "--dir",
+    "../../packages/plugin-log",
+    "pack",
+    "--pack-destination",
+    artifactDirectory,
+  ]);
   run("pnpm", ["pack", "--pack-destination", artifactDirectory]);
   const artifacts = (await readdir(artifactDirectory)).filter((name) => name.endsWith(".tgz"));
-  if (artifacts.length !== 1) {
-    throw new Error(`expected one pnpm tarball, found ${artifacts.length}`);
+  const pluginArtifact = artifacts.find((name) => name.startsWith("yadsh-dsh-doc-impact-"));
+  const loggerArtifact = artifacts.find((name) => name.startsWith("yadsh-dsh-plugin-log-"));
+  if (pluginArtifact === undefined || loggerArtifact === undefined || artifacts.length !== 2) {
+    throw new Error(`expected plugin and logger pnpm tarballs, found ${artifacts.join(", ")}`);
   }
-  run(process.execPath, ["scripts/smoke-packed.mjs", join(artifactDirectory, artifacts[0])]);
+  run(process.execPath, [
+    "scripts/smoke-packed.mjs",
+    join(artifactDirectory, pluginArtifact),
+    join(artifactDirectory, loggerArtifact),
+  ]);
   process.stdout.write("verify-package: publish artifact is ready\n");
 } finally {
   await rm(artifactDirectory, { recursive: true, force: true });

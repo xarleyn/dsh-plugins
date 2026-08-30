@@ -12,8 +12,6 @@ export interface Schema {
 type ExportTarget = { types: string; default: string } | string;
 
 const DEFAULT_SCOPE = "@yadsh";
-const LOGGER_TEMPLATE_ROOT = "plugins/dsh-kv-persist/src/logging";
-const LOGGER_TEMPLATE_FILES = ["dsh-home.ts", "index.ts", "plugin-logger.ts"];
 
 export default async function generatePlugin(
   tree: Tree,
@@ -46,16 +44,6 @@ export default async function generatePlugin(
     );
   }
 
-  const loggingTemplates = LOGGER_TEMPLATE_FILES.map((file) => {
-    const source = tree.read(`${LOGGER_TEMPLATE_ROOT}/${file}`, "utf8");
-    if (source === null) {
-      throw new Error(
-        `Canonical logging template is missing: ${LOGGER_TEMPLATE_ROOT}/${file}`,
-      );
-    }
-    return { file, source };
-  });
-
   const exportsMap: Record<string, ExportTarget> = {
     ".": {
       types: "./lib/index.d.ts",
@@ -72,7 +60,7 @@ export default async function generatePlugin(
   exportsMap["./package.json"] = "./package.json";
 
   const dependencies: Record<string, string> = {
-    pino: "^10.3.1",
+    "@yadsh/dsh-plugin-log": "workspace:^",
   };
 
   if (options.withUi) {
@@ -173,13 +161,9 @@ export default async function generatePlugin(
     ),
   );
 
-  for (const { file, source } of loggingTemplates) {
-    tree.write(`${projectRoot}/src/logging/${file}`, source);
-  }
-
   tree.write(
     `${projectRoot}/src/index.ts`,
-    `import { getPluginLogger } from "./logging/index.js";
+    `import { getPluginLogger } from "@yadsh/dsh-plugin-log";
 
 export type ${names(pluginName).className}Config = Record<string, unknown>;
 

@@ -306,21 +306,17 @@ collect_internal_deps() {
 gate_install() {
   # $1 = rel dir, $2 = package name, $3 = target tgz path
   local rel="$1" name="$2" tgz="$3"
-  local work deps_dir install_dir nm_dir dir_rel dep_name dep_tgz npm_log
+  local work deps_dir install_dir dir_rel dep_name dep_tgz dep_tgz_base npm_log
+  local -a dep_install_args=()
   new_workdir
   work="$WORK_DIR"
   deps_dir="$work/deps"
   install_dir="$work/install"
-  nm_dir="$install_dir/node_modules"
   mkdir -p "$deps_dir" "$install_dir" || { fail "gate 7 — cannot prepare install sandbox"; return 0; }
 
-  # Internal workspace deps do not exist on the public registry; the packed
-  # manifest carries real semver ranges for them (pnpm rewrote workspace:),
-  # so npm would try to fetch them and fail with E404. Seed them directly
-  # into the consumer node_modules: a seeded node with a matching name and a
-  # version satisfying the range keeps npm from ever querying the registry
-  # for internal packages. (Relative file:/overrides don't work here — npm
-  # resolves them against the dependent package inside node_modules.)
+  # Internal workspace deps may not exist on the public registry yet. Pack the
+  # complete internal dependency closure and install all tarballs together;
+  # npm then resolves their external dependencies normally as well.
   VISITED=()
   collect_internal_deps "$rel"
 
@@ -335,12 +331,11 @@ gate_install() {
       fail "gate 7 — failed to pack internal dependency $dir_rel"
       return 0
     fi
-    mkdir -p "$nm_dir/$dep_name" || { fail "gate 7 — cannot seed $dep_name"; return 0; }
-    tar -xzf "$dep_tgz" -C "$nm_dir/$dep_name" --strip-components=1 ||
-      { fail "gate 7 — cannot extract seeded dependency $dep_name"; return 0; }
-    [ -f "$nm_dir/$dep_name/package.json" ] ||
-      { fail "gate 7 — seeded dependency $dep_name has no package.json"; return 0; }
-    info "seeding internal dependency $dep_name from workspace tarball ($(basename "$dep_tgz"))"
+    dep_tgz_base="$(basename "$dep_tgz")"
+    cp "$dep_tgz" "$install_dir/$dep_tgz_base" ||
+      { fail "gate 7 — cannot copy internal dependency $dep_name"; return 0; }
+    dep_install_args+=("./$dep_tgz_base")
+    info "installing internal dependency $dep_name from workspace tarball ($dep_tgz_base)"
   done
 
   local tgz_base
@@ -356,7 +351,7 @@ gate_install() {
 EOF
 
   npm_log="$install_dir/npm-install.log"
-  if (cd "$install_dir" && npm install --no-save --no-audit --no-fund --loglevel=error "./$tgz_base") >"$npm_log" 2>&1; then
+  if (cd "$install_dir" && npm install --no-save --no-audit --no-fund --loglevel=error "${dep_install_args[@]}" "./$tgz_base") >"$npm_log" 2>&1; then
     ok "gate 7 — npm install from tarball succeeded"
   else
     fail "gate 7 — npm install of the tarball failed:"

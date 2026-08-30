@@ -1,0 +1,55 @@
+{
+  "name": "@yadsh/dsh-plugin-log",
+  "version": "0.1.0",
+  "description": "Shared structured file logging and runtime logger discovery for DSH plugins",
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "packages/plugin-log"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src tests",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm run build",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
+  },
+  "dependencies": {
+    "pino": "^10.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:tooling",
+    "@yadsh/dsh-config": "workspace:^",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

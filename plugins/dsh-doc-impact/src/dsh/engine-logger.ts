@@ -1,5 +1,5 @@
-import { getPluginLogger } from '../logging/index.js';
-import type { PluginLogger } from '../logging/index.js';
+import { getPluginLogger } from '@yadsh/dsh-plugin-log';
+import type { PluginLogger } from '@yadsh/dsh-plugin-log';
 
 interface HostLoggerLike {
   info(message: string, ...values: unknown[]): void;

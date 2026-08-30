@@ -1,11 +1,7 @@
 /**
- * Plugin file logger — the seed of the future `@yadsh/dsh-plugin-log` package.
+ * Shared file logger for server-side DSH plugins. The wrapper:
  *
- * Every plugin currently carries its own verbatim copy of `src/logging/`
- * (guidelines §5.2); the exported API below is frozen so that switching to
- * the extracted package later is a one-line import change. The wrapper:
- *
- * - wraps `pino` for severity levels and NDJSON serialization;
+ * - wraps `pino` for severity levels and JSON/text serialization;
  * - writes daily files `<dir>/<YYYY-MM-DD>.log`, by default under
  *   `<$DSH_HOME>/logs/<pluginId>`;
  * - mirrors selected records to an injectable console sink (default level
@@ -42,6 +38,11 @@ export const PLUGIN_LOG_LEVELS = [
 ] as const;
 
 export type PluginLogLevel = (typeof PLUGIN_LOG_LEVELS)[number];
+
+/** File serialization formats. JSON is NDJSON; text is one readable line. */
+export const PLUGIN_LOG_FORMATS = ["json", "text"] as const;
+
+export type PluginLogFormat = (typeof PLUGIN_LOG_FORMATS)[number];
 
 /** Every level except `silent` (which also disables the console mirror). */
 export type ConsoleLevel = Exclude<PluginLogLevel, "silent">;
@@ -80,6 +81,11 @@ export function isPluginLogLevel(value: unknown): value is PluginLogLevel {
   return typeof value === "string" && (PLUGIN_LOG_LEVELS as readonly string[]).includes(value);
 }
 
+/** Type guard for file serialization format strings. */
+export function isPluginLogFormat(value: unknown): value is PluginLogFormat {
+  return typeof value === "string" && (PLUGIN_LOG_FORMATS as readonly string[]).includes(value);
+}
+
 /** Logger configuration; every field except `pluginId` is optional. */
 export interface PluginLoggerOptions {
   /**
@@ -89,6 +95,8 @@ export interface PluginLoggerOptions {
   readonly pluginId: string;
   /** Severity threshold. Default: `DSH_LOG_LEVEL_<ID>` / `DSH_LOG_LEVEL` env, else `info`. */
   readonly level?: PluginLogLevel;
+  /** File serialization format. Default: `json`. */
+  readonly format?: PluginLogFormat;
   /** Absolute log directory. Default: `<$DSH_HOME>/logs/<pluginId>`. */
   readonly dir?: string;
   /** Overrides the DSH home used to build the default `dir` (tests). */
@@ -107,7 +115,7 @@ export interface PluginLoggerOptions {
   readonly now?: () => number;
 }
 
-/** Stable logging surface shared by every plugin (future package contract). */
+/** Stable logging surface shared by server-side plugins. */
 export interface PluginLogger {
   trace(event: string, fields?: Record<string, unknown>): void;
   debug(event: string, fields?: Record<string, unknown>): void;
@@ -121,10 +129,158 @@ export interface PluginLogger {
   get level(): PluginLogLevel;
   /** Change the severity threshold at runtime. */
   setLevel(level: PluginLogLevel): void;
+  /** Current file serialization format. */
+  get format(): PluginLogFormat;
+  /** Change the file serialization format at runtime. */
+  setFormat(format: PluginLogFormat): void;
   /** Best-effort synchronous flush of buffered file output. */
   flush(): void;
   /** Flush and close the destination; idempotent; later writes are dropped. */
   close(): Promise<void>;
+}
+
+/** Runtime metadata exposed to logging-settings and diagnostics consumers. */
+export interface RegisteredPluginLogger {
+  /** Process-local identity of this root logger instance. */
+  readonly registrationId: number;
+  readonly pluginId: string;
+  readonly dir: string;
+  readonly level: PluginLogLevel;
+  readonly format: PluginLogFormat;
+}
+
+/** Receives a complete snapshot whenever the process-wide registry changes. */
+export type PluginLoggerRegistryListener = (
+  loggers: readonly RegisteredPluginLogger[],
+) => void;
+
+/** Internal structural contract shared safely across duplicate package loads. */
+interface RegistryLoggerCore {
+  readonly pluginId: string;
+  readonly dir: string;
+  readonly registrationId: number | undefined;
+  isClosed(): boolean;
+  key(): string;
+  setLevel(level: PluginLogLevel): void;
+  setFormat(format: PluginLogFormat): void;
+  get level(): PluginLogLevel;
+  get format(): PluginLogFormat;
+}
+
+interface RegistryEntry {
+  core: RegistryLoggerCore;
+  root: PluginLogger;
+}
+
+interface GlobalRegistryState {
+  readonly version: 1;
+  nextRegistrationId: number;
+  readonly cache: Map<string, RegistryEntry>;
+  readonly active: Map<number, RegistryLoggerCore>;
+  readonly listeners: Set<PluginLoggerRegistryListener>;
+}
+
+const REGISTRY_SYMBOL = Symbol.for("@yadsh/dsh-plugin-log/registry/v1");
+
+function registryState(): GlobalRegistryState {
+  const globalObject = globalThis as unknown as Record<PropertyKey, unknown>;
+  const existing = globalObject[REGISTRY_SYMBOL] as GlobalRegistryState | undefined;
+  if (existing?.version === 1) return existing;
+  const created: GlobalRegistryState = {
+    version: 1,
+    nextRegistrationId: 1,
+    cache: new Map(),
+    active: new Map(),
+    listeners: new Set(),
+  };
+  globalObject[REGISTRY_SYMBOL] = created;
+  return created;
+}
+
+/** Snapshot of every active root logger, sorted for deterministic UI output. */
+export function getRegisteredPluginLoggers(): readonly RegisteredPluginLogger[] {
+  const snapshots: RegisteredPluginLogger[] = [];
+  for (const [registrationId, core] of registryState().active) {
+    if (core.isClosed()) continue;
+    snapshots.push(
+      Object.freeze({
+        registrationId,
+        pluginId: core.pluginId,
+        dir: core.dir,
+        level: core.level,
+        format: core.format,
+      }),
+    );
+  }
+  return Object.freeze(
+    snapshots.sort(
+      (left, right) =>
+        left.pluginId.localeCompare(right.pluginId) ||
+        left.dir.localeCompare(right.dir) ||
+        left.registrationId - right.registrationId,
+    ),
+  );
+}
+
+function notifyRegistryListeners(): void {
+  const state = registryState();
+  const snapshot = getRegisteredPluginLoggers();
+  for (const listener of state.listeners) {
+    try {
+      listener(snapshot);
+    } catch {
+      // Registry observers must never affect logging or plugin execution.
+    }
+  }
+}
+
+/**
+ * Subscribe to registry snapshots. The listener is called immediately and
+ * after registration, close, or a level change. Returns an idempotent cleanup.
+ */
+export function subscribePluginLoggerRegistry(
+  listener: PluginLoggerRegistryListener,
+): () => void {
+  const listeners = registryState().listeners;
+  listeners.add(listener);
+  try {
+    listener(getRegisteredPluginLoggers());
+  } catch {
+    // Keep the registry fail-open just like the logger itself.
+  }
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+/** Change the level of every active logger owned by `pluginId`. */
+export function setPluginLogLevel(pluginId: string, level: PluginLogLevel): number {
+  if (!isPluginLogLevel(level)) {
+    throw new TypeError(`unknown plugin log level: ${JSON.stringify(level)}`);
+  }
+  let updated = 0;
+  for (const core of registryState().active.values()) {
+    if (!core.isClosed() && core.pluginId === pluginId) {
+      core.setLevel(level);
+      updated += 1;
+    }
+  }
+  return updated;
+}
+
+/** Change the format of every active plugin logger. */
+export function setPluginLogFormat(format: PluginLogFormat): number {
+  if (!isPluginLogFormat(format)) {
+    throw new TypeError(`unknown plugin log format: ${JSON.stringify(format)}`);
+  }
+  let updated = 0;
+  for (const core of registryState().active.values()) {
+    if (!core.isClosed()) {
+      core.setFormat(format);
+      updated += 1;
+    }
+  }
+  return updated;
 }
 
 function formatConsole(event: string, fields?: Record<string, unknown>): string {
@@ -177,6 +333,97 @@ type ClosableDestination = DestinationStream & {
   end?: () => unknown;
   flushSync?: () => void;
 };
+
+const LEVEL_LABEL = new Map<number, string>(
+  Object.entries(LEVEL_WEIGHT).map(([level, weight]) => [weight, level.toUpperCase()]),
+);
+
+function textValue(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  const rendered = JSON.stringify(value);
+  return rendered === undefined ? String(value) : rendered;
+}
+
+function renderTextRecord(line: string): string {
+  try {
+    const record = JSON.parse(line) as Record<string, unknown>;
+    const time = typeof record["time"] === "number"
+      ? new Date(record["time"]).toISOString()
+      : String(record["time"] ?? "-");
+    const numericLevel = typeof record["level"] === "number" ? record["level"] : Number.NaN;
+    const level = (LEVEL_LABEL.get(numericLevel) ?? String(record["level"] ?? "LOG")).padEnd(5);
+    const plugin = String(record["plugin"] ?? "unknown");
+    const module = typeof record["module"] === "string" ? `/${record["module"]}` : "";
+    const event = String(record["msg"] ?? "");
+    const reserved = new Set(["level", "time", "plugin", "module", "msg"]);
+    const fields = Object.entries(record)
+      .filter(([key]) => !reserved.has(key))
+      .map(([key, value]) => `${key}=${textValue(value)}`);
+    return `${time} ${level} [${plugin}${module}] ${event}${fields.length === 0 ? "" : ` ${fields.join(" ")}`}\n`;
+  } catch {
+    return `${line}\n`;
+  }
+}
+
+/** Converts pino NDJSON chunks to readable lines before the file destination. */
+class TextDestination extends Writable {
+  private buffered = "";
+
+  constructor(private readonly target: ClosableDestination) {
+    super();
+  }
+
+  override _write(
+    chunk: Buffer | string,
+    _encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    try {
+      this.buffered += chunk.toString();
+      this.writeCompleteLines();
+      callback();
+    } catch (error) {
+      callback(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  override _final(callback: (error?: Error | null) => void): void {
+    try {
+      if (this.buffered.length > 0) {
+        this.target.write(renderTextRecord(this.buffered));
+        this.buffered = "";
+      }
+      if (this.target.destroyed === true) {
+        callback();
+        return;
+      }
+      if (this.target.once !== undefined) {
+        this.target.once("close", callback);
+        this.target.end?.();
+      } else {
+        this.target.end?.();
+        callback();
+      }
+    } catch (error) {
+      callback(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  flushSync(): void {
+    this.writeCompleteLines();
+    this.target.flushSync?.();
+  }
+
+  private writeCompleteLines(): void {
+    let newline = this.buffered.indexOf("\n");
+    while (newline >= 0) {
+      const line = this.buffered.slice(0, newline);
+      this.buffered = this.buffered.slice(newline + 1);
+      if (line.length > 0) this.target.write(renderTextRecord(line));
+      newline = this.buffered.indexOf("\n");
+    }
+  }
+}
 
 let sharedDevNull: Writable | undefined;
 function devNull(): Writable {
@@ -240,8 +487,10 @@ const defaultSink: PluginConsoleSink = (level, message) => {
 class LoggerCore {
   readonly pluginId: string;
   readonly dir: string;
+  registrationId: number | undefined;
 
   private levelName: PluginLogLevel;
+  private formatName: PluginLogFormat;
   private readonly consoleLevel: PluginLogLevel;
   private readonly sink: PluginConsoleSink;
   private readonly retentionDays: number;
@@ -265,6 +514,7 @@ class LoggerCore {
     const home = options.dshHome ?? resolveDshHome();
     this.dir = options.dir ?? join(home, "logs", options.pluginId);
     this.levelName = options.level ?? envLevelOverride(options.pluginId) ?? "info";
+    this.formatName = options.format ?? "json";
     this.consoleLevel = options.console ?? DEFAULT_CONSOLE_LEVEL;
     this.sink = options.consoleSink ?? defaultSink;
     this.retentionDays = Math.max(0, Math.floor(options.retentionDays ?? DEFAULT_LOG_RETENTION_DAYS));
@@ -275,6 +525,15 @@ class LoggerCore {
 
   isClosed(): boolean {
     return this.closed;
+  }
+
+  activate(): void {
+    if (this.closed || this.registrationId !== undefined) return;
+    const state = registryState();
+    this.registrationId = state.nextRegistrationId;
+    state.nextRegistrationId += 1;
+    state.active.set(this.registrationId, this);
+    notifyRegistryListeners();
   }
 
   key(): string {
@@ -294,6 +553,21 @@ class LoggerCore {
     // Rebuild the destination on the next write so the new threshold takes
     // effect without touching the file handle while silent.
     this.destinationDay = "";
+    if (this.registrationId !== undefined) notifyRegistryListeners();
+  }
+
+  get format(): PluginLogFormat {
+    return this.formatName;
+  }
+
+  setFormat(format: PluginLogFormat): void {
+    if (!isPluginLogFormat(format)) {
+      throw new TypeError(`unknown plugin log format: ${JSON.stringify(format)}`);
+    }
+    if (format === this.formatName) return;
+    this.formatName = format;
+    this.destinationDay = "";
+    if (this.registrationId !== undefined) notifyRegistryListeners();
   }
 
   write(
@@ -330,7 +604,14 @@ class LoggerCore {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
-    registry.delete(this.key());
+    const state = registryState();
+    const cached = state.cache.get(this.key());
+    if (cached?.core === this) state.cache.delete(this.key());
+    if (this.registrationId !== undefined) {
+      state.active.delete(this.registrationId);
+      this.registrationId = undefined;
+      notifyRegistryListeners();
+    }
     const destination = this.destination;
     this.destination = undefined;
     this.root = undefined;
@@ -353,13 +634,16 @@ class LoggerCore {
     if (this.fileEnabled) {
       try {
         mkdirSync(this.dir, { recursive: true });
-        next = pino.destination({
+        const fileDestination = pino.destination({
           dest: join(this.dir, `${stamp}.log`),
           append: true,
           mkdir: true,
           sync: false,
           minLength: 0,
         }) as ClosableDestination;
+        next = this.formatName === "text"
+          ? (new TextDestination(fileDestination) as ClosableDestination)
+          : fileDestination;
       } catch (error) {
         // Fail-open: an unusable log directory degrades to console-only.
         this.fileEnabled = false;
@@ -418,14 +702,6 @@ class LoggerCore {
   }
 }
 
-/** Per-process cache so repeated plugin (re)construction reuses one handle set. */
-interface RegistryEntry {
-  core: LoggerCore;
-  root: PluginLoggerImpl;
-}
-
-const registry = new Map<string, RegistryEntry>();
-
 class PluginLoggerImpl implements PluginLogger {
   constructor(
     private readonly core: LoggerCore,
@@ -468,6 +744,14 @@ class PluginLoggerImpl implements PluginLogger {
     this.core.setLevel(level);
   }
 
+  get format(): PluginLogFormat {
+    return this.core.format;
+  }
+
+  setFormat(format: PluginLogFormat): void {
+    this.core.setFormat(format);
+  }
+
   flush(): void {
     this.core.flush();
   }
@@ -479,7 +763,10 @@ class PluginLoggerImpl implements PluginLogger {
 
 /** Create a standalone logger instance (no caching). */
 export function createPluginLogger(options: PluginLoggerOptions): PluginLogger {
-  return new PluginLoggerImpl(new LoggerCore(options));
+  const core = new LoggerCore(options);
+  const root = new PluginLoggerImpl(core);
+  core.activate();
+  return root;
 }
 
 /**
@@ -491,12 +778,15 @@ export function createPluginLogger(options: PluginLoggerOptions): PluginLogger {
 export function getPluginLogger(options: PluginLoggerOptions): PluginLogger {
   const candidate = new LoggerCore(options);
   const key = candidate.key();
-  const existing = registry.get(key);
+  const state = registryState();
+  const existing = state.cache.get(key);
   if (existing === undefined || existing.core.isClosed()) {
     const entry: RegistryEntry = { core: candidate, root: new PluginLoggerImpl(candidate) };
-    registry.set(key, entry);
+    state.cache.set(key, entry);
+    candidate.activate();
     return entry.root;
   }
   if (options.level !== undefined) existing.core.setLevel(options.level);
+  if (options.format !== undefined) existing.core.setFormat(options.format);
   return existing.root;
 }

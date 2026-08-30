@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createPluginLogger, getPluginLogger } from '../src/logging/index.js';
+import { createPluginLogger, getPluginLogger } from '@yadsh/dsh-plugin-log';
 import { createEngineFileLogger } from '../src/dsh/engine-logger.js';
 
 async function makeLogDir(): Promise<string> {
@@ -20,7 +20,7 @@ async function readLogLines(dir: string): Promise<Record<string, unknown>[]> {
   return lines;
 }
 
-describe('plugin-logger (copied module)', () => {
+describe('plugin-logger package integration', () => {
   let directories: string[] = [];
   let savedDisabled: string | undefined;
 

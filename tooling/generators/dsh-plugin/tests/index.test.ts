@@ -5,18 +5,6 @@ import generatePlugin from "../src/index";
 function createTestTree() {
   const tree = createTreeWithEmptyWorkspace();
   tree.write("LICENSE", "MIT License\n");
-  tree.write(
-    "plugins/dsh-kv-persist/src/logging/dsh-home.ts",
-    "export function resolveDshHome(): string { return 'test'; }\n",
-  );
-  tree.write(
-    "plugins/dsh-kv-persist/src/logging/index.ts",
-    "export { getPluginLogger } from './plugin-logger.js';\n",
-  );
-  tree.write(
-    "plugins/dsh-kv-persist/src/logging/plugin-logger.ts",
-    "export function getPluginLogger(): object { return {}; }\n",
-  );
   return tree;
 }
 
@@ -54,7 +42,9 @@ describe("dsh-plugin generator", () => {
       access: "public",
       registry: "https://registry.npmjs.org/",
     });
-    expect(packageJson.dependencies.pino).toBe("^10.3.1");
+    expect(packageJson.dependencies["@yadsh/dsh-plugin-log"]).toBe(
+      "workspace:^",
+    );
     expect(packageJson.devDependencies).not.toHaveProperty("tsdown");
     expect(packageJson.scripts).toMatchObject({
       build: "tsc",
@@ -69,9 +59,10 @@ describe("dsh-plugin generator", () => {
     );
     expect(tree.exists(`${root}/src/index.ts`)).toBe(true);
     expect(tree.exists(`${root}/src/logger.ts`)).toBe(false);
-    expect(tree.exists(`${root}/src/logging/dsh-home.ts`)).toBe(true);
-    expect(tree.exists(`${root}/src/logging/index.ts`)).toBe(true);
-    expect(tree.exists(`${root}/src/logging/plugin-logger.ts`)).toBe(true);
+    expect(tree.exists(`${root}/src/logging`)).toBe(false);
+    expect(tree.read(`${root}/src/index.ts`, "utf8")).toMatch(
+      /from ['"]@yadsh\/dsh-plugin-log['"]/,
+    );
     expect(tree.read(`${root}/LICENSE`, "utf8")).toBe("MIT License\n");
     expect(tree.exists(`${root}/src/client.ts`)).toBe(false);
     expect(tree.exists(`${root}/tsdown.config.ts`)).toBe(false);

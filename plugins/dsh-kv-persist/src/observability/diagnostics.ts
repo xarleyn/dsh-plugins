@@ -8,7 +8,7 @@
  * above are additionally mirrored to the host context logger.
  */
 
-import { getPluginLogger } from "../logging/index.js";
+import { getPluginLogger } from "@yadsh/dsh-plugin-log";
 import { sha256Hex } from "../snapshots/fingerprint.js";
 
 export interface KvPersistLogger {

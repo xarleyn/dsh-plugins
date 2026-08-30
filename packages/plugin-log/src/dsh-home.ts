@@ -1,9 +1,8 @@
 /**
  * DSH home resolution for plugin runtime helpers.
  *
- * Part of the future `@yadsh/dsh-plugin-log` package seed: this folder is a
- * verbatim, self-contained copy in every adopting plugin (guidelines §5.2),
- * so keep it free of imports outside `./`.
+ * Kept free of DSH runtime dependencies so the logger can be used by any
+ * server-side package.
  */
 
 import { homedir } from "node:os";

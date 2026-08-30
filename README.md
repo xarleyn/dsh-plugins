@@ -2,7 +2,7 @@
 
 `@yadsh` (Yet Another DSH) is a pnpm + Nx monorepo for independently versioned
 DeepSeek Harness plugins. Each directory under `plugins/` is its own public npm
-package; shared build and test utilities live under `packages/`.
+package; shared runtime libraries and workspace tooling live under `packages/`.
 
 ## Packages
 
@@ -12,10 +12,12 @@ package; shared build and test utilities live under `packages/`.
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
+| `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
 | `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
+| `packages/plugin-log` | `@yadsh/dsh-plugin-log` | Structured file logging and runtime consumer discovery |
 | `packages/plugin-kit` | private workspace package | Shared runtime helpers |
 | `packages/test-kit` | private workspace package | Shared test helpers |
 

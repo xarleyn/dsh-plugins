@@ -112,7 +112,8 @@ Shared packages live in `packages/` and are organized by capability:
 
 | Package | Purpose |
 |---------|---------|
-| `plugin-kit` | Runtime helpers (logger, config validation, version checks) |
+| `plugin-log` | Publishable runtime logging and consumer discovery |
+| `plugin-kit` | Private runtime helpers (config validation, version checks) |
 | `test-kit` | Testing utilities (mock contexts, fixtures) |
 | `config` | Shared TypeScript, Vitest, and build configs |
 | `ui-kit` | Shared UI primitives (when needed by multiple plugins) |
@@ -123,6 +124,10 @@ Shared packages live in `packages/` and are organized by capability:
 2. **No plugin-to-plugin coupling** — shared packages must not depend on concrete plugins
 3. **Use `workspace:^`** for internal dependencies
 4. **Declare DSH runtime deps as `peerDependencies`** with `catalog:dsh`
+
+Packages used by published plugins at runtime must themselves be publishable
+and included in the Nx release project list; workspace-only build/test helpers
+remain `private`.
 
 ### Example: Adding a New Shared Package
 

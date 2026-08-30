@@ -1,7 +1,7 @@
 // Packed-install smoke: install an npm tarball of this plugin into a clean
 // temporary project and verify the shipped bundle actually works there.
 //
-// Usage: node scripts/smoke-packed.mjs <tarball-or-directory>
+// Usage: node scripts/smoke-packed.mjs <tarball-or-directory> [dependency-tarball...]
 //
 // Verifies, in order of increasing strength:
 //   1. the required runtime files ship in the tarball
@@ -38,7 +38,10 @@ function npm(args, cwd) {
 }
 
 const target = process.argv[2];
-if (target === undefined) fail("usage: node scripts/smoke-packed.mjs <tarball-or-directory>");
+if (target === undefined) {
+  fail("usage: node scripts/smoke-packed.mjs <tarball-or-directory> [dependency-tarball...]");
+}
+const dependencyTarballs = process.argv.slice(3).map((entry) => resolve(entry));
 const statTarget = await stat(target).catch(() => undefined);
 if (statTarget === undefined) fail(`no such file or directory: ${target}`);
 
@@ -56,7 +59,16 @@ if (statTarget.isDirectory()) {
 const root = await mkdtemp(join(tmpdir(), "dsh-doc-impact-smoke-"));
 try {
   npm(["init", "--yes"], root);
-  npm(["install", "--ignore-scripts", "--package-lock=false", tarball], root);
+  npm(
+    [
+      "install",
+      "--ignore-scripts",
+      "--package-lock=false",
+      ...dependencyTarballs,
+      tarball,
+    ],
+    root,
+  );
 
   const installed = join(root, "node_modules", PACKAGE_NAME);
 

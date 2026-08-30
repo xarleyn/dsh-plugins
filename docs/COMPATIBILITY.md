@@ -24,9 +24,11 @@ instance.
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, client runtime/connection/locale/UI, Typert protocol |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
+| `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/runtime/settings/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
+| `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
 
