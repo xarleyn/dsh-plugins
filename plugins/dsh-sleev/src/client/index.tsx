@@ -108,17 +108,19 @@ const zh: Record<SleevLocaleKey, string> = {
 };
 
 const CARD_STYLES = `
-.dsh-sleev-card{list-style:none;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3);transition:border-color .16s ease,background .16s ease}
-.dsh-sleev-card:hover{border-color:var(--dsw-alias-border-label-dimmed)}
-.dsh-sleev-card.dsh-sleev-card-open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-border-label-dimmed)}
-.dsh-sleev-header{width:100%;appearance:none;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px}
-.dsh-sleev-header:focus-visible,.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-border-brand);outline-offset:2px}
-.dsh-sleev-head-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
-.dsh-sleev-name{font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary)}
-.dsh-sleev-description{font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.dsh-sleev-chevron{flex:none;color:var(--dsw-alias-label-tertiary);transition:transform .16s ease;font-size:16px;line-height:1}
-.dsh-sleev-card-open .dsh-sleev-chevron{transform:rotate(180deg)}
-.dsh-sleev-body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}
+.dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}
+.dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}
+.dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}
+.dsh-plugin-card__header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}
+.dsh-plugin-card__header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dsh-plugin-card__head-text{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}
+.dsh-plugin-card__name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}
+.dsh-plugin-card__description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}
+.dsh-plugin-card__badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}
+.dsh-plugin-card__chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}
+.dsh-plugin-card--open .dsh-plugin-card__chevron{transform:rotate(180deg)}
+.dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}
+.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsh-sleev-field{display:flex;flex-direction:column;gap:6px;padding:12px 0}
@@ -146,6 +148,24 @@ textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:ver
 type SleevSettingsCardProps = PropsRuntime<"settings.plugin.item"> &
   PropsLocale<"dsh-sleev"> &
   InjectFace<SleevSettingsCardFace>;
+
+function ChevronDown(): ReactNode {
+  return (
+    <svg
+      className="dsh-plugin-card__chevron"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m3.5 5.25 3.5 3.5 3.5-3.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 function SettingsField(props: {
   readonly id: string;
@@ -212,29 +232,27 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   });
 
   return (
-    <li className={`dsh-sleev-card${open ? " dsh-sleev-card-open" : ""}`}>
+    <li className={`dsh-plugin-card${open ? " dsh-plugin-card--open" : ""}`}>
       <button
         type="button"
-        className="dsh-sleev-header"
+        className="dsh-plugin-card__header"
         aria-expanded={open}
         aria-label={`${props.t(open ? "collapse" : "expand")}: Sleev`}
         onClick={() => setOpen(!open)}
       >
-        <span className="dsh-sleev-head-text">
-          <span className="dsh-sleev-name">{props.t("title")}</span>
-          <span className="dsh-sleev-description">
+        <span className="dsh-plugin-card__head-text">
+          <span className="dsh-plugin-card__name">{props.t("title")}</span>
+          <span className="dsh-plugin-card__description">
             {props.t("description")}
           </span>
         </span>
         {state.dirty ? (
-          <span className="dsh-sleev-pill">{props.t("unsaved")}</span>
+          <span className="dsh-plugin-card__badge">{props.t("unsaved")}</span>
         ) : null}
-        <span className="dsh-sleev-chevron" aria-hidden="true">
-          ⌄
-        </span>
+        <ChevronDown />
       </button>
       {open ? (
-        <div className="dsh-sleev-body">
+        <div className="dsh-plugin-card__body">
           {!state.writable ? (
             <p className="dsh-sleev-read-only" role="status">
               {props.t("readOnly")}

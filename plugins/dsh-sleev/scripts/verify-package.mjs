@@ -61,5 +61,9 @@ const client = await readFile(new URL("lib/client.js", packageRoot), "utf8");
 assert.match(client, /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-sleev"/u);
 assert.match(client, /settings\.plugin\.item/u);
 assert.match(client, /key: SETTINGS_NAMESPACE/u);
+assert.match(client, /dsh-plugin-card__name/u);
+assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+assert.doesNotMatch(client, /dsw-alias-border-label-dimmed/u);
+assert.doesNotMatch(client, /⌄/u);
 
 console.log("built package contract passed");
