@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Only the latest released version is supported while the project is in alpha.
+Only the latest released version is supported.
 
 ## Reporting a vulnerability
 

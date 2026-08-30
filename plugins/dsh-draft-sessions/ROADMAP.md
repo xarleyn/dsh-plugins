@@ -42,4 +42,4 @@
 - [ ] Windows, macOS, and Linux smoke runs (matrix configured; awaiting its first green CI run)
 - [x] Packed-install smoke test
 - [x] Compatibility matrix across supported DSH releases
-- [ ] `0.1.0` release
+- [ ] `0.2.0` release

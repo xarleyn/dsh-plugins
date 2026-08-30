@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-draft-sessions",
-  "version": "0.1.0-alpha.0",
+  "version": "0.2.0",
   "description": "Persistent unsent draft sessions for DeepSeek Harness",
   "repository": {
     "type": "git",

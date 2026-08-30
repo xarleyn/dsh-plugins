@@ -4,6 +4,8 @@ All notable changes will be documented here. The project follows [Semantic Versi
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-30
+
 ### Added
 
 - Added draft rows through the composable Harness sidebar slot without replacing or embedding the active workspace browser.
