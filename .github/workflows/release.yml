@@ -70,7 +70,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          args=(--skip-publish --yes)
+          args=(--skip-publish)
           if [[ "${{ inputs.first_release }}" == "true" ]]; then
             args+=(--first-release)
           fi

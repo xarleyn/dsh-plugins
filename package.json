@@ -10,7 +10,8 @@
   },
   "scripts": {
     "build": "nx run-many -t build",
-    "test": "nx run-many -t test",
+    "test": "pnpm test:release && nx run-many -t test",
+    "test:release": "node --test scripts/release-workflow.test.mjs",
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
     "lint:workspace": "eslint eslint.config.js scripts",
