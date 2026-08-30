@@ -14,9 +14,14 @@ on:
         default: false
         type: boolean
       publish_only:
-        description: Publish and create GitHub Releases for versions already tagged by a previous run
+        description: Publish versions already tagged by a previous run
         required: true
         default: false
+        type: boolean
+      create_github_releases:
+        description: Create per-package GitHub Releases after npm publication
+        required: true
+        default: true
         type: boolean
 
 permissions:
@@ -164,7 +169,7 @@ jobs:
           done < "$RUNNER_TEMP/release-packages.tsv"
 
       - name: Create per-package GitHub Releases
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false && inputs.create_github_releases
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash

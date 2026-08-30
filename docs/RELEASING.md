@@ -36,6 +36,11 @@ packages and repositories.
 4. Run the workflow again with `dry_run=false`.
 5. For the repository's first release only, also set `first_release=true`.
 
+`create_github_releases` defaults to `true`. Set it to `false` for a routine
+package update or hotfix that should still receive a release commit, changelog,
+tag, workflow artifact, and npm publication, but should not create a
+per-package GitHub Release.
+
 The live workflow asks Nx to create the release commit, project changelogs,
 and per-package tags without publishing. It then runs all validation and
 tarball installation gates, pushes the commit and tags, publishes only the
@@ -54,6 +59,10 @@ with its `.tgz` attached.
   safe to rerun after a partial publication.
 - If only GitHub Release creation failed, use `gh release create` for the
   existing package tag and attach the corresponding workflow artifact.
+- To create omitted GitHub Releases later, run the workflow with
+  `publish_only=true`, `dry_run=false`, and `create_github_releases=true`.
+  Already published npm versions are skipped, while missing GitHub Releases
+  are created from their existing tags and freshly verified tarballs.
 
 Publication is not ready until npm Trusted Publishers have been configured
 externally for the `@yadsh` packages.

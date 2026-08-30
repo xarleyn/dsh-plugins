@@ -188,7 +188,13 @@ describe("Nx release commands", () => {
   test("release plan:check accepts the pending fixture plan", () => {
     const root = createFixture({ withVersionPlan: true });
     const before = repositoryState(root);
-    const result = runNx(root, "release", "plan:check", "--base=HEAD", "--head=HEAD");
+    const result = runNx(
+      root,
+      "release",
+      "plan:check",
+      "--base=HEAD",
+      "--head=HEAD",
+    );
 
     assertSucceeded(result, "nx release plan:check");
     assert.deepEqual(repositoryState(root), before);
@@ -210,7 +216,10 @@ describe("Nx release commands", () => {
       "utf8",
     );
     assert.match(workflow, /args=\(--skip-publish\)/u);
-    assert.doesNotMatch(workflow, /--skip-publish\s+--yes|--yes\s+--skip-publish/u);
+    assert.doesNotMatch(
+      workflow,
+      /--skip-publish\s+--yes|--yes\s+--skip-publish/u,
+    );
 
     const root = createFixture({ withVersionPlan: true });
     const before = repositoryState(root);
@@ -232,7 +241,10 @@ describe("Nx release commands", () => {
       "--dry-run",
     );
 
-    assertSucceeded(result, "nx release --skip-publish --first-release --dry-run");
+    assertSucceeded(
+      result,
+      "nx release --skip-publish --first-release --dry-run",
+    );
     assert.deepEqual(repositoryState(root), before);
   });
 
@@ -269,6 +281,14 @@ describe("Nx release commands", () => {
     assert.match(workflow, /\[\[ ! -f "\$tarball_path" \]\]/u);
     assert.doesNotMatch(workflow, /args=\("tarballs\/\$\{tarball\}"/u);
     assert.doesNotMatch(workflow, /pnpm nx release publish/u);
+    assert.match(
+      workflow,
+      /create_github_releases:\s+[\s\S]*?default: true\s+[\s\S]*?type: boolean/u,
+    );
+    assert.match(
+      workflow,
+      /- name: Create per-package GitHub Releases\s+if: inputs\.dry_run == false && inputs\.create_github_releases/u,
+    );
 
     const root = createFixture();
     const before = repositoryState(root);
@@ -278,19 +298,14 @@ describe("Nx release commands", () => {
     assert.ok(pnpmCli, "npm_execpath must identify the pnpm CLI");
     const pack = run(
       process.execPath,
-      [
-        pnpmCli,
-        "--dir",
-        packageRoot,
-        "pack",
-        "--pack-destination",
-        tarballs,
-      ],
+      [pnpmCli, "--dir", packageRoot, "pack", "--pack-destination", tarballs],
       root,
     );
     assertSucceeded(pack, "pnpm pack");
 
-    const [tarball] = readdirSync(tarballs).filter((file) => file.endsWith(".tgz"));
+    const [tarball] = readdirSync(tarballs).filter((file) =>
+      file.endsWith(".tgz"),
+    );
     assert.ok(tarball, "pnpm pack did not create a tarball");
     const publishArgs = [
       "publish",
