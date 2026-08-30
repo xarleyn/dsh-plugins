@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      publish_only:
+        description: Publish and create GitHub Releases for versions already tagged by a previous run
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -44,16 +49,18 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Require a version plan
+        if: inputs.publish_only == false
         shell: bash
         run: compgen -G '.nx/version-plans/*.md' > /dev/null
 
       - name: Preview release
-        if: inputs.dry_run
+        if: inputs.dry_run && inputs.publish_only == false
         shell: bash
         run: |
           args=(--dry-run)
@@ -63,8 +70,7 @@ jobs:
           pnpm nx release "${args[@]}"
 
       - name: Apply version plans
-        if: inputs.dry_run == false
-        id: packages
+        if: inputs.dry_run == false && inputs.publish_only == false
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
@@ -75,17 +81,37 @@ jobs:
             args+=(--first-release)
           fi
           pnpm nx release "${args[@]}"
-          node scripts/workspace-packages.mjs --release-commit --require --format=github-output >> "$GITHUB_OUTPUT"
-          node scripts/workspace-packages.mjs --release-commit --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
+
+      - name: Select release packages
+        if: inputs.dry_run == false || inputs.publish_only
+        id: packages
+        shell: bash
+        run: |
+          selection_args=()
+          if [[ "${{ inputs.publish_only }}" == "false" ]]; then
+            selection_args+=(--release-commit)
+          fi
+
+          node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=github-output >> "$GITHUB_OUTPUT"
+          node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
+
+          if [[ "${{ inputs.publish_only }}" == "true" ]]; then
+            while IFS=$'\t' read -r name version _directory _tarball; do
+              git rev-parse --verify --quiet "refs/tags/${name}@${version}^{commit}" > /dev/null || {
+                echo "Missing release tag ${name}@${version}" >&2
+                exit 1
+              }
+            done < "$RUNNER_TEMP/release-packages.tsv"
+          fi
 
       - name: Run release gates
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false || inputs.publish_only
         run: |
           pnpm deps:check
           pnpm check
 
       - name: Pack release tarballs
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false || inputs.publish_only
         shell: bash
         run: |
           mkdir -p tarballs
@@ -94,7 +120,7 @@ jobs:
           done
 
       - name: Verify release tarballs
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false || inputs.publish_only
         run: pnpm tarball:verify:packages ${{ steps.packages.outputs.directories }}
 
       - name: Upload release artifacts
@@ -107,22 +133,29 @@ jobs:
           retention-days: 30
 
       - name: Push release commit and tags
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false && inputs.publish_only == false
         run: git push origin HEAD:main --follow-tags
 
       - name: Upgrade npm for trusted publishing
-        if: inputs.dry_run == false
-        run: npm install --global npm@latest
+        if: inputs.dry_run == false || inputs.publish_only
+        run: npm install --global npm@^11.15.0
 
       - name: Publish to npm with OIDC
-        if: inputs.dry_run == false
+        if: inputs.dry_run == false || inputs.publish_only
         shell: bash
         run: |
-          args=(--projects="${{ steps.packages.outputs.projects }}" --output-style=static)
-          if [[ "${{ inputs.first_release }}" == "true" ]]; then
-            args+=(--first-release)
-          fi
-          pnpm nx release publish "${args[@]}"
+          while IFS=$'\t' read -r name version _directory tarball; do
+            if [[ "${{ inputs.dry_run }}" == "false" ]] && npm view "${name}@${version}" version --json > /dev/null 2>&1; then
+              echo "Skipping ${name}@${version}: already published"
+              continue
+            fi
+
+            args=("tarballs/${tarball}" --access public)
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              args+=(--dry-run)
+            fi
+            npm publish "${args[@]}"
+          done < "$RUNNER_TEMP/release-packages.tsv"
 
       - name: Create per-package GitHub Releases
         if: inputs.dry_run == false
@@ -131,8 +164,13 @@ jobs:
         shell: bash
         run: |
           while IFS=$'\t' read -r name version _directory tarball; do
-            gh release create "${name}@${version}" "tarballs/${tarball}" \
-              --verify-tag \
-              --title "${name} ${version}" \
-              --generate-notes
+            tag="${name}@${version}"
+            if gh release view "$tag" > /dev/null 2>&1; then
+              gh release upload "$tag" "tarballs/${tarball}" --clobber
+            else
+              gh release create "$tag" "tarballs/${tarball}" \
+                --verify-tag \
+                --title "${name} ${version}" \
+                --generate-notes
+            fi
           done < "$RUNNER_TEMP/release-packages.tsv"

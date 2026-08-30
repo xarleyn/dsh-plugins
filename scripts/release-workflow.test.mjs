@@ -27,6 +27,14 @@ const nxCli = path.join(
   "nx.js",
 );
 const fixtures = [];
+const npmCli = path.join(
+  path.dirname(process.execPath),
+  "node_modules",
+  "npm",
+  "bin",
+  "npm-cli.js",
+);
+const pnpmCli = process.env.npm_execpath;
 
 function run(command, args, cwd, options = {}) {
   return spawnSync(command, args, {
@@ -34,6 +42,7 @@ function run(command, args, cwd, options = {}) {
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
     timeout: 120_000,
+    shell: options.shell ?? false,
     env: {
       ...process.env,
       CI: "true",
@@ -48,7 +57,7 @@ function assertSucceeded(result, description) {
   assert.equal(
     result.status,
     0,
-    `${description} failed.\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    `${description} failed.\nerror:\n${result.error?.message ?? ""}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
 }
 
@@ -242,6 +251,55 @@ describe("Nx release commands", () => {
 
     assertSucceeded(result, "nx release publish --dry-run");
     assert.match(`${result.stdout}\n${result.stderr}`, /dry.?run/iu);
+    assert.deepEqual(repositoryState(root), before);
+  });
+
+  test("the workflow publishes prepared tarballs through npm in dry-run mode", () => {
+    const workflow = readFileSync(
+      path.join(repositoryRoot, ".github", "workflows", "release.yml"),
+      "utf8",
+    );
+    assert.match(workflow, /publish_only:/u);
+    assert.match(workflow, /npm install --global npm@\^11\.15\.0/u);
+    assert.match(workflow, /npm publish "\$\{args\[@\]\}"/u);
+    assert.doesNotMatch(workflow, /pnpm nx release publish/u);
+
+    const root = createFixture();
+    const before = repositoryState(root);
+    const tarballs = path.join(root, "tarballs");
+    mkdirSync(tarballs);
+    const packageRoot = path.join(root, "packages", "release-package");
+    assert.ok(pnpmCli, "npm_execpath must identify the pnpm CLI");
+    const pack = run(
+      process.execPath,
+      [
+        pnpmCli,
+        "--dir",
+        packageRoot,
+        "pack",
+        "--pack-destination",
+        tarballs,
+      ],
+      root,
+    );
+    assertSucceeded(pack, "pnpm pack");
+
+    const [tarball] = readdirSync(tarballs).filter((file) => file.endsWith(".tgz"));
+    assert.ok(tarball, "pnpm pack did not create a tarball");
+    const publishArgs = [
+      "publish",
+      path.join(tarballs, tarball),
+      "--access",
+      "public",
+      "--dry-run",
+    ];
+    const publish =
+      process.platform === "win32"
+        ? run(process.execPath, [npmCli, ...publishArgs], root)
+        : run("npm", publishArgs, root);
+
+    assertSucceeded(publish, "npm publish <tarball> --dry-run");
+    assert.match(`${publish.stdout}\n${publish.stderr}`, /dry.?run/iu);
     assert.deepEqual(repositoryState(root), before);
   });
 });

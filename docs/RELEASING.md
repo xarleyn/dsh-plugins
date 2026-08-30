@@ -47,8 +47,11 @@ with its `.tgz` attached.
 - Before the release commit is pushed, rerun the workflow after fixing the
   failing gate; the runner's local changes disappear automatically.
 - If the commit and tags were pushed but npm publication failed, do not create
-  another Version Plan. Rerun `nx release publish --projects=<packages>` from
-  the tagged commit after correcting npm Trusted Publisher settings.
+  another Version Plan. Correct the publishing problem, then run the **Release**
+  workflow with `publish_only=true`. Use `dry_run=true` first to verify the
+  tagged packages and tarballs, then rerun with `dry_run=false`. Recovery mode
+  skips versioning, publishes only versions with matching package tags, and is
+  safe to rerun after a partial publication.
 - If only GitHub Release creation failed, use `gh release create` for the
   existing package tag and attach the corresponding workflow artifact.
 
