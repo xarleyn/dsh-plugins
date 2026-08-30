@@ -5,16 +5,16 @@
 // with the web shell's module loader (window.__ModuleLoader__) and exports a
 // Cordis client plugin. It requires only `react` and `react-dom` (both are
 // shell statics); everything else comes from client services (`slots`,
-// `connection`, `remote`, `sessions`).
+// `remote`, `sessions`).
 //
 // It contributes an independent Scope chip beside the Workspace picker while
 // a session is blank and beside the permission selector after the first turn.
-// The editor consumes the `session-scope` projection and writes
-// complete snapshots through `/scope`; permission and scope never share UI
-// state.
-// - The editor walks the directory tree (breadcrumbs up to the filesystem
-//   root) and toggles which directories the agent may write to, in addition
-//   to the session workspace. Changes go through the host's
+// The editor consumes state and host capabilities from the `session-scope`
+// projection and writes complete snapshots through `/scope`; permission and
+// scope never share UI state.
+// - The editor walks the directory tree beneath the session workspace and
+//   toggles which directories the agent may write to, in addition to the
+//   session workspace. Changes go through the host's
 //   `/scope` command; the `session-scope` session projection
 //   pushes the state back, so the button and the tree stay in sync with the
 //   server.
@@ -23,10 +23,8 @@
 // z-index, because the composer seat is `position: sticky` inside its own
 // stacking context — an in-place fixed overlay would be clipped or buried.
 //
-// Directory listings come from the host's `host.listDirectory` RPC (the
-// browse capability) when the composition serves it; when the composition
-// serves the native picker instead, the tree falls back to the plugin's own
-// `/scope list` host command.
+// Directory listings come from the plugin's dedicated `sessionScope/list`
+// RPC. Read-only UI refreshes never execute durable slash commands.
 
 window.__ModuleLoader__.load({
   id: '@yadsh/dsh-session-scope',
@@ -161,6 +159,69 @@ window.__ModuleLoader__.load({
     function normalizeDraftRoots(roots) {
       return Array.isArray(roots) ? roots.filter(function (root) { return typeof root === 'string' }) : []
     }
+    function comparableScopeRoots(roots) {
+      var ordered = normalizeDraftRoots(roots).slice().sort(function (left, right) {
+        return left.length - right.length || comparablePath(left).localeCompare(comparablePath(right))
+      })
+      var collapsed = []
+      for (var i = 0; i < ordered.length; i++) {
+        if (!collapsed.some(function (root) { return isUnder(ordered[i], root) })) collapsed.push(ordered[i])
+      }
+      return collapsed.sort(function (left, right) { return comparablePath(left).localeCompare(comparablePath(right)) })
+    }
+    function sameRoots(left, right) {
+      var a = comparableScopeRoots(left)
+      var b = comparableScopeRoots(right)
+      return a.length === b.length && a.every(function (root, index) {
+        return comparablePath(root) === comparablePath(b[index])
+      })
+    }
+
+    var stringSchema = {
+      parse: function (value) {
+        if (typeof value !== 'string' || value.length === 0) throw new TypeError('expected a non-empty string')
+        return value
+      },
+    }
+    var directoryListingSchema = {
+      parse: function (value) {
+        if (value === null || typeof value !== 'object') throw new TypeError('expected a directory listing')
+        if (typeof value.path !== 'string' || typeof value.home !== 'string') throw new TypeError('invalid directory listing roots')
+        if (!Array.isArray(value.crumbs) || !Array.isArray(value.entries)) throw new TypeError('invalid directory listing rows')
+        return {
+          path: value.path,
+          home: value.home,
+          crumbs: value.crumbs.map(function (crumb) {
+            if (crumb === null || typeof crumb !== 'object' || typeof crumb.name !== 'string' || typeof crumb.path !== 'string') {
+              throw new TypeError('invalid directory crumb')
+            }
+            return { name: crumb.name, path: crumb.path }
+          }),
+          entries: value.entries.map(function (entry) {
+            if (entry === null || typeof entry !== 'object' || typeof entry.name !== 'string' || typeof entry.path !== 'string') {
+              throw new TypeError('invalid directory entry')
+            }
+            return { name: entry.name, path: entry.path, hidden: entry.hidden === true }
+          }),
+          truncated: value.truncated === true,
+        }
+      },
+    }
+    var scopeRemoteContribution = {
+      package: '@yadsh/dsh-session-scope',
+      descriptors: [{
+        id: '@yadsh/dsh-session-scope#sessionScope/list',
+        service: 'sessionScopeRead',
+        namespace: 'sessionScope',
+        method: 'list',
+        invocation: { kind: 'direct' },
+        parameters: [
+          { name: 'sessionId', wire: 'sessionId', source: 'json', codec: { mode: 'strict', typeSymbol: 'SessionId', schema: stringSchema } },
+          { name: 'path', wire: 'path', source: 'json', codec: { mode: 'strict', typeSymbol: 'string', schema: stringSchema } },
+        ],
+        result: { mode: 'strict', typeSymbol: 'DirectoryListing', schema: directoryListingSchema },
+      }],
+    }
 
     function apply(ctx) {
       var styleTag = null
@@ -170,18 +231,28 @@ window.__ModuleLoader__.load({
         document.head.appendChild(styleTag)
       } catch (err) { /* styling is cosmetic */ }
 
-      function connection() {
-        var value = ctx.get('connection')
-        return value !== undefined && value !== null ? value : undefined
-      }
       function remote() {
         var value = ctx.get('remote')
         return value !== undefined && value !== null ? value : undefined
       }
-      function api() {
-        var conn = connection()
-        return conn !== undefined && conn.api !== undefined ? conn.api : undefined
-      }
+      var scopeRemoteDispose = null
+      var scopeRemoteError = null
+      var scopeRemoteFace = null
+      var rem = remote()
+      var scopeRemoteReady = rem !== undefined && typeof rem.$mount === 'function'
+        ? rem.$mount(scopeRemoteContribution).then(function (dispose) {
+            scopeRemoteDispose = dispose
+            if (typeof ctx.inject !== 'function') throw new Error('session-scope: client injection unavailable')
+            return ctx.inject(['remote.sessionScope'], function (remoteCtx) {
+              var injectedRemote = remoteCtx.get('remote')
+              scopeRemoteFace = injectedRemote.sessionScope
+            })
+          }).catch(function (err) {
+            scopeRemoteError = err instanceof Error ? err.message : String(err)
+          })
+        : Promise.resolve().then(function () {
+            scopeRemoteError = 'session-scope: Remote gateway unavailable'
+          })
 
       // Execute one slash-command and return { ok, result } where result is
       // the normalized { kind, text } command result when the host answered.
@@ -210,48 +281,34 @@ window.__ModuleLoader__.load({
         }
       }
 
-      // List one directory level. Primary: host.listDirectory (browse
-      // capability). Fallback: the plugin's own /scope list
-      // command, used when the composition serves the native picker.
+      // List one directory level through the dedicated host RPC.
       async function listLevel(sessionId, path) {
-        var face = api()
-        if (face !== undefined && face.host !== undefined && typeof face.host.listDirectory === 'function') {
-          try {
-            var response = await face.host.listDirectory({ path: path })
-            if (response !== undefined && response.result !== undefined && response.result.ok === true) {
-              return { ok: true, value: response.result.value, source: 'browse' }
-            }
-            if (response !== undefined && response.result !== undefined && response.result.error !== undefined) {
-              var code = response.result.error.code
-              if (code === 'directory-picker-unavailable') {
-                return fallbackList(sessionId, path)
-              }
-              return { ok: false, error: response.result.error.message }
-            }
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) }
-          }
+        await scopeRemoteReady
+        if (scopeRemoteError !== null) return { ok: false, error: scopeRemoteError }
+        if (scopeRemoteFace === null || typeof scopeRemoteFace.list !== 'function') {
+          return { ok: false, error: 'session-scope: read RPC unavailable' }
         }
-        return fallbackList(sessionId, path)
-      }
-
-      async function fallbackList(sessionId, path) {
-        var outcome = await runCommand(sessionId, '/scope list ' + path)
-        if (!outcome.ok) return { ok: false, error: outcome.error }
         try {
-          return { ok: true, value: JSON.parse(outcome.result.text), source: 'command' }
+          var response = await scopeRemoteFace.list(sessionId, path)
+          if (response !== undefined && response.ok === true) {
+            return { ok: true, value: response.value, source: 'scope-rpc' }
+          }
+          var message = response !== undefined && response.error !== undefined && response.error.message !== undefined
+            ? response.error.message
+            : 'session-scope: directory listing failed'
+          return { ok: false, error: message }
         } catch (err) {
-          return { ok: false, error: 'session-scope: host returned an invalid listing' }
+          return { ok: false, error: err instanceof Error ? err.message : String(err) }
         }
       }
 
       // ---------- the scope editor (modal with the directory tree) ----------
       function ScopeEditor(props) {
         // props: sessionId, workspaceRoot (injected cwd, may be undefined),
-        // projectedRoot, scopeMode, scopeRoots, onClose
+        // projectedRoot, scopeMode, scopeRoots, capabilities, onClose
         var state = React.useState({
           root: null,
-          rootSource: null, // 'injected' | 'projection' | 'info'
+          rootSource: null, // 'injected' | 'projection'
           path: null,
           listing: null, // { path, crumbs, entries, truncated }
           loading: false,
@@ -259,7 +316,7 @@ window.__ModuleLoader__.load({
           error: null,
           phase: L('正在解析工作区…', 'Resolving workspace…'),
           retryToken: 0,
-          isolatedSupported: null,
+          isolatedSupported: props.capabilities !== undefined ? props.capabilities.isolated === true : null,
           mode: props.scopeMode === 'focused' || props.scopeMode === 'isolated' ? props.scopeMode : 'full',
           // Local pending content roots. In full mode the workspace root is
           // inserted after root resolution to keep the checkbox semantics.
@@ -269,26 +326,15 @@ window.__ModuleLoader__.load({
         var setSnap = state[1]
         var patch = function (part) { setSnap(function (prev) { return Object.assign({}, prev, part) }) }
 
-        React.useEffect(function () {
-          var cancelled = false
-          runCommand(props.sessionId, '/scope capabilities').then(function (outcome) {
-            if (cancelled || !outcome.ok) return
-            try {
-              var capabilities = JSON.parse(outcome.result.text)
-              patch({ isolatedSupported: capabilities.isolated === true })
-            } catch (err) { /* keep unknown capability state */ }
-          })
-          return function () { cancelled = true }
-        }, [props.sessionId])
-
-        // Resolve the workspace root through a chain of sources: the injected
-        // session cwd, the session-scope projection root, then `/scope show`.
+        // Resolve the immutable workspace root from the session list or the
+        // session-scope projection. No read command is issued from the UI.
         function applyRoot(root, source, mode, roots) {
           var nextMode = mode === 'focused' || mode === 'isolated' ? mode : 'full'
           patch({
             root: root,
             rootSource: source,
             phase: L('正在加载目录…', 'Loading directories…'),
+            error: null,
             mode: nextMode,
             draft: nextMode === 'full' ? [root] : normalizeDraftRoots(roots),
           })
@@ -309,26 +355,7 @@ window.__ModuleLoader__.load({
                 applyRoot(projected, 'projection', snap.mode, snap.draft)
                 return
               }
-              patch({ phase: L('正在解析工作区…', 'Resolving workspace…') })
-              timer = setTimeout(function () {
-                if (cancelled || snap.root !== null) return
-                patch({ loading: false, error: L('解析工作区超时 — 请重试', 'resolving the workspace timed out — please retry'), phase: null })
-              }, 12000)
-              var outcome = await runCommand(props.sessionId, '/scope show')
-              if (cancelled) return
-              if (timer !== null) { clearTimeout(timer); timer = null }
-              if (!outcome.ok) {
-                patch({ loading: false, error: outcome.error, phase: null })
-                return
-              }
-              var info = null
-              try { info = JSON.parse(outcome.result.text) } catch (err) { /* invalid */ }
-              var root = info !== null && typeof info.workspaceRoot === 'string' && info.workspaceRoot !== '' ? info.workspaceRoot : null
-              if (root === null) {
-                patch({ loading: false, error: L('无法解析工作区根目录', 'could not resolve the workspace root'), phase: null })
-                return
-              }
-              applyRoot(root, 'info', info.mode, info.roots)
+              patch({ loading: false, error: L('无法解析工作区根目录', 'could not resolve the workspace root'), phase: null })
             } catch (err) {
               if (cancelled) return
               patch({ loading: false, error: L('解析工作区失败：', 'failed to resolve the workspace: ') + (err instanceof Error ? err.message : String(err)), phase: null })
@@ -411,6 +438,13 @@ window.__ModuleLoader__.load({
         // and a rejection handler both settle the flag and surface a visible
         // error, keeping the modal open with the draft intact.
         function save(mode, draft) {
+          var effectiveMode = snap.root !== null && draft.indexOf(snap.root) !== -1 ? 'full' : mode
+          var effectiveRoots = effectiveMode === 'full' ? [] : normalizeDraftRoots(draft)
+          var currentRoots = normalizeDraftRoots(props.scopeRoots)
+          if (effectiveMode === props.scopeMode && sameRoots(effectiveRoots, currentRoots)) {
+            props.onClose()
+            return
+          }
           patch({ saving: true, error: null })
           var settled = false
           var timer = setTimeout(function () {
@@ -418,7 +452,6 @@ window.__ModuleLoader__.load({
             settled = true
             patch({ saving: false, error: L('保存超时 — 请重试', 'saving timed out — please retry') })
           }, 12000)
-          var effectiveMode = snap.root !== null && draft.indexOf(snap.root) !== -1 ? 'full' : mode
           var command = effectiveMode === 'full'
             ? '/scope full'
             : '/scope ' + effectiveMode + ' ' + JSON.stringify(draft)
@@ -700,6 +733,7 @@ window.__ModuleLoader__.load({
         var roots = scope !== undefined && Array.isArray(scope.roots) ? scope.roots : []
         var projectedRoot = scope !== undefined && typeof scope.workspaceRoot === 'string' && scope.workspaceRoot !== '' ? scope.workspaceRoot : undefined
         var mode = scope !== undefined && (scope.mode === 'focused' || scope.mode === 'isolated') ? scope.mode : 'full'
+        var capabilities = scope !== undefined && scope.capabilities !== undefined ? scope.capabilities : undefined
         var label = mode === 'full'
           ? L('范围：全部', 'Scope: All')
           : roots.length === 0
@@ -735,6 +769,7 @@ window.__ModuleLoader__.load({
             projectedRoot: projectedRoot,
             scopeMode: mode,
             scopeRoots: roots,
+            capabilities: capabilities,
             onClose: function () { setOpen(false) },
           }),
         )
@@ -747,8 +782,7 @@ window.__ModuleLoader__.load({
         function scopeInjection(sessionId) {
           // The session's workspace root never changes; the sessions list
           // store (byId, keyed by session id) is the cheapest reliable
-          // source. The editor falls back to the projection root and then to
-          // /scope show.
+          // source. The editor falls back to the session-scope projection.
           var root = undefined
           try {
             var sessions = ctx.get('sessions')
@@ -779,12 +813,15 @@ window.__ModuleLoader__.load({
         for (var i = 0; i < disposers.length; i++) {
           try { disposers[i]() } catch (err) { /* best effort */ }
         }
+        if (scopeRemoteDispose !== null) {
+          try { void scopeRemoteDispose() } catch (err) { /* best effort */ }
+        }
         if (styleTag !== null && styleTag.parentNode !== null) styleTag.parentNode.removeChild(styleTag)
       }
     }
 
     exports.apply = apply
-    exports.inject = ['slots', 'connection', 'remote', 'remote.commands', 'sessions']
+    exports.inject = ['slots', 'remote', 'remote.commands', 'sessions']
     return module.exports
   },
 })

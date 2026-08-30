@@ -24,6 +24,7 @@ const expectedHost = [
 ];
 const expectedClient = [
   "conversation.input.left",
+  "remote.$mount",
   "remote.commands",
   "session-projections",
 ];

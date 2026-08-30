@@ -70,6 +70,11 @@ describe("session projection registration", () => {
       workspaceRoot: "/workspace",
       roots: ["/workspace/apps"],
       navigationRoots: ["/workspace"],
+      capabilities: {
+        focused: true,
+        isolated: false,
+        isolatedBackend: null,
+      },
     });
     expect(definition?.wire?.viewSchema.parse(view)).toEqual(view);
   });

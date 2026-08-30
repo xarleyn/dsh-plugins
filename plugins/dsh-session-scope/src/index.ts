@@ -4,14 +4,14 @@
 // Mounted as a normal plugin row in the profile composition. Scope is a
 // durable per-session policy axis, independent from sandbox/permission mode.
 //
-// The host registers the `session-scope/set` event, projection, `/scope`
-// command and model-facing context. An AsyncLocalStorage execution carrier
-// connects concurrent tool calls to the correct session; the filesystem seam
-// then gates reads and mutations and filters navigation listings. A monotonic
-// `tools.guard()` covers known path-aware tools before permission/approval can
-// run. Legacy selected-workspace-write patches remain below only to resume old
-// upstream session logs during migration; they are no longer advertised as a
-// permission preset.
+// The host registers the `session-scope/set` event, projection, write-only
+// `/scope` command, read RPC, and model-facing context. An AsyncLocalStorage
+// execution carrier connects concurrent tool calls to the correct session;
+// the filesystem seam then gates reads and mutations and filters navigation
+// listings. A monotonic `tools.guard()` covers known path-aware tools before
+// permission/approval can run. Legacy selected-workspace-write patches remain
+// below only to resume old upstream session logs during migration; they are no
+// longer advertised as a permission preset.
 
 import { FsError } from "@deepseek-ai/dsh-fs";
 import { WIDER_MODES } from "@deepseek-ai/dsh-sandbox";
@@ -33,7 +33,6 @@ import {
 import {
   getScope,
   getScopeCapabilities,
-  listScopeDirectory,
   setScope,
 } from "./host-api.js";
 import {
@@ -41,6 +40,7 @@ import {
   effectiveSessionScope,
 } from "./session-scope.js";
 import { renderSessionScopeContext } from "./scope-context.js";
+import { SessionScopeReadService } from "./scope-remote.js";
 import { initializeDelegatedSessionScope } from "./scope-delegation.js";
 import { SessionScopeRuntime } from "./scope-fs.js";
 import {
@@ -64,6 +64,7 @@ export * from "./scope-context.js";
 export * from "./scope-delegation.js";
 export * from "./scope-fs.js";
 export * from "./scope-processes.js";
+export * from "./scope-remote.js";
 export * from "./scope-sandbox-linux.js";
 export * from "./scope-visibility.js";
 export * from "./session-scope.js";
@@ -274,12 +275,20 @@ const sessionScopeViewSchema = {
   parse(value) {
     const state = sessionScopeStateSchema.parse(value);
     const { hasSnapshot: _hasSnapshot, ...view } = state;
-    return view;
+    const capabilities = value?.capabilities;
+    return {
+      ...view,
+      capabilities: {
+        focused: capabilities?.focused === true,
+        isolated: capabilities?.isolated === true,
+        isolatedBackend: capabilities?.isolatedBackend === "bwrap" ? "bwrap" : null,
+      },
+    };
   },
 };
 
 /** Host command for the independent session-scope axis. */
-async function handleScope(invocation, ctx, capabilities, processActivity) {
+function handleScope(invocation, ctx, capabilities, processActivity) {
   const session = invocation.agent.session;
   const raw = invocation.rawInput.trim();
   const space = raw.indexOf(" ");
@@ -290,8 +299,7 @@ async function handleScope(invocation, ctx, capabilities, processActivity) {
 
   switch (verb) {
     case "":
-    case "show":
-      return { kind: "success", text: JSON.stringify(current) };
+      return { kind: "success", text: "scope: verbs: full | focused | isolated" };
     case "full": {
       if (processActivity.hasActive(invocation.agent, {
         terminals: ctx.get("terminals"),
@@ -332,19 +340,8 @@ async function handleScope(invocation, ctx, capabilities, processActivity) {
         return { kind: "error", text: `${code}${error instanceof Error ? error.message : String(error)}` };
       }
     }
-    case "list": {
-      if (rest === "") return { kind: "error", text: "scope: list expects an absolute workspace path" };
-      try {
-        return { kind: "success", text: JSON.stringify(await listScopeDirectory(session, rest, fallbackWorkspaceRoot)) };
-      } catch (error) {
-        const code = typeof error?.code === "string" ? `${error.code}: ` : "";
-        return { kind: "error", text: `${code}${error instanceof Error ? error.message : String(error)}` };
-      }
-    }
-    case "capabilities":
-      return { kind: "success", text: JSON.stringify(capabilities) };
     default:
-      return { kind: "error", text: `scope: unknown verb "${verb}" (verbs: full | focused | isolated | show)` };
+      return { kind: "error", text: `scope: unknown verb "${verb}" (verbs: full | focused | isolated)` };
   }
 }
 
@@ -457,13 +454,20 @@ async function handleWorkspaceScope(invocation, ctx) {
 export function apply(ctx) {
   const disposers = [];
   const resolvePolicy = (request = {}) => ctx.sandboxPolicy?.resolve(request);
-  const scopeRuntime = new SessionScopeRuntime();
   const processActivity = new SessionScopeProcessActivity();
   const toolAdapters = new ScopeToolAdapterRegistry();
   const fallbackWorkspaceRoot = ctx.sandboxPolicy?.workspaceRoot ?? "";
+  const scopeRuntime = new SessionScopeRuntime(fallbackWorkspaceRoot);
   const provider = ctx.get("sandbox");
   const isolatedBackendReady = detectBwrapIsolation(provider, fallbackWorkspaceRoot);
   const scopeCapabilities = getScopeCapabilities(process.platform, isolatedBackendReady);
+
+  // Typert Remote is a non-durable read boundary for the directory picker.
+  // The feature probe keeps lightweight unit harnesses usable without
+  // pretending that their plain objects are full Cordis contexts.
+  if (typeof ctx.provide === "function") {
+    new SessionScopeReadService(ctx, fallbackWorkspaceRoot);
+  }
 
   // 1. The mode resolver: attach selected roots under the new mode.
   const sandboxPolicy = ctx.get("sandboxPolicy");
@@ -581,7 +585,7 @@ export function apply(ctx) {
     commandCtx.commands.register({
       name: "scope",
       description: "Manage the independent workspace visibility scope for this session",
-      input: { hint: "<full|focused|isolated|show>" },
+      input: { hint: "<full|focused|isolated>" },
       handler: (invocation) => handleScope(invocation, ctx, scopeCapabilities, processActivity),
     });
     commandCtx.commands.register({
@@ -619,7 +623,10 @@ export function apply(ctx) {
       },
       wire: {
         viewSchema: sessionScopeViewSchema,
-        view: ({ hasSnapshot: _hasSnapshot, ...state }) => state,
+        view: ({ hasSnapshot: _hasSnapshot, ...state }) => ({
+          ...state,
+          capabilities: scopeCapabilities,
+        }),
       },
       stateVersion: 1,
     });

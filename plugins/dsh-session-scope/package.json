@@ -85,6 +85,7 @@
     },
     "client": {
       "inject": [
+        "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-api-remotes",
@@ -94,9 +95,11 @@
     }
   },
   "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-fs": "catalog:dsh",
     "@deepseek-ai/dsh-sandbox": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
@@ -135,9 +138,11 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-fs": "catalog:dsh-dev",
     "@deepseek-ai/dsh-sandbox": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",

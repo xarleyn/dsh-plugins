@@ -48,11 +48,11 @@ Version `0.5.0` implements the specification through Phase 4:
 
 - durable `session-scope/set` snapshots with a last-write-wins fold;
 - canonical root validation, nested-root collapse, navigation ancestors, and stable error codes;
-- typed host operations, the `/scope` command, and a `session-scope` projection;
+- projection-backed scope state and capabilities, a dedicated `sessionScope/list` RPC, and a write-only `/scope` command;
 - filtered directory listings and scoped glob, grep, and search roots;
 - per-session filesystem enforcement carried with `AsyncLocalStorage`;
 - a monotonic final guard for known path-aware tools;
-- model-facing context that names accessible roots without revealing hidden siblings;
+- model-facing context that names accessible roots without revealing hidden siblings; `full` emits no scope prompt and bypasses the filesystem carrier;
 - an independent **Scope** chip and tree picker beside Workspace and permission controls;
 - Linux isolation for one-shot bash and persistent PTY creation;
 - permission-aware read-only and writable mounts in an empty workspace overlay;
@@ -70,6 +70,7 @@ Version `0.5.0` implements the specification through Phase 4:
 - Isolated scope requires the supported Linux sandbox path and a recognized bubblewrap profile.
 - Unknown runner profiles, partial enforcement, and unsupported platforms fail closed.
 - Scope changes are blocked while foreground jobs, background jobs, or persistent terminals retain the previous mount view.
+- Opening or refreshing the Scope editor is read-only: it uses projections and `sessionScope/list`, so it does not add command rows to session history. Applying an unchanged scope is a no-op.
 
 ## Requirements
 

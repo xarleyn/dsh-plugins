@@ -63,6 +63,37 @@ describe("host scope state", () => {
 
     expect(getScope(session)).toMatchObject({ mode: "focused", roots: [canonicalPath(selected)] });
   });
+
+  test("does not append a durable snapshot when the effective scope is unchanged", () => {
+    const workspace = temporaryWorkspace();
+    const selected = join(workspace, "selected");
+    mkdirSync(selected);
+    const append = vi.fn();
+    const event = {
+      version: 1 as const,
+      mode: "focused" as const,
+      roots: [canonicalPath(selected)],
+      workspaceRoot: canonicalPath(workspace),
+      source: "ui" as const,
+    };
+    const session: ScopeSession = {
+      header: { cwd: workspace },
+      events: [{ type: "session-scope/set", data: event }],
+      append,
+    };
+
+    expect(setScope(session, { mode: "focused", roots: [selected], source: "ui" })).toEqual(event);
+    expect(append).not.toHaveBeenCalled();
+  });
+
+  test("does not materialize the implicit full default as an event", () => {
+    const workspace = temporaryWorkspace();
+    const append = vi.fn();
+    const session: ScopeSession = { header: { cwd: workspace }, events: [], append };
+
+    expect(setScope(session, { mode: "full", source: "ui" })).toMatchObject({ mode: "full", roots: [] });
+    expect(append).not.toHaveBeenCalled();
+  });
 });
 
 describe("host directory API", () => {

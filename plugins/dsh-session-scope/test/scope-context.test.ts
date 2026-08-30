@@ -31,14 +31,13 @@ describe("model-facing scope context", () => {
     expect(text).toContain("fail-closed");
   });
 
-  test("keeps full scope distinct from permission", () => {
+  test("does not inject scope prompt text in full mode", () => {
     const text = renderSessionScopeContext({
       mode: "full",
       workspaceRoot: workspace,
       roots: [],
       navigationRoots: [],
     });
-    expect(text).toContain("entire session workspace");
-    expect(text).toContain("permission policy");
+    expect(text).toBe("");
   });
 });

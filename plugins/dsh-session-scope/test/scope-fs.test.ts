@@ -32,6 +32,10 @@ function focusedSession(root: string): ScopeSession {
   };
 }
 
+function fullSession(): ScopeSession {
+  return { header: { cwd: workspace }, events: [], append: vi.fn() };
+}
+
 function fakeFileSystem(): ScopeAwareFileSystem {
   const children = new Map<string, ScopeFsDirEntry[]>([
     [workspace, [
@@ -58,6 +62,18 @@ function fakeFileSystem(): ScopeAwareFileSystem {
 }
 
 describe("filesystem enforcement", () => {
+  test("does not install runtime scope state or resolve roots in full mode", async () => {
+    const runtime = new SessionScopeRuntime(workspace);
+    const fs = fakeFileSystem();
+    runtime.patchFileSystem(fs);
+
+    await expect(runtime.run(fullSession(), async () => {
+      expect(runtime.currentSession()).toBeUndefined();
+      return fs.readText(target(`${projectA}${sep}visible.txt`));
+    })).resolves.toContain("visible.txt");
+    expect(fs.resolve).not.toHaveBeenCalled();
+  });
+
   test("allows content reads and denies hidden siblings", async () => {
     const runtime = new SessionScopeRuntime();
     const fs = fakeFileSystem();

@@ -1125,10 +1125,6 @@ UI listing выполняется от имени пользователя/host 
 /scope isolated
 ```
 
-```text
-/scope show
-```
-
 Можно сохранить alias:
 
 ```text
@@ -1146,15 +1142,14 @@ UI listing выполняется от имени пользователя/host 
 Логически host должен предоставлять операции:
 
 ```text
-getScope(session)
 setScope(session, payload)
-listDirectory(session, path)
-getCapabilities()
+session-scope projection: state + capabilities
+sessionScope/list(session, path) RPC
 ```
 
 Wire names могут сохранить стиль upstream, чтобы уменьшить diff.
 
-`getCapabilities()` нужен UI для отображения:
+Поле `capabilities` проекции используется UI для отображения:
 
 ```text
 focused: supported

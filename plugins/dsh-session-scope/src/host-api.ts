@@ -56,6 +56,15 @@ export function setScope(
     input.source ?? "command",
     options,
   );
+  const current = getScope(session, fallbackWorkspaceRoot);
+  if (
+    current.mode === event.mode
+    && current.workspaceRoot === event.workspaceRoot
+    && current.roots.length === event.roots.length
+    && current.roots.every((root, index) => root === event.roots[index])
+  ) {
+    return event;
+  }
   session.append(SESSION_SCOPE_EVENT, event);
   return event;
 }

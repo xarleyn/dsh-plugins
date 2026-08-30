@@ -62,8 +62,12 @@ export class SessionScopeRuntime {
 
   private readonly cache = new WeakMap<ScopeSession, CachedScope>();
 
+  constructor(private readonly fallbackWorkspaceRoot = "") {}
+
   run<T>(session: ScopeSession | undefined, operation: () => T, execution?: ScopeToolExecution): T {
-    if (session === undefined) return operation();
+    if (session === undefined || getScope(session, this.fallbackWorkspaceRoot).mode === "full") {
+      return operation();
+    }
     return this.storage.run({ session, execution }, operation);
   }
 
@@ -81,16 +85,6 @@ export class SessionScopeRuntime {
     fallbackWorkspaceRoot: string,
   ): Promise<ResolvedScope> {
     const scope = getScope(session, fallbackWorkspaceRoot);
-    if (scope.mode === "full") {
-      const workspace = await fs.resolve(scope.workspaceRoot);
-      return {
-        scope,
-        workspace,
-        workspaceSpellings: [scope.workspaceRoot, session.header?.cwd ?? fallbackWorkspaceRoot],
-        content: [],
-        navigation: [],
-      };
-    }
     const key = JSON.stringify([scope.mode, scope.workspaceRoot, scope.roots, scope.navigationRoots]);
     const cached = this.cache.get(session);
     if (cached?.eventCount === session.events.length && cached.key === key) return cached;
@@ -129,7 +123,7 @@ export class SessionScopeRuntime {
     throw new SessionScopeError(SESSION_SCOPE_ERROR.DENIED, DENIAL_MESSAGE);
   }
 
-  patchFileSystem(fs: ScopeAwareFileSystem, fallbackWorkspaceRoot = ""): () => void {
+  patchFileSystem(fs: ScopeAwareFileSystem, fallbackWorkspaceRoot = this.fallbackWorkspaceRoot): () => void {
     const original = {
       stat: fs.stat.bind(fs),
       lstat: fs.lstat.bind(fs),

@@ -15,6 +15,7 @@ interface ClientHarness {
   React?: Record<string, unknown>;
   ReactDOM?: Record<string, unknown>;
   document?: Record<string, unknown>;
+  remote?: Record<string, unknown>;
 }
 
 function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness = {}): Registration[] {
@@ -52,13 +53,46 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     throw new Error(`unexpected module ${id}`);
   });
   plugin.apply({
-    get: (name: string) => name === "slots" ? slots : name === "sessions" ? sessions : undefined,
+    get: (name: string) => name === "slots"
+      ? slots
+      : name === "sessions" ? sessions : name === "remote" ? harness.remote : undefined,
     effect: (callback: () => unknown) => callback(),
   });
   return registrations;
 }
 
 describe("client scope placement", () => {
+  test("uses projection and host RPC reads instead of durable scope commands", () => {
+    const source = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("useProjection('session-scope')");
+    expect(source).toContain("ctx.inject(['remote.sessionScope']");
+    expect(source).toContain("scopeRemoteFace.list(sessionId, path)");
+    expect(source).not.toMatch(/\/scope (?:capabilities|show|list)/);
+  });
+
+  test("mounts a dedicated non-durable sessionScope/list Remote", () => {
+    let contribution: Record<string, unknown> | undefined;
+    registrationsFor(new Set(["conversation.input.left"]), {
+      remote: {
+        $mount(value: Record<string, unknown>) {
+          contribution = value;
+          return Promise.resolve(() => {});
+        },
+      },
+    });
+
+    expect(contribution).toMatchObject({
+      package: "@yadsh/dsh-session-scope",
+      descriptors: [expect.objectContaining({
+        service: "sessionScopeRead",
+        namespace: "sessionScope",
+        method: "list",
+        invocation: { kind: "direct" },
+      })],
+    });
+  });
+
   test("uses only the existing composer seat and resolves its workspace root", () => {
     const registrations = registrationsFor(new Set(["conversation.input.left"]));
     expect(registrations.map(({ options }) => options.name)).toEqual([

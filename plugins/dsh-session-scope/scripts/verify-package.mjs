@@ -52,6 +52,14 @@ for (const [subpath, descriptor] of Object.entries(manifest.exports ?? {})) {
 if (manifest.exports?.["./client"]?.default !== "./lib/client.js") {
   throw new Error("./client must expose the default bundle path required by DSH client composition");
 }
+for (const dependency of ["@deepseek-ai/cordis", "@deepseek-ai/dsh-typert-protocol"]) {
+  if (manifest.peerDependencies?.[dependency] !== "catalog:dsh") {
+    throw new Error(`package must declare ${dependency} as a DSH peer`);
+  }
+}
+if (!manifest.dsh?.client?.inject?.includes("@deepseek-ai/dsh-api-gateway")) {
+  throw new Error("client composition must inject the API gateway for sessionScope/list");
+}
 
 const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
 if (

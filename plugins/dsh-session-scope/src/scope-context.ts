@@ -2,11 +2,7 @@ import type { EffectiveSessionScope } from "./session-scope.js";
 
 export function renderSessionScopeContext(scope: EffectiveSessionScope): string {
   if (scope.mode === "full") {
-    return [
-      "### Session workspace scope",
-      "",
-      "The entire session workspace is accessible. Filesystem effects are still controlled by the active permission policy.",
-    ].join("\n");
+    return "";
   }
   const roots = scope.roots.length === 0
     ? ["- none (filesystem access is fail-closed until the scope is changed)"]

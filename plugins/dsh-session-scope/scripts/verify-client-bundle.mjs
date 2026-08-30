@@ -10,8 +10,12 @@ const requiredFragments = [
   "ReactDOM.createPortal(button, heroMount)",
   "id: 'session-scope'",
   "useProjection('session-scope')",
+  "ctx.inject(['remote.sessionScope']",
+  "scopeRemoteFace.list(sessionId, path)",
+  "scope.capabilities",
+  "sameRoots(effectiveRoots, currentRoots)",
   "rem.commands.execute(sessionId, line, [])",
-  "exports.inject = ['slots', 'connection', 'remote', 'remote.commands', 'sessions']",
+  "exports.inject = ['slots', 'remote', 'remote.commands', 'sessions']",
 ];
 
 for (const fragment of requiredFragments) {
@@ -26,6 +30,10 @@ if (/^\s*export\s/m.test(client)) {
 
 if (client.includes("dsh-draft-sessions") || client.includes("draftSessions/")) {
   throw new Error("client bundle contains foreign draft-sessions code");
+}
+
+if (/\/scope (?:capabilities|show|list)/.test(client)) {
+  throw new Error("client bundle must not use durable commands for scope reads");
 }
 
 const registrations = client.match(/id: '@yadsh\/dsh-session-scope'/g) ?? [];
