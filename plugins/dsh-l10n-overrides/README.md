@@ -10,7 +10,7 @@ Runtime localization overrides for [DeepSeek Harness](https://github.com/deepsee
 
 `dsh-l10n-overrides` overlays missing or incorrect locale entries without replacing the host locale service. Translation packs can also provide narrowly scoped DOM fallbacks for text and selected accessibility attributes.
 
-[Specification](SPEC.md) · [Roadmap](ROADMAP.md)
+[Specification](docs/SPEC.md) · [Roadmap](ROADMAP.md)
 
 ## Installation
 

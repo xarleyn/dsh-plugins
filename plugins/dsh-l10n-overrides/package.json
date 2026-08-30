@@ -44,7 +44,6 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
-    "SPEC — dsh-l10n-overrides.md",
     "ROADMAP.md",
     "LICENSE"
   ],
