@@ -2,11 +2,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
+import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
 import { afterEach, describe, expect, it } from "vitest";
 import { KvPersistService } from "../../src/service.js";
 import { resolveKvPersistConfig } from "../../src/config.js";
 import type { KvPersistConfig } from "../../src/config.js";
-import { silentLogger } from "../fixtures/harness.js";
+import { consume, silentLogger } from "../fixtures/harness.js";
 import { FakeKvBackend } from "../fixtures/fake-backend.js";
 
 const roots: string[] = [];
@@ -31,6 +32,23 @@ afterEach(async () => {
 function buildService(config: KvPersistConfig, backend = new FakeKvBackend()): KvPersistService {
   const ctx = new Context();
   return new KvPersistService(ctx, config, { backend, logger: silentLogger });
+}
+
+const finish: StreamChunk = { type: "finish", reason: { kind: "stop" } };
+
+function dispatchStream(
+  ctx: Context,
+  provider: string,
+  options: Partial<GenerateOptions> = {},
+): AsyncIterable<StreamChunk> {
+  const request: GenerateOptions = { provider, model: "qwen-test", messages: [], ...options };
+  const stream = ctx.waterfall(ctx as never, "llm/stream", request, async function* () {
+    yield { type: "text-delta", index: 0, text: "hello" } satisfies StreamChunk;
+    yield finish;
+  });
+  expect(stream).not.toBeInstanceOf(Promise);
+  expect(stream[Symbol.asyncIterator]).toBeTypeOf("function");
+  return stream;
 }
 
 describe("KvPersistService (SPEC §11, §37, §47)", () => {
@@ -58,6 +76,38 @@ describe("KvPersistService (SPEC §11, §37, §47)", () => {
   it("coordinates nothing when disabled", async () => {
     const service = buildService(await tempConfig({ enabled: false }));
     expect(service.handles("local-qwen")).toBe(false);
+  });
+
+  it("returns an async iterable synchronously for unmanaged providers", async () => {
+    const ctx = new Context();
+    new KvPersistService(ctx, await tempConfig({ providers: [] }), {
+      backend: new FakeKvBackend(),
+      logger: silentLogger,
+    });
+
+    await expect(consume(dispatchStream(ctx, "zai"))).resolves.toEqual([
+      { type: "text-delta", index: 0, text: "hello" },
+      finish,
+    ]);
+  });
+
+  it("returns an async iterable synchronously while preparing managed providers", async () => {
+    const ctx = new Context();
+    const backend = new FakeKvBackend();
+    new KvPersistService(ctx, await tempConfig({ providers: ["local-qwen"] }), {
+      backend,
+      logger: silentLogger,
+    });
+
+    const stream = dispatchStream(ctx, "local-qwen", {
+      sessionId: "session-stream-contract" as GenerateOptions["sessionId"],
+    });
+    expect(backend.eraseCount).toBe(0);
+    await expect(consume(stream)).resolves.toEqual([
+      { type: "text-delta", index: 0, text: "hello" },
+      finish,
+    ]);
+    expect(backend.eraseCount).toBe(1);
   });
 
   it("reports a status snapshot (SPEC §47)", async () => {

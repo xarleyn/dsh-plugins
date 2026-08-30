@@ -307,18 +307,22 @@ export class KvPersistService extends Service {
    * `next()` is invoked exactly once, after preparation, inside the slot
    * lease; chunks pass through unchanged and unbuffered.
    */
-  private async handleStream(
+  private handleStream(
     options: GenerateOptions,
     next: () => AsyncIterable<StreamChunk>,
-  ): Promise<AsyncIterable<StreamChunk>> {
+  ): AsyncIterable<StreamChunk> {
     if (!this.handles(options.provider)) return next();
-    return this.coordinator.runSessionRequest({
-      sessionId: options.sessionId === undefined ? null : String(options.sessionId),
-      provider: options.provider,
-      model: options.model,
-      purpose: options.purpose,
-      next,
-    });
+    const coordinator = this.coordinator;
+    return (async function* (): AsyncIterable<StreamChunk> {
+      const stream = await coordinator.runSessionRequest({
+        sessionId: options.sessionId === undefined ? null : String(options.sessionId),
+        provider: options.provider,
+        model: options.model,
+        purpose: options.purpose,
+        next,
+      });
+      yield* stream;
+    })();
   }
 
   private async checkMetadataWritable(): Promise<{ name: string; ok: boolean; detail: string }> {
