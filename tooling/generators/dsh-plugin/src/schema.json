@@ -13,7 +13,7 @@
       }
     },
     "client": {
-      "description": "Include a client-side entrypoint.",
+      "description": "Include a ModuleLoader-compatible browser client entrypoint.",
       "type": "boolean",
       "default": false
     },

@@ -31,7 +31,9 @@ export default async function generatePlugin(
   }
 
   if (!/^@[a-z0-9][a-z0-9._-]*$/.test(packageScope)) {
-    throw new Error("Scope must be a valid lowercase npm scope such as @yadsh.");
+    throw new Error(
+      "Scope must be a valid lowercase npm scope such as @yadsh.",
+    );
   }
 
   if (tree.exists(projectRoot)) {
@@ -84,9 +86,19 @@ export default async function generatePlugin(
     typescript: "catalog:tooling",
   };
 
+  if (options.client) {
+    devDependencies.tsdown = "catalog:tooling";
+  }
+
+  const lintTargets = [
+    "src",
+    ...(withTests ? ["tests"] : []),
+    ...(options.client ? ["scripts", "tsdown.config.ts"] : []),
+  ];
+
   const scripts: Record<string, string> = {
-    build: "tsc",
-    lint: withTests ? "eslint src tests" : "eslint src",
+    build: options.client ? "tsc && tsdown" : "tsc",
+    lint: `eslint ${lintTargets.join(" ")}`,
     typecheck: "tsc --noEmit",
   };
 
@@ -95,6 +107,18 @@ export default async function generatePlugin(
     devDependencies.vitest = "catalog:tooling";
     scripts.test = "vitest run";
   }
+
+  if (options.client) {
+    scripts["verify:client"] = "node scripts/verify-client-bundle.mjs";
+  }
+
+  scripts.check = [
+    "pnpm run lint",
+    "pnpm run typecheck",
+    ...(withTests ? ["pnpm run test"] : []),
+    "pnpm run build",
+    ...(options.client ? ["pnpm run verify:client"] : []),
+  ].join(" && ");
 
   tree.write(
     `${projectRoot}/package.json`,
@@ -180,9 +204,70 @@ export { logger };
   if (options.client) {
     tree.write(
       `${projectRoot}/src/client.ts`,
-      `export function initializeClient(): void {
-  // Add browser-only initialization here. Host file logging is intentionally unavailable.
+      `import type { Context } from "@deepseek-ai/cordis";
+
+export function apply(_ctx: Context): void {
+  // Add browser-only Cordis initialization here. Host file logging is intentionally unavailable.
 }
+`,
+    );
+
+    const banner = `window.__ModuleLoader__.load({ id: ${JSON.stringify(packageName)}, factory: (require) => {`;
+    tree.write(
+      `${projectRoot}/tsdown.config.ts`,
+      `import { defineConfig, type UserConfig } from "tsdown";
+
+const CLIENT_EXTERNALS = ["@deepseek-ai/cordis"];
+
+const client = {
+  name: ${JSON.stringify(`${packageName}/client`)},
+  entry: { client: "src/client.ts" },
+  outDir: "lib",
+  format: ["cjs"],
+  platform: "browser",
+  target: "es2022",
+  dts: false,
+  sourcemap: true,
+  clean: false,
+  deps: {
+    neverBundle: CLIENT_EXTERNALS,
+    alwaysBundle: (id: string) => !CLIENT_EXTERNALS.includes(id),
+  },
+  outputOptions: {
+    entryFileNames: "client.js",
+    banner: ${JSON.stringify(banner)},
+    intro: "var module = { exports: {} }; var exports = module.exports;",
+    footer: "return module.exports; } });",
+  },
+} satisfies UserConfig;
+
+export default defineConfig(client);
+`,
+    );
+
+    tree.write(
+      `${projectRoot}/scripts/verify-client-bundle.mjs`,
+      `import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const packageJson = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
+const client = await readFile(
+  new URL("../lib/client.js", import.meta.url),
+  "utf8",
+);
+const expectedRegistration = \`id: \${JSON.stringify(packageJson.name)}\`;
+
+assert.ok(
+  client.includes(expectedRegistration),
+  \`client bundle must register the full package name: \${packageJson.name}\`,
+);
+assert.doesNotMatch(
+  client,
+  /^\\s*export\\s/m,
+  "client bundle must remain a classic ModuleLoader script without ESM exports",
+);
 `,
     );
   }
