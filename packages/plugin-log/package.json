@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-log",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared structured file logging and runtime logger discovery for DSH plugins",
   "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log#readme",
   "bugs": {

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-doc-impact",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Deterministic documentation impact engine for DeepSeek Harness",
   "keywords": [
     "deepseek-harness",

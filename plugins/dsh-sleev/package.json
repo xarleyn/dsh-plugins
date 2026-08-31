@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-sleev",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Sleev routing observability for DeepSeek Harness",
   "repository": {
     "type": "git",

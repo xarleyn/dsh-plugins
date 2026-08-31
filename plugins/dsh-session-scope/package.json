@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-session-scope",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Per-session workspace visibility scopes for DeepSeek Harness.",
   "type": "module",
   "main": "./lib/index.js",
