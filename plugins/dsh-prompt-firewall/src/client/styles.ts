@@ -11,8 +11,7 @@ export const styles: string = `
 .dsh-plugin-card__chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}
 .dsh-plugin-card--open .dsh-plugin-card__chevron{transform:rotate(180deg)}
 .dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}
-.dsh-plugin-card *{box-sizing:border-box}
-.pf-card-status--off{color:var(--dsw-alias-label-tertiary)}
+.pf-body,.pf-body *{box-sizing:border-box}
 .pf-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .pf-section{display:grid;gap:12px}.pf-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.pf-section-title h3{font-size:13px;margin:0}.pf-muted{color:var(--dsw-alias-label-tertiary);font-size:12px;margin:0;line-height:1.5}
 .pf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.pf-field{display:grid;gap:6px}.pf-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}

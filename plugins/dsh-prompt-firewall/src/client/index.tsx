@@ -218,7 +218,7 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
             Prompt hygiene, section policy, and request-level observability.
           </span>
         </span>
-        <span className={`dsh-plugin-card__badge${enabled ? '' : ' pf-card-status--off'}`}>
+        <span className="dsh-plugin-card__badge">
           {enabled ? 'Enabled' : 'Disabled'}
         </span>
         <ChevronDown />

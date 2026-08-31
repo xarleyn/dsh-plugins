@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 import SleevIntegrationService, { name, resolveConfig } from "../lib/index.js";
 import {
   DEFAULT_SLEEV_GATEWAY_URL,
@@ -63,6 +64,9 @@ assert.match(client, /settings\.plugin\.item/u);
 assert.match(client, /key: SETTINGS_NAMESPACE/u);
 assert.match(client, /dsh-plugin-card__name/u);
 assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+verifyPluginCardContract(client, {
+  legacyPatterns: [/\.dsh-sleev-card\{/u],
+});
 assert.doesNotMatch(client, /dsw-alias-border-label-dimmed/u);
 assert.doesNotMatch(client, /⌄/u);
 

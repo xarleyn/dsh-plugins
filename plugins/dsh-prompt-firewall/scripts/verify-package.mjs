@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile, stat } from 'node:fs/promises'
+import { verifyPluginCardContract } from '../../../scripts/verify-plugin-card-contract.mjs'
 
 const root = new URL('../', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('package.json', root), 'utf8'))
@@ -29,8 +30,8 @@ assert.match(patch, /name:\s*"@yadsh\/dsh-prompt-firewall"/u)
 const client = await readFile(new URL('lib/client.js', root), 'utf8')
 assert.match(client, /id:\s*"@yadsh\/dsh-prompt-firewall"/u)
 assert.doesNotMatch(client, /useSyncExternalStore\)\(scope\.subscribe/u)
-assert.match(client, /dsh-plugin-card__name/u)
-assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u)
-assert.doesNotMatch(client, /\.pf-card\{/u)
+verifyPluginCardContract(client, {
+  legacyPatterns: [/\.pf-card\{/u, /pf-card-status--off/u, /\.dsh-plugin-card \*/u],
+})
 
 console.log('built package contract passed')

@@ -9,6 +9,7 @@
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
 
@@ -32,6 +33,9 @@ expectPresent('resetField', "every field needs the composition-layer reset actio
 expectPresent('"unsaved"', "the header must carry the unsaved-changes badge");
 expectPresent('dsh-plugin-card__name', "custom cards must share the standard card shell");
 expectPresent('m3.5 5.25 3.5 3.5 3.5-3.5', "the header must use the standard SVG chevron");
+verifyPluginCardContract(client, {
+  legacyPatterns: [/ddi_card/u],
+});
 expectAbsent('ddi_card', "the outer card shell must use the shared class contract");
 expectAbsent('▾', "font-dependent disclosure glyphs must not replace the SVG chevron");
 

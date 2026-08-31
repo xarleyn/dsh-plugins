@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 import PluginLogUi, { name, resolveConfig } from "../lib/index.js";
 
 const root = new URL("../", import.meta.url);
@@ -42,6 +43,9 @@ assert.match(client, /remote\.pluginLogUi/u);
 assert.doesNotMatch(client, /useSyncExternalStore\)\(scope\.subscribe/u);
 assert.match(client, /dsh-plugin-card__name/u);
 assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+verifyPluginCardContract(client, {
+  legacyPatterns: [/\.plu-card\{/u],
+});
 assert.doesNotMatch(client, /⌄/u);
 
 console.log("verify-package: all gates passed");
