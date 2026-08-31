@@ -137,6 +137,9 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-fs": "catalog:dsh-dev",

@@ -77,6 +77,9 @@
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh"
   },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",

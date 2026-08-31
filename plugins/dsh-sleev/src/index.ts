@@ -5,11 +5,17 @@ import {
   settingsNamespace,
 } from "@deepseek-ai/dsh-settings";
 import {
+  createHostLoggerSink,
+  getPluginLogger,
+  type PluginLogger,
+  type PluginLogLevel,
+} from "@yadsh/dsh-plugin-log";
+import {
   ConfigSchema,
   matchesOptimizedRoute,
   resolveConfig,
 } from "./shared/config.js";
-import type { Config } from "./shared/config.js";
+import type { Config, ResolvedConfig } from "./shared/config.js";
 import type { OptimizerCallTelemetry } from "./shared/telemetry.js";
 import { SLEEV_SETTINGS_NAMESPACE_ID } from "./shared/settings.js";
 import { classifyRequest } from "./host/request-classifier.js";
@@ -17,6 +23,10 @@ import { observeStream } from "./host/stream-observer.js";
 import { CallTelemetryStore } from "./host/telemetry-store.js";
 
 export const name = "dsh-sleev";
+
+function pluginLogLevel(level: ResolvedConfig["logLevel"]): PluginLogLevel {
+  return level === "off" ? "silent" : level;
+}
 
 /** User-editable settings section rendered by the browser client card. */
 export const SLEEV_SETTINGS_NAMESPACE = settingsNamespace(
@@ -35,6 +45,7 @@ export class SleevIntegrationService extends Service {
   static Config = ConfigSchema;
 
   private readonly telemetry: CallTelemetryStore;
+  private readonly logger: PluginLogger;
 
   constructor(ctx: Context, input: Config = {}) {
     super(ctx, "sleev");
@@ -46,7 +57,17 @@ export class SleevIntegrationService extends Service {
       logLevel: resolvedEntry.logLevel,
     };
     let configSource: () => Config = () => entry;
-    this.telemetry = new CallTelemetryStore(ctx.logger, () =>
+    this.logger = getPluginLogger({
+      pluginId: "dsh-sleev",
+      level: pluginLogLevel(resolvedEntry.logLevel),
+      console: "trace",
+      consoleSink: createHostLoggerSink(ctx.logger),
+    });
+    ctx.effect(
+      () => async () => this.logger.close(),
+      "dsh-sleev.logger",
+    );
+    this.telemetry = new CallTelemetryStore(this.logger.child("telemetry"), () =>
       resolveConfig(configSource()),
     );
 
@@ -56,7 +77,14 @@ export class SleevIntegrationService extends Service {
       },
       // Route matching and telemetry policy read through configSource for
       // each operation, so a committed setting needs no re-registration.
-      onChange: () => this.telemetry.reconfigure(),
+      onChange: () => {
+        const config = this.telemetry.reconfigure();
+        this.logger.setLevel(pluginLogLevel(config.logLevel));
+        this.logger.info("telemetry.config.updated", {
+          logLevel: config.logLevel,
+          maxRecentCalls: config.maxRecentCalls,
+        });
+      },
     });
 
     ctx.on(
@@ -71,9 +99,10 @@ export class SleevIntegrationService extends Service {
     );
 
     if (resolvedEntry.logLevel !== "off") {
-      ctx.logger.info(
-        `dsh-sleev: observer active ${JSON.stringify({ routes: resolvedEntry.routes, routePrefixes: resolvedEntry.routePrefixes })}`,
-      );
+      this.logger.info("plugin.ready", {
+        routes: resolvedEntry.routes,
+        routePrefixes: resolvedEntry.routePrefixes,
+      });
     }
   }
 

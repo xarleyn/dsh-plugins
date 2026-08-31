@@ -1,6 +1,11 @@
 import type { Context } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import {
+  createHostLoggerSink,
+  getPluginLogger,
+  type PluginLogger,
+} from "@yadsh/dsh-plugin-log";
 import { DEFAULT_MAX_DRAFTS_PER_WORKSPACE } from "./shared/constants.js";
 import type {
   CreateDraftRequest,
@@ -34,9 +39,19 @@ export class DraftSessionsService extends TypertRemoteService {
   });
 
   readonly store: DraftStore;
+  private readonly logger: PluginLogger;
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, "draftSessions");
+    const rootLogger = getPluginLogger({
+      pluginId: "dsh-draft-sessions",
+      consoleSink: createHostLoggerSink(ctx.logger),
+    });
+    this.logger = rootLogger.child("store");
+    ctx.effect(
+      () => async () => rootLogger.close(),
+      "dsh-draft-sessions.logger",
+    );
     this.store = new DraftStore({
       ...(config.storagePath === undefined || config.storagePath.trim() === ""
         ? {}
@@ -44,26 +59,42 @@ export class DraftSessionsService extends TypertRemoteService {
       maxDraftsPerWorkspace:
         config.maxDraftsPerWorkspace ?? DEFAULT_MAX_DRAFTS_PER_WORKSPACE,
     });
+    rootLogger.info("plugin.ready", {
+      maxDraftsPerWorkspace: this.store.maxDraftsPerWorkspace,
+    });
   }
 
-  list(request: ListDraftsRequest): Promise<DraftSession[]> {
-    return this.store.list(request);
+  async list(request: ListDraftsRequest): Promise<DraftSession[]> {
+    const drafts = await this.store.list(request);
+    this.logger.debug("draft.listed", { count: drafts.length });
+    return drafts;
   }
 
-  create(request: CreateDraftRequest): Promise<DraftSession> {
-    return this.store.create(request);
+  async create(request: CreateDraftRequest): Promise<DraftSession> {
+    const draft = await this.store.create(request);
+    this.logger.info("draft.created", { state: draft.state });
+    return draft;
   }
 
-  update(request: UpdateDraftRequest): Promise<DraftSession> {
-    return this.store.update(request);
+  async update(request: UpdateDraftRequest): Promise<DraftSession> {
+    const draft = await this.store.update(request);
+    this.logger.info("draft.updated", { revision: draft.revision, state: draft.state });
+    return draft;
   }
 
   async delete(request: DeleteDraftRequest): Promise<DeleteDraftResult> {
-    return { deleted: await this.store.delete(request) };
+    const deleted = await this.store.delete(request);
+    this.logger.info("draft.deleted", { deleted });
+    return { deleted };
   }
 
-  rebind(request: RebindDraftRequest): Promise<DraftSession> {
-    return this.store.rebind(request);
+  async rebind(request: RebindDraftRequest): Promise<DraftSession> {
+    const draft = await this.store.rebind(request);
+    this.logger.info("draft.rebound", {
+      bound: draft.sessionId !== null,
+      revision: draft.revision,
+    });
+    return draft;
   }
 }
 

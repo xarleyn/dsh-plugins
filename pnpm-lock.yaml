@@ -293,6 +293,9 @@ importers:
 
   plugins/dsh-draft-sessions:
     dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
       zod:
         specifier: ^4.4.3
         version: 4.5.2
@@ -405,6 +408,10 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   plugins/dsh-l10n-overrides:
+    dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
@@ -503,6 +510,9 @@ importers:
 
   plugins/dsh-prompt-firewall:
     dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
       zod:
         specifier: ^4.4.3
         version: 4.5.2
@@ -563,6 +573,10 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   plugins/dsh-session-scope:
+    dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
@@ -605,6 +619,10 @@ importers:
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
   plugins/dsh-sleev:
+    dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev

@@ -2,6 +2,11 @@ import { Context } from '@deepseek-ai/cordis'
 import type { AssembledSection, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import {
+  createHostLoggerSink,
+  getPluginLogger,
+  type PluginLogger,
+} from '@yadsh/dsh-plugin-log'
 import { AuditStore } from './audit.js'
 import { ConfigSchema, resolveConfig } from './config.js'
 import { applyFirewall } from './firewall.js'
@@ -53,9 +58,19 @@ export class PromptFirewall extends TypertRemoteService implements PromptFirewal
   private compiledRules
   private readonly audits: AuditStore
   private readonly metrics = new FirewallMetrics()
+  private readonly logger: PluginLogger
 
   constructor(ctx: Context, config: PromptFirewallConfig = {}) {
     super(ctx, 'promptFirewall', { namespace: 'promptFirewall' })
+    this.logger = getPluginLogger({
+      pluginId: 'dsh-prompt-firewall',
+      console: 'trace',
+      consoleSink: createHostLoggerSink(ctx.logger),
+    })
+    ctx.effect(
+      () => async () => this.logger.close(),
+      'dsh-prompt-firewall.logger',
+    )
     this.entryConfig = structuredClone(config)
     this.configSource = () => this.entryConfig
     this.resolvedConfig = resolveConfig(config)
@@ -89,10 +104,15 @@ export class PromptFirewall extends TypertRemoteService implements PromptFirewal
         config: this.resolvedConfig,
         auditStore: this.audits,
         metrics: this.metrics,
-        logger: ctx.logger,
+        logger: this.logger,
         evaluate: section => evaluateSection(section, this.compiledRules),
       })
     }, { prepend: true })
+
+    this.logger.info('plugin.ready', {
+      enabled: this.resolvedConfig.enabled,
+      mode: this.resolvedConfig.mode,
+    })
   }
 
   inspectLast(): PromptAuditResult | null {
@@ -170,6 +190,10 @@ export class PromptFirewall extends TypertRemoteService implements PromptFirewal
       this.resolvedConfig.audit.historySize,
       this.resolvedConfig.audit.highlightNewSections,
     )
+    this.logger.info('firewall.rules.reloaded', {
+      enabled: this.resolvedConfig.enabled,
+      mode: this.resolvedConfig.mode,
+    })
   }
 }
 

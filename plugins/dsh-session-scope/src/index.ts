@@ -16,6 +16,7 @@
 import { FsError } from "@deepseek-ai/dsh-fs";
 import { WIDER_MODES } from "@deepseek-ai/dsh-sandbox";
 import { KNOWN_SESSION_EVENT_TYPES } from "@deepseek-ai/dsh-session";
+import { createHostLoggerSink, getPluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   MODE,
   SELECTION_EVENT,
@@ -453,6 +454,10 @@ async function handleWorkspaceScope(invocation, ctx) {
  */
 export function apply(ctx) {
   const disposers = [];
+  const logger = getPluginLogger({
+    pluginId: "dsh-session-scope",
+    consoleSink: createHostLoggerSink(ctx.logger ?? console),
+  });
   const resolvePolicy = (request = {}) => ctx.sandboxPolicy?.resolve(request);
   const processActivity = new SessionScopeProcessActivity();
   const toolAdapters = new ScopeToolAdapterRegistry();
@@ -461,6 +466,11 @@ export function apply(ctx) {
   const provider = ctx.get("sandbox");
   const isolatedBackendReady = detectBwrapIsolation(provider, fallbackWorkspaceRoot);
   const scopeCapabilities = getScopeCapabilities(process.platform, isolatedBackendReady);
+  logger.info("plugin.ready", {
+    focused: scopeCapabilities.focused,
+    isolated: scopeCapabilities.isolated,
+    isolatedBackend: scopeCapabilities.isolatedBackend,
+  });
 
   // Typert Remote is a non-durable read boundary for the directory picker.
   // The feature probe keeps lightweight unit harnesses usable without
@@ -654,7 +664,7 @@ export function apply(ctx) {
     });
   });
 
-  return () => {
+  return async () => {
     for (let index = disposers.length - 1; index >= 0; index -= 1) {
       try {
         disposers[index]();
@@ -662,6 +672,7 @@ export function apply(ctx) {
         /* restore is best-effort on teardown */
       }
     }
+    await logger.close();
   };
 }
 

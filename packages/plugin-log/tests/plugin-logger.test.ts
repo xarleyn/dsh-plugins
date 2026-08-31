@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  createHostLoggerSink,
   createPluginLogger,
   getPluginLogger,
   getRegisteredPluginLoggers,
@@ -56,6 +57,47 @@ describe("isPluginLogFormat", () => {
     expect(isPluginLogFormat("json")).toBe(true);
     expect(isPluginLogFormat("text")).toBe(true);
     expect(isPluginLogFormat("pretty")).toBe(false);
+  });
+});
+
+describe("createHostLoggerSink", () => {
+  it("maps plugin severities to the four-level host logger", () => {
+    const calls: string[] = [];
+    const sink = createHostLoggerSink({
+      debug: (message) => calls.push(`debug:${message}`),
+      info: (message) => calls.push(`info:${message}`),
+      warn: (message) => calls.push(`warn:${message}`),
+      error: (message) => calls.push(`error:${message}`),
+    });
+
+    sink("trace", "trace message");
+    sink("debug", "debug message");
+    sink("info", "info message");
+    sink("warn", "warn message");
+    sink("error", "error message");
+    sink("fatal", "fatal message");
+
+    expect(calls).toEqual([
+      "debug:trace message",
+      "debug:debug message",
+      "info:info message",
+      "warn:warn message",
+      "error:error message",
+      "error:fatal message",
+    ]);
+  });
+
+  it("falls back to info when the host has no debug method", () => {
+    const calls: string[] = [];
+    const sink = createHostLoggerSink({
+      info: (message) => calls.push(message),
+      warn() {},
+      error() {},
+    });
+
+    sink("debug", "debug message");
+
+    expect(calls).toEqual(["debug message"]);
   });
 });
 

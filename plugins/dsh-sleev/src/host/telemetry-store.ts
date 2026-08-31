@@ -11,8 +11,8 @@ import { deriveUsage, normalizeUsage } from "./usage.js";
 
 /** Minimal logger face used by Cordis and isolated unit tests. */
 export interface TelemetryLogger {
-  debug(message: string): void;
-  info(message: string): void;
+  debug(event: string, fields?: Record<string, unknown>): void;
+  info(event: string, fields?: Record<string, unknown>): void;
 }
 
 /** Mutable handle kept only for the duration of a streaming call. */
@@ -53,9 +53,12 @@ export class CallTelemetryStore {
     let finished = false;
 
     if (startConfig.logLevel === "debug") {
-      this.logger.debug(
-        `dsh-sleev: call-start ${JSON.stringify({ callId, provider: options.provider, model: options.model, kind, sessionId: options.sessionId })}`,
-      );
+      this.logger.debug("sleev.call.start", {
+        callId,
+        provider: options.provider,
+        model: options.model,
+        kind,
+      });
     }
 
     return {
@@ -87,9 +90,19 @@ export class CallTelemetryStore {
         this.completed.push(telemetry);
         const finishConfig = this.reconfigure();
         if (finishConfig.logLevel !== "off") {
-          const message = `dsh-sleev: call-end ${JSON.stringify(telemetry)}`;
-          if (finishConfig.logLevel === "debug") this.logger.debug(message);
-          else this.logger.info(message);
+          const fields = {
+            callId: telemetry.callId,
+            provider: telemetry.provider,
+            model: telemetry.model,
+            kind: telemetry.kind,
+            durationMs: telemetry.durationMs,
+            ...(telemetry.providerUsage === undefined
+              ? {}
+              : { providerUsage: telemetry.providerUsage, derived: telemetry.derived }),
+            result: telemetry.result,
+          };
+          if (finishConfig.logLevel === "debug") this.logger.debug("sleev.call.end", fields);
+          else this.logger.info("sleev.call.end", fields);
         }
       },
     };

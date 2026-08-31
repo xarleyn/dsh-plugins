@@ -79,12 +79,20 @@ describe("plugin log UI integration", () => {
     expect(created.level).toBe("info");
     expect(created.format).toBe("text");
     expect(ctx.pluginLogUi.inspect()).toEqual({
-      consumers: [{
-        pluginId: "dsh-late-logger",
-        level: "info",
-        format: "text",
-        instances: 1,
-      }],
+      consumers: [
+        {
+          pluginId: "dsh-late-logger",
+          level: "info",
+          format: "text",
+          instances: 1,
+        },
+        {
+          pluginId: "dsh-plugin-log-ui",
+          level: "info",
+          format: "text",
+          instances: 1,
+        },
+      ],
     });
   });
 

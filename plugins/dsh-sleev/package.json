@@ -95,7 +95,9 @@
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "react": "^18.2.0"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",

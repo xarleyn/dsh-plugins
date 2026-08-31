@@ -2,11 +2,14 @@ import { Context } from "@deepseek-ai/cordis";
 import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
+  createHostLoggerSink,
+  getPluginLogger,
   getRegisteredPluginLoggers,
   setPluginLogFormat,
   setPluginLogLevel,
   subscribePluginLoggerRegistry,
 } from "@yadsh/dsh-plugin-log";
+import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
 import type {
   PluginLogConsumerSnapshot,
@@ -34,9 +37,18 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
 
   private configSource: () => PluginLogUiConfig;
   private applying = false;
+  private readonly logger: PluginLogger;
 
   constructor(ctx: Context, input: PluginLogUiConfig = {}) {
     super(ctx, "pluginLogUi", { namespace: "pluginLogUi" });
+    this.logger = getPluginLogger({
+      pluginId: "dsh-plugin-log-ui",
+      consoleSink: createHostLoggerSink(ctx.logger),
+    });
+    ctx.effect(
+      () => async () => this.logger.close(),
+      "dsh-plugin-log-ui.logger",
+    );
     const entry = resolveConfig(input);
     this.configSource = () => entry;
 
@@ -52,6 +64,7 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
       "dsh-plugin-log-ui.registry",
     );
     this.applyPolicy();
+    this.logger.info("plugin.ready");
   }
 
   getConfig(): ResolvedPluginLogUiConfig {
@@ -93,6 +106,11 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
           config.levels[logger.pluginId] ?? config.defaultLevel,
         );
       }
+      this.logger.debug("logging.policy.applied", {
+        consumers: seen.size,
+        defaultLevel: config.defaultLevel,
+        format: config.format,
+      });
     } finally {
       this.applying = false;
     }

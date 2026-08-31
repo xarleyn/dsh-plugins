@@ -3,4 +3,5 @@
  */
 
 export * from "./dsh-home.js";
+export * from "./host-logger.js";
 export * from "./plugin-logger.js";

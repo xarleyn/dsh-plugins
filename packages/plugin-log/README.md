@@ -6,6 +6,7 @@ discovery.
 
 ```ts
 import {
+  createHostLoggerSink,
   getPluginLogger,
   getRegisteredPluginLoggers,
   setPluginLogFormat,
@@ -13,7 +14,10 @@ import {
   subscribePluginLoggerRegistry,
 } from "@yadsh/dsh-plugin-log";
 
-const log = getPluginLogger({ pluginId: "dsh-example" });
+const log = getPluginLogger({
+  pluginId: "dsh-example",
+  consoleSink: createHostLoggerSink(ctx.logger),
+});
 log.info("example.ready");
 
 const unsubscribe = subscribePluginLoggerRegistry((loggers) => {
