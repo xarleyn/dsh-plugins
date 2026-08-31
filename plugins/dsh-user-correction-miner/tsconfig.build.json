@@ -1,0 +1,8 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/base",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "lib"
+  },
+  "include": ["src"]
+}
