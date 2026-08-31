@@ -1,3 +1,16 @@
+## 0.6.0 (2026-08-31)
+
+### 🚀 Features
+
+- Add shared structured plugin logging and its settings UI, expose session-scope ([cea45a5](https://github.com/xarleyn/dsh-plugins/commit/cea45a5))
+  reads through the remote API, and align plugin configuration cards with the
+  native DSH settings UI. Preserve asynchronous KV streams while migrating
+  logging consumers to the shared package.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.1 (2026-08-30)
 
 ### 🩹 Fixes

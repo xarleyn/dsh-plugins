@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-kv-persist",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Persistent KV-cache/session-state manager for DeepSeek Harness (llama.cpp slot snapshots)",
   "keywords": [
     "deepseek",

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-log-ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DSH settings UI for shared plugin logging levels and file format",
   "repository": {
     "type": "git",
