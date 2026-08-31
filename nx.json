@@ -15,7 +15,9 @@
       "packages/plugin-log"
     ],
     "projectsRelationship": "independent",
-    "versionPlans": true,
+    "versionPlans": {
+      "ignorePatternsForPlanCheck": ["**/CHANGELOG.md"]
+    },
     "version": {
       "updateDependents": "always"
     },
