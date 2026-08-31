@@ -276,6 +276,14 @@ describe("Nx release commands", () => {
     assert.match(workflow, /npm publish "\$\{args\[@\]\}"/u);
     assert.match(
       workflow,
+      /if npm view "\$\{name\}@\$\{version\}" version --json > \/dev\/null 2>&1; then/u,
+    );
+    assert.doesNotMatch(
+      workflow,
+      /if \[\[ "\$\{\{ inputs\.dry_run \}\}" == "false" \]\] && npm view/u,
+    );
+    assert.match(
+      workflow,
       /tarball_path="\$GITHUB_WORKSPACE\/tarballs\/\$tarball"/u,
     );
     assert.match(workflow, /\[\[ ! -f "\$tarball_path" \]\]/u);

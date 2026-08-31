@@ -150,7 +150,7 @@ jobs:
         shell: bash
         run: |
           while IFS=$'\t' read -r name version _directory tarball; do
-            if [[ "${{ inputs.dry_run }}" == "false" ]] && npm view "${name}@${version}" version --json > /dev/null 2>&1; then
+            if npm view "${name}@${version}" version --json > /dev/null 2>&1; then
               echo "Skipping ${name}@${version}: already published"
               continue
             fi
