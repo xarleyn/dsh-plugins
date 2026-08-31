@@ -272,12 +272,18 @@ importers:
       '@types/picomatch':
         specifier: ^4.0.2
         version: 4.0.3
+      '@types/react':
+        specifier: catalog:frontend-dev
+        version: 18.3.28
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
+      tsdown:
+        specifier: catalog:tooling
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.22.4)(typescript@7.0.2)
       typescript:
         specifier: catalog:plugin-tooling
         version: 7.0.2

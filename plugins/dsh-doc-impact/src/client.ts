@@ -1,6 +1,7 @@
-/* global window, document */
-// dsh-doc-impact browser client source. The build copies this hand-written CJS
-// factory to lib/client.js, which the DSH web ModuleLoader serves at
+import { createElement, useState } from "react";
+
+// dsh-doc-impact browser client source. tsdown wraps this module in the
+// classic factory served by the DSH web ModuleLoader at
 // /plugins/@yadsh/dsh-doc-impact/client.js.
 //
 // Registers the plugin's card into the shared "Plugins → Plugin Configuration"
@@ -18,27 +19,19 @@
 //     is invalid or a save is in flight); Discard drops staged drafts;
 //   - nothing writes before Save.
 //
-// Pure browser code: no DSH host imports; `require` is the ModuleLoader's
-// resolver (react), and the locale / settingsScope services are consumed
+// Pure browser code: no DSH host imports; React stays external and is resolved
+// by the ModuleLoader, while locale / settingsScope services are consumed
 // optionally with built-in fallbacks so headless or older profiles stay safe.
 
-window.__ModuleLoader__.load({
-  id: "@yadsh/dsh-doc-impact",
-  factory: (require) => {
-    var module = { exports: {} };
-    var React = require("react");
-    var createElement = React.createElement;
-    var useState = React.useState;
-
     //#region settings model
-    var SETTINGS_NS = "doc-impact";
-    var LOCALE_NS = "dsh-doc-impact";
+    const SETTINGS_NS = "doc-impact";
+    const LOCALE_NS = "dsh-doc-impact";
 
-    var MODE_OPTIONS = ["remind", "require-review", "require-resolution", "require-update"];
-    var ON_LIMIT_OPTIONS = ["allow", "warn", "error"];
+    const MODE_OPTIONS = ["remind", "require-review", "require-resolution", "require-update"];
+    const ON_LIMIT_OPTIONS = ["allow", "warn", "error"];
 
     /** Field specs: kind text/number render as inputs, choice/bool as selects. */
-    var FIELDS = [
+    const FIELDS = [
       { field: "enabled", kind: "bool", fallback: true },
       { field: "configFile", kind: "text", fallback: ".dsh/doc-impact.yml" },
       { field: "mode", kind: "choice", options: MODE_OPTIONS, fallback: "remind" },
@@ -48,29 +41,29 @@ window.__ModuleLoader__.load({
       { field: "debug", kind: "bool", fallback: false }
     ];
 
-    function formatText(value) {
+    function formatText(value: unknown): string {
       return typeof value === "string" ? value : "";
     }
 
-    function formatNumber(value) {
+    function formatNumber(value: unknown): string {
       return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
     }
 
-    function parseText(text) {
-      var trimmed = text.trim();
+    function parseText(text: string): { kind: "clear" } | { kind: "set"; value: string } {
+      const trimmed = text.trim();
       return trimmed === "" ? { kind: "clear" } : { kind: "set", value: trimmed };
     }
 
-    function parseNumber(text) {
-      var trimmed = text.trim();
+    function parseNumber(text: string): { kind: "clear" } | { kind: "set"; value: number } | undefined {
+      const trimmed = text.trim();
       if (trimmed === "") return { kind: "clear" };
       if (!/^\d+$/u.test(trimmed)) return undefined;
       return { kind: "set", value: parseInt(trimmed, 10) };
     }
 
-    function specOf(field) {
-      for (var i = 0; i < FIELDS.length; i++) {
-        if (FIELDS[i].field === field) return FIELDS[i];
+    function specOf(field: string): any {
+      for (let i = 0; i < FIELDS.length; i++) {
+        if (FIELDS[i]!.field === field) return FIELDS[i]!;
       }
       throw new Error("doc-impact card has no field " + field);
     }
@@ -81,7 +74,7 @@ window.__ModuleLoader__.load({
      * field-granular set/unset calls in staging order; a save that did not
      * land keeps its drafts.
      */
-    function SettingsForm(scope) {
+    const SettingsForm: any = function SettingsForm(this: any, scope: any) {
       this.scope = scope;
       this.staged = new Map();
       this.listeners = new Set();
@@ -91,14 +84,14 @@ window.__ModuleLoader__.load({
       scope.subscribe(() => {
         this.publish();
       });
-    }
+    };
 
     SettingsForm.prototype.getSnapshot = function () {
       if (this.snapshotCache === undefined) this.snapshotCache = this.projection();
       return this.snapshotCache;
     };
 
-    SettingsForm.prototype.subscribe = function (listener) {
+    SettingsForm.prototype.subscribe = function (listener: () => void) {
       this.listeners.add(listener);
       return () => {
         this.listeners.delete(listener);
@@ -107,7 +100,7 @@ window.__ModuleLoader__.load({
 
     SettingsForm.prototype.publish = function () {
       this.snapshotCache = undefined;
-      this.listeners.forEach(function (listener) {
+      this.listeners.forEach(function (listener: () => void) {
         listener();
       });
     };
@@ -116,13 +109,13 @@ window.__ModuleLoader__.load({
       return this.scope.getSnapshot();
     };
 
-    SettingsForm.prototype.sectionValue = function (field) {
-      var value = this.snapshotOf().value;
+    SettingsForm.prototype.sectionValue = function (field: string) {
+      const value = this.snapshotOf().value;
       return value !== undefined && value !== null && Object.hasOwn(value, field) ? value[field] : undefined;
     };
 
-    SettingsForm.prototype.baseValue = function (field) {
-      var base = this.snapshotOf().base;
+    SettingsForm.prototype.baseValue = function (field: string) {
+      const base = this.snapshotOf().base;
       return base !== undefined && base !== null && Object.hasOwn(base, field) ? base[field] : undefined;
     };
 
@@ -130,22 +123,22 @@ window.__ModuleLoader__.load({
       return this.snapshotOf().user;
     };
 
-    SettingsForm.prototype.stored = function (field) {
-      var user = this.userLayer();
+    SettingsForm.prototype.stored = function (field: string) {
+      const user = this.userLayer();
       return user !== undefined && user !== null && Object.hasOwn(user, field);
     };
 
     /** The value a staged clear would reveal: composition base over schema default. */
-    SettingsForm.prototype.clearedValue = function (field) {
-      var spec = specOf(field);
-      var base = this.baseValue(field);
+    SettingsForm.prototype.clearedValue = function (field: string) {
+      const spec = specOf(field);
+      const base = this.baseValue(field);
       return base === undefined ? spec.fallback : base;
     };
 
     SettingsForm.prototype.plan = function () {
-      var plan = [];
-      this.staged.forEach((staged, field) => {
-        var spec = specOf(field);
+      const plan: any[] = [];
+      this.staged.forEach((staged: any, field: string) => {
+        const spec = specOf(field);
         if (staged.op === "clear") {
           if (this.stored(field)) {
             plan.push({
@@ -157,7 +150,7 @@ window.__ModuleLoader__.load({
         }
         if (spec.kind === "text" || spec.kind === "number") {
           if (staged.text === (spec.kind === "number" ? formatNumber(this.sectionValue(field)) : formatText(this.sectionValue(field)))) return;
-          var write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
+          const write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
           if (write === undefined) {
             plan.push({ field: field, run: undefined });
           } else if (write.kind === "clear") {
@@ -166,9 +159,10 @@ window.__ModuleLoader__.load({
               run: () => this.runClear(field)
             });
           } else {
+            const value = write.value;
             plan.push({
               field: field,
-              run: () => this.runSet(field, write.value)
+              run: () => this.runSet(field, value)
             });
           }
           return;
@@ -183,25 +177,25 @@ window.__ModuleLoader__.load({
       return plan;
     };
 
-    SettingsForm.prototype.runClear = async function (field) {
+    SettingsForm.prototype.runClear = async function (field: string) {
       await this.scope.unset(field);
       return !this.stored(field);
     };
 
-    SettingsForm.prototype.runSet = async function (field, value) {
+    SettingsForm.prototype.runSet = async function (field: string, value: unknown) {
       await this.scope.set(field, value);
-      var user = this.userLayer();
+      const user = this.userLayer();
       return user !== undefined && user !== null && user[field] === value;
     };
 
     SettingsForm.prototype.shell = function () {
-      var snapshot = this.snapshotOf();
-      var plan = this.plan();
+      const snapshot = this.snapshotOf();
+      const plan = this.plan();
       return {
         available: snapshot.status === "ready",
         writable: snapshot.writable,
         dirty: plan.length > 0,
-        invalid: plan.some(function (item) {
+        invalid: plan.some(function (item: any) {
           return item.run === undefined;
         }),
         saving: this.saving,
@@ -209,11 +203,11 @@ window.__ModuleLoader__.load({
       };
     };
 
-    SettingsForm.prototype.field = function (field) {
-      var spec = specOf(field);
-      var staged = this.staged.get(field);
+    SettingsForm.prototype.field = function (field: string) {
+      const spec = specOf(field);
+      const staged = this.staged.get(field);
       if (staged !== undefined && staged.op === "clear") {
-        var cleared = this.clearedValue(field);
+        const cleared = this.clearedValue(field);
         return {
           text: spec.kind === "number" ? formatNumber(cleared) : formatText(cleared),
           value: cleared,
@@ -225,7 +219,7 @@ window.__ModuleLoader__.load({
         return { text: "", value: staged.value, overridden: true, invalid: false };
       }
       if (staged !== undefined && staged.op === "set") {
-        var write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
+        const write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
         return {
           text: staged.text,
           value: undefined,
@@ -233,7 +227,7 @@ window.__ModuleLoader__.load({
           invalid: write === undefined
         };
       }
-      var current = this.sectionValue(field);
+      const current = this.sectionValue(field);
       return {
         text: spec.kind === "number" ? formatNumber(current) : formatText(current),
         value: current === undefined ? spec.fallback : current,
@@ -242,7 +236,7 @@ window.__ModuleLoader__.load({
       };
     };
 
-    SettingsForm.prototype.stage = function (field, staged) {
+    SettingsForm.prototype.stage = function (field: string, staged: any) {
       this.staged.set(field, staged);
       this.failed = false;
       this.publish();
@@ -250,16 +244,16 @@ window.__ModuleLoader__.load({
 
     SettingsForm.prototype.actions = function () {
       return {
-        edit: (field, text) => {
+        edit: (field: string, text: string) => {
           this.stage(field, { op: "set", text: text });
         },
-        choose: (field, value) => {
+        choose: (field: string, value: unknown) => {
           this.stage(field, { op: "set", value: value });
         },
-        resetField: (field) => {
-          var spec = specOf(field);
+        resetField: (field: string) => {
+          const spec = specOf(field);
           if (spec.kind === "text" || spec.kind === "number") {
-            var cleared = this.clearedValue(field);
+            const cleared = this.clearedValue(field);
             this.stage(field, {
               op: "set",
               text: spec.kind === "number" ? formatNumber(cleared) : formatText(cleared),
@@ -282,18 +276,18 @@ window.__ModuleLoader__.load({
     };
 
     SettingsForm.prototype.save = async function () {
-      var plan = this.plan();
-      var writes = plan.filter(function (item) {
+      const plan = this.plan();
+      const writes = plan.filter(function (item: any) {
         return item.run !== undefined;
       });
       if (plan.length === 0 || this.saving || writes.length !== plan.length) return;
       this.saving = true;
       this.failed = false;
       this.publish();
-      var landed = true;
-      for (var i = 0; i < writes.length; i++) {
+      let landed = true;
+      for (let i = 0; i < writes.length; i++) {
         try {
-          var ok = await writes[i].run();
+          const ok = await writes[i].run();
           landed = ok === true && landed;
         } catch (_error) {
           landed = false;
@@ -306,10 +300,10 @@ window.__ModuleLoader__.load({
     };
 
     SettingsForm.prototype.projection = function () {
-      var shell = this.shell();
-      var fields = {};
-      for (var i = 0; i < FIELDS.length; i++) {
-        fields[FIELDS[i].field] = this.field(FIELDS[i].field);
+      const shell = this.shell();
+      const fields: Record<string, any> = {};
+      for (let i = 0; i < FIELDS.length; i++) {
+        fields[FIELDS[i]!.field] = this.field(FIELDS[i]!.field);
       }
       return Object.assign({}, shell, { fields: fields });
     };
@@ -319,7 +313,7 @@ window.__ModuleLoader__.load({
         hooks: {
           docImpactCard: {
             getSnapshot: () => this.getSnapshot(),
-            subscribe: (listener) => this.subscribe(listener)
+            subscribe: (listener: () => void) => this.subscribe(listener)
           }
         },
         edit: this.actions().edit,
@@ -332,7 +326,7 @@ window.__ModuleLoader__.load({
     //#endregion
 
     //#region styles
-    var CSS = [
+    const CSS = [
       ".dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
       ".dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}",
       ".dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
@@ -370,7 +364,7 @@ window.__ModuleLoader__.load({
       ".ddi_invalid{color:var(--dsw-alias-label-error);margin:6px 0 0;font-size:12px;line-height:1.5}"
     ].join("\n");
     if (typeof document !== "undefined" && document.querySelector('style[data-plugin-css="dsh-doc-impact/ConfigCard.module.css"]') === null) {
-      var tag = document.createElement("style");
+      const tag = document.createElement("style");
       tag.dataset.plugin = "dsh-doc-impact";
       tag.dataset.pluginCss = "dsh-doc-impact/ConfigCard.module.css";
       tag.textContent = CSS;
@@ -379,7 +373,7 @@ window.__ModuleLoader__.load({
     //#endregion
 
     //#region components
-    function FieldHead(t, id, labelKey, state, disabled, onReset) {
+    function FieldHead(t: any, id: string, labelKey: string, state: any, disabled: boolean, onReset: () => void) {
       return createElement(
         "div",
         { className: "ddi_head" },
@@ -399,8 +393,8 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function TextField(props) {
-      var state = props.state;
+    function TextField(props: any) {
+      const state = props.state;
       return createElement(
         "div",
         { className: "ddi_field" },
@@ -411,7 +405,7 @@ window.__ModuleLoader__.load({
           type: "text",
           value: state.text,
           disabled: props.disabled,
-          onChange: function (event) {
+          onChange: function (event: any) {
             props.onEdit(event.target.value);
           }
         }),
@@ -423,8 +417,8 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function NumberField(props) {
-      var state = props.state;
+    function NumberField(props: any) {
+      const state = props.state;
       return createElement(
         "div",
         { className: "ddi_field" },
@@ -437,7 +431,7 @@ window.__ModuleLoader__.load({
           "aria-invalid": state.invalid ? "true" : undefined,
           value: state.text,
           disabled: props.disabled,
-          onChange: function (event) {
+          onChange: function (event: any) {
             props.onEdit(event.target.value);
           }
         }),
@@ -449,9 +443,9 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function ChoiceField(props) {
-      var state = props.state;
-      var current = state.value === undefined ? props.fallback : state.value;
+    function ChoiceField(props: any) {
+      const state = props.state;
+      const current = state.value === undefined ? props.fallback : state.value;
       return createElement(
         "div",
         { className: "ddi_field" },
@@ -463,11 +457,11 @@ window.__ModuleLoader__.load({
             className: "ddi_select",
             value: String(current),
             disabled: props.disabled,
-            onChange: function (event) {
+            onChange: function (event: any) {
               props.onChoose(event.target.value);
             }
           },
-          props.options.map(function (option) {
+          props.options.map(function (option: string) {
             return createElement("option", { key: option, value: option }, option);
           })
         ),
@@ -475,9 +469,9 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function BoolField(props) {
-      var state = props.state;
-      var current = state.value === undefined ? props.fallback : state.value;
+    function BoolField(props: any) {
+      const state = props.state;
+      const current = state.value === undefined ? props.fallback : state.value;
       return createElement(
         "div",
         { className: "ddi_field" },
@@ -489,7 +483,7 @@ window.__ModuleLoader__.load({
             className: "ddi_select",
             value: current === true ? "true" : "false",
             disabled: props.disabled,
-            onChange: function (event) {
+            onChange: function (event: any) {
               props.onChoose(event.target.value === "true");
             }
           },
@@ -518,18 +512,18 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function ConfigCard(props) {
-      var openState = useState(false);
-      var open = openState[0];
-      var setOpen = openState[1];
-      var state = props.useDocImpactCard(function (snapshot) {
+    function ConfigCard(props: any) {
+      const openState = useState(false);
+      const open = openState[0];
+      const setOpen = openState[1];
+      const state = props.useDocImpactCard(function (snapshot: any) {
         return snapshot;
       });
       if (!state.available) return null;
-      var t = props.t;
-      var blocked = !state.dirty || state.invalid || state.saving;
-      var disabled = !state.writable || state.saving;
-      var fields = state.fields;
+      const t = props.t;
+      const blocked = !state.dirty || state.invalid || state.saving;
+      const disabled = !state.writable || state.saving;
+      const fields = state.fields;
       return createElement(
         "li",
         { className: open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card" },
@@ -566,7 +560,7 @@ window.__ModuleLoader__.load({
                 fallback: true,
                 state: fields.enabled,
                 disabled: disabled,
-                onChoose: function (value) {
+                onChoose: function (value: unknown) {
                   props.choose("enabled", value);
                 },
                 onReset: function () {
@@ -580,7 +574,7 @@ window.__ModuleLoader__.load({
                 hintKey: "configFileHint",
                 state: fields.configFile,
                 disabled: disabled,
-                onEdit: function (text) {
+                onEdit: function (text: string) {
                   props.edit("configFile", text);
                 },
                 onReset: function () {
@@ -596,7 +590,7 @@ window.__ModuleLoader__.load({
                 fallback: "remind",
                 state: fields.mode,
                 disabled: disabled,
-                onChoose: function (value) {
+                onChoose: function (value: unknown) {
                   props.choose("mode", value);
                 },
                 onReset: function () {
@@ -610,7 +604,7 @@ window.__ModuleLoader__.load({
                 hintKey: "maxReminderRoundsHint",
                 state: fields.maxReminderRounds,
                 disabled: disabled,
-                onEdit: function (text) {
+                onEdit: function (text: string) {
                   props.edit("maxReminderRounds", text);
                 },
                 onReset: function () {
@@ -626,7 +620,7 @@ window.__ModuleLoader__.load({
                 fallback: "allow",
                 state: fields.onLimit,
                 disabled: disabled,
-                onChoose: function (value) {
+                onChoose: function (value: unknown) {
                   props.choose("onLimit", value);
                 },
                 onReset: function () {
@@ -640,7 +634,7 @@ window.__ModuleLoader__.load({
                 hintKey: "maxSnapshotFilesHint",
                 state: fields.maxSnapshotFiles,
                 disabled: disabled,
-                onEdit: function (text) {
+                onEdit: function (text: string) {
                   props.edit("maxSnapshotFiles", text);
                 },
                 onReset: function () {
@@ -655,7 +649,7 @@ window.__ModuleLoader__.load({
                 fallback: false,
                 state: fields.debug,
                 disabled: disabled,
-                onChoose: function (value) {
+                onChoose: function (value: unknown) {
                   props.choose("debug", value);
                 },
                 onReset: function () {
@@ -694,7 +688,7 @@ window.__ModuleLoader__.load({
     //#endregion
 
     //#region locale
-    var DICT = {
+    const DICT: Record<string, Record<string, string>> = {
       zh: {
         cardTitle: "Doc Impact 文档联动",
         cardDescription: "文档影响检查插件的运行设置",
@@ -761,28 +755,28 @@ window.__ModuleLoader__.load({
       }
     };
 
-    function fallbackT(key) {
-      var zh = DICT.zh[key];
+    function fallbackT(key: string): string {
+      const zh = DICT.zh![key];
       return zh === undefined ? key : zh;
     }
     //#endregion
 
     //#region plugin
-    var name = "doc-impact";
-    var inject = ["slots"];
+    export const name = "doc-impact";
+    export const inject = ["slots"];
 
-    function apply(ctx) {
-      var _t = fallbackT;
-      var locale = ctx.get("locale");
+    export function apply(ctx: any): void {
+      let _t = fallbackT;
+      const locale = ctx.get("locale");
       if (locale && typeof locale.register === "function" && typeof locale.bind === "function") {
         locale.register(LOCALE_NS, DICT);
         _t = locale.bind(LOCALE_NS);
       }
 
-      var settingsScope = ctx.get("settingsScope");
+      const settingsScope = ctx.get("settingsScope");
       if (!settingsScope || typeof settingsScope.bind !== "function") return;
-      var scope = settingsScope.bind({ namespace: SETTINGS_NS });
-      var form = new SettingsForm(scope);
+      const scope = settingsScope.bind({ namespace: SETTINGS_NS });
+      const form = new SettingsForm(scope);
 
       ctx.slots.inject("settings.plugin.item", function* () {
         yield ctx.slots.register(
@@ -798,8 +792,3 @@ window.__ModuleLoader__.load({
         );
       });
     }
-
-    module.exports = { name: name, inject: inject, apply: apply };
-    return module.exports;
-  }
-});

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { join } from 'node:path';
 
-const CLIENT_SOURCE_PATH = join(import.meta.dirname, '..', 'src', 'client.js');
+const CLIENT_BUNDLE_PATH = join(import.meta.dirname, '..', 'lib', 'client.js');
 
 interface SlotEntry {
   options: { name: string; key?: string; locale?: string; inject?: () => unknown };
@@ -96,7 +96,7 @@ function makeCtx(scope: unknown) {
 }
 
 async function loadBundle(): Promise<LoadedBundle> {
-  const source = await readFile(CLIENT_SOURCE_PATH, 'utf8');
+  const source = await readFile(CLIENT_BUNDLE_PATH, 'utf8');
   let captured: LoadedBundle | undefined;
   const sandbox = {
     window: {
