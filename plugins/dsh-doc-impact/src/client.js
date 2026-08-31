@@ -333,19 +333,19 @@ window.__ModuleLoader__.load({
 
     //#region styles
     var CSS = [
-      ".ddi_card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
-      ".ddi_card:hover{border-color:var(--dsw-alias-label-dimmed)}",
-      ".ddi_cardOpen{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
-      ".ddi_header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}",
-      ".ddi_header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}",
-      ".ddi_headText{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}",
-      ".ddi_name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}",
-      ".ddi_description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}",
-      ".ddi_chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}",
-      ".ddi_chevronOpen{transform:rotate(180deg)}",
-      ".ddi_body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}",
+      ".dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
+      ".dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}",
+      ".dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
+      ".dsh-plugin-card__header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}",
+      ".dsh-plugin-card__header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}",
+      ".dsh-plugin-card__head-text{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}",
+      ".dsh-plugin-card__name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}",
+      ".dsh-plugin-card__description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}",
+      ".dsh-plugin-card__badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}",
+      ".dsh-plugin-card__chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}",
+      ".dsh-plugin-card--open .dsh-plugin-card__chevron{transform:rotate(180deg)}",
+      ".dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}",
       ".ddi_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
-      ".ddi_pending{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}",
       ".ddi_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
       ".ddi_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}",
       ".ddi_save,.ddi_discard{appearance:none;font:inherit;cursor:pointer;border:1px solid #0000;border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5}",
@@ -500,6 +500,24 @@ window.__ModuleLoader__.load({
       );
     }
 
+    function ChevronDown() {
+      return createElement(
+        "svg",
+        {
+          className: "dsh-plugin-card__chevron",
+          viewBox: "0 0 14 14",
+          fill: "none",
+          "aria-hidden": "true"
+        },
+        createElement("path", {
+          d: "m3.5 5.25 3.5 3.5 3.5-3.5",
+          stroke: "currentColor",
+          strokeLinecap: "round",
+          strokeLinejoin: "round"
+        })
+      );
+    }
+
     function ConfigCard(props) {
       var openState = useState(false);
       var open = openState[0];
@@ -514,12 +532,12 @@ window.__ModuleLoader__.load({
       var fields = state.fields;
       return createElement(
         "li",
-        { className: open ? "ddi_card ddi_cardOpen" : "ddi_card" },
+        { className: open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card" },
         createElement(
           "button",
           {
             type: "button",
-            className: "ddi_header",
+            className: "dsh-plugin-card__header",
             "aria-expanded": open,
             "aria-label": t(open ? "collapse" : "expand") + ": " + t("cardTitle"),
             onClick: function () {
@@ -528,21 +546,17 @@ window.__ModuleLoader__.load({
           },
           createElement(
             "span",
-            { className: "ddi_headText" },
-            createElement("span", { className: "ddi_name" }, t("cardTitle")),
-            createElement("span", { className: "ddi_description" }, t("cardDescription"))
+            { className: "dsh-plugin-card__head-text" },
+            createElement("span", { className: "dsh-plugin-card__name" }, t("cardTitle")),
+            createElement("span", { className: "dsh-plugin-card__description" }, t("cardDescription"))
           ),
-          state.dirty ? createElement("span", { className: "ddi_pending" }, t("unsaved")) : null,
-          createElement(
-            "span",
-            { className: open ? "ddi_chevron ddi_chevronOpen" : "ddi_chevron", "aria-hidden": "true" },
-            "▾"
-          )
+          state.dirty ? createElement("span", { className: "dsh-plugin-card__badge" }, t("unsaved")) : null,
+          createElement(ChevronDown)
         ),
         open
           ? createElement(
               "div",
-              { className: "ddi_body" },
+              { className: "dsh-plugin-card__body" },
               !state.writable ? createElement("p", { className: "ddi_readOnly", role: "status" }, t("readOnly")) : null,
               createElement(BoolField, {
                 t: t,

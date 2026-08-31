@@ -5,7 +5,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type {
   ManagedPluginLogFormat,
   ManagedPluginLogLevel,
@@ -13,6 +13,7 @@ import type {
   PluginLogUiSnapshot,
 } from "../types.js";
 import { styles } from "./styles.js";
+import { bindSettingsExternalStore } from "./settings-store.js";
 
 const SETTINGS_NAMESPACE = "plugin-log";
 const REFRESH_INTERVAL_MS = 2_000;
@@ -59,8 +60,31 @@ function LevelOptions({ inherit }: { readonly inherit?: ManagedPluginLogLevel })
   );
 }
 
+function ChevronDown() {
+  return (
+    <svg
+      className="dsh-plugin-card__chevron"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m3.5 5.25 3.5 3.5 3.5-3.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function PluginLogSettingsCard({ scope, inspect }: CardProps) {
-  const settings = useSyncExternalStore(scope.subscribe, scope.getSnapshot, scope.getSnapshot);
+  const settingsStore = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+  const settings = useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot,
+    settingsStore.getSnapshot,
+  );
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({ consumers: [] });
   const [error, setError] = useState<string | null>(null);
@@ -114,17 +138,25 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   if (settings.status === "unavailable") return null;
 
   return (
-    <li className={`plu-card${open ? " plu-open" : ""}`}>
-      <button type="button" className="plu-header" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className="plu-title">
-          <strong>Plugin logging</strong>
-          <span>Levels and readable file output for registered server plugins.</span>
+    <li className={`dsh-plugin-card${open ? " dsh-plugin-card--open" : ""}`}>
+      <button
+        type="button"
+        className="dsh-plugin-card__header"
+        aria-expanded={open}
+        aria-label={`${open ? "Hide" : "Show"} settings: Plugin logging`}
+        onClick={() => setOpen(!open)}
+      >
+        <span className="dsh-plugin-card__head-text">
+          <span className="dsh-plugin-card__name">Plugin logging</span>
+          <span className="dsh-plugin-card__description">
+            Levels and readable file output for registered server plugins.
+          </span>
         </span>
-        <span className="plu-badge">{snapshot.consumers.length} active</span>
-        <span className="plu-chevron" aria-hidden="true">⌄</span>
+        <span className="dsh-plugin-card__badge">{snapshot.consumers.length} active</span>
+        <ChevronDown />
       </button>
       {open ? (
-        <div className="plu-body">
+        <div className="dsh-plugin-card__body plu-body">
           {error !== null ? <p className="plu-error" role="status">{error}</p> : null}
           {!writable ? <p className="plu-status">Settings are read-only for this connection.</p> : null}
 
@@ -195,24 +227,34 @@ export const inject = ["slots", "settingsScope", "remote"];
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = ctx.remote as unknown as ClientRemote;
   const disposeRemote = await remote.$mount(pluginLogUiRemote);
-  const scope = ctx.settingsScope.bind<PluginLogUiConfig>({ namespace: SETTINGS_NAMESPACE });
-  const style = document.createElement("style");
-  style.dataset.plugin = "dsh-plugin-log-ui";
-  style.textContent = styles;
-  document.head.append(style);
+  await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
+    const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
+    const inspector = mountedRemote.pluginLogUi;
+    const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
+      namespace: SETTINGS_NAMESPACE,
+    });
+    const style = document.createElement("style");
+    style.dataset.plugin = "dsh-plugin-log-ui";
+    style.textContent = styles;
+    document.head.append(style);
 
-  const disposeSlot = ctx.slots.inject("settings.plugin.item", () => ctx.slots.register(
-    {
-      name: "settings.plugin.item",
-      key: SETTINGS_NAMESPACE,
-      inject: () => ({ scope, inspect: () => remote.pluginLogUi.inspect() }),
-    },
-    PluginLogSettingsCard,
-  ));
+    const disposeSlot = remoteCtx.slots.inject(
+      "settings.plugin.item",
+      () => remoteCtx.slots.register(
+        {
+          name: "settings.plugin.item",
+          key: SETTINGS_NAMESPACE,
+          inject: () => ({ scope, inspect: () => inspector.inspect() }),
+        },
+        PluginLogSettingsCard,
+      ),
+    );
 
-  return async () => {
-    disposeSlot();
-    style.remove();
-    await disposeRemote();
-  };
+    return () => {
+      disposeSlot();
+      style.remove();
+    };
+  });
+
+  return disposeRemote;
 }

@@ -8,6 +8,7 @@ import {
   type FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -19,6 +20,7 @@ import type {
   PromptFirewallInspectorSnapshot,
   SectionPolicy,
 } from '../types.js'
+import { bindSettingsExternalStore } from './settings-store.js'
 import { styles } from './styles.js'
 
 const SETTINGS_NAMESPACE = 'prompt-firewall'
@@ -63,14 +65,21 @@ function displayError(error: unknown): string {
   return 'Could not load Prompt Inspector data.'
 }
 
-function Shield() {
+function ChevronDown() {
   return (
-    <span className="pf-shield" aria-hidden="true">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-        <path d="M12 3 19 6v5c0 4.8-2.8 8.2-7 10-4.2-1.8-7-5.2-7-10V6l7-3Z" />
-        <path d="m9 12 2 2 4-4" />
-      </svg>
-    </span>
+    <svg
+      className="dsh-plugin-card__chevron"
+      viewBox="0 0 14 14"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="m3.5 5.25 3.5 3.5 3.5-3.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -96,9 +105,15 @@ function Toggle(props: {
 }
 
 function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
-  const settings = useSyncExternalStore(scope.subscribe, scope.getSnapshot, scope.getSnapshot)
+  const settingsStore = useMemo(() => bindSettingsExternalStore(scope), [scope])
+  const settings = useSyncExternalStore(
+    settingsStore.subscribe,
+    settingsStore.getSnapshot,
+    settingsStore.getSnapshot,
+  )
   const config = settings.value
   const writable = settings.status === 'ready' && settings.writable
+  const [open, setOpen] = useState(false)
   const [inspector, setInspector] = useState<PromptFirewallInspectorSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -186,21 +201,30 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
   const configuredMode = config?.mode
     ?? (config?.preset === 'strict' ? 'allowlist' : config?.preset === 'audit-only' ? 'audit' : 'blocklist')
 
-  return (
-    <article className="pf-card">
-      <header className="pf-head">
-        <div className="pf-title">
-          <Shield />
-          <div>
-            <h2>Prompt Firewall</h2>
-            <p>Prompt hygiene, section policy, and request-level observability.</p>
-          </div>
-        </div>
-        <span className={`pf-badge${enabled ? '' : ' off'}`}><i className="pf-dot" />{enabled ? 'Enabled' : 'Disabled'}</span>
-      </header>
+  if (settings.status === 'unavailable') return null
 
-      <div className="pf-body">
-        {settings.status === 'unavailable' && <div className="pf-error">Settings are unavailable for this connection.</div>}
+  return (
+    <li className={`dsh-plugin-card${open ? ' dsh-plugin-card--open' : ''}`}>
+      <button
+        type="button"
+        className="dsh-plugin-card__header"
+        aria-expanded={open}
+        aria-label={`${open ? 'Hide' : 'Show'} settings: Prompt Firewall`}
+        onClick={() => { setOpen(!open) }}
+      >
+        <span className="dsh-plugin-card__head-text">
+          <span className="dsh-plugin-card__name">Prompt Firewall</span>
+          <span className="dsh-plugin-card__description">
+            Prompt hygiene, section policy, and request-level observability.
+          </span>
+        </span>
+        <span className={`dsh-plugin-card__badge${enabled ? '' : ' pf-card-status--off'}`}>
+          {enabled ? 'Enabled' : 'Disabled'}
+        </span>
+        <ChevronDown />
+      </button>
+
+      {open ? <div className="dsh-plugin-card__body pf-body">
         {error !== null && <div className="pf-error">{error}</div>}
 
         <section className="pf-section">
@@ -300,8 +324,8 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
           </div>
           <p className="pf-footer-note">Token counts are estimates. Prompt Firewall is a hygiene and observability layer, not a security boundary.</p>
         </section>
-      </div>
-    </article>
+      </div> : null}
+    </li>
   )
 }
 
@@ -311,29 +335,38 @@ export const inject = ['slots', 'settingsScope', 'remote']
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = ctx.remote as unknown as ClientRemote
   const disposeRemote = await remote.$mount(promptFirewallRemote)
-  const scope = ctx.settingsScope.bind<PromptFirewallConfig>({ namespace: SETTINGS_NAMESPACE })
-  const face: CardFace = {
-    scope,
-    inspect: () => remote.promptFirewall.inspect(),
-    setSectionPolicy: (section, policy, revision) => (
-      remote.promptFirewall.setSectionPolicy(section, policy, revision)
-    ),
-  }
+  try {
+    await ctx.inject(['remote.promptFirewall'], (remoteCtx) => {
+      const injectedRemote = remoteCtx.remote as unknown as ClientRemote
+      const scope = remoteCtx.settingsScope.bind<PromptFirewallConfig>({ namespace: SETTINGS_NAMESPACE })
+      const face: CardFace = {
+        scope,
+        inspect: () => injectedRemote.promptFirewall.inspect(),
+        setSectionPolicy: (section, policy, revision) => (
+          injectedRemote.promptFirewall.setSectionPolicy(section, policy, revision)
+        ),
+      }
 
-  const style = document.createElement('style')
-  style.dataset.plugin = 'dsh-prompt-firewall'
-  style.textContent = styles
-  document.head.appendChild(style)
+      const style = document.createElement('style')
+      style.dataset.plugin = 'dsh-prompt-firewall'
+      style.textContent = styles
+      document.head.appendChild(style)
 
-  const disposeSlot = ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
-    name: 'settings.plugin.item',
-    key: SETTINGS_NAMESPACE,
-    inject: () => face,
-  }, PromptFirewallCard))
+      const disposeSlot = remoteCtx.slots.inject('settings.plugin.item', () => remoteCtx.slots.register({
+        name: 'settings.plugin.item',
+        key: SETTINGS_NAMESPACE,
+        inject: () => face,
+      }, PromptFirewallCard))
 
-  return async () => {
-    disposeSlot()
-    style.remove()
+      return () => {
+        disposeSlot()
+        style.remove()
+      }
+    })
+  } catch (cause) {
     await disposeRemote()
+    throw cause
   }
+
+  return disposeRemote
 }

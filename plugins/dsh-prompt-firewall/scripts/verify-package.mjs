@@ -28,5 +28,9 @@ assert.match(patch, /name:\s*"@yadsh\/dsh-prompt-firewall"/u)
 
 const client = await readFile(new URL('lib/client.js', root), 'utf8')
 assert.match(client, /id:\s*"@yadsh\/dsh-prompt-firewall"/u)
+assert.doesNotMatch(client, /useSyncExternalStore\)\(scope\.subscribe/u)
+assert.match(client, /dsh-plugin-card__name/u)
+assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u)
+assert.doesNotMatch(client, /\.pf-card\{/u)
 
 console.log('built package contract passed')

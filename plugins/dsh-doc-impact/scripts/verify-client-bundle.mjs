@@ -30,6 +30,10 @@ expectPresent('key: SETTINGS_NS', "the card must claim the doc-impact settings n
 expectPresent('namespace: SETTINGS_NS', "the form must bind the doc-impact settings scope");
 expectPresent('resetField', "every field needs the composition-layer reset action");
 expectPresent('"unsaved"', "the header must carry the unsaved-changes badge");
+expectPresent('dsh-plugin-card__name', "custom cards must share the standard card shell");
+expectPresent('m3.5 5.25 3.5 3.5 3.5-3.5', "the header must use the standard SVG chevron");
+expectAbsent('ddi_card', "the outer card shell must use the shared class contract");
+expectAbsent('▾', "font-dependent disclosure glyphs must not replace the SVG chevron");
 
 // The bundle runs in the browser and may only require what the ModuleLoader
 // page provides; anything @deepseek-ai would drag host internals into it.

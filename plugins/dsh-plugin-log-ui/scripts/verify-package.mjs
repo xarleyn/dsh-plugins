@@ -38,5 +38,10 @@ assert.match(client, /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-plugin-log
 assert.match(client, /settings\.plugin\.item/u);
 assert.match(client, /key:\s*SETTINGS_NAMESPACE/u);
 assert.match(client, /pluginLogUi/u);
+assert.match(client, /remote\.pluginLogUi/u);
+assert.doesNotMatch(client, /useSyncExternalStore\)\(scope\.subscribe/u);
+assert.match(client, /dsh-plugin-card__name/u);
+assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+assert.doesNotMatch(client, /⌄/u);
 
 console.log("verify-package: all gates passed");
