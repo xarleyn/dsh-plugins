@@ -43,6 +43,7 @@
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
     "cordis.patch.yml",
+    "compatibility.json",
     "README.md",
     "LICENSE"
   ],

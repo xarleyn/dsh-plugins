@@ -74,7 +74,7 @@
     "verify": "pnpm run test:package",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
     "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepack": "tsdown && tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [

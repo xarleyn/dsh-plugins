@@ -18,23 +18,22 @@ export interface LlamaCppClientOptions {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function optionalCount(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
 /**
- * Defensive response parsing: llama.cpp builds differ; anything missing
- * degrades to `null`/`false` rather than throwing parse errors.
+ * Parse JSON without assigning an object shape. Endpoint-specific validators
+ * decide which arrays and objects are valid for their wire contract.
  */
-function parseJsonBody(text: string): Record<string, unknown> | readonly unknown[] | null {
+function parseJsonBody(text: string): unknown {
   try {
-    const parsed: unknown = JSON.parse(text);
-    return isRecord(parsed) || Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    return JSON.parse(text) as unknown;
   } catch {
-    return null;
+    return undefined;
   }
 }
 
@@ -86,6 +85,12 @@ export class LlamaCppClient {
       const body = await response.text();
       return { status: response.status, body };
     } catch (error) {
+      if (controller.signal.aborted) {
+        throw new KvBackendUnavailableError(
+          `llama.cpp request timed out after ${timeoutMs}ms`,
+          { cause: error },
+        );
+      }
       throw new KvBackendUnavailableError(
         `llama.cpp server at ${this.#baseURL} is unreachable: ${String((error as Error)?.message ?? error)}`,
         { cause: error },
@@ -101,7 +106,13 @@ export class LlamaCppClient {
     if (status !== 200) {
       throw new KvBackendUnavailableError(`GET /slots returned HTTP ${status}`);
     }
-    return normalizeSlotsResponse(parseJsonBody(body));
+    const payload = parseJsonBody(body);
+    if (!Array.isArray(payload) && !(isRecord(payload) && Array.isArray(payload.slots))) {
+      throw new KvBackendUnavailableError(
+        `GET /slots returned an invalid JSON response: ${body.slice(0, 200)}`,
+      );
+    }
+    return normalizeSlotsResponse(payload);
   }
 
   /** POST /slots/{id}?action=save — persist slot KV state into a file. */
@@ -133,10 +144,14 @@ export class LlamaCppClient {
         `restore of slot ${slotId} failed (HTTP ${status}): ${body.slice(0, 200)}`,
       );
     }
-    const nRestored = optionalCount(payload.n_restored) ?? optionalCount(payload.nRestored);
-    if (payload.success === false) {
+    if (payload.success !== undefined && payload.success !== true) {
       throw new KvRestoreFailedError(`restore of slot ${slotId} reported success=false`);
     }
+    const rawCount = payload.n_restored ?? payload.nRestored;
+    if (rawCount !== undefined && optionalCount(rawCount) === null) {
+      throw new KvRestoreFailedError(`restore of slot ${slotId} returned an invalid token count`);
+    }
+    const nRestored = optionalCount(rawCount);
     return { success: true, nRestored };
   }
 
@@ -148,7 +163,18 @@ export class LlamaCppClient {
       timeoutMs,
     );
     const payload = parseJsonBody(body);
-    if (status !== 200 || (isRecord(payload) && payload.success === false)) {
+    const validPayload = isRecord(payload) && (
+      payload.success === true ||
+      (
+        payload.success === undefined &&
+        payload.id_slot === slotId &&
+        optionalCount(payload.n_erased) !== null
+      )
+    );
+    if (
+      status !== 200 ||
+      !validPayload
+    ) {
       throw new KvEraseFailedError(`erase of slot ${slotId} failed (HTTP ${status}): ${body.slice(0, 200)}`);
     }
     return { success: true };

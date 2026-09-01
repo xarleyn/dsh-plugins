@@ -11,11 +11,12 @@
   "scripts": {
     "build": "nx run-many -t build",
     "test": "pnpm test:release && nx run-many -t test",
-    "test:release": "node --test scripts/release-workflow.test.mjs",
+    "test:release": "node --test scripts/release-workflow.test.mjs scripts/ci-verification.test.mjs scripts/run-bash.test.mjs scripts/package-hygiene.test.mjs",
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
     "lint:workspace": "eslint eslint.config.js scripts",
-    "verify": "pnpm verify:logging && nx run-many -t verify",
+    "verify": "pnpm verify:packages && pnpm verify:logging && nx run-many -t verify",
+    "verify:packages": "node scripts/verify-package-hygiene.mjs",
     "verify:logging": "node scripts/verify-plugin-logging.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify",
     "deps:check": "node scripts/run-bash.mjs scripts/check-dependencies.sh",
@@ -25,7 +26,7 @@
     "affected:test": "nx affected -t test",
     "affected:typecheck": "nx affected -t typecheck",
     "affected:lint": "nx affected -t lint",
-    "affected:check": "nx affected -t lint typecheck test build",
+    "affected:check": "nx affected -t lint typecheck test build verify",
     "release:plan": "nx release plan",
     "release:check": "nx release plan:check",
     "release:dry-run": "nx release --dry-run"

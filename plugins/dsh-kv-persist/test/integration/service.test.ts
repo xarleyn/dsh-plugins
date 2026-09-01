@@ -1,10 +1,10 @@
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
 import { afterEach, describe, expect, it } from "vitest";
-import { KvPersistService } from "../../src/service.js";
+import { KvPersistService, resolveMetadataDir } from "../../src/service.js";
 import { resolveKvPersistConfig } from "../../src/config.js";
 import type { KvPersistConfig } from "../../src/config.js";
 import { consume, silentLogger } from "../fixtures/harness.js";
@@ -52,6 +52,43 @@ function dispatchStream(
 }
 
 describe("KvPersistService (SPEC §11, §37, §47)", () => {
+  it("resolves metadata under the shared DSH home convention", () => {
+    const defaults = resolveKvPersistConfig({});
+    expect(resolveMetadataDir(defaults, { DSH_HOME: "  ./custom-dsh-home  " })).toBe(
+      join(resolve("./custom-dsh-home"), "cache", "dsh-kv-persist"),
+    );
+    expect(resolveMetadataDir(defaults, { DSH_HOME: "   " })).toBe(
+      join(homedir(), ".dsh", "cache", "dsh-kv-persist"),
+    );
+    expect(resolveMetadataDir(defaults, {})).toBe(
+      join(homedir(), ".dsh", "cache", "dsh-kv-persist"),
+    );
+  });
+
+  it("lets an explicit metadata path win independently of DSH_HOME", () => {
+    const explicit = join("fixtures", "kv-metadata");
+    const config = resolveKvPersistConfig({ metadata: { path: explicit } });
+    expect(resolveMetadataDir(config, { DSH_HOME: resolve("somewhere-else") })).toBe(
+      resolve(explicit),
+    );
+  });
+
+  it("does not use cwd in the metadata fallback", () => {
+    const config = resolveKvPersistConfig({});
+    const before = resolveMetadataDir(config, {});
+    expect(before).toBe(join(homedir(), ".dsh", "cache", "dsh-kv-persist"));
+    expect(before).not.toBe(join(process.cwd(), "cache", "dsh-kv-persist"));
+  });
+
+  it("normalizes DSH_HOME with the platform path API", () => {
+    const config = resolveKvPersistConfig({});
+    for (const configured of ["nested/../dsh-home", "nested\\..\\dsh-home"]) {
+      expect(resolveMetadataDir(config, { DSH_HOME: configured })).toBe(
+        join(resolve(configured), "cache", "dsh-kv-persist"),
+      );
+    }
+  });
+
   it("registers as ctx.kvPersist", async () => {
     const ctx = new Context();
     const service = new KvPersistService(ctx, await tempConfig(), {

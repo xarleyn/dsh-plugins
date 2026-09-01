@@ -73,9 +73,26 @@ try {
   const installed = join(root, "node_modules", PACKAGE_NAME);
 
   // 1. Required runtime files ship in the tarball.
-  for (const relative of ["dist/index.js", "lib/client.js", "cordis.patch.yml"]) {
+  for (const relative of [
+    "dist/index.js",
+    "lib/client.js",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "LICENSE",
+  ]) {
     const info = await stat(join(installed, relative)).catch(() => undefined);
     if (info === undefined || !info.isFile()) fail(`packed package is missing ${relative}`);
+  }
+
+  const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
+  if (manifest.exports?.["./package.json"] !== "./package.json") {
+    fail("packed package must export ./package.json canonically");
+  }
+  const compatibility = JSON.parse(
+    await readFile(join(installed, "compatibility.json"), "utf8"),
+  );
+  if (compatibility.node !== manifest.engines?.node) {
+    fail("packed compatibility Node range must match package engines");
   }
 
   // 2. The client bundle registers the expected ModuleLoader id.

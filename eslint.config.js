@@ -59,10 +59,4 @@ export default tseslint.config(
       "require-yield": "off",
     },
   },
-  {
-    files: ["plugins/dsh-session-scope/src/index.ts"],
-    rules: {
-      "@typescript-eslint/ban-ts-comment": "off",
-    },
-  },
 );

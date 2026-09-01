@@ -28,12 +28,17 @@ export interface MinerLogger {
   error(event: string, fields?: Record<string, unknown>): void;
 }
 
+interface PendingSession {
+  readonly eventSeqs: Set<number>;
+  lastEventAt: number;
+}
+
 function emptyCursor(key: string): ScanCursor {
   return { workspaceKey: key, sessionWatermarks: {}, updatedAt: 0 };
 }
 
 export class CorrectionMinerEngine {
-  private readonly pending = new Map<string, Set<number>>();
+  private readonly pending = new Map<string, PendingSession>();
   private readonly workspaceQueues = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -41,6 +46,7 @@ export class CorrectionMinerEngine {
     private readonly store: CorrectionStore,
     private readonly config: ResolvedUserCorrectionMinerConfig,
     private readonly logger: MinerLogger,
+    private readonly now: () => number = Date.now,
   ) {}
 
   scan(request: ScanRequest, signal?: AbortSignal): Promise<ScanReport> {
@@ -50,12 +56,21 @@ export class CorrectionMinerEngine {
 
   observeEvent(session: Session, event: SessionEvent): void {
     if (!this.config.enabled) return;
+    const observedAt = this.now();
+    this.evictExpired(observedAt);
+    const sessionId = String(session.id);
+    const current = this.pending.get(sessionId);
+    if (current !== undefined) current.lastEventAt = observedAt;
     if (event.type === "user/message" && isDirectUserMessage(event.data)) {
       const result = prefilterCorrection(messageText(event.data));
       if (result.matched) {
-        const pending = this.pending.get(String(session.id)) ?? new Set<number>();
-        pending.add(event.seq);
-        this.pending.set(String(session.id), pending);
+        const pending = current ?? this.createPendingSession(sessionId, observedAt);
+        pending.eventSeqs.add(event.seq);
+        while (pending.eventSeqs.size > this.config.live.maxPendingEventsPerSession) {
+          const oldestEventSeq = pending.eventSeqs.values().next().value as number;
+          pending.eventSeqs.delete(oldestEventSeq);
+          this.warnPendingEviction("event-cap", sessionId, 1);
+        }
       }
       return;
     }
@@ -63,7 +78,17 @@ export class CorrectionMinerEngine {
   }
 
   observeDisposed(session: Session): void {
+    if (!this.config.enabled) return;
+    this.evictExpired(this.now());
     this.scheduleLiveSession(session);
+  }
+
+  dispose(): void {
+    this.pending.clear();
+  }
+
+  count(cwd: string): number {
+    return this.store.countCorrections(workspaceKey(cwd));
   }
 
   list(cwd: string, limit = 50): readonly CorrectionRecord[] {
@@ -72,7 +97,7 @@ export class CorrectionMinerEngine {
 
   private scheduleLiveSession(session: Session): void {
     const sessionId = String(session.id);
-    if ((this.pending.get(sessionId)?.size ?? 0) === 0) return;
+    if ((this.pending.get(sessionId)?.eventSeqs.size ?? 0) === 0) return;
     this.pending.delete(sessionId);
     const cwd = session.header.cwd;
     if (cwd === undefined) return;
@@ -142,7 +167,7 @@ export class CorrectionMinerEngine {
     for (const evidence of result.evidence) {
       const record = this.toRecord(evidence, key);
       const existed = this.store.hasCorrection(record.id);
-      await this.store.putCorrection(record);
+      await this.store.putCorrection(record, this.config.retention.maxRecordsPerWorkspace);
       if (!existed) correctionsAdded += 1;
     }
     const capturedThroughSeq = result.capturedThroughSeq;
@@ -202,5 +227,46 @@ export class CorrectionMinerEngine {
       if (this.workspaceQueues.get(key) === next) this.workspaceQueues.delete(key);
     }).catch(() => undefined);
     return next;
+  }
+
+  private createPendingSession(sessionId: string, observedAt: number): PendingSession {
+    while (this.pending.size >= this.config.live.maxPendingSessions) {
+      let oldestSessionId: string | undefined;
+      let oldestObservedAt = Number.POSITIVE_INFINITY;
+      for (const [candidateId, candidate] of this.pending) {
+        if (candidate.lastEventAt < oldestObservedAt) {
+          oldestSessionId = candidateId;
+          oldestObservedAt = candidate.lastEventAt;
+        }
+      }
+      if (oldestSessionId === undefined) break;
+      const evicted = this.pending.get(oldestSessionId);
+      this.pending.delete(oldestSessionId);
+      this.warnPendingEviction("session-cap", oldestSessionId, evicted?.eventSeqs.size ?? 0);
+    }
+    const pending = { eventSeqs: new Set<number>(), lastEventAt: observedAt };
+    this.pending.set(sessionId, pending);
+    return pending;
+  }
+
+  private evictExpired(observedAt: number): void {
+    for (const [sessionId, pending] of this.pending) {
+      if (observedAt - pending.lastEventAt < this.config.live.pendingTtlMs) continue;
+      this.pending.delete(sessionId);
+      this.warnPendingEviction("ttl", sessionId, pending.eventSeqs.size);
+    }
+  }
+
+  private warnPendingEviction(
+    reason: "event-cap" | "session-cap" | "ttl",
+    sessionId: string,
+    evictedEvents: number,
+  ): void {
+    this.logger.warn("pending.evicted", {
+      reason,
+      sessionId,
+      evictedEvents,
+      pendingSessions: this.pending.size,
+    });
   }
 }

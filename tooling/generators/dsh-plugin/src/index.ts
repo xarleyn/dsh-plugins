@@ -107,6 +107,7 @@ export default async function generatePlugin(
     "pnpm run build",
     ...(options.client ? ["pnpm run verify:client"] : []),
   ].join(" && ");
+  scripts.prepack = "pnpm run build";
 
   tree.write(
     `${projectRoot}/package.json`,
@@ -127,7 +128,13 @@ export default async function generatePlugin(
         main: "./lib/index.js",
         types: "./lib/index.d.ts",
         exports: exportsMap,
-        files: ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+        files: [
+          "lib",
+          "cordis.patch.yml",
+          "compatibility.json",
+          "README.md",
+          "LICENSE",
+        ],
         dsh: {
           bundle: { patch: "./cordis.patch.yml" },
           ...(options.client ? { client: { platform: "web" } } : {}),
@@ -141,6 +148,7 @@ export default async function generatePlugin(
           access: "public",
           registry: "https://registry.npmjs.org/",
         },
+        engines: { node: "^22.19.0 || >=24.0.0" },
         scripts,
       },
       null,
@@ -152,7 +160,9 @@ export default async function generatePlugin(
     `${projectRoot}/tsconfig.json`,
     JSON.stringify(
       {
-        extends: "@yadsh/dsh-config/tsconfig/base",
+        extends: options.client
+          ? "@yadsh/dsh-config/tsconfig/browser"
+          : "@yadsh/dsh-config/tsconfig/node",
         compilerOptions: { rootDir: "src", outDir: "lib" },
         include: ["src"],
       },
@@ -265,6 +275,22 @@ assert.doesNotMatch(
 `,
   );
 
+  tree.write(
+    `${projectRoot}/compatibility.json`,
+    JSON.stringify(
+      {
+        deepseekHarness: {
+          channel: "next",
+          range: ">=0.1.1-rc.2 <0.2.0",
+          testedReleases: ["0.1.1-rc.2"],
+        },
+        node: "^22.19.0 || >=24.0.0",
+      },
+      null,
+      2,
+    ),
+  );
+
   const license = tree.read("LICENSE", "utf8");
   if (license === null) {
     throw new Error("Root LICENSE file is required to scaffold a plugin.");
@@ -287,7 +313,8 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >= 4.0.0 < 5.0.0
+- DeepSeek Harness >=0.1.1-rc.2 <0.2.0
+- Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
 
@@ -301,7 +328,7 @@ Configure the plugin under the \`${pluginName}\` key in the DSH profile.
 
 ## Compatibility
 
-- DeepSeek Harness >= 4.0.0 < 5.0.0
+- DeepSeek Harness >=0.1.1-rc.2 <0.2.0 (see \`compatibility.json\`)
 
 ## Development
 

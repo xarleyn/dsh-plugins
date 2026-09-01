@@ -27,13 +27,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "lib/client.js",
     "cordis.patch.yml",
-    "README.md"
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['dist', 'lib']) fs.rmSync(dir, { recursive: true, force: true })\"",

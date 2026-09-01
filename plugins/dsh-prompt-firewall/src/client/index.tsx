@@ -53,6 +53,40 @@ interface CardFace {
 
 type CardProps = PropsRuntime<'settings.plugin.item'> & InjectFace<CardFace>
 
+interface VisibilityDocument {
+  readonly hidden: boolean
+  addEventListener(type: 'visibilitychange', listener: () => void): void
+  removeEventListener(type: 'visibilitychange', listener: () => void): void
+}
+
+interface PollingWindow {
+  setInterval(handler: () => void, timeout: number): number
+  clearInterval(handle: number): void
+}
+
+export function startVisibilityAwarePolling(
+  refresh: () => unknown,
+  intervalMs: number,
+  visibilityDocument: VisibilityDocument = document,
+  pollingWindow: PollingWindow = window,
+): () => void {
+  const refreshWhenVisible = () => {
+    if (!visibilityDocument.hidden) void refresh()
+  }
+  const handleVisibilityChange = () => {
+    refreshWhenVisible()
+  }
+
+  refreshWhenVisible()
+  const timer = pollingWindow.setInterval(refreshWhenVisible, intervalMs)
+  visibilityDocument.addEventListener('visibilitychange', handleVisibilityChange)
+
+  return () => {
+    pollingWindow.clearInterval(timer)
+    visibilityDocument.removeEventListener('visibilitychange', handleVisibilityChange)
+  }
+}
+
 const EMPTY_LIST: readonly string[] = Object.freeze([])
 
 function list(config: PromptFirewallConfig | undefined, field: RuleField): readonly string[] {
@@ -142,10 +176,9 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
   }, [inspect])
 
   useEffect(() => {
-    void refresh()
-    const interval = window.setInterval(() => { void refresh() }, REFRESH_INTERVAL_MS)
+    const stopPolling = startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS)
     return () => {
-      window.clearInterval(interval)
+      stopPolling()
       activeRequest.current += 1
     }
   }, [refresh])

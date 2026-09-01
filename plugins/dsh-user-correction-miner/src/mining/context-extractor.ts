@@ -4,6 +4,7 @@ import type { CorrectionContextEvent, CorrectionEvidence } from "../types.js";
 import { sha256 } from "../utils/hashing.js";
 import { isDirectUserMessage, messageText } from "./message-text.js";
 import type { CorrectionPrefilterResult } from "./prefilter.js";
+import { truncateText } from "./text-budget.js";
 
 export interface ContextLimits {
   readonly maxContextEvents: number;
@@ -11,19 +12,7 @@ export interface ContextLimits {
 }
 
 function fitUtf8(text: string, maxBytes: number): string {
-  if (maxBytes <= 0) return "";
-  if (Buffer.byteLength(text, "utf8") <= maxBytes) return text;
-  let low = 0;
-  let high = text.length;
-  while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    if (Buffer.byteLength(text.slice(0, middle), "utf8") <= Math.max(0, maxBytes - 3)) {
-      low = middle;
-    } else {
-      high = middle - 1;
-    }
-  }
-  return low === 0 ? "" : `${text.slice(0, low)}…`;
+  return truncateText(text, maxBytes, "utf8-bytes");
 }
 
 function summarize(event: SessionEvent): CorrectionContextEvent | undefined {

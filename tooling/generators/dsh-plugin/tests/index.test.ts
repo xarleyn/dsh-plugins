@@ -26,6 +26,8 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.version).toBe("0.0.0");
     expect(packageJson.license).toBe("MIT");
     expect(packageJson.types).toBe("./lib/index.d.ts");
+    expect(packageJson.engines.node).toBe("^22.19.0 || >=24.0.0");
+    expect(packageJson.files).toContain("compatibility.json");
     expect(packageJson.exports["./package.json"]).toBe("./package.json");
     expect(packageJson.repository).toEqual({
       type: "git",
@@ -53,6 +55,7 @@ describe("dsh-plugin generator", () => {
       lint: "eslint src tests",
       test: "vitest run",
       typecheck: "tsc --noEmit",
+      prepack: "pnpm run build",
     });
     expect(packageJson.dependencies).not.toHaveProperty(
       "@yadsh/dsh-plugin-kit",
@@ -64,6 +67,18 @@ describe("dsh-plugin generator", () => {
       /from ['"]@yadsh\/dsh-plugin-log['"]/,
     );
     expect(tree.read(`${root}/LICENSE`, "utf8")).toBe("MIT License\n");
+    expect(
+      JSON.parse(tree.read(`${root}/compatibility.json`, "utf8") ?? "{}"),
+    ).toMatchObject({
+      deepseekHarness: {
+        range: ">=0.1.1-rc.2 <0.2.0",
+        testedReleases: ["0.1.1-rc.2"],
+      },
+      node: "^22.19.0 || >=24.0.0",
+    });
+    expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
+      "@yadsh/dsh-config/tsconfig/node",
+    );
     expect(tree.exists(`${root}/src/client.ts`)).toBe(false);
     expect(tree.exists(`${root}/tsdown.config.ts`)).toBe(false);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(true);
@@ -107,6 +122,9 @@ describe("dsh-plugin generator", () => {
       "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify:client",
     );
     expect(packageJson.scripts.test).toBeUndefined();
+    expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
+      "@yadsh/dsh-config/tsconfig/browser",
+    );
     expect(tree.exists(`${root}/src/client.ts`)).toBe(true);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(false);
 

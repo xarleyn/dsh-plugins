@@ -102,6 +102,7 @@ export interface CorrectionStore {
   getCursor(workspaceKey: string): ScanCursor | undefined;
   putCursor(cursor: ScanCursor): Promise<void>;
   hasCorrection(id: string): boolean;
-  putCorrection(record: CorrectionRecord): Promise<void>;
+  putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void>;
+  countCorrections(workspaceKey: string): number;
   listCorrections(workspaceKey: string, limit?: number): readonly CorrectionRecord[];
 }

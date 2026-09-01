@@ -7,8 +7,9 @@ published to npm.
 
 ## Features
 
-- Structured logging with plugin name prefix
-- Version compatibility checking
+- Lightweight console logging for tests and local scaffolds. Production
+  plugins use `@yadsh/dsh-plugin-log`.
+- Major-version compatibility checking
 - Configuration validation
 - Safe feature detection utilities
 

@@ -36,7 +36,7 @@ export function createCorrectionsCommand(engine: CorrectionMinerEngine) {
       const parts = invocation.rawInput.trim().split(/\s+/u).filter(Boolean);
       const subcommand = parts[0] ?? "status";
       if (subcommand === "status") {
-        const count = engine.list(cwd, Number.MAX_SAFE_INTEGER).length;
+        const count = engine.count(cwd);
         return {
           kind: "success",
           text: `${count} correction evidence record(s) are stored for this workspace.`,

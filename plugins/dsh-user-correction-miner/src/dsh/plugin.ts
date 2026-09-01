@@ -48,6 +48,7 @@ export async function apply(
     consoleSink: createHostLoggerSink(ctx.logger),
   });
   let domain: CorrectionMinerDomain | undefined;
+  let engine: CorrectionMinerEngine | undefined;
   try {
     const config = resolveConfig(rawConfig);
     if (!config.enabled) {
@@ -55,23 +56,28 @@ export async function apply(
       return async () => logger.close();
     }
     domain = await ctx.storageDomain.open(CORRECTION_MINER_DOMAIN);
-    const engine = new CorrectionMinerEngine(
+    const createdEngine = new CorrectionMinerEngine(
       createSessionSource(ctx.sessionQuery),
       new DomainCorrectionStore(domain),
       config,
       logger.child("engine"),
     );
-    registerLifecycle(ctx, engine);
+    engine = createdEngine;
+    registerLifecycle(ctx, createdEngine);
     ctx.inject(["commands"], (commandCtx: any) =>
-      commandCtx.commands.register(createCorrectionsCommand(engine)),
+      commandCtx.commands.register(createCorrectionsCommand(createdEngine)),
     );
     logger.info("plugin.ready", {
       domain: CORRECTION_MINER_DOMAIN.name,
+      maxRecordsPerWorkspace: config.retention.maxRecordsPerWorkspace,
       maxContextEvents: config.analysis.maxContextEvents,
       maxContextBytes: config.analysis.maxContextBytes,
     });
   } catch (error) {
     logger.error("plugin.initialization_failed", errorFields(error));
   }
-  return async () => closeResources(domain, logger);
+  return async () => {
+    engine?.dispose();
+    await closeResources(domain, logger);
+  };
 }

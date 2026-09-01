@@ -101,8 +101,23 @@ export class DomainCorrectionStore implements CorrectionStore {
     return this.domain.table("corrections").get(id) !== undefined;
   }
 
-  putCorrection(record: CorrectionRecord): Promise<void> {
-    return this.domain.table("corrections").put(record.id, record);
+  async putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void> {
+    const table = this.domain.table("corrections");
+    await table.put(record.id, record);
+    const workspaceRecords = oldestWorkspaceRecords(table.entries(), record.workspaceKey);
+    const excess = workspaceRecords.slice(
+      0,
+      Math.max(0, workspaceRecords.length - maxRecordsPerWorkspace),
+    );
+    await Promise.all(excess.map(([id]) => table.delete(id)));
+  }
+
+  countCorrections(workspaceKey: string): number {
+    let count = 0;
+    for (const [, record] of this.domain.table("corrections").entries()) {
+      if (record.workspaceKey === workspaceKey) count += 1;
+    }
+    return count;
   }
 
   listCorrections(workspaceKey: string, limit = 50): readonly CorrectionRecord[] {
@@ -119,7 +134,8 @@ export class MemoryCorrectionStore implements CorrectionStore {
   private readonly cursors = new Map<string, ScanCursor>();
 
   getCursor(workspaceKey: string): ScanCursor | undefined {
-    return this.cursors.get(workspaceKey);
+    const cursor = this.cursors.get(workspaceKey);
+    return cursor === undefined ? undefined : structuredClone(cursor);
   }
 
   async putCursor(cursor: ScanCursor): Promise<void> {
@@ -130,8 +146,22 @@ export class MemoryCorrectionStore implements CorrectionStore {
     return this.corrections.has(id);
   }
 
-  async putCorrection(record: CorrectionRecord): Promise<void> {
+  async putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void> {
     this.corrections.set(record.id, structuredClone(record));
+    const workspaceRecords = oldestWorkspaceRecords(this.corrections.entries(), record.workspaceKey);
+    const excess = workspaceRecords.slice(
+      0,
+      Math.max(0, workspaceRecords.length - maxRecordsPerWorkspace),
+    );
+    for (const [id] of excess) this.corrections.delete(id);
+  }
+
+  countCorrections(workspaceKey: string): number {
+    let count = 0;
+    for (const record of this.corrections.values()) {
+      if (record.workspaceKey === workspaceKey) count += 1;
+    }
+    return count;
   }
 
   listCorrections(workspaceKey: string, limit = 50): readonly CorrectionRecord[] {
@@ -141,4 +171,18 @@ export class MemoryCorrectionStore implements CorrectionStore {
       .slice(0, limit)
       .map((record) => structuredClone(record));
   }
+}
+
+function oldestWorkspaceRecords(
+  records: Iterable<[string, CorrectionRecord]>,
+  workspaceKey: string,
+): [string, CorrectionRecord][] {
+  return [...records]
+    .filter(([, record]) => record.workspaceKey === workspaceKey)
+    .sort(
+      ([leftId, left], [rightId, right]) =>
+        left.createdAt - right.createdAt ||
+        left.eventSeq - right.eventSeq ||
+        leftId.localeCompare(rightId),
+    );
 }

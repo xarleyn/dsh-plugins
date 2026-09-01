@@ -38,6 +38,7 @@ export class FakeKvBackend implements KvPersistenceBackend {
   restoreCount = 0;
   eraseCount = 0;
   probeCount = 0;
+  readonly events: string[] = [];
 
   constructor(slotCount = 1) {
     for (let id = 0; id < slotCount; id += 1) this.#slots.set(id, null);
@@ -98,6 +99,7 @@ export class FakeKvBackend implements KvPersistenceBackend {
 
   async saveSlot(slotId: number, snapshotKey: string): Promise<BackendSaveResult> {
     this.saveCount += 1;
+    this.events.push(`save:${slotId}`);
     if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
     if (this.#failNextSave > 0) {
       this.#failNextSave -= 1;
@@ -110,6 +112,7 @@ export class FakeKvBackend implements KvPersistenceBackend {
 
   async restoreSlot(slotId: number, snapshotKey: string): Promise<BackendRestoreResult> {
     this.restoreCount += 1;
+    this.events.push(`restore:${slotId}`);
     if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
     if (this.#failNextRestore > 0) {
       this.#failNextRestore -= 1;
@@ -128,6 +131,7 @@ export class FakeKvBackend implements KvPersistenceBackend {
 
   async eraseSlot(slotId: number): Promise<BackendEraseResult> {
     this.eraseCount += 1;
+    this.events.push(`erase:${slotId}`);
     if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
     this.#slots.set(slotId, null);
     return { success: true };

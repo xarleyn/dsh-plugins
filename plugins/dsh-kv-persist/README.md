@@ -36,6 +36,8 @@ falls back to normal inference. The model never knows this plugin exists.
 - DeepSeek Harness >= 0.1.1-rc.2 < 0.2.0
 - A llama.cpp `llama-server` started with `--slots --slot-save-path <dir>`
   and `--parallel 1` for the single-slot mode (see the [design doc](./docs/dsh-kv-persist.md) §6).
+  The server flag does not replace the plugin's local lease, which also
+  serializes save, restore, erase, and terminal stream bookkeeping.
 - Node.js >= 22
 
 ## Installation
@@ -76,7 +78,7 @@ providers listed under `providers` are ever coordinated.
 | `failure.strict` | boolean | `false` | Turn restore failures into request failures. |
 | `failure.maxConsecutiveFailures` | number | `3` | Failures before the circuit opens. |
 | `failure.cooldownMs` | number | `60000` | Circuit open duration. |
-| `metadata.path` | string | `$DSH_HOME/cache/dsh-kv-persist` | Manifest storage directory. |
+| `metadata.path` | string | `<DSH home>/cache/dsh-kv-persist` | Manifest storage directory. DSH home is non-blank `$DSH_HOME`, otherwise `~/.dsh`. |
 | `logging.level` | `"debug" \| "info" \| "off"` | `"info"` | Structured `kv.*` event verbosity. |
 
 Full configuration rationale: [design doc §35](./docs/dsh-kv-persist.md).

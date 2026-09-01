@@ -1,3 +1,5 @@
+import { truncateText } from "./text-budget.js";
+
 const SECRET_PATTERNS: readonly RegExp[] = [
   /\b(?:sk|pk|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b/gu,
   /\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*[^\s,;]+/giu,
@@ -9,6 +11,5 @@ export function redactSecrets(text: string): string {
 }
 
 export function boundText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+  return truncateText(text, maxChars, "code-points");
 }
