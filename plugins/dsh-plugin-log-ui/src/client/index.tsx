@@ -43,6 +43,40 @@ interface CardFace {
 
 type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
 
+interface VisibilityDocument {
+  readonly hidden: boolean;
+  addEventListener(type: "visibilitychange", listener: () => void): void;
+  removeEventListener(type: "visibilitychange", listener: () => void): void;
+}
+
+interface PollingWindow {
+  setInterval(handler: () => void, timeout: number): number;
+  clearInterval(handle: number): void;
+}
+
+export function startVisibilityAwarePolling(
+  refresh: () => unknown,
+  intervalMs: number,
+  visibilityDocument: VisibilityDocument = document,
+  pollingWindow: PollingWindow = window,
+): () => void {
+  const refreshWhenVisible = () => {
+    if (!visibilityDocument.hidden) void refresh();
+  };
+  const handleVisibilityChange = () => {
+    refreshWhenVisible();
+  };
+
+  refreshWhenVisible();
+  const timer = pollingWindow.setInterval(refreshWhenVisible, intervalMs);
+  visibilityDocument.addEventListener("visibilitychange", handleVisibilityChange);
+
+  return () => {
+    pollingWindow.clearInterval(timer);
+    visibilityDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+}
+
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -110,9 +144,7 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   }, [inspect]);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
   }, [refresh]);
 
   const write = useCallback(async (field: keyof PluginLogUiConfig, value: unknown) => {

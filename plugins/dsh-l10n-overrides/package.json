@@ -43,6 +43,7 @@
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
+    "compatibility.json",
     "README.md",
     "ROADMAP.md",
     "LICENSE"
@@ -58,7 +59,7 @@
     "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
     "verify": "pnpm run test:package",
     "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepack": "tsdown && tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [

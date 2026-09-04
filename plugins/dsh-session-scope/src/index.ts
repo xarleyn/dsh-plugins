@@ -1,4 +1,3 @@
-// @ts-nocheck -- DSH service types are not published by the upstream packages.
 // dsh-session-scope — host half.
 //
 // Mounted as a normal plugin row in the profile composition. Scope is a
@@ -35,6 +34,7 @@ import {
   getScope,
   getScopeCapabilities,
   setScope,
+  type ScopeCapabilities,
 } from "./host-api.js";
 import {
   SESSION_SCOPE_EVENT,
@@ -59,6 +59,28 @@ import {
   dispatchScopedSearchExecution,
   guardScopeToolExecution,
 } from "./tool-guard.js";
+import {
+  asCordisContext,
+  type CommandContextLike,
+  type CommandInvocationLike,
+  type CommandResultLike,
+  type Disposer,
+  type HostContextLike,
+  type HostToolExecution,
+  type ParseSchemaLike,
+  type ProjectionContextLike,
+  type ResolvePolicyLike,
+  type SandboxedFileSystemLike,
+  type SandboxPolicyLike,
+  type SandboxPolicyRequest,
+  type SandboxPolicyServiceLike,
+  type SandboxProviderLike,
+  type SessionScopeProjectionState,
+  type SessionScopeProjectionView,
+  type SystemPromptServiceLike,
+  type ToolContextLike,
+  type WorkspaceScopeProjectionState,
+} from "./host-types.js";
 
 export * from "./host-api.js";
 export * from "./scope-context.js";
@@ -93,7 +115,7 @@ export const inject = [
  * @param fallback - `ctx.sandboxPolicy.workspaceRoot`.
  * @returns the workspace root for the session.
  */
-function workspaceRootOf(session, fallback) {
+function workspaceRootOf(session: { header?: { cwd?: string } } | undefined, fallback: string): string {
   const cwd = session?.header?.cwd;
   return typeof cwd === "string" && cwd.length > 0 ? cwd : fallback;
 }
@@ -106,9 +128,9 @@ function workspaceRootOf(session, fallback) {
  * @param service - the sandbox-policy service instance.
  * @returns the restore disposer.
  */
-function patchResolve(service) {
+function patchResolve(service: SandboxPolicyServiceLike): Disposer {
   const original = service.resolve.bind(service);
-  service.resolve = (request = {}) => {
+  service.resolve = (request: SandboxPolicyRequest = {}): SandboxPolicyLike => {
     const resolved = original(request);
     const session = request.session;
     let patched = resolved;
@@ -146,7 +168,10 @@ function patchResolve(service) {
  * @param resolvePolicy - the patched policy resolver.
  * @returns the restore disposer.
  */
-function patchPolicyContext(systemPrompt, resolvePolicy) {
+function patchPolicyContext(
+  systemPrompt: SystemPromptServiceLike | undefined,
+  resolvePolicy: ResolvePolicyLike,
+): Disposer {
   const contexts = systemPrompt?.layers?.global?.contexts;
   const entry = contexts?.data?.get("sandbox:policy");
   if (entry === void 0 || typeof entry.text !== "function") return () => {};
@@ -173,7 +198,10 @@ function patchPolicyContext(systemPrompt, resolvePolicy) {
  * @param resolvePolicy - the patched policy resolver.
  * @returns the restore disposer.
  */
-function patchFsFence(fs, resolvePolicy) {
+function patchFsFence(
+  fs: SandboxedFileSystemLike | undefined,
+  resolvePolicy: ResolvePolicyLike,
+): Disposer {
   if (fs === void 0 || typeof fs.checkedTarget !== "function") return () => {};
   const original = fs.checkedTarget.bind(fs);
   fs.checkedTarget = async (target, sandboxPolicy) => {
@@ -204,7 +232,10 @@ function patchFsFence(fs, resolvePolicy) {
  * @param provider - the local sandbox provider instance.
  * @returns the restore disposer.
  */
-function patchConfine(provider, scopeRuntime) {
+function patchConfine(
+  provider: SandboxProviderLike | undefined,
+  scopeRuntime: SessionScopeRuntime,
+): Disposer {
   if (provider === void 0 || typeof provider.confine !== "function") return () => {};
   const original = provider.confine.bind(provider);
   provider.confine = (argv, policy) => {
@@ -216,12 +247,13 @@ function patchConfine(provider, scopeRuntime) {
         throw new Error("SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope requires read-only or workspace-write permission");
       }
       const execution = scopeRuntime.currentExecution();
-      const args = execution?.arguments !== null && typeof execution?.arguments === "object"
-        ? execution.arguments
+      const args: Record<string, unknown> = execution?.arguments !== null && typeof execution?.arguments === "object"
+        ? execution.arguments as Record<string, unknown>
         : {};
-      const workdir = execution?.name === "bash"
+      const requestedWorkdir = execution?.name === "bash"
         ? args.workdir
         : execution?.name === "terminal_open" ? args.cwd : void 0;
+      const workdir = typeof requestedWorkdir === "string" ? requestedWorkdir : undefined;
       return confineIsolatedBwrap(original(argv, policy), policy, scope, workdir);
     }
     if (policy.mode !== MODE) return original(argv, policy);
@@ -229,7 +261,7 @@ function patchConfine(provider, scopeRuntime) {
       (root) => typeof root === "string" && root.length > 0,
     );
     const base = original(argv, { ...policy, mode: "read-only" });
-    return augmentConfinedArgv(base, extra, tempWritableRoots());
+    return augmentConfinedArgv(base, extra, tempWritableRoots()) as ReturnType<SandboxProviderLike["confine"]>;
   };
   return () => {
     provider.confine = original;
@@ -237,46 +269,51 @@ function patchConfine(provider, scopeRuntime) {
 }
 
 /** A session projection schema shaped like the core zod usage: a `parse` face. */
-const workspaceScopeSchema = {
-  parse(value) {
+const workspaceScopeSchema: ParseSchemaLike<WorkspaceScopeProjectionState> = {
+  parse(value: unknown) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       throw new TypeError("workspace-scope projection must be an object");
     }
-    const roots = Array.isArray(value.roots)
-      ? value.roots.filter((root) => typeof root === "string")
+    const record = value as Record<string, unknown>;
+    const roots = Array.isArray(record.roots)
+      ? record.roots.filter((root): root is string => typeof root === "string")
       : [];
     return {
-      workspaceRoot: typeof value.workspaceRoot === "string" ? value.workspaceRoot : "",
+      workspaceRoot: typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
       roots,
-      workspace: value.workspace !== false,
+      workspace: record.workspace !== false,
     };
   },
 };
 
 /** Projection wire schema for the independent scope policy axis. */
-const sessionScopeStateSchema = {
-  parse(value) {
+const sessionScopeStateSchema: ParseSchemaLike<SessionScopeProjectionState> = {
+  parse(value: unknown) {
     if (value === null || typeof value !== "object" || Array.isArray(value)) {
       throw new TypeError("session-scope projection must be an object");
     }
-    const mode = value.mode === "focused" || value.mode === "isolated" ? value.mode : "full";
+    const record = value as Record<string, unknown>;
+    const mode = record.mode === "focused" || record.mode === "isolated" ? record.mode : "full";
     return {
       mode,
-      workspaceRoot: typeof value.workspaceRoot === "string" ? value.workspaceRoot : "",
-      roots: Array.isArray(value.roots) ? value.roots.filter((root) => typeof root === "string") : [],
-      navigationRoots: Array.isArray(value.navigationRoots)
-        ? value.navigationRoots.filter((root) => typeof root === "string")
+      workspaceRoot: typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
+      roots: Array.isArray(record.roots) ? record.roots.filter((root): root is string => typeof root === "string") : [],
+      navigationRoots: Array.isArray(record.navigationRoots)
+        ? record.navigationRoots.filter((root): root is string => typeof root === "string")
         : [],
-      hasSnapshot: value.hasSnapshot === true,
+      hasSnapshot: record.hasSnapshot === true,
     };
   },
 };
 
-const sessionScopeViewSchema = {
-  parse(value) {
+const sessionScopeViewSchema: ParseSchemaLike<SessionScopeProjectionView> = {
+  parse(value: unknown) {
     const state = sessionScopeStateSchema.parse(value);
     const { hasSnapshot: _hasSnapshot, ...view } = state;
-    const capabilities = value?.capabilities;
+    const record = value as Record<string, unknown>;
+    const capabilities = record.capabilities !== null && typeof record.capabilities === "object"
+      ? record.capabilities as Record<string, unknown>
+      : undefined;
     return {
       ...view,
       capabilities: {
@@ -289,13 +326,18 @@ const sessionScopeViewSchema = {
 };
 
 /** Host command for the independent session-scope axis. */
-function handleScope(invocation, ctx, capabilities, processActivity) {
+function handleScope(
+  invocation: CommandInvocationLike,
+  ctx: HostContextLike,
+  capabilities: ScopeCapabilities,
+  processActivity: SessionScopeProcessActivity,
+): CommandResultLike {
   const session = invocation.agent.session;
   const raw = invocation.rawInput.trim();
   const space = raw.indexOf(" ");
   const verb = space === -1 ? raw : raw.slice(0, space);
   const rest = space === -1 ? "" : raw.slice(space + 1).trim();
-  const fallbackWorkspaceRoot = ctx.sandboxPolicy?.workspaceRoot ?? "";
+  const fallbackWorkspaceRoot = ctx.sandboxPolicy.workspaceRoot;
   const current = getScope(session, fallbackWorkspaceRoot);
 
   switch (verb) {
@@ -337,7 +379,12 @@ function handleScope(invocation, ctx, capabilities, processActivity) {
         const event = setScope(session, { mode: verb, roots, source: "command" }, fallbackWorkspaceRoot);
         return { kind: "success", text: JSON.stringify(event) };
       } catch (error) {
-        const code = typeof error?.code === "string" ? `${error.code}: ` : "";
+        const code = error !== null
+          && typeof error === "object"
+          && "code" in error
+          && typeof error.code === "string"
+          ? `${error.code}: `
+          : "";
         return { kind: "error", text: `${code}${error instanceof Error ? error.message : String(error)}` };
       }
     }
@@ -355,20 +402,23 @@ function handleScope(invocation, ctx, capabilities, processActivity) {
  * @param ctx - the plugin context (for the policy fallback root).
  * @returns the command result (a promise for the async `list` verb).
  */
-async function handleWorkspaceScope(invocation, ctx) {
+async function handleWorkspaceScope(
+  invocation: CommandInvocationLike,
+  ctx: HostContextLike,
+): Promise<CommandResultLike> {
   const session = invocation.agent.session;
   const raw = invocation.rawInput.trim();
   const space = raw.indexOf(" ");
   const verb = space === -1 ? raw : raw.slice(0, space);
   const rest = space === -1 ? "" : raw.slice(space + 1).trim();
-  const workspaceRoot = workspaceRootOf(session, ctx.sandboxPolicy?.workspaceRoot);
+  const workspaceRoot = workspaceRootOf(session, ctx.sandboxPolicy.workspaceRoot);
   const selection = selectionOf(session.events);
   const effectiveRoots = selection.workspace && !selection.roots.includes(workspaceRoot)
     ? [workspaceRoot, ...selection.roots]
     : selection.roots;
   // The workspace root is an ordinary member of the selection: the recorded
   // `workspace` marker is derived from the roots themselves.
-  const appendSelection = (nextRoots) => {
+  const appendSelection = (nextRoots: string[]): void => {
     session.append(SELECTION_EVENT, {
       roots: nextRoots,
       workspaceRoot,
@@ -452,16 +502,16 @@ async function handleWorkspaceScope(invocation, ctx) {
  * @param ctx - the plugin context carrying the host services.
  * @returns the combined disposer.
  */
-export function apply(ctx) {
-  const disposers = [];
+export function apply(ctx: HostContextLike): () => Promise<void> {
+  const disposers: Disposer[] = [];
   const logger = getPluginLogger({
     pluginId: "dsh-session-scope",
     consoleSink: createHostLoggerSink(ctx.logger ?? console),
   });
-  const resolvePolicy = (request = {}) => ctx.sandboxPolicy?.resolve(request);
+  const resolvePolicy: ResolvePolicyLike = (request = {}) => ctx.sandboxPolicy.resolve(request);
   const processActivity = new SessionScopeProcessActivity();
   const toolAdapters = new ScopeToolAdapterRegistry();
-  const fallbackWorkspaceRoot = ctx.sandboxPolicy?.workspaceRoot ?? "";
+  const fallbackWorkspaceRoot = ctx.sandboxPolicy.workspaceRoot;
   const scopeRuntime = new SessionScopeRuntime(fallbackWorkspaceRoot);
   const provider = ctx.get("sandbox");
   const isolatedBackendReady = detectBwrapIsolation(provider, fallbackWorkspaceRoot);
@@ -476,7 +526,7 @@ export function apply(ctx) {
   // The feature probe keeps lightweight unit harnesses usable without
   // pretending that their plain objects are full Cordis contexts.
   if (typeof ctx.provide === "function") {
-    new SessionScopeReadService(ctx, fallbackWorkspaceRoot);
+    new SessionScopeReadService(asCordisContext(ctx), fallbackWorkspaceRoot);
   }
 
   // 1. The mode resolver: attach selected roots under the new mode.
@@ -519,9 +569,9 @@ export function apply(ctx) {
   // The final tool guard cannot be widened by later permission listeners. The
   // around stage carries the calling session through async filesystem work so
   // concurrent sessions never share scope state.
-  ctx.inject(["tools"], (toolCtx) => {
+  ctx.inject<ToolContextLike>(["tools"], (toolCtx) => {
     let searchSplitterActive = false;
-    disposers.push(toolCtx.tools.guard((execution) => {
+    disposers.push(toolCtx.tools.guard((execution: HostToolExecution) => {
       const session = execution.agent?.session;
       if (processActivity.isProcessTool(execution.name) && execution.agent !== void 0) {
         processActivity.ensureFence(execution.agent, {
@@ -529,14 +579,14 @@ export function apply(ctx) {
           jobs: ctx.get("jobs"),
         });
       }
-      const sandboxMode = session === void 0 ? void 0 : resolvePolicy({ session })?.mode;
+      const sandboxMode = session === void 0 ? void 0 : resolvePolicy({ session }).mode;
       return guardScopeToolExecution(execution, toolAdapters, fallbackWorkspaceRoot, {
         splitBroadSearches: searchSplitterActive,
         isolatedBackendReady,
         sandboxMode,
       });
     }));
-    const disposeSearchSplitter = toolCtx.on("tools/execute", (execution, next) => processActivity.run(
+    const disposeSearchSplitter = toolCtx.on("tools/execute", (execution: HostToolExecution, next) => processActivity.run(
       execution.agent,
       execution.name,
       () => scopeRuntime.run(
@@ -571,11 +621,12 @@ export function apply(ctx) {
   //    refuses to reconstruct the log (SessionFormatUnsupportedError on
   //    history load). Register the type while the plugin is loaded; the
   //    exported set is the same instance the persistence read path consults.
+  const knownSessionEventTypes = KNOWN_SESSION_EVENT_TYPES as Set<string>;
   for (const eventType of [SELECTION_EVENT, SESSION_SCOPE_EVENT]) {
-    if (KNOWN_SESSION_EVENT_TYPES.has(eventType)) continue;
-    KNOWN_SESSION_EVENT_TYPES.add(eventType);
+    if (knownSessionEventTypes.has(eventType)) continue;
+    knownSessionEventTypes.add(eventType);
     disposers.push(() => {
-      KNOWN_SESSION_EVENT_TYPES.delete(eventType);
+      knownSessionEventTypes.delete(eventType);
     });
   }
 
@@ -591,7 +642,7 @@ export function apply(ctx) {
   }
 
   // 7. Independent scope command plus the legacy compatibility command.
-  ctx.inject(["commands"], (commandCtx) => {
+  ctx.inject<CommandContextLike>(["commands"], (commandCtx) => {
     commandCtx.commands.register({
       name: "scope",
       description: "Manage the independent workspace visibility scope for this session",
@@ -605,8 +656,8 @@ export function apply(ctx) {
       handler: (invocation) => handleWorkspaceScope(invocation, ctx),
     });
   });
-  ctx.inject(["sessionProjections"], (projectionCtx) => {
-    projectionCtx.sessionProjections.register({
+  ctx.inject<ProjectionContextLike>(["sessionProjections"], (projectionCtx) => {
+    projectionCtx.sessionProjections.register<SessionScopeProjectionState, SessionScopeProjectionView>({
       key: "session-scope",
       stateSchema: sessionScopeStateSchema,
       init: () => ({
@@ -619,13 +670,17 @@ export function apply(ctx) {
       apply: (state, event) => {
         if (event.type === SESSION_SCOPE_EVENT) {
           return {
-            ...effectiveSessionScope([event], { cwd: event.data?.workspaceRoot }),
+            ...effectiveSessionScope([event], {
+              cwd: typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : undefined,
+            }),
             hasSnapshot: true,
           };
         }
         if (event.type === SELECTION_EVENT && !state.hasSnapshot) {
           return {
-            ...effectiveSessionScope([event], { cwd: event.data?.workspaceRoot }),
+            ...effectiveSessionScope([event], {
+              cwd: typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : undefined,
+            }),
             hasSnapshot: false,
           };
         }
@@ -640,7 +695,7 @@ export function apply(ctx) {
       },
       stateVersion: 1,
     });
-    projectionCtx.sessionProjections.register({
+    projectionCtx.sessionProjections.register<WorkspaceScopeProjectionState, WorkspaceScopeProjectionState>({
       key: "workspace-scope",
       stateSchema: workspaceScopeSchema,
       init: () => ({ workspaceRoot: "", roots: [], workspace: true }),

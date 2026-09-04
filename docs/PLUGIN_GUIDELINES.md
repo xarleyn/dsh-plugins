@@ -327,7 +327,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "test": "vitest run",
     "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
     "verify": "pnpm run test:package",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package"
+    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepack": "pnpm run build"
   },
   "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "…"],
   "license": "MIT",
@@ -355,6 +356,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   поверхности импортирует client-часть.
 - **Скрипты:** `check` — полный локальный конвейер; `verify` — package-гейты;
   имена не переизобретать (CI и скрипты рассчитаны на них).
+- **Lifecycle:** установка workspace только устанавливает зависимости. Сборка
+  выполняется Nx по графу, а `prepack` собирает публикуемый артефакт. `prepare`
+  не используется: установка отдельных пакетов напрямую из Git для этого
+  monorepo не поддерживается (Git URL указывает на private root package, а не
+  на publishable подпакет). Для установки используйте npm-версию или готовый
+  tarball.
 
 ### 4.3 `cordis.patch.yml`
 
@@ -391,8 +398,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ### 4.4 Сборка
 
 - ESM-only (`"type": "module"`), целевой синтаксис — Node 22.
-- Рантайм-артефакты: `lib/**/*.js`; декларации: `lib/types/**/*.d.ts` —
-  результат `tsdown` + `tsc -p tsconfig.build.json`.
+- Допустимы два layout деклараций: plain `tsc` выдаёт `lib/index.js` и
+  `lib/index.d.ts`; bundled multi-entry/client package выдаёт `lib/*.js` и
+  `lib/types/**/*.d.ts`. Поля `types` и `exports` обязаны указывать на реально
+  существующий layout, оба варианта проверяются packed smoke.
+- `dsh-doc-impact` временно сохраняет исторический host output в `dist/` и
+  client output в `lib/`. Это явно ограниченное compatibility-исключение;
+  миграция `dist -> lib` требует отдельной проверки exports, smoke tests и
+  release history.
+- Plain Node packages наследуют `@yadsh/dsh-config/tsconfig/node`; packages с
+  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/browser` или
+  сохраняют более строгий явный mixed config. Генератор выбирает preset по
+  флагу `client`.
 - Относительные импорты внутри пакета — **всегда с расширением `.js`**
   (`verbatimModuleSyntax` + ESM).
 - `lib/` не коммитится, кроме случаев, явно оговорённых в `.gitignore`

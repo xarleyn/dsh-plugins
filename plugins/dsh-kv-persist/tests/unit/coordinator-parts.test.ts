@@ -129,6 +129,26 @@ describe("slot mutex (SPEC §20, Invariant 8)", () => {
     ).rejects.toThrowError("boom");
     expect(await mutex.runExclusive(async () => "recovered")).toBe("recovered");
   });
+
+  it("exposes an idempotent lease that blocks following work until release", async () => {
+    const mutex = new SlotMutex("test");
+    const release = await mutex.acquire();
+    let entered = false;
+    const queued = mutex.runExclusive(async () => {
+      entered = true;
+      return "next";
+    });
+
+    await Promise.resolve();
+    expect(entered).toBe(false);
+    expect(mutex.held).toBe(true);
+
+    release();
+    release();
+    expect(await queued).toBe("next");
+    expect(entered).toBe(true);
+    expect(mutex.held).toBe(false);
+  });
 });
 
 describe("circuit breaker (SPEC §33)", () => {

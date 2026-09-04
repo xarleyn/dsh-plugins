@@ -55,9 +55,10 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
     conversation state (§22, §72, Invariant 7).
 12. **A12 — Provider filter.** Only explicitly configured `providers` are
     coordinated; everything else passes through untouched (§37, §74.19).
-13. **A13 — Serialized slot access.** Restore, erase, save, and the
-    inference-preparation phase share one mutex per physical slot (§20,
-    Invariant 8).
+13. **A13 — Stream-scoped slot lease.** Preparation, restore, erase, save,
+    the complete inference stream, and terminal dirty-state bookkeeping share
+    one exclusive lease per physical slot (§20, Invariant 8). llama.cpp
+    `--parallel 1` does not replace this local management serialization.
 14. **A14 — Opaque filenames.** Snapshot filenames are plugin-generated
     sha256 identifiers; non-plugin-shaped names never reach the backend
     (§16, §44, Invariant 9).
@@ -69,7 +70,8 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
 
 ## 2. Data model
 
-- **Metadata** (plugin-owned, `<$DSH_HOME>/cache/dsh-kv-persist/`, §39):
+- **Metadata** (plugin-owned, `<DSH home>/cache/dsh-kv-persist/`, §39; DSH
+  home is non-blank `$DSH_HOME`, otherwise `~/.dsh`):
   `instances/<serverInstanceKey>/sessions/<sha256>.json` — manifest schema
   version 1 with `sessionId`, route, compatibility version, slot id,
   timestamps, token/byte counters, filename, `state: ready | invalid`, and

@@ -60,7 +60,9 @@
     "lib/**/*.d.ts",
     "lib/client.js",
     "cordis.patch.yml",
-    "README.md"
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",

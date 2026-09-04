@@ -3,6 +3,18 @@
 The monorepo keeps tested DeepSeek Harness ranges in pnpm named catalogs. The
 current baseline is Cordis 4.0.1 and the DSH `0.1.1-rc.2` package family.
 
+Every publishable plugin carries `compatibility.json`. Its `node` value must
+exactly match `package.json#engines.node`, and the repository package-hygiene
+gate enforces that relationship together with the DSH range and tested release
+list.
+
+New generated plugins use the canonical Node baseline
+`^22.19.0 || >=24.0.0`. Existing published packages keep their currently
+declared Node 20/22 ranges until maintainers choose whether to preserve tested
+Node 20 support or release a coordinated breaking baseline change. Engines are
+therefore not normalized package-by-package without a Node-version test matrix
+and release decision.
+
 ## Catalogs
 
 `pnpm-workspace.yaml` defines two DSH catalogs:

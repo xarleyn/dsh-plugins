@@ -52,17 +52,11 @@ export default tseslint.config(
     },
   },
   {
-    files: ["plugins/**/{test,tests}/**/*.{ts,tsx}"],
+    files: ["plugins/**/tests/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-this-alias": "off",
       "no-useless-escape": "off",
       "require-yield": "off",
-    },
-  },
-  {
-    files: ["plugins/dsh-session-scope/src/index.ts"],
-    rules: {
-      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
 );

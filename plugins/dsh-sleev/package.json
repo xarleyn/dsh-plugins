@@ -50,6 +50,7 @@
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
+    "compatibility.json",
     "docs/*",
     "README.md",
     "README.zh-CN.md",
@@ -68,7 +69,7 @@
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
     "smoke:neuraldeep": "tsx scripts/smoke-neuraldeep.ts",
     "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepack": "tsdown && tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [
