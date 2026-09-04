@@ -20,29 +20,28 @@
   "license": "MIT",
   "author": "xarleyn",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./lib/index.d.ts",
+      "import": "./lib/index.js"
     },
     "./client": "./lib/client.js",
     "./package.json": "./package.json"
   },
   "files": [
-    "dist",
-    "lib/client.js",
+    "lib",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['dist', 'lib']) fs.rmSync(dir, { recursive: true, force: true })\"",
+    "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['lib']) fs.rmSync(dir, { recursive: true, force: true })\"",
     "build:client": "tsdown",
     "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:client",
-    "lint": "eslint src test scripts tsdown.config.ts",
+    "lint": "eslint src tests scripts tsdown.config.ts",
     "test": "npm run build:client && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:client": "node scripts/verify-client-bundle.mjs",

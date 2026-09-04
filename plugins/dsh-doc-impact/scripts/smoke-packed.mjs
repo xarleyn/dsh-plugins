@@ -5,7 +5,7 @@
 //
 // Verifies, in order of increasing strength:
 //   1. the required runtime files ship in the tarball
-//     (dist/index.js, lib/client.js, cordis.patch.yml);
+//     (lib/index.js, lib/client.js, cordis.patch.yml);
 //   2. the client bundle registers itself under the expected ModuleLoader id;
 //   3. the ESM entry imports in a clean environment (npm auto-installs peer
 //      dependencies) and exports the plugin contract (name/inject/apply).
@@ -74,7 +74,7 @@ try {
 
   // 1. Required runtime files ship in the tarball.
   for (const relative of [
-    "dist/index.js",
+    "lib/index.js",
     "lib/client.js",
     "cordis.patch.yml",
     "compatibility.json",
@@ -102,7 +102,7 @@ try {
   }
 
   // 3. The ESM entry imports and exposes the plugin contract.
-  const entry = join(installed, "dist", "index.js");
+  const entry = join(installed, "lib", "index.js");
   const probe = `const plugin = await import(${JSON.stringify(pathToFileURL(entry).href)}); if (plugin.name !== ${JSON.stringify("doc-impact")}) throw new Error("unexpected plugin name: " + plugin.name); if (!Array.isArray(plugin.inject) || !plugin.inject.includes("tools")) throw new Error("plugin inject must include tools"); if (typeof plugin.apply !== "function") throw new Error("plugin.apply is not a function"); console.log("smoke-packed: entry OK (" + plugin.name + ")");`;
   const check = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
     cwd: root,

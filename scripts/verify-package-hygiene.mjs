@@ -14,12 +14,6 @@ const STANDARD_TYPES_LAYOUTS = new Set([
   "./lib/types/index.d.ts",
 ]);
 
-// dsh-doc-impact predates the shared lib/ layout. Its dist/ host output is an
-// explicit compatibility exception until a separately tested migration.
-const LEGACY_TYPES_LAYOUTS = new Map([
-  ["@yadsh/dsh-doc-impact", "./dist/index.d.ts"],
-]);
-
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -52,11 +46,7 @@ export function validatePublishablePlugin(directory) {
     errors.push("package types must match exports[\".\"].types");
   }
 
-  const allowedLegacy = LEGACY_TYPES_LAYOUTS.get(manifest.name);
-  if (
-    !STANDARD_TYPES_LAYOUTS.has(manifest.types) &&
-    manifest.types !== allowedLegacy
-  ) {
+  if (!STANDARD_TYPES_LAYOUTS.has(manifest.types)) {
     errors.push(
       `unsupported declaration layout ${JSON.stringify(manifest.types)}; ` +
         "use ./lib/index.d.ts or ./lib/types/index.d.ts",
