@@ -40,7 +40,7 @@ async function readLocalOverrides(path: string, logger: EngineLogger | undefined
     return { disabledRules: list as string[] };
   } catch (error) {
     logger?.warn(
-      `dsh-doc-impact: ignoring malformed local overrides file ${path} (${error instanceof Error ? error.message : String(error)})`,
+      `ignoring malformed local overrides file ${path} (${error instanceof Error ? error.message : String(error)})`,
     );
     return { disabledRules: [] };
   }
@@ -98,7 +98,7 @@ export function createWorkspaceConfigSource(
       return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger?.error?.(`dsh-doc-impact: workspace config rejected, plugin inert until it is fixed\n${message}`);
+      logger?.error?.(`workspace config rejected, plugin inert until it is fixed\n${message}`);
       cache.set(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome: { error: message } });
       return undefined;
     }

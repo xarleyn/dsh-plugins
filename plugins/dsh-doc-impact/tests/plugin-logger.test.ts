@@ -183,14 +183,16 @@ describe('createEngineFileLogger', () => {
       error: (message: string) => mirrored.push({ level: 'error', message }),
     };
     const logger = createEngineFileLogger(host, { dir: directory });
-    logger.info('dsh-doc-impact: baseline captured for s1 turn 1');
-    logger.warn('dsh-doc-impact: workspace config rejected');
+    logger.info('baseline captured for s1 turn 1');
+    logger.warn('workspace config rejected');
     await logger.close();
 
     const lines = await readLogLines(directory);
+    // The plugin name appears exactly once per record: the logger's own scope
+    // tag. Message text never repeats it.
     expect(lines.map((line) => line['msg'])).toEqual([
-      'dsh-doc-impact: baseline captured for s1 turn 1',
-      'dsh-doc-impact: workspace config rejected',
+      'baseline captured for s1 turn 1',
+      'workspace config rejected',
     ]);
     expect(mirrored).toEqual([
       { level: 'info', message: '[dsh-doc-impact] baseline captured for s1 turn 1' },
@@ -210,7 +212,7 @@ describe('createEngineFileLogger', () => {
       },
       { dir: blocker },
     );
-    expect(() => logger.warn('dsh-doc-impact: still safe')).not.toThrow();
+    expect(() => logger.warn('still safe')).not.toThrow();
     await logger.close();
     expect(mirrored).toContain('warn:[dsh-doc-impact] still safe');
   });

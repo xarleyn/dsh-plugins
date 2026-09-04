@@ -32,12 +32,11 @@ export function createEngineFileLogger(
     ...(options?.dir === undefined ? {} : { dir: options.dir }),
     console: 'trace',
     consoleSink: (level, message) => {
-      // Engine and config-source messages already carry a `dsh-doc-impact: `
-      // prefix; drop the duplicate behind the scope tag when mirroring.
-      const text = message.replace('[dsh-doc-impact] dsh-doc-impact: ', '[dsh-doc-impact] ');
-      if (level === 'warn') host.warn(text);
-      else if (level === 'error' || level === 'fatal') host.error(text);
-      else host.info(text);
+      // Engine and config-source messages carry no plugin-name prefix: the
+      // wrapper scopes every record (file and mirror) with the plugin id.
+      if (level === 'warn') host.warn(message);
+      else if (level === 'error' || level === 'fatal') host.error(message);
+      else host.info(message);
     },
   });
   return {
