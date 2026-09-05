@@ -87,7 +87,7 @@
     "@types/node": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
-    "jsdom": "^26.1.0",
+    "jsdom": "catalog:tooling",
     "prettier": "catalog:tooling",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",

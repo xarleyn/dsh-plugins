@@ -118,7 +118,7 @@
     "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
-    "tsx": "4.22.4",
+    "tsx": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"
   },
