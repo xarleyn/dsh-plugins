@@ -40,9 +40,11 @@ instance.
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
+| `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
+| `@yadsh/dsh-config` (private) | none |
 
 `@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, and `@yadsh/dsh-test-kit` are
 private workspace packages and are not published. `plugins/dsh-ui-repair` is

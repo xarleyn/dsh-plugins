@@ -10,7 +10,7 @@ Deterministic documentation-impact enforcement for [DeepSeek Harness](https://gi
 
 `dsh-doc-impact` links code and documentation through a declarative impact graph. When an agent changes files, the plugin compares the workspace with the turn baseline and steers the agent to review or update every affected document before the turn closes.
 
-[Specification](SPEC_%20dsh-doc-impact.md) · [Release notes](RELEASING.md)
+[Specification](SPEC.md)
 
 ## Installation
 
@@ -157,9 +157,9 @@ pnpm --filter @yadsh/dsh-doc-impact check
 
 The core under `src/config`, `src/graph`, `src/changes`, and `src/engine` is DSH-independent. Only `src/dsh` imports `@deepseek-ai` packages.
 
-The browser client source lives at `src/client.js`. The build copies it to the
-ignored package artifact `lib/client.js`; edit the source file, never `lib/`
-directly.
+The browser client source lives at `src/client.ts`. The build compiles it with
+tsdown into the ignored package artifact `lib/client.js`; edit the source file,
+never `lib/` directly.
 
 ## Releases
 

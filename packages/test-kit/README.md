@@ -7,9 +7,9 @@ published to npm.
 
 ## Features
 
-- Mock DSH plugin context
-- Temporary fixture helpers
-- Common test assertions (extensible)
+- Mock DSH plugin context (`createMockContext`)
+- Temporary fixture helpers (`createTempFixture`)
+- Re-exports `createLogger` from `@yadsh/dsh-plugin-kit` for test scaffolds
 
 ## Workspace usage
 

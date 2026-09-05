@@ -136,7 +136,7 @@ mkdir -p packages/my-capability/src
 # Copy package.json template from packages/plugin-kit
 # Adjust name, exports, and dependencies
 pnpm install
-pnpm build my-capability
+pnpm nx build my-capability
 ```
 
 ---
@@ -260,6 +260,7 @@ See [docs/RELEASING.md](./docs/RELEASING.md) for maintainer setup and recovery p
 ## Questions?
 
 - Check the [plugin guidelines](./docs/PLUGIN_GUIDELINES.md) for architectural decisions
+- See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for a short monorepo map and [docs/VERIFICATION.md](./docs/VERIFICATION.md) for what each gate asserts
 - See [docs/COMPATIBILITY.md](./docs/COMPATIBILITY.md) for DSH version compatibility
 - Open an issue for questions or suggestions
 

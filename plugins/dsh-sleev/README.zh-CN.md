@@ -10,7 +10,7 @@
 
 `dsh-sleev` 用于观测经由外部 Sleev 上下文优化网关的提供商路由。当前观测器不会改写提示词、实现压缩或自行路由流量；路由仍由普通的 `@deepseek-ai/dsh-llm-pi-ai` 提供商配置负责。
 
-[English](README.md) · [规范](dsh-sleev-spec-v0.1.md) · [开发指南](docs/development.md) · [兼容性说明](docs/compatibility.md)
+[English](README.md) · [规范](SPEC.md) · [开发指南](docs/development.md) · [兼容性说明](docs/compatibility.md)
 
 ## 安装
 

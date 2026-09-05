@@ -402,10 +402,6 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `lib/index.d.ts`; bundled multi-entry/client package выдаёт `lib/*.js` и
   `lib/types/**/*.d.ts`. Поля `types` и `exports` обязаны указывать на реально
   существующий layout, оба варианта проверяются packed smoke.
-- `dsh-doc-impact` временно сохраняет исторический host output в `dist/` и
-  client output в `lib/`. Это явно ограниченное compatibility-исключение;
-  миграция `dist -> lib` требует отдельной проверки exports, smoke tests и
-  release history.
 - Plain Node packages наследуют `@yadsh/dsh-config/tsconfig/node`; packages с
   browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/browser` или
   сохраняют более строгий явный mixed config. Генератор выбирает preset по
@@ -514,7 +510,7 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 ```
 
 3. **Feature detection вместо версионных проверок** там, где это возможно:
-   проверяйте наличие возможности, а не версию пакета (`satisfiesVersion` из
+   проверяйте наличие возможности, а не версию пакета (`hasCompatibleMajor` из
    `plugin-kit` — для грубых гейтов старта).
 4. Опора на `optionalClientProtocols` должна быть безопасной при их отсутствии.
 5. Сужение/расширение поддерживаемого диапазона DSH — **breaking change**
@@ -674,13 +670,13 @@ docs: add plugin guidelines
 
 Фиксируем, чтобы не принять за норму. Чинить по мере касания:
 
-1. **Корневой `dsh-plugins-monorepo-SPEC.md` отсутствует**, хотя на него
-   ссылаются `CONTRIBUTING.md` и сообщения скриптов («SPEC §27», «SPEC §16»).
-   Пока каноничен этот документ; §-номера расшифрованы в приложении A.
+1. **Исправлено (2026-09-05):** корневой `dsh-plugins-monorepo-SPEC.md`
+   перенесён из `.agents/notes/draft/` в корень репозитория; ссылки из
+   `CONTRIBUTING.md` и скриптов («SPEC §27», «SPEC §16») теперь разрешаются.
 2. **Генератор `pnpm nx g dsh-plugin`**: шаблон `cordis.patch.yml` приведён к
-   каноническому формату (§4.3). Оставшиеся пробелы: README-шаблон заявляет
-   «DeepSeek Harness >= 4.0.0» вместо фактического базлайна DSH, starter-плагин
-   не покрыт verify-скриптами.
+   каноническому формату (§4.3); README-шаблон базлайна DSH исправлен.
+   Оставшийся пробел: starter-плагин не покрыт verify-скриптами
+   (`verify-package` / `verify:client`).
 3. **Мигрировано**: runtime-id без префикса (`draft-sessions`, `sleev`, …) и
    unscoped `name` заменены на канонические `id: dsh-*` / `name: @yadsh/dsh-*`
    во всех плагинах; `dsh-session-scope` — эталон по `id`. Пользовательские
