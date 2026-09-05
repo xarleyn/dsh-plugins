@@ -65,7 +65,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
@@ -150,6 +150,7 @@
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",
