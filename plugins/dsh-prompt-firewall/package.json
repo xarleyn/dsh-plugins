@@ -91,7 +91,7 @@
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
-    "react": ">=18.2.0 <20"
+    "react": "^18.2.0"
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
@@ -113,6 +113,7 @@
     "@types/react": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
