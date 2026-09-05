@@ -49,10 +49,10 @@ describe("dsh-plugin generator", () => {
     );
     expect(packageJson.devDependencies).not.toHaveProperty("tsdown");
     expect(packageJson.scripts).toMatchObject({
-      build: "tsc",
+      build: "tsc -p tsconfig.build.json && tsdown",
       check:
-        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build",
-      lint: "eslint src tests",
+        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify:package",
+      lint: "eslint src tests scripts",
       test: "vitest run",
       typecheck: "tsc --noEmit",
       prepack: "pnpm run build",
@@ -78,6 +78,11 @@ describe("dsh-plugin generator", () => {
     });
     expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
       "@yadsh/dsh-config/tsconfig/node",
+    );
+    expect(tree.exists(`${root}/tsconfig.build.json`)).toBe(true);
+    expect(tree.exists(`${root}/scripts/verify-package.mjs`)).toBe(true);
+    expect(packageJson.scripts["verify:package"]).toBe(
+      "node scripts/verify-package.mjs",
     );
     expect(tree.exists(`${root}/src/client.ts`)).toBe(false);
     expect(tree.exists(`${root}/tsdown.config.ts`)).toBe(false);
@@ -111,7 +116,7 @@ describe("dsh-plugin generator", () => {
     });
     expect(packageJson.dsh.client).toEqual({ platform: "web" });
     expect(packageJson.devDependencies.tsdown).toBe("catalog:tooling");
-    expect(packageJson.scripts.build).toBe("tsc && tsdown");
+    expect(packageJson.scripts.build).toBe("tsc -p tsconfig.build.json && tsdown");
     expect(packageJson.scripts.lint).toBe(
       "eslint src scripts tsdown.config.ts",
     );
@@ -119,16 +124,16 @@ describe("dsh-plugin generator", () => {
       "node scripts/verify-client-bundle.mjs",
     );
     expect(packageJson.scripts.check).toBe(
-      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify:client",
+      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify:package && pnpm run verify:client",
     );
     expect(packageJson.scripts.test).toBeUndefined();
     expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
-      "@yadsh/dsh-config/tsconfig/browser",
+      "@yadsh/dsh-config/tsconfig/client",
     );
-    expect(tree.exists(`${root}/src/client.ts`)).toBe(true);
+    expect(tree.exists(`${root}/src/client/index.tsx`)).toBe(true);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(false);
 
-    const clientSource = tree.read(`${root}/src/client.ts`, "utf8") ?? "";
+    const clientSource = tree.read(`${root}/src/client/index.tsx`, "utf8") ?? "";
     expect(clientSource).toContain("export function apply(");
     expect(clientSource).not.toContain("initializeClient");
 
