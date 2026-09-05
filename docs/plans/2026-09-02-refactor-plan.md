@@ -8,13 +8,26 @@
 Каждый этап завершается прогоном релевантных проверок; перед началом —
 фиксация базовой линии `pnpm check` на чистом дереве.
 
-> **Статус исполнения (2026-09-05):** Этап 0 — зелёная базовая линия;
-> Этап 1 — выполнен (4f93011); Этап 2 — vitest-конфигы и tsconfig-пресеты
-> переведены (7 плагинов на `@yadsh/dsh-config/*`); Этап 3 — выполнен
-> (клиентский kit в `packages/plugin-kit/src/client`, 4 плагина мигрированы);
-> Этап 4–5 — отложены (большие файлы, мегатесты); Этап 6 (дедупликация
-> пер-плагиновых скриптов) — отложен; необязательные пункты мусора —
-> зачищены (0-byte файлы, RELEASING.md, SPEC-имена, .gitignore, катаalog).
+> **Статус исполнения (2026-09-05, вторая волна):** Этап 0 — зелёная базовая
+> линия; Этап 1 — выполнен (4f93011); Этап 2 — выполнен (tsconfig-пресеты
+> `node`/`client` в `@yadsh/dsh-config`, 8 плагинов на пресетах;
+> vitest-конфиги консолидированы); Этап 3 — выполнен (клиентский kit в
+> `packages/plugin-kit/src/client`, 4 плагина мигрированы); Этап 4 —
+> выполнен частично: dom-translator (scope-selector + protected-surfaces),
+> doc-impact client (settings-form/fields/card/dictionary), prompt-firewall
+> (sections.tsx), draft-sessions разделён ранее; **осталось**: session-scope
+> client.ts (рукописный module-loader бандл — перевод на tsdown-пайплайн это
+> отдельный проект) и src/index.ts. Этап 5 — выполнен частично: test-kit
+> оживлён (log-fixtures + module-loader stub), typecheck-дыры закрыты
+> (plugin-log/test-kit/plugin-kit/session-scope), kv-persist coordinator-тесты
+> разбиты на 4 тематических файла (real-timer idle-checkpoint изолированы);
+> **осталось**: разбивка l10n мегатестов. Этап 6 — выполнен с корректировкой
+> объёма: generate-typert объединён в `@yadsh/dsh-plugin-scripts`, мёртвые
+> prepare-release удалены (×3, легаси отдельного репо),
+> check-dependencies.mjs извлечён из bash-обвязки; остальные verify-* копии —
+> пер-плагиновые контракты с уникальными ассертами, а не copy-paste
+> (проверено diff по нормализованным текстам) — оставлены на месте.
+> Необязательный мусор — зачищен.
 
 ---
 

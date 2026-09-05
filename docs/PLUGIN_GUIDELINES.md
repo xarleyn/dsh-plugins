@@ -685,3 +685,15 @@ docs: add plugin guidelines
 4. **ESLint-исключения** для `plugins/**` (off `no-explicit-any`,
    `consistent-type-imports`) — временное послабление: в новых плагинах
    держите уровень корневых правил, где это не блокирует интеграцию.
+
+## Приложение C: статус разбиения крупных файлов (2026-09-05)
+
+- `dsh-session-scope/src/client.ts` остаётся рукописным module-loader бандлом
+  (`window.__ModuleLoader__.load` с фабрикой-closure, `@ts-nocheck`): перевод
+  на общий tsdown-пайплайн и модульное разбиение — отдельный проект, не
+  быстрый рефакторинг. Плагин при этом полностью покрыт тестами и verify-гейтами.
+- `dsh-session-scope/src/index.ts` (734 строки) — разбиение на scope-patches/
+  scope-commands/projections отложено вместе с клиентом.
+- Разбивка l10n мегатестов (`tests/dom-translator` 1273, `locale-hook` 920,
+  `registry` 811, `integration` 521) — механическая работа без изменения
+  поведения; выполнить отдельной серией.
