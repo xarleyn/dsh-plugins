@@ -99,7 +99,6 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
-    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
@@ -109,10 +108,13 @@
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
-    "react": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "eslint": "catalog:tooling",
+    "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

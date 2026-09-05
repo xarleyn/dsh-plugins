@@ -14,13 +14,18 @@ import {
   useSyncExternalStore,
 } from 'react'
 import promptFirewallRemote from '@yadsh/dsh-prompt-firewall/remote'
+import {
+  CardShell,
+  bindSettingsExternalStore,
+  registerSettingsCard,
+  startVisibilityAwarePolling,
+} from '@yadsh/dsh-plugin-kit/client'
 import type {
   FirewallAction,
   PromptFirewallConfig,
   PromptFirewallInspectorSnapshot,
   SectionPolicy,
 } from '../types.js'
-import { bindSettingsExternalStore } from './settings-store.js'
 import { styles } from './styles.js'
 
 const SETTINGS_NAMESPACE = 'prompt-firewall'
@@ -53,40 +58,6 @@ interface CardFace {
 
 type CardProps = PropsRuntime<'settings.plugin.item'> & InjectFace<CardFace>
 
-interface VisibilityDocument {
-  readonly hidden: boolean
-  addEventListener(type: 'visibilitychange', listener: () => void): void
-  removeEventListener(type: 'visibilitychange', listener: () => void): void
-}
-
-interface PollingWindow {
-  setInterval(handler: () => void, timeout: number): number
-  clearInterval(handle: number): void
-}
-
-export function startVisibilityAwarePolling(
-  refresh: () => unknown,
-  intervalMs: number,
-  visibilityDocument: VisibilityDocument = document,
-  pollingWindow: PollingWindow = window,
-): () => void {
-  const refreshWhenVisible = () => {
-    if (!visibilityDocument.hidden) void refresh()
-  }
-  const handleVisibilityChange = () => {
-    refreshWhenVisible()
-  }
-
-  refreshWhenVisible()
-  const timer = pollingWindow.setInterval(refreshWhenVisible, intervalMs)
-  visibilityDocument.addEventListener('visibilitychange', handleVisibilityChange)
-
-  return () => {
-    pollingWindow.clearInterval(timer)
-    visibilityDocument.removeEventListener('visibilitychange', handleVisibilityChange)
-  }
-}
-
 const EMPTY_LIST: readonly string[] = Object.freeze([])
 
 function list(config: PromptFirewallConfig | undefined, field: RuleField): readonly string[] {
@@ -97,24 +68,6 @@ function displayError(error: unknown): string {
   if (error instanceof Error) return error.message
   if (typeof error === 'string') return error
   return 'Could not load Prompt Inspector data.'
-}
-
-function ChevronDown() {
-  return (
-    <svg
-      className="dsh-plugin-card__chevron"
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="m3.5 5.25 3.5 3.5 3.5-3.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  )
 }
 
 function Toggle(props: {
@@ -147,7 +100,6 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
   )
   const config = settings.value
   const writable = settings.status === 'ready' && settings.writable
-  const [open, setOpen] = useState(false)
   const [inspector, setInspector] = useState<PromptFirewallInspectorSnapshot | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -237,28 +189,14 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
   if (settings.status === 'unavailable') return null
 
   return (
-    <li className={`dsh-plugin-card${open ? ' dsh-plugin-card--open' : ''}`}>
-      <button
-        type="button"
-        className="dsh-plugin-card__header"
-        aria-expanded={open}
-        aria-label={`${open ? 'Hide' : 'Show'} settings: Prompt Firewall`}
-        onClick={() => { setOpen(!open) }}
-      >
-        <span className="dsh-plugin-card__head-text">
-          <span className="dsh-plugin-card__name">Prompt Firewall</span>
-          <span className="dsh-plugin-card__description">
-            Prompt hygiene, section policy, and request-level observability.
-          </span>
-        </span>
-        <span className="dsh-plugin-card__badge">
-          {enabled ? 'Enabled' : 'Disabled'}
-        </span>
-        <ChevronDown />
-      </button>
-
-      {open ? <div className="dsh-plugin-card__body pf-body">
-        {error !== null && <div className="pf-error">{error}</div>}
+    <CardShell
+      title="Prompt Firewall"
+      description="Prompt hygiene, section policy, and request-level observability."
+      badge={<span className="dsh-plugin-card__badge">{enabled ? 'Enabled' : 'Disabled'}</span>}
+      label={open => `${open ? 'Hide' : 'Show'} settings: Prompt Firewall`}
+      bodyClassName="pf-body"
+    >
+      {error !== null && <div className="pf-error">{error}</div>}
 
         <section className="pf-section">
           <div className="pf-section-title"><h3>Policy</h3><span className="pf-muted">Changes apply live</span></div>
@@ -357,8 +295,7 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
           </div>
           <p className="pf-footer-note">Token counts are estimates. Prompt Firewall is a hygiene and observability layer, not a security boundary.</p>
         </section>
-      </div> : null}
-    </li>
+    </CardShell>
   )
 }
 
@@ -380,21 +317,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         ),
       }
 
-      const style = document.createElement('style')
-      style.dataset.plugin = 'dsh-prompt-firewall'
-      style.textContent = styles
-      document.head.appendChild(style)
-
-      const disposeSlot = remoteCtx.slots.inject('settings.plugin.item', () => remoteCtx.slots.register({
-        name: 'settings.plugin.item',
+      return registerSettingsCard(remoteCtx, {
         key: SETTINGS_NAMESPACE,
+        pluginName: 'dsh-prompt-firewall',
+        styles,
+        component: PromptFirewallCard,
         inject: () => face,
-      }, PromptFirewallCard))
-
-      return () => {
-        disposeSlot()
-        style.remove()
-      }
+      })
     })
   } catch (cause) {
     await disposeRemote()

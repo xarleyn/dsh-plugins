@@ -83,12 +83,16 @@ function makeCtx(scope: unknown) {
       return undefined;
     },
     slots: {
-      inject(slot: string, factory: () => Generator<unknown>) {
+      // The kit bootstrap registers through a plain factory that returns the
+      // register disposer (the shared host contract), not a generator.
+      inject(slot: string, factory: () => () => unknown) {
         slotInjections.push(slot);
-        for (const entry of factory()) registered.push(entry as SlotEntry);
+        factory();
       },
       register(options: SlotEntry['options'], component: unknown) {
-        return { options, component };
+        const entry = { options, component };
+        registered.push(entry);
+        return () => undefined;
       },
     },
   };

@@ -2,7 +2,9 @@
   "extends": "@yadsh/dsh-config/tsconfig/base",
   "compilerOptions": {
     "outDir": "lib",
-    "rootDir": "src"
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx"
   },
   "include": ["src"]
 }

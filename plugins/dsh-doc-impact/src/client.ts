@@ -1,4 +1,10 @@
-import { createElement, useState } from "react";
+import {
+  CardShell,
+  PLUGIN_CARD_SHELL_CSS,
+  injectCardStyles,
+  registerSettingsCard,
+} from "@yadsh/dsh-plugin-kit/client";
+import { createElement } from "react";
 
 // dsh-doc-impact browser client source. tsdown wraps this module in the
 // classic factory served by the DSH web ModuleLoader at
@@ -327,18 +333,7 @@ import { createElement, useState } from "react";
 
     //#region styles
     const CSS = [
-      ".dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
-      ".dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}",
-      ".dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",
-      ".dsh-plugin-card__header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}",
-      ".dsh-plugin-card__header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}",
-      ".dsh-plugin-card__head-text{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}",
-      ".dsh-plugin-card__name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}",
-      ".dsh-plugin-card__description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}",
-      ".dsh-plugin-card__badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}",
-      ".dsh-plugin-card__chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}",
-      ".dsh-plugin-card--open .dsh-plugin-card__chevron{transform:rotate(180deg)}",
-      ".dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}",
+      PLUGIN_CARD_SHELL_CSS.trim(),
       ".ddi_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
       ".ddi_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
       ".ddi_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}",
@@ -363,13 +358,7 @@ import { createElement, useState } from "react";
       ".ddi_hint{color:var(--dsw-alias-label-tertiary);margin:6px 0 0;font-size:12px;line-height:1.5}",
       ".ddi_invalid{color:var(--dsw-alias-label-error);margin:6px 0 0;font-size:12px;line-height:1.5}"
     ].join("\n");
-    if (typeof document !== "undefined" && document.querySelector('style[data-plugin-css="dsh-doc-impact/ConfigCard.module.css"]') === null) {
-      const tag = document.createElement("style");
-      tag.dataset.plugin = "dsh-doc-impact";
-      tag.dataset.pluginCss = "dsh-doc-impact/ConfigCard.module.css";
-      tag.textContent = CSS;
-      document.head.appendChild(tag);
-    }
+    if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
     //#endregion
 
     //#region components
@@ -494,28 +483,7 @@ import { createElement, useState } from "react";
       );
     }
 
-    function ChevronDown() {
-      return createElement(
-        "svg",
-        {
-          className: "dsh-plugin-card__chevron",
-          viewBox: "0 0 14 14",
-          fill: "none",
-          "aria-hidden": "true"
-        },
-        createElement("path", {
-          d: "m3.5 5.25 3.5 3.5 3.5-3.5",
-          stroke: "currentColor",
-          strokeLinecap: "round",
-          strokeLinejoin: "round"
-        })
-      );
-    }
-
     function ConfigCard(props: any) {
-      const openState = useState(false);
-      const open = openState[0];
-      const setOpen = openState[1];
       const state = props.useDocImpactCard(function (snapshot: any) {
         return snapshot;
       });
@@ -525,33 +493,18 @@ import { createElement, useState } from "react";
       const disabled = !state.writable || state.saving;
       const fields = state.fields;
       return createElement(
-        "li",
-        { className: open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card" },
-        createElement(
-          "button",
-          {
-            type: "button",
-            className: "dsh-plugin-card__header",
-            "aria-expanded": open,
-            "aria-label": t(open ? "collapse" : "expand") + ": " + t("cardTitle"),
-            onClick: function () {
-              setOpen(!open);
-            }
+        CardShell,
+        {
+          title: t("cardTitle"),
+          description: t("cardDescription"),
+          label: function (open: boolean) {
+            return t(open ? "collapse" : "expand") + ": " + t("cardTitle");
           },
-          createElement(
-            "span",
-            { className: "dsh-plugin-card__head-text" },
-            createElement("span", { className: "dsh-plugin-card__name" }, t("cardTitle")),
-            createElement("span", { className: "dsh-plugin-card__description" }, t("cardDescription"))
-          ),
-          state.dirty ? createElement("span", { className: "dsh-plugin-card__badge" }, t("unsaved")) : null,
-          createElement(ChevronDown)
-        ),
-        open
-          ? createElement(
-              "div",
-              { className: "dsh-plugin-card__body" },
-              !state.writable ? createElement("p", { className: "ddi_readOnly", role: "status" }, t("readOnly")) : null,
+          badge: state.dirty
+            ? createElement("span", { className: "dsh-plugin-card__badge" }, t("unsaved"))
+            : undefined
+        },
+        !state.writable ? createElement("p", { className: "ddi_readOnly", role: "status" }, t("readOnly")) : null,
               createElement(BoolField, {
                 t: t,
                 id: "doc-impact-enabled",
@@ -681,8 +634,6 @@ import { createElement, useState } from "react";
                   t(state.saving ? "saving" : "save")
                 )
               )
-            )
-          : null
       );
     }
     //#endregion
@@ -778,17 +729,12 @@ import { createElement, useState } from "react";
       const scope = settingsScope.bind({ namespace: SETTINGS_NS });
       const form = new SettingsForm(scope);
 
-      ctx.slots.inject("settings.plugin.item", function* () {
-        yield ctx.slots.register(
-          {
-            name: "settings.plugin.item",
-            key: SETTINGS_NS,
-            locale: LOCALE_NS,
-            inject: function () {
-              return form.inject();
-            }
-          },
-          ConfigCard
-        );
+      registerSettingsCard(ctx, {
+        key: SETTINGS_NS,
+        locale: LOCALE_NS,
+        component: ConfigCard,
+        inject: function () {
+          return form.inject();
+        }
       });
     }

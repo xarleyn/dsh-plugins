@@ -95,6 +95,7 @@
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-connection": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",

@@ -86,6 +86,8 @@
     "@types/node": "catalog:tooling",
     "@types/picomatch": "^4.0.2",
     "@types/react": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",

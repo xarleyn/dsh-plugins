@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { startVisibilityAwarePolling } from "../src/client/index.js";
+import { startVisibilityAwarePolling } from "@yadsh/dsh-plugin-kit/client";
 
 describe("client polling", () => {
   it("pauses while hidden and refreshes immediately when visible", () => {

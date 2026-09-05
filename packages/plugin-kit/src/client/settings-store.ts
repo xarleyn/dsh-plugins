@@ -1,7 +1,8 @@
 /**
- * React calls external-store callbacks as plain functions. SettingsScope's
- * methods use their receiver, so forwarding them directly loses `this` and
- * crashes while reading the internal store.
+ * React calls external-store callbacks as plain functions, while
+ * SettingsScope's methods depend on their receiver. Forwarding the methods
+ * directly loses `this` and crashes while reading the internal store, so
+ * bind them through stable wrappers.
  */
 export function bindSettingsExternalStore<TSnapshot>(scope: {
   subscribe(listener: () => void): () => void;
