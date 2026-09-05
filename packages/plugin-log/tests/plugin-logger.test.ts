@@ -99,6 +99,25 @@ describe("createHostLoggerSink", () => {
 
     expect(calls).toEqual(["debug message"]);
   });
+
+  it("mirrors verbose records through info with verboseToInfo", () => {
+    const calls: string[] = [];
+    const sink = createHostLoggerSink(
+      {
+        debug: (message) => calls.push(`debug:${message}`),
+        info: (message) => calls.push(`info:${message}`),
+        warn() {},
+        error() {},
+      },
+      { verboseToInfo: true },
+    );
+
+    sink("trace", "trace message");
+    sink("debug", "debug message");
+    sink("info", "info message");
+
+    expect(calls).toEqual(["info:trace message", "info:debug message", "info:info message"]);
+  });
 });
 
 describe("createPluginLogger", () => {
