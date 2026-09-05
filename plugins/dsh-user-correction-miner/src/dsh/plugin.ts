@@ -23,6 +23,11 @@ export const name = "user-correction-miner";
 export const inject = ["sessionQuery", "storageDomain"] as const;
 export { Config };
 
+/** Structural view of the host `commands` service, resolved through the ctx proxy. */
+interface CommandsHost {
+  commands: { register(definition: unknown): unknown };
+}
+
 function errorFields(error: unknown): Record<string, unknown> {
   return { reason: error instanceof Error ? error.message : String(error) };
 }
@@ -64,8 +69,10 @@ export async function apply(
     );
     engine = createdEngine;
     registerLifecycle(ctx, createdEngine);
-    ctx.inject(["commands"], (commandCtx: any) =>
-      commandCtx.commands.register(createCorrectionsCommand(createdEngine)),
+    ctx.inject(["commands"], (commandCtx) =>
+      (commandCtx as Context & CommandsHost).commands.register(
+        createCorrectionsCommand(createdEngine),
+      ),
     );
     logger.info("plugin.ready", {
       domain: CORRECTION_MINER_DOMAIN.name,

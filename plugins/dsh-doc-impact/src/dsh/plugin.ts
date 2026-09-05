@@ -23,9 +23,15 @@ export interface AgentsServiceLike {
   }[];
 }
 
+/** Structural view of the host `commands` service the plugin registers into. */
+export interface CommandRegistryLike {
+  commands: { register(definition: unknown): unknown };
+}
+
 export interface PluginContext {
   on(event: string, listener: (...args: never[]) => unknown): unknown;
-  inject(services: readonly string[], callback: (ctx: any) => void): unknown;
+  /** Callback receives the injected-service host; declare its shape at the callsite. */
+  inject<TContext>(services: readonly string[], callback: (ctx: TContext) => void): unknown;
   get(service: string): unknown;
   tools: {
     register(definition: unknown): () => void;
@@ -104,7 +110,7 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   };
 
   const command = createDocImpactCommand(engine, { rulesFor });
-  ctx.inject(['commands'], (commandCtx: any) => {
+  ctx.inject(['commands'], (commandCtx: CommandRegistryLike) => {
     commandCtx.commands.register(command);
   });
 

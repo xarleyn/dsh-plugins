@@ -40,9 +40,6 @@ export const SETTINGS_DEFAULTS: DocImpactSettingsSection = {
 const MODES = ['remind', 'require-review', 'require-resolution', 'require-update'] as const;
 const ON_LIMIT = ['allow', 'warn', 'error'] as const;
 
-const ON_LIMIT_VALUES = ['allow', 'warn', 'error'] as const;
-const MODE_VALUES = ['remind', 'require-review', 'require-resolution', 'require-update'] as const;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -79,13 +76,13 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   }
 
   const defaults = expectRecord(config.defaults, 'defaults');
-  if (defaults.mode !== undefined && (typeof defaults.mode !== 'string' || !MODE_VALUES.includes(defaults.mode as never))) {
-    throw new ConfigError(`defaults.mode must be one of: ${MODE_VALUES.join(', ')}`);
+  if (defaults.mode !== undefined && (typeof defaults.mode !== 'string' || !MODES.includes(defaults.mode as never))) {
+    throw new ConfigError(`defaults.mode must be one of: ${MODES.join(', ')}`);
   }
 
   const safety = expectRecord(config.safety, 'safety');
-  if (safety.onLimit !== undefined && (typeof safety.onLimit !== 'string' || !ON_LIMIT_VALUES.includes(safety.onLimit as never))) {
-    throw new ConfigError(`safety.onLimit must be one of: ${ON_LIMIT_VALUES.join(', ')}`);
+  if (safety.onLimit !== undefined && (typeof safety.onLimit !== 'string' || !ON_LIMIT.includes(safety.onLimit as never))) {
+    throw new ConfigError(`safety.onLimit must be one of: ${ON_LIMIT.join(', ')}`);
   }
   if (safety.maxReminderRounds !== undefined) {
     const rounds = safety.maxReminderRounds;
@@ -95,7 +92,7 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   }
 
   const changeDetection = expectRecord(config.changeDetection, 'changeDetection');
-  let maxSnapshotFiles = 10_000;
+  let maxSnapshotFiles = SETTINGS_DEFAULTS.maxSnapshotFiles;
   if (changeDetection.maxSnapshotFiles !== undefined) {
     const maxFiles = changeDetection.maxSnapshotFiles;
     if (typeof maxFiles !== 'number' || !Number.isInteger(maxFiles) || maxFiles < 1) {
@@ -105,15 +102,15 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   }
 
   return {
-    enabled: config.enabled ?? true,
-    configFile: config.configFile ?? '.dsh/doc-impact.yml',
-    defaultsMode: (defaults.mode as DocImpactPluginConfig['defaultsMode']) ?? 'remind',
+    enabled: config.enabled ?? SETTINGS_DEFAULTS.enabled,
+    configFile: config.configFile ?? SETTINGS_DEFAULTS.configFile,
+    defaultsMode: (defaults.mode as DocImpactPluginConfig['defaultsMode']) ?? SETTINGS_DEFAULTS.mode,
     safety: {
-      maxReminderRounds: (safety.maxReminderRounds as number) ?? 2,
-      onLimit: (safety.onLimit as DocImpactPluginConfig['safety']['onLimit']) ?? 'allow',
+      maxReminderRounds: (safety.maxReminderRounds as number) ?? SETTINGS_DEFAULTS.maxReminderRounds,
+      onLimit: (safety.onLimit as DocImpactPluginConfig['safety']['onLimit']) ?? SETTINGS_DEFAULTS.onLimit,
     },
     maxSnapshotFiles,
-    debug: config.debug ?? false,
+    debug: config.debug ?? SETTINGS_DEFAULTS.debug,
   };
 }
 

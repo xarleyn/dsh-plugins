@@ -30,6 +30,7 @@ export function truncateText(text: string, maxSize: number, unit: TextBudgetUnit
       prefixSize += size;
     } else {
       prefixComplete = true;
+      if (totalSize > maxSize) break;
     }
   }
 

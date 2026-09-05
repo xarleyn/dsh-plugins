@@ -37,6 +37,10 @@ function emptyCursor(key: string): ScanCursor {
   return { workspaceKey: key, sessionWatermarks: {}, updatedAt: 0 };
 }
 
+function abortReason(signal: AbortSignal): unknown {
+  return signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted");
+}
+
 export class CorrectionMinerEngine {
   private readonly pending = new Map<string, PendingSession>();
   private readonly workspaceQueues = new Map<string, Promise<unknown>>();
@@ -97,10 +101,14 @@ export class CorrectionMinerEngine {
 
   private scheduleLiveSession(session: Session): void {
     const sessionId = String(session.id);
-    if ((this.pending.get(sessionId)?.eventSeqs.size ?? 0) === 0) return;
+    const pending = this.pending.get(sessionId);
+    if ((pending?.eventSeqs.size ?? 0) === 0) return;
     this.pending.delete(sessionId);
     const cwd = session.header.cwd;
-    if (cwd === undefined) return;
+    if (cwd === undefined) {
+      this.warnPendingEviction("no-cwd", sessionId, pending?.eventSeqs.size ?? 0);
+      return;
+    }
     const snapshot: SessionSnapshot = {
       session: session.header,
       events: session.events,
@@ -124,7 +132,7 @@ export class CorrectionMinerEngine {
     let correctionsAdded = 0;
 
     for (const record of sessions) {
-      if (signal?.aborted === true) throw signal.reason;
+      if (signal?.aborted === true) throw abortReason(signal);
       try {
         const snapshot = await this.source.read(String(record.header.id));
         const report = await this.runSnapshot(snapshot, key, request.incremental !== false);
@@ -181,7 +189,7 @@ export class CorrectionMinerEngine {
           ? {}
           : { [sessionId]: Math.max(afterSeq, capturedThroughSeq) }),
       },
-      updatedAt: Date.now(),
+      updatedAt: this.now(),
     };
     await this.store.putCursor(nextCursor);
     return {
@@ -258,7 +266,7 @@ export class CorrectionMinerEngine {
   }
 
   private warnPendingEviction(
-    reason: "event-cap" | "session-cap" | "ttl",
+    reason: "event-cap" | "session-cap" | "ttl" | "no-cwd",
     sessionId: string,
     evictedEvents: number,
   ): void {

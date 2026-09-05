@@ -91,9 +91,9 @@ function makeSettingsContext(section: unknown) {
       if (serviceName !== 'settings') return undefined;
       return service;
     },
-    inject(services: readonly string[], callback: (c: { settings?: unknown }) => void) {
+    inject<TContext>(services: readonly string[], callback: (c: TContext) => void) {
       injected.push([...services]);
-      callback({ settings: service });
+      callback({ settings: service } as TContext);
     },
     logger: { warn() {}, info() {}, error() {} },
   };

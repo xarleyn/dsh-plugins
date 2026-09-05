@@ -127,29 +127,29 @@ export const Config = z.object({
   enabled: z.boolean().default(DEFAULT_CONFIG.enabled),
   retention: z
     .object({
-      maxRecordsPerWorkspace: z.number().default(DEFAULT_CONFIG.retention.maxRecordsPerWorkspace),
+      maxRecordsPerWorkspace: z.number().min(1).default(DEFAULT_CONFIG.retention.maxRecordsPerWorkspace),
     })
     .default(DEFAULT_CONFIG.retention),
   live: z
     .object({
-      maxPendingSessions: z.number().default(DEFAULT_CONFIG.live.maxPendingSessions),
-      maxPendingEventsPerSession: z.number().default(
+      maxPendingSessions: z.number().min(1).default(DEFAULT_CONFIG.live.maxPendingSessions),
+      maxPendingEventsPerSession: z.number().min(1).default(
         DEFAULT_CONFIG.live.maxPendingEventsPerSession,
       ),
-      pendingTtlMs: z.number().default(DEFAULT_CONFIG.live.pendingTtlMs),
+      pendingTtlMs: z.number().min(1).default(DEFAULT_CONFIG.live.pendingTtlMs),
     })
     .default(DEFAULT_CONFIG.live),
   analysis: z
     .object({
-      maxContextEvents: z.number().default(DEFAULT_CONFIG.analysis.maxContextEvents),
-      maxContextBytes: z.number().default(DEFAULT_CONFIG.analysis.maxContextBytes),
+      maxContextEvents: z.number().min(1).default(DEFAULT_CONFIG.analysis.maxContextEvents),
+      maxContextBytes: z.number().min(1).default(DEFAULT_CONFIG.analysis.maxContextBytes),
     })
     .default(DEFAULT_CONFIG.analysis),
   privacy: z
     .object({
       redactSecrets: z.boolean().default(DEFAULT_CONFIG.privacy.redactSecrets),
       persistRawMessages: z.boolean().default(DEFAULT_CONFIG.privacy.persistRawMessages),
-      maxStoredTextChars: z.number().default(DEFAULT_CONFIG.privacy.maxStoredTextChars),
+      maxStoredTextChars: z.number().min(1).default(DEFAULT_CONFIG.privacy.maxStoredTextChars),
     })
     .default(DEFAULT_CONFIG.privacy),
 });
