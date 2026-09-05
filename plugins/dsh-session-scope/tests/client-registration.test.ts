@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
 import { runInNewContext } from "node:vm";
 
 import { describe, expect, test } from "vitest";
@@ -19,7 +20,6 @@ interface ClientHarness {
 }
 
 function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness = {}): Registration[] {
-  let definition: { factory: (require: (id: string) => unknown) => { apply: (ctx: unknown) => void } } | undefined;
   const registrations: Registration[] = [];
   const slots = {
     inject(name: string, callback: () => (() => void)): () => void {
@@ -40,14 +40,15 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     head: { appendChild: () => {} },
   };
   const source = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
+  const loader = createModuleLoaderStub();
   runInNewContext(source, {
-    window: { __ModuleLoader__: { load: (value: typeof definition) => { definition = value; } } },
+    window: loader.window,
     document,
     navigator: { language: "en" },
     console,
   });
-  if (definition === undefined) throw new Error("client module did not register");
-  const plugin = definition.factory((id) => {
+  if (loader.registrations.length === 0) throw new Error("client module did not register");
+  const plugin = loader.registrations[0]!.factory((id) => {
     if (id === "react") return harness.React ?? {};
     if (id === "react-dom") return harness.ReactDOM ?? {};
     throw new Error(`unexpected module ${id}`);

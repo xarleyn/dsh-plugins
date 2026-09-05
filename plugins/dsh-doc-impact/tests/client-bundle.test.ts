@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createModuleLoaderStub } from '@yadsh/dsh-test-kit';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { join } from 'node:path';
@@ -101,20 +102,12 @@ function makeCtx(scope: unknown) {
 
 async function loadBundle(): Promise<LoadedBundle> {
   const source = await readFile(CLIENT_BUNDLE_PATH, 'utf8');
-  let captured: LoadedBundle | undefined;
-  const sandbox = {
-    window: {
-      __ModuleLoader__: {
-        load(meta: LoadedBundle) {
-          captured = meta;
-        },
-      },
-    },
-  };
+  const loader = createModuleLoaderStub();
+  const sandbox = { window: loader.window };
   vm.createContext(sandbox);
   new vm.Script(source, { filename: 'client.js' }).runInContext(sandbox);
-  if (captured === undefined) throw new Error('bundle never called ModuleLoader.load');
-  return captured!;
+  if (loader.registrations.length === 0) throw new Error('bundle never called ModuleLoader.load');
+  return loader.registrations[0]! as LoadedBundle;
 }
 
 describe('client bundle', () => {

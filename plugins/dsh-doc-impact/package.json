@@ -71,7 +71,7 @@
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-tools": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
-    "react": ">=18.2.0 <20"
+    "react": "^18.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -88,6 +88,7 @@
     "@types/react": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
+    "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",

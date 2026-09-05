@@ -24,7 +24,7 @@
   "dependencies": {},
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
-    "react": ">=18.2.0 <20"
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
@@ -36,7 +36,7 @@
     "vitest": "catalog:tooling"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

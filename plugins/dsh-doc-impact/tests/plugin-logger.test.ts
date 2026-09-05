@@ -1,24 +1,10 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createPluginLogger, getPluginLogger } from '@yadsh/dsh-plugin-log';
 import { createEngineFileLogger } from '../src/dsh/engine-logger.js';
+import { makeLogDir, readLogLines } from '@yadsh/dsh-test-kit';
 
-async function makeLogDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'dsh-doc-impact-logs-'));
-}
-
-async function readLogLines(dir: string): Promise<Record<string, unknown>[]> {
-  const lines: Record<string, unknown>[] = [];
-  for (const entry of await readdir(dir)) {
-    const text = await readFile(join(dir, entry), 'utf8');
-    for (const line of text.split('\n')) {
-      if (line.trim() !== '') lines.push(JSON.parse(line) as Record<string, unknown>);
-    }
-  }
-  return lines;
-}
 
 describe('plugin-logger package integration', () => {
   let directories: string[] = [];
@@ -37,7 +23,7 @@ describe('plugin-logger package integration', () => {
   });
 
   async function newDir(): Promise<string> {
-    const dir = await makeLogDir();
+    const dir = await makeLogDir('dsh-doc-impact-logs-');
     directories.push(dir);
     return dir;
   }
@@ -168,7 +154,7 @@ describe('createEngineFileLogger', () => {
   let directory: string;
 
   beforeEach(async () => {
-    directory = await makeLogDir();
+    directory = await makeLogDir('dsh-doc-impact-logs-');
   });
 
   afterEach(async () => {

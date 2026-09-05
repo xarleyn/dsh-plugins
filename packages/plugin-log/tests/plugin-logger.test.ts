@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { makeLogDir, readLogLines } from "@yadsh/dsh-test-kit";
 import {
   createHostLoggerSink,
   createPluginLogger,
@@ -16,21 +17,6 @@ import {
 } from "../src/index.js";
 import type { PluginLogger, PluginLogLevel } from "../src/index.js";
 
-async function makeLogDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "dsh-plugin-log-"));
-}
-
-async function readLogLines(dir: string): Promise<Record<string, unknown>[]> {
-  const entries = await readdir(dir);
-  const lines: Record<string, unknown>[] = [];
-  for (const entry of entries) {
-    const text = await readFile(join(dir, entry), "utf8");
-    for (const line of text.split("\n")) {
-      if (line.trim().length > 0) lines.push(JSON.parse(line) as Record<string, unknown>);
-    }
-  }
-  return lines;
-}
 
 describe("resolveDshHome", () => {
   it("prefers $DSH_HOME when set", () => {
@@ -142,7 +128,7 @@ describe("createPluginLogger", () => {
   });
 
   async function newDir(): Promise<string> {
-    const dir = await makeLogDir();
+    const dir = await makeLogDir("dsh-plugin-log-");
     directories.push(dir);
     return dir;
   }
@@ -332,7 +318,7 @@ describe("getPluginLogger", () => {
   let directory: string;
 
   beforeEach(async () => {
-    directory = await makeLogDir();
+    directory = await makeLogDir("dsh-plugin-log-");
   });
 
   afterEach(async () => {
