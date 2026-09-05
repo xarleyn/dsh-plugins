@@ -14,6 +14,9 @@ import type { KvPersistLogger } from "../../src/observability/diagnostics.js";
 import { KvPersistMetrics } from "../../src/observability/metrics.js";
 import type { StreamChunk } from "@deepseek-ai/dsh-llm";
 import { SnapshotRepository } from "../../src/snapshots/repository.js";
+import { buildSnapshotIdentity } from "../../src/snapshots/fingerprint.js";
+import type { SnapshotIdentity } from "../../src/snapshots/fingerprint.js";
+import { snapshotFilename } from "../../src/snapshots/naming.js";
 import { FakeKvBackend } from "./fake-backend.js";
 
 export const silentLogger: KvPersistLogger = {
@@ -92,4 +95,36 @@ export async function consume(stream: AsyncIterable<StreamChunk>): Promise<Strea
   const chunks: StreamChunk[] = [];
   for await (const chunk of stream) chunks.push(chunk);
   return chunks;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+  let resolve: () => void = () => undefined;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+export function buildIdentity(harness: Harness, sessionId: string): SnapshotIdentity {
+  return buildSnapshotIdentity({
+    sessionId,
+    route: { provider: "local-qwen", model: "qwen-test" },
+    baseURL: harness.config.baseURL,
+    runtimeKey: harness.config.runtimeKey,
+  });
+}
+
+export function residentKey(harness: Harness, sessionId: string): string {
+  return snapshotFilename(buildIdentity(harness, sessionId));
+}
+
+export async function run(harness: Harness, sessionId: string, provider = "local-qwen") {
+  const stream = await harness.coordinator.runSessionRequest(
+    makeRequest({ sessionId, provider }),
+  );
+  return consume(stream);
 }
