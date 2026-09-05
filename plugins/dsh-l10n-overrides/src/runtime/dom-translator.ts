@@ -1,5 +1,14 @@
 import type { Diagnostics } from "../registry/diagnostics.js";
 import type { DomTranslationAttribute, DomTranslationRule } from "../types.js";
+import {
+  ATTRIBUTE_PROTECTED_SURFACE_SELECTOR,
+  CLASS_PROTECTION_PATTERN,
+  KNOWN_PROTECTION_ATTRIBUTES,
+  SCOPE_AND_PROTECTION_ATTRIBUTES,
+  TEST_ID_PROTECTION_PATTERN,
+  TEXT_PROTECTED_SURFACE_SELECTOR,
+} from "./protected-surfaces.js";
+import { parseSupportedScopeSelector } from "./scope-selector.js";
 
 const DOM_TRANSLATION_ATTRIBUTES = new Set<DomTranslationAttribute>([
   "placeholder",
@@ -10,199 +19,6 @@ const DOM_TRANSLATION_ATTRIBUTES = new Set<DomTranslationAttribute>([
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
 const SHOW_ELEMENT_AND_TEXT = 5;
-const KNOWN_PROTECTION_ATTRIBUTES = new Set([
-  "class",
-  "contenteditable",
-  "data-no-translate",
-  "data-message-id",
-  "data-testid",
-]);
-const CLASS_PROTECTION_PATTERN =
-  /conversation|message|markdown|editor|terminal|prompt/i;
-const TEST_ID_PROTECTION_PATTERN =
-  /conversation|message|markdown|editor|terminal|prompt|composer/i;
-const SCOPE_AND_PROTECTION_ATTRIBUTES = [
-  "class",
-  "id",
-  ...KNOWN_PROTECTION_ATTRIBUTES,
-];
-const SHARED_PROTECTED_SURFACES = [
-  "[contenteditable]",
-  "[data-no-translate]",
-  "[data-message-id]",
-  '[data-testid*="conversation" i]',
-  '[data-testid*="message" i]',
-  '[data-testid*="markdown" i]',
-  '[data-testid*="editor" i]',
-  '[data-testid*="terminal" i]',
-  '[data-testid*="prompt" i]',
-  '[data-testid*="composer" i]',
-  '[class*="conversation" i]',
-  '[class*="message" i]',
-  '[class*="markdown" i]',
-  '[class*="editor" i]',
-  '[class*="terminal" i]',
-  '[class*="prompt" i]',
-];
-const CODE_LIKE_PROTECTED_SURFACES = [
-  "pre",
-  "code",
-  "kbd",
-  "samp",
-  "script",
-  "style",
-];
-const TEXT_PROTECTED_SURFACE_SELECTOR = [
-  "input",
-  "textarea",
-  ...CODE_LIKE_PROTECTED_SURFACES,
-  ...SHARED_PROTECTED_SURFACES,
-].join(",");
-const ATTRIBUTE_PROTECTED_SURFACE_SELECTOR = [
-  ...CODE_LIKE_PROTECTED_SURFACES,
-  ...SHARED_PROTECTED_SURFACES,
-].join(",");
-
-function isScopeIdentifierStart(character: string | undefined): boolean {
-  return character !== undefined && /[A-Z_a-z\u0080-\uFFFF]/.test(character);
-}
-
-function consumeScopeIdentifier(scope: string, start: number): number {
-  let index = start;
-  if (scope[index] === "-") {
-    index += 1;
-    if (scope[index] === "-") index += 1;
-    else if (!isScopeIdentifierStart(scope[index])) return start;
-  } else if (isScopeIdentifierStart(scope[index])) {
-    index += 1;
-  } else {
-    return start;
-  }
-  while (
-    index < scope.length &&
-    /[-0-9A-Z_a-z\u0080-\uFFFF]/.test(scope[index] ?? "")
-  ) {
-    index += 1;
-  }
-  return index;
-}
-
-function skipScopeWhitespace(scope: string, start: number): number {
-  let index = start;
-  while (index < scope.length && /[\t\n\f\r ]/.test(scope[index] ?? "")) {
-    index += 1;
-  }
-  return index;
-}
-
-interface ParsedScopeAttribute {
-  readonly dependency: string;
-  readonly nextIndex: number;
-}
-
-function parseScopeAttribute(
-  scope: string,
-  start: number,
-): ParsedScopeAttribute | undefined {
-  let index = skipScopeWhitespace(scope, start + 1);
-  const nameStart = index;
-  if (!/[A-Z_a-z]/.test(scope[index] ?? "")) return undefined;
-  index += 1;
-  while (index < scope.length && /[-0-9A-Z_a-z]/.test(scope[index] ?? "")) {
-    index += 1;
-  }
-  const dependency = scope.slice(nameStart, index).toLowerCase();
-  index = skipScopeWhitespace(scope, index);
-  if (scope[index] === "]") return { dependency, nextIndex: index + 1 };
-
-  const operatorStart = scope[index];
-  if (operatorStart === "=") {
-    index += 1;
-  } else if (
-    operatorStart !== undefined &&
-    "~|^$*".includes(operatorStart) &&
-    scope[index + 1] === "="
-  ) {
-    index += 2;
-  } else {
-    return undefined;
-  }
-
-  index = skipScopeWhitespace(scope, index);
-  const quote = scope[index];
-  if (quote === '"' || quote === "'") {
-    index += 1;
-    while (index < scope.length && scope[index] !== quote) index += 1;
-    if (scope[index] !== quote) return undefined;
-    index += 1;
-  } else {
-    const next = consumeScopeIdentifier(scope, index);
-    if (next === index) return undefined;
-    index = next;
-  }
-
-  const valueEnd = index;
-  index = skipScopeWhitespace(scope, index);
-  if (index > valueEnd && /[IiSs]/.test(scope[index] ?? "")) {
-    index += 1;
-    index = skipScopeWhitespace(scope, index);
-  }
-  if (scope[index] !== "]") return undefined;
-  return { dependency, nextIndex: index + 1 };
-}
-
-interface ParsedScopeSelector {
-  readonly dependencies: ReadonlySet<string>;
-}
-
-// Dynamic membership safety depends on target-local root selectors. v0.1
-// accepts one escape-free compound selector and leaves full syntax validation
-// to the browser; relational selectors require broader mutation tracking.
-function parseSupportedScopeSelector(
-  scope: string,
-): ParsedScopeSelector | undefined {
-  if (
-    scope.length === 0 ||
-    scope.includes("\\") ||
-    scope.includes(",") ||
-    scope.includes("/*") ||
-    scope.includes("*/")
-  ) {
-    return undefined;
-  }
-  const dependencies = new Set<string>();
-  let index = 0;
-  let components = 0;
-  if (scope[index] === "*") {
-    index += 1;
-    components += 1;
-  } else {
-    const next = consumeScopeIdentifier(scope, index);
-    if (next !== index) {
-      index = next;
-      components += 1;
-    }
-  }
-  while (index < scope.length) {
-    const character = scope[index];
-    if (character === "." || character === "#") {
-      const next = consumeScopeIdentifier(scope, index + 1);
-      if (next === index + 1) return undefined;
-      dependencies.add(character === "." ? "class" : "id");
-      index = next;
-      components += 1;
-    } else if (character === "[") {
-      const parsed = parseScopeAttribute(scope, index);
-      if (parsed === undefined) return undefined;
-      dependencies.add(parsed.dependency);
-      index = parsed.nextIndex;
-      components += 1;
-    } else {
-      return undefined;
-    }
-  }
-  return components > 0 ? { dependencies } : undefined;
-}
 
 interface ScopeRules {
   readonly scope: string;

@@ -7,7 +7,7 @@ const CLIENT_EXTERNALS = ["react", "react/jsx-runtime"];
 
 const client = {
   name: "dsh-doc-impact/client",
-  entry: { client: "src/client.ts" },
+  entry: { client: "src/client/index.ts" },
   outDir: "lib",
   format: ["cjs"],
   platform: "browser",
