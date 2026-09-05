@@ -1,4 +1,7 @@
+import type { SessionScopeEventData } from "../src/session-scope.js";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+
+const asEvent = (event: SessionScopeEventData): Record<string, unknown> => event as unknown as Record<string, unknown>;
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -31,7 +34,7 @@ function session(
     header,
     events: [...events],
     append(type, data) {
-      (target.events as Array<{ type: string; data: Record<string, unknown> }>).push({ type, data });
+      (target.events as Array<{ type: string; data: Record<string, unknown> }>).push({ type, data: asEvent(data) });
     },
   };
   return target;
@@ -50,8 +53,7 @@ describe("delegated session scope", () => {
     mkdirSync(selected);
     const parent = session({ id: "parent", cwd: workspace }, [{
       type: "session-scope/set",
-      data: createSessionScopeEvent("focused", [selected], workspace, "ui"),
-    }]);
+      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     }]);
     const child = session({
       id: "child",
       cwd: workspace,
@@ -76,11 +78,10 @@ describe("delegated session scope", () => {
     mkdirSync(selected);
     const focused = {
       type: "session-scope/set",
-      data: createSessionScopeEvent("focused", [selected], workspace, "ui"),
-    };
+      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     };
     const parent = session({ id: "parent", cwd: workspace }, [{
       type: "session-scope/set",
-      data: createSessionScopeEvent("full", [], workspace, "ui"),
+      data: asEvent(createSessionScopeEvent("full", [], workspace, "ui")),
     }]);
     const child = session({
       id: "child",
@@ -101,7 +102,7 @@ describe("delegated session scope", () => {
     const workspace = temporaryWorkspace();
     const delegated = {
       type: "session-scope/set",
-      data: createSessionScopeEvent("focused", [], workspace, "delegation"),
+      data: asEvent(createSessionScopeEvent("focused", [], workspace, "delegation")),
     };
     const child = session({
       id: "child",
@@ -143,7 +144,7 @@ describe("delegated session scope", () => {
       origin: "subagent",
     }, [{
       type: "session-scope/set",
-      data: createSessionScopeEvent("focused", [selected], workspace, "delegation"),
+      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "delegation")),
     }]);
     const child = session({
       id: "nested",
@@ -167,8 +168,7 @@ describe("delegated session scope", () => {
       seedLength: 1,
     }, [{
       type: "session-scope/set",
-      data: createSessionScopeEvent("focused", [selected], workspace, "ui"),
-    }]);
+      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     }]);
 
     expect(initializeDelegatedSessionScope(fork, () => undefined)).toBeUndefined();
     expect(effectiveSessionScope(fork.events, fork.header).roots).toEqual([canonicalPath(selected)]);

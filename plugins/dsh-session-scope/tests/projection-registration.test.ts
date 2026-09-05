@@ -37,7 +37,8 @@ function registeredProjections(): ProjectionDefinition[] {
     },
   };
 
-  const dispose = apply(ctx);
+  // The stub satisfies only the sandboxPolicy face apply() consumes.
+  const dispose = apply(ctx as unknown as Parameters<typeof apply>[0]);
   dispose();
   return definitions;
 }

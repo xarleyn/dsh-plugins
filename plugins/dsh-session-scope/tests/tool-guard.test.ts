@@ -71,7 +71,7 @@ describe("monotonic path-aware tool guard", () => {
         header: { cwd: alias },
         events: [{
           type: "session-scope/set",
-          data: createSessionScopeEvent("focused", [selected], alias, "ui"),
+          data: createSessionScopeEvent("focused", [selected], alias, "ui") as unknown as Record<string, unknown>,
         }],
         append: vi.fn(),
       };

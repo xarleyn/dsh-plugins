@@ -48,11 +48,12 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     console,
   });
   if (loader.registrations.length === 0) throw new Error("client module did not register");
-  const plugin = loader.registrations[0]!.factory((id) => {
+  const moduleFactory = loader.registrations[0]!.factory;
+  const plugin = moduleFactory((id: unknown) => {
     if (id === "react") return harness.React ?? {};
     if (id === "react-dom") return harness.ReactDOM ?? {};
     throw new Error(`unexpected module ${id}`);
-  });
+  }) as { apply(ctx: unknown): void };
   plugin.apply({
     get: (name: string) => name === "slots"
       ? slots

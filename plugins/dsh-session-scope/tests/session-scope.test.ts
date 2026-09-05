@@ -97,9 +97,9 @@ describe("durable scope state", () => {
     mkdirSync(first);
     mkdirSync(second);
     const events = [
-      { type: "session-scope/set", data: createSessionScopeEvent("focused", [first], workspace, "ui") },
+      { type: "session-scope/set", data: createSessionScopeEvent("focused", [first], workspace, "ui") as unknown as Record<string, unknown> },
       { type: "turn/start", data: {} },
-      { type: "session-scope/set", data: createSessionScopeEvent("full", [second], workspace, "command") },
+      { type: "session-scope/set", data: createSessionScopeEvent("full", [second], workspace, "command") as unknown as Record<string, unknown> },
     ];
 
     expect(effectiveSessionScope(events, { cwd: workspace })).toEqual({
@@ -160,7 +160,7 @@ describe("durable scope state", () => {
       workspaceRoot: canonicalPath(actualWorkspace),
       roots: [canonicalPath(selected)],
     });
-    expect(effectiveSessionScope([{ type: "session-scope/set", data: event }], {
+    expect(effectiveSessionScope([{ type: "session-scope/set", data: event as unknown as Record<string, unknown> }], {
       cwd: aliasWorkspace,
     })).toMatchObject({
       workspaceRoot: canonicalPath(actualWorkspace),

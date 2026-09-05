@@ -1,8 +1,6 @@
 // Protected-surface tables for the DOM translator (SPEC §12-§14): the
 // selectors and attribute heuristics that keep harness-owned UI (conversations,
 // editors, terminals, code) out of translation.
-import type { DomTranslationAttribute } from "../types.js";
-
 export const KNOWN_PROTECTION_ATTRIBUTES = new Set([
   "class",
   "contenteditable",

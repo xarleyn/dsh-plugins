@@ -130,7 +130,7 @@ describe("Linux isolated bwrap profile", () => {
     [wrap(), policy(), scope(["/other/secret"]), undefined],
     [wrap(), policy(), scope(), "/workspace/hidden"],
   ] as const)("fails closed for an unsafe or unsupported process plan", (confined, activePolicy, activeScope, cwd) => {
-    expect(() => confineIsolatedBwrap(confined, activePolicy, activeScope, cwd)).toThrowError(
+    expect(() => confineIsolatedBwrap(confined as ScopeConfinedArgv, activePolicy, activeScope, cwd)).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.ISOLATION_UNAVAILABLE }),
     );
   });

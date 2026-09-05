@@ -86,14 +86,14 @@ test("selectedRootsOf folds last-wins over the log", () => {
 });
 
 test("normalizeRoots validates, canonicalizes, dedupes, sorts", () => {
-  const canonical = (path) => (path === "/a" ? "/resolved-a" : path);
+  const canonical = (path: string) => (path === "/a" ? "/resolved-a" : path);
   assert.deepEqual(normalizeRoots(["/b", "/a", "/a"], canonical), ["/b", "/resolved-a"]);
   assert.deepEqual(normalizeRoots([], canonical), []);
   assert.throws(() => normalizeRoots("nope"), /expects a JSON array/);
   assert.throws(() => normalizeRoots(["/ok", "relative"]), /not an absolute directory path/);
   assert.throws(() => normalizeRoots(["/ok", 42]), /not an absolute directory path/);
   assert.throws(() => normalizeRoots(["/ok", ""]), /not an absolute directory path/);
-  const many = [];
+  const many: string[] = [];
   for (let index = 0; index < 200; index += 1) many.push(`/dir-${index}`);
   assert.throws(() => normalizeRoots(many), /at most 128/);
 });
