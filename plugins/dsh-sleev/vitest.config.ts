@@ -1,8 +1,7 @@
-import { defineConfig } from "vitest/config";
+import { definePluginVitestConfig } from "@yadsh/dsh-config/vitest";
 
-export default defineConfig({
+export default definePluginVitestConfig({
   test: {
-    environment: "node",
     coverage: {
       provider: "v8",
       reporter: ["text", "json-summary"],

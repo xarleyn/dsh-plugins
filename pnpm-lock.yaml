@@ -105,6 +105,12 @@ catalogs:
     '@nx/js':
       specifier: 22.7.8
       version: 22.7.8
+    '@swc-node/register':
+      specifier: ^1.12.1
+      version: 1.12.1
+    '@swc/core':
+      specifier: ^1.16.1
+      version: 1.16.1
     '@types/node':
       specifier: ^26.4.0
       version: 26.4.0
@@ -144,10 +150,10 @@ importers:
         specifier: catalog:tooling
         version: 22.7.8(@babel/traverse@7.29.8)(@swc-node/register@1.12.1(@swc/core@1.16.1)(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.16.1)(nx@22.7.8(@swc-node/register@1.12.1(@swc/core@1.16.1)(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.16.1))
       '@swc-node/register':
-        specifier: ^1.12.1
+        specifier: catalog:tooling
         version: 1.12.1(@swc/core@1.16.1)(@swc/types@0.1.28)(typescript@5.9.3)
       '@swc/core':
-        specifier: ^1.16.1
+        specifier: catalog:tooling
         version: 1.16.1
       '@yadsh/dsh-plugin-generator':
         specifier: workspace:*
@@ -185,12 +191,18 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
         version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@types/react':
+        specifier: catalog:frontend-dev
+        version: 18.3.28
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
+      react:
+        specifier: catalog:frontend-dev
+        version: 18.3.1
       typescript:
         specifier: catalog:tooling
         version: 5.9.3
@@ -281,6 +293,12 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -354,6 +372,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.1.8
         version: 4.1.11(vitest@4.1.11)
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -428,6 +449,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.4.0
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -498,6 +522,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -562,6 +589,12 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -608,6 +641,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -666,6 +702,12 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)

@@ -85,6 +85,7 @@
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "^26.1.0",
     "prettier": "catalog:tooling",

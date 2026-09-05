@@ -1,7 +1,7 @@
 import {
   mergeConfig,
-  type UserConfig,
-  type UserConfigExport,
+  type ViteUserConfig,
+  type ViteUserConfigExport,
 } from "vitest/config";
 
 /**
@@ -31,7 +31,7 @@ import {
  * ```
  */
 
-export const baseConfig: UserConfig = {
+export const baseConfig: ViteUserConfig = {
   test: {
     globals: true,
     environment: "node",
@@ -45,7 +45,7 @@ export default baseConfig;
  * Deep-merges on top of {@link baseConfig}; `overrides` wins on conflicts.
  */
 export function definePluginVitestConfig(
-  overrides: UserConfig = {},
-): UserConfigExport {
-  return mergeConfig(baseConfig, overrides) as UserConfigExport;
+  overrides: ViteUserConfig = {},
+): ViteUserConfigExport {
+  return mergeConfig(baseConfig, overrides) as ViteUserConfigExport;
 }

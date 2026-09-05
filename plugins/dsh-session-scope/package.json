@@ -149,6 +149,7 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",

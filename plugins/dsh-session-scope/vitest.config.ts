@@ -1,8 +1,7 @@
-import { defineConfig } from "vitest/config";
+import { definePluginVitestConfig } from "@yadsh/dsh-config/vitest";
 
-export default defineConfig({
+export default definePluginVitestConfig({
   test: {
-    environment: "node",
     include: ["tests/**/*.test.ts"],
   },
 });
