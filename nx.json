@@ -5,7 +5,6 @@
     "production": [
       "default",
       "!{projectRoot}/tests/**/*",
-      "!{projectRoot}/.eslintrc.json",
       "!{projectRoot}/eslint.config.js"
     ]
   },

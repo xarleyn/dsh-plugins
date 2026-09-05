@@ -66,6 +66,8 @@ catalogs:
 
   tooling:
     typescript: '^5.9.2'
+    '@swc-node/register': '^1.12.1'
+    '@swc/core': '^1.16.1'
     vitest: '^4.1.11'
     tsdown: '^0.22.14'
     prettier: '^3.6.2'
