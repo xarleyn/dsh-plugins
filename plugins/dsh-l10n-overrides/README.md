@@ -10,21 +10,21 @@ Runtime localization overrides for [DeepSeek Harness](https://github.com/deepsee
 
 `dsh-l10n-overrides` overlays missing or incorrect locale entries without replacing the host locale service. Translation packs can also provide narrowly scoped DOM fallbacks for text and selected accessibility attributes.
 
-[Specification](docs/SPEC.md) · [Roadmap](ROADMAP.md)
+[Specification](SPEC.md) · [Roadmap](ROADMAP.md)
 
 ## Installation
 
-The package is not published yet. Build and install it from a local monorepo checkout:
+Install it by package name:
+
+```bash
+dsh plugin --profile web add @yadsh/dsh-l10n-overrides
+```
+
+To build and install from a local monorepo checkout instead:
 
 ```bash
 pnpm --filter @yadsh/dsh-l10n-overrides build
 dsh plugin --profile web add ./plugins/dsh-l10n-overrides
-```
-
-Once a public release is available, install it by package name:
-
-```bash
-dsh plugin --profile web add @yadsh/dsh-l10n-overrides
 ```
 
 To remove the plugin:

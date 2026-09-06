@@ -11,22 +11,30 @@ import { createDocImpactCommand } from './commands.js';
 
 export const name = 'doc-impact';
 
-/** The tools service is required; commands and the web UI are optional services. */
+/** The tools service is required; agents, commands, and the web UI are optional services. */
 export const inject = ['tools'] as const;
+
+/** Structural view of the `agents` service the attribution probe consumes. */
+export interface AgentsServiceLike {
+  list(): readonly {
+    readonly id: string;
+    readonly status: 'idle' | 'running';
+    readonly session: { readonly header?: { readonly cwd?: string } };
+  }[];
+}
+
+/** Structural view of the host `commands` service the plugin registers into. */
+export interface CommandRegistryLike {
+  commands: { register(definition: unknown): unknown };
+}
 
 export interface PluginContext {
   on(event: string, listener: (...args: never[]) => unknown): unknown;
-  inject(services: readonly string[], callback: (ctx: any) => void): unknown;
+  /** Callback receives the injected-service host; declare its shape at the callsite. */
+  inject<TContext>(services: readonly string[], callback: (ctx: TContext) => void): unknown;
   get(service: string): unknown;
   tools: {
     register(definition: unknown): () => void;
-  };
-  agents?: {
-    list(): readonly {
-      readonly id: string;
-      readonly status: 'idle' | 'running';
-      readonly session: { readonly header?: { readonly cwd?: string } };
-    }[];
   };
   logger: {
     info(message: string, ...values: unknown[]): void;
@@ -67,6 +75,16 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   });
 
   const loadWorkspaceConfig = createWorkspaceConfigSource(() => readConfig(), engineLogger);
+  // The attribution probe (SPEC §49) asks the `agents` service how many agents
+  // run in the same workspace. The service stays optional and is captured
+  // softly, so the plugin loads (and stays inert in attribution) on hosts that
+  // never publish it. Accessing the property directly instead throws
+  // `cannot get property "agents" without inject`, which used to fail every
+  // stop check open right before the reminder was built.
+  let agents: AgentsServiceLike | undefined;
+  ctx.inject(['agents'], (agentsCtx: { agents?: AgentsServiceLike }) => {
+    agents = agentsCtx.agents;
+  });
   const engine = new DocImpactEngine({
     configProvider: async (cwd: string): Promise<EngineWorkspaceConfig | undefined> => {
       const config = readConfig();
@@ -75,7 +93,7 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
     },
     logger: engineLogger,
     concurrentAgents: (cwd: string): number =>
-      ctx.agents?.list().filter(
+      agents?.list().filter(
         (agent) => agent.status === 'running' && agent.session.header?.cwd === cwd,
       ).length ?? 1,
   });
@@ -92,7 +110,7 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   };
 
   const command = createDocImpactCommand(engine, { rulesFor });
-  ctx.inject(['commands'], (commandCtx: any) => {
+  ctx.inject(['commands'], (commandCtx: CommandRegistryLike) => {
     commandCtx.commands.register(command);
   });
 

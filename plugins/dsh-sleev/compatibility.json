@@ -1,0 +1,16 @@
+{
+  "deepseekHarness": {
+    "channel": "next",
+    "range": ">=0.1.1-rc.2 <0.2.0",
+    "testedReleases": [
+      "0.1.1-rc.2"
+    ],
+    "requiredHostFeatures": [
+      "llm/stream"
+    ],
+    "requiredClientFeatures": [
+      "settings.plugin.item"
+    ]
+  },
+  "node": "^22.19.0 || >=24.0.0"
+}

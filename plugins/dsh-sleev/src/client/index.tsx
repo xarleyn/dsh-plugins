@@ -7,7 +7,12 @@ import type {
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import { useState, type ChangeEvent, type ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import {
+  CardShell,
+  PLUGIN_CARD_SHELL_CSS,
+  registerSettingsSlot,
+} from "@yadsh/dsh-plugin-kit/client";
 import {
   SleevSettingsController,
   type SleevSettingsCardFace,
@@ -107,19 +112,7 @@ const zh: Record<SleevLocaleKey, string> = {
   saving: "保存中…",
 };
 
-const CARD_STYLES = `
-.dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}
-.dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}
-.dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}
-.dsh-plugin-card__header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:0 0;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}
-.dsh-plugin-card__header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
-.dsh-plugin-card__head-text{flex-direction:column;flex:1;gap:4px;min-width:0;display:flex}
-.dsh-plugin-card__name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}
-.dsh-plugin-card__description{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}
-.dsh-plugin-card__badge{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;flex:none;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}
-.dsh-plugin-card__chevron{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}
-.dsh-plugin-card--open .dsh-plugin-card__chevron{transform:rotate(180deg)}
-.dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}
+const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
 .dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -148,24 +141,6 @@ textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:ver
 type SleevSettingsCardProps = PropsRuntime<"settings.plugin.item"> &
   PropsLocale<"dsh-sleev"> &
   InjectFace<SleevSettingsCardFace>;
-
-function ChevronDown(): ReactNode {
-  return (
-    <svg
-      className="dsh-plugin-card__chevron"
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="m3.5 5.25 3.5 3.5 3.5-3.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
 
 function SettingsField(props: {
   readonly id: string;
@@ -210,7 +185,6 @@ function SettingsField(props: {
 
 /** Settings card contributed to the official Plugins → Plugin configuration tab. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
-  const [open, setOpen] = useState(false);
   const state = props.useSleevSettings((snapshot) => snapshot);
   if (!state.available) return null;
   const blocked =
@@ -232,28 +206,17 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   });
 
   return (
-    <li className={`dsh-plugin-card${open ? " dsh-plugin-card--open" : ""}`}>
-      <button
-        type="button"
-        className="dsh-plugin-card__header"
-        aria-expanded={open}
-        aria-label={`${props.t(open ? "collapse" : "expand")}: Sleev`}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="dsh-plugin-card__head-text">
-          <span className="dsh-plugin-card__name">{props.t("title")}</span>
-          <span className="dsh-plugin-card__description">
-            {props.t("description")}
-          </span>
-        </span>
-        {state.dirty ? (
+    <CardShell
+      title={props.t("title")}
+      description={props.t("description")}
+      label={(open) => `${props.t(open ? "collapse" : "expand")}: Sleev`}
+      badge={
+        state.dirty ? (
           <span className="dsh-plugin-card__badge">{props.t("unsaved")}</span>
-        ) : null}
-        <ChevronDown />
-      </button>
-      {open ? (
-        <div className="dsh-plugin-card__body">
-          {!state.writable ? (
+        ) : undefined
+      }
+    >
+      {!state.writable ? (
             <p className="dsh-sleev-read-only" role="status">
               {props.t("readOnly")}
             </p>
@@ -351,9 +314,7 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
               {props.t(state.saving ? "saving" : "save")}
             </button>
           </div>
-        </div>
-      ) : null}
-    </li>
+    </CardShell>
   );
 }
 
@@ -376,15 +337,12 @@ export function apply(ctx: ClientContext): void {
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
   );
   ctx.slots.inject("settings.plugin.item", () => {
-    const unregister = ctx.slots.register(
-      {
-        name: "settings.plugin.item",
-        key: SETTINGS_NAMESPACE,
-        locale: LOCALE_NAMESPACE,
-        inject: () => controller.inject(),
-      },
-      SleevSettingsCard,
-    );
+    const unregister = registerSettingsSlot(ctx, {
+      key: SETTINGS_NAMESPACE,
+      locale: LOCALE_NAMESPACE,
+      component: SleevSettingsCard,
+      inject: () => controller.inject(),
+    });
     return () => {
       controller.dispose();
       unregister();

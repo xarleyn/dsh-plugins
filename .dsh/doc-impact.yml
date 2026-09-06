@@ -165,6 +165,48 @@ rules:
     direction: code-to-docs
     relation: documents
 
+  - id: dsh-kv-persist-readme
+    description: dsh-kv-persist README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-kv-persist/src/**
+        - plugins/dsh-kv-persist/package.json
+        - plugins/dsh-kv-persist/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-kv-persist/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-plugin-log-ui-readme
+    description: dsh-plugin-log-ui README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-plugin-log-ui/src/**
+        - plugins/dsh-plugin-log-ui/package.json
+        - plugins/dsh-plugin-log-ui/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-plugin-log-ui/README.md
+    direction: code-to-docs
+    relation: documents
+
+  - id: dsh-user-correction-miner-readme
+    description: dsh-user-correction-miner README documents the plugin implementation
+    code:
+      include:
+        - plugins/dsh-user-correction-miner/src/**
+        - plugins/dsh-user-correction-miner/package.json
+        - plugins/dsh-user-correction-miner/cordis.patch.yml
+      exclude:
+        - "**/*.test.ts"
+    docs:
+      - plugins/dsh-user-correction-miner/README.md
+    direction: code-to-docs
+    relation: documents
+
   - id: monorepo-spec
     description: The monorepo SPEC is the source of truth for repository structure and tooling
     code:

@@ -33,7 +33,7 @@
     "vitest": "catalog:tooling"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

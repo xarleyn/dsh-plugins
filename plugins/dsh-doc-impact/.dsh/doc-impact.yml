@@ -28,6 +28,6 @@ rules:
       include:
         - src/**
     docs:
-      - SPEC_ dsh-doc-impact.md
+      - SPEC.md
     direction: docs-to-code
     relation: specification

@@ -40,7 +40,7 @@ async function readLocalOverrides(path: string, logger: EngineLogger | undefined
     return { disabledRules: list as string[] };
   } catch (error) {
     logger?.warn(
-      `dsh-doc-impact: ignoring malformed local overrides file ${path} (${error instanceof Error ? error.message : String(error)})`,
+      `ignoring malformed local overrides file ${path} (${error instanceof Error ? error.message : String(error)})`,
     );
     return { disabledRules: [] };
   }
@@ -58,6 +58,16 @@ export function createWorkspaceConfigSource(
   logger?: EngineLogger,
 ): WorkspaceConfigSource {
   const cache = new Map<string, CacheEntry>();
+  // Long-lived hosts can visit many workspaces; cap the cache so per-cwd
+  // entries cannot grow without bound (SPEC §58 only promises mtime freshness).
+  const maxCachedWorkspaces = 128;
+  const remember = (key: string, entry: CacheEntry): void => {
+    cache.delete(key);
+    while (cache.size >= maxCachedWorkspaces) {
+      cache.delete(cache.keys().next().value as string);
+    }
+    cache.set(key, entry);
+  };
 
   return async function load(cwd: string): Promise<EngineWorkspaceConfig | undefined> {
     const plugin = getPluginConfig();
@@ -94,12 +104,12 @@ export function createWorkspaceConfigSource(
         maxSnapshotFiles: plugin.maxSnapshotFiles,
         debug: plugin.debug,
       };
-      cache.set(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome });
+      remember(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome });
       return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger?.error?.(`dsh-doc-impact: workspace config rejected, plugin inert until it is fixed\n${message}`);
-      cache.set(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome: { error: message } });
+      logger?.error?.(`workspace config rejected, plugin inert until it is fixed\n${message}`);
+      remember(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome: { error: message } });
       return undefined;
     }
   };

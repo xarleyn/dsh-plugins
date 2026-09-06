@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bindSettingsExternalStore } from '../src/client/settings-store.js'
+import { bindSettingsExternalStore } from '@yadsh/dsh-plugin-kit/client'
 
 describe('settings external store binding', () => {
   it('preserves the SettingsScope receiver for React callbacks', () => {

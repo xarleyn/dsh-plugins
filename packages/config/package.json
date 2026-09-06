@@ -7,6 +7,7 @@
   "exports": {
     "./tsconfig/base": "./tsconfig/base.json",
     "./tsconfig/node": "./tsconfig/node.json",
+    "./tsconfig/client": "./tsconfig/client.json",
     "./tsconfig/browser": "./tsconfig/browser.json",
     "./vitest": "./vitest/vitest.config.ts"
   },

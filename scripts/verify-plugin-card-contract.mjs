@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-const CANONICAL_SHELL_RULES = [
+export const CANONICAL_SHELL_RULES = [
   ".dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}",
   ".dsh-plugin-card:hover{border-color:var(--dsw-alias-label-dimmed)}",
   ".dsh-plugin-card--open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}",

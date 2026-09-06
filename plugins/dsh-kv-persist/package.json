@@ -47,10 +47,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "lint": "eslint src test",
+    "lint": "eslint src tests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "test:llama": "vitest run test/integration/llama-server.test.ts",
+    "test:llama": "vitest run tests/integration/llama-server.test.ts",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "npm run verify:package",
     "check": "npm run typecheck && npm test && npm run build && npm run verify"

@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - Node.js 22.19+ or 24+
-- pnpm 11
+- pnpm 10.4.1
 - DeepSeek Harness 0.1.1-rc.2
 - Sleev CLI 1.7.7 for a real gateway test
 

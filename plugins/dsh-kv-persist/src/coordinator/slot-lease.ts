@@ -7,14 +7,14 @@
  */
 
 /**
- * Serialize async work: every `runExclusive` body starts only after all
- * previously queued bodies finished (successfully or not). Bodies must not
- * re-enter `runExclusive` on the same mutex — that deadlocks by design, and
- * the invariant violation would be a plugin bug, not a runtime condition.
+ * Serialize async work: every lease starts only after all previously queued
+ * leases finished. A lease spans preparation, the complete inference stream,
+ * and terminal bookkeeping. Callers must not re-enter the same mutex while
+ * holding a lease: that deadlocks by design and is an invariant violation.
  */
 export class SlotMutex {
   readonly #name: string;
-  #tail: Promise<unknown> = Promise.resolve();
+  #tail: Promise<void> = Promise.resolve();
   #depth = 0;
 
   constructor(name: string) {
@@ -30,16 +30,31 @@ export class SlotMutex {
     return this.#name;
   }
 
-  runExclusive<T>(body: () => Promise<T>): Promise<T> {
+  /** Acquire an exclusive, idempotently releasable slot lease. */
+  async acquire(): Promise<() => void> {
     this.#depth += 1;
-    const result = this.#tail.then(body, body);
-    this.#tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    void this.#tail.then(() => {
-      this.#depth = Math.max(0, this.#depth - 1);
+    const previous = this.#tail;
+    let unlock: () => void = () => undefined;
+    this.#tail = new Promise<void>((resolve) => {
+      unlock = resolve;
     });
-    return result;
+    await previous;
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.#depth = Math.max(0, this.#depth - 1);
+      unlock();
+    };
+  }
+
+  async runExclusive<T>(body: () => Promise<T>): Promise<T> {
+    const release = await this.acquire();
+    try {
+      return await body();
+    } finally {
+      release();
+    }
   }
 }

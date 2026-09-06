@@ -45,7 +45,13 @@ jobs:
         run: pnpm lint:workspace
 
       - name: Verify affected projects
-        run: pnpm nx affected -t lint typecheck test build --base="$NX_BASE" --head="$NX_HEAD"
+        run: pnpm nx affected -t lint typecheck test build verify --base="$NX_BASE" --head="$NX_HEAD"
+
+      - name: Verify plugin logging contract
+        run: pnpm verify:logging
+
+      - name: Verify publishable plugin package hygiene
+        run: pnpm verify:packages
 
       - name: Check version plans
         if: github.event_name == 'pull_request'

@@ -11,7 +11,7 @@ export interface ScopeProcessOwner {
   ctx: {
     on(
       event: string,
-      listener: (...args: any[]) => unknown,
+      listener: (...args: unknown[]) => unknown,
       options?: Record<string, unknown>,
     ): unknown;
   };

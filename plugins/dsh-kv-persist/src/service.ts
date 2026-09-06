@@ -12,9 +12,10 @@
  */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { Context, Service } from "@deepseek-ai/cordis";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
+import { resolveDshHome } from "@yadsh/dsh-plugin-log";
 import { KvPersistConfigSchema, resolveKvPersistConfig, isManagedProvider } from "./config.js";
 import type { KvPersistConfig, ResolvedKvPersistConfig } from "./config.js";
 import type { SnapshotInvalidationReason } from "./errors.js";
@@ -29,12 +30,15 @@ import { SnapshotRepository } from "./snapshots/repository.js";
 
 /**
  * Metadata root resolution (SPEC §39): explicit config path wins, otherwise
- * `<$DSH_HOME>/cache/dsh-kv-persist` (cwd fallback for dev/test).
+ * `<DSH home>/cache/dsh-kv-persist`, where DSH home is `$DSH_HOME` when
+ * non-blank and `~/.dsh` otherwise.
  */
-export function resolveMetadataDir(config: ResolvedKvPersistConfig): string {
-  if (config.metadataPath !== null) return config.metadataPath;
-  const dshHome = process.env.DSH_HOME?.trim() ?? "";
-  return join(dshHome.length > 0 ? dshHome : process.cwd(), "cache", "dsh-kv-persist");
+export function resolveMetadataDir(
+  config: ResolvedKvPersistConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  if (config.metadataPath !== null) return resolve(config.metadataPath);
+  return join(resolveDshHome(env), "cache", "dsh-kv-persist");
 }
 
 /** Overridable internals for tests (fake backend, temp repository, …). */

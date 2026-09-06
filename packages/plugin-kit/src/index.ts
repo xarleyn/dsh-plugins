@@ -1,8 +1,8 @@
 /**
  * DSH Plugin Kit — shared runtime helpers for DeepSeek Harness plugins.
  *
- * This package provides small, focused utilities that plugins commonly need:
- * - structured logging helpers
+ * This private package provides small, focused development utilities:
+ * - a lightweight console logger for tests and local scaffolds
  * - configuration validation
  * - compatibility checks
  * - safe feature detection
@@ -24,7 +24,8 @@ export interface Logger {
 }
 
 /**
- * Create a structured logger bound to a plugin name.
+ * Create a console logger bound to a plugin name for tests and local tooling.
+ * Production plugins use `@yadsh/dsh-plugin-log` instead.
  */
 export function createLogger(name: string): Logger {
   const prefix = `[dsh:${name}]`;
@@ -43,9 +44,9 @@ export function createLogger(name: string): Logger {
 }
 
 /**
- * Check if a minimum DSH/Cordis version is available.
+ * Check whether the actual DSH/Cordis major is at least the required major.
  */
-export function satisfiesVersion(
+export function hasCompatibleMajor(
   actual: string,
   required: string,
 ): boolean {
@@ -85,9 +86,13 @@ export function validateConfig<T extends Record<string, unknown>>(
       continue; // optional fields
     }
 
-    if (typeof value !== expectedType) {
+    if (
+      typeof value !== expectedType ||
+      (expectedType === "object" && value === null)
+    ) {
+      const actualType = value === null ? "null" : typeof value;
       throw new Error(
-        `Invalid type for "${key}": expected ${expectedType}, got ${typeof value}`,
+        `Invalid type for "${key}": expected ${expectedType}, got ${actualType}`,
       );
     }
 

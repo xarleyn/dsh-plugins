@@ -81,11 +81,12 @@ export default async function generatePlugin(
   const lintTargets = [
     "src",
     ...(withTests ? ["tests"] : []),
-    ...(options.client ? ["scripts", "tsdown.config.ts"] : []),
+    "scripts",
+    ...(options.client ? ["tsdown.config.ts"] : []),
   ];
 
   const scripts: Record<string, string> = {
-    build: options.client ? "tsc && tsdown" : "tsc",
+    build: "tsc -p tsconfig.build.json && tsdown",
     lint: `eslint ${lintTargets.join(" ")}`,
     typecheck: "tsc --noEmit",
   };
@@ -96,6 +97,7 @@ export default async function generatePlugin(
     scripts.test = "vitest run";
   }
 
+  scripts["verify:package"] = "node scripts/verify-package.mjs";
   if (options.client) {
     scripts["verify:client"] = "node scripts/verify-client-bundle.mjs";
   }
@@ -105,8 +107,10 @@ export default async function generatePlugin(
     "pnpm run typecheck",
     ...(withTests ? ["pnpm run test"] : []),
     "pnpm run build",
+    "pnpm run verify:package",
     ...(options.client ? ["pnpm run verify:client"] : []),
   ].join(" && ");
+  scripts.prepack = "pnpm run build";
 
   tree.write(
     `${projectRoot}/package.json`,
@@ -127,7 +131,13 @@ export default async function generatePlugin(
         main: "./lib/index.js",
         types: "./lib/index.d.ts",
         exports: exportsMap,
-        files: ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+        files: [
+          "lib",
+          "cordis.patch.yml",
+          "compatibility.json",
+          "README.md",
+          "LICENSE",
+        ],
         dsh: {
           bundle: { patch: "./cordis.patch.yml" },
           ...(options.client ? { client: { platform: "web" } } : {}),
@@ -141,6 +151,7 @@ export default async function generatePlugin(
           access: "public",
           registry: "https://registry.npmjs.org/",
         },
+        engines: { node: "^22.19.0 || >=24.0.0" },
         scripts,
       },
       null,
@@ -152,7 +163,21 @@ export default async function generatePlugin(
     `${projectRoot}/tsconfig.json`,
     JSON.stringify(
       {
-        extends: "@yadsh/dsh-config/tsconfig/base",
+        extends: options.client
+          ? "@yadsh/dsh-config/tsconfig/client"
+          : "@yadsh/dsh-config/tsconfig/node",
+        include: ["src", ...(withTests ? ["tests"] : [])],
+      },
+      null,
+      2,
+    ),
+  );
+
+  tree.write(
+    `${projectRoot}/tsconfig.build.json`,
+    JSON.stringify(
+      {
+        extends: "./tsconfig.json",
         compilerOptions: { rootDir: "src", outDir: "lib" },
         include: ["src"],
       },
@@ -187,7 +212,7 @@ export { logger };
 
   if (options.client) {
     tree.write(
-      `${projectRoot}/src/client.ts`,
+      `${projectRoot}/src/client/index.tsx`,
       `import type { Context } from "@deepseek-ai/cordis";
 
 export function apply(_ctx: Context): void {
@@ -205,7 +230,7 @@ const CLIENT_EXTERNALS = ["@deepseek-ai/cordis"];
 
 const client = {
   name: ${JSON.stringify(`${packageName}/client`)},
-  entry: { client: "src/client.ts" },
+  entry: { client: "src/client/index.tsx" },
   outDir: "lib",
   format: ["cjs"],
   platform: "browser",
@@ -257,12 +282,52 @@ assert.doesNotMatch(
   }
 
   tree.write(
+    `${projectRoot}/scripts/verify-package.mjs`,
+    `import assert from "node:assert/strict";
+import { access, readFile } from "node:fs/promises";
+
+const manifest = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
+const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+
+assert.equal(manifest.name, ${JSON.stringify(packageName)});
+assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml");
+assert.ok(Object.hasOwn(manifest.exports, "."));
+assert.match(patch, new RegExp(\`id: dsh-${pluginName}\b\`, "u"));
+assert.match(patch, new RegExp(\`name: "\${manifest.name}"\`, "u"));
+
+for (const path of ["../lib/index.js", "../lib/index.d.ts", "../README.md", "../LICENSE"]) {
+  await access(new URL(path, import.meta.url));
+}
+
+console.log("verify-package: all gates passed");
+`,
+  );
+
+  tree.write(
     `${projectRoot}/cordis.patch.yml`,
     `# The DSH plugin manager discovers this bundle through package.json.
 - insert:
     - id: dsh-${pluginName}
       name: "${packageName}"
 `,
+  );
+
+  tree.write(
+    `${projectRoot}/compatibility.json`,
+    JSON.stringify(
+      {
+        deepseekHarness: {
+          channel: "next",
+          range: ">=0.1.1-rc.2 <0.2.0",
+          testedReleases: ["0.1.1-rc.2"],
+        },
+        node: "^22.19.0 || >=24.0.0",
+      },
+      null,
+      2,
+    ),
   );
 
   const license = tree.read("LICENSE", "utf8");
@@ -287,7 +352,8 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >= 4.0.0 < 5.0.0
+- DeepSeek Harness >=0.1.1-rc.2 <0.2.0
+- Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
 
@@ -301,7 +367,7 @@ Configure the plugin under the \`${pluginName}\` key in the DSH profile.
 
 ## Compatibility
 
-- DeepSeek Harness >= 4.0.0 < 5.0.0
+- DeepSeek Harness >=0.1.1-rc.2 <0.2.0 (see \`compatibility.json\`)
 
 ## Development
 

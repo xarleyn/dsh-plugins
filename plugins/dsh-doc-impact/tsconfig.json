@@ -1,16 +1,12 @@
 {
+  "extends": "@yadsh/dsh-config/tsconfig/node",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitOverride": true,
-    "useUnknownInCatchVariables": true,
-    "verbatimModuleSyntax": true,
-    "skipLibCheck": true,
-    "types": ["node", "vitest/globals"]
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/**/*.ts", "test/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

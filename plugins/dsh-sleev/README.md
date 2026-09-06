@@ -10,7 +10,7 @@ Sleev routing observability for [DeepSeek Harness](https://github.com/deepseek-a
 
 `dsh-sleev` observes provider routes that pass through the external Sleev context-optimization gateway. The current observer does not rewrite prompts, implement compaction, or route traffic itself: routing remains a normal `@deepseek-ai/dsh-llm-pi-ai` provider configuration.
 
-[简体中文](README.zh-CN.md) · [Specification](dsh-sleev-spec-v0.1.md) · [Development guide](docs/development.md) · [Compatibility notes](docs/compatibility.md)
+[简体中文](README.zh-CN.md) · [Specification](SPEC.md) · [Development guide](docs/development.md) · [Compatibility notes](docs/compatibility.md)
 
 ## Installation
 

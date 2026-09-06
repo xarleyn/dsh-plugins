@@ -50,6 +50,7 @@
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
+    "compatibility.json",
     "docs/*",
     "README.md",
     "README.zh-CN.md",
@@ -68,7 +69,7 @@
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
     "smoke:neuraldeep": "tsx scripts/smoke-neuraldeep.ts",
     "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepare": "tsdown && tsc -p tsconfig.build.json",
+    "prepack": "tsdown && tsc -p tsconfig.build.json",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [
@@ -100,7 +101,6 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
-    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
@@ -109,13 +109,16 @@
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm-pi-ai": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
-    "tsx": "4.22.4",
+    "tsx": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"
   },

@@ -16,7 +16,9 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
+| `plugins/dsh-user-correction-miner` | `@yadsh/dsh-user-correction-miner` | Mines project-rule candidates from user corrections |
 | `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
+| `packages/config` | private workspace package | Shared tsconfig and vitest presets |
 | `packages/plugin-log` | `@yadsh/dsh-plugin-log` | Structured file logging and runtime consumer discovery |
 | `packages/plugin-kit` | private workspace package | Shared runtime helpers |
 | `packages/test-kit` | private workspace package | Shared test helpers |
@@ -53,6 +55,14 @@ scaffold is a starting point: before writing code, read the
 [plugin guidelines](docs/PLUGIN_GUIDELINES.md) — the canonical architecture,
 package-content, testing, documentation, and release rules every plugin must
 follow.
+
+## Documentation
+
+- [Architecture overview](docs/ARCHITECTURE.md) — layout, host/client split, build outputs, dependency rules
+- [Plugin guidelines](docs/PLUGIN_GUIDELINES.md) — the canonical rulebook every plugin must follow
+- [Plugin logging](docs/PLUGIN_LOGGING.md) — file logging API, formats, levels, console mirror
+- [Verification runbook](docs/VERIFICATION.md) — what each gate asserts, locally and in CI
+- [Releasing](docs/RELEASING.md) and [compatibility policy](docs/COMPATIBILITY.md)
 
 ## Releases
 
