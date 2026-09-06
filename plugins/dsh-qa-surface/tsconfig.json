@@ -1,0 +1,8 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/node",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+}

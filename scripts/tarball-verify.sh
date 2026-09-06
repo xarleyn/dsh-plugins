@@ -10,7 +10,7 @@
 #      metadata for this monorepo
 #   3. plugins/* declare dsh.bundle.patch (SPEC §4); packages/* must not
 #      declare it unless explicitly needed (warning)
-#   4. cordis.patch.yml is included in the tarball when required (plugins)
+#   4. cordis.patch.yml and mandatory plugin policy files are included
 #   5. every exported entrypoint (exports / main / types) exists in the tarball
 #   6. no workspace: / catalog: protocol leaks into the packed manifest
 #   7. the tarball installs into a clean npm environment and its entry module
@@ -574,6 +574,18 @@ verify_package() {
     fi
   else
     ok "gate 4 — not applicable (shared package)"
+  fi
+
+  # ---- gate 4b: common publishable plugin files ---------------------------
+  if [ "$is_plugin" -eq 1 ]; then
+    local required_file required_missing=0
+    for required_file in compatibility.json LICENSE README.md; do
+      if [ ! -f "$packed/$required_file" ]; then
+        fail "gate 4b — mandatory plugin file missing from tarball: $required_file"
+        required_missing=$((required_missing + 1))
+      fi
+    done
+    [ "$required_missing" -eq 0 ] && ok "gate 4b — compatibility, license and README files included"
   fi
 
   # ---- gate 5: exported entrypoints exist ---------------------------------

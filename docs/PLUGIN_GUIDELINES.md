@@ -327,7 +327,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "test": "vitest run",
     "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
     "verify": "pnpm run test:package",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package"
+    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
+    "prepack": "pnpm run build"
   },
   "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "…"],
   "license": "MIT",
@@ -355,6 +356,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   поверхности импортирует client-часть.
 - **Скрипты:** `check` — полный локальный конвейер; `verify` — package-гейты;
   имена не переизобретать (CI и скрипты рассчитаны на них).
+- **Lifecycle:** установка workspace только устанавливает зависимости. Сборка
+  выполняется Nx по графу, а `prepack` собирает публикуемый артефакт. `prepare`
+  не используется: установка отдельных пакетов напрямую из Git для этого
+  monorepo не поддерживается (Git URL указывает на private root package, а не
+  на publishable подпакет). Для установки используйте npm-версию или готовый
+  tarball.
 
 ### 4.3 `cordis.patch.yml`
 
@@ -391,8 +398,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ### 4.4 Сборка
 
 - ESM-only (`"type": "module"`), целевой синтаксис — Node 22.
-- Рантайм-артефакты: `lib/**/*.js`; декларации: `lib/types/**/*.d.ts` —
-  результат `tsdown` + `tsc -p tsconfig.build.json`.
+- Допустимы два layout деклараций: plain `tsc` выдаёт `lib/index.js` и
+  `lib/index.d.ts`; bundled multi-entry/client package выдаёт `lib/*.js` и
+  `lib/types/**/*.d.ts`. Поля `types` и `exports` обязаны указывать на реально
+  существующий layout, оба варианта проверяются packed smoke.
+- Plain Node packages наследуют `@yadsh/dsh-config/tsconfig/node`; packages с
+  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/browser` или
+  сохраняют более строгий явный mixed config. Генератор выбирает preset по
+  флагу `client`.
 - Относительные импорты внутри пакета — **всегда с расширением `.js`**
   (`verbatimModuleSyntax` + ESM).
 - `lib/` не коммитится, кроме случаев, явно оговорённых в `.gitignore`
@@ -497,7 +510,7 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 ```
 
 3. **Feature detection вместо версионных проверок** там, где это возможно:
-   проверяйте наличие возможности, а не версию пакета (`satisfiesVersion` из
+   проверяйте наличие возможности, а не версию пакета (`hasCompatibleMajor` из
    `plugin-kit` — для грубых гейтов старта).
 4. Опора на `optionalClientProtocols` должна быть безопасной при их отсутствии.
 5. Сужение/расширение поддерживаемого диапазона DSH — **breaking change**
@@ -657,13 +670,13 @@ docs: add plugin guidelines
 
 Фиксируем, чтобы не принять за норму. Чинить по мере касания:
 
-1. **Корневой `dsh-plugins-monorepo-SPEC.md` отсутствует**, хотя на него
-   ссылаются `CONTRIBUTING.md` и сообщения скриптов («SPEC §27», «SPEC §16»).
-   Пока каноничен этот документ; §-номера расшифрованы в приложении A.
+1. **Исправлено (2026-09-05):** корневой `dsh-plugins-monorepo-SPEC.md`
+   перенесён из `.agents/notes/draft/` в корень репозитория; ссылки из
+   `CONTRIBUTING.md` и скриптов («SPEC §27», «SPEC §16») теперь разрешаются.
 2. **Генератор `pnpm nx g dsh-plugin`**: шаблон `cordis.patch.yml` приведён к
-   каноническому формату (§4.3). Оставшиеся пробелы: README-шаблон заявляет
-   «DeepSeek Harness >= 4.0.0» вместо фактического базлайна DSH, starter-плагин
-   не покрыт verify-скриптами.
+   каноническому формату (§4.3); README-шаблон базлайна DSH исправлен.
+   Оставшийся пробел: starter-плагин не покрыт verify-скриптами
+   (`verify-package` / `verify:client`).
 3. **Мигрировано**: runtime-id без префикса (`draft-sessions`, `sleev`, …) и
    unscoped `name` заменены на канонические `id: dsh-*` / `name: @yadsh/dsh-*`
    во всех плагинах; `dsh-session-scope` — эталон по `id`. Пользовательские
@@ -672,3 +685,15 @@ docs: add plugin guidelines
 4. **ESLint-исключения** для `plugins/**` (off `no-explicit-any`,
    `consistent-type-imports`) — временное послабление: в новых плагинах
    держите уровень корневых правил, где это не блокирует интеграцию.
+
+## Приложение C: статус разбиения крупных файлов (2026-09-05)
+
+- `dsh-session-scope/src/client.ts` остаётся рукописным module-loader бандлом
+  (`window.__ModuleLoader__.load` с фабрикой-closure, `@ts-nocheck`): перевод
+  на общий tsdown-пайплайн и модульное разбиение — отдельный проект, не
+  быстрый рефакторинг. Плагин при этом полностью покрыт тестами и verify-гейтами.
+- `dsh-session-scope/src/index.ts` (734 строки) — разбиение на scope-patches/
+  scope-commands/projections отложено вместе с клиентом.
+- Разбивка l10n мегатестов (`tests/dom-translator` 1273, `locale-hook` 920,
+  `registry` 811, `integration` 521) — механическая работа без изменения
+  поведения; выполнить отдельной серией.

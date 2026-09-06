@@ -1,0 +1,194 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { Context } from "@deepseek-ai/cordis";
+import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
+import { afterEach, describe, expect, it } from "vitest";
+import { KvPersistService, resolveMetadataDir } from "../../src/service.js";
+import { resolveKvPersistConfig } from "../../src/config.js";
+import type { KvPersistConfig } from "../../src/config.js";
+import { consume, silentLogger } from "../fixtures/harness.js";
+import { FakeKvBackend } from "../fixtures/fake-backend.js";
+
+const roots: string[] = [];
+
+async function tempConfig(overrides: KvPersistConfig = {}): Promise<KvPersistConfig> {
+  const root = await mkdtemp(join(tmpdir(), "dsh-kv-persist-service-"));
+  roots.push(root);
+  return {
+    providers: ["local-qwen"],
+    metadata: { path: root },
+    ...overrides,
+  };
+}
+
+afterEach(async () => {
+  while (roots.length > 0) {
+    const root = roots.pop();
+    if (root !== undefined) await rm(root, { recursive: true, force: true });
+  }
+});
+
+function buildService(config: KvPersistConfig, backend = new FakeKvBackend()): KvPersistService {
+  const ctx = new Context();
+  return new KvPersistService(ctx, config, { backend, logger: silentLogger });
+}
+
+const finish: StreamChunk = { type: "finish", reason: { kind: "stop" } };
+
+function dispatchStream(
+  ctx: Context,
+  provider: string,
+  options: Partial<GenerateOptions> = {},
+): AsyncIterable<StreamChunk> {
+  const request: GenerateOptions = { provider, model: "qwen-test", messages: [], ...options };
+  const stream = ctx.waterfall(ctx as never, "llm/stream", request, async function* () {
+    yield { type: "text-delta", index: 0, text: "hello" } satisfies StreamChunk;
+    yield finish;
+  });
+  expect(stream).not.toBeInstanceOf(Promise);
+  expect(stream[Symbol.asyncIterator]).toBeTypeOf("function");
+  return stream;
+}
+
+describe("KvPersistService (SPEC §11, §37, §47)", () => {
+  it("resolves metadata under the shared DSH home convention", () => {
+    const defaults = resolveKvPersistConfig({});
+    expect(resolveMetadataDir(defaults, { DSH_HOME: "  ./custom-dsh-home  " })).toBe(
+      join(resolve("./custom-dsh-home"), "cache", "dsh-kv-persist"),
+    );
+    expect(resolveMetadataDir(defaults, { DSH_HOME: "   " })).toBe(
+      join(homedir(), ".dsh", "cache", "dsh-kv-persist"),
+    );
+    expect(resolveMetadataDir(defaults, {})).toBe(
+      join(homedir(), ".dsh", "cache", "dsh-kv-persist"),
+    );
+  });
+
+  it("lets an explicit metadata path win independently of DSH_HOME", () => {
+    const explicit = join("fixtures", "kv-metadata");
+    const config = resolveKvPersistConfig({ metadata: { path: explicit } });
+    expect(resolveMetadataDir(config, { DSH_HOME: resolve("somewhere-else") })).toBe(
+      resolve(explicit),
+    );
+  });
+
+  it("does not use cwd in the metadata fallback", () => {
+    const config = resolveKvPersistConfig({});
+    const before = resolveMetadataDir(config, {});
+    expect(before).toBe(join(homedir(), ".dsh", "cache", "dsh-kv-persist"));
+    expect(before).not.toBe(join(process.cwd(), "cache", "dsh-kv-persist"));
+  });
+
+  it("normalizes DSH_HOME with the platform path API", () => {
+    const config = resolveKvPersistConfig({});
+    for (const configured of ["nested/../dsh-home", "nested\\..\\dsh-home"]) {
+      expect(resolveMetadataDir(config, { DSH_HOME: configured })).toBe(
+        join(resolve(configured), "cache", "dsh-kv-persist"),
+      );
+    }
+  });
+
+  it("registers as ctx.kvPersist", async () => {
+    const ctx = new Context();
+    const service = new KvPersistService(ctx, await tempConfig(), {
+      backend: new FakeKvBackend(),
+      logger: silentLogger,
+    });
+    // The host may expose the service through an accessor proxy; the
+    // contract is that the public surface is reachable on the context.
+    expect(ctx.kvPersist).toBeDefined();
+    expect(ctx.kvPersist.handles).toBeTypeOf("function");
+    expect(ctx.kvPersist.resolvedConfig.enabled).toBe(service.resolvedConfig.enabled);
+  });
+
+  it("coordinates only explicitly managed providers (SPEC §37)", async () => {
+    const service = buildService(await tempConfig({ providers: ["local-qwen"] }));
+    expect(service.handles("local-qwen")).toBe(true);
+    expect(service.handles("deepseek")).toBe(false);
+    expect(service.handles("openai")).toBe(false);
+    expect(service.handles("anthropic")).toBe(false);
+  });
+
+  it("coordinates nothing when disabled", async () => {
+    const service = buildService(await tempConfig({ enabled: false }));
+    expect(service.handles("local-qwen")).toBe(false);
+  });
+
+  it("returns an async iterable synchronously for unmanaged providers", async () => {
+    const ctx = new Context();
+    new KvPersistService(ctx, await tempConfig({ providers: [] }), {
+      backend: new FakeKvBackend(),
+      logger: silentLogger,
+    });
+
+    await expect(consume(dispatchStream(ctx, "zai"))).resolves.toEqual([
+      { type: "text-delta", index: 0, text: "hello" },
+      finish,
+    ]);
+  });
+
+  it("returns an async iterable synchronously while preparing managed providers", async () => {
+    const ctx = new Context();
+    const backend = new FakeKvBackend();
+    new KvPersistService(ctx, await tempConfig({ providers: ["local-qwen"] }), {
+      backend,
+      logger: silentLogger,
+    });
+
+    const stream = dispatchStream(ctx, "local-qwen", {
+      sessionId: "session-stream-contract" as GenerateOptions["sessionId"],
+    });
+    expect(backend.eraseCount).toBe(0);
+    await expect(consume(stream)).resolves.toEqual([
+      { type: "text-delta", index: 0, text: "hello" },
+      finish,
+    ]);
+    expect(backend.eraseCount).toBe(1);
+  });
+
+  it("reports a status snapshot (SPEC §47)", async () => {
+    const service = buildService(await tempConfig());
+    const status = await service.status();
+    expect(status.enabled).toBe(true);
+    expect(status.backend).toEqual({
+      kind: "llama.cpp",
+      state: "healthy",
+      endpoint: "http://127.0.0.1:8080",
+    });
+    expect(status.mode).toBe("single-slot");
+    expect(status.slots).toEqual([{ id: 0, owner: null, state: "unknown" }]);
+    expect(status.snapshots).toEqual({ known: 0, valid: 0, invalid: 0 });
+    expect(status.stats).toEqual({ restores: 0, restoreHits: 0, coldStarts: 0, saves: 0 });
+  });
+
+  it("returns undefined for unknown session state", async () => {
+    const service = buildService(await tempConfig());
+    expect(service.getSessionState("missing")).toBeUndefined();
+  });
+
+  it("rejects unsupported backend types (SPEC §12)", async () => {
+    const config = await tempConfig();
+    expect(() =>
+      resolveKvPersistConfig({
+        ...config,
+        backend: { type: "vllm" },
+      } as unknown as KvPersistConfig),
+    ).toThrowError();
+  });
+
+  it("doctor reports blocked health when the backend is unavailable (§34, §48)", async () => {
+    const backend = new FakeKvBackend();
+    backend.setUnavailable(true);
+    const service = buildService(await tempConfig(), backend);
+    const report = await service.doctor();
+    expect(report.result).toBe("BLOCKED");
+    expect(report.checks.find((check) => check.name === "slots-api")?.ok).toBe(false);
+  });
+
+  it("doctor reports READY against a healthy fake backend", async () => {
+    const service = buildService(await tempConfig());
+    const report = await service.doctor();
+    expect(report.result).toBe("READY");
+  });
+});

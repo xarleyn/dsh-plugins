@@ -14,7 +14,7 @@ interface SettingsService {
 
 interface SettingsAwareContext {
   get(service: string): unknown;
-  inject(services: readonly string[], callback: (ctx: any) => void): unknown;
+  inject<TContext>(services: readonly string[], callback: (ctx: TContext) => void): unknown;
   logger: {
     info(message: string, ...values: unknown[]): void;
     warn(message: string, ...values: unknown[]): void;

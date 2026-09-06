@@ -1,0 +1,9 @@
+# The DSH plugin manager discovers the browser half through package.json.
+- insert:
+    - id: dsh-qa-surface
+      name: "@yadsh/dsh-qa-surface"
+      config:
+        enabled: true
+        route:
+          path: /qa
+          matchChildren: true

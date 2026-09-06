@@ -674,7 +674,7 @@ Therefore the architecture must support:
 Stored locally by the plugin:
 
 ```text
-$DSH_HOME/cache/dsh-kv-persist/
+<DSH home>/cache/dsh-kv-persist/
 ```
 
 ### Binary
@@ -1625,7 +1625,8 @@ Do not use one global mutex across different servers.
 
 # 39. Metadata repository
 
-Suggested path:
+Default path (shared DSH home convention; a non-blank `$DSH_HOME` wins,
+otherwise DSH home is `~/.dsh`):
 
 ```text
 $DSH_HOME/cache/dsh-kv-persist/

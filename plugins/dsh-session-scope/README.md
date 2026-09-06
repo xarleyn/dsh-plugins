@@ -14,7 +14,7 @@ Per-session workspace visibility scopes for [DeepSeek Harness](https://github.co
 Permission != Scope
 ```
 
-[Specification](SPEC_%20dsh-session-scope.md) · [Compatibility matrix](compatibility.json) · [Release notes](RELEASING.md)
+[Specification](SPEC.md) · [Compatibility matrix](compatibility.json)
 
 ## Installation
 
@@ -44,7 +44,7 @@ The package includes its Host and Web client entry points plus the `cordis.patch
 
 ## What works now
 
-Version `0.5.0` implements the specification through Phase 4:
+Version `0.6.0` implements the specification through Phase 4:
 
 - durable `session-scope/set` snapshots with a last-write-wins fold;
 - canonical root validation, nested-root collapse, navigation ancestors, and stable error codes;

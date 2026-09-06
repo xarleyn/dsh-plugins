@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createLogger, satisfiesVersion, validateConfig } from "../src/index";
+import { createLogger, hasCompatibleMajor, validateConfig } from "../src/index";
 
 describe("createLogger", () => {
   it("should return an object with info, warn, and error methods", () => {
@@ -52,28 +52,28 @@ describe("createLogger", () => {
   });
 });
 
-describe("satisfiesVersion", () => {
+describe("hasCompatibleMajor", () => {
   it("should return true when actual major >= required major", () => {
-    expect(satisfiesVersion("4.0.0", "4.0.0")).toBe(true);
-    expect(satisfiesVersion("5.0.0", "4.0.0")).toBe(true);
-    expect(satisfiesVersion("4.1.0", "4.0.0")).toBe(true);
+    expect(hasCompatibleMajor("4.0.0", "4.0.0")).toBe(true);
+    expect(hasCompatibleMajor("5.0.0", "4.0.0")).toBe(true);
+    expect(hasCompatibleMajor("4.1.0", "4.0.0")).toBe(true);
   });
 
   it("should return false when actual major < required major", () => {
-    expect(satisfiesVersion("3.9.0", "4.0.0")).toBe(false);
-    expect(satisfiesVersion("3.0.0", "4.0.0")).toBe(false);
+    expect(hasCompatibleMajor("3.9.0", "4.0.0")).toBe(false);
+    expect(hasCompatibleMajor("3.0.0", "4.0.0")).toBe(false);
   });
 
   it("should return false for invalid version strings", () => {
-    expect(satisfiesVersion("abc", "1.0.0")).toBe(false);
-    expect(satisfiesVersion("1.0.0", "xyz")).toBe(false);
-    expect(satisfiesVersion("", "")).toBe(false);
+    expect(hasCompatibleMajor("abc", "1.0.0")).toBe(false);
+    expect(hasCompatibleMajor("1.0.0", "xyz")).toBe(false);
+    expect(hasCompatibleMajor("", "")).toBe(false);
   });
 
   it("should handle partial version strings", () => {
-    expect(satisfiesVersion("4", "4.0.0")).toBe(true);
-    expect(satisfiesVersion("5", "4.0.0")).toBe(true);
-    expect(satisfiesVersion("3", "4.0.0")).toBe(false);
+    expect(hasCompatibleMajor("4", "4.0.0")).toBe(true);
+    expect(hasCompatibleMajor("5", "4.0.0")).toBe(true);
+    expect(hasCompatibleMajor("3", "4.0.0")).toBe(false);
   });
 });
 
@@ -124,6 +124,15 @@ describe("validateConfig", () => {
         { name: "string" } as Record<keyof { name?: string }, "string">,
       ),
     ).toThrow('Invalid type for "name": expected string, got number');
+  });
+
+  it("should reject null for object fields", () => {
+    expect(() =>
+      validateConfig(
+        { meta: null },
+        { meta: "object" } as Record<keyof { meta?: object }, "object">,
+      ),
+    ).toThrow('Invalid type for "meta": expected object, got null');
   });
 
   it("should throw when config is not an object", () => {

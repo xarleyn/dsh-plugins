@@ -28,11 +28,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
   },
@@ -42,6 +41,7 @@
   "devDependencies": {
     "@types/node": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"

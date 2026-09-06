@@ -8,7 +8,7 @@
  * above are additionally mirrored to the host context logger.
  */
 
-import { getPluginLogger } from "@yadsh/dsh-plugin-log";
+import { createHostLoggerSink, getPluginLogger, type HostLoggerLike } from "@yadsh/dsh-plugin-log";
 import { sha256Hex } from "../snapshots/fingerprint.js";
 
 export interface KvPersistLogger {
@@ -42,13 +42,6 @@ function prepareFields(fields: Record<string, unknown> | undefined): Record<stri
   return prepared;
 }
 
-interface HostLoggerLike {
-  info(message: string, ...values: unknown[]): unknown;
-  warn(message: string, ...values: unknown[]): unknown;
-  error(message: string, ...values: unknown[]): unknown;
-  debug?(message: string, ...values: unknown[]): unknown;
-}
-
 /**
  * Build the plugin logger on top of the shared pino-backed file logger
  * (`<$DSH_HOME>/logs/dsh-kv-persist/<YYYY-MM-DD>.log`) with the host context
@@ -60,14 +53,7 @@ export function createKvPersistLogger(host: HostLoggerLike, level: KvPersistLogL
     pluginId: "dsh-kv-persist",
     level: level === "off" ? "silent" : level,
     console: level === "off" ? "silent" : "warn",
-    consoleSink: (logLevel, message) => {
-      if (logLevel === "trace" || logLevel === "debug") {
-        if (typeof host.debug === "function") host.debug(message);
-        else host.info(message);
-      } else if (logLevel === "info") host.info(message);
-      else if (logLevel === "warn") host.warn(message);
-      else host.error(message);
-    },
+    consoleSink: createHostLoggerSink(host),
   });
   return {
     debug(event, fields) {

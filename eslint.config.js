@@ -39,7 +39,6 @@ export default tseslint.config(
     files: ["plugins/**/*.{ts,tsx,js,mjs}"],
     rules: {
       "@typescript-eslint/consistent-type-imports": "off",
-      "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -52,17 +51,23 @@ export default tseslint.config(
     },
   },
   {
-    files: ["plugins/**/{test,tests}/**/*.{ts,tsx}"],
+    // Client bundles lean on untyped host slot/registry surfaces, and tests
+    // stub them; server-side plugin sources stay `any`-free.
+    files: [
+      "plugins/**/src/client.ts",
+      "plugins/**/src/client/**/*.{ts,tsx}",
+      "plugins/**/tests/**/*.{ts,tsx}",
+    ],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  {
+    files: ["plugins/**/tests/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-this-alias": "off",
       "no-useless-escape": "off",
       "require-yield": "off",
-    },
-  },
-  {
-    files: ["plugins/dsh-session-scope/src/index.ts"],
-    rules: {
-      "@typescript-eslint/ban-ts-comment": "off",
     },
   },
 );

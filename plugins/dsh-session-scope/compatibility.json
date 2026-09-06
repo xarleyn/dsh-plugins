@@ -1,5 +1,7 @@
 {
   "deepseekHarness": {
+    "channel": "next",
+    "range": ">=0.1.1-rc.2 <0.2.0",
     "testedReleases": [
       "0.1.1-rc.2"
     ],
@@ -17,5 +19,6 @@
       "remote.commands",
       "session-projections"
     ]
-  }
+  },
+  "node": ">=20"
 }

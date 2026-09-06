@@ -1,11 +1,13 @@
 import { defineConfig, type UserConfig } from "tsdown";
 
 const CLIENT_MODULE_ID = "@yadsh/dsh-doc-impact";
-const CLIENT_EXTERNALS = ["react"];
+// The host ModuleLoader page provides both React entry points; everything
+// else (including @yadsh/dsh-plugin-kit/client) is inlined into the bundle.
+const CLIENT_EXTERNALS = ["react", "react/jsx-runtime"];
 
 const client = {
   name: "dsh-doc-impact/client",
-  entry: { client: "src/client.ts" },
+  entry: { client: "src/client/index.ts" },
   outDir: "lib",
   format: ["cjs"],
   platform: "browser",

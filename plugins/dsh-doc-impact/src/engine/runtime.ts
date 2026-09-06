@@ -92,12 +92,15 @@ export class DocImpactEngine {
     this.#options = options;
   }
 
+  // Engine messages reach the plugin-scoped logger, whose file format and
+  // console mirror already tag every record with the plugin id — the message
+  // text must not repeat the name.
   #log(message: string): void {
-    this.#options.logger?.info?.(`dsh-doc-impact: ${message}`);
+    this.#options.logger?.info?.(message);
   }
 
   #warn(message: string): void {
-    this.#options.logger?.warn(`dsh-doc-impact: ${message}`);
+    this.#options.logger?.warn(message);
   }
 
   /**
@@ -209,7 +212,10 @@ export class DocImpactEngine {
       // since detection is satisfied without an explicit resolve call.
       for (const impact of runtime.state.pending()) {
         const satisfied = autoResolveImpact(impact, changedPaths);
-        if (satisfied.status !== impact.status) runtime.state.update(satisfied);
+        if (satisfied.status !== impact.status) {
+          runtime.state.update(satisfied);
+          this.#log(`auto-resolved impact for rule ${impact.ruleId}: target updated (${impact.targetFiles.join(', ') || 'no targets'})`);
+        }
       }
 
       runtime.changed = diff.changes;
@@ -235,18 +241,32 @@ export class DocImpactEngine {
       for (const impact of exhausted) {
         if (runtime.limitNoticed.has(impact.id)) continue;
         runtime.limitNoticed.add(impact.id);
-        if (runtime.safety.onLimit === 'warn') {
+        if (runtime.safety.onLimit === 'allow') {
+          this.#log(`reminder limit reached for rule ${impact.ruleId}; allowing stop (onLimit: allow)`);
+        } else if (runtime.safety.onLimit === 'warn') {
           this.#warn(`reminder limit reached for impact ${impact.ruleId}; allowing stop`);
         } else if (runtime.safety.onLimit === 'error') {
-          this.#options.logger?.error?.(`dsh-doc-impact: reminder limit reached for rule ${impact.ruleId}`);
+          this.#options.logger?.error?.(`reminder limit reached for rule ${impact.ruleId}`);
           limitSteer ??= buildLimitMessage(exhausted, runtime.safety.maxReminderRounds);
         }
       }
 
       let steer: string | undefined;
       if (steerables.length > 0) {
-        const attribution: Attribution = (this.#options.concurrentAgents?.(cwd) ?? 1) > 1 ? 'uncertain' : 'own';
+        // The probe is a soft attribution signal (SPEC §49): a failure must
+        // degrade the attribution, not fail the whole stop check open — that
+        // used to swallow the reminder, the plugin's primary output.
+        let concurrent = 1;
+        try {
+          concurrent = this.#options.concurrentAgents?.(cwd) ?? 1;
+        } catch (error) {
+          this.#warn(`attribution probe failed; assuming a single agent (${String(error)})`);
+        }
+        const attribution: Attribution = concurrent > 1 ? 'uncertain' : 'own';
         steer = buildReminderMessage(steerables, knownFiles, attribution);
+        this.#log(
+          `reminder sent: ${steerables.length} impact(s), rules: ${steerables.map((impact) => impact.ruleId).join(', ')}, attribution: ${attribution}`,
+        );
       } else if (limitSteer !== undefined) {
         steer = limitSteer;
       }

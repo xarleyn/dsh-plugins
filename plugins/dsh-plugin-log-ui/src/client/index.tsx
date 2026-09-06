@@ -5,6 +5,12 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
+import {
+  CardShell,
+  bindSettingsExternalStore,
+  registerSettingsCard,
+  startVisibilityAwarePolling,
+} from "@yadsh/dsh-plugin-kit/client";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type {
   ManagedPluginLogFormat,
@@ -13,7 +19,6 @@ import type {
   PluginLogUiSnapshot,
 } from "../types.js";
 import { styles } from "./styles.js";
-import { bindSettingsExternalStore } from "./settings-store.js";
 
 const SETTINGS_NAMESPACE = "plugin-log";
 const REFRESH_INTERVAL_MS = 2_000;
@@ -60,24 +65,6 @@ function LevelOptions({ inherit }: { readonly inherit?: ManagedPluginLogLevel })
   );
 }
 
-function ChevronDown() {
-  return (
-    <svg
-      className="dsh-plugin-card__chevron"
-      viewBox="0 0 14 14"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="m3.5 5.25 3.5 3.5 3.5-3.5"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   const settingsStore = useMemo(() => bindSettingsExternalStore(scope), [scope]);
   const settings = useSyncExternalStore(
@@ -85,7 +72,6 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
     settingsStore.getSnapshot,
     settingsStore.getSnapshot,
   );
-  const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({ consumers: [] });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,9 +96,7 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   }, [inspect]);
 
   useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
   }, [refresh]);
 
   const write = useCallback(async (field: keyof PluginLogUiConfig, value: unknown) => {
@@ -138,87 +122,73 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   if (settings.status === "unavailable") return null;
 
   return (
-    <li className={`dsh-plugin-card${open ? " dsh-plugin-card--open" : ""}`}>
-      <button
-        type="button"
-        className="dsh-plugin-card__header"
-        aria-expanded={open}
-        aria-label={`${open ? "Hide" : "Show"} settings: Plugin logging`}
-        onClick={() => setOpen(!open)}
-      >
-        <span className="dsh-plugin-card__head-text">
-          <span className="dsh-plugin-card__name">Plugin logging</span>
-          <span className="dsh-plugin-card__description">
-            Levels and readable file output for registered server plugins.
-          </span>
-        </span>
-        <span className="dsh-plugin-card__badge">{snapshot.consumers.length} active</span>
-        <ChevronDown />
-      </button>
-      {open ? (
-        <div className="dsh-plugin-card__body plu-body">
-          {error !== null ? <p className="plu-error" role="status">{error}</p> : null}
-          {!writable ? <p className="plu-status">Settings are read-only for this connection.</p> : null}
+    <CardShell
+      title="Plugin logging"
+      description="Levels and readable file output for registered server plugins."
+      badge={<span className="dsh-plugin-card__badge">{snapshot.consumers.length} active</span>}
+      label={(open) => `${open ? "Hide" : "Show"} settings: Plugin logging`}
+      bodyClassName="plu-body"
+    >
+      {error !== null ? <p className="plu-error" role="status">{error}</p> : null}
+      {!writable ? <p className="plu-status">Settings are read-only for this connection.</p> : null}
 
-          <section className="plu-section">
-            <h3>Defaults</h3>
-            <div className="plu-grid">
-              <label className="plu-field">
-                <span>Default level</span>
-                <select
-                  className="plu-select"
-                  value={defaultLevel}
-                  disabled={!writable || saving}
-                  onChange={(event) => void write("defaultLevel", event.currentTarget.value)}
-                >
-                  <LevelOptions />
-                </select>
-              </label>
-              <label className="plu-field">
-                <span>File format</span>
-                <select
-                  className="plu-select"
-                  value={format}
-                  disabled={!writable || saving}
-                  onChange={(event) => void write("format", event.currentTarget.value as ManagedPluginLogFormat)}
-                >
-                  <option value="text">Text — readable lines</option>
-                  <option value="json">JSON — NDJSON records</option>
-                </select>
-              </label>
-            </div>
-            <p className="plu-hint">Changes apply live. A format switch affects new lines; an existing daily file can contain both formats until rotation.</p>
-          </section>
-
-          <section className="plu-section">
-            <h3>Registered plugins</h3>
-            {snapshot.consumers.length === 0 ? (
-              <p className="plu-empty">No active plugin logger consumers yet.</p>
-            ) : (
-              <div className="plu-list">
-                {snapshot.consumers.map((consumer) => (
-                  <div className="plu-row" key={consumer.pluginId}>
-                    <div className="plu-plugin">
-                      <code>{consumer.pluginId}</code>
-                      <span>{consumer.instances} instance{consumer.instances === 1 ? "" : "s"} · active: {consumer.level} · {consumer.format}</span>
-                    </div>
-                    <select
-                      className="plu-select"
-                      aria-label={`Log level for ${consumer.pluginId}`}
-                      value={levels[consumer.pluginId] ?? ""}
-                      disabled={!writable || saving}
-                      onChange={(event) => setOverride(consumer.pluginId, event.currentTarget.value)}
-                    >
-                      <LevelOptions inherit={defaultLevel} />
-                    </select>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+      <section className="plu-section">
+        <h3>Defaults</h3>
+        <div className="plu-grid">
+          <label className="plu-field">
+            <span>Default level</span>
+            <select
+              className="plu-select"
+              value={defaultLevel}
+              disabled={!writable || saving}
+              onChange={(event) => void write("defaultLevel", event.currentTarget.value)}
+            >
+              <LevelOptions />
+            </select>
+          </label>
+          <label className="plu-field">
+            <span>File format</span>
+            <select
+              className="plu-select"
+              value={format}
+              disabled={!writable || saving}
+              onChange={(event) => void write("format", event.currentTarget.value as ManagedPluginLogFormat)}
+            >
+              <option value="text">Text — readable lines</option>
+              <option value="json">JSON — NDJSON records</option>
+            </select>
+          </label>
         </div>
-      ) : null}
-    </li>
+        <p className="plu-hint">Changes apply live. A format switch affects new lines; an existing daily file can contain both formats until rotation.</p>
+      </section>
+
+      <section className="plu-section">
+        <h3>Registered plugins</h3>
+        {snapshot.consumers.length === 0 ? (
+          <p className="plu-empty">No active plugin logger consumers yet.</p>
+        ) : (
+          <div className="plu-list">
+            {snapshot.consumers.map((consumer) => (
+              <div className="plu-row" key={consumer.pluginId}>
+                <div className="plu-plugin">
+                  <code>{consumer.pluginId}</code>
+                  <span>{consumer.instances} instance{consumer.instances === 1 ? "" : "s"} · active: {consumer.level} · {consumer.format}</span>
+                </div>
+                <select
+                  className="plu-select"
+                  aria-label={`Log level for ${consumer.pluginId}`}
+                  value={levels[consumer.pluginId] ?? ""}
+                  disabled={!writable || saving}
+                  onChange={(event) => setOverride(consumer.pluginId, event.currentTarget.value)}
+                >
+                  <LevelOptions inherit={defaultLevel} />
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+    </CardShell>
   );
 }
 
@@ -233,27 +203,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
       namespace: SETTINGS_NAMESPACE,
     });
-    const style = document.createElement("style");
-    style.dataset.plugin = "dsh-plugin-log-ui";
-    style.textContent = styles;
-    document.head.append(style);
-
-    const disposeSlot = remoteCtx.slots.inject(
-      "settings.plugin.item",
-      () => remoteCtx.slots.register(
-        {
-          name: "settings.plugin.item",
-          key: SETTINGS_NAMESPACE,
-          inject: () => ({ scope, inspect: () => inspector.inspect() }),
-        },
-        PluginLogSettingsCard,
-      ),
-    );
-
-    return () => {
-      disposeSlot();
-      style.remove();
-    };
+    return registerSettingsCard(remoteCtx, {
+      key: SETTINGS_NAMESPACE,
+      pluginName: "dsh-plugin-log-ui",
+      styles,
+      component: PluginLogSettingsCard,
+      inject: () => ({ scope, inspect: () => inspector.inspect() }),
+    });
   });
 
   return disposeRemote;

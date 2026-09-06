@@ -113,7 +113,9 @@ export class SingleSlotCoordinator {
    * Handle one llm/stream request for a managed provider. The returned
    * iterable wraps the downstream stream transparently: every chunk is
    * yielded unchanged, streaming is preserved (SPEC §25), and a successful
-   * terminal finish marks the session dirty.
+   * terminal finish marks the session dirty. This internal API is entered by
+   * the service's lazy generator only once consumption starts; its returned
+   * iterable must always be consumed or closed so the lease can be released.
    */
   async runSessionRequest(input: CoordinatorRequest): Promise<AsyncIterable<StreamChunk>> {
     if (input.purpose !== undefined || input.sessionId === null) {
@@ -122,13 +124,14 @@ export class SingleSlotCoordinator {
     }
     const sessionId: string = input.sessionId;
     this.#ensureRuntime(sessionId, input);
-    return this.#mutex.runExclusive(async () => {
+    const release = await this.#mutex.acquire();
+    try {
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
         this.#logger.debug("kv.persistence.circuit_open", { sessionId });
         this.#loseSlotTracking();
-        return this.#execute(input);
+        return this.#execute(input, release);
       }
       const identity = this.#identityFor(sessionId, input);
       const outcome = await this.#prepareSession(sessionId, identity);
@@ -142,8 +145,11 @@ export class SingleSlotCoordinator {
         this.#slot.state = "inference";
         this.#slot.lastUsedAt = this.#now();
       }
-      return this.#execute(input);
-    });
+      return this.#execute(input, release);
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
 
   /**
@@ -153,12 +159,13 @@ export class SingleSlotCoordinator {
    * (Invariant 7).
    */
   async #runAuxiliary(input: CoordinatorRequest): Promise<AsyncIterable<StreamChunk>> {
-    return this.#mutex.runExclusive(async () => {
+    const release = await this.#mutex.acquire();
+    try {
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
         this.#loseSlotTracking();
-        return this.#execute(input);
+        return this.#execute(input, release);
       }
       const owner = this.#slot.ownerSessionId;
       if (owner !== null) {
@@ -169,8 +176,11 @@ export class SingleSlotCoordinator {
         this.#slot.state = "idle";
         this.#logger.debug("kv.session.switch", { sessionId: owner, to: "auxiliary" });
       }
-      return this.#execute(input);
-    });
+      return this.#execute(input, release);
+    } catch (error) {
+      release();
+      throw error;
+    }
   }
 
   /**
@@ -270,10 +280,10 @@ export class SingleSlotCoordinator {
 
   /**
    * Wrap the downstream stream (SPEC §25): chunks pass through unchanged
-   * and unbuffered; only the terminal state is observed. `next()` was
-   * already invoked exactly once inside the lock before wrapping.
+   * and unbuffered; only the terminal state is observed. The slot lease stays
+   * held until the stream finishes, fails, or is closed by the consumer.
    */
-  #execute(input: CoordinatorRequest): AsyncIterable<StreamChunk> {
+  #execute(input: CoordinatorRequest, release: () => void): AsyncIterable<StreamChunk> {
     const downstream = input.next();
     const sessionId = input.purpose === undefined ? input.sessionId : null;
     const finish = (succeeded: boolean): void => {
@@ -293,7 +303,11 @@ export class SingleSlotCoordinator {
           yield chunk;
         }
       } finally {
-        finish(succeeded);
+        try {
+          finish(succeeded);
+        } finally {
+          release();
+        }
       }
     }
     return wrapped();
@@ -610,4 +624,3 @@ export class SingleSlotCoordinator {
     return new Date(this.#now()).toISOString();
   }
 }
-

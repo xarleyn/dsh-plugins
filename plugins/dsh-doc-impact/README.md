@@ -10,7 +10,7 @@ Deterministic documentation-impact enforcement for [DeepSeek Harness](https://gi
 
 `dsh-doc-impact` links code and documentation through a declarative impact graph. When an agent changes files, the plugin compares the workspace with the turn baseline and steers the agent to review or update every affected document before the turn closes.
 
-[Specification](SPEC_%20dsh-doc-impact.md) · [Release notes](RELEASING.md)
+[Specification](SPEC.md)
 
 ## Installation
 
@@ -118,6 +118,17 @@ The browser half adds a **Doc Impact** card under **Settings → Plugins → Plu
 
 Editable fields include `enabled`, `configFile`, default `mode`, `maxReminderRounds`, `onLimit`, `maxSnapshotFiles`, and `debug`. Saved settings apply to the merged runtime configuration without a host restart.
 
+## Diagnostics
+
+Runtime events land in `<$DSH_HOME>/logs/dsh-doc-impact/<YYYY-MM-DD>.log` and mirror to the host console at `warn` and above. Every line's `[dsh-doc-impact]` tag is added by the logging pipeline itself, so the message text never repeats the plugin name — only unscoped host-console messages (activation, settings bootstrap) name it themselves. Without `debug`, the log already records every decision:
+
+- `reminder sent: N impact(s), rules: …` — a grouped reminder was steered into the agent turn, with the triggering rules and the attribution;
+- `auto-resolved impact for rule …: target updated` — the agent already updated the target documentation, so no reminder is needed;
+- `reminder limit reached for rule …; allowing stop (onLimit: allow)` — `maxReminderRounds` is exhausted and the turn is allowed to close;
+- `attribution probe failed` / `stop check failed; failing open` — degraded runs; the agent loop is never blocked.
+
+With `debug: true` (settings card or profile patch) the log additionally records baseline capture and every stop check with changed and pending counts.
+
 ## What works now
 
 - code-to-docs, docs-to-code, and bidirectional rules;
@@ -146,9 +157,9 @@ pnpm --filter @yadsh/dsh-doc-impact check
 
 The core under `src/config`, `src/graph`, `src/changes`, and `src/engine` is DSH-independent. Only `src/dsh` imports `@deepseek-ai` packages.
 
-The browser client source lives at `src/client.js`. The build copies it to the
-ignored package artifact `lib/client.js`; edit the source file, never `lib/`
-directly.
+The browser client source lives at `src/client.ts`. The build compiles it with
+tsdown into the ignored package artifact `lib/client.js`; edit the source file,
+never `lib/` directly.
 
 ## Releases
 

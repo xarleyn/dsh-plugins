@@ -7,10 +7,17 @@ published to npm.
 
 ## Features
 
-- Structured logging with plugin name prefix
-- Version compatibility checking
-- Configuration validation
-- Safe feature detection utilities
+- Lightweight console logging for tests and local scaffolds. Production
+  plugins use `@yadsh/dsh-plugin-log`.
+- Major-version compatibility checking (`hasCompatibleMajor`)
+- Configuration validation (`validateConfig`)
+- `./client` subpath: the shared settings-card scaffolding for browser
+  bundles — canonical `dsh-plugin-card` shell CSS (`PLUGIN_CARD_SHELL_CSS`),
+  `ChevronDown`, `CardShell`, `registerSettingsCard` /
+  `registerSettingsSlot` / `injectCardStyles`,
+  `bindSettingsExternalStore`, and `startVisibilityAwarePolling`. The kit is
+  inlined into each plugin's tsdown client bundle, so published bundles stay
+  self-contained.
 
 ## Workspace usage
 

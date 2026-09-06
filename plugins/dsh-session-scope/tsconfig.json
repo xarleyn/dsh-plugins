@@ -1,19 +1,17 @@
 {
+  "extends": "@yadsh/dsh-config/tsconfig/node",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
     "moduleDetection": "legacy",
-    "rootDir": "src",
-    "outDir": "lib",
-    "strict": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "verbatimModuleSyntax": true,
-    "types": ["node"],
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "types": [
+      "node"
+    ],
+    "forceConsistentCasingInFileNames": true,
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false,
+    "noImplicitOverride": false
   },
-  "include": ["src/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }

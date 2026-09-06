@@ -60,7 +60,9 @@
     "lib/**/*.d.ts",
     "lib/client.js",
     "cordis.patch.yml",
-    "README.md"
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
@@ -89,7 +91,7 @@
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
-    "react": ">=18.2.0 <20"
+    "react": "^18.2.0"
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
@@ -97,7 +99,6 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
-    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
@@ -107,10 +108,14 @@
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
-    "react": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
+    "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

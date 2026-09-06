@@ -10,7 +10,7 @@ Prompt hygiene, observability, and policy middleware for [DeepSeek Harness](http
 
 `dsh-prompt-firewall` inspects the final structured system-prompt assembly, audits every section, and can remove explicitly denied sections without changing user messages, tool calls, contexts, variables, or allowed section objects. It is a policy and observability layer, not a security sandbox.
 
-[Specification](SPEC_%20dsh-prompt-firewall.md)
+[Specification](SPEC.md)
 
 ## Installation
 
