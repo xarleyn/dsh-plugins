@@ -113,11 +113,11 @@ guard to the classifier's own traffic.
   unless explicitly opted in.
 - Sanitized audit events (`safety/check|block|warn|classifier-error`), failure
   modes, monotonic merge, counters.
-- Per-session override of the global mode (opt-out denyable via
-  `allowSessionOverride: false`).
 
 ### Deferred
 
+- Per-session mode override (audit/warn/enforce/disabled shield) — needs the
+  client bundle; `allowSessionOverride` is already part of the config surface.
 - Web settings page, chat moderation banners, session shield control (needs
   the client bundle; planned for 0.2).
 - OpenTelemetry spans beyond counters (behind a telemetry-service probe).
@@ -154,7 +154,7 @@ guard to the classifier's own traffic.
 | Output stream guard with quarantine (`llm/stream`) | Implemented |
 | Tool gate + tool-result risk state | Implemented |
 | Audit events + counters | Implemented |
-| Session risk state and overrides | Implemented |
 | Web UI (settings, banners, shield) | Planned (0.2) |
+| Per-session mode override | Planned (0.2, needs UI) |
 | OpenTelemetry spans | Planned |
 | Adversarial corpus evaluation harness | Partial (fixtures + unit metrics) |
