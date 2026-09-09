@@ -319,6 +319,9 @@ describe("QA sidebar", () => {
     render(
       <QaSidebar
         rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
         showNewChat
         busy={false}
         onSwitch={onSwitch}
@@ -344,10 +347,76 @@ describe("QA sidebar", () => {
     expect(onSwitch).toHaveBeenCalledWith("s-1");
   });
 
+  it("shows the brand head and filters rows through the search field", () => {
+    const rows = buildChatRows(["s-2", "s-1"], byId, null, 90_000);
+    render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
+    const search = screen.getByLabelText("Поиск по чатам") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "cache" } });
+    const items = document.querySelectorAll(".dsh-qa-sidebar__item");
+    expect(items.length).toBe(1);
+    expect(items[0]?.textContent).toContain("How do I reset the cache?");
+    fireEvent.change(search, { target: { value: "нет такого" } });
+    expect(screen.getByText("Ничего не найдено")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "  " } });
+    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+  });
+
+  it("collapses to a rail and expands again, remembering the state", () => {
+    window.localStorage.clear();
+    const rows = buildChatRows(["s-1"], byId, null, 90_000);
+    const view = render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Свернуть историю чатов" }),
+    );
+    expect(document.querySelector(".dsh-qa-sidebar--collapsed")).toBeTruthy();
+    expect(
+      window.localStorage.getItem(
+        "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
+      ),
+    ).toBe("1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Развернуть историю чатов" }),
+    );
+    expect(
+      view.container.querySelector(".dsh-qa-sidebar--collapsed"),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
+      ),
+    ).toBe("0");
+  });
+
   it("renders the empty state without a new-chat control", () => {
     render(
       <QaSidebar
         rows={[]}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
         showNewChat={false}
         busy={false}
         onSwitch={vi.fn()}
@@ -355,7 +424,7 @@ describe("QA sidebar", () => {
       />,
     );
     expect(screen.getByText("Здесь пока пусто")).toBeTruthy();
-    expect(screen.queryByText("Чаты")).toBeTruthy();
+    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
   });
 });
 
@@ -374,6 +443,9 @@ it("deletes a chat after a second confirming click", () => {
   const { container } = render(
     <QaSidebar
       rows={rows}
+      title="DeepSeek QA"
+      logoUrl={null}
+      stateKey="dsh-qa-surface.session:v1:/qa"
       showNewChat={false}
       busy={false}
       onSwitch={vi.fn()}
@@ -406,6 +478,9 @@ it("hides the delete control when the deployment omits it", () => {
   const { container } = render(
     <QaSidebar
       rows={rows}
+      title="DeepSeek QA"
+      logoUrl={null}
+      stateKey="dsh-qa-surface.session:v1:/qa"
       showNewChat={false}
       busy={false}
       onSwitch={vi.fn()}
