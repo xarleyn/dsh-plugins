@@ -5,15 +5,13 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import type { HostDescriptionSource } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaMessage as QaMessageModel, QaSessionState } from "../types.js";
-import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import type { QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -22,6 +20,15 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
+import {
+  QaAgentsDrawer,
+  collectSubagents,
+} from "./components/QaAgentsDrawer.js";
+import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
+import {
+  collectVariantGroups,
+  VariantSwitcher,
+} from "./components/VariantSwitcher.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -89,126 +96,6 @@ function modeLabel(agentPreset: string | null): string {
   return `Режим «${name}»`;
 }
 
-export interface QaVariantGroup {
-  /** The user message that anchors the group. */
-  readonly groupId: string;
-  /** Answer turns triggered by that message, in order. */
-  readonly turns: readonly number[];
-}
-
-function VariantSwitcher({
-  count,
-  offset,
-  onStep,
-}: {
-  readonly count: number;
-  readonly offset: number;
-  readonly onStep: (offset: number) => void;
-}) {
-  return (
-    <div className="dsh-qa-variants" aria-label="Варианты ответа">
-      <button
-        type="button"
-        aria-label="Предыдущий вариант"
-        disabled={offset >= count - 1}
-        onClick={() => onStep(offset + 1)}
-      >
-        <svg viewBox="0 0 14 14" aria-hidden="true">
-          <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
-        </svg>
-      </button>
-      <span>
-        {count - offset}/{count}
-      </span>
-      <button
-        type="button"
-        aria-label="Следующий вариант"
-        disabled={offset <= 0}
-        onClick={() => onStep(offset - 1)}
-      >
-        <svg viewBox="0 0 14 14" aria-hidden="true">
-          <path d="m5.25 3.5 3.5 3.5-3.5 3.5" />
-        </svg>
-      </button>
-    </div>
-  );
-}
-
-/**
- * Group answer turns under the user message that triggered them. The session
- * has no truncation seam, so a regenerated answer is a real follow-up turn;
- * consecutive turns after one user message read as its variants.
- */
-/** One row of the agents panel: a subagent session of the open chat. */
-export interface QaSubagentRow {
-  readonly id: string;
-  readonly title: string;
-  readonly running: boolean;
-  readonly completed: boolean;
-  readonly meta: string;
-}
-
-/**
- * Direct subagent children of the open chat, running first. Reads the host
- * session list's lineage (parentId + origin), so no extra subscription beyond
- * the list the surface already follows.
- */
-export function collectSubagents(
-  byId: Readonly<Record<string, SessionSummary>>,
-  rootId: string | null,
-  now: number = Date.now(),
-): readonly QaSubagentRow[] {
-  if (rootId === null) return [];
-  const rows: QaSubagentRow[] = [];
-  for (const summary of Object.values(byId)) {
-    if (summary.parentId !== rootId || summary.origin !== "subagent") continue;
-    rows.push({
-      id: summary.id,
-      title: summary.blank ? "Субагент" : summary.displayTitle,
-      running: summary.running,
-      completed: summary.completed === true,
-      meta: relativeTime(summary.updatedAt, now),
-    });
-  }
-  return rows.sort((left, right) =>
-    left.running === right.running ? 0 : left.running ? -1 : 1,
-  );
-}
-
-function relativeTime(timestamp: number, now: number): string {
-  const seconds = Math.max(1, Math.round((now - timestamp) / 1000));
-  if (seconds < 60) return "только что";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ч`;
-  return new Date(timestamp).toLocaleDateString("ru-RU");
-}
-
-export function collectVariantGroups(
-  messages: readonly QaMessageModel[],
-): readonly QaVariantGroup[] {
-  const groups: { groupId: string; turns: number[] }[] = [];
-  let current: { groupId: string; turns: number[] } | undefined;
-  for (const message of messages) {
-    if (message.role === "user") {
-      current = { groupId: message.id, turns: [] };
-      groups.push(current);
-      continue;
-    }
-    if (
-      current === undefined ||
-      (message.role !== "assistant" && message.role !== "work")
-    ) {
-      continue;
-    }
-    if (message.turn !== undefined && !current.turns.includes(message.turn)) {
-      current.turns.push(message.turn);
-    }
-  }
-  return groups;
-}
-
 function RobotBadge() {
   return (
     <svg
@@ -219,133 +106,6 @@ function RobotBadge() {
       <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
       <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
     </svg>
-  );
-}
-
-/** Split text into plain runs and safe http(s) links. */
-function linkify(text: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /https?:\/\/[^\s<>"')]+/gu;
-  let offset = 0;
-  for (const match of text.matchAll(pattern)) {
-    const index = match.index;
-    if (index > offset) nodes.push(text.slice(offset, index));
-    const href = match[0];
-    nodes.push(
-      <a
-        key={href + String(index)}
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {href}
-      </a>,
-    );
-    offset = index + href.length;
-  }
-  if (offset < text.length) nodes.push(text.slice(offset));
-  return nodes;
-}
-
-function SourceIcon({ kind }: { readonly kind: "web" | "search" | "file" }) {
-  if (kind === "web") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <circle cx="8" cy="8" r="5.75" />
-        <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
-      </svg>
-    );
-  }
-  if (kind === "search") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <circle cx="7.1" cy="7.1" r="4.3" />
-        <path d="m10.3 10.3 2.9 2.9" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M9.25 2.5H4.75A1.25 1.25 0 0 0 3.5 3.75v8.5a1.25 1.25 0 0 0 1.25 1.25h6.5a1.25 1.25 0 0 0 1.25-1.25V5.75L9.25 2.5Z" />
-      <path d="M9.25 2.5v3.25h3.25" />
-    </svg>
-  );
-}
-
-type QaSourceModel = QaSessionState["sources"][number];
-
-function QaSourceCard({
-  source,
-  onOpen,
-}: {
-  readonly source: QaSourceModel;
-  readonly onOpen: () => void;
-}) {
-  return (
-    <button type="button" className="dsh-qa-sources__item" onClick={onOpen}>
-      <span className="dsh-qa-sources__kind" data-kind={source.kind}>
-        <SourceIcon kind={source.kind} />
-      </span>
-      <span className="dsh-qa-sources__text">
-        <span className="dsh-qa-sources__title">{source.title}</span>
-        <span className="dsh-qa-sources__target">{source.target}</span>
-        {source.snippet === "" ? null : <p>{source.snippet}</p>}
-      </span>
-    </button>
-  );
-}
-
-function QaSourceDetail({
-  source,
-  onBack,
-}: {
-  readonly source: QaSourceModel;
-  readonly onBack: () => void;
-}) {
-  const external =
-    source.kind === "web" && /^https?:\/\//iu.test(source.target)
-      ? source.target
-      : undefined;
-  return (
-    <div className="dsh-qa-sourcedetail">
-      <div className="dsh-qa-sourcedetail__head">
-        <button
-          type="button"
-          className="dsh-qa-sourcedetail__back"
-          aria-label="Ко всем источникам"
-          title="Ко всем источникам"
-          onClick={onBack}
-        >
-          <svg viewBox="0 0 14 14" aria-hidden="true">
-            <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
-          </svg>
-        </button>
-        <span className="dsh-qa-sourcedetail__kind">
-          <SourceIcon kind={source.kind} />
-        </span>
-        <span className="dsh-qa-sourcedetail__title">{source.title}</span>
-        {external === undefined ? null : (
-          <a
-            className="dsh-qa-sourcedetail__open"
-            href={external}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Открыть
-          </a>
-        )}
-      </div>
-      <div className="dsh-qa-sourcedetail__target">{source.target}</div>
-      <div className="dsh-qa-sourcedetail__body">
-        {source.output === "" ? (
-          <p className="dsh-qa-sourcedetail__empty">
-            У источника нет текстового вывода.
-          </p>
-        ) : (
-          linkify(source.output)
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -370,7 +130,6 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
-  const [sourceDetailId, setSourceDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!route.active) {
@@ -442,6 +201,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
+  const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
   const groups = collectVariantGroups(state.messages);
   const turnToGroup = new Map<number, string>();
   const selectedTurn = new Map<string, number>();
@@ -492,7 +252,7 @@ export function QaSurface(props: QaSurfaceProps) {
           rows={chatRows}
           title={config.branding.title}
           logoUrl={config.branding.logoUrl}
-          stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
+          stateKey={stateKey}
           showNewChat={allowNewChat}
           busy={state.phase === "creating"}
           onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
@@ -652,7 +412,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       message={message}
                       renderMarkdown={config.ui.renderMarkdown}
                       showTimestamp={config.ui.showTimestamps}
-                      stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
+                      stateKey={stateKey}
                       onRegenerate={
                         isLast &&
                         message.role === "assistant" &&
@@ -716,113 +476,18 @@ export function QaSurface(props: QaSurfaceProps) {
         </footer>
       </div>
       {agentsOpen && agentRows.length > 0 ? (
-        <aside className="dsh-qa-agents" aria-label="Субагенты чата">
-          <div className="dsh-qa-agents__head">
-            <span>Субагенты ({agentRows.length})</span>
-            <button
-              type="button"
-              aria-label="Закрыть список субагентов"
-              title="Закрыть"
-              onClick={() => setAgentsOpen(false)}
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8m0-8-8 8" />
-              </svg>
-            </button>
-          </div>
-          <div className="dsh-qa-agents__list">
-            {agentRows.map((agent) => {
-              const active =
-                state.viewingSubagent !== null &&
-                state.viewingSubagent.id === agent.id;
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  className={
-                    active
-                      ? "dsh-qa-agents__item dsh-qa-agents__item--active"
-                      : "dsh-qa-agents__item"
-                  }
-                  onClick={() =>
-                    void controller?.viewSubagent(agent.id, agent.title)
-                  }
-                >
-                  <span
-                    className={
-                      agent.running
-                        ? "dsh-qa-agents__dot dsh-qa-agents__dot--running"
-                        : "dsh-qa-agents__dot"
-                    }
-                    aria-hidden="true"
-                  />
-                  <span className="dsh-qa-agents__text">
-                    <span className="dsh-qa-agents__title">{agent.title}</span>
-                    <span className="dsh-qa-agents__meta">
-                      {agent.running
-                        ? "выполняется"
-                        : agent.completed
-                          ? "завершён"
-                          : agent.meta}
-                    </span>
-                  </span>
-                  <span className="dsh-qa-agents__open">
-                    {active ? "открыт" : "смотреть"}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </aside>
+        <QaAgentsDrawer
+          agents={agentRows}
+          activeId={state.viewingSubagent?.id ?? null}
+          onView={(id, title) => void controller?.viewSubagent(id, title)}
+          onClose={() => setAgentsOpen(false)}
+        />
       ) : null}
       {sourcesOpen && state.sources.length > 0 ? (
-        <aside className="dsh-qa-sources" aria-label="Источники">
-          <div className="dsh-qa-sources__head">
-            <span>
-              {sourceDetailId === null
-                ? `Источники (${state.sources.length})`
-                : "Источник"}
-            </span>
-            <button
-              type="button"
-              aria-label="Закрыть источники"
-              title="Закрыть"
-              onClick={() => {
-                setSourcesOpen(false);
-                setSourceDetailId(null);
-              }}
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8m0-8-8 8" />
-              </svg>
-            </button>
-          </div>
-          {(() => {
-            const detail =
-              sourceDetailId === null
-                ? undefined
-                : state.sources.find((source) => source.id === sourceDetailId);
-            if (detail !== undefined) {
-              return (
-                <QaSourceDetail
-                  source={detail}
-                  onBack={() => setSourceDetailId(null)}
-                />
-              );
-            }
-            return (
-              <div className="dsh-qa-sources__list">
-                {state.sources.map((source) => (
-                  <QaSourceCard
-                    key={source.id}
-                    source={source}
-                    onOpen={() => setSourceDetailId(source.id)}
-                  />
-                ))}
-              </div>
-            );
-          })()}
-        </aside>
+        <QaSourcesDrawer
+          sources={state.sources}
+          onClose={() => setSourcesOpen(false)}
+        />
       ) : null}
     </main>
   );

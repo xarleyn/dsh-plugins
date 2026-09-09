@@ -4,14 +4,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
-import {
-  collectSubagents,
-  collectVariantGroups,
-} from "../src/client/QaSurface.js";
-import {
-  formatWorkDuration,
-  QaWorkGroup,
-} from "../src/client/components/QaWorkGroup.js";
+import { collectSubagents } from "../src/client/components/QaAgentsDrawer.js";
+import { collectVariantGroups } from "../src/client/components/VariantSwitcher.js";
+import { formatWorkDuration } from "../src/client/components/format.js";
+import { QaWorkGroup } from "../src/client/components/QaWorkGroup.js";
 import { Markdown } from "../src/client/components/Markdown.js";
 import {
   buildChatRows,
