@@ -32,6 +32,7 @@ instance.
 
 | Package | DSH peers |
 | --- | --- |
+| `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, client runtime/connection/locale/UI, Typert protocol |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
