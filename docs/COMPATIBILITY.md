@@ -37,6 +37,7 @@ instance.
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, client runtime/connection/locale/UI, Typert protocol |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
+| `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
 | `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/runtime/settings/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, permissions, session, settings, tools, workspace, webserver, client connection/runtime/layout/settings/slots/theme, Typert protocol, React |
