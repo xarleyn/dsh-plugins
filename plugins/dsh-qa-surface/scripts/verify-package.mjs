@@ -106,6 +106,7 @@ assert.match(client, /data-dsh-qa-surface|dshQaSurface/u);
 assert.match(client, /position:fixed;inset:0/u);
 assert.match(client, /--dsw-specific-bubble/u);
 assert.match(client, /--dsw-specific-input-major/u);
+assert.match(client, /--dsh-qa-bleed/u);
 assert.match(client, /Скопировать сообщение/u);
 assert.match(client, /Enter — отправить/u);
 assert.match(client, /Скребу по сусекам/u);

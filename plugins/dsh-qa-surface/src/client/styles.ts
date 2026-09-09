@@ -90,10 +90,11 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-message__content ol li,.dsh-qa-message__content ul li{margin:0 0 4px}
 .dsh-qa-message__content hr{border:0;border-top:1px solid var(--dsw-alias-border-l2);margin:16px 0}
 .dsh-qa-md-table{overflow-x:auto;margin:0 0 14px}
-.dsh-qa-md-table table{border-collapse:collapse;width:100%;font-size:14px}
+.dsh-qa-md-table table{border-collapse:collapse;width:auto;min-width:calc(100% - var(--dsh-qa-bleed,0px)*2);font-size:14px}
 .dsh-qa-md-table th,.dsh-qa-md-table td{border:1px solid var(--dsw-alias-border-l2);padding:6px 10px;vertical-align:top}
 .dsh-qa-md-table thead th{background:var(--dsw-alias-bg-layer-2);font-weight:600}
 .dsh-qa-md-table tbody tr:nth-child(even){background:var(--dsw-alias-bg-layer-2)}
+.dsh-qa-message--assistant .dsh-qa-message__content pre,.dsh-qa-message--assistant .dsh-qa-md-table{--dsh-qa-bleed:min(72px,max(0px,(100vw - 100%)/2 - 28px));width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
 .dsh-qa-message__content blockquote{border-left:3px solid var(--dsw-alias-border-l2);padding-left:12px;color:var(--dsw-alias-label-secondary)}
 .dsh-qa-message__cursor{display:inline-block;width:7px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--dsw-alias-label-secondary);animation:dsh-qa-blink 1s steps(2,start) infinite}
 @keyframes dsh-qa-blink{50%{opacity:0}}
