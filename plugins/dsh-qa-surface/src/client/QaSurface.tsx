@@ -11,7 +11,7 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaSessionState } from "../types.js";
+import type { QaMessage as QaMessageModel, QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -87,6 +87,139 @@ function modeLabel(agentPreset: string | null): string {
   return `Режим «${name}»`;
 }
 
+export interface QaVariantGroup {
+  /** The user message that anchors the group. */
+  readonly groupId: string;
+  /** Answer turns triggered by that message, in order. */
+  readonly turns: readonly number[];
+}
+
+function VariantSwitcher({
+  count,
+  offset,
+  onStep,
+}: {
+  readonly count: number;
+  readonly offset: number;
+  readonly onStep: (offset: number) => void;
+}) {
+  return (
+    <div className="dsh-qa-variants" aria-label="Варианты ответа">
+      <button
+        type="button"
+        aria-label="Предыдущий вариант"
+        disabled={offset >= count - 1}
+        onClick={() => onStep(offset + 1)}
+      >
+        <svg viewBox="0 0 14 14" aria-hidden="true">
+          <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
+        </svg>
+      </button>
+      <span>
+        {count - offset}/{count}
+      </span>
+      <button
+        type="button"
+        aria-label="Следующий вариант"
+        disabled={offset <= 0}
+        onClick={() => onStep(offset - 1)}
+      >
+        <svg viewBox="0 0 14 14" aria-hidden="true">
+          <path d="m5.25 3.5 3.5 3.5-3.5 3.5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Group answer turns under the user message that triggered them. The session
+ * has no truncation seam, so a regenerated answer is a real follow-up turn;
+ * consecutive turns after one user message read as its variants.
+ */
+export function collectVariantGroups(
+  messages: readonly QaMessageModel[],
+): readonly QaVariantGroup[] {
+  const groups: { groupId: string; turns: number[] }[] = [];
+  let current: { groupId: string; turns: number[] } | undefined;
+  for (const message of messages) {
+    if (message.role === "user") {
+      current = { groupId: message.id, turns: [] };
+      groups.push(current);
+      continue;
+    }
+    if (
+      current === undefined ||
+      (message.role !== "assistant" && message.role !== "work")
+    ) {
+      continue;
+    }
+    if (message.turn !== undefined && !current.turns.includes(message.turn)) {
+      current.turns.push(message.turn);
+    }
+  }
+  return groups;
+}
+
+function SourceIcon({ kind }: { readonly kind: "web" | "search" | "file" }) {
+  if (kind === "web") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="5.75" />
+        <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
+      </svg>
+    );
+  }
+  if (kind === "search") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="7.1" cy="7.1" r="4.3" />
+        <path d="m10.3 10.3 2.9 2.9" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M9.25 2.5H4.75A1.25 1.25 0 0 0 3.5 3.75v8.5a1.25 1.25 0 0 0 1.25 1.25h6.5a1.25 1.25 0 0 0 1.25-1.25V5.75L9.25 2.5Z" />
+      <path d="M9.25 2.5v3.25h3.25" />
+    </svg>
+  );
+}
+
+function QaSourceCard({
+  source,
+}: {
+  readonly source: QaSessionState["sources"][number];
+}) {
+  const href =
+    source.kind === "web" && /^https?:\/\//iu.test(source.target)
+      ? source.target
+      : undefined;
+  return (
+    <article className="dsh-qa-sources__item">
+      <span className="dsh-qa-sources__kind" data-kind={source.kind}>
+        <SourceIcon kind={source.kind} />
+      </span>
+      <div className="dsh-qa-sources__text">
+        {href === undefined ? (
+          <span className="dsh-qa-sources__title">{source.title}</span>
+        ) : (
+          <a
+            className="dsh-qa-sources__title"
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {source.title}
+          </a>
+        )}
+        <span className="dsh-qa-sources__target">{source.target}</span>
+        {source.snippet === "" ? null : <p>{source.snippet}</p>}
+      </div>
+    </article>
+  );
+}
+
 export function QaSurface(props: QaSurfaceProps) {
   const route = useSyncExternalStore(
     props.route.subscribe,
@@ -102,6 +235,11 @@ export function QaSurface(props: QaSurfaceProps) {
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
+  /** Per group: how many answers back from the newest is shown (0 = newest). */
+  const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
+    {},
+  );
+  const [sourcesOpen, setSourcesOpen] = useState(false);
 
   useEffect(() => {
     if (!route.active) {
@@ -173,6 +311,32 @@ export function QaSurface(props: QaSurfaceProps) {
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
+  const groups = collectVariantGroups(state.messages);
+  const turnToGroup = new Map<number, string>();
+  const selectedTurn = new Map<string, number>();
+  for (const group of groups) {
+    const offset = variantOffsets[group.groupId] ?? 0;
+    const turn =
+      group.turns[Math.max(0, group.turns.length - 1 - offset)] ??
+      group.turns.at(-1);
+    if (turn !== undefined) {
+      selectedTurn.set(group.groupId, turn);
+      for (const groupTurn of group.turns)
+        turnToGroup.set(groupTurn, group.groupId);
+    }
+  }
+  const visibleMessages = state.messages.filter((message) => {
+    if (
+      (message.role === "assistant" || message.role === "work") &&
+      message.turn !== undefined
+    ) {
+      const groupId = turnToGroup.get(message.turn);
+      return (
+        groupId === undefined || selectedTurn.get(groupId) === message.turn
+      );
+    }
+    return true;
+  });
   const chatRows = showSidebar
     ? buildChatRows(
         controller?.chatIds() ?? [],
@@ -225,6 +389,31 @@ export function QaSurface(props: QaSurfaceProps) {
                   </svg>
                   {modeLabel(config.session.agentPreset)}
                 </span>
+                {config.ui.showToolActivity ? (
+                  <button
+                    type="button"
+                    className={
+                      config.ui.showReset &&
+                      config.session.policy !== "fixed" &&
+                      (!config.lockdown.enabled ||
+                        config.lockdown.allowSessionReset)
+                        ? "dsh-qa-header__sources"
+                        : "dsh-qa-header__sources dsh-qa-header__sources--end"
+                    }
+                    disabled={state.sources.length === 0}
+                    aria-expanded={sourcesOpen}
+                    onClick={() => setSourcesOpen((open) => !open)}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <circle cx="8" cy="8" r="5.75" />
+                      <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
+                    </svg>
+                    Источники
+                    {state.sources.length === 0
+                      ? null
+                      : ` · ${state.sources.length}`}
+                  </button>
+                ) : null}
                 {config.ui.showReset &&
                 config.session.policy !== "fixed" &&
                 (!config.lockdown.enabled ||
@@ -275,15 +464,45 @@ export function QaSurface(props: QaSurfaceProps) {
                 )}
               </section>
             ) : (
-              state.messages.map((message) => (
-                <QaMessage
-                  key={message.id}
-                  message={message}
-                  renderMarkdown={config.ui.renderMarkdown}
-                  showTimestamp={config.ui.showTimestamps}
-                  stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
-                />
-              ))
+              visibleMessages.map((message, index) => {
+                const group =
+                  message.role === "user"
+                    ? groups.find(
+                        (candidate) => candidate.groupId === message.id,
+                      )
+                    : undefined;
+                const isLast = index === visibleMessages.length - 1;
+                return (
+                  <div key={message.id} className="dsh-qa-message-slot">
+                    <QaMessage
+                      message={message}
+                      renderMarkdown={config.ui.renderMarkdown}
+                      showTimestamp={config.ui.showTimestamps}
+                      stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
+                      onRegenerate={
+                        isLast &&
+                        message.role === "assistant" &&
+                        message.status === "committed" &&
+                        controller !== undefined
+                          ? () => void controller.regenerate()
+                          : undefined
+                      }
+                    />
+                    {group !== undefined && group.turns.length > 1 ? (
+                      <VariantSwitcher
+                        count={group.turns.length}
+                        offset={variantOffsets[group.groupId] ?? 0}
+                        onStep={(step) =>
+                          setVariantOffsets((offsets) => ({
+                            ...offsets,
+                            [group.groupId]: step,
+                          }))
+                        }
+                      />
+                    ) : null}
+                  </div>
+                );
+              })
             )}
             {state.error === null ? null : (
               <div className="dsh-qa-error" role="alert">
@@ -322,6 +541,28 @@ export function QaSurface(props: QaSurfaceProps) {
           </div>
         </footer>
       </div>
+      {sourcesOpen && state.sources.length > 0 ? (
+        <aside className="dsh-qa-sources" aria-label="Источники">
+          <div className="dsh-qa-sources__head">
+            <span>Источники · {state.sources.length}</span>
+            <button
+              type="button"
+              aria-label="Закрыть источники"
+              title="Закрыть"
+              onClick={() => setSourcesOpen(false)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 4 8 8m0-8-8 8" />
+              </svg>
+            </button>
+          </div>
+          <div className="dsh-qa-sources__list">
+            {state.sources.map((source) => (
+              <QaSourceCard key={source.id} source={source} />
+            ))}
+          </div>
+        </aside>
+      ) : null}
     </main>
   );
 }

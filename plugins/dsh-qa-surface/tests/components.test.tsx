@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
+import { collectVariantGroups } from "../src/client/QaSurface.js";
 import {
   formatWorkDuration,
   QaWorkGroup,
@@ -190,6 +191,40 @@ describe("QA message", () => {
     expect(screen.queryByRole("button", { name: "Нравится" })).toBeNull();
   });
 
+  it("exposes the regenerate action on demand", () => {
+    const onRegenerate = vi.fn();
+    const view = render(
+      <QaMessage
+        message={{
+          id: "assistant:2",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        onRegenerate={onRegenerate}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Перегенерировать" }));
+    expect(onRegenerate).toHaveBeenCalledOnce();
+    view.rerender(
+      <QaMessage
+        message={{
+          id: "assistant:2",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Перегенерировать" }),
+    ).toBeNull();
+  });
+
   it("rates answers with mutually exclusive, persisted like and dislike", () => {
     window.localStorage.clear();
     const stateKey = "dsh-qa-surface.session:v1:/qa";
@@ -340,6 +375,54 @@ describe("QA work group", () => {
     expect(formatWorkDuration(100)).toBe("< 1 с");
     expect(formatWorkDuration(17_000)).toBe("17 с");
     expect(formatWorkDuration(1_060_000)).toBe("17 мин 40 с");
+  });
+});
+
+describe("variant grouping", () => {
+  it("groups consecutive answer turns under their user message", () => {
+    const messages = [
+      { id: "user:1", role: "user", text: "Q", status: "committed" },
+      {
+        id: "assistant:1",
+        role: "assistant",
+        text: "A1",
+        status: "committed",
+        turn: 1,
+      },
+      {
+        id: "assistant:2",
+        role: "assistant",
+        text: "A2",
+        status: "committed",
+        turn: 2,
+      },
+      { id: "user:2", role: "user", text: "Q2", status: "committed" },
+      {
+        id: "assistant:3",
+        role: "assistant",
+        text: "A3",
+        status: "committed",
+        turn: 3,
+      },
+    ] as Parameters<typeof collectVariantGroups>[0];
+    const groups = collectVariantGroups(messages);
+    expect(groups).toEqual([
+      { groupId: "user:1", turns: [1, 2] },
+      { groupId: "user:2", turns: [3] },
+    ]);
+  });
+
+  it("ignores answers that precede any user message", () => {
+    const groups = collectVariantGroups([
+      {
+        id: "assistant:0",
+        role: "assistant",
+        text: "Boot",
+        status: "committed",
+        turn: 0,
+      },
+    ] as Parameters<typeof collectVariantGroups>[0]);
+    expect(groups).toEqual([]);
   });
 });
 

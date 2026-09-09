@@ -9,6 +9,8 @@ export interface QaMessageProps {
   readonly showTimestamp: boolean;
   /** Storage prefix persisted message ratings live under. */
   readonly stateKey?: string;
+  /** Ask for a fresh variant of this answer; omit to hide the control. */
+  readonly onRegenerate?: () => void;
 }
 
 type Rating = "up" | "down";
@@ -85,6 +87,7 @@ export function QaMessage({
   renderMarkdown,
   showTimestamp,
   stateKey,
+  onRegenerate,
 }: QaMessageProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -223,6 +226,18 @@ export function QaMessage({
                   <path d="M12.75 9.75 9.9 15.1a1.3 1.3 0 0 1-2.4-.75v-3.1H4.4a1.38 1.38 0 0 1-1.33-1.72l1.05-4.2A1.75 1.75 0 0 1 5.82 4h6.93m0 5.75V4m0 5.75h2V4h-2" />
                 </svg>
               </button>
+              {onRegenerate === undefined ? null : (
+                <button
+                  type="button"
+                  aria-label="Перегенерировать"
+                  title="Перегенерировать"
+                  onClick={onRegenerate}
+                >
+                  <svg viewBox="0 0 18 18" aria-hidden="true">
+                    <path d="M14.6 9A5.6 5.6 0 1 1 12.9 5l1.7 1.7m0-3.4v3.4h-3.4" />
+                  </svg>
+                </button>
+              )}
             </>
           )}
           {message.role === "user" ? null : meta}
