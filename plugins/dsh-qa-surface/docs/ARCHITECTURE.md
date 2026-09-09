@@ -27,7 +27,11 @@ session in storage, and `client/attestation.ts` parses Host reason markers and
 validates proofs against the deployed lockdown config. `QaTranscriptAdapter`
 projects session snapshots to plugin-local messages. "New chat" enters a
 draft that materializes an attested session only when the first prompt is
-sent, and the chat list orders by the host's `updatedAt`. By default it excludes
+sent, and the chat list orders by the host's `updatedAt`. The log is
+append-only and there is no truncation seam, so regeneration prompts a
+hidden instruction and projects the follow-up turns as variants of one
+question; the same projection flattens tool activity into the sources
+drawer (web targets, searches, files read). By default it excludes
 reasoning, tool arguments and tool results. When explicitly enabled, it
 correlates assistant blocks, paired tool results, running calls and turn
 timings into one plugin-local work group per turn; `QaWorkGroup` owns

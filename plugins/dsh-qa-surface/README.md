@@ -142,6 +142,17 @@ stays quiet until a message is actually sent, and the old session stays intact
 for operator inspection. The sidebar orders chats by the host's last update,
 so merely opening a chat never moves it.
 
+Regeneration: the last committed answer offers a retry action. The session log
+is append-only, so "regenerate" sends a hidden instruction as an ordinary
+prompt and the answer arrives as a follow-up turn; the projection hides that
+instruction and the consecutive turns read as variants of one question,
+navigable with a `< 2/2 >` switcher (newest shown by default).
+
+Sources: with `ui.showToolActivity: true` a header button opens a right-hand
+drawer listing the pages fetched, searches run and files read in this chat,
+projected from the same tool activity the work groups render - no extra
+prompting or tooling is involved.
+
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
 conversation. It lists only the chats this browser has actually used: the
 client keeps a per-browser id index under
