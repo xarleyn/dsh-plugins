@@ -17,6 +17,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
+| `plugins/dsh-tool-offload` | `@yadsh/dsh-tool-offload` | Offloads large tool results to small one-shot worker agents |
 | `plugins/dsh-user-correction-miner` | `@yadsh/dsh-user-correction-miner` | Mines project-rule candidates from user corrections |
 | `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
 | `packages/config` | private workspace package | Shared tsconfig and vitest presets |
