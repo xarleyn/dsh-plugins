@@ -23,6 +23,7 @@ const compatibility = JSON.parse(
 );
 const dshVersion = compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
 const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
 const packageDirectory = join(temporaryRoot, "package");
@@ -241,7 +242,12 @@ try {
       allowSessionReset: false
       toolPolicy:
         mode: allow-list
-        allow: []
+        # The minimal preset contributes its shell through an ancestor scope. Keeping
+        # this non-empty catches a regression where the first attestation
+        # accidentally restricts the session to global-only tools and makes
+        # every later attestation fail with unknown-tools.
+        allow:
+          - ${presetScopedTool}
 `,
   );
   const composed = await run(
@@ -554,6 +560,18 @@ try {
     ) {
       throw new Error(
         `QA route did not replace its incompatible persisted Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
+      );
+    }
+    const repeatedProof = await rpc(origin, "qaSurface/secureSession", {
+      args: { sessionId: persistedSession },
+    });
+    if (
+      repeatedProof.sessionId !== persistedSession ||
+      JSON.stringify(repeatedProof.toolAllowList) !==
+        JSON.stringify([presetScopedTool])
+    ) {
+      throw new Error(
+        `repeat policy attestation did not preserve preset-scoped tools: ${JSON.stringify(repeatedProof)}`,
       );
     }
     await page.goto(origin);

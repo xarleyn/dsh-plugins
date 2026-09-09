@@ -16,8 +16,9 @@ import {
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
+import { QaAttestationError } from "./attestation.js";
 import { registerQaNavigationRoute } from "./host-route.js";
-import { qaToolDenial } from "./lockdown-policy.js";
+import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 import type {
   QaLockdownProof,
   QaSurfaceConfig,
@@ -45,7 +46,6 @@ declare module "@deepseek-ai/cordis" {
 interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
-  readonly disposePresentation: () => void;
   readonly disposeRestriction: () => void;
 }
 
@@ -63,7 +63,7 @@ export class QaSurface extends TypertRemoteService {
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
-  private readonly appliedPolicies = new WeakMap<Agent, AppliedPolicy>();
+  private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
 
   constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
@@ -74,6 +74,13 @@ export class QaSurface extends TypertRemoteService {
       consoleSink: createHostLoggerSink(ctx.logger),
     });
     ctx.effect(() => async () => this.logger.close(), "dsh-qa-surface.logger");
+    ctx.effect(
+      () => () => this.disposeAppliedPolicies(),
+      "dsh-qa-surface.lockdown-policies",
+    );
+    ctx.on("agent/disposed", ({ agent }) => {
+      this.appliedPolicies.delete(agent);
+    });
     installSettingsSection(
       ctx,
       QA_SURFACE_SETTINGS_NAMESPACE,
@@ -139,11 +146,21 @@ export class QaSurface extends TypertRemoteService {
     try {
       return this.secureSessionOrThrow(sessionId);
     } catch (error) {
+      // The carrier empties error.details, so the coarse reason rides the
+      // wire message for the browser console; the specific mismatch facts
+      // stay in this log only.
+      const reason =
+        error instanceof QaAttestationError
+          ? error.reason
+          : "attestation-failed";
       this.logger.error("lockdown.rejected", {
         sessionId,
+        reason,
         error: error instanceof Error ? error.message : String(error),
       });
-      throw new Error(CONFIGURATION_ERROR, { cause: error });
+      throw new Error(`${CONFIGURATION_ERROR} (reason: ${reason})`, {
+        cause: error,
+      });
     }
   }
 
@@ -151,7 +168,9 @@ export class QaSurface extends TypertRemoteService {
     const config = this.getConfig();
     const lockdown = config.lockdown;
     const agent = this.ctx.agents.get(SessionId(sessionId));
-    if (agent === undefined) throw new Error("agent is unavailable");
+    if (agent === undefined) {
+      throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+    }
     if (!lockdown.enabled) {
       return {
         sessionId,
@@ -195,7 +214,8 @@ export class QaSurface extends TypertRemoteService {
           options.reasoningEffort === config.session.reasoningEffort));
 
     if (!agentPresetMatches || !workspaceMatches || !modelMatches) {
-      throw new Error(
+      throw new QaAttestationError(
+        "composition-mismatch",
         `composition mismatch: agent=${agentPresetMatches} workspace=${workspaceMatches} model=${modelMatches}`,
       );
     }
@@ -207,7 +227,8 @@ export class QaSurface extends TypertRemoteService {
       permission.sandbox !== lockdown.sandboxMode ||
       permission.approval !== lockdown.approvalPolicy
     ) {
-      throw new Error(
+      throw new QaAttestationError(
+        "permission-preset",
         `permission preset ${lockdown.permissionPreset} does not resolve to read-only/never`,
       );
     }
@@ -224,43 +245,41 @@ export class QaSurface extends TypertRemoteService {
         Date.now() - agent.session.header.createdAt >
           FRESH_SESSION_BOOTSTRAP_WINDOW_MS)
     ) {
-      throw new Error("existing non-QA session cannot be adopted");
+      throw new QaAttestationError(
+        "adoption-refused",
+        "existing non-QA session cannot be adopted",
+      );
     }
 
-    const allow = [...lockdown.toolPolicy.allow];
-    const unknown = allow.filter(
-      (toolName) => this.ctx.tools.get(toolName, agent) === undefined,
+    const policy = qaToolPolicyPlan(
+      lockdown.toolPolicy.allow,
+      (toolName) => this.ctx.tools.get(toolName, agent) !== undefined,
     );
-    if (unknown.length > 0) {
-      throw new Error(`unknown QA tool(s): ${unknown.join(", ")}`);
+    if (policy.unknown.length > 0) {
+      throw new QaAttestationError(
+        "unknown-tools",
+        `unknown QA tool(s): ${policy.unknown.join(", ")}`,
+      );
     }
-    const inheritedAllow = allow.filter(
-      (toolName) => this.ctx.tools.get(toolName) !== undefined,
-    );
-    const fingerprint = JSON.stringify(allow);
+    const fingerprint = JSON.stringify(policy.allow);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
-      const allowed = new Set(allow);
+      const allowed = new Set(policy.allow);
       const disposeGuard = agent.ctx.tools.guard((execution) =>
         qaToolDenial(allowed, execution.name),
       );
-      let disposePresentation: (() => void) | undefined;
       try {
-        disposePresentation =
-          prior?.disposePresentation ?? agent.ctx.tools.presentAs("native");
         const disposeRestriction = agent.ctx.tools.restrict({
-          allow: inheritedAllow,
+          allow: policy.allow,
         });
         this.appliedPolicies.set(agent, {
           fingerprint,
           disposeGuard,
-          disposePresentation,
           disposeRestriction,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
       } catch (error) {
-        if (prior === undefined) disposePresentation?.();
         disposeGuard();
         throw error;
       }
@@ -277,13 +296,16 @@ export class QaSurface extends TypertRemoteService {
       !sandboxIsReadOnly ||
       !approvalIsNever
     ) {
-      throw new Error("permission attestation failed");
+      throw new QaAttestationError(
+        "attestation-failed",
+        "permission attestation failed",
+      );
     }
 
     this.logger.debug("lockdown.attested", {
       sessionId,
       permissionPreset: lockdown.permissionPreset,
-      toolAllowList: allow,
+      toolAllowList: policy.allow,
     });
     return {
       sessionId,
@@ -295,8 +317,16 @@ export class QaSurface extends TypertRemoteService {
       approvalIsNever,
       permissionPreset: lockdown.permissionPreset,
       toolPolicyLoaded: true,
-      toolAllowList: allow,
+      toolAllowList: policy.allow,
     };
+  }
+
+  private disposeAppliedPolicies(): void {
+    for (const policy of this.appliedPolicies.values()) {
+      policy.disposeRestriction();
+      policy.disposeGuard();
+    }
+    this.appliedPolicies.clear();
   }
 
   private refreshRoute(): void {
@@ -320,7 +350,9 @@ export {
   normalizeRoutePath,
   resolveConfig,
 } from "./config.js";
+export { QaAttestationError } from "./attestation.js";
+export type { QaAttestationReason } from "./attestation.js";
 export { registerQaNavigationRoute } from "./host-route.js";
-export { qaToolDenial } from "./lockdown-policy.js";
+export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export type * from "./types.js";
 export default QaSurface;
