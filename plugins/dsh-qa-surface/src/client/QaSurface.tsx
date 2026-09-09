@@ -191,6 +191,9 @@ export function QaSurface(props: QaSurfaceProps) {
       {showSidebar ? (
         <QaSidebar
           rows={chatRows}
+          title={config.branding.title}
+          logoUrl={config.branding.logoUrl}
+          stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
           showNewChat={allowNewChat}
           busy={state.phase === "creating"}
           onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
