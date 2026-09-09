@@ -52,6 +52,12 @@ a shared privileged Host is not an authorization boundary for other DSH
 clients. Strong isolation requires a dedicated process/profile, restricted
 identity and network boundary.
 
+All interaction colors come from the company interaction palette
+("Цвета взаимодействия"), defined once as the `QA_BRAND_PALETTE` object at the
+top of `styles.ts` and emitted as `--dsh-qa-*` custom properties on the
+overlay root; surfaces and typography keep using the themed `--dsw-alias-*`
+tokens so light and dark hosts stay coherent.
+
 The overlay locks document scrolling and contains keyboard focus while active.
 It does not locate AppFrame through generated CSS classes and does not dispose
 global DSH runtime services when the route changes.

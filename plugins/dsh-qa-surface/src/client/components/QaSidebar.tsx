@@ -112,13 +112,9 @@ function SearchIcon() {
   );
 }
 
-function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
+function ChevronIcon() {
   return (
-    <svg
-      viewBox="0 0 14 14"
-      aria-hidden="true"
-      style={collapsed ? { transform: "rotate(180deg)" } : undefined}
-    >
+    <svg viewBox="0 0 14 14" aria-hidden="true">
       <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
     </svg>
   );
@@ -153,7 +149,7 @@ export function QaSidebar(props: QaSidebarProps) {
           title="Развернуть историю чатов"
           onClick={toggleCollapsed}
         >
-          <ChevronIcon collapsed />
+          <ChevronIcon />
         </button>
       </nav>
     );
@@ -185,7 +181,7 @@ export function QaSidebar(props: QaSidebarProps) {
           title="Свернуть историю чатов"
           onClick={toggleCollapsed}
         >
-          <ChevronIcon collapsed={false} />
+          <ChevronIcon />
         </button>
       </div>
       {props.showNewChat ? (
