@@ -229,7 +229,7 @@ export function QaWorkGroup({
               Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
             ) % THINKING_PHRASES.length
           ]
-        }${duration === null ? "" : ` · ${duration}`}`
+        }${duration === null ? "" : ` (${duration})`}`
       : duration === null
         ? "Ход работы"
         : `Готово за ${duration}`;
