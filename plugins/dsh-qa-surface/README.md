@@ -136,8 +136,11 @@ Session policies:
 
 New chat is disabled by default. To expose it, set `lockdown.allowSessionReset:
 true` plus either `ui.showReset: true` (header button) or `ui.showSessionList:
-true` (sidebar button); it creates another DSH Session and leaves the old one
-intact for operator inspection.
+true` (sidebar button). Pressing it opens a draft composer and creates nothing:
+the DSH Session is materialized lazily by the first prompt, so the chat list
+stays quiet until a message is actually sent, and the old session stays intact
+for operator inspection. The sidebar orders chats by the host's last update,
+so merely opening a chat never moves it.
 
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
 conversation. It lists only the chats this browser has actually used: the
