@@ -13,6 +13,8 @@ Session and Agent Loop.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
+- optionally shows a minimal per-browser chat-history sidebar
+  (`ui.showSessionList`) whose switching re-runs policy attestation;
 - blocks unsupported approvals/questions instead of auto-approving them;
 - pins locked sessions to `read-only` + `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
@@ -84,6 +86,7 @@ config:
     showReasoning: false
     renderMarkdown: true
     maxContentWidth: 900
+    showSessionList: false
   suggestedQuestions:
     - How do I request access?
     - Where is the runbook?
@@ -131,9 +134,19 @@ Session policies:
 - `fixed` requires `fixedSessionId`, never creates a replacement, and is meant
   only for controlled single-user deployments.
 
-New chat is disabled by default. To expose it, set both `ui.showReset: true`
-and `lockdown.allowSessionReset: true`; it creates another DSH Session and
-leaves the old one intact for operator inspection.
+New chat is disabled by default. To expose it, set `lockdown.allowSessionReset:
+true` plus either `ui.showReset: true` (header button) or `ui.showSessionList:
+true` (sidebar button); it creates another DSH Session and leaves the old one
+intact for operator inspection.
+
+`ui.showSessionList: true` renders a minimal chat-history sidebar beside the
+conversation. It lists only the chats this browser has actually used: the
+client keeps a per-browser id index under
+`<storageKey>:v1:<route>:chats` in localStorage (capped at 50, most recently
+used first) and intersects it with the Host session list, so users sharing the
+deployment never see each other's chats. Switching re-runs the full policy
+attestation; a chat the Host no longer lists is pruned from the index. The
+sidebar hides below 600px viewports.
 
 Locked mode requires a deployment permission preset named `qa-read-only`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
@@ -162,8 +175,9 @@ its process-wide default:
 
 The shipped tool allow-list is empty. Add only reviewed read-only tool names
 from the actual deployment. A name that is not registered fails closed. The
-Host restriction filters inherited tools, and the additional execution guard
-also denies scoped tools and `run_code` unless their exact names are allowed.
+Host restriction retains exact allow-listed tools from the agent preset's
+ancestor scope, and the additional execution guard also denies session-scoped
+tools and `run_code` unless their exact names are allowed.
 
 ## Security and deployment
 
