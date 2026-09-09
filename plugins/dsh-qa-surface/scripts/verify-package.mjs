@@ -117,6 +117,8 @@ assert.match(client, /dsh-qa-variants/u);
 assert.match(client, /Перегенерируй/u);
 assert.match(client, /dsh-qa-sources/u);
 assert.match(client, /Источники/u);
+assert.match(client, /dsh-qa-sourcedetail/u);
+assert.match(client, /Открыть/u);
 assert.match(client, /Субагент/u);
 assert.match(client, /dsh-qa-agents/u);
 assert.match(client, /dsh-qa-agentview/u);

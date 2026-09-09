@@ -227,6 +227,8 @@ export interface QaSource {
   readonly target: string;
   readonly title: string;
   readonly snippet: string;
+  /** The tool's full text output, capped for the detail pane. */
+  readonly output: string;
 }
 
 /** A subagent transcript opened read-only from the agents panel. */

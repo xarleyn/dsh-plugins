@@ -287,7 +287,7 @@ function collectSettledTools(
   let nearestTurn: number | undefined;
   for (const node of snapshot.nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
-    if (node.kind !== "tool-result") continue;
+    if (node.kind !== "tool-result" || node.isError) continue;
     const head = toolHeads.get(node.callId);
     const turnNumber = head?.turn ?? nearestTurn;
     if (turnNumber === undefined) continue;
@@ -594,6 +594,17 @@ function sourceSnippet(output: string | null): string {
   return compact.length <= 200 ? compact : `${compact.slice(0, 199)}…`;
 }
 
+/** Models occasionally wrap arguments in tags ("<path>...</path>") - strip them. */
+function sourceTarget(value: string): string {
+  return value.replace(/<\/?[a-zA-Z][^>]*>/gu, "").trim();
+}
+
+/** Whole tool output for the detail pane, capped hard. */
+function sourceOutput(output: string | null): string {
+  const text = (output ?? "").trim();
+  return text.length <= 4_000 ? text : `${text.slice(0, 3_999)}…`;
+}
+
 function sourceFromCall(
   id: string,
   name: string,
@@ -602,19 +613,22 @@ function sourceFromCall(
 ): QaSource | null {
   const kind = SOURCE_TOOLS[name];
   if (kind === undefined) return null;
-  let target = name;
+  let target: string | null = null;
   try {
     const args = JSON.parse(argsRaw) as Record<string, unknown>;
     for (const key of ["url", "file_path", "path", "query", "pattern"]) {
       const value = args[key];
       if (typeof value === "string" && value.trim() !== "") {
-        target = value.trim();
+        target = sourceTarget(value);
         break;
       }
     }
   } catch {
-    // A non-JSON head falls back to the tool name as the target.
+    // A non-JSON head leaves the target unresolved.
   }
+  // Without a resolvable target the row is noise (a failed search, an
+  // unnamed call) - the drawer shows sources, not tool errors.
+  if (target === null || target === "") return null;
   return {
     id,
     kind,
@@ -622,6 +636,7 @@ function sourceFromCall(
     // A search answers with a result list, so the query itself is the title.
     title: kind === "search" ? target : sourceTitle(kind, target),
     snippet: sourceSnippet(output),
+    output: sourceOutput(output),
   };
 }
 
@@ -644,7 +659,7 @@ export function projectSources(
     sources.push(source);
   };
   for (const node of snapshot.nodes) {
-    if (node.kind !== "tool-result") continue;
+    if (node.kind !== "tool-result" || node.isError) continue;
     add(
       sourceFromCall(
         `source:${node.callId}`,
