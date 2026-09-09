@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import { relativeTime } from "./format.js";
 
 /** One renderable row of the chat-history sidebar. */
 export interface QaChatRow {
@@ -9,18 +10,6 @@ export interface QaChatRow {
   readonly active: boolean;
   readonly meta: string;
   readonly updatedAt: number;
-}
-
-function relativeTime(timestamp: number, now: number): string {
-  const seconds = Math.max(1, Math.round((now - timestamp) / 1000));
-  if (seconds < 60) return "только что";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ч`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days} дн`;
-  return new Date(timestamp).toLocaleDateString("ru-RU");
 }
 
 /**

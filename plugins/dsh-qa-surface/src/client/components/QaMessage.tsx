@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { QaMessage as QaMessageModel } from "../../types.js";
+import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";
 
@@ -43,29 +44,6 @@ function writeRating(
   } catch {
     // A denied localStorage write must not break the conversation.
   }
-}
-
-/** `9 сент. 15:44` — compact ru-RU day/month plus time. */
-function formatDayTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  const month = date
-    .toLocaleDateString("ru-RU", { month: "short" })
-    .replace(".", "");
-  const time = date.toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${date.getDate()} ${month} ${time}`;
-}
-
-/** `1,1 с` below ten seconds, `8 с` above. */
-function formatSeconds(ms: number): string {
-  const seconds = ms / 1_000;
-  const value =
-    seconds < 10
-      ? (Math.round(seconds * 10) / 10).toString()
-      : String(Math.round(seconds));
-  return `${value.replace(".", ",")} с`;
 }
 
 function assistantMeta(message: QaMessageModel & { role: "assistant" }) {

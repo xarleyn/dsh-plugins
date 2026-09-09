@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { QaWorkItem } from "../../types.js";
+import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
 
 export interface QaWorkGroupProps {
@@ -8,15 +9,6 @@ export interface QaWorkGroupProps {
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
   readonly renderMarkdown: boolean;
-}
-
-export function formatWorkDuration(durationMs: number): string {
-  const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  if (seconds < 1) return "< 1 с";
-  if (seconds < 60) return `${seconds} с`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return remainder === 0 ? `${minutes} мин` : `${minutes} мин ${remainder} с`;
 }
 
 export const THINKING_PHRASES = Object.freeze([
