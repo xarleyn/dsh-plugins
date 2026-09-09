@@ -13,6 +13,8 @@ export type {
 export type RepairIssueKind =
   | "icon-alignment"
   | "icon-size-consistency"
+  | "row-horizontal-alignment"
+  | "row-vertical-alignment"
   | "unexpected-overflow-x"
   | "unexpected-overflow-y"
   | "clipped-content"
@@ -73,6 +75,7 @@ export interface UIRepairConfig {
   readonly rootSelector: string;
   readonly scanOnStartup: boolean;
   readonly observeMutations: boolean;
+  readonly observeResize: boolean;
   readonly ignore: readonly UIRepairIgnoreRule[];
   readonly maxElementsPerRoot: number;
   readonly alignmentTolerancePx: number;

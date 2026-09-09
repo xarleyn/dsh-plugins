@@ -458,6 +458,161 @@ describe("UIRepairRuntime", () => {
     expect(outlier.hasAttribute("data-dsh-ui-repair-target")).toBe(false);
   });
 
+  it("repairs explicit horizontal and vertical row outliers", async () => {
+    document.body.innerHTML = `
+      <main data-plugin-package="@example/rows">
+        <section data-dsh-ui-repair-root="rows">
+          <nav data-dsh-ui-repair-row-group id="horizontal">
+            <button id="x-a"></button>
+            <button id="x-b"></button>
+            <button id="x-out"></button>
+          </nav>
+          <nav data-dsh-ui-repair-row-group id="vertical">
+            <button id="h-a"></button>
+            <button id="h-b"></button>
+            <button id="h-out" data-dsh-ui-repair-row-height></button>
+          </nav>
+        </section>
+      </main>
+    `;
+    const rowRect = (x: number, height: number): DOMRect => ({
+      x,
+      y: 0,
+      width: 100,
+      height,
+      top: 0,
+      right: x + 100,
+      bottom: height,
+      left: x,
+      toJSON: () => ({}),
+    });
+    for (const id of ["x-a", "x-b"]) {
+      vi.spyOn(
+        document.querySelector(`#${id}`) as HTMLElement,
+        "getBoundingClientRect",
+      ).mockReturnValue(rowRect(10, 32));
+    }
+    const horizontalOutlier = document.querySelector("#x-out") as HTMLElement;
+    vi.spyOn(horizontalOutlier, "getBoundingClientRect").mockImplementation(
+      () => rowRect(
+        horizontalOutlier.hasAttribute("data-dsh-ui-repair-target") ? 10 : 16,
+        32,
+      ),
+    );
+    for (const id of ["h-a", "h-b"]) {
+      vi.spyOn(
+        document.querySelector(`#${id}`) as HTMLElement,
+        "getBoundingClientRect",
+      ).mockReturnValue(rowRect(20, 32));
+    }
+    const verticalOutlier = document.querySelector("#h-out") as HTMLElement;
+    vi.spyOn(verticalOutlier, "getBoundingClientRect").mockImplementation(() =>
+      rowRect(
+        20,
+        verticalOutlier.hasAttribute("data-dsh-ui-repair-target") ? 32 : 24,
+      ),
+    );
+    const runtime = new UIRepairRuntime(
+      document,
+      {
+        mode: "auto",
+        observeMutations: false,
+        observeResize: false,
+      },
+      quietLogger(),
+    );
+
+    const report = await runtime.scan();
+    const horizontal = report.issues.find(({ ruleId }) => ruleId === "R003");
+    const vertical = report.issues.find(({ ruleId }) => ruleId === "R004");
+
+    expect(horizontal).toMatchObject({
+      plugin: "@example/rows",
+      kind: "row-horizontal-alignment",
+      suggestedCss: { translate: "-6px 0" },
+    });
+    expect(vertical).toMatchObject({
+      plugin: "@example/rows",
+      kind: "row-vertical-alignment",
+      suggestedCss: { height: "32px" },
+    });
+    expect(report.applied).toEqual(
+      expect.arrayContaining([horizontal?.id, vertical?.id]),
+    );
+    expect(report.rolledBack).toEqual([]);
+  });
+
+  it("rescans bounded roots after ResizeObserver notifications", async () => {
+    document.body.innerHTML = Array.from(
+      { length: 85 },
+      (_value, index) => `
+        <section data-dsh-ui-repair-root="resizable-${index}">
+          ${index === 0 ? '<div id="panel"></div>' : ""}
+        </section>
+      `,
+    ).join("");
+    const root = document.querySelector(
+      "[data-dsh-ui-repair-root]",
+    ) as HTMLElement;
+    const panel = document.querySelector("#panel") as HTMLElement;
+    dimensions(panel, {
+      clientHeight: 40,
+      scrollHeight: 80,
+      clientWidth: 100,
+      scrollWidth: 100,
+    });
+    let resizeCallback:
+      | ((entries: ResizeObserverEntry[], observer: ResizeObserver) => void)
+      | undefined;
+    const observe = vi.fn();
+    const unobserve = vi.fn();
+    const disconnect = vi.fn();
+    class FakeResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe = observe;
+      unobserve = unobserve;
+      disconnect = disconnect;
+    }
+    const original = window.ResizeObserver;
+    Object.defineProperty(window, "ResizeObserver", {
+      configurable: true,
+      value: FakeResizeObserver,
+    });
+    try {
+      const runtime = new UIRepairRuntime(
+        document,
+        {
+          scanOnStartup: false,
+          observeMutations: false,
+          observeResize: true,
+        },
+        quietLogger(),
+      );
+      runtime.start();
+
+      expect(observe).toHaveBeenCalledTimes(80);
+      expect(observe).toHaveBeenCalledWith(root);
+      resizeCallback?.(
+        [{ target: root } as unknown as ResizeObserverEntry],
+        {} as ResizeObserver,
+      );
+      await vi.waitFor(() => {
+        expect(runtime.getLatestReport()?.issues[0]?.ruleId).toBe("R006");
+      });
+
+      runtime.dispose();
+      expect(disconnect).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, "ResizeObserver", {
+        configurable: true,
+        value: original,
+      });
+    }
+  });
+
   it("automatically rolls a repair back when verification still sees the defect", async () => {
     document.body.innerHTML = `
       <section data-dsh-ui-repair-root="fixture">
