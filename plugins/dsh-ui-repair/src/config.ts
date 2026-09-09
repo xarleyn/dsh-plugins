@@ -19,5 +19,6 @@ export const ConfigSchema = z.object({
   dangerousConfidence: z.number().min(0).max(1).default(0.98),
   scanOnStartup: z.boolean().default(true),
   scanAfterMutation: z.boolean().default(true),
+  scanAfterResize: z.boolean().default(true),
   ignore: z.array(ignoreRuleSchema).default([]) as z<UIRepairIgnoreRule[]>,
 }) as unknown as z<UIRepairPluginConfig>;

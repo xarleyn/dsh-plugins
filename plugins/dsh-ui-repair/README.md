@@ -20,6 +20,7 @@ This first implementation slice includes:
 - semantic repair roots instead of coupling to hashed CSS-module classes;
 - `R001` repeated-row icon alignment diagnostics;
 - `R002` repeated-row icon size consistency diagnostics;
+- `R003`/`R004` repeated-row horizontal and vertical diagnostics;
 - `R005`/`R006` unexpected horizontal and vertical overflow diagnostics;
 - `R007` clipped-content diagnostics;
 - `R008` flex-shrink and `R009` missing-min-width diagnostics;
@@ -29,7 +30,7 @@ This first implementation slice includes:
 - allowlisted CSS writes scoped by per-repair data attributes;
 - animation-frame layout stabilization, verification, and rollback;
 - in-memory repair history;
-- bounded initial scans and mutation-triggered targeted rescans;
+- bounded initial scans and mutation/resize-triggered targeted rescans;
 - automatic restoration of every owned DOM attribute and style tag on unload.
 
 The default mode is `observe`. Configuration is persisted by the DSH settings
@@ -60,6 +61,8 @@ Plugin authors can make a fixture or owned surface unambiguous:
 Repeated row groups may use `data-dsh-ui-repair-row-group`, with optional
 `data-dsh-ui-repair-row` and `data-dsh-ui-repair-icon` markers when their
 native semantics are not `button`, `a`, `li`, `svg`, or `img`.
+`data-dsh-ui-repair-row-height` explicitly permits normalizing an anomalous
+row height; without it, R004 remains diagnosis-only.
 
 Potentially ambiguous layout ownership remains diagnosis-only unless the
 surface opts in. `data-dsh-ui-repair-scroll-x` marks a safe horizontal scroll
@@ -86,7 +89,7 @@ attributes.
 ## Settings
 
 The standard Plugins → Plugin Configuration card exposes activation, mode,
-normal and risky confidence thresholds, startup scanning, mutation scanning,
+normal and risky confidence thresholds, startup, mutation, and resize scanning,
 manual scan/apply/ignore/rollback actions, session health counters, and
 persistent ignored selectors. Risky overflow/clipping repairs can never be
 configured below 98% confidence.
@@ -98,17 +101,18 @@ pnpm --filter @yadsh/dsh-ui-repair check
 ```
 
 The current tests cover detection without mutation, scoped vertical and
-horizontal overflow repair, sticky-content safety refusal, icon alignment and
-size outliers, flex constraints, manual suggestions, verification, rollback,
-client lifecycle, and browser bundle identity.
+horizontal overflow repair, sticky-content safety refusal, icon and row
+alignment/size outliers, flex constraints, plugin attribution, ResizeObserver,
+manual suggestions, verification, rollback, client lifecycle, and browser
+bundle identity.
 
 ## Not implemented yet
 
 The specification's persistent repair recipes, plugin-version revalidation,
-ResizeObserver integration, full per-plugin health view, screenshot
-verification, vision-toolkit integration, and the remaining P0/P1/P2 rules are
-intentionally deferred. The proof of concept establishes the lifecycle,
-measurement, configuration, scoping, and rollback seams they will use.
+full per-plugin health view, screenshot verification, vision-toolkit
+integration, and the remaining P0/P1/P2 rules are intentionally deferred. The
+proof of concept establishes the lifecycle, measurement, configuration,
+scoping, and rollback seams they will use.
 
 ## License
 

@@ -54,6 +54,7 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
       dangerousConfidence: resolved.dangerousConfidence,
       scanOnStartup: resolved.scanOnStartup,
       observeMutations: resolved.scanAfterMutation,
+      observeResize: resolved.scanAfterResize,
       ignore: resolved.ignore,
     });
     if (started && resolved.enabled) {

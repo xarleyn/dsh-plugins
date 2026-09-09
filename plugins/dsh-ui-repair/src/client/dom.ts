@@ -4,6 +4,10 @@ export const DEFAULT_ROOT_SELECTOR = [
   "[data-dsh-ui-repair-root]",
   "[data-dsh-plugin-root]",
   "[data-plugin-root]",
+  "[data-dsh-plugin]",
+  "[data-plugin]",
+  "[data-plugin-id]",
+  "[data-plugin-package]",
   "[data-slot='settings.plugin.item'] > *",
   "[role='dialog'][aria-modal='true']",
 ].join(",");
@@ -15,6 +19,15 @@ function isElement(value: unknown): value is Element {
     "nodeType" in value &&
     value.nodeType === 1
   );
+}
+
+function ownsRepairUI(element: Element): boolean {
+  if (matches(element, REPAIR_UI_SELECTOR)) return true;
+  try {
+    return element.querySelector(REPAIR_UI_SELECTOR) !== null;
+  } catch {
+    return true;
+  }
 }
 
 export function matches(element: Element, selector: string): boolean {
@@ -49,11 +62,9 @@ export function collectRoots(
     } catch {}
   }
   for (const element of queryAll(source, selector)) {
-    if (!matches(element, REPAIR_UI_SELECTOR)) roots.add(element as HTMLElement);
+    if (!ownsRepairUI(element)) roots.add(element as HTMLElement);
   }
-  return Array.from(roots).filter(
-    (root) => !matches(root, REPAIR_UI_SELECTOR),
-  );
+  return Array.from(roots).filter((root) => !ownsRepairUI(root));
 }
 
 export function collectElements(
@@ -79,7 +90,10 @@ function stableAttribute(element: Element): string | undefined {
     "data-dsh-ui-repair-root",
     "data-dsh-plugin-root",
     "data-plugin-root",
+    "data-dsh-plugin",
     "data-plugin",
+    "data-plugin-id",
+    "data-plugin-package",
     "data-slot",
     "role",
   ]) {
@@ -100,12 +114,26 @@ export function describeElement(element: Element): string {
 }
 
 export function inferPlugin(root: HTMLElement): string | undefined {
-  for (const attribute of [
-    "data-dsh-plugin-root",
-    "data-plugin-root",
-    "data-plugin",
-  ]) {
-    const value = root.getAttribute(attribute)?.trim();
+  const ancestry: HTMLElement[] = [];
+  for (let current: HTMLElement | null = root; current !== null;) {
+    ancestry.push(current);
+    current = current.parentElement;
+  }
+  for (const element of ancestry) {
+    for (const attribute of [
+      "data-plugin-package",
+      "data-dsh-plugin-root",
+      "data-plugin-root",
+      "data-dsh-plugin",
+      "data-plugin-id",
+      "data-plugin",
+    ]) {
+      const value = element.getAttribute(attribute)?.trim();
+      if (value !== undefined && value.length > 0) return value;
+    }
+  }
+  for (const element of ancestry) {
+    const value = element.getAttribute("data-dsh-ui-repair-root")?.trim();
     if (value !== undefined && value.length > 0) return value;
   }
   return undefined;

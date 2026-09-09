@@ -7,6 +7,7 @@ import {
 } from "./scanner/alignment.js";
 import { scanFlexConstraints } from "./scanner/flex.js";
 import { scanOverflow } from "./scanner/overflow.js";
+import { scanRowAlignment } from "./scanner/rows.js";
 import type {
   RepairCandidate,
   RepairHistoryEntry,
@@ -32,6 +33,7 @@ export const DEFAULT_CONFIG: UIRepairConfig = {
   rootSelector: DEFAULT_ROOT_SELECTOR,
   scanOnStartup: true,
   observeMutations: true,
+  observeResize: true,
   ignore: [],
   maxElementsPerRoot: 300,
   alignmentTolerancePx: 1.5,
@@ -87,6 +89,8 @@ export class UIRepairRuntime implements UIRepairService {
   #latestReport: ScanReport | undefined;
   #nextId = 1;
   #observer: MutationObserver | undefined;
+  #resizeObserver: ResizeObserver | undefined;
+  readonly #resizeTargets = new Set<HTMLElement>();
   #queuedRoots = new Set<ParentNode>();
   #scheduledFrame: number | undefined;
   #disposed = false;
@@ -114,7 +118,7 @@ export class UIRepairRuntime implements UIRepairService {
         this.#logger.error("initial scan failed", { error: String(error) });
       });
     }
-    this.#syncObserver();
+    this.#syncObservers();
   }
 
   configure(config: Partial<UIRepairConfig>): void {
@@ -132,39 +136,55 @@ export class UIRepairRuntime implements UIRepairService {
     ) {
       this.rollbackAll();
     }
-    if (this.#started) this.#syncObserver();
+    if (this.#started) this.#syncObservers();
   }
 
-  #syncObserver(): void {
+  #syncObservers(): void {
     this.#observer?.disconnect();
     this.#observer = undefined;
+    this.#resizeObserver?.disconnect();
+    this.#resizeObserver = undefined;
+    this.#resizeTargets.clear();
     if (
       this.#disposed ||
       !this.#started ||
       !this.#config.enabled ||
-      !this.#config.observeMutations ||
       this.#document.body === null
     ) {
       return;
     }
-    const Observer = this.#document.defaultView?.MutationObserver;
-    if (Observer === undefined) return;
-    this.#observer = new Observer((records) => {
-      for (const record of records) {
-        if (record.target instanceof this.#document.defaultView!.Node) {
-          this.#queueScan(record.target as ParentNode);
+    const view = this.#document.defaultView;
+    const MutationObserverConstructor = view?.MutationObserver;
+    if (
+      this.#config.observeMutations &&
+      MutationObserverConstructor !== undefined
+    ) {
+      this.#observer = new MutationObserverConstructor((records) => {
+        for (const record of records) {
+          if (view !== null && record.target instanceof view.Node) {
+            this.#queueScan(record.target as ParentNode);
+          }
+          for (const node of Array.from(record.addedNodes)) {
+            if (node.nodeType === 1) this.#queueScan(node as ParentNode);
+          }
         }
-        for (const node of Array.from(record.addedNodes)) {
-          if (node.nodeType === 1) this.#queueScan(node as ParentNode);
-        }
-      }
-    });
-    this.#observer.observe(this.#document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["class", "style", "open", "hidden", "aria-expanded"],
-    });
+      });
+      this.#observer.observe(this.#document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style", "open", "hidden", "aria-expanded"],
+      });
+    }
+    const ResizeObserverConstructor = view?.ResizeObserver;
+    if (this.#config.observeResize && ResizeObserverConstructor !== undefined) {
+      this.#resizeObserver = new ResizeObserverConstructor((entries) => {
+        for (const entry of entries) this.#queueScan(entry.target);
+      });
+      this.#observeResizeRoots(
+        collectRoots(this.#document, this.#config.rootSelector),
+      );
+    }
   }
 
   async scan(source: ParentNode = this.#document): Promise<ScanReport> {
@@ -202,8 +222,12 @@ export class UIRepairRuntime implements UIRepairService {
         ...scanFlexConstraints(root, this.#config, (ruleId, target) =>
           this.#idFor(ruleId, target),
         ),
+        ...scanRowAlignment(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
       );
     }
+    this.#observeResizeRoots(roots);
     this.#candidates.clear();
     for (const candidate of detected) {
       this.#candidates.set(candidate.issue.id, candidate);
@@ -349,10 +373,12 @@ export class UIRepairRuntime implements UIRepairService {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#observer?.disconnect();
+    this.#resizeObserver?.disconnect();
     if (this.#scheduledFrame !== undefined) {
       this.#document.defaultView?.cancelAnimationFrame(this.#scheduledFrame);
     }
     this.#queuedRoots.clear();
+    this.#resizeTargets.clear();
     this.rollbackAll();
     this.#listeners.clear();
   }
@@ -360,6 +386,21 @@ export class UIRepairRuntime implements UIRepairService {
   #notify(): void {
     this.#revision += 1;
     for (const listener of this.#listeners) listener();
+  }
+
+  #observeResizeRoots(roots: readonly HTMLElement[]): void {
+    if (this.#resizeObserver === undefined) return;
+    for (const target of this.#resizeTargets) {
+      if (target.isConnected) continue;
+      this.#resizeObserver.unobserve(target);
+      this.#resizeTargets.delete(target);
+    }
+    for (const root of roots) {
+      if (this.#resizeTargets.size >= 80) break;
+      if (this.#resizeTargets.has(root) || !root.isConnected) continue;
+      this.#resizeTargets.add(root);
+      this.#resizeObserver.observe(root);
+    }
   }
 
   #isRisky(ruleId: RepairCandidate["issue"]["ruleId"]): boolean {

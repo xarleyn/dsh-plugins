@@ -46,6 +46,8 @@ describe("UI Repair config", () => {
     expect(REPAIR_RULE_IDS).toEqual([
       "R001",
       "R002",
+      "R003",
+      "R004",
       "R005",
       "R006",
       "R007",

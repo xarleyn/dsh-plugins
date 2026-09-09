@@ -146,7 +146,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
       title="UI Repair"
       description="Observe layout defects and apply reversible, scoped repairs."
       badge={
-        <span className="dsh-plugin-card__badge">
+        <span className="dsh-plugin-card__badge" data-dsh-ui-repair-ui>
           {config.enabled ? config.mode : "disabled"}
         </span>
       }
@@ -224,6 +224,13 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             checked={config.scanAfterMutation}
             disabled={!writable}
             onChange={(checked) => void scope.set("scanAfterMutation", checked)}
+          />
+          <Toggle
+            title="Scan after layout resize"
+            description="Observe bounded repair roots for geometry changes."
+            checked={config.scanAfterResize}
+            disabled={!writable}
+            onChange={(checked) => void scope.set("scanAfterResize", checked)}
           />
         </section>
 

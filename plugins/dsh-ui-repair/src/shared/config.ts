@@ -4,6 +4,8 @@ export type RepairMode = (typeof REPAIR_MODES)[number];
 export const REPAIR_RULE_IDS = [
   "R001",
   "R002",
+  "R003",
+  "R004",
   "R005",
   "R006",
   "R007",
@@ -25,6 +27,7 @@ export interface UIRepairPluginConfig {
   readonly dangerousConfidence?: number;
   readonly scanOnStartup?: boolean;
   readonly scanAfterMutation?: boolean;
+  readonly scanAfterResize?: boolean;
   readonly ignore?: UIRepairIgnoreRule[];
 }
 
@@ -35,6 +38,7 @@ export interface ResolvedUIRepairPluginConfig {
   readonly dangerousConfidence: number;
   readonly scanOnStartup: boolean;
   readonly scanAfterMutation: boolean;
+  readonly scanAfterResize: boolean;
   readonly ignore: readonly UIRepairIgnoreRule[];
 }
 
@@ -45,6 +49,7 @@ export const DEFAULT_PLUGIN_CONFIG: ResolvedUIRepairPluginConfig = Object.freeze
   dangerousConfidence: 0.98,
   scanOnStartup: true,
   scanAfterMutation: true,
+  scanAfterResize: true,
   ignore: Object.freeze([]),
 });
 
@@ -92,6 +97,8 @@ export function resolvePluginConfig(
     scanOnStartup: config.scanOnStartup ?? DEFAULT_PLUGIN_CONFIG.scanOnStartup,
     scanAfterMutation:
       config.scanAfterMutation ?? DEFAULT_PLUGIN_CONFIG.scanAfterMutation,
+    scanAfterResize:
+      config.scanAfterResize ?? DEFAULT_PLUGIN_CONFIG.scanAfterResize,
     ignore: normalizedIgnore(config.ignore),
   };
 }
