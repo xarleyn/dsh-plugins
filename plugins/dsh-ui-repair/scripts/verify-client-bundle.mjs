@@ -21,10 +21,16 @@ for (const ruleId of [
   "R007",
   "R008",
   "R009",
+  "R010",
+  "R011",
+  "R012",
+  "R013",
 ]) {
   assert.match(client, new RegExp(`\\b${ruleId}\\b`, "u"));
 }
 assert.match(client, /data-dsh-ui-repair-scroll-x/u);
+assert.match(client, /data-dsh-ui-repair-text-wrap/u);
+assert.match(client, /data-dsh-ui-repair-contain/u);
 assert.match(client, /Applying\.\.\./u);
 assert.match(client, /ResizeObserver/u);
 assert.match(client, /"settings\.plugin\.item"/u);

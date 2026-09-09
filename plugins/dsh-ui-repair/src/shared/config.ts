@@ -11,6 +11,10 @@ export const REPAIR_RULE_IDS = [
   "R007",
   "R008",
   "R009",
+  "R010",
+  "R011",
+  "R012",
+  "R013",
 ] as const;
 export type RepairRuleId = (typeof REPAIR_RULE_IDS)[number];
 
