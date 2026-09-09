@@ -1,0 +1,227 @@
+import { useEffect, useRef, useState } from "react";
+import type { QaWorkItem } from "../../types.js";
+import { Markdown } from "./Markdown.js";
+
+export interface QaWorkGroupProps {
+  readonly status: "running" | "complete";
+  readonly startedAt?: number;
+  readonly endedAt?: number;
+  readonly items: readonly QaWorkItem[];
+  readonly renderMarkdown: boolean;
+}
+
+export function formatWorkDuration(durationMs: number): string {
+  const seconds = Math.max(0, Math.round(durationMs / 1_000));
+  if (seconds < 1) return "<1s";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+}
+
+function Chevron({ open }: { readonly open: boolean }) {
+  return (
+    <svg
+      className="dsh-qa-work__chevron"
+      data-open={open || undefined}
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+    >
+      <path d="m5.25 3.5 3.5 3.5-3.5 3.5" />
+    </svg>
+  );
+}
+
+function ThinkIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 2.25a4.25 4.25 0 0 0-2.45 7.72c.48.34.7.72.7 1.15v.13h3.5v-.13c0-.43.22-.81.7-1.15A4.25 4.25 0 0 0 8 2.25Z" />
+      <path d="M6.35 13h3.3M6.9 14.5h2.2" />
+    </svg>
+  );
+}
+
+function ToolIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M9.8 2.4a3.2 3.2 0 0 0-3.73 4.12l-3.4 3.4a1.55 1.55 0 1 0 2.2 2.2l3.4-3.4A3.2 3.2 0 0 0 12.4 5l-1.85 1.1-1.5-1.5L9.8 2.4Z" />
+    </svg>
+  );
+}
+
+function WorkItemIcon({ item }: { readonly item: QaWorkItem }) {
+  if (item.kind !== "tool") return <ThinkIcon />;
+  if (item.status === "running") {
+    return <span className="dsh-qa-work-item__spinner" aria-hidden="true" />;
+  }
+  if (item.status === "ok") {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="m3.5 8.25 2.7 2.7 6.3-6.3" />
+      </svg>
+    );
+  }
+  return <ToolIcon />;
+}
+
+function toolStatusLabel(
+  status: Extract<QaWorkItem, { kind: "tool" }>["status"],
+) {
+  switch (status) {
+    case "running":
+      return "Running";
+    case "ok":
+      return "Completed";
+    case "error":
+      return "Failed";
+    case "stopped":
+      return "Stopped";
+  }
+}
+
+function QaToolWorkItem({
+  item,
+}: {
+  readonly item: Extract<QaWorkItem, { kind: "tool" }>;
+}) {
+  const expandable = item.input !== null || item.output !== null;
+  const header = (
+    <>
+      <span className="dsh-qa-work-item__icon" data-state={item.status}>
+        <WorkItemIcon item={item} />
+      </span>
+      <span className="dsh-qa-work-item__label">{item.label}</span>
+      <span className="dsh-qa-work-item__summary">{item.summary}</span>
+      <span className="dsh-qa-sr-only">{toolStatusLabel(item.status)}</span>
+      {expandable ? <Chevron open={false} /> : null}
+    </>
+  );
+
+  if (!expandable) {
+    return (
+      <div className="dsh-qa-work-item dsh-qa-work-item--tool">{header}</div>
+    );
+  }
+  return (
+    <details className="dsh-qa-work-tool">
+      <summary className="dsh-qa-work-item dsh-qa-work-item--tool">
+        {header}
+      </summary>
+      <div className="dsh-qa-work-tool__body">
+        {item.input === null ? null : (
+          <section aria-label={`${item.label} input`}>
+            <span>Input</span>
+            <pre>{item.input}</pre>
+          </section>
+        )}
+        {item.output === null ? null : (
+          <section aria-label={`${item.label} output`}>
+            <span>Output</span>
+            <pre>{item.output}</pre>
+          </section>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function QaTextWorkItem({
+  item,
+  renderMarkdown,
+}: {
+  readonly item: Extract<QaWorkItem, { kind: "reasoning" | "progress" }>;
+  readonly renderMarkdown: boolean;
+}) {
+  return (
+    <section
+      className="dsh-qa-work-item dsh-qa-work-item--text"
+      data-state={item.status}
+      aria-label={item.kind === "reasoning" ? "Reasoning" : "Progress update"}
+    >
+      <div className="dsh-qa-work-item__text-head">
+        <span className="dsh-qa-work-item__icon">
+          <ThinkIcon />
+        </span>
+        <span className="dsh-qa-work-item__label">
+          {item.kind === "reasoning" ? "Think" : "Progress"}
+        </span>
+      </div>
+      <div className="dsh-qa-work-item__text">
+        {renderMarkdown ? <Markdown text={item.text} /> : item.text}
+      </div>
+    </section>
+  );
+}
+
+export function QaWorkGroup({
+  status,
+  startedAt,
+  endedAt,
+  items,
+  renderMarkdown,
+}: QaWorkGroupProps) {
+  const [open, setOpen] = useState(status === "running");
+  const [now, setNow] = useState(() => Date.now());
+  const previousStatus = useRef(status);
+
+  useEffect(() => {
+    if (previousStatus.current === "running" && status === "complete") {
+      setOpen(false);
+    } else if (previousStatus.current === "complete" && status === "running") {
+      setOpen(true);
+    }
+    previousStatus.current = status;
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== "running" || startedAt === undefined) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [startedAt, status]);
+
+  const duration =
+    startedAt === undefined
+      ? null
+      : formatWorkDuration((endedAt ?? now) - startedAt);
+  const label =
+    status === "running"
+      ? duration === null
+        ? "Working..."
+        : `Working for ${duration}`
+      : duration === null
+        ? "Work details"
+        : `Worked for ${duration}`;
+
+  return (
+    <section className="dsh-qa-work" data-state={status}>
+      <button
+        type="button"
+        className="dsh-qa-work__toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {status === "running" ? (
+          <span className="dsh-qa-work__spinner" aria-hidden="true" />
+        ) : null}
+        <span>{label}</span>
+        <Chevron open={open} />
+      </button>
+      {open ? (
+        <div className="dsh-qa-work__body">
+          {items.map((item) =>
+            item.kind === "tool" ? (
+              <QaToolWorkItem key={item.id} item={item} />
+            ) : (
+              <QaTextWorkItem
+                key={item.id}
+                item={item}
+                renderMarkdown={renderMarkdown}
+              />
+            ),
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}

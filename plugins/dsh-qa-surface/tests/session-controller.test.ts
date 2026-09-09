@@ -5,7 +5,6 @@ import type {
 } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   ConversationSnapshot,
-  ISessions,
   SessionFace,
   SessionListState,
 } from "@deepseek-ai/dsh-client-runtime/client";
@@ -13,6 +12,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
   QaSessionController,
+  type QaSessionControllerOptions,
   type StorageLike,
 } from "../src/client/QaSessionController.js";
 
@@ -97,13 +97,14 @@ function harness(existing: string[] = []) {
   const sessions = {
     list,
     open,
+    noteAgentPreset: vi.fn(),
     binding: (id: SessionId) => {
       const found = faces.get(String(id));
       return found === undefined
         ? undefined
         : { sessionId: id, session: found.face, ctx: {} };
     },
-  } as unknown as ISessions;
+  } as unknown as QaSessionControllerOptions["sessions"];
   let sequence = existing.length;
   const create = vi.fn(async () => {
     const id = `created-${++sequence}`;
@@ -124,17 +125,24 @@ function harness(existing: string[] = []) {
         },
       } as SessionListState["byId"],
     });
-    return {
-      result: { ok: true as const, value: { sessionId: id as SessionId } },
-    };
+    return id as SessionId;
   });
+  Object.assign(sessions, { create });
   const selectModel = vi.fn(async () => ({
     result: { ok: true as const, value: { selected: {} } },
   }));
-  const api = { create, selectModel } as unknown as Pick<
+  const selectAgentPreset = vi.fn(async () => ({
+    result: {
+      ok: true as const,
+      value: { agentPreset: "qa-assistant" },
+    },
+  }));
+  const api = { selectModel, selectAgentPreset } as unknown as Pick<
     IApiClient["sessions"],
-    "create" | "selectModel"
-  >;
+    "selectModel"
+  > & {
+    selectAgentPreset: IApiClient["agentPresets"]["select"];
+  };
   const connection = new Source({}) as unknown as HostDescriptionSource;
   const stored = new Map<string, string>();
   const storage: StorageLike = {
@@ -142,6 +150,23 @@ function harness(existing: string[] = []) {
     setItem: (key, value) => stored.set(key, value),
     removeItem: (key) => stored.delete(key),
   };
+  const secureSession = vi.fn<QaSessionControllerOptions["secureSession"]>(
+    async (sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxIsReadOnly: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    }),
+  );
   return {
     sessions,
     api,
@@ -150,15 +175,17 @@ function harness(existing: string[] = []) {
     stored,
     faces,
     create,
+    selectAgentPreset,
     open,
     list,
+    secureSession,
   };
 }
 
 describe("QA session controller", () => {
   it("restores a valid persisted session without creating one", async () => {
     const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface:v1:/qa:session", "saved");
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
@@ -176,7 +203,7 @@ describe("QA session controller", () => {
 
   it("replaces a stale id and applies configured model selection", async () => {
     const world = harness();
-    world.stored.set("dsh-qa-surface:v1:/qa:session", "gone");
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({
@@ -189,7 +216,9 @@ describe("QA session controller", () => {
     });
     await controller.ensureSession();
     expect(controller.getSnapshot().sessionId).toBe("created-1");
-    expect(world.stored.get("dsh-qa-surface:v1:/qa:session")).toBe("created-1");
+    expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      "created-1",
+    );
     expect(world.api.selectModel).toHaveBeenCalledWith({
       sessionId: "created-1",
       provider: "provider",
@@ -199,9 +228,98 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("replaces a persisted session rejected by the Host policy", async () => {
+    const world = harness(["saved"]);
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.stored.set(storageKey, "saved");
+    world.secureSession.mockImplementation(async (sessionId: string) =>
+      sessionId === "saved"
+        ? {
+            ok: false as const,
+            error: { code: "policy-unavailable" },
+          }
+        : {
+            ok: true as const,
+            value: {
+              sessionId,
+              enabled: true,
+              agentPresetMatches: true,
+              workspaceMatches: true,
+              modelMatches: true,
+              sandboxIsReadOnly: true,
+              approvalIsNever: true,
+              permissionPreset: "qa-read-only",
+              toolPolicyLoaded: true,
+              toolAllowList: [],
+            },
+          },
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+
+    await controller.ensureSession();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "created-2",
+      canSend: true,
+      error: null,
+    });
+    expect(world.secureSession).toHaveBeenNthCalledWith(1, "saved");
+    expect(world.secureSession).toHaveBeenNthCalledWith(2, "created-2");
+    expect(world.stored.get(storageKey)).toBe("created-2");
+    controller.dispose();
+  });
+
+  it("does not persist a newly created session before policy attestation", async () => {
+    const world = harness();
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.secureSession.mockResolvedValue({
+      ok: false as const,
+      error: { code: "policy-unavailable" },
+    });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+
+    await controller.ensureSession();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      canSend: false,
+      error: "Assistant configuration is unavailable.",
+    });
+    expect(world.stored.has(storageKey)).toBe(false);
+    controller.dispose();
+  });
+
+  it("selects a configured agent preset before policy attestation", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { agentPreset: "qa-assistant" },
+      }),
+    });
+    await controller.ensureSession();
+    expect(world.selectAgentPreset).toHaveBeenCalledWith({
+      sessionId: "created-1",
+      agentPreset: "qa-assistant",
+    });
+    expect(world.sessions.noteAgentPreset).toHaveBeenCalledWith(
+      "created-1",
+      "qa-assistant",
+    );
+    expect(world.secureSession).toHaveBeenCalledWith("created-1");
+    controller.dispose();
+  });
+
   it("sends plain text, rejects slash commands, and stops generation", async () => {
     const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface:v1:/qa:session", "saved");
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
@@ -228,7 +346,10 @@ describe("QA session controller", () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
-      config: resolveConfig(),
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
     });
     await controller.ensureSession();
     const first = controller.getSnapshot().sessionId;
@@ -241,7 +362,7 @@ describe("QA session controller", () => {
 
   it("blocks prompts when DSH reports a pending interaction", async () => {
     const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface:v1:/qa:session", "saved");
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
@@ -261,6 +382,76 @@ describe("QA session controller", () => {
     });
     expect(await controller.send("do it")).toBe(false);
     expect(saved?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it.each([
+    "agentPresetMatches",
+    "workspaceMatches",
+    "modelMatches",
+    "sandboxIsReadOnly",
+    "approvalIsNever",
+    "toolPolicyLoaded",
+  ] as const)("fails closed when %s cannot be proven", async (field) => {
+    const world = harness();
+    world.secureSession.mockImplementation(async (sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxIsReadOnly: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+        [field]: false,
+      },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      canSend: false,
+      error: "Assistant configuration is unavailable.",
+    });
+    controller.dispose();
+  });
+
+  it("re-attests immediately before prompt admission", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    world.secureSession.mockResolvedValueOnce({
+      ok: false as const,
+      error: { code: "policy-unavailable" },
+    });
+    expect(await controller.send("hello")).toBe(false);
+    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({
+      canSend: false,
+      error: "Assistant configuration is unavailable.",
+    });
+    controller.dispose();
+  });
+
+  it("does not reset a locked session by default", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    await controller.reset();
+    expect(world.create).toHaveBeenCalledOnce();
     controller.dispose();
   });
 });

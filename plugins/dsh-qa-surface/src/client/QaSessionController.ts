@@ -8,11 +8,16 @@ import type {
   ISessions,
   SessionFace,
   SessionListState,
+  SessionRuntime,
 } from "@deepseek-ai/dsh-client-runtime/client";
 import type { QaSessionState, ResolvedQaSurfaceConfig } from "../types.js";
+import type { QaLockdownProof } from "../types.js";
 import { projectTranscript } from "./QaTranscriptAdapter.js";
 
-type QaSessionsApi = Pick<IApiClient["sessions"], "create" | "selectModel">;
+type QaSessions = ISessions & Pick<SessionRuntime, "create">;
+type QaSessionsApi = Pick<IApiClient["sessions"], "selectModel"> & {
+  readonly selectAgentPreset: IApiClient["agentPresets"]["select"];
+};
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -21,10 +26,17 @@ export interface StorageLike {
 }
 
 export interface QaSessionControllerOptions {
-  readonly sessions: ISessions;
+  readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
   readonly connection: HostDescriptionSource;
   readonly config: ResolvedQaSurfaceConfig;
+  readonly secureSession: (sessionId: string) => Promise<
+    | { readonly ok: true; readonly value: QaLockdownProof }
+    | {
+        readonly ok: false;
+        readonly error: unknown;
+      }
+  >;
   readonly storage?: StorageLike;
   readonly timeoutMs?: number;
 }
@@ -37,6 +49,13 @@ const EMPTY_STATE: QaSessionState = Object.freeze({
   canSend: false,
   canStop: false,
 });
+
+class QaPolicyAttestationError extends Error {
+  constructor() {
+    super("QA session policy could not be attested.");
+    this.name = "QaPolicyAttestationError";
+  }
+}
 
 function waitFor<T>(
   source: {
@@ -86,10 +105,11 @@ function waitFor<T>(
 /** The only module that couples QA behavior to DSH Session/client APIs. */
 export class QaSessionController {
   private readonly listeners = new Set<() => void>();
-  private readonly sessions: ISessions;
+  private readonly sessions: QaSessions;
   private readonly api: QaSessionsApi;
   private readonly connection: HostDescriptionSource;
   private readonly config: ResolvedQaSurfaceConfig;
+  private readonly secureSessionRemote: QaSessionControllerOptions["secureSession"];
   private readonly storage: StorageLike | undefined;
   private readonly timeoutMs: number;
   private state: QaSessionState = EMPTY_STATE;
@@ -99,6 +119,7 @@ export class QaSessionController {
   private ensuring: Promise<void> | undefined;
   private operationError: string | null = null;
   private admissionPending = false;
+  private policyReady = false;
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
@@ -108,6 +129,7 @@ export class QaSessionController {
     this.api = options.api;
     this.connection = options.connection;
     this.config = options.config;
+    this.secureSessionRemote = options.secureSession;
     this.storage = options.storage;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -146,6 +168,7 @@ export class QaSessionController {
       return false;
     }
     this.operationError = null;
+    if (!(await this.attestPolicy())) return false;
     this.admissionPending = true;
     this.publish();
     try {
@@ -184,7 +207,11 @@ export class QaSessionController {
   }
 
   async reset(): Promise<void> {
-    if (this.config.session.policy === "fixed") return;
+    if (
+      this.config.session.policy === "fixed" ||
+      (this.config.lockdown.enabled && !this.config.lockdown.allowSessionReset)
+    )
+      return;
     const previous = this.session;
     if (previous?.getSnapshot().running === true) {
       try {
@@ -197,16 +224,23 @@ export class QaSessionController {
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
+    this.policyReady = false;
     this.state = { ...EMPTY_STATE, phase: "creating" };
     this.emit();
     try {
       await this.waitForConnection();
       const id = await this.createSession();
       if (this.disposed || operation !== this.generation) return;
-      this.persist(id);
       await this.bind(id);
+      if (this.disposed || operation !== this.generation) return;
+      this.persist(id);
     } catch (error) {
-      this.fail("Unable to start a new chat.", error);
+      this.fail(
+        this.operationError === "Assistant configuration is unavailable."
+          ? this.operationError
+          : "Unable to start a new chat.",
+        error,
+      );
     }
   }
 
@@ -231,6 +265,7 @@ export class QaSessionController {
         this.timeoutMs,
       );
       let id: string | null = null;
+      let restored = false;
       if (this.config.session.policy === "fixed") {
         id = this.config.session.fixedSessionId;
         if (id === null || !Object.hasOwn(list.byId, id)) {
@@ -240,38 +275,68 @@ export class QaSessionController {
         const stored = this.readPersisted();
         if (stored !== null && Object.hasOwn(list.byId, stored)) {
           id = stored;
+          restored = true;
         } else if (stored !== null) {
           this.clearPersisted();
         }
       }
       if (id === null) {
         id = await this.createSession();
-        if (this.config.session.policy === "browser-persistent")
-          this.persist(id);
       }
       if (this.disposed || operation !== this.generation) return;
-      await this.bind(id);
+      try {
+        await this.bind(id, false);
+      } catch (error) {
+        if (
+          !restored ||
+          this.config.session.policy !== "browser-persistent" ||
+          !(error instanceof QaPolicyAttestationError)
+        ) {
+          throw error;
+        }
+
+        // A stored id is only a hint. If Host refuses that session under the
+        // current QA policy (for example after the configured preset changes),
+        // forget it and bootstrap one fresh, policy-attested session instead.
+        this.unbind();
+        this.operationError = null;
+        this.clearPersisted();
+        id = await this.createSession();
+        if (this.disposed || operation !== this.generation) return;
+        await this.bind(id);
+      }
+      if (this.disposed || operation !== this.generation) return;
+      if (this.config.session.policy === "browser-persistent") this.persist(id);
     } catch (error) {
-      this.fail("Unable to start a chat.", error);
+      this.fail(
+        this.operationError === "Assistant configuration is unavailable."
+          ? this.operationError
+          : "Unable to start a chat.",
+        error,
+      );
     }
   }
 
   private async createSession(): Promise<string> {
-    const response = await this.api.create({
+    const created = await this.sessions.create({
       ...(this.config.session.workspaceId === null
         ? {}
         : { workspaceId: this.config.session.workspaceId as WorkspaceId }),
-      ...(this.config.session.agentPreset === null
-        ? {}
-        : { agentPreset: this.config.session.agentPreset }),
     });
-    if (!response.result.ok) throw new Error(response.result.error.code);
-    const id = String(response.result.value.sessionId);
-    await waitFor(
-      this.sessions.list,
-      (snapshot) => Object.hasOwn(snapshot.byId, id),
-      this.timeoutMs,
-    );
+    const id = String(created);
+    if (this.config.session.agentPreset !== null) {
+      const selectedPreset = await this.api.selectAgentPreset({
+        sessionId: id as SessionId,
+        agentPreset: this.config.session.agentPreset,
+      });
+      if (!selectedPreset.result.ok) {
+        throw new Error(selectedPreset.result.error.code);
+      }
+      this.sessions.noteAgentPreset(
+        id as SessionId,
+        this.config.session.agentPreset,
+      );
+    }
     if (
       this.config.session.provider !== null &&
       this.config.session.model !== null
@@ -289,7 +354,10 @@ export class QaSessionController {
     return id;
   }
 
-  private async bind(id: string): Promise<void> {
+  private async bind(
+    id: string,
+    reportAttestationFailure = true,
+  ): Promise<void> {
     this.sessions.open(id as SessionId);
     let binding = this.sessions.binding(id as SessionId);
     if (binding === undefined) {
@@ -304,11 +372,24 @@ export class QaSessionController {
       throw new Error("Session binding is unavailable.");
     this.unbind();
     this.session = binding.session;
+    this.policyReady = false;
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
       this.operationError = null;
       this.publish();
     });
+    await waitFor(
+      binding.session,
+      (snapshot) =>
+        snapshot.openState === "open" || snapshot.openState === "error",
+      this.timeoutMs,
+    );
+    if (binding.session.getSnapshot().openState !== "open") {
+      throw new Error("Session binding could not be opened.");
+    }
+    if (!(await this.attestPolicy(reportAttestationFailure))) {
+      throw new QaPolicyAttestationError();
+    }
     this.publish();
   }
 
@@ -317,6 +398,7 @@ export class QaSessionController {
     this.unsubscribeSession = undefined;
     this.session = undefined;
     this.admissionPending = false;
+    this.policyReady = false;
   }
 
   private waitForConnection(): Promise<unknown> {
@@ -365,9 +447,10 @@ export class QaSessionController {
       sessionId: String(this.session.sessionId),
       messages: projectTranscript(snapshot, {
         showToolActivity: this.config.ui.showToolActivity,
+        showReasoning: this.config.ui.showReasoning,
       }),
       error,
-      canSend: connected && phase === "ready",
+      canSend: connected && phase === "ready" && this.policyReady,
       canStop:
         connected && snapshot.running && this.config.ui.showStop && !blocked,
     };
@@ -384,6 +467,48 @@ export class QaSessionController {
       error: message,
     };
     this.emit();
+  }
+
+  private async attestPolicy(reportFailure = true): Promise<boolean> {
+    if (this.session === undefined) return false;
+    if (!this.config.lockdown.enabled) {
+      this.policyReady = true;
+      return true;
+    }
+    this.policyReady = false;
+    this.publish();
+    try {
+      const result = await this.secureSessionRemote(
+        String(this.session.sessionId),
+      );
+      const proof = result.ok ? result.value : undefined;
+      const valid =
+        proof !== undefined &&
+        proof.sessionId === String(this.session.sessionId) &&
+        proof.enabled &&
+        proof.agentPresetMatches &&
+        proof.workspaceMatches &&
+        proof.modelMatches &&
+        proof.sandboxIsReadOnly &&
+        proof.approvalIsNever &&
+        proof.permissionPreset === this.config.lockdown.permissionPreset &&
+        proof.toolPolicyLoaded &&
+        JSON.stringify(proof.toolAllowList) ===
+          JSON.stringify(this.config.lockdown.toolPolicy.allow);
+      if (!valid) throw new Error("Host policy proof did not match QA config.");
+      this.policyReady = true;
+      this.operationError = null;
+      this.publish();
+      return true;
+    } catch (error) {
+      if (reportFailure) {
+        console.error("dsh-qa-surface: lockdown attestation failed", error);
+      }
+      this.policyReady = false;
+      this.operationError = "Assistant configuration is unavailable.";
+      this.publish();
+      return false;
+    }
   }
 
   private storageKey(): string {

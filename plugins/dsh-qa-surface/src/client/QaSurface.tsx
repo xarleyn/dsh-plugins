@@ -10,12 +10,15 @@ import type {
   HostDescriptionSource,
   IApiClient,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { ISessions } from "@deepseek-ai/dsh-client-runtime/client";
+import type {
+  ISessions,
+  SessionRuntime,
+} from "@deepseek-ai/dsh-client-runtime/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaSessionState } from "../types.js";
+import type { QaLockdownProof, QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -35,9 +38,17 @@ const noopSubscribe = () => () => undefined;
 export interface QaSurfaceFace {
   readonly route: QaRouteController;
   readonly config: QaConfigController;
-  readonly sessions: ISessions;
-  readonly api: Pick<IApiClient["sessions"], "create" | "selectModel">;
+  readonly sessions: ISessions & Pick<SessionRuntime, "create">;
+  readonly api: Pick<IApiClient["sessions"], "selectModel"> & {
+    readonly selectAgentPreset: IApiClient["agentPresets"]["select"];
+  };
   readonly connection: HostDescriptionSource;
+  readonly secureSession: (
+    sessionId: string,
+  ) => Promise<
+    | { readonly ok: true; readonly value: QaLockdownProof }
+    | { readonly ok: false; readonly error: unknown }
+  >;
 }
 
 type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
@@ -77,6 +88,22 @@ function statusText(state: QaSessionState): string | null {
   return null;
 }
 
+function titleFromMessages(state: QaSessionState, fallback: string): string {
+  const firstUser = state.messages.find((message) => message.role === "user");
+  if (firstUser === undefined) return fallback;
+  const title = firstUser.text.replace(/\s+/gu, " ").trim();
+  if (title.length <= 52) return title;
+  return `${title.slice(0, 51).trimEnd()}…`;
+}
+
+function modeLabel(agentPreset: string | null): string {
+  if (agentPreset === null) return "QA mode";
+  const name = agentPreset
+    .replace(/[-_]+/gu, " ")
+    .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
+  return `${name} mode`;
+}
+
 export function QaSurface(props: QaSurfaceProps) {
   const route = useSyncExternalStore(
     props.route.subscribe,
@@ -102,13 +129,21 @@ export function QaSurface(props: QaSurfaceProps) {
       sessions: props.sessions,
       api: props.api,
       connection: props.connection,
+      secureSession: props.secureSession,
       config,
       storage: window.localStorage,
     });
     setController(next);
     void next.ensureSession();
     return () => next.dispose();
-  }, [config, props.api, props.connection, props.sessions, route.active]);
+  }, [
+    config,
+    props.api,
+    props.connection,
+    props.secureSession,
+    props.sessions,
+    route.active,
+  ]);
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
@@ -145,44 +180,55 @@ export function QaSurface(props: QaSurfaceProps) {
 
   const status = statusText(state);
   const empty = state.messages.length === 0;
+  const conversationTitle = titleFromMessages(state, config.branding.title);
   return (
     <main
       className="dsh-qa-surface"
+      data-phase={state.phase}
       aria-label={config.branding.title}
       tabIndex={-1}
       onKeyDown={trapKeys}
     >
       {config.ui.showHeader ? (
         <header className="dsh-qa-header">
-          <div
-            className="dsh-qa-header__inner"
-            style={{ maxWidth: config.ui.maxContentWidth }}
-          >
-            {config.branding.logoUrl === null ? null : (
-              <img
-                className="dsh-qa-header__logo"
-                src={config.branding.logoUrl}
-                alt=""
-              />
-            )}
-            <div className="dsh-qa-header__text">
-              <h1>{config.branding.title}</h1>
-              {config.branding.subtitle === "" ? null : (
-                <p>{config.branding.subtitle}</p>
+          <div className="dsh-qa-header__inner">
+            <div className="dsh-qa-header__title-row">
+              {config.branding.logoUrl === null ? null : (
+                <img
+                  className="dsh-qa-header__logo"
+                  src={config.branding.logoUrl}
+                  alt=""
+                />
               )}
+              <h1 title={conversationTitle}>{conversationTitle}</h1>
+              <span className="dsh-qa-header__mode">
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <circle cx="8" cy="3.25" r="1.5" />
+                  <circle cx="4" cy="11.75" r="1.5" />
+                  <circle cx="12" cy="11.75" r="1.5" />
+                  <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
+                </svg>
+                {modeLabel(config.session.agentPreset)}
+              </span>
+              {config.ui.showReset &&
+              config.session.policy !== "fixed" &&
+              (!config.lockdown.enabled ||
+                config.lockdown.allowSessionReset) ? (
+                <button
+                  type="button"
+                  className="dsh-qa-header__reset"
+                  disabled={
+                    controller === undefined || state.phase === "creating"
+                  }
+                  onClick={() => void controller?.reset()}
+                >
+                  New chat
+                </button>
+              ) : null}
             </div>
-            {config.ui.showReset && config.session.policy !== "fixed" ? (
-              <button
-                type="button"
-                className="dsh-qa-button dsh-qa-button--secondary"
-                disabled={
-                  controller === undefined || state.phase === "creating"
-                }
-                onClick={() => void controller?.reset()}
-              >
-                New chat
-              </button>
-            ) : null}
+            <div className="dsh-qa-header__tabs" aria-label="Conversation view">
+              <span aria-current="page">Chat</span>
+            </div>
           </div>
         </header>
       ) : null}
@@ -209,6 +255,9 @@ export function QaSurface(props: QaSurfaceProps) {
               <h2 id="dsh-qa-welcome-title">
                 {config.branding.welcomeMessage}
               </h2>
+              {config.branding.subtitle === "" ? null : (
+                <p>{config.branding.subtitle}</p>
+              )}
               {config.suggestedQuestions.length > 0 ? (
                 <div
                   className="dsh-qa-suggestions"
@@ -258,15 +307,13 @@ export function QaSurface(props: QaSurfaceProps) {
           className="dsh-qa-footer__inner"
           style={{ maxWidth: config.ui.maxContentWidth }}
         >
-          <div className="dsh-qa-status" aria-live="polite" aria-atomic="true">
-            {status}
-          </div>
           <QaComposer
             placeholder={config.branding.placeholder}
             canSend={state.canSend}
             canStop={state.canStop}
             running={state.phase === "running"}
             showStop={config.ui.showStop}
+            status={status}
             onSend={(text) => controller?.send(text) ?? Promise.resolve(false)}
             onStop={() => controller?.stop() ?? Promise.resolve()}
           />
