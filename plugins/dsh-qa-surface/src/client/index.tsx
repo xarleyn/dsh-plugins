@@ -1,9 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { ConnectionHandle } from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ISessions,
-  SessionRuntime,
-} from "@deepseek-ai/dsh-client-runtime/client";
 import type { SettingsScopeBinder } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   RemoteResult,
@@ -15,6 +11,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { QaRouteController } from "./QaRouteController.js";
 import { QaSurface } from "./QaSurface.js";
+import type { QaSecureSession, QaSessions, QaSessionsApi } from "./types.js";
 import { QA_SURFACE_STYLES } from "./styles.js";
 import type {
   QaLockdownProof,
@@ -55,9 +52,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   await ctx.inject(["remote.qaSurface"], (remoteContext) => {
     const policyRemote = (remoteContext.remote as unknown as ClientRemote)
       .qaSurface;
-    const secureSession = (sessionId: string) =>
+    const secureSession: QaSecureSession = (sessionId) =>
       policyRemote.secureSession(sessionId);
-    const qaApi = {
+    const qaApi: QaSessionsApi = {
       selectModel: ctx.connection.api.sessions.selectModel,
       selectAgentPreset: ctx.connection.api.agentPresets.select,
     };
@@ -128,8 +125,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           inject: () => ({
             route,
             config,
-            sessions: ctx.sessions as unknown as ISessions &
-              Pick<SessionRuntime, "create">,
+            sessions: ctx.sessions as unknown as QaSessions,
             api: qaApi,
             connection: ctx.connection.hostDescription,
             secureSession,
