@@ -9,3 +9,5 @@
 - Add targeted mutation rescans and unit/browser-bundle contract coverage.
 - Add a persistent `ui-repair` settings section and canonical plugin card.
 - Add selector/plugin/rule ignore policies and live runtime configuration.
+- Add manual Suggest-mode apply/ignore actions and built-in rules R002, R005,
+  R008, and R009 with opt-in guards for ambiguous layout ownership.

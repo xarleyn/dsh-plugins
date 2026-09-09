@@ -1,7 +1,15 @@
 export const REPAIR_MODES = ["observe", "suggest", "auto"] as const;
 export type RepairMode = (typeof REPAIR_MODES)[number];
 
-export const REPAIR_RULE_IDS = ["R001", "R006", "R007"] as const;
+export const REPAIR_RULE_IDS = [
+  "R001",
+  "R002",
+  "R005",
+  "R006",
+  "R007",
+  "R008",
+  "R009",
+] as const;
 export type RepairRuleId = (typeof REPAIR_RULE_IDS)[number];
 
 export interface UIRepairIgnoreRule {

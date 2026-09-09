@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ConfigSchema } from "../src/config.js";
 import {
   DEFAULT_PLUGIN_CONFIG,
+  REPAIR_RULE_IDS,
   resolvePluginConfig,
 } from "../src/shared/config.js";
 
@@ -39,5 +40,20 @@ describe("UI Repair config", () => {
     expect(resolvePluginConfig({ dangerousConfidence: 0 }).dangerousConfidence).toBe(
       0.98,
     );
+  });
+
+  it("accepts every implemented rule in persistent ignore policies", () => {
+    expect(REPAIR_RULE_IDS).toEqual([
+      "R001",
+      "R002",
+      "R005",
+      "R006",
+      "R007",
+      "R008",
+      "R009",
+    ]);
+    expect(
+      ConfigSchema({ ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })) }).ignore,
+    ).toHaveLength(REPAIR_RULE_IDS.length);
   });
 });

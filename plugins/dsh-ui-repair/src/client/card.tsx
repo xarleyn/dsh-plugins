@@ -16,6 +16,7 @@ import {
   type UIRepairPluginConfig,
 } from "../shared/config.js";
 import type { UIRepairRuntime } from "./runtime.js";
+import type { RepairIssue } from "./types.js";
 
 export interface CardFace {
   readonly scope: SettingsScope<UIRepairPluginConfig>;
@@ -77,6 +78,8 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   const [selector, setSelector] = useState("");
   const [selectorError, setSelectorError] = useState<string | undefined>();
   const [scanning, setScanning] = useState(false);
+  const [pendingRepair, setPendingRepair] = useState<string | undefined>();
+  const [repairError, setRepairError] = useState<string | undefined>();
 
   if (settings.status === "unavailable") return null;
 
@@ -110,6 +113,32 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
       "ignore",
       config.ignore.filter((_rule, ruleIndex) => ruleIndex !== index),
     );
+  };
+  const applyIssue = async (issue: RepairIssue) => {
+    setPendingRepair(issue.id);
+    setRepairError(undefined);
+    try {
+      if (!(await runtime.apply(issue.id))) {
+        setRepairError(
+          `${issue.ruleId} could not be verified or is no longer applicable.`,
+        );
+      }
+    } catch {
+      setRepairError(`${issue.ruleId} manual repair failed.`);
+    } finally {
+      setPendingRepair(undefined);
+    }
+  };
+  const ignoreIssue = (issue: RepairIssue) => {
+    const target = validSelector(issue.target) ? issue.target : undefined;
+    void scope.set("ignore", [
+      ...config.ignore,
+      {
+        ...(issue.plugin === undefined ? {} : { plugin: issue.plugin }),
+        rule: issue.ruleId,
+        ...(target === undefined ? {} : { selector: target }),
+      },
+    ]);
   };
 
   return (
@@ -232,12 +261,50 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
               <ul className="uir-issues">
                 {report.issues.slice(0, 5).map((issue) => (
                   <li className="uir-issue" key={issue.id}>
-                    <span className="uir-rule">{issue.ruleId}</span>
-                    <span className="uir-target">{issue.target}</span>
-                    <span className="uir-confidence">{Math.round(issue.confidence * 100)}%</span>
+                    <div className="uir-issue-summary">
+                      <span className="uir-rule">{issue.ruleId}</span>
+                      <span className="uir-target">{issue.target}</span>
+                      <span className="uir-confidence">{Math.round(issue.confidence * 100)}%</span>
+                    </div>
+                    {issue.suggestedCss === undefined ? null : (
+                      <code className="uir-suggestion">
+                        {Object.entries(issue.suggestedCss)
+                          .map(([property, value]) => `${property}: ${value}`)
+                          .join("; ")}
+                      </code>
+                    )}
+                    {config.mode !== "suggest" ? null : (
+                      <div className="uir-issue-actions">
+                        {issue.suggestedCss === undefined ? null : (
+                          <button
+                            className="uir-button"
+                            type="button"
+                            disabled={
+                              pendingRepair !== undefined ||
+                              report.ignored.includes(issue.id) ||
+                              report.applied.includes(issue.id)
+                            }
+                            onClick={() => void applyIssue(issue)}
+                          >
+                            {pendingRepair === issue.id ? "Applying..." : "Apply"}
+                          </button>
+                        )}
+                        <button
+                          className="uir-button"
+                          type="button"
+                          disabled={!writable || report.ignored.includes(issue.id)}
+                          onClick={() => ignoreIssue(issue)}
+                        >
+                          {report.ignored.includes(issue.id) ? "Ignored" : "Ignore"}
+                        </button>
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
+              {repairError === undefined ? null : (
+                <p className="uir-error" role="status">{repairError}</p>
+              )}
             </>
           )}
         </section>

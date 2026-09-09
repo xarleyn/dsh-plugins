@@ -19,7 +19,10 @@ This first implementation slice includes:
 - an installable Host package and classic DSH browser bundle;
 - semantic repair roots instead of coupling to hashed CSS-module classes;
 - `R001` repeated-row icon alignment diagnostics;
-- `R006` unexpected vertical overflow and `R007` clipped-content diagnostics;
+- `R002` repeated-row icon size consistency diagnostics;
+- `R005`/`R006` unexpected horizontal and vertical overflow diagnostics;
+- `R007` clipped-content diagnostics;
+- `R008` flex-shrink and `R009` missing-min-width diagnostics;
 - `observe`, `suggest`, and conservative `auto` runtime modes;
 - persistent Host settings and a standard Plugin Configuration card;
 - persistent selector/plugin/rule ignore policies;
@@ -58,6 +61,12 @@ Repeated row groups may use `data-dsh-ui-repair-row-group`, with optional
 `data-dsh-ui-repair-row` and `data-dsh-ui-repair-icon` markers when their
 native semantics are not `button`, `a`, `li`, `svg`, or `img`.
 
+Potentially ambiguous layout ownership remains diagnosis-only unless the
+surface opts in. `data-dsh-ui-repair-scroll-x` marks a safe horizontal scroll
+owner, `data-dsh-ui-repair-no-shrink` marks a flex item that must preserve its
+intrinsic width, and `data-dsh-ui-repair-min-width-zero` marks a flex/grid item
+that may shrink below its content width.
+
 ## Browser API
 
 The browser module provides `ctx.uiRepair` for cooperating client plugins:
@@ -65,6 +74,7 @@ The browser module provides `ctx.uiRepair` for cooperating client plugins:
 ```ts
 const report = await ctx.uiRepair.scan()
 ctx.uiRepair.setMode('suggest')
+await ctx.uiRepair.apply(report.issues[0].id)
 ctx.uiRepair.getHistory()
 ctx.uiRepair.rollbackAll()
 ```
@@ -77,9 +87,9 @@ attributes.
 
 The standard Plugins → Plugin Configuration card exposes activation, mode,
 normal and risky confidence thresholds, startup scanning, mutation scanning,
-manual scan and rollback actions, session health counters, and persistent
-ignored selectors. Risky overflow/clipping repairs can never be configured
-below 98% confidence.
+manual scan/apply/ignore/rollback actions, session health counters, and
+persistent ignored selectors. Risky overflow/clipping repairs can never be
+configured below 98% confidence.
 
 ## Development
 
@@ -87,8 +97,9 @@ below 98% confidence.
 pnpm --filter @yadsh/dsh-ui-repair check
 ```
 
-The current tests cover detection without mutation, scoped overflow repair,
-sticky-content safety refusal, icon outlier repair, verification, rollback,
+The current tests cover detection without mutation, scoped vertical and
+horizontal overflow repair, sticky-content safety refusal, icon alignment and
+size outliers, flex constraints, manual suggestions, verification, rollback,
 client lifecycle, and browser bundle identity.
 
 ## Not implemented yet
