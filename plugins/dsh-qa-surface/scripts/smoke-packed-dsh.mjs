@@ -241,8 +241,10 @@ async function runBrowserPass({ origin, presetScopedTool: scopedTool }) {
         `QA overlay does not cover the viewport: ${JSON.stringify(viewport)}`,
       );
     }
+    // The header shows no branding fallback anymore; the empty chat is
+    // identified by its welcome heading instead.
     await page
-      .getByRole("heading", { name: "Помощник", exact: true })
+      .getByRole("heading", { name: "Чем могу помочь?", exact: true })
       .waitFor();
     await page.getByRole("textbox", { name: "Задать вопрос" }).waitFor();
     const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
