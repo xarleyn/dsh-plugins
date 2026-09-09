@@ -7,3 +7,14 @@
         route:
           path: /qa
           matchChildren: true
+        ui:
+          showReset: false
+        lockdown:
+          enabled: true
+          sandboxMode: read-only
+          approvalPolicy: never
+          permissionPreset: qa-read-only
+          allowSessionReset: false
+          toolPolicy:
+            mode: allow-list
+            allow: []
