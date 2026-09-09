@@ -1,6 +1,14 @@
-export type RepairMode = "observe" | "suggest" | "auto";
+import type {
+  RepairMode,
+  RepairRuleId,
+  UIRepairIgnoreRule,
+} from "../shared/config.js";
 
-export type RepairRuleId = "R001" | "R006" | "R007";
+export type {
+  RepairMode,
+  RepairRuleId,
+  UIRepairIgnoreRule,
+} from "../shared/config.js";
 
 export type RepairIssueKind =
   | "icon-alignment"
@@ -50,14 +58,18 @@ export interface ScanReport {
   readonly issues: readonly RepairIssue[];
   readonly applied: readonly string[];
   readonly rolledBack: readonly string[];
+  readonly ignored: readonly string[];
 }
 
 export interface UIRepairConfig {
+  readonly enabled: boolean;
   readonly mode: RepairMode;
   readonly autoConfidence: number;
   readonly dangerousConfidence: number;
   readonly rootSelector: string;
+  readonly scanOnStartup: boolean;
   readonly observeMutations: boolean;
+  readonly ignore: readonly UIRepairIgnoreRule[];
   readonly maxElementsPerRoot: number;
   readonly alignmentTolerancePx: number;
   readonly overflowTolerancePx: number;
@@ -66,6 +78,8 @@ export interface UIRepairConfig {
 export interface UIRepairService {
   scan(root?: ParentNode): Promise<ScanReport>;
   getLatestReport(): ScanReport | undefined;
+  getRevision(): number;
+  subscribe(listener: () => void): () => void;
   getHistory(): readonly RepairHistoryEntry[];
   getMode(): RepairMode;
   setMode(mode: RepairMode): void;

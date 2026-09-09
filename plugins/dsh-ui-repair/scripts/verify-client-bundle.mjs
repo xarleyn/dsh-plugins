@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
 
@@ -10,6 +11,12 @@ assert.match(
 assert.match(client, /data-dsh-ui-repair-scope/u);
 assert.match(client, /data-dsh-ui-repair-target/u);
 assert.match(client, /MutationObserver/u);
+assert.match(client, /"settings\.plugin\.item"/u);
+assert.match(client, /key:\s*"ui-repair"/u);
+assert.match(client, /dsh-plugin-card__name/u);
+assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+verifyPluginCardContract(client, { legacyPatterns: [/uir-card/u] });
+assert.doesNotMatch(client, /[⌄▾]/u);
 assert.doesNotMatch(client, /require\(["']@deepseek-ai\//u);
 assert.doesNotMatch(client, /localStorage/u);
 assert.doesNotMatch(client, /fetch\(/u);

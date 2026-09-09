@@ -11,6 +11,7 @@ import type {
   UIRepairConfig,
   UIRepairService,
 } from "./types.js";
+import type { UIRepairIgnoreRule } from "../shared/config.js";
 
 export interface ClientLogger {
   debug(message: string, details?: Readonly<Record<string, unknown>>): void;
@@ -20,11 +21,14 @@ export interface ClientLogger {
 }
 
 export const DEFAULT_CONFIG: UIRepairConfig = {
+  enabled: true,
   mode: "observe",
   autoConfidence: 0.95,
   dangerousConfidence: 0.98,
   rootSelector: DEFAULT_ROOT_SELECTOR,
+  scanOnStartup: true,
   observeMutations: true,
+  ignore: [],
   maxElementsPerRoot: 300,
   alignmentTolerancePx: 1.5,
   overflowTolerancePx: 1,
@@ -33,18 +37,23 @@ export const DEFAULT_CONFIG: UIRepairConfig = {
 function normalizeConfig(
   input: Partial<UIRepairConfig> = {},
 ): UIRepairConfig {
+  const autoConfidence = Math.min(
+    1,
+    Math.max(0, input.autoConfidence ?? DEFAULT_CONFIG.autoConfidence),
+  );
   return {
     ...DEFAULT_CONFIG,
     ...input,
-    autoConfidence: Math.min(
-      1,
-      Math.max(0, input.autoConfidence ?? DEFAULT_CONFIG.autoConfidence),
-    ),
-    dangerousConfidence: Math.min(
-      1,
-      Math.max(
-        0,
-        input.dangerousConfidence ?? DEFAULT_CONFIG.dangerousConfidence,
+    autoConfidence,
+    dangerousConfidence: Math.max(
+      0.98,
+      autoConfidence,
+      Math.min(
+        1,
+        Math.max(
+          0,
+          input.dangerousConfidence ?? DEFAULT_CONFIG.dangerousConfidence,
+        ),
       ),
     ),
     maxElementsPerRoot: Math.max(
@@ -77,6 +86,9 @@ export class UIRepairRuntime implements UIRepairService {
   #queuedRoots = new Set<ParentNode>();
   #scheduledFrame: number | undefined;
   #disposed = false;
+  #started = false;
+  #revision = 0;
+  readonly #listeners = new Set<() => void>();
 
   constructor(
     document: Document,
@@ -90,11 +102,46 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   start(): void {
-    if (this.#disposed) return;
-    void this.scan().catch((error: unknown) => {
-      this.#logger.error("initial scan failed", { error: String(error) });
-    });
-    if (!this.#config.observeMutations || this.#document.body === null) return;
+    if (this.#disposed || this.#started) return;
+    this.#started = true;
+    if (this.#config.enabled && this.#config.scanOnStartup) {
+      void this.scan().catch((error: unknown) => {
+        this.#logger.error("initial scan failed", { error: String(error) });
+      });
+    }
+    this.#syncObserver();
+  }
+
+  configure(config: Partial<UIRepairConfig>): void {
+    const previous = this.#config;
+    this.#config = normalizeConfig({ ...this.#config, ...config });
+    const autoPolicyChanged =
+      previous.mode === "auto" &&
+      (config.mode !== undefined ||
+        config.autoConfidence !== undefined ||
+        config.dangerousConfidence !== undefined ||
+        config.ignore !== undefined);
+    if (
+      (!this.#config.enabled && previous.enabled) ||
+      autoPolicyChanged
+    ) {
+      this.rollbackAll();
+    }
+    if (this.#started) this.#syncObserver();
+  }
+
+  #syncObserver(): void {
+    this.#observer?.disconnect();
+    this.#observer = undefined;
+    if (
+      this.#disposed ||
+      !this.#started ||
+      !this.#config.enabled ||
+      !this.#config.observeMutations ||
+      this.#document.body === null
+    ) {
+      return;
+    }
     const Observer = this.#document.defaultView?.MutationObserver;
     if (Observer === undefined) return;
     this.#observer = new Observer((records) => {
@@ -118,6 +165,21 @@ export class UIRepairRuntime implements UIRepairService {
   async scan(source: ParentNode = this.#document): Promise<ScanReport> {
     const started = performance.now();
     const startedAt = new Date().toISOString();
+    if (!this.#config.enabled) {
+      const report: ScanReport = {
+        startedAt,
+        durationMs: Math.round((performance.now() - started) * 100) / 100,
+        mode: this.#config.mode,
+        rootsScanned: 0,
+        issues: [],
+        applied: [],
+        rolledBack: [],
+        ignored: [],
+      };
+      this.#latestReport = report;
+      this.#notify();
+      return report;
+    }
     const roots = collectRoots(source, this.#config.rootSelector);
     const candidates: RepairCandidate[] = [];
     for (const root of roots) {
@@ -133,6 +195,10 @@ export class UIRepairRuntime implements UIRepairService {
 
     const applied: string[] = [];
     const rolledBack: string[] = [];
+    const ignored = candidates
+      .filter((candidate) => this.#isIgnored(candidate, this.#config.ignore))
+      .map((candidate) => candidate.issue.id);
+    const ignoredSet = new Set(ignored);
     if (this.#config.mode === "auto") {
       for (const candidate of candidates) {
         const threshold =
@@ -143,6 +209,7 @@ export class UIRepairRuntime implements UIRepairService {
         if (
           candidate.issue.confidence < threshold ||
           candidate.issue.suggestedCss === undefined ||
+          ignoredSet.has(candidate.issue.id) ||
           this.#engine.has(candidate.issue.id)
         ) {
           continue;
@@ -178,14 +245,17 @@ export class UIRepairRuntime implements UIRepairService {
       issues: candidates.map(({ issue }) => issue),
       applied,
       rolledBack,
+      ignored,
     };
     this.#latestReport = report;
+    this.#notify();
     if (report.issues.length > 0) {
       this.#logger.info("scan complete", {
         roots: report.rootsScanned,
         issues: report.issues.length,
         applied: report.applied.length,
         rolledBack: report.rolledBack.length,
+        ignored: report.ignored.length,
       });
     }
     return report;
@@ -193,6 +263,15 @@ export class UIRepairRuntime implements UIRepairService {
 
   getLatestReport(): ScanReport | undefined {
     return this.#latestReport;
+  }
+
+  getRevision(): number {
+    return this.#revision;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   getHistory(): readonly RepairHistoryEntry[] {
@@ -204,15 +283,18 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   setMode(mode: RepairMode): void {
-    this.#config = { ...this.#config, mode };
+    this.configure({ mode });
   }
 
   rollback(repairId: string): boolean {
-    return this.#engine.rollback(repairId);
+    const rolledBack = this.#engine.rollback(repairId);
+    if (rolledBack) this.#notify();
+    return rolledBack;
   }
 
   rollbackAll(): void {
     this.#engine.rollbackAll();
+    this.#notify();
   }
 
   dispose(): void {
@@ -224,6 +306,12 @@ export class UIRepairRuntime implements UIRepairService {
     }
     this.#queuedRoots.clear();
     this.rollbackAll();
+    this.#listeners.clear();
+  }
+
+  #notify(): void {
+    this.#revision += 1;
+    for (const listener of this.#listeners) listener();
   }
 
   #idFor(ruleId: string, target: HTMLElement): string {
@@ -238,6 +326,37 @@ export class UIRepairRuntime implements UIRepairService {
     this.#nextId += 1;
     ids.set(ruleId, id);
     return id;
+  }
+
+  #isIgnored(
+    candidate: RepairCandidate,
+    rules: readonly UIRepairIgnoreRule[],
+  ): boolean {
+    return rules.some((rule) => {
+      if (rule.plugin !== undefined && rule.plugin !== candidate.issue.plugin) {
+        return false;
+      }
+      if (rule.rule !== undefined && rule.rule !== candidate.issue.ruleId) {
+        return false;
+      }
+      if (rule.selector !== undefined) {
+        try {
+          if (
+            !candidate.target.matches(rule.selector) &&
+            !candidate.root.matches(rule.selector)
+          ) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+      return (
+        rule.plugin !== undefined ||
+        rule.rule !== undefined ||
+        rule.selector !== undefined
+      );
+    });
   }
 
   #queueScan(source: ParentNode): void {

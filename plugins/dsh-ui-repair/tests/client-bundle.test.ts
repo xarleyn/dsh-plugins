@@ -17,7 +17,16 @@ describe("classic browser bundle", () => {
 
     expect(loader.registrations).toHaveLength(1);
     expect(loader.registrations[0]?.id).toBe("@yadsh/dsh-ui-repair");
-    const exports = loader.registrations[0]?.factory(() => undefined) as {
+    const fakeReact = {
+      useMemo: (factory: () => unknown) => factory(),
+      useState: (value: unknown) => [value, () => undefined],
+      useSyncExternalStore: () => undefined,
+    };
+    const exports = loader.registrations[0]?.factory((name: string) =>
+      name === "react/jsx-runtime"
+        ? { jsx: () => undefined, jsxs: () => undefined, Fragment: Symbol("Fragment") }
+        : fakeReact,
+    ) as {
       apply(ctx: unknown): () => void;
     };
     expect(() => exports.apply({})()).not.toThrow();

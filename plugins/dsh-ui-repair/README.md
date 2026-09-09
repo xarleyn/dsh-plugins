@@ -21,13 +21,16 @@ This first implementation slice includes:
 - `R001` repeated-row icon alignment diagnostics;
 - `R006` unexpected vertical overflow and `R007` clipped-content diagnostics;
 - `observe`, `suggest`, and conservative `auto` runtime modes;
+- persistent Host settings and a standard Plugin Configuration card;
+- persistent selector/plugin/rule ignore policies;
 - allowlisted CSS writes scoped by per-repair data attributes;
 - animation-frame layout stabilization, verification, and rollback;
 - in-memory repair history;
 - bounded initial scans and mutation-triggered targeted rescans;
 - automatic restoration of every owned DOM attribute and style tag on unload.
 
-The default mode is `observe`. Generic overflow is reported but not mutated.
+The default mode is `observe`. Configuration is persisted by the DSH settings
+section under the `ui-repair` namespace. Generic overflow is reported but not mutated.
 An overflow target must opt in with `data-dsh-ui-repair-scroll` before the
 current auto mode can treat it as a safe scroll owner.
 
@@ -70,6 +73,14 @@ All repairs are temporary in this proof of concept. Unloading the plugin calls
 `rollbackAll()` and removes its observer, generated styles, and marker
 attributes.
 
+## Settings
+
+The standard Plugins → Plugin Configuration card exposes activation, mode,
+normal and risky confidence thresholds, startup scanning, mutation scanning,
+manual scan and rollback actions, session health counters, and persistent
+ignored selectors. Risky overflow/clipping repairs can never be configured
+below 98% confidence.
+
 ## Development
 
 ```bash
@@ -82,11 +93,11 @@ client lifecycle, and browser bundle identity.
 
 ## Not implemented yet
 
-The specification's persistent settings card, ignore rules, plugin-version
-revalidation, ResizeObserver integration, per-plugin health UI, screenshot
-verification, vision-toolkit integration, and the remaining P0/P1/P2 rules
-are intentionally deferred. The proof of concept establishes the lifecycle,
-measurement, scoping, and rollback seams they will use.
+The specification's persistent repair recipes, plugin-version revalidation,
+ResizeObserver integration, full per-plugin health view, screenshot
+verification, vision-toolkit integration, and the remaining P0/P1/P2 rules are
+intentionally deferred. The proof of concept establishes the lifecycle,
+measurement, configuration, scoping, and rollback seams they will use.
 
 ## License
 
