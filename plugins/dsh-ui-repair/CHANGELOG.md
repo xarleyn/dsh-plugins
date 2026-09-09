@@ -1,0 +1,9 @@
+# Changelog
+
+## 0.1.0 (2026-09-09)
+
+- Add the installable host and classic-browser plugin skeleton.
+- Add bounded overflow, clipping, and repeated-icon alignment diagnostics.
+- Add observe, suggest, and conservative auto modes with scoped CSS writes,
+  layout stabilization, verification, history, and rollback.
+- Add targeted mutation rescans and unit/browser-bundle contract coverage.

@@ -1,0 +1,5 @@
+# The host half records lifecycle diagnostics; the browser half owns all DOM
+# observation and reversible repair state.
+- insert:
+    - id: dsh-ui-repair
+      name: "@yadsh/dsh-ui-repair"
