@@ -1,0 +1,95 @@
+{
+  "name": "@yadsh/dsh-model-safety-gate",
+  "version": "0.0.0",
+  "description": "Independent two-layer safety gate around the DeepSeek Harness agent loop: deterministic and model-classifier verdicts for prompts, streamed output, tools, and tool results",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-model-safety-gate"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-model-safety-gate#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "SPEC.md",
+    "NOTICE.md",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src tests scripts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "safety",
+    "prompt-injection",
+    "jailbreak-detection",
+    "content-moderation",
+    "stream-guard",
+    "defense-in-depth"
+  ],
+  "license": "MIT",
+  "author": "xarleyn",
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-agent": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-session": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-session": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@yadsh/dsh-config": "workspace:^",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
