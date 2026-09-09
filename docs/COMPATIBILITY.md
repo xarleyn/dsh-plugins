@@ -39,18 +39,20 @@ instance.
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/runtime/settings/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
+| `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, permissions, session, settings, tools, workspace, webserver, client connection/runtime/layout/settings/slots/theme, Typert protocol, React |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
 | `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
+| `@yadsh/dsh-ui-repair` | Cordis |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
+| `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/runtime/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
 | `@yadsh/dsh-config` (private) | none |
 
 `@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, and `@yadsh/dsh-test-kit` are
-private workspace packages and are not published. `plugins/dsh-ui-repair` is
-currently a specification, not a package.
+private workspace packages and are not published.
 
 ## Upgrade rules
 
