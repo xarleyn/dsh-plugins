@@ -8,7 +8,13 @@
       "connection.api.sessions",
       "sessions.binding",
       "settingsScope",
-      "webServer.register"
+      "webServer.register",
+      "typert.remote",
+      "agentPresets.composedPreset",
+      "permissionPresets.set",
+      "tools.restrict",
+      "tools.guard",
+      "workspaceRegistry.get"
     ]
   },
   "node": "^22.19.0 || >=24.0.0"

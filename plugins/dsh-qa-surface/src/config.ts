@@ -31,7 +31,7 @@ const configSchema = z.object({
       policy: z
         .union(["browser-persistent", "new-on-load", "fixed"] as const)
         .default("browser-persistent"),
-      storageKey: z.string().default("dsh-qa-surface"),
+      storageKey: z.string().default("dsh-qa-surface.session"),
       workspaceId: nullableString.default(null),
       fixedSessionId: nullableString.default(null),
       agentPreset: nullableString.default(null),
@@ -41,7 +41,7 @@ const configSchema = z.object({
     })
     .default({
       policy: "browser-persistent",
-      storageKey: "dsh-qa-surface",
+      storageKey: "dsh-qa-surface.session",
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,
@@ -77,6 +77,46 @@ const configSchema = z.object({
       questions: z.union(["unsupported"] as const).default("unsupported"),
     })
     .default({ approvals: "blocked", questions: "unsupported" }),
+  lockdown: z
+    .object({
+      enabled: z.boolean().default(true),
+      enforceFixedAgentPreset: z.boolean().default(true),
+      enforceFixedWorkspace: z.boolean().default(true),
+      enforceFixedModel: z.boolean().default(true),
+      sandboxMode: z.union(["read-only"] as const).default("read-only"),
+      approvalPolicy: z.union(["never"] as const).default("never"),
+      permissionPreset: z.string().default("qa-read-only"),
+      allowPermissionChanges: z.const(false).default(false),
+      allowSlashCommands: z.const(false).default(false),
+      allowSettingsMutation: z.const(false).default(false),
+      allowSessionReset: z.boolean().default(false),
+      allowSessionRename: z.const(false).default(false),
+      allowSessionDelete: z.const(false).default(false),
+      allowArbitrarySessionOpen: z.const(false).default(false),
+      toolPolicy: z
+        .object({
+          mode: z.union(["allow-list"] as const).default("allow-list"),
+          allow: z.array(z.string()).default([]),
+        })
+        .default({ mode: "allow-list", allow: [] }),
+    })
+    .default({
+      enabled: true,
+      enforceFixedAgentPreset: true,
+      enforceFixedWorkspace: true,
+      enforceFixedModel: true,
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      permissionPreset: "qa-read-only",
+      allowPermissionChanges: false,
+      allowSlashCommands: false,
+      allowSettingsMutation: false,
+      allowSessionReset: false,
+      allowSessionRename: false,
+      allowSessionDelete: false,
+      allowArbitrarySessionOpen: false,
+      toolPolicy: { mode: "allow-list", allow: [] },
+    }),
   embedding: z
     .object({ frameAncestors: nullableString.default(null) })
     .default({ frameAncestors: null }),
