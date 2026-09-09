@@ -435,8 +435,8 @@ export function QaSurface(props: QaSurfaceProps) {
           <div className="dsh-qa-agentview" role="status">
             <RobotBadge />
             <span>
-              Смотрю субагента <strong>«{state.viewingSubagent.title}»</strong>{" "}
-              — ответы недоступны, чат работает дальше
+              Смотрю субагента <strong>«{state.viewingSubagent.title}»</strong>.
+              Ответы недоступны, чат работает дальше.
             </span>
             <button
               type="button"
@@ -488,7 +488,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
                   </svg>
                   Агенты
-                  {agentRows.length === 0 ? null : ` · ${agentRows.length}`}
+                  {agentRows.length === 0 ? null : ` (${agentRows.length})`}
                 </button>
                 {config.ui.showToolActivity ? (
                   <button
@@ -515,7 +515,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     Источники
                     {state.sources.length === 0
                       ? null
-                      : ` · ${state.sources.length}`}
+                      : ` (${state.sources.length})`}
                   </button>
                 ) : null}
                 {config.ui.showReset &&
@@ -648,7 +648,7 @@ export function QaSurface(props: QaSurfaceProps) {
       {agentsOpen && agentRows.length > 0 ? (
         <aside className="dsh-qa-agents" aria-label="Субагенты чата">
           <div className="dsh-qa-agents__head">
-            <span>Субагенты · {agentRows.length}</span>
+            <span>Субагенты ({agentRows.length})</span>
             <button
               type="button"
               aria-label="Закрыть список субагентов"
@@ -708,7 +708,7 @@ export function QaSurface(props: QaSurfaceProps) {
       {sourcesOpen && state.sources.length > 0 ? (
         <aside className="dsh-qa-sources" aria-label="Источники">
           <div className="dsh-qa-sources__head">
-            <span>Источники · {state.sources.length}</span>
+            <span>Источники ({state.sources.length})</span>
             <button
               type="button"
               aria-label="Закрыть источники"

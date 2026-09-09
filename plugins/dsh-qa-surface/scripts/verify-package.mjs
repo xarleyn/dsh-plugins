@@ -122,7 +122,7 @@ assert.match(client, /dsh-qa-agents/u);
 assert.match(client, /dsh-qa-agentview/u);
 assert.match(client, /started subagent/u);
 assert.match(client, /Скопировать сообщение/u);
-assert.match(client, /Enter — отправить/u);
+assert.match(client, /Enter: отправить/u);
 assert.match(client, /Скребу по сусекам/u);
 assert.match(client, /dsh-qa-quick-questions/u);
 assert.doesNotMatch(client, /@deepseek-ai\/schemastery/u);

@@ -79,7 +79,7 @@ export function QaComposer(props: QaComposerProps) {
         />
         <div className="dsh-qa-composer__toolbar">
           <span className="dsh-qa-composer__hint" aria-live="polite">
-            {props.status ?? "Enter — отправить · Shift+Enter — новая строка"}
+            {props.status ?? "Enter: отправить, Shift+Enter: новая строка"}
           </span>
           {props.running && props.showStop ? (
             <button
