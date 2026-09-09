@@ -151,7 +151,9 @@ navigable with a `< 2/2 >` switcher (newest shown by default).
 Sources: with `ui.showToolActivity: true` a header button opens a right-hand
 drawer listing the pages fetched, searches run and files read in this chat,
 projected from the same tool activity the work groups render - no extra
-prompting or tooling is involved.
+prompting or tooling is involved. Clicking a source opens its full tool
+output with every http(s) link clickable, and web sources carry an
+"Открыть" button straight to the page (a Jira issue, a wiki article).
 
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the

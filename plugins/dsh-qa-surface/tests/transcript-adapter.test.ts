@@ -516,6 +516,7 @@ describe("transcript projection", () => {
       callId: string,
       call: { name: string; argsRaw: string } | null,
       text: string,
+      isError = false,
     ) => ({
       kind: "tool-result" as const,
       seq,
@@ -524,7 +525,7 @@ describe("transcript projection", () => {
       call,
       callTime: null,
       content: [{ type: "text" as const, text }],
-      isError: false,
+      isError,
       callView: null,
       resultView: null,
       subCalls: [],
@@ -577,6 +578,26 @@ describe("transcript projection", () => {
             },
             "не источник",
           ),
+          // Failed calls and unresolvable targets are noise, not sources.
+          toolResult(
+            6,
+            "c6",
+            {
+              name: "web_search",
+              argsRaw: "{}",
+            },
+            "Error: DeepSeek search has no API key",
+            true,
+          ),
+          toolResult(
+            7,
+            "c7",
+            {
+              name: "read",
+              argsRaw: '{"file_path":"<path>D:/repo/AGENTS.md</path>"}',
+            },
+            "# AGENTS",
+          ),
         ] as ConversationSnapshot["nodes"],
         runningCalls: [
           {
@@ -599,6 +620,7 @@ describe("transcript projection", () => {
         target: "https://github.com/x/y",
         title: "github.com",
         snippet: "Первые строки страницы",
+        output: "Первые строки страницы\nвторая строка",
       },
       {
         id: "source:c2",
@@ -606,6 +628,7 @@ describe("transcript projection", () => {
         target: "dsh plugin api",
         title: "dsh plugin api",
         snippet: 'Результаты поиска "dsh plugin api"',
+        output: 'Результаты поиска "dsh plugin api"',
       },
       {
         id: "source:c3",
@@ -613,6 +636,15 @@ describe("transcript projection", () => {
         target: "D:/repo/src/a.ts",
         title: "a.ts",
         snippet: "export const a = 1",
+        output: "export const a = 1",
+      },
+      {
+        id: "source:c7",
+        kind: "file",
+        target: "D:/repo/AGENTS.md",
+        title: "AGENTS.md",
+        snippet: "# AGENTS",
+        output: "# AGENTS",
       },
       {
         id: "source:c5",
@@ -620,6 +652,7 @@ describe("transcript projection", () => {
         target: "https://example.com",
         title: "example.com",
         snippet: "",
+        output: "",
       },
     ]);
   });

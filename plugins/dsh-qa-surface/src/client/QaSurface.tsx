@@ -5,6 +5,7 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import type { HostDescriptionSource } from "@deepseek-ai/dsh-client-connection/client";
 import type {
@@ -208,6 +209,44 @@ export function collectVariantGroups(
   return groups;
 }
 
+function RobotBadge() {
+  return (
+    <svg
+      className="dsh-qa-agentview__icon"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
+      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
+    </svg>
+  );
+}
+
+/** Split text into plain runs and safe http(s) links. */
+function linkify(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const pattern = /https?:\/\/[^\s<>"')]+/gu;
+  let offset = 0;
+  for (const match of text.matchAll(pattern)) {
+    const index = match.index;
+    if (index > offset) nodes.push(text.slice(offset, index));
+    const href = match[0];
+    nodes.push(
+      <a
+        key={href + String(index)}
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+      >
+        {href}
+      </a>,
+    );
+    offset = index + href.length;
+  }
+  if (offset < text.length) nodes.push(text.slice(offset));
+  return nodes;
+}
+
 function SourceIcon({ kind }: { readonly kind: "web" | "search" | "file" }) {
   if (kind === "web") {
     return (
@@ -233,50 +272,80 @@ function SourceIcon({ kind }: { readonly kind: "web" | "search" | "file" }) {
   );
 }
 
+type QaSourceModel = QaSessionState["sources"][number];
+
 function QaSourceCard({
   source,
+  onOpen,
 }: {
-  readonly source: QaSessionState["sources"][number];
+  readonly source: QaSourceModel;
+  readonly onOpen: () => void;
 }) {
-  const href =
+  return (
+    <button type="button" className="dsh-qa-sources__item" onClick={onOpen}>
+      <span className="dsh-qa-sources__kind" data-kind={source.kind}>
+        <SourceIcon kind={source.kind} />
+      </span>
+      <span className="dsh-qa-sources__text">
+        <span className="dsh-qa-sources__title">{source.title}</span>
+        <span className="dsh-qa-sources__target">{source.target}</span>
+        {source.snippet === "" ? null : <p>{source.snippet}</p>}
+      </span>
+    </button>
+  );
+}
+
+function QaSourceDetail({
+  source,
+  onBack,
+}: {
+  readonly source: QaSourceModel;
+  readonly onBack: () => void;
+}) {
+  const external =
     source.kind === "web" && /^https?:\/\//iu.test(source.target)
       ? source.target
       : undefined;
   return (
-    <article className="dsh-qa-sources__item">
-      <span className="dsh-qa-sources__kind" data-kind={source.kind}>
-        <SourceIcon kind={source.kind} />
-      </span>
-      <div className="dsh-qa-sources__text">
-        {href === undefined ? (
-          <span className="dsh-qa-sources__title">{source.title}</span>
-        ) : (
+    <div className="dsh-qa-sourcedetail">
+      <div className="dsh-qa-sourcedetail__head">
+        <button
+          type="button"
+          className="dsh-qa-sourcedetail__back"
+          aria-label="Ко всем источникам"
+          title="Ко всем источникам"
+          onClick={onBack}
+        >
+          <svg viewBox="0 0 14 14" aria-hidden="true">
+            <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
+          </svg>
+        </button>
+        <span className="dsh-qa-sourcedetail__kind">
+          <SourceIcon kind={source.kind} />
+        </span>
+        <span className="dsh-qa-sourcedetail__title">{source.title}</span>
+        {external === undefined ? null : (
           <a
-            className="dsh-qa-sources__title"
-            href={href}
+            className="dsh-qa-sourcedetail__open"
+            href={external}
             target="_blank"
             rel="noreferrer"
           >
-            {source.title}
+            Открыть
           </a>
         )}
-        <span className="dsh-qa-sources__target">{source.target}</span>
-        {source.snippet === "" ? null : <p>{source.snippet}</p>}
       </div>
-    </article>
-  );
-}
-
-function RobotBadge() {
-  return (
-    <svg
-      className="dsh-qa-agentview__icon"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
-      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
-    </svg>
+      <div className="dsh-qa-sourcedetail__target">{source.target}</div>
+      <div className="dsh-qa-sourcedetail__body">
+        {source.output === "" ? (
+          <p className="dsh-qa-sourcedetail__empty">
+            У источника нет текстового вывода.
+          </p>
+        ) : (
+          linkify(source.output)
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -301,6 +370,7 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [sourceDetailId, setSourceDetailId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!route.active) {
@@ -708,23 +778,50 @@ export function QaSurface(props: QaSurfaceProps) {
       {sourcesOpen && state.sources.length > 0 ? (
         <aside className="dsh-qa-sources" aria-label="Источники">
           <div className="dsh-qa-sources__head">
-            <span>Источники ({state.sources.length})</span>
+            <span>
+              {sourceDetailId === null
+                ? `Источники (${state.sources.length})`
+                : "Источник"}
+            </span>
             <button
               type="button"
               aria-label="Закрыть источники"
               title="Закрыть"
-              onClick={() => setSourcesOpen(false)}
+              onClick={() => {
+                setSourcesOpen(false);
+                setSourceDetailId(null);
+              }}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="m4 4 8 8m0-8-8 8" />
               </svg>
             </button>
           </div>
-          <div className="dsh-qa-sources__list">
-            {state.sources.map((source) => (
-              <QaSourceCard key={source.id} source={source} />
-            ))}
-          </div>
+          {(() => {
+            const detail =
+              sourceDetailId === null
+                ? undefined
+                : state.sources.find((source) => source.id === sourceDetailId);
+            if (detail !== undefined) {
+              return (
+                <QaSourceDetail
+                  source={detail}
+                  onBack={() => setSourceDetailId(null)}
+                />
+              );
+            }
+            return (
+              <div className="dsh-qa-sources__list">
+                {state.sources.map((source) => (
+                  <QaSourceCard
+                    key={source.id}
+                    source={source}
+                    onOpen={() => setSourceDetailId(source.id)}
+                  />
+                ))}
+              </div>
+            );
+          })()}
         </aside>
       ) : null}
     </main>
