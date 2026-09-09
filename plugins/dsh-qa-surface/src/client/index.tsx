@@ -85,6 +85,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     };
     syncRoute();
     const unsubscribeConfig = config.subscribe(syncRoute);
+    // After a Host restart an open page must re-read the deployment config,
+    // or the next attestation compares its proof against a stale copy and
+    // refuses. Loopback pages follow the settings mirror; this covers the
+    // describe fallback (LAN browsers). Fires on every lost→restored
+    // connection transition; while connected, ticks are ignored.
+    let connectionUp =
+      ctx.connection.hostDescription.getSnapshot() !== undefined;
+    const unsubscribeConnection = ctx.connection.hostDescription.subscribe(
+      () => {
+        const connected =
+          ctx.connection.hostDescription.getSnapshot() !== undefined;
+        if (connected && !connectionUp) config.refreshFallback();
+        connectionUp = connected;
+      },
+    );
 
     ctx.effect(() => {
       const style = document.createElement("style");
@@ -97,6 +112,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     ctx.effect(
       () => () => {
         unsubscribeConfig();
+        unsubscribeConnection();
         config.dispose();
         route.dispose();
       },

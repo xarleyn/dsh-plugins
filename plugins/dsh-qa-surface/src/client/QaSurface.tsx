@@ -24,6 +24,7 @@ import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaMessage } from "./components/QaMessage.js";
+import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 
 const INACTIVE_STATE: QaSessionState = Object.freeze({
   phase: "idle",
@@ -150,6 +151,11 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.getSnapshot ?? (() => INACTIVE_STATE),
     controller?.getSnapshot ?? (() => INACTIVE_STATE),
   );
+  const listState = useSyncExternalStore(
+    props.sessions.list.subscribe,
+    props.sessions.list.getSnapshot,
+    props.sessions.list.getSnapshot,
+  );
 
   useEffect(() => {
     if (!route.active) return;
@@ -181,6 +187,17 @@ export function QaSurface(props: QaSurfaceProps) {
   const status = statusText(state);
   const empty = state.messages.length === 0;
   const conversationTitle = titleFromMessages(state, config.branding.title);
+  const showSidebar = config.ui.showSessionList && controller !== undefined;
+  const allowNewChat =
+    config.session.policy !== "fixed" &&
+    (!config.lockdown.enabled || config.lockdown.allowSessionReset);
+  const chatRows = showSidebar
+    ? buildChatRows(
+        controller?.chatIds() ?? [],
+        listState.byId,
+        controller?.activeSessionId() ?? null,
+      )
+    : [];
   return (
     <main
       className="dsh-qa-surface"
@@ -189,136 +206,152 @@ export function QaSurface(props: QaSurfaceProps) {
       tabIndex={-1}
       onKeyDown={trapKeys}
     >
-      {config.ui.showHeader ? (
-        <header className="dsh-qa-header">
-          <div className="dsh-qa-header__inner">
-            <div className="dsh-qa-header__title-row">
-              {config.branding.logoUrl === null ? null : (
-                <img
-                  className="dsh-qa-header__logo"
-                  src={config.branding.logoUrl}
-                  alt=""
-                />
-              )}
-              <h1 title={conversationTitle}>{conversationTitle}</h1>
-              <span className="dsh-qa-header__mode">
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <circle cx="8" cy="3.25" r="1.5" />
-                  <circle cx="4" cy="11.75" r="1.5" />
-                  <circle cx="12" cy="11.75" r="1.5" />
-                  <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-                </svg>
-                {modeLabel(config.session.agentPreset)}
-              </span>
-              {config.ui.showReset &&
-              config.session.policy !== "fixed" &&
-              (!config.lockdown.enabled ||
-                config.lockdown.allowSessionReset) ? (
-                <button
-                  type="button"
-                  className="dsh-qa-header__reset"
-                  disabled={
-                    controller === undefined || state.phase === "creating"
-                  }
-                  onClick={() => void controller?.reset()}
-                >
-                  New chat
-                </button>
-              ) : null}
-            </div>
-            <div className="dsh-qa-header__tabs" aria-label="Conversation view">
-              <span aria-current="page">Chat</span>
-            </div>
-          </div>
-        </header>
+      {showSidebar ? (
+        <QaSidebar
+          rows={chatRows}
+          showNewChat={allowNewChat}
+          busy={state.phase === "creating"}
+          onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
+          onNewChat={() => void controller?.reset()}
+        />
       ) : null}
-
-      <div
-        ref={transcript}
-        className="dsh-qa-transcript"
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          nearBottom.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight <
-            96;
-        }}
-      >
-        <div
-          className="dsh-qa-transcript__inner"
-          style={{ maxWidth: config.ui.maxContentWidth }}
-        >
-          {empty ? (
-            <section
-              className="dsh-qa-welcome"
-              aria-labelledby="dsh-qa-welcome-title"
-            >
-              <h2 id="dsh-qa-welcome-title">
-                {config.branding.welcomeMessage}
-              </h2>
-              {config.branding.subtitle === "" ? null : (
-                <p>{config.branding.subtitle}</p>
-              )}
-              {config.suggestedQuestions.length > 0 ? (
-                <div
-                  className="dsh-qa-suggestions"
-                  aria-label="Suggested questions"
-                >
-                  {config.suggestedQuestions.map((question) => (
-                    <button
-                      type="button"
-                      key={question}
-                      disabled={!state.canSend}
-                      onClick={() => void controller?.send(question)}
-                    >
-                      {question}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </section>
-          ) : (
-            state.messages.map((message) => (
-              <QaMessage
-                key={message.id}
-                message={message}
-                renderMarkdown={config.ui.renderMarkdown}
-                showTimestamp={config.ui.showTimestamps}
-              />
-            ))
-          )}
-          {state.error === null ? null : (
-            <div className="dsh-qa-error" role="alert">
-              <span>{state.error}</span>
-              {state.phase === "error" ? (
-                <button
-                  type="button"
-                  onClick={() => void controller?.ensureSession()}
-                >
-                  Retry
-                </button>
-              ) : null}
+      <div className="dsh-qa-body">
+        {config.ui.showHeader ? (
+          <header className="dsh-qa-header">
+            <div className="dsh-qa-header__inner">
+              <div className="dsh-qa-header__title-row">
+                {config.branding.logoUrl === null ? null : (
+                  <img
+                    className="dsh-qa-header__logo"
+                    src={config.branding.logoUrl}
+                    alt=""
+                  />
+                )}
+                <h1 title={conversationTitle}>{conversationTitle}</h1>
+                <span className="dsh-qa-header__mode">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="8" cy="3.25" r="1.5" />
+                    <circle cx="4" cy="11.75" r="1.5" />
+                    <circle cx="12" cy="11.75" r="1.5" />
+                    <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
+                  </svg>
+                  {modeLabel(config.session.agentPreset)}
+                </span>
+                {config.ui.showReset &&
+                config.session.policy !== "fixed" &&
+                (!config.lockdown.enabled ||
+                  config.lockdown.allowSessionReset) ? (
+                  <button
+                    type="button"
+                    className="dsh-qa-header__reset"
+                    disabled={
+                      controller === undefined || state.phase === "creating"
+                    }
+                    onClick={() => void controller?.reset()}
+                  >
+                    New chat
+                  </button>
+                ) : null}
+              </div>
+              <div
+                className="dsh-qa-header__tabs"
+                aria-label="Conversation view"
+              >
+                <span aria-current="page">Chat</span>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
+          </header>
+        ) : null}
 
-      <footer className="dsh-qa-footer">
         <div
-          className="dsh-qa-footer__inner"
-          style={{ maxWidth: config.ui.maxContentWidth }}
+          ref={transcript}
+          className="dsh-qa-transcript"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            nearBottom.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              96;
+          }}
         >
-          <QaComposer
-            placeholder={config.branding.placeholder}
-            canSend={state.canSend}
-            canStop={state.canStop}
-            running={state.phase === "running"}
-            showStop={config.ui.showStop}
-            status={status}
-            onSend={(text) => controller?.send(text) ?? Promise.resolve(false)}
-            onStop={() => controller?.stop() ?? Promise.resolve()}
-          />
+          <div
+            className="dsh-qa-transcript__inner"
+            style={{ maxWidth: config.ui.maxContentWidth }}
+          >
+            {empty ? (
+              <section
+                className="dsh-qa-welcome"
+                aria-labelledby="dsh-qa-welcome-title"
+              >
+                <h2 id="dsh-qa-welcome-title">
+                  {config.branding.welcomeMessage}
+                </h2>
+                {config.branding.subtitle === "" ? null : (
+                  <p>{config.branding.subtitle}</p>
+                )}
+                {config.suggestedQuestions.length > 0 ? (
+                  <div
+                    className="dsh-qa-suggestions"
+                    aria-label="Suggested questions"
+                  >
+                    {config.suggestedQuestions.map((question) => (
+                      <button
+                        type="button"
+                        key={question}
+                        disabled={!state.canSend}
+                        onClick={() => void controller?.send(question)}
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : (
+              state.messages.map((message) => (
+                <QaMessage
+                  key={message.id}
+                  message={message}
+                  renderMarkdown={config.ui.renderMarkdown}
+                  showTimestamp={config.ui.showTimestamps}
+                />
+              ))
+            )}
+            {state.error === null ? null : (
+              <div className="dsh-qa-error" role="alert">
+                <span>{state.error}</span>
+                {state.phase === "error" ? (
+                  <button
+                    type="button"
+                    onClick={() => void controller?.ensureSession()}
+                  >
+                    Retry
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
-      </footer>
+
+        <footer className="dsh-qa-footer">
+          <div
+            className="dsh-qa-footer__inner"
+            style={{ maxWidth: config.ui.maxContentWidth }}
+          >
+            <QaComposer
+              placeholder={config.branding.placeholder}
+              canSend={state.canSend}
+              canStop={state.canStop}
+              running={state.phase === "running"}
+              showStop={config.ui.showStop}
+              status={status}
+              onSend={(text) =>
+                controller?.send(text) ?? Promise.resolve(false)
+              }
+              onStop={() => controller?.stop() ?? Promise.resolve()}
+            />
+          </div>
+        </footer>
+      </div>
     </main>
   );
 }

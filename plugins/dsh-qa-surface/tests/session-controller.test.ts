@@ -11,6 +11,7 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
+  attestationReasonOf,
   QaSessionController,
   type QaSessionControllerOptions,
   type StorageLike,
@@ -423,21 +424,89 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("re-attests immediately before prompt admission", async () => {
+  it("re-binds an idled-out session once and admits the prompt", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    const opensBefore = world.open.mock.calls.length;
+    // First send-time attestation hits an agent whose tool view the Host
+    // dismantled; the retry after the re-bind sees a healthy catalog.
     world.secureSession.mockResolvedValueOnce({
       ok: false as const,
-      error: { code: "policy-unavailable" },
+      error: {
+        code: "internal",
+        message:
+          "Assistant configuration is unavailable. (reason: unknown-tools)",
+        details: {},
+      },
     });
+    expect(await controller.send("hello")).toBe(true);
+    expect(world.open.mock.calls.length).toBe(opensBefore + 1);
+    expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "hello" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("replaces an unattestable blank session and admits the prompt", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    // Send attestation and the re-bind attestation both hit the dismantled
+    // session; the blank-session fallback mints a fresh attested one.
+    const refusal = {
+      ok: false as const,
+      error: {
+        code: "internal",
+        message:
+          "Assistant configuration is unavailable. (reason: unknown-tools)",
+        details: {},
+      },
+    };
+    world.secureSession
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValueOnce(refusal);
+    expect(await controller.send("hello")).toBe(true);
+    expect(world.create).toHaveBeenCalledTimes(2);
+    expect(world.open).toHaveBeenCalledWith("created-2");
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "hello" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("reports the refusal when recovery keeps failing", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const refusal = {
+      ok: false as const,
+      error: {
+        code: "internal",
+        message:
+          "Assistant configuration is unavailable. (reason: unknown-tools)",
+        details: {},
+      },
+    };
+    world.secureSession
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValueOnce(refusal)
+      .mockResolvedValueOnce(refusal);
     expect(await controller.send("hello")).toBe(false);
     expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
+    expect(world.faces.get("created-2")?.prompt).not.toHaveBeenCalled();
     expect(controller.getSnapshot()).toMatchObject({
-      canSend: false,
       error: "Assistant configuration is unavailable.",
     });
     controller.dispose();
@@ -452,6 +521,198 @@ describe("QA session controller", () => {
     await controller.ensureSession();
     await controller.reset();
     expect(world.create).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+});
+
+describe("QA chat index and switching", () => {
+  it("indexes each attested chat for this browser", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(controller.chatIds()).toEqual(["created-1"]);
+    expect(
+      JSON.parse(
+        world.stored.get("dsh-qa-surface.session:v1:/qa:chats") ?? "[]",
+      ),
+    ).toEqual(["created-1"]);
+    controller.dispose();
+  });
+
+  it("switches to an indexed chat and re-attests it", async () => {
+    const world = harness(["saved"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(controller.getSnapshot().sessionId).toBe("created-2");
+    await controller.switchTo("saved");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "saved",
+      canSend: true,
+    });
+    expect(controller.activeSessionId()).toBe("saved");
+    expect(controller.chatIds()).toEqual(["saved", "created-2"]);
+    expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      "saved",
+    );
+    controller.dispose();
+  });
+
+  it("forgets and reports a chat the host no longer lists", async () => {
+    const world = harness(["saved"]);
+    world.stored.set(
+      "dsh-qa-surface.session:v1:/qa:chats",
+      JSON.stringify(["gone", "saved"]),
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    await controller.switchTo("gone");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: "Unable to open that chat.",
+    });
+    expect(controller.chatIds()).toEqual(["created-2", "saved"]);
+    controller.dispose();
+  });
+
+  it("surfaces an attestation failure without dropping the chat", async () => {
+    const world = harness(["saved"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    world.secureSession.mockRejectedValueOnce(new Error("fence"));
+    await controller.switchTo("saved");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: "Assistant configuration is unavailable.",
+    });
+    expect(controller.chatIds()).toEqual(["created-2"]);
+    controller.dispose();
+  });
+
+  it("caps and cleans the stored chat index", () => {
+    const world = harness();
+    const junk = Array.from({ length: 60 }, (_, i) => `chat-${i}`);
+    world.stored.set(
+      "dsh-qa-surface.session:v1:/qa:chats",
+      JSON.stringify(["chat-3", 42, null, "chat-3", ...junk]),
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const ids = controller.chatIds();
+    expect(ids.length).toBeLessThanOrEqual(50);
+    expect(ids[0]).toBe("chat-3");
+    expect(new Set(ids).size).toBe(ids.length);
+    controller.dispose();
+  });
+
+  it("ignores switching under a fixed session policy", async () => {
+    const world = harness(["saved"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "fixed", fixedSessionId: "saved" },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.switchTo("not-in-the-list");
+    expect(world.open).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot().sessionId).toBe("saved");
+    controller.dispose();
+  });
+});
+
+describe("attestation diagnostics", () => {
+  it("parses the Host reason marker from wire failures", () => {
+    expect(
+      attestationReasonOf({
+        message:
+          "Assistant configuration is unavailable. (reason: unknown-tools)",
+      }),
+    ).toBe("unknown-tools");
+    expect(attestationReasonOf({ message: "plain refusal" })).toBeNull();
+    expect(attestationReasonOf(undefined)).toBeNull();
+  });
+
+  it("reports the Host reason code once without a wrapper stack trace", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    world.secureSession.mockResolvedValueOnce({
+      ok: false as const,
+      error: {
+        code: "internal",
+        message:
+          "Assistant configuration is unavailable. (reason: unknown-tools)",
+        details: {},
+      },
+    });
+    await controller.ensureSession();
+    const texts = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      texts.filter((text) => text.includes("policy attestation failed")),
+    ).toEqual([
+      "dsh-qa-surface: policy attestation failed (reason: unknown-tools). A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.",
+    ]);
+    expect(
+      texts.filter((text) => text.includes("session operation failed")),
+    ).toEqual([]);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: "Assistant configuration is unavailable.",
+    });
+    errorSpy.mockRestore();
+    controller.dispose();
+  });
+
+  it("marks a well-formed proof that does not match the client config", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const errorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    world.secureSession.mockResolvedValueOnce({
+      ok: true as const,
+      value: {
+        sessionId: "created-1",
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxIsReadOnly: true,
+        approvalIsNever: true,
+        permissionPreset: "some-other-preset",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    await controller.ensureSession();
+    const texts = errorSpy.mock.calls.map((call) => String(call[0]));
+    expect(
+      texts.some((text) => text.includes("(reason: proof-mismatch)")),
+    ).toBe(true);
+    errorSpy.mockRestore();
     controller.dispose();
   });
 });

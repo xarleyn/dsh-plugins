@@ -9,6 +9,11 @@ import {
   QaWorkGroup,
 } from "../src/client/components/QaWorkGroup.js";
 import { Markdown } from "../src/client/components/Markdown.js";
+import {
+  buildChatRows,
+  QaSidebar,
+} from "../src/client/components/QaSidebar.js";
+import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
 
 describe("QA composer", () => {
   it("sends on Enter and preserves Shift+Enter", async () => {
@@ -199,5 +204,83 @@ describe("safe Markdown", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("a")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("QA sidebar", () => {
+  const byId = {
+    "s-1": {
+      id: "s-1",
+      displayTitle: "How do I reset the cache?",
+      running: false,
+      blank: false,
+      updatedAt: 1_000,
+    },
+    "s-2": {
+      id: "s-2",
+      displayTitle: "s-2",
+      running: true,
+      blank: true,
+      updatedAt: 2_000,
+    },
+  } as unknown as Record<string, SessionSummary>;
+
+  it("projects indexed ids onto the host session list", () => {
+    const rows = buildChatRows(["s-2", "s-1", "gone"], byId, "s-1", 90_000);
+    expect(rows).toEqual([
+      {
+        id: "s-2",
+        title: "New chat",
+        running: true,
+        active: false,
+        meta: "1m",
+      },
+      {
+        id: "s-1",
+        title: "How do I reset the cache?",
+        running: false,
+        active: true,
+        meta: "1m",
+      },
+    ]);
+  });
+
+  it("renders rows with the active mark and a new-chat control", () => {
+    const onSwitch = vi.fn();
+    const rows = buildChatRows(["s-2", "s-1"], byId, "s-2", 90_000);
+    render(
+      <QaSidebar
+        rows={rows}
+        showNewChat
+        busy={false}
+        onSwitch={onSwitch}
+        onNewChat={vi.fn()}
+      />,
+    );
+    const items = document.querySelectorAll(".dsh-qa-sidebar__item");
+    expect(items.length).toBe(2);
+    const active = document.querySelector(".dsh-qa-sidebar__item--active");
+    expect(active?.getAttribute("aria-current")).toBe("true");
+    expect(active?.textContent).toContain("New chat");
+    expect(document.querySelector(".dsh-qa-sidebar__dot")).toBeTruthy();
+    fireEvent.click(
+      document.querySelector(".dsh-qa-sidebar__new") as HTMLElement,
+    );
+    fireEvent.click(items[1] as HTMLElement);
+    expect(onSwitch).toHaveBeenCalledWith("s-1");
+  });
+
+  it("renders the empty state without a new-chat control", () => {
+    render(
+      <QaSidebar
+        rows={[]}
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No chats yet")).toBeTruthy();
+    expect(screen.queryByText("Chats")).toBeTruthy();
   });
 });

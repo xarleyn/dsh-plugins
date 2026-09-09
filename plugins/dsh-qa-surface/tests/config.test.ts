@@ -43,6 +43,13 @@ describe("qa surface config", () => {
     );
   });
 
+  it("keeps the session list hidden by default and allows opting in", () => {
+    expect(resolveConfig().ui.showSessionList).toBe(false);
+    expect(
+      resolveConfig({ ui: { showSessionList: true } }).ui.showSessionList,
+    ).toBe(true);
+  });
+
   it("allows operators to opt into reasoning and tool activity", () => {
     expect(
       resolveConfig({
