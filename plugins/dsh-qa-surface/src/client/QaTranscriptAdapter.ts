@@ -11,12 +11,19 @@ interface OrderedWorkItem {
   readonly item: QaWorkItem;
 }
 
+interface QaMessageStats {
+  readonly durationMs: number;
+  readonly ttftMs: number | null;
+  readonly tokensPerSecond: number | null;
+}
+
 interface TextMessage {
   readonly id: string;
   readonly order: number;
   readonly text: string;
   readonly status: "streaming" | "committed";
   readonly timestamp?: number;
+  readonly stats?: QaMessageStats;
 }
 
 interface TurnBuffer {
@@ -144,6 +151,34 @@ function toolStatus(node: ToolResultNode): "ok" | "error" | "stopped" {
   return node.isError ? "error" : "ok";
 }
 
+/**
+ * Response timing for the message row, straight from the host-recorded step
+ * boundaries. Tokens per second is an estimate — the client never sees a
+ * token-count contract, so visible text is measured at the usual ≈4
+ * characters per token over the generation window (first token → completed).
+ */
+function messageStats(
+  text: string,
+  timing: AssistantMessageNode["timing"],
+): QaMessageStats | undefined {
+  if (timing === undefined) return undefined;
+  const start = timing.stepStartTime;
+  const first = timing.firstTokenTime;
+  const end = timing.completedTime;
+  if (start === null && first === null) return undefined;
+  const durationMs =
+    start === null
+      ? Math.max(0, end - (first ?? end))
+      : Math.max(0, end - start);
+  const ttftMs =
+    start === null || first === null ? null : Math.max(0, first - start);
+  let tokensPerSecond: number | null = null;
+  if (first !== null && end > first && text.length > 0) {
+    tokensPerSecond = Math.round(text.length / 4 / ((end - first) / 1_000));
+  }
+  return { durationMs, ttftMs, tokensPerSecond };
+}
+
 function workTool(
   callId: string,
   name: string,
@@ -191,6 +226,7 @@ function collectAssistant(
       text,
       status: "committed",
       timestamp: node.time,
+      stats: messageStats(text, node.timing),
     });
   }
   node.blocks.forEach((block, index) => {
@@ -340,6 +376,7 @@ function emitTurn(
           ...(message.timestamp === undefined
             ? {}
             : { timestamp: message.timestamp }),
+          ...(message.stats === undefined ? {} : { stats: message.stats }),
         },
       });
     }
@@ -356,6 +393,7 @@ function emitTurn(
         ...(finalText.timestamp === undefined
           ? {}
           : { timestamp: finalText.timestamp }),
+        ...(finalText.stats === undefined ? {} : { stats: finalText.stats }),
       },
     });
   }

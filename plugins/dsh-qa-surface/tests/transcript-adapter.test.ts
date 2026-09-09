@@ -292,4 +292,75 @@ describe("transcript projection", () => {
     });
     expect(JSON.stringify(messages)).not.toContain("/home/secret");
   });
+
+  it("attaches host-recorded timing stats to finalized answers", () => {
+    const messages = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "assistant",
+            seq: 1,
+            time: 4_000,
+            turn: 1,
+            step: 1,
+            blocks: [{ kind: "text", text: "x".repeat(400) }],
+            timing: {
+              stepStartTime: 1_000,
+              firstTokenTime: 2_000,
+              completedTime: 4_000,
+            },
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(messages[0]).toMatchObject({
+      role: "assistant",
+      stats: { durationMs: 3_000, ttftMs: 1_000, tokensPerSecond: 50 },
+    });
+  });
+
+  it("derives partial stats when the step start is missing and none without timing", () => {
+    const [noFirstToken] = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "assistant",
+            seq: 1,
+            time: 4_000,
+            turn: 1,
+            step: 1,
+            blocks: [{ kind: "text", text: "Answer" }],
+            timing: {
+              stepStartTime: 1_000,
+              firstTokenTime: null,
+              completedTime: 4_000,
+            },
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(noFirstToken).toMatchObject({
+      role: "assistant",
+      stats: { durationMs: 3_000, ttftMs: null, tokensPerSecond: null },
+    });
+
+    const [untimed] = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "assistant",
+            seq: 1,
+            time: 4_000,
+            turn: 1,
+            step: 1,
+            blocks: [{ kind: "text", text: "Answer" }],
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(untimed).toMatchObject({ role: "assistant" });
+    expect(
+      untimed?.role === "assistant" ? untimed.stats : "present",
+    ).toBeUndefined();
+  });
 });
