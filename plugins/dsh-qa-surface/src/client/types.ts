@@ -38,4 +38,5 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   canStop: false,
   chatsRevision: 0,
   sources: Object.freeze([]),
+  viewingSubagent: null,
 });

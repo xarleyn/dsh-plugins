@@ -12,6 +12,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type { QaMessage as QaMessageModel, QaSessionState } from "../types.js";
+import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -137,6 +138,52 @@ function VariantSwitcher({
  * has no truncation seam, so a regenerated answer is a real follow-up turn;
  * consecutive turns after one user message read as its variants.
  */
+/** One row of the agents panel: a subagent session of the open chat. */
+export interface QaSubagentRow {
+  readonly id: string;
+  readonly title: string;
+  readonly running: boolean;
+  readonly completed: boolean;
+  readonly meta: string;
+}
+
+/**
+ * Direct subagent children of the open chat, running first. Reads the host
+ * session list's lineage (parentId + origin), so no extra subscription beyond
+ * the list the surface already follows.
+ */
+export function collectSubagents(
+  byId: Readonly<Record<string, SessionSummary>>,
+  rootId: string | null,
+  now: number = Date.now(),
+): readonly QaSubagentRow[] {
+  if (rootId === null) return [];
+  const rows: QaSubagentRow[] = [];
+  for (const summary of Object.values(byId)) {
+    if (summary.parentId !== rootId || summary.origin !== "subagent") continue;
+    rows.push({
+      id: summary.id,
+      title: summary.blank ? "Субагент" : summary.displayTitle,
+      running: summary.running,
+      completed: summary.completed === true,
+      meta: relativeTime(summary.updatedAt, now),
+    });
+  }
+  return rows.sort((left, right) =>
+    left.running === right.running ? 0 : left.running ? -1 : 1,
+  );
+}
+
+function relativeTime(timestamp: number, now: number): string {
+  const seconds = Math.max(1, Math.round((now - timestamp) / 1000));
+  if (seconds < 60) return "только что";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} мин`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} ч`;
+  return new Date(timestamp).toLocaleDateString("ru-RU");
+}
+
 export function collectVariantGroups(
   messages: readonly QaMessageModel[],
 ): readonly QaVariantGroup[] {
@@ -220,6 +267,19 @@ function QaSourceCard({
   );
 }
 
+function RobotBadge() {
+  return (
+    <svg
+      className="dsh-qa-agentview__icon"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
+      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
+    </svg>
+  );
+}
+
 export function QaSurface(props: QaSurfaceProps) {
   const route = useSyncExternalStore(
     props.route.subscribe,
@@ -240,6 +300,7 @@ export function QaSurface(props: QaSurfaceProps) {
     {},
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   useEffect(() => {
     if (!route.active) {
@@ -337,6 +398,10 @@ export function QaSurface(props: QaSurfaceProps) {
     }
     return true;
   });
+  const agentRows = collectSubagents(
+    listState.byId,
+    controller?.activeSessionId() ?? null,
+  );
   const chatRows = showSidebar
     ? buildChatRows(
         controller?.chatIds() ?? [],
@@ -366,6 +431,21 @@ export function QaSurface(props: QaSurfaceProps) {
         />
       ) : null}
       <div className="dsh-qa-body">
+        {state.viewingSubagent !== null ? (
+          <div className="dsh-qa-agentview" role="status">
+            <RobotBadge />
+            <span>
+              Смотрю субагента <strong>«{state.viewingSubagent.title}»</strong>{" "}
+              — ответы недоступны, чат работает дальше
+            </span>
+            <button
+              type="button"
+              onClick={() => void controller?.closeSubagent()}
+            >
+              ← Вернуться к чату
+            </button>
+          </div>
+        ) : null}
         {config.ui.showHeader ? (
           <header className="dsh-qa-header">
             <div className="dsh-qa-header__inner">
@@ -389,6 +469,27 @@ export function QaSurface(props: QaSurfaceProps) {
                   </svg>
                   {modeLabel(config.session.agentPreset)}
                 </span>
+                <button
+                  type="button"
+                  className={
+                    config.ui.showToolActivity
+                      ? "dsh-qa-header__agents"
+                      : "dsh-qa-header__agents dsh-qa-header__agents--end"
+                  }
+                  disabled={agentRows.length === 0}
+                  aria-expanded={agentsOpen}
+                  onClick={() => {
+                    setAgentsOpen((open) => !open);
+                    setSourcesOpen(false);
+                  }}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
+                    <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
+                  </svg>
+                  Агенты
+                  {agentRows.length === 0 ? null : ` · ${agentRows.length}`}
+                </button>
                 {config.ui.showToolActivity ? (
                   <button
                     type="button"
@@ -402,7 +503,10 @@ export function QaSurface(props: QaSurfaceProps) {
                     }
                     disabled={state.sources.length === 0}
                     aria-expanded={sourcesOpen}
-                    onClick={() => setSourcesOpen((open) => !open)}
+                    onClick={() => {
+                      setSourcesOpen((open) => !open);
+                      setAgentsOpen(false);
+                    }}
                   >
                     <svg viewBox="0 0 16 16" aria-hidden="true">
                       <circle cx="8" cy="8" r="5.75" />
@@ -541,6 +645,66 @@ export function QaSurface(props: QaSurfaceProps) {
           </div>
         </footer>
       </div>
+      {agentsOpen && agentRows.length > 0 ? (
+        <aside className="dsh-qa-agents" aria-label="Субагенты чата">
+          <div className="dsh-qa-agents__head">
+            <span>Субагенты · {agentRows.length}</span>
+            <button
+              type="button"
+              aria-label="Закрыть список субагентов"
+              title="Закрыть"
+              onClick={() => setAgentsOpen(false)}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="m4 4 8 8m0-8-8 8" />
+              </svg>
+            </button>
+          </div>
+          <div className="dsh-qa-agents__list">
+            {agentRows.map((agent) => {
+              const active =
+                state.viewingSubagent !== null &&
+                state.viewingSubagent.id === agent.id;
+              return (
+                <button
+                  key={agent.id}
+                  type="button"
+                  className={
+                    active
+                      ? "dsh-qa-agents__item dsh-qa-agents__item--active"
+                      : "dsh-qa-agents__item"
+                  }
+                  onClick={() =>
+                    void controller?.viewSubagent(agent.id, agent.title)
+                  }
+                >
+                  <span
+                    className={
+                      agent.running
+                        ? "dsh-qa-agents__dot dsh-qa-agents__dot--running"
+                        : "dsh-qa-agents__dot"
+                    }
+                    aria-hidden="true"
+                  />
+                  <span className="dsh-qa-agents__text">
+                    <span className="dsh-qa-agents__title">{agent.title}</span>
+                    <span className="dsh-qa-agents__meta">
+                      {agent.running
+                        ? "выполняется"
+                        : agent.completed
+                          ? "завершён"
+                          : agent.meta}
+                    </span>
+                  </span>
+                  <span className="dsh-qa-agents__open">
+                    {active ? "открыт" : "смотреть"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
+      ) : null}
       {sourcesOpen && state.sources.length > 0 ? (
         <aside className="dsh-qa-sources" aria-label="Источники">
           <div className="dsh-qa-sources__head">

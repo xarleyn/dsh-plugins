@@ -31,7 +31,10 @@ sent, and the chat list orders by the host's `updatedAt`. The log is
 append-only and there is no truncation seam, so regeneration prompts a
 hidden instruction and projects the follow-up turns as variants of one
 question; the same projection flattens tool activity into the sources
-drawer (web targets, searches, files read). By default it excludes
+drawer (web targets, searches, files read). Subagent delegation, when the
+deployment opts it in, renders launches and settlement notices inline, and
+the agents drawer opens a child session as a read-only live transcript: the
+binding skips attestation and every send path stays closed. By default it excludes
 reasoning, tool arguments and tool results. When explicitly enabled, it
 correlates assistant blocks, paired tool results, running calls and turn
 timings into one plugin-local work group per turn; `QaWorkGroup` owns

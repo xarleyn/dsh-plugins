@@ -204,6 +204,8 @@ export type QaWorkItem =
       readonly input: string | null;
       readonly output: string | null;
       readonly status: "running" | "ok" | "error" | "stopped";
+      /** Durable child id, present on subagent launch calls that started one. */
+      readonly subagentId?: string;
       readonly startedAt?: number;
       readonly endedAt?: number;
     };
@@ -227,6 +229,12 @@ export interface QaSource {
   readonly snippet: string;
 }
 
+/** A subagent transcript opened read-only from the agents panel. */
+export interface QaSubagentView {
+  readonly id: string;
+  readonly title: string;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -238,4 +246,6 @@ export interface QaSessionState {
   readonly chatsRevision: number;
   /** Tool-derived sources of the current chat (web targets and files read). */
   readonly sources: readonly QaSource[];
+  /** Set while the bound session is a subagent watched from the panel. */
+  readonly viewingSubagent: QaSubagentView | null;
 }

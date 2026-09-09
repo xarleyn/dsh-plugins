@@ -4,7 +4,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
-import { collectVariantGroups } from "../src/client/QaSurface.js";
+import {
+  collectSubagents,
+  collectVariantGroups,
+} from "../src/client/QaSurface.js";
 import {
   formatWorkDuration,
   QaWorkGroup,
@@ -375,6 +378,72 @@ describe("QA work group", () => {
     expect(formatWorkDuration(100)).toBe("< 1 с");
     expect(formatWorkDuration(17_000)).toBe("17 с");
     expect(formatWorkDuration(1_060_000)).toBe("17 мин 40 с");
+  });
+});
+
+describe("subagent panel", () => {
+  const byId = {
+    parent: {
+      id: "parent",
+      displayTitle: "Chat",
+      running: false,
+      blank: false,
+      updatedAt: 1_000,
+    },
+    childRunning: {
+      id: "child-running",
+      displayTitle: "Count words in README.md",
+      running: true,
+      blank: false,
+      updatedAt: 3_000,
+      parentId: "parent",
+      origin: "subagent",
+    },
+    childDone: {
+      id: "child-done",
+      displayTitle: "Print a greeting",
+      running: false,
+      blank: false,
+      updatedAt: 2_000,
+      parentId: "parent",
+      origin: "subagent",
+      completed: true,
+    },
+    stranger: {
+      id: "stranger",
+      displayTitle: "Unrelated chat",
+      running: false,
+      blank: false,
+      updatedAt: 4_000,
+    },
+    grandchild: {
+      id: "grandchild",
+      displayTitle: "Nested",
+      running: false,
+      blank: false,
+      updatedAt: 5_000,
+      parentId: "child-running",
+      origin: "subagent",
+    },
+  } as unknown as Record<string, SessionSummary>;
+
+  it("lists direct subagent children running first", () => {
+    const rows = collectSubagents(byId, "parent", 90_000);
+    expect(rows.map((row) => row.id)).toEqual(["child-running", "child-done"]);
+    expect(rows[0]).toMatchObject({
+      title: "Count words in README.md",
+      running: true,
+      meta: "1 мин",
+    });
+    expect(rows[1]).toMatchObject({ completed: true });
+  });
+
+  it("follows the viewed subagent and ignores unrelated sessions", () => {
+    expect(collectSubagents(byId, null, 90_000)).toEqual([]);
+    expect(
+      collectSubagents(byId, "child-running", 90_000).map((row) => row.id),
+    ).toEqual(["grandchild"]);
+    expect(collectSubagents(byId, "stranger", 90_000)).toEqual([]);
   });
 });
 
