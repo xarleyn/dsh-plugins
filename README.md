@@ -13,6 +13,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
+| `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | Two-layer safety gate for prompts, streamed output, tools, and tool results |
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-qa-surface` | `@yadsh/dsh-qa-surface` | Focused end-user QA surface backed by native sessions |
