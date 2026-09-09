@@ -159,6 +159,15 @@ export type QaMessage =
       readonly text: string;
       readonly status: "streaming" | "committed" | "failed";
       readonly timestamp?: number;
+      /** Host-recorded response timing, present on finalized messages only. */
+      readonly stats?: {
+        /** step start → final message. */
+        readonly durationMs: number;
+        /** step start → first token; null when no token delta was recorded. */
+        readonly ttftMs: number | null;
+        /** Estimated from visible text (≈4 chars/token) over the generation window. */
+        readonly tokensPerSecond: number | null;
+      };
     }
   | {
       readonly id: string;
