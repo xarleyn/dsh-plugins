@@ -135,6 +135,67 @@ describe("UIRepairRuntime", () => {
     expect(report.applied).toEqual([]);
   });
 
+  it("keeps ignored issues visible while excluding them from auto repair", async () => {
+    document.body.innerHTML = `
+      <section data-dsh-ui-repair-root="fixture">
+        <div id="intentional" data-dsh-ui-repair-scroll></div>
+      </section>
+    `;
+    const panel = document.querySelector("#intentional") as HTMLElement;
+    dimensions(panel, {
+      clientHeight: 100,
+      scrollHeight: 180,
+      clientWidth: 200,
+      scrollWidth: 200,
+    });
+    const runtime = new UIRepairRuntime(
+      document,
+      {
+        mode: "auto",
+        observeMutations: false,
+        ignore: [{ rule: "R006", selector: "#intentional" }],
+      },
+      quietLogger(),
+    );
+
+    const report = await runtime.scan();
+
+    expect(report.issues).toHaveLength(1);
+    expect(report.ignored).toEqual([report.issues[0]?.id]);
+    expect(report.applied).toEqual([]);
+    expect(getComputedStyle(panel).overflowY).not.toBe("auto");
+  });
+
+  it("publishes completed scans to diagnostics subscribers", async () => {
+    document.body.innerHTML = `
+      <section data-dsh-ui-repair-root="fixture">
+        <div id="panel"></div>
+      </section>
+    `;
+    const panel = document.querySelector("#panel") as HTMLElement;
+    dimensions(panel, {
+      clientHeight: 100,
+      scrollHeight: 180,
+      clientWidth: 200,
+      scrollWidth: 200,
+    });
+    const runtime = new UIRepairRuntime(
+      document,
+      { observeMutations: false },
+      quietLogger(),
+    );
+    const listener = vi.fn();
+    const unsubscribe = runtime.subscribe(listener);
+
+    await runtime.scan();
+
+    expect(runtime.getRevision()).toBe(1);
+    expect(listener).toHaveBeenCalledTimes(1);
+    unsubscribe();
+    await runtime.scan();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("repairs one icon outlier against the dominant repeated-row alignment", async () => {
     document.body.innerHTML = `
       <section data-dsh-ui-repair-root="fixture">

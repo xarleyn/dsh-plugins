@@ -2,7 +2,7 @@ import { defineConfig, type UserConfig } from "tsdown";
 
 const ID = "dsh-ui-repair";
 const CLIENT_MODULE_ID = "@yadsh/dsh-ui-repair";
-const CLIENT_EXTERNALS = ["@deepseek-ai/cordis"];
+const CLIENT_EXTERNALS = ["react", "react/jsx-runtime"];
 
 const configs = [
   {

@@ -64,7 +64,11 @@ export function collectElements(
   if (limit <= 1) return result;
   for (const element of queryAll(root, "*")) {
     if (result.length >= limit) break;
-    if (matches(element, REPAIR_UI_SELECTOR)) continue;
+    try {
+      if (element.closest(REPAIR_UI_SELECTOR) !== null) continue;
+    } catch {
+      continue;
+    }
     result.push(element as HTMLElement);
   }
   return result;

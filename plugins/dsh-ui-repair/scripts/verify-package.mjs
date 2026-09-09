@@ -7,6 +7,10 @@ const manifest = JSON.parse(
 
 assert.equal(manifest.name, "@yadsh/dsh-ui-repair");
 assert.equal(manifest.dsh?.client?.platform, "web");
+assert.deepEqual(manifest.dsh?.client?.inject, [
+  "@deepseek-ai/dsh-client-ui-settings",
+  "@deepseek-ai/dsh-client-ui-settings-plugins",
+]);
 for (const exportPath of [".", "./client", "./types", "./package.json"]) {
   assert.ok(Object.hasOwn(manifest.exports, exportPath), `missing export ${exportPath}`);
 }

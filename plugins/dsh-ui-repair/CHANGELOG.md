@@ -7,3 +7,5 @@
 - Add observe, suggest, and conservative auto modes with scoped CSS writes,
   layout stabilization, verification, history, and rollback.
 - Add targeted mutation rescans and unit/browser-bundle contract coverage.
+- Add a persistent `ui-repair` settings section and canonical plugin card.
+- Add selector/plugin/rule ignore policies and live runtime configuration.

@@ -33,6 +33,13 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
       "platform": "web"
     }
   },
@@ -70,18 +77,34 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "catalog:dsh"
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-settings": "catalog:dsh",
+    "react": "^18.2.0"
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
+    "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"
