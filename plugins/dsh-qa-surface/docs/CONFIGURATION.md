@@ -19,9 +19,16 @@ rules are:
   capability flags cannot be enabled;
 - `showReset` requires the independent `allowSessionReset` opt-in;
 - the tool policy is an allow-list; unknown configured tool names fail closed.
+  A name only resolves while its tool is actually mounted: MCP tools
+  (`mcp__<server>__*`) exist only while their server is reachable, so keep
+  them out of the allow list on hosts that cannot reach the server. Tools
+  mounted by an agent preset live in that preset's ancestor scope; the Host
+  validates and restricts the complete agent-scoped view, not just globals.
 
 Browser persistence stores only the DSH session id under
-`<storageKey>:v1:<route>:session`. Transcript content, credentials and tool
+`<storageKey>:v1:<route>:session`, plus — when `ui.showSessionList` is
+enabled — a per-browser chat index under `<storageKey>:v1:<route>:chats`
+(session ids only, capped at 50). Transcript content, credentials and tool
 results remain in the Host-owned DSH Session and are never copied to browser
 storage.
 
@@ -35,7 +42,11 @@ The browser cannot override lockdown settings. Before binding and immediately
 before every prompt, it requests a Host attestation for the selected session.
 Any unproved agent preset, workspace, model, permission bundle or tool policy
 disables Send with the generic message `Assistant configuration is
-unavailable.` Detailed mismatch facts are written only to Host logs.
+unavailable.` Detailed mismatch facts are written only to Host logs; the
+browser console additionally prints one line with a stable coarse reason code
+(`reason: unknown-tools`, `composition-mismatch`, `permission-preset`,
+`adoption-refused`, `proof-mismatch` or `attestation-failed`) plus an operator
+hint, so a refused surface can be diagnosed without Host log access.
 
 When adding tools, update the deployment's reviewed capability inventory as
 part of the same change. The package's

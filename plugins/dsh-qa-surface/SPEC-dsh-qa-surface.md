@@ -1052,6 +1052,23 @@ Benefits:
 
 ---
 
+### 15.1 Optional chat-history sidebar
+
+`ui.showSessionList` (default `false`) renders a minimal sidebar beside the
+conversation. Contract:
+
+- the index is per browser: localStorage `<storageKey>:v1:<route>:chats`,
+  session ids only, most recently used first, capped at 50;
+- rows are the index intersected with the Host session list, so shared-host
+  users never see each other's chats;
+- switching goes through the same bind + `secureSession` attestation path as
+  restore; a missing id is pruned and reported; an attestation failure keeps
+  the index entry and surfaces the generic configuration error;
+- `New chat` in the sidebar follows the same `allowSessionReset` gate as the
+  header control; the previous chat stays in the index;
+- the sidebar hides below 600px viewports and under `fixed` policy it renders
+  without the new-chat control and never switches.
+
 ## 16. Session creation / restore algorithm
 
 ### 16.1 `browser-persistent`
