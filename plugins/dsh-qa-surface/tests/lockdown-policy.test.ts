@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { qaToolDenial } from "../src/lockdown-policy.js";
+import { qaToolDenial, qaToolPolicyPlan } from "../src/lockdown-policy.js";
 
 describe("QA tool policy", () => {
   it("denies every tool under the default empty allow-list", () => {
@@ -21,5 +21,29 @@ describe("QA tool policy", () => {
         (name) => qaToolDenial(allowed, name) === undefined,
       ),
     ).toEqual(["knowledge.read"]);
+  });
+
+  it("retains preset-scoped tools in the applied restriction", () => {
+    const configured = ["glob", "read", "web_fetch"];
+    const presetView = new Set(configured);
+    const globalView = new Set<string>();
+
+    const plan = qaToolPolicyPlan(configured, (name) => presetView.has(name));
+
+    expect(plan.unknown).toEqual([]);
+    expect(plan.allow).toEqual(configured);
+    expect(plan.allow.filter((name) => globalView.has(name))).toEqual([]);
+  });
+
+  it("reports only names missing from the complete agent view", () => {
+    const plan = qaToolPolicyPlan(
+      ["read", "web_fetch"],
+      (name) => name === "read",
+    );
+
+    expect(plan).toEqual({
+      allow: ["read", "web_fetch"],
+      unknown: ["web_fetch"],
+    });
   });
 });

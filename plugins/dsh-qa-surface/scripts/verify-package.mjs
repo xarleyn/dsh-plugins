@@ -74,7 +74,9 @@ assert.match(host, /permissionPresets\.set/u);
 assert.match(host, /agentPresets\.composedPreset/u);
 assert.match(host, /\.tools\.restrict/u);
 assert.match(host, /\.tools\.guard/u);
-assert.match(host, /\.tools\.presentAs\("native"\)/u);
+assert.match(host, /qaToolPolicyPlan/u);
+assert.match(host, /allow:\s*policy\.allow/u);
+assert.doesNotMatch(host, /\.tools\.presentAs\("native"\)/u);
 assert.match(host, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
@@ -92,6 +94,9 @@ assert.match(client, /\.create\(/u);
 assert.match(client, /secureSession/u);
 assert.match(client, /Assistant configuration is unavailable\./u);
 assert.match(client, /dsh-qa-surface:v1|:v1:/u);
+assert.match(client, /dsh-qa-sidebar/u);
+assert.match(client, /Chat history/u);
+assert.match(client, /policy attestation failed \(reason:/u);
 assert.match(client, /data-dsh-qa-surface|dshQaSurface/u);
 assert.match(client, /position:fixed;inset:0/u);
 assert.match(client, /--dsw-specific-bubble/u);
@@ -104,6 +109,7 @@ assert.doesNotMatch(client, /chat\/completions|api\.openai\.com/u);
 assert.doesNotMatch(client, /toolResult\.content/u);
 assert.doesNotMatch(client, /\.command\(/u);
 assert.doesNotMatch(client, /\.rename\(/u);
+assert.doesNotMatch(client, /sessions\.delete|deleteSession/u);
 
 const capabilityPolicy = JSON.parse(
   await readFile(new URL("capability-policy.json", root), "utf8"),
