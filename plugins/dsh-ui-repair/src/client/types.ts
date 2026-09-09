@@ -12,8 +12,12 @@ export type {
 
 export type RepairIssueKind =
   | "icon-alignment"
+  | "icon-size-consistency"
+  | "unexpected-overflow-x"
   | "unexpected-overflow-y"
-  | "clipped-content";
+  | "clipped-content"
+  | "flex-shrink-anomaly"
+  | "missing-min-width-zero";
 
 export type RepairSeverity = "low" | "medium" | "high";
 
@@ -81,6 +85,7 @@ export interface UIRepairService {
   getRevision(): number;
   subscribe(listener: () => void): () => void;
   getHistory(): readonly RepairHistoryEntry[];
+  apply(repairId: string): Promise<boolean>;
   getMode(): RepairMode;
   setMode(mode: RepairMode): void;
   rollback(repairId: string): boolean;

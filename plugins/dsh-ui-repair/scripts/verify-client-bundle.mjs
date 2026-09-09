@@ -11,6 +11,11 @@ assert.match(
 assert.match(client, /data-dsh-ui-repair-scope/u);
 assert.match(client, /data-dsh-ui-repair-target/u);
 assert.match(client, /MutationObserver/u);
+for (const ruleId of ["R001", "R002", "R005", "R006", "R007", "R008", "R009"]) {
+  assert.match(client, new RegExp(`\\b${ruleId}\\b`, "u"));
+}
+assert.match(client, /data-dsh-ui-repair-scroll-x/u);
+assert.match(client, /Applying\.\.\./u);
 assert.match(client, /"settings\.plugin\.item"/u);
 assert.match(client, /key:\s*"ui-repair"/u);
 assert.match(client, /dsh-plugin-card__name/u);

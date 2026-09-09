@@ -31,10 +31,13 @@ export const styles = `${PLUGIN_CARD_SHELL_CSS}
 .uir-metric strong{font-size:16px;line-height:20px}
 .uir-metric span{color:var(--dsw-alias-label-tertiary);font-size:9px;text-transform:uppercase;letter-spacing:.03em}
 .uir-issues{display:grid;gap:6px;margin:0;padding:0;list-style:none}
-.uir-issue{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px;padding:8px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
+.uir-issue{display:grid;gap:7px;padding:8px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
+.uir-issue-summary{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:8px}
 .uir-rule{color:var(--dsw-alias-label-secondary);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .uir-target{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}
 .uir-confidence{color:var(--dsw-alias-label-tertiary)}
+.uir-suggestion{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary);font-size:10px}
+.uir-issue-actions{display:flex;flex-wrap:wrap;gap:6px}.uir-issue-actions .uir-button{min-height:28px;padding:0 9px}
 .uir-ignore-list{display:grid;gap:6px;margin:0;padding:0;list-style:none}
 .uir-ignore-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
 .uir-ignore-item code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}

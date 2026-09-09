@@ -60,11 +60,75 @@ export function scanOverflow(
   for (const element of collectElements(root, config.maxElementsPerRoot)) {
     if (element.clientHeight <= 0 || element.clientWidth <= 0) continue;
     const verticalExcess = element.scrollHeight - element.clientHeight;
-    if (verticalExcess <= config.overflowTolerancePx) continue;
-    const style = computedStyle(element);
-    if (style === undefined || scrollEnabled(style.overflowY)) continue;
-
     const horizontalExcess = element.scrollWidth - element.clientWidth;
+    const style = computedStyle(element);
+    if (style === undefined) continue;
+
+    if (
+      horizontalExcess > config.overflowTolerancePx &&
+      !scrollEnabled(style.overflowX)
+    ) {
+      const explicit = element.hasAttribute("data-dsh-ui-repair-scroll-x");
+      const sensitive = positionSensitiveDescendant(element, 80);
+      const confidence = clampConfidence(
+        0.73 +
+          (explicit ? 0.2 : 0) +
+          (!sensitive ? 0.04 : 0) +
+          (verticalExcess <= config.overflowTolerancePx ? 0.03 : 0),
+      );
+      const repairable = explicit && !sensitive;
+      const issue: RepairIssue = {
+        id: createId("R005", element),
+        ruleId: "R005",
+        kind: "unexpected-overflow-x",
+        severity: horizontalExcess >= 32 ? "high" : "medium",
+        confidence,
+        ...(plugin === undefined ? {} : { plugin }),
+        root: describeElement(root),
+        target: describeElement(element),
+        evidence: {
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+          horizontalExcess,
+          verticalExcess,
+          overflowX: style.overflowX,
+          explicitSafeScrollTarget: explicit,
+          positionSensitiveDescendant: sensitive,
+        },
+        ...(repairable ? { suggestedCss: { "overflow-x": "auto" } } : {}),
+      };
+      candidates.push({
+        issue,
+        root,
+        target: element,
+        verify: () => {
+          const after = computedStyle(element);
+          const afterVerticalExcess = element.scrollHeight - element.clientHeight;
+          const ok =
+            after !== undefined &&
+            scrollEnabled(after.overflowX) &&
+            afterVerticalExcess <= Math.max(0, verticalExcess);
+          return {
+            ok,
+            reason: ok
+              ? "horizontal content is reachable without new vertical overflow"
+              : "horizontal scroll ownership was not established safely",
+            evidence: {
+              overflowX: after?.overflowX ?? "unavailable",
+              verticalExcess: afterVerticalExcess,
+            },
+          };
+        },
+      });
+    }
+
+    if (
+      verticalExcess <= config.overflowTolerancePx ||
+      scrollEnabled(style.overflowY)
+    ) {
+      continue;
+    }
+
     const explicit = element.hasAttribute("data-dsh-ui-repair-scroll");
     const sensitive = positionSensitiveDescendant(element, 80);
     const nested = nestedScrollOwner(element, 80);

@@ -58,6 +58,106 @@ function sameIconSize(measurements: readonly IconMeasurement[]): boolean {
   );
 }
 
+function cssPixel(value: number): string {
+  return `${Math.round(value * 100) / 100}px`;
+}
+
+export function scanIconSizeConsistency(
+  root: HTMLElement,
+  config: UIRepairConfig,
+  createId: (ruleId: string, target: HTMLElement) => string,
+): readonly RepairCandidate[] {
+  const result: RepairCandidate[] = [];
+  const plugin = inferPlugin(root);
+  for (const parent of collectElements(root, config.maxElementsPerRoot)) {
+    const measurements = measureRows(parent);
+    if (measurements.length < 3) continue;
+    const dominantWidth = dominantPosition(
+      measurements.map(({ width }) => width),
+      1,
+    );
+    const dominantHeight = dominantPosition(
+      measurements.map(({ height }) => height),
+      1,
+    );
+    const outliers = measurements.filter(
+      ({ width, height }) =>
+        Math.abs(width - dominantWidth.center) > 1 ||
+        Math.abs(height - dominantHeight.center) > 1,
+    );
+    if (outliers.length === 0 || outliers.length >= measurements.length / 2) {
+      continue;
+    }
+    const explicit = parent.hasAttribute("data-dsh-ui-repair-row-group");
+    const clusterRatio =
+      Math.min(dominantWidth.members, dominantHeight.members) /
+      measurements.length;
+    const confidence = Math.min(
+      1,
+      Math.round(
+        (0.78 +
+          clusterRatio * 0.12 +
+          (outliers.length === 1 ? 0.04 : 0) +
+          (explicit ? 0.06 : 0)) *
+          100,
+      ) / 100,
+    );
+
+    for (const measurement of outliers) {
+      const issue: RepairIssue = {
+        id: createId("R002", measurement.icon),
+        ruleId: "R002",
+        kind: "icon-size-consistency",
+        severity: "medium",
+        confidence,
+        ...(plugin === undefined ? {} : { plugin }),
+        root: describeElement(root),
+        target: describeElement(measurement.icon),
+        evidence: {
+          group: describeElement(parent),
+          expectedWidth: dominantWidth.center,
+          expectedHeight: dominantHeight.center,
+          actualWidth: measurement.width,
+          actualHeight: measurement.height,
+          groupSize: measurements.length,
+          dominantMembers: Math.min(
+            dominantWidth.members,
+            dominantHeight.members,
+          ),
+        },
+        suggestedCss: {
+          width: cssPixel(dominantWidth.center),
+          height: cssPixel(dominantHeight.center),
+        },
+      };
+      result.push({
+        issue,
+        root,
+        target: measurement.icon,
+        verify: () => {
+          const actual = measurement.icon.getBoundingClientRect();
+          const widthError = Math.abs(actual.width - dominantWidth.center);
+          const heightError = Math.abs(actual.height - dominantHeight.center);
+          const ok = widthError <= 1 && heightError <= 1;
+          return {
+            ok,
+            reason: ok
+              ? "icon joined the dominant size group"
+              : "icon dimensions remain inconsistent",
+            evidence: {
+              expectedWidth: dominantWidth.center,
+              expectedHeight: dominantHeight.center,
+              actualWidth: actual.width,
+              actualHeight: actual.height,
+            },
+          };
+        },
+      });
+    }
+  }
+  return result;
+}
+
 export function scanIconAlignment(
   root: HTMLElement,
   config: UIRepairConfig,

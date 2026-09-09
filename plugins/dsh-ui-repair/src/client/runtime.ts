@@ -1,7 +1,11 @@
 import { collectRoots, DEFAULT_ROOT_SELECTOR } from "./dom.js";
 import { waitForStableLayout } from "./geometry.js";
 import { RepairEngine } from "./repair/engine.js";
-import { scanIconAlignment } from "./scanner/alignment.js";
+import {
+  scanIconAlignment,
+  scanIconSizeConsistency,
+} from "./scanner/alignment.js";
+import { scanFlexConstraints } from "./scanner/flex.js";
 import { scanOverflow } from "./scanner/overflow.js";
 import type {
   RepairCandidate,
@@ -89,6 +93,7 @@ export class UIRepairRuntime implements UIRepairService {
   #started = false;
   #revision = 0;
   readonly #listeners = new Set<() => void>();
+  readonly #candidates = new Map<string, RepairCandidate>();
 
   constructor(
     document: Document,
@@ -166,6 +171,7 @@ export class UIRepairRuntime implements UIRepairService {
     const started = performance.now();
     const startedAt = new Date().toISOString();
     if (!this.#config.enabled) {
+      this.#candidates.clear();
       const report: ScanReport = {
         startedAt,
         durationMs: Math.round((performance.now() - started) * 100) / 100,
@@ -181,17 +187,28 @@ export class UIRepairRuntime implements UIRepairService {
       return report;
     }
     const roots = collectRoots(source, this.#config.rootSelector);
-    const candidates: RepairCandidate[] = [];
+    const detected: RepairCandidate[] = [];
     for (const root of roots) {
-      candidates.push(
+      detected.push(
         ...scanOverflow(root, this.#config, (ruleId, target) =>
           this.#idFor(ruleId, target),
         ),
         ...scanIconAlignment(root, this.#config, (ruleId, target) =>
           this.#idFor(ruleId, target),
         ),
+        ...scanIconSizeConsistency(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
+        ...scanFlexConstraints(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
       );
     }
+    this.#candidates.clear();
+    for (const candidate of detected) {
+      this.#candidates.set(candidate.issue.id, candidate);
+    }
+    const candidates = Array.from(this.#candidates.values());
 
     const applied: string[] = [];
     const rolledBack: string[] = [];
@@ -202,8 +219,7 @@ export class UIRepairRuntime implements UIRepairService {
     if (this.#config.mode === "auto") {
       for (const candidate of candidates) {
         const threshold =
-          candidate.issue.kind === "unexpected-overflow-y" ||
-          candidate.issue.kind === "clipped-content"
+          this.#isRisky(candidate.issue.ruleId)
             ? this.#config.dangerousConfidence
             : this.#config.autoConfidence;
         if (
@@ -214,24 +230,11 @@ export class UIRepairRuntime implements UIRepairService {
         ) {
           continue;
         }
-        try {
-          if (!this.#engine.apply(candidate)) continue;
+        const outcome = await this.#applyCandidate(candidate);
+        if (outcome !== "skipped") {
           applied.push(candidate.issue.id);
-          const stable = await waitForStableLayout(candidate.target);
-          const verification = stable
-            ? candidate.verify()
-            : { ok: false, reason: "layout did not stabilize" };
-          if (verification.ok) {
-            this.#engine.markVerified(candidate.issue.id, verification);
-          } else {
-            this.#engine.rollback(candidate.issue.id, verification);
-            rolledBack.push(candidate.issue.id);
-          }
-        } catch (error) {
-          this.#engine.rollback(candidate.issue.id, {
-            ok: false,
-            reason: `repair failed: ${String(error)}`,
-          });
+        }
+        if (outcome === "rolled-back") {
           rolledBack.push(candidate.issue.id);
         }
       }
@@ -278,6 +281,51 @@ export class UIRepairRuntime implements UIRepairService {
     return this.#engine.history();
   }
 
+  async apply(repairId: string): Promise<boolean> {
+    if (!this.#config.enabled || this.#config.mode !== "suggest") return false;
+    const knownCandidate = this.#candidates.get(repairId);
+    if (
+      knownCandidate === undefined ||
+      !knownCandidate.root.isConnected ||
+      !knownCandidate.target.isConnected
+    ) {
+      return false;
+    }
+    await this.scan(knownCandidate.root);
+    const candidate = this.#candidates.get(repairId);
+    if (
+      candidate === undefined ||
+      candidate.issue.suggestedCss === undefined ||
+      this.#isIgnored(candidate, this.#config.ignore) ||
+      !candidate.target.isConnected
+    ) {
+      return false;
+    }
+    const outcome = await this.#applyCandidate(candidate);
+    if (outcome === "skipped") return false;
+    if (this.#latestReport !== undefined) {
+      this.#latestReport = {
+        ...this.#latestReport,
+        applied: Array.from(
+          new Set([...this.#latestReport.applied, repairId]),
+        ),
+        rolledBack:
+          outcome === "rolled-back"
+            ? Array.from(
+                new Set([...this.#latestReport.rolledBack, repairId]),
+              )
+            : this.#latestReport.rolledBack,
+      };
+    }
+    this.#notify();
+    this.#logger.info("manual repair complete", {
+      repairId,
+      ruleId: candidate.issue.ruleId,
+      outcome,
+    });
+    return outcome === "verified";
+  }
+
   getMode(): RepairMode {
     return this.#config.mode;
   }
@@ -312,6 +360,34 @@ export class UIRepairRuntime implements UIRepairService {
   #notify(): void {
     this.#revision += 1;
     for (const listener of this.#listeners) listener();
+  }
+
+  #isRisky(ruleId: RepairCandidate["issue"]["ruleId"]): boolean {
+    return ruleId === "R005" || ruleId === "R006" || ruleId === "R007";
+  }
+
+  async #applyCandidate(
+    candidate: RepairCandidate,
+  ): Promise<"verified" | "rolled-back" | "skipped"> {
+    try {
+      if (!this.#engine.apply(candidate)) return "skipped";
+      const stable = await waitForStableLayout(candidate.target);
+      const verification = stable
+        ? candidate.verify()
+        : { ok: false, reason: "layout did not stabilize" };
+      if (verification.ok) {
+        this.#engine.markVerified(candidate.issue.id, verification);
+        return "verified";
+      }
+      this.#engine.rollback(candidate.issue.id, verification);
+      return "rolled-back";
+    } catch (error) {
+      this.#engine.rollback(candidate.issue.id, {
+        ok: false,
+        reason: `repair failed: ${String(error)}`,
+      });
+      return "rolled-back";
+    }
   }
 
   #idFor(ruleId: string, target: HTMLElement): string {

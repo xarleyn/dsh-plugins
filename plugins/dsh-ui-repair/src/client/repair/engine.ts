@@ -23,7 +23,16 @@ function safeRepairId(value: string): string {
 
 function serializeDeclaration(property: string, value: string): string {
   if (property === "overflow-y" && value === "auto") return "overflow-y:auto";
+  if (property === "overflow-x" && value === "auto") return "overflow-x:auto";
   if (property === "min-height" && value === "0px") return "min-height:0px";
+  if (property === "min-width" && value === "0px") return "min-width:0px";
+  if (property === "flex-shrink" && value === "0") return "flex-shrink:0";
+  if (
+    (property === "width" || property === "height") &&
+    /^\d+(?:\.\d+)?px$/u.test(value)
+  ) {
+    return `${property}:${value}`;
+  }
   if (
     property === "translate" &&
     /^-?\d+(?:\.\d+)?px 0$/u.test(value)
