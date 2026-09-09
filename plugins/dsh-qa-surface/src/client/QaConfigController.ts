@@ -26,7 +26,8 @@ export class QaConfigController {
   private snapshot: QaConfigSnapshot;
   private readonly unsubscribe: () => void;
   private readonly fallback: QaConfigFallback | undefined;
-  private fallbackState: "idle" | "pending" | "ready" | "failed" = "idle";
+  private fallbackState:
+    "idle" | "pending" | "ready" | "refreshing" | "failed" = "idle";
   private fallbackConfig: ResolvedQaSurfaceConfig | undefined;
   private disposed = false;
 
@@ -63,7 +64,11 @@ export class QaConfigController {
       };
     }
     if (settings.status === "unavailable") {
-      if (this.fallbackState === "ready" && this.fallbackConfig !== undefined) {
+      if (
+        (this.fallbackState === "ready" ||
+          this.fallbackState === "refreshing") &&
+        this.fallbackConfig !== undefined
+      ) {
         return {
           status: "ready",
           config: this.fallbackConfig,
@@ -114,6 +119,48 @@ export class QaConfigController {
     }
     this.snapshot = next;
     for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Re-read the Host configuration after a Host reconnect. Without this, an
+   * open page keeps the configuration it fetched at load time: after the Host
+   * restarts with a changed deployment config, the next attestation compares
+   * its proof against the stale client copy and refuses. While re-reading,
+   * the previous answer stays projected — no loading flicker; the snapshot
+   * updates only when the answer actually changed.
+   */
+  refreshFallback(): void {
+    if (
+      this.disposed ||
+      this.fallback === undefined ||
+      this.fallbackState === "idle" ||
+      this.fallbackState === "pending" ||
+      this.scope.getSnapshot().status === "ready"
+    ) {
+      return;
+    }
+    this.fallbackState = "refreshing";
+    void this.fallback().then(
+      (config) => {
+        if (this.disposed) return;
+        try {
+          this.fallbackConfig = resolveConfig(config);
+        } catch {
+          // A malformed answer must not wipe a working previous one.
+        }
+        this.fallbackState = "ready";
+        // refresh() keeps the old projection when the answer is unchanged.
+        this.refresh();
+      },
+      (error: unknown) => {
+        if (this.disposed) return;
+        console.warn(
+          "dsh-qa-surface: Host configuration refresh failed",
+          error,
+        );
+        this.fallbackState = "ready";
+      },
+    );
   }
 
   /**

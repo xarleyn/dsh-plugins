@@ -30,6 +30,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       showReasoning: false,
       renderMarkdown: true,
       maxContentWidth: 900,
+      showSessionList: false,
     }),
     suggestedQuestions: Object.freeze([]),
     interaction: Object.freeze({
@@ -259,6 +260,9 @@ export function resolveConfig(
       renderMarkdown:
         input.ui?.renderMarkdown ?? DEFAULT_QA_SURFACE_CONFIG.ui.renderMarkdown,
       maxContentWidth,
+      showSessionList:
+        input.ui?.showSessionList ??
+        DEFAULT_QA_SURFACE_CONFIG.ui.showSessionList,
     }),
     suggestedQuestions: uniqueQuestions(input.suggestedQuestions ?? []),
     interaction: Object.freeze({

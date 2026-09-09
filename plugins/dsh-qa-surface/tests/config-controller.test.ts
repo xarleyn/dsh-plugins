@@ -170,3 +170,59 @@ describe("qa config controller", () => {
     expect(controller.getSnapshot().status).toBe("loading");
   });
 });
+
+describe("qa config controller reconnect refresh", () => {
+  it("re-reads the Host config on refresh and swaps only on change", async () => {
+    let answer = resolveConfig({ branding: { title: "Before" } });
+    const describe = vi.fn(async () => answer);
+    const controller = new QaConfigController(
+      new FakeScope({ status: "unavailable" }).asScope(),
+      describe,
+    );
+    await settled();
+    expect(controller.getSnapshot().config.branding.title).toBe("Before");
+    // Same answer: the snapshot keeps the previous config reference.
+    await controller.refreshFallback();
+    await settled();
+    expect(describe).toHaveBeenCalledTimes(2);
+    expect(controller.getSnapshot().status).toBe("ready");
+    expect(controller.getSnapshot().config.branding.title).toBe("Before");
+    // Changed answer: the snapshot adopts the new config without a loading hop.
+    answer = resolveConfig({ branding: { title: "After" } });
+    await controller.refreshFallback();
+    await settled();
+    expect(controller.getSnapshot().status).toBe("ready");
+    expect(controller.getSnapshot().config.branding.title).toBe("After");
+    controller.dispose();
+  });
+
+  it("keeps the previous config when the refresh fails", async () => {
+    let fail = false;
+    const describe = vi.fn(async () => {
+      if (fail) throw new Error("host is restarting");
+      return resolveConfig({ branding: { title: "Kept" } });
+    });
+    const controller = new QaConfigController(
+      new FakeScope({ status: "unavailable" }).asScope(),
+      describe,
+    );
+    await settled();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    fail = true;
+    await controller.refreshFallback();
+    await settled();
+    expect(controller.getSnapshot().status).toBe("ready");
+    expect(controller.getSnapshot().config.branding.title).toBe("Kept");
+    warn.mockRestore();
+    controller.dispose();
+  });
+
+  it("does not refresh while the settings namespace is authoritative", async () => {
+    const describe = vi.fn(async () => resolveConfig({}));
+    const scope = new FakeScope({ status: "ready" });
+    const controller = new QaConfigController(scope.asScope(), describe);
+    await controller.refreshFallback();
+    expect(describe).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+});

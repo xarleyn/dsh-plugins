@@ -50,6 +50,46 @@ const EMPTY_STATE: QaSessionState = Object.freeze({
   canStop: false,
 });
 
+/** Cap on the per-browser chat index so localStorage cannot grow unbounded. */
+const MAX_INDEXED_CHATS = 50;
+
+/** The `(reason: <code>)` marker the Host folds into attestation wire failures. */
+const ATTESTATION_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
+
+/**
+ * Extract the coarse attestation reason code from a Host wire failure, if the
+ * failure carries the marker. The specific mismatch facts stay in the Host
+ * logs; this code only tells the operator which class of check refused.
+ */
+export function attestationReasonOf(
+  failure:
+    | {
+        readonly message?: string;
+      }
+    | undefined
+    | null,
+): string | null {
+  const match = ATTESTATION_REASON_MARKER.exec(failure?.message ?? "");
+  const reason = match?.[1];
+  return reason === undefined ? null : reason;
+}
+
+function attestationHint(reason: string | null): string {
+  if (reason === "unknown-tools") {
+    return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
+  }
+  if (reason === "composition-mismatch") {
+    return "The session's agent preset, workspace or model no longer matches the deployment QA config.";
+  }
+  if (reason === "permission-preset") {
+    return "The configured permission preset did not resolve to the pinned sandbox/approval policy.";
+  }
+  if (reason === "adoption-refused") {
+    return "This browser tried to adopt a session created outside the current QA policy.";
+  }
+  return "The specific mismatch facts are written to the Host logs.";
+}
+
 class QaPolicyAttestationError extends Error {
   constructor() {
     super("QA session policy could not be attested.");
@@ -168,7 +208,11 @@ export class QaSessionController {
       return false;
     }
     this.operationError = null;
-    if (!(await this.attestPolicy())) return false;
+    let attested = await this.attestPolicy();
+    if (!attested) {
+      attested = await this.recoverForSend();
+      if (!attested) return false;
+    }
     this.admissionPending = true;
     this.publish();
     try {
@@ -244,6 +288,69 @@ export class QaSessionController {
     }
   }
 
+  /**
+   * Open one of this browser's indexed chats. The id must be present in the
+   * host session list and pass policy attestation; an unknown id is forgotten
+   * from the index. Fixed-policy deployments cannot switch.
+   */
+  async switchTo(sessionId: string): Promise<void> {
+    if (this.disposed || this.config.session.policy === "fixed") return;
+    if (
+      this.session !== undefined &&
+      String(this.session.sessionId) === sessionId
+    )
+      return;
+    const operation = ++this.generation;
+    this.unbind();
+    this.operationError = null;
+    this.admissionPending = false;
+    this.policyReady = false;
+    this.state = { ...EMPTY_STATE, phase: "creating" };
+    this.emit();
+    try {
+      await this.waitForConnection();
+      const list = await waitFor(
+        this.sessions.list,
+        (snapshot) => snapshot.phase === "ready",
+        this.timeoutMs,
+      );
+      if (this.disposed || operation !== this.generation) return;
+      if (!Object.hasOwn(list.byId, sessionId as SessionId)) {
+        this.forgetChat(sessionId);
+        throw new Error("This chat is no longer available.");
+      }
+      await this.bind(sessionId);
+      if (this.disposed || operation !== this.generation) return;
+      this.persist(sessionId);
+    } catch (error) {
+      this.fail(
+        this.operationError === "Assistant configuration is unavailable."
+          ? this.operationError
+          : "Unable to open that chat.",
+        error,
+      );
+    }
+  }
+
+  /** This browser's indexed chat ids, most recently used first. */
+  chatIds(): readonly string[] {
+    try {
+      const raw = this.storage?.getItem(this.chatIndexKey()) ?? "[]";
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return [
+        ...new Set(parsed.filter((id): id is string => typeof id === "string")),
+      ].slice(0, MAX_INDEXED_CHATS);
+    } catch {
+      return [];
+    }
+  }
+
+  /** The bound session id, or null while no chat is bound. */
+  activeSessionId(): string | null {
+    return this.session === undefined ? null : String(this.session.sessionId);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -284,8 +391,11 @@ export class QaSessionController {
         id = await this.createSession();
       }
       if (this.disposed || operation !== this.generation) return;
+      // A restored id's first bind stays quiet: the recovery path below may
+      // replace it. A freshly created session must report a refusal at once —
+      // it is the deployment's only chance to learn the reason.
       try {
-        await this.bind(id, false);
+        await this.bind(id, !restored);
       } catch (error) {
         if (
           !restored ||
@@ -314,6 +424,67 @@ export class QaSessionController {
           : "Unable to start a chat.",
         error,
       );
+    }
+  }
+
+  /**
+   * Recovery ladder after a refused send-time attestation. The prompt was
+   * never admitted, so nothing here can duplicate it. Step 1 re-opens the
+   * session: a Host that idled the agent out dismantles its tool view, and
+   * re-opening re-materializes it. Step 2 — when that refused session is
+   * still blank (it never received the prompt, so there is nothing to lose) —
+   * starts a fresh attested session instead. A session with history is left
+   * alone: recreating it would silently drop the conversation.
+   */
+  private async recoverForSend(): Promise<boolean> {
+    const id =
+      this.session === undefined ? null : String(this.session.sessionId);
+    if (
+      id === null ||
+      this.disposed ||
+      this.config.session.policy === "fixed"
+    ) {
+      return false;
+    }
+    const operation = ++this.generation;
+    this.unbind();
+    this.admissionPending = false;
+    this.policyReady = false;
+    this.state = { ...this.state, phase: "creating" };
+    this.emit();
+    try {
+      await this.waitForConnection();
+      try {
+        await this.bind(id);
+        if (this.disposed || operation !== this.generation) return false;
+        if (this.policyReady) return true;
+      } catch (error) {
+        if (!(error instanceof QaPolicyAttestationError)) throw error;
+        if (this.disposed || operation !== this.generation) return false;
+      }
+      if (this.session !== undefined && !this.session.getSnapshot().blank) {
+        this.fail(
+          "Assistant configuration is unavailable.",
+          new QaPolicyAttestationError(),
+        );
+        return false;
+      }
+      this.unbind();
+      this.clearPersisted();
+      const created = await this.createSession();
+      if (this.disposed || operation !== this.generation) return false;
+      await this.bind(created);
+      if (this.disposed || operation !== this.generation) return false;
+      this.persist(created);
+      return this.policyReady;
+    } catch (error) {
+      this.fail(
+        this.operationError === "Assistant configuration is unavailable."
+          ? this.operationError
+          : "Unable to open that chat.",
+        error,
+      );
+      return false;
     }
   }
 
@@ -390,6 +561,7 @@ export class QaSessionController {
     if (!(await this.attestPolicy(reportAttestationFailure))) {
       throw new QaPolicyAttestationError();
     }
+    this.recordChat(String(this.session.sessionId));
     this.publish();
   }
 
@@ -458,7 +630,11 @@ export class QaSessionController {
   }
 
   private fail(message: string, error: unknown): void {
-    console.error("dsh-qa-surface: session operation failed", error);
+    // Policy attestation refusals already logged their precise reason; a
+    // second stack trace for the wrapper error is only console noise.
+    if (!(error instanceof QaPolicyAttestationError)) {
+      console.error("dsh-qa-surface: session operation failed", error);
+    }
     if (this.disposed) return;
     this.operationError = message;
     this.state = {
@@ -477,13 +653,30 @@ export class QaSessionController {
     }
     this.policyReady = false;
     this.publish();
+    // One precise console diagnostic per refusal: the coarse Host reason code
+    // plus an operator hint. The QA-facing message stays generic by design.
+    const reject = (reason: string | null): false => {
+      if (reportFailure) {
+        console.error(
+          `dsh-qa-surface: policy attestation failed (reason: ${reason ?? "unknown"}). ${attestationHint(reason)}`,
+        );
+      }
+      this.policyReady = false;
+      this.operationError = "Assistant configuration is unavailable.";
+      this.publish();
+      return false;
+    };
     try {
       const result = await this.secureSessionRemote(
         String(this.session.sessionId),
       );
-      const proof = result.ok ? result.value : undefined;
+      if (!result.ok) {
+        return reject(
+          attestationReasonOf(result.error as { readonly message?: string }),
+        );
+      }
+      const proof = result.value;
       const valid =
-        proof !== undefined &&
         proof.sessionId === String(this.session.sessionId) &&
         proof.enabled &&
         proof.agentPresetMatches &&
@@ -495,14 +688,17 @@ export class QaSessionController {
         proof.toolPolicyLoaded &&
         JSON.stringify(proof.toolAllowList) ===
           JSON.stringify(this.config.lockdown.toolPolicy.allow);
-      if (!valid) throw new Error("Host policy proof did not match QA config.");
+      if (!valid) return reject("proof-mismatch");
       this.policyReady = true;
       this.operationError = null;
       this.publish();
       return true;
     } catch (error) {
       if (reportFailure) {
-        console.error("dsh-qa-surface: lockdown attestation failed", error);
+        console.error(
+          "dsh-qa-surface: policy attestation request failed",
+          error,
+        );
       }
       this.policyReady = false;
       this.operationError = "Assistant configuration is unavailable.";
@@ -513,6 +709,32 @@ export class QaSessionController {
 
   private storageKey(): string {
     return `${this.config.session.storageKey}:v1:${this.config.route.path}:session`;
+  }
+
+  private chatIndexKey(): string {
+    return `${this.config.session.storageKey}:v1:${this.config.route.path}:chats`;
+  }
+
+  /** Move one chat to the front of this browser's index, capping the list. */
+  private recordChat(sessionId: string): void {
+    try {
+      const next = [
+        sessionId,
+        ...this.chatIds().filter((id) => id !== sessionId),
+      ].slice(0, MAX_INDEXED_CHATS);
+      this.storage?.setItem(this.chatIndexKey(), JSON.stringify(next));
+    } catch {
+      // A denied localStorage write must not prevent the bound chat.
+    }
+  }
+
+  private forgetChat(sessionId: string): void {
+    try {
+      const next = this.chatIds().filter((id) => id !== sessionId);
+      this.storage?.setItem(this.chatIndexKey(), JSON.stringify(next));
+    } catch {
+      // A denied localStorage removal is harmless; the id is revalidated later.
+    }
   }
 
   private readPersisted(): string | null {

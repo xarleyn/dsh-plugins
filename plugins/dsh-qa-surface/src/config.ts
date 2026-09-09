@@ -59,6 +59,7 @@ const configSchema = z.object({
       showReasoning: z.boolean().default(false),
       renderMarkdown: z.boolean().default(true),
       maxContentWidth: z.number().step(1).min(480).max(1600).default(900),
+      showSessionList: z.boolean().default(false),
     })
     .default({
       showHeader: true,
@@ -69,6 +70,7 @@ const configSchema = z.object({
       showReasoning: false,
       renderMarkdown: true,
       maxContentWidth: 900,
+      showSessionList: false,
     }),
   suggestedQuestions: z.array(z.string()).default([]),
   interaction: z

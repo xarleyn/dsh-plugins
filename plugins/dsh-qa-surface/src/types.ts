@@ -35,6 +35,7 @@ export interface QaSurfaceConfig {
     readonly showReasoning?: boolean;
     readonly renderMarkdown?: boolean;
     readonly maxContentWidth?: number;
+    readonly showSessionList?: boolean;
   };
   readonly suggestedQuestions?: readonly string[];
   readonly interaction?: {
@@ -98,6 +99,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly showReasoning: boolean;
     readonly renderMarkdown: boolean;
     readonly maxContentWidth: number;
+    readonly showSessionList: boolean;
   };
   readonly suggestedQuestions: readonly string[];
   readonly interaction: {
