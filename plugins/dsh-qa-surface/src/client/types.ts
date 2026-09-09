@@ -37,4 +37,5 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   canSend: false,
   canStop: false,
   chatsRevision: 0,
+  sources: Object.freeze([]),
 });

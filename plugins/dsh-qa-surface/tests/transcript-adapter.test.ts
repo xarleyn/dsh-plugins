@@ -1,6 +1,10 @@
 import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-runtime/client";
 import { describe, expect, it } from "vitest";
-import { projectTranscript } from "../src/client/QaTranscriptAdapter.js";
+import {
+  projectSources,
+  projectTranscript,
+  QA_REGENERATE_MARKER,
+} from "../src/client/QaTranscriptAdapter.js";
 
 function snapshot(
   overrides: Partial<ConversationSnapshot> = {},
@@ -362,5 +366,169 @@ describe("transcript projection", () => {
     expect(
       untimed?.role === "assistant" ? untimed.stats : "present",
     ).toBeUndefined();
+  });
+
+  it("hides the regeneration marker and labels answers with their turn", () => {
+    const messages = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "user",
+            seq: 1,
+            time: 1_000,
+            source: {},
+            content: [{ type: "text", text: "Вопрос" }],
+          },
+          {
+            kind: "assistant",
+            seq: 2,
+            time: 2_000,
+            turn: 1,
+            step: 1,
+            blocks: [{ kind: "text", text: "Первый вариант" }],
+          },
+          {
+            kind: "user",
+            seq: 3,
+            time: 3_000,
+            source: {},
+            content: [{ type: "text", text: QA_REGENERATE_MARKER }],
+          },
+          {
+            kind: "assistant",
+            seq: 4,
+            time: 4_000,
+            turn: 2,
+            step: 1,
+            blocks: [{ kind: "text", text: "Второй вариант" }],
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(messages.map((message) => message.role)).toEqual([
+      "user",
+      "assistant",
+      "assistant",
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("Перегенерируй");
+    expect(
+      messages.filter(
+        (message) => message.role === "assistant" && message.turn === 2,
+      ).length,
+    ).toBe(1);
+  });
+
+  it("projects fetched pages, searches and files as deduplicated sources", () => {
+    const toolResult = (
+      seq: number,
+      callId: string,
+      call: { name: string; argsRaw: string } | null,
+      text: string,
+    ) => ({
+      kind: "tool-result" as const,
+      seq,
+      time: seq * 10,
+      callId,
+      call,
+      callTime: null,
+      content: [{ type: "text" as const, text }],
+      isError: false,
+      callView: null,
+      resultView: null,
+      subCalls: [],
+    });
+    const sources = projectSources(
+      snapshot({
+        nodes: [
+          toolResult(
+            1,
+            "c1",
+            {
+              name: "web_fetch",
+              argsRaw: '{"url":"https://github.com/x/y"}',
+            },
+            "Первые строки страницы\nвторая строка",
+          ),
+          toolResult(
+            2,
+            "c2",
+            {
+              name: "web_search",
+              argsRaw: '{"query":"dsh plugin api"}',
+            },
+            'Результаты поиска "dsh plugin api"',
+          ),
+          toolResult(
+            3,
+            "c1",
+            {
+              name: "web_fetch",
+              argsRaw: '{"url":"https://github.com/x/y"}',
+            },
+            "дубль",
+          ),
+          toolResult(
+            4,
+            "c3",
+            {
+              name: "read",
+              argsRaw: '{"file_path":"D:/repo/src/a.ts"}',
+            },
+            "export const a = 1",
+          ),
+          toolResult(
+            5,
+            "c4",
+            {
+              name: "bash",
+              argsRaw: '{"command":"ls"}',
+            },
+            "не источник",
+          ),
+        ] as ConversationSnapshot["nodes"],
+        runningCalls: [
+          {
+            callId: "c5",
+            name: "web_fetch",
+            argsRaw: '{"url":"https://example.com"}',
+            turn: 1,
+            step: 1,
+            time: 60,
+            callView: null,
+            subCalls: [],
+          },
+        ],
+      }),
+    );
+    expect(sources).toEqual([
+      {
+        id: "source:c1",
+        kind: "web",
+        target: "https://github.com/x/y",
+        title: "github.com",
+        snippet: "Первые строки страницы",
+      },
+      {
+        id: "source:c2",
+        kind: "search",
+        target: "dsh plugin api",
+        title: "dsh plugin api",
+        snippet: 'Результаты поиска "dsh plugin api"',
+      },
+      {
+        id: "source:c3",
+        kind: "file",
+        target: "D:/repo/src/a.ts",
+        title: "a.ts",
+        snippet: "export const a = 1",
+      },
+      {
+        id: "source:c5",
+        kind: "web",
+        target: "https://example.com",
+        title: "example.com",
+        snippet: "",
+      },
+    ]);
   });
 });

@@ -20,7 +20,11 @@ import type {
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { waitFor } from "./wait-for.js";
-import { projectTranscript } from "./QaTranscriptAdapter.js";
+import { projectSources } from "./QaTranscriptAdapter.js";
+import {
+  projectTranscript,
+  QA_REGENERATE_MARKER,
+} from "./QaTranscriptAdapter.js";
 
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
@@ -142,6 +146,17 @@ export class QaSessionController {
       this.publish();
       return false;
     }
+  }
+
+  /**
+   * Ask for a fresh variant of the previous answer. The session has no
+   * truncation seam, so this sends the hidden regeneration instruction as an
+   * ordinary prompt: the model produces a follow-up turn, the projection
+   * hides the marker message, and the consecutive turns read as variants of
+   * the original question (switched in the surface).
+   */
+  async regenerate(): Promise<boolean> {
+    return this.send(QA_REGENERATE_MARKER);
   }
 
   async stop(): Promise<void> {
@@ -613,6 +628,7 @@ export class QaSessionController {
       canStop:
         connected && snapshot.running && this.config.ui.showStop && !blocked,
       chatsRevision: this.chatsRevision,
+      sources: projectSources(snapshot),
     };
     this.emit();
   }

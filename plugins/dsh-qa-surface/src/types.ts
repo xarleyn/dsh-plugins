@@ -159,6 +159,8 @@ export type QaMessage =
       readonly text: string;
       readonly status: "streaming" | "committed" | "failed";
       readonly timestamp?: number;
+      /** Host turn this answer belongs to; groups regenerations into variants. */
+      readonly turn?: number;
       /** Host-recorded response timing, present on finalized messages only. */
       readonly stats?: {
         /** step start → final message. */
@@ -215,6 +217,16 @@ export type QaSessionPhase =
   | "blocked"
   | "error";
 
+/** One tool-derived source shown in the sources drawer. */
+export interface QaSource {
+  readonly id: string;
+  readonly kind: "web" | "search" | "file";
+  /** URL, filesystem path or search query as the model supplied it. */
+  readonly target: string;
+  readonly title: string;
+  readonly snippet: string;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -224,4 +236,6 @@ export interface QaSessionState {
   readonly canStop: boolean;
   /** Bumped whenever this browser's chat index changes (add/forget). */
   readonly chatsRevision: number;
+  /** Tool-derived sources of the current chat (web targets and files read). */
+  readonly sources: readonly QaSource[];
 }
