@@ -5,9 +5,17 @@ import {
   scanIconAlignment,
   scanIconSizeConsistency,
 } from "./scanner/alignment.js";
+import {
+  scanOutsideParent,
+  scanTextOverflow,
+} from "./scanner/containment.js";
 import { scanFlexConstraints } from "./scanner/flex.js";
 import { scanOverflow } from "./scanner/overflow.js";
 import { scanRowAlignment } from "./scanner/rows.js";
+import {
+  scanGapConsistency,
+  scanPaddingConsistency,
+} from "./scanner/spacing.js";
 import type {
   RepairCandidate,
   RepairHistoryEntry,
@@ -225,6 +233,18 @@ export class UIRepairRuntime implements UIRepairService {
         ...scanRowAlignment(root, this.#config, (ruleId, target) =>
           this.#idFor(ruleId, target),
         ),
+        ...scanGapConsistency(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
+        ...scanPaddingConsistency(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
+        ...scanTextOverflow(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
+        ...scanOutsideParent(root, this.#config, (ruleId, target) =>
+          this.#idFor(ruleId, target),
+        ),
       );
     }
     this.#observeResizeRoots(roots);
@@ -404,7 +424,13 @@ export class UIRepairRuntime implements UIRepairService {
   }
 
   #isRisky(ruleId: RepairCandidate["issue"]["ruleId"]): boolean {
-    return ruleId === "R005" || ruleId === "R006" || ruleId === "R007";
+    return (
+      ruleId === "R005" ||
+      ruleId === "R006" ||
+      ruleId === "R007" ||
+      ruleId === "R012" ||
+      ruleId === "R013"
+    );
   }
 
   async #applyCandidate(

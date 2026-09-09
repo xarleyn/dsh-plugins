@@ -24,6 +24,8 @@ This first implementation slice includes:
 - `R005`/`R006` unexpected horizontal and vertical overflow diagnostics;
 - `R007` clipped-content diagnostics;
 - `R008` flex-shrink and `R009` missing-min-width diagnostics;
+- `R010` icon-to-label gap and `R011` repeated-row padding diagnostics;
+- `R012` clipped text and `R013` outside-parent diagnostics;
 - `observe`, `suggest`, and conservative `auto` runtime modes;
 - persistent Host settings and a standard Plugin Configuration card;
 - persistent selector/plugin/rule ignore policies;
@@ -70,6 +72,12 @@ owner, `data-dsh-ui-repair-no-shrink` marks a flex item that must preserve its
 intrinsic width, and `data-dsh-ui-repair-min-width-zero` marks a flex/grid item
 that may shrink below its content width.
 
+Spacing repairs require `data-dsh-ui-repair-gap` or
+`data-dsh-ui-repair-padding` on the anomalous row. Text wrapping requires
+`data-dsh-ui-repair-text-wrap`; containment repairs require
+`data-dsh-ui-repair-contain`. Without these ownership markers, R010-R013 are
+reported but remain diagnosis-only.
+
 ## Browser API
 
 The browser module provides `ctx.uiRepair` for cooperating client plugins:
@@ -103,8 +111,8 @@ pnpm --filter @yadsh/dsh-ui-repair check
 The current tests cover detection without mutation, scoped vertical and
 horizontal overflow repair, sticky-content safety refusal, icon and row
 alignment/size outliers, flex constraints, plugin attribution, ResizeObserver,
-manual suggestions, verification, rollback, client lifecycle, and browser
-bundle identity.
+gap/padding consistency, text overflow, parent containment, manual suggestions,
+verification, rollback, client lifecycle, and browser bundle identity.
 
 ## Not implemented yet
 

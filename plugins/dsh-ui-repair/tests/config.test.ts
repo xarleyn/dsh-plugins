@@ -53,6 +53,10 @@ describe("UI Repair config", () => {
       "R007",
       "R008",
       "R009",
+      "R010",
+      "R011",
+      "R012",
+      "R013",
     ]);
     expect(
       ConfigSchema({ ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })) }).ignore,

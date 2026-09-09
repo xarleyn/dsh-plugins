@@ -19,7 +19,11 @@ export type RepairIssueKind =
   | "unexpected-overflow-y"
   | "clipped-content"
   | "flex-shrink-anomaly"
-  | "missing-min-width-zero";
+  | "missing-min-width-zero"
+  | "inconsistent-gap"
+  | "inconsistent-padding"
+  | "text-overflow"
+  | "element-outside-parent";
 
 export type RepairSeverity = "low" | "medium" | "high";
 

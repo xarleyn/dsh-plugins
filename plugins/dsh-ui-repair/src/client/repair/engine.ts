@@ -27,8 +27,19 @@ function serializeDeclaration(property: string, value: string): string {
   if (property === "min-height" && value === "0px") return "min-height:0px";
   if (property === "min-width" && value === "0px") return "min-width:0px";
   if (property === "flex-shrink" && value === "0") return "flex-shrink:0";
+  if (property === "max-width" && value === "100%") return "max-width:100%";
+  if (property === "white-space" && value === "normal") return "white-space:normal";
+  if (property === "overflow-wrap" && value === "anywhere") {
+    return "overflow-wrap:anywhere";
+  }
   if (
-    (property === "width" || property === "height") &&
+    (property === "width" ||
+      property === "height" ||
+      property === "column-gap" ||
+      property === "padding-top" ||
+      property === "padding-right" ||
+      property === "padding-bottom" ||
+      property === "padding-left") &&
     /^\d+(?:\.\d+)?px$/u.test(value)
   ) {
     return `${property}:${value}`;

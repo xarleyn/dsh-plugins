@@ -13,3 +13,5 @@
   R008, and R009 with opt-in guards for ambiguous layout ownership.
 - Add R003/R004 row diagnostics, bounded ResizeObserver rescans, and plugin
   attribution across common stable DOM metadata.
+- Add R010-R013 gap, padding, text-overflow, and parent-containment diagnostics
+  with explicit ownership markers for automatic repair.
