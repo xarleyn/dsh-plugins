@@ -6,8 +6,10 @@ path. Published DSH `0.1.1-rc.2` returns 404 for unknown frontend paths, so the
 route redirects navigation through the canonical `/` index with an encoded
 same-origin path marker. It also exposes one typed
 `secureSession(sessionId)` operation whose policy is read only from Host
-settings. It does not serve HTML, create another server, replace the frontend
-fallback, or touch API/plugin routes. The browser removes the
+settings. The entry delegates that operation to `QaPolicyAdmission`
+(`secure-session.ts`), the Host-side admission boundary. It does not serve
+HTML, create another server, replace the frontend fallback, or touch
+API/plugin routes. The browser removes the
 marker and restores the requested path with `history.replaceState` before
 route matching. The Host creates no sessions itself.
 
@@ -17,13 +19,18 @@ reversibly observes `pushState`, `replaceState` and `popstate`.
 
 `QaSessionController` is the only browser-side DSH session-coupled module. It uses
 `connection.api.sessions.create/selectModel` for creation policy and the public
-`SessionFace` for prompt, cancel and snapshots. `QaTranscriptAdapter` projects
-those snapshots to plugin-local messages. By default it excludes reasoning,
-tool arguments and tool results. When explicitly enabled, it correlates
-assistant blocks, paired tool results, running calls and turn timings into one
-plugin-local work group per turn; `QaWorkGroup` owns disclosure state and
-collapses the group when the turn completes. System context and raw failures
-remain excluded.
+`SessionFace` for prompt, cancel and snapshots; the shared client contracts and
+the idle state live in `client/types.ts`. Its supporting modules are pure
+helpers: `client/wait-for.ts` waits on observable stores, `client/chat-index.ts`
+(`QaChatIndex`) keeps the browser-local chat index and persisted active
+session in storage, and `client/attestation.ts` parses Host reason markers and
+validates proofs against the deployed lockdown config. `QaTranscriptAdapter`
+projects session snapshots to plugin-local messages. By default it excludes
+reasoning, tool arguments and tool results. When explicitly enabled, it
+correlates assistant blocks, paired tool results, running calls and turn
+timings into one plugin-local work group per turn; `QaWorkGroup` owns
+disclosure state and collapses the group when the turn completes. System
+context and raw failures remain excluded.
 
 In locked mode the Host operation verifies immutable session composition,
 refuses to adopt a non-QA session with user history, validates the named
