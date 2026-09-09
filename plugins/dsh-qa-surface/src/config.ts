@@ -13,17 +13,17 @@ const configSchema = z.object({
     .default({ path: "/qa", matchChildren: true }),
   branding: z
     .object({
-      title: z.string().default("Assistant"),
+      title: z.string().default("Помощник"),
       subtitle: z.string().default(""),
-      welcomeMessage: z.string().default("How can I help?"),
-      placeholder: z.string().default("Ask a question..."),
+      welcomeMessage: z.string().default("Чем могу помочь?"),
+      placeholder: z.string().default("Задайте вопрос…"),
       logoUrl: nullableString.default(null),
     })
     .default({
-      title: "Assistant",
+      title: "Помощник",
       subtitle: "",
-      welcomeMessage: "How can I help?",
-      placeholder: "Ask a question...",
+      welcomeMessage: "Чем могу помочь?",
+      placeholder: "Задайте вопрос…",
       logoUrl: null,
     }),
   session: z
@@ -72,7 +72,13 @@ const configSchema = z.object({
       maxContentWidth: 900,
       showSessionList: false,
     }),
-  suggestedQuestions: z.array(z.string()).default([]),
+  suggestedQuestions: z
+    .array(z.string())
+    .default([
+      "Что ты умеешь?",
+      "С чего начать?",
+      "Помоги разобраться с ошибкой",
+    ]),
   interaction: z
     .object({
       approvals: z.union(["blocked"] as const).default("blocked"),

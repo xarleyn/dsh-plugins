@@ -9,6 +9,11 @@ describe("qa surface config", () => {
   it("materializes safe defaults", () => {
     expect(resolveConfig()).toEqual(DEFAULT_QA_SURFACE_CONFIG);
     expect(resolveConfig().ui.showReasoning).toBe(false);
+    expect(resolveConfig().suggestedQuestions).toEqual([
+      "Что ты умеешь?",
+      "С чего начать?",
+      "Помоги разобраться с ошибкой",
+    ]);
     expect(resolveConfig()).toMatchObject({
       ui: { showReset: false },
       lockdown: {
@@ -65,6 +70,12 @@ describe("qa surface config", () => {
     });
     expect(config.session.workspaceId).toBe("workspace-1");
     expect(config.suggestedQuestions).toEqual(["First?"]);
+  });
+
+  it("allows the default quick questions to be disabled", () => {
+    expect(
+      resolveConfig({ suggestedQuestions: [] }).suggestedQuestions,
+    ).toEqual([]);
   });
 
   it("requires a named permission preset while lockdown is enabled", () => {

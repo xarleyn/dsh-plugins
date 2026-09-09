@@ -48,10 +48,12 @@ const EMPTY_STATE: QaSessionState = Object.freeze({
   error: null,
   canSend: false,
   canStop: false,
+  chatsRevision: 0,
 });
 
 /** Cap on the per-browser chat index so localStorage cannot grow unbounded. */
 const MAX_INDEXED_CHATS = 50;
+const CONFIGURATION_ERROR = "Настройки помощника недоступны.";
 
 /** The `(reason: <code>)` marker the Host folds into attestation wire failures. */
 const ATTESTATION_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
@@ -163,6 +165,7 @@ export class QaSessionController {
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
+  private chatsRevision = 0;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -202,8 +205,7 @@ export class QaSessionController {
       return false;
     }
     if (prompt.startsWith("/")) {
-      this.operationError =
-        "Slash commands are not available in this assistant view.";
+      this.operationError = "Команды со слешем недоступны в режиме помощника.";
       this.publish();
       return false;
     }
@@ -222,7 +224,7 @@ export class QaSessionController {
       );
       if (!result.ok) {
         this.admissionPending = false;
-        this.operationError = "Your message could not be sent.";
+        this.operationError = "Не удалось отправить сообщение.";
         this.publish();
         return false;
       }
@@ -231,7 +233,7 @@ export class QaSessionController {
     } catch (error) {
       this.admissionPending = false;
       console.error("dsh-qa-surface: prompt failed", error);
-      this.operationError = "Your message could not be sent.";
+      this.operationError = "Не удалось отправить сообщение.";
       this.publish();
       return false;
     }
@@ -241,11 +243,10 @@ export class QaSessionController {
     if (this.session === undefined || !this.state.canStop) return;
     try {
       const result = await this.session.cancel();
-      if (!result.ok)
-        this.operationError = "The response could not be stopped.";
+      if (!result.ok) this.operationError = "Не удалось остановить ответ.";
     } catch (error) {
       console.error("dsh-qa-surface: stop failed", error);
-      this.operationError = "The response could not be stopped.";
+      this.operationError = "Не удалось остановить ответ.";
     }
     this.publish();
   }
@@ -269,7 +270,11 @@ export class QaSessionController {
     this.operationError = null;
     this.admissionPending = false;
     this.policyReady = false;
-    this.state = { ...EMPTY_STATE, phase: "creating" };
+    this.state = {
+      ...EMPTY_STATE,
+      chatsRevision: this.chatsRevision,
+      phase: "creating",
+    };
     this.emit();
     try {
       await this.waitForConnection();
@@ -280,9 +285,9 @@ export class QaSessionController {
       this.persist(id);
     } catch (error) {
       this.fail(
-        this.operationError === "Assistant configuration is unavailable."
+        this.operationError === CONFIGURATION_ERROR
           ? this.operationError
-          : "Unable to start a new chat.",
+          : "Не удалось начать новый чат.",
         error,
       );
     }
@@ -305,7 +310,11 @@ export class QaSessionController {
     this.operationError = null;
     this.admissionPending = false;
     this.policyReady = false;
-    this.state = { ...EMPTY_STATE, phase: "creating" };
+    this.state = {
+      ...EMPTY_STATE,
+      chatsRevision: this.chatsRevision,
+      phase: "creating",
+    };
     this.emit();
     try {
       await this.waitForConnection();
@@ -317,16 +326,16 @@ export class QaSessionController {
       if (this.disposed || operation !== this.generation) return;
       if (!Object.hasOwn(list.byId, sessionId as SessionId)) {
         this.forgetChat(sessionId);
-        throw new Error("This chat is no longer available.");
+        throw new Error("Этот чат больше недоступен.");
       }
       await this.bind(sessionId);
       if (this.disposed || operation !== this.generation) return;
       this.persist(sessionId);
     } catch (error) {
       this.fail(
-        this.operationError === "Assistant configuration is unavailable."
+        this.operationError === CONFIGURATION_ERROR
           ? this.operationError
-          : "Unable to open that chat.",
+          : "Не удалось открыть этот чат.",
         error,
       );
     }
@@ -351,6 +360,25 @@ export class QaSessionController {
     return this.session === undefined ? null : String(this.session.sessionId);
   }
 
+  /**
+   * Remove one chat from this browser's index. Deleting the chat that is
+   * currently open also forgets the persisted id and starts a fresh attested
+   * session (when the deployment allows session resets); the Host-side
+   * session itself is not touched — no host deletion seam exists.
+   */
+  async deleteChat(id: string): Promise<void> {
+    this.forgetChat(id);
+    this.chatsRevision += 1;
+    if (
+      this.activeSessionId() === id &&
+      this.config.session.policy !== "fixed"
+    ) {
+      await this.reset();
+      return;
+    }
+    this.publish();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -362,7 +390,11 @@ export class QaSessionController {
 
   private async ensureSessionNow(): Promise<void> {
     const operation = ++this.generation;
-    this.state = { ...EMPTY_STATE, phase: "creating" };
+    this.state = {
+      ...EMPTY_STATE,
+      chatsRevision: this.chatsRevision,
+      phase: "creating",
+    };
     this.emit();
     try {
       await this.waitForConnection();
@@ -419,9 +451,9 @@ export class QaSessionController {
       if (this.config.session.policy === "browser-persistent") this.persist(id);
     } catch (error) {
       this.fail(
-        this.operationError === "Assistant configuration is unavailable."
+        this.operationError === CONFIGURATION_ERROR
           ? this.operationError
-          : "Unable to start a chat.",
+          : "Не удалось начать чат.",
         error,
       );
     }
@@ -463,10 +495,7 @@ export class QaSessionController {
         if (this.disposed || operation !== this.generation) return false;
       }
       if (this.session !== undefined && !this.session.getSnapshot().blank) {
-        this.fail(
-          "Assistant configuration is unavailable.",
-          new QaPolicyAttestationError(),
-        );
+        this.fail(CONFIGURATION_ERROR, new QaPolicyAttestationError());
         return false;
       }
       this.unbind();
@@ -479,9 +508,9 @@ export class QaSessionController {
       return this.policyReady;
     } catch (error) {
       this.fail(
-        this.operationError === "Assistant configuration is unavailable."
+        this.operationError === CONFIGURATION_ERROR
           ? this.operationError
-          : "Unable to open that chat.",
+          : "Не удалось открыть этот чат.",
         error,
       );
       return false;
@@ -599,9 +628,9 @@ export class QaSessionController {
     const error =
       this.operationError ??
       (blocked
-        ? "This request requires an interaction that is not available in this assistant view."
+        ? "Для этого запроса нужно действие, недоступное в режиме помощника."
         : snapshot.removed || snapshot.openState === "error"
-          ? "This chat is no longer available."
+          ? "Этот чат больше недоступен."
           : null);
     const phase = !connected
       ? "reconnecting"
@@ -625,6 +654,7 @@ export class QaSessionController {
       canSend: connected && phase === "ready" && this.policyReady,
       canStop:
         connected && snapshot.running && this.config.ui.showStop && !blocked,
+      chatsRevision: this.chatsRevision,
     };
     this.emit();
   }
@@ -641,6 +671,7 @@ export class QaSessionController {
       ...EMPTY_STATE,
       phase: "error",
       error: message,
+      chatsRevision: this.chatsRevision,
     };
     this.emit();
   }
@@ -662,7 +693,7 @@ export class QaSessionController {
         );
       }
       this.policyReady = false;
-      this.operationError = "Assistant configuration is unavailable.";
+      this.operationError = CONFIGURATION_ERROR;
       this.publish();
       return false;
     };
@@ -701,7 +732,7 @@ export class QaSessionController {
         );
       }
       this.policyReady = false;
-      this.operationError = "Assistant configuration is unavailable.";
+      this.operationError = CONFIGURATION_ERROR;
       this.publish();
       return false;
     }
@@ -728,7 +759,7 @@ export class QaSessionController {
     }
   }
 
-  private forgetChat(sessionId: string): void {
+  forgetChat(sessionId: string): void {
     try {
       const next = this.chatIds().filter((id) => id !== sessionId);
       this.storage?.setItem(this.chatIndexKey(), JSON.stringify(next));

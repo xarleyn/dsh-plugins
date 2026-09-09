@@ -29,7 +29,7 @@ export function QaMessage({
       <article
         className="dsh-qa-message dsh-qa-message--work"
         data-status={message.status}
-        aria-label="Assistant work"
+        aria-label="Работа помощника"
       >
         <QaWorkGroup
           status={message.status}
@@ -43,10 +43,10 @@ export function QaMessage({
   }
   const label =
     message.role === "assistant"
-      ? "Assistant"
+      ? "Помощник"
       : message.role === "user"
-        ? "You"
-        : "Status";
+        ? "Вы"
+        : "Статус";
   const copy = async () => {
     if (copied || navigator.clipboard?.writeText === undefined) return;
     try {
@@ -74,7 +74,7 @@ export function QaMessage({
     <article
       className={`dsh-qa-message dsh-qa-message--${message.role}`}
       data-status={message.status}
-      aria-label={`${label} message`}
+      aria-label={`Сообщение: ${label}`}
     >
       <div className="dsh-qa-message__content">
         {message.role === "assistant" && renderMarkdown ? (
@@ -91,8 +91,8 @@ export function QaMessage({
           {message.role === "user" ? actionTime : null}
           <button
             type="button"
-            aria-label={copied ? "Copied" : "Copy message"}
-            title={copied ? "Copied" : "Copy"}
+            aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
+            title={copied ? "Скопировано" : "Копировать"}
             onClick={() => void copy()}
           >
             {copied ? (

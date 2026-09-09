@@ -5,10 +5,10 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     enabled: true,
     route: Object.freeze({ path: "/qa", matchChildren: true }),
     branding: Object.freeze({
-      title: "Assistant",
+      title: "Помощник",
       subtitle: "",
-      welcomeMessage: "How can I help?",
-      placeholder: "Ask a question...",
+      welcomeMessage: "Чем могу помочь?",
+      placeholder: "Задайте вопрос…",
       logoUrl: null,
     }),
     session: Object.freeze({
@@ -32,7 +32,11 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxContentWidth: 900,
       showSessionList: false,
     }),
-    suggestedQuestions: Object.freeze([]),
+    suggestedQuestions: Object.freeze([
+      "Что ты умеешь?",
+      "С чего начать?",
+      "Помоги разобраться с ошибкой",
+    ]),
     interaction: Object.freeze({
       approvals: "blocked",
       questions: "unsupported",
@@ -264,7 +268,9 @@ export function resolveConfig(
         input.ui?.showSessionList ??
         DEFAULT_QA_SURFACE_CONFIG.ui.showSessionList,
     }),
-    suggestedQuestions: uniqueQuestions(input.suggestedQuestions ?? []),
+    suggestedQuestions: uniqueQuestions(
+      input.suggestedQuestions ?? DEFAULT_QA_SURFACE_CONFIG.suggestedQuestions,
+    ),
     interaction: Object.freeze({
       approvals: "blocked",
       questions: "unsupported",

@@ -63,10 +63,10 @@ config:
     path: /qa
     matchChildren: true
   branding:
-    title: Internal Assistant
-    subtitle: Answers about the internal platform
-    welcomeMessage: How can I help?
-    placeholder: Ask a question...
+    title: Внутренний помощник
+    subtitle: Отвечает на вопросы о внутренней платформе
+    welcomeMessage: Чем могу помочь?
+    placeholder: Задайте вопрос…
     logoUrl: null
   session:
     policy: browser-persistent
@@ -88,8 +88,8 @@ config:
     maxContentWidth: 900
     showSessionList: false
   suggestedQuestions:
-    - How do I request access?
-    - Where is the runbook?
+    - Как запросить доступ?
+    - Где лежит инструкция?
   interaction:
     approvals: blocked
     questions: unsupported
@@ -145,8 +145,11 @@ client keeps a per-browser id index under
 `<storageKey>:v1:<route>:chats` in localStorage (capped at 50, most recently
 used first) and intersects it with the Host session list, so users sharing the
 deployment never see each other's chats. Switching re-runs the full policy
-attestation; a chat the Host no longer lists is pruned from the index. The
-sidebar hides below 600px viewports.
+attestation; a chat the Host no longer lists is pruned from the index. Each
+row carries a two-click delete control that removes the chat from this
+browser's index; deleting the chat that is currently open continues in a
+fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
+exposes no session-deletion seam. The sidebar hides below 600px viewports.
 
 Locked mode requires a deployment permission preset named `qa-read-only`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing

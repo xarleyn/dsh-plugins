@@ -33,6 +33,7 @@ const INACTIVE_STATE: QaSessionState = Object.freeze({
   error: null,
   canSend: false,
   canStop: false,
+  chatsRevision: 0,
 });
 const noopSubscribe = () => () => undefined;
 
@@ -83,9 +84,10 @@ function trapKeys(event: KeyboardEvent<HTMLElement>): void {
 }
 
 function statusText(state: QaSessionState): string | null {
-  if (state.phase === "creating") return "Connecting…";
-  if (state.phase === "reconnecting") return "Connection lost. Reconnecting…";
-  if (state.phase === "running") return "Assistant is responding…";
+  if (state.phase === "creating") return "Подключаюсь…";
+  if (state.phase === "reconnecting")
+    return "Связь потерялась. Подключаюсь снова…";
+  if (state.phase === "running") return "Скребу по сусекам…";
   return null;
 }
 
@@ -98,11 +100,11 @@ function titleFromMessages(state: QaSessionState, fallback: string): string {
 }
 
 function modeLabel(agentPreset: string | null): string {
-  if (agentPreset === null) return "QA mode";
+  if (agentPreset === null) return "Режим вопросов";
   const name = agentPreset
     .replace(/[-_]+/gu, " ")
     .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
-  return `${name} mode`;
+  return `Режим «${name}»`;
 }
 
 export function QaSurface(props: QaSurfaceProps) {
@@ -213,6 +215,7 @@ export function QaSurface(props: QaSurfaceProps) {
           busy={state.phase === "creating"}
           onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
           onNewChat={() => void controller?.reset()}
+          onDelete={(sessionId) => void controller?.deleteChat(sessionId)}
         />
       ) : null}
       <div className="dsh-qa-body">
@@ -249,15 +252,12 @@ export function QaSurface(props: QaSurfaceProps) {
                     }
                     onClick={() => void controller?.reset()}
                   >
-                    New chat
+                    Новый чат
                   </button>
                 ) : null}
               </div>
-              <div
-                className="dsh-qa-header__tabs"
-                aria-label="Conversation view"
-              >
-                <span aria-current="page">Chat</span>
+              <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
+                <span aria-current="page">Чат</span>
               </div>
             </div>
           </header>
@@ -288,23 +288,6 @@ export function QaSurface(props: QaSurfaceProps) {
                 {config.branding.subtitle === "" ? null : (
                   <p>{config.branding.subtitle}</p>
                 )}
-                {config.suggestedQuestions.length > 0 ? (
-                  <div
-                    className="dsh-qa-suggestions"
-                    aria-label="Suggested questions"
-                  >
-                    {config.suggestedQuestions.map((question) => (
-                      <button
-                        type="button"
-                        key={question}
-                        disabled={!state.canSend}
-                        onClick={() => void controller?.send(question)}
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </section>
             ) : (
               state.messages.map((message) => (
@@ -324,7 +307,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     type="button"
                     onClick={() => void controller?.ensureSession()}
                   >
-                    Retry
+                    Повторить
                   </button>
                 ) : null}
               </div>
@@ -339,6 +322,7 @@ export function QaSurface(props: QaSurfaceProps) {
           >
             <QaComposer
               placeholder={config.branding.placeholder}
+              quickQuestions={empty ? config.suggestedQuestions : []}
               canSend={state.canSend}
               canStop={state.canStop}
               running={state.phase === "running"}

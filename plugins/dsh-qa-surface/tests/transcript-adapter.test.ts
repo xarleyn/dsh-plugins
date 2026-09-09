@@ -288,7 +288,7 @@ describe("transcript projection", () => {
       }),
     );
     expect(messages[0]).toMatchObject({
-      text: "The assistant could not complete this response.",
+      text: "Помощнику не удалось завершить ответ.",
     });
     expect(JSON.stringify(messages)).not.toContain("/home/secret");
   });
