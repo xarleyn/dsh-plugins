@@ -342,7 +342,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("creates a fresh session on reset without deleting the old one", async () => {
+  it("starts a draft on reset and materializes the session on first send", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
@@ -352,11 +352,44 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    const first = controller.getSnapshot().sessionId;
-    await controller.reset();
-    expect(first).toBe("created-1");
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    await controller.startDraft();
+    expect(world.create).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "idle",
+      sessionId: null,
+      messages: [],
+      canSend: true,
+      canStop: false,
+    });
+    expect(await controller.send("hello draft")).toBe(true);
+    expect(world.create).toHaveBeenCalledTimes(2);
     expect(controller.getSnapshot().sessionId).toBe("created-2");
     expect(world.faces.has("created-1")).toBe(true);
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "hello draft" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("does not let a second send during draft materialization double-create", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ lockdown: { allowSessionReset: true } }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const first = controller.send("one");
+    const second = controller.send("two");
+    expect(await second).toBe(false);
+    expect(await first).toBe(true);
+    expect(world.create).toHaveBeenCalledTimes(2);
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "one" }],
+      "queue",
+    );
     controller.dispose();
   });
 
@@ -511,15 +544,16 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("does not reset a locked session by default", async () => {
+  it("does not draft a locked session by default", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
     });
     await controller.ensureSession();
-    await controller.reset();
+    await controller.startDraft();
     expect(world.create).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
     controller.dispose();
   });
 });
@@ -723,7 +757,7 @@ it("forgets a non-active chat without touching sessions", async () => {
   controller.dispose();
 });
 
-it("deleting the active chat starts a fresh one", async () => {
+it("deleting the active chat falls back to a draft without creating a session", async () => {
   const world = harness();
   const controller = new QaSessionController({
     ...world,
@@ -731,11 +765,13 @@ it("deleting the active chat starts a fresh one", async () => {
   });
   await controller.ensureSession();
   await controller.deleteChat("created-1");
-  expect(world.create).toHaveBeenCalledTimes(2);
-  expect(controller.getSnapshot().sessionId).toBe("created-2");
-  expect(controller.chatIds()).toEqual(["created-2"]);
-  expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
-    "created-2",
-  );
+  expect(world.create).toHaveBeenCalledOnce();
+  expect(controller.getSnapshot()).toMatchObject({
+    phase: "idle",
+    sessionId: null,
+    canSend: true,
+  });
+  expect(controller.chatIds()).toEqual([]);
+  expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(false);
   controller.dispose();
 });

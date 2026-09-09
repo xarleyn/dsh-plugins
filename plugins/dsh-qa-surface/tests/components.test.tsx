@@ -291,8 +291,8 @@ describe("QA sidebar", () => {
     },
   } as unknown as Record<string, SessionSummary>;
 
-  it("projects indexed ids onto the host session list", () => {
-    const rows = buildChatRows(["s-2", "s-1", "gone"], byId, "s-1", 90_000);
+  it("projects indexed ids onto the host session list, newest update first", () => {
+    const rows = buildChatRows(["s-1", "s-2", "gone"], byId, "s-1", 90_000);
     expect(rows).toEqual([
       {
         id: "s-2",
@@ -300,6 +300,7 @@ describe("QA sidebar", () => {
         running: true,
         active: false,
         meta: "1 мин",
+        updatedAt: 2_000,
       },
       {
         id: "s-1",
@@ -307,6 +308,7 @@ describe("QA sidebar", () => {
         running: false,
         active: true,
         meta: "1 мин",
+        updatedAt: 1_000,
       },
     ]);
   });
@@ -360,7 +362,14 @@ describe("QA sidebar", () => {
 it("deletes a chat after a second confirming click", () => {
   const onDelete = vi.fn();
   const rows = [
-    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+    {
+      id: "s-1",
+      title: "Chat",
+      running: false,
+      active: false,
+      meta: "1m",
+      updatedAt: 1,
+    },
   ];
   const { container } = render(
     <QaSidebar
@@ -385,7 +394,14 @@ it("deletes a chat after a second confirming click", () => {
 
 it("hides the delete control when the deployment omits it", () => {
   const rows = [
-    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+    {
+      id: "s-1",
+      title: "Chat",
+      running: false,
+      active: false,
+      meta: "1m",
+      updatedAt: 1,
+    },
   ];
   const { container } = render(
     <QaSidebar
