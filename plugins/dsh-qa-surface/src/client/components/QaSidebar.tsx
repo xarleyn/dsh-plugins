@@ -8,6 +8,7 @@ export interface QaChatRow {
   readonly running: boolean;
   readonly active: boolean;
   readonly meta: string;
+  readonly updatedAt: number;
 }
 
 function relativeTime(timestamp: number, now: number): string {
@@ -23,9 +24,10 @@ function relativeTime(timestamp: number, now: number): string {
 }
 
 /**
- * Project this browser's indexed chat ids onto the host session list. Ids the
- * host no longer lists are skipped (the controller prunes them on switch);
- * order stays the index's most-recently-used order.
+ * Project this browser's indexed chat ids onto the host session list, most
+ * recently updated first. Opening a chat is not an update: only the host's
+ * `updatedAt` (fresh messages) orders the list. Ids the host no longer lists
+ * are skipped (the controller prunes them on switch).
  */
 export function buildChatRows(
   chatIds: readonly string[],
@@ -43,9 +45,10 @@ export function buildChatRows(
       running: summary.running,
       active: id === activeId,
       meta: relativeTime(summary.updatedAt, now),
+      updatedAt: summary.updatedAt,
     });
   }
-  return rows;
+  return rows.sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
 export interface QaSidebarProps {

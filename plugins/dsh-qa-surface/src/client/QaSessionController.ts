@@ -53,9 +53,11 @@ export class QaSessionController {
   private unsubscribeSession: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
+  private materializing: Promise<boolean> | undefined;
   private operationError: string | null = null;
   private admissionPending = false;
   private policyReady = false;
+  private drafting = false;
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
@@ -98,13 +100,19 @@ export class QaSessionController {
 
   async send(text: string): Promise<boolean> {
     const prompt = text.trim();
-    if (prompt === "" || this.session === undefined || !this.state.canSend) {
-      return false;
-    }
+    if (prompt === "" || !this.state.canSend) return false;
     if (prompt.startsWith("/")) {
       this.operationError = "Команды со слешем недоступны в режиме помощника.";
       this.publish();
       return false;
+    }
+    if (this.session === undefined) {
+      // A draft chat materializes its session only now: nothing was created
+      // when the user pressed "New chat", so the first prompt pays for it.
+      if (!this.drafting || this.materializing !== undefined) return false;
+      if (!(await this.materializeDraft()) || this.session === undefined) {
+        return false;
+      }
     }
     this.operationError = null;
     let attested = await this.attestPolicy();
@@ -148,8 +156,15 @@ export class QaSessionController {
     this.publish();
   }
 
-  async reset(): Promise<void> {
+  /**
+   * Enter the "new chat" draft: show an empty composer without creating any
+   * session. Nothing appears in the chat list and no Host session is spent
+   * until the first prompt is actually sent, which materializes the session
+   * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
+   */
+  async startDraft(): Promise<void> {
     if (
+      this.disposed ||
       this.config.session.policy === "fixed" ||
       (this.config.lockdown.enabled && !this.config.lockdown.allowSessionReset)
     )
@@ -159,10 +174,10 @@ export class QaSessionController {
       try {
         await previous.cancel();
       } catch (error) {
-        console.error("dsh-qa-surface: stop before reset failed", error);
+        console.error("dsh-qa-surface: stop before draft failed", error);
       }
     }
-    const operation = ++this.generation;
+    this.drafting = true;
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
@@ -170,24 +185,48 @@ export class QaSessionController {
     this.state = {
       ...QA_SESSION_IDLE_STATE,
       chatsRevision: this.chatsRevision,
-      phase: "creating",
     };
-    this.emit();
-    try {
-      await this.waitForConnection();
-      const id = await this.createSession();
-      if (this.disposed || operation !== this.generation) return;
-      await this.bind(id);
-      if (this.disposed || operation !== this.generation) return;
-      this.chats.saveActive(id);
-    } catch (error) {
-      this.fail(
-        this.operationError === CONFIGURATION_ERROR
-          ? this.operationError
-          : "Не удалось начать новый чат.",
-        error,
-      );
-    }
+    this.publish();
+  }
+
+  /**
+   * Turn the current draft into a real attested session. Runs inside the
+   * send flow; concurrent sends share one materialization. A refusal here is
+   * reported at once — a fresh session's first attestation is the
+   * deployment's only chance to learn the reason.
+   */
+  private materializeDraft(): Promise<boolean> {
+    if (this.materializing !== undefined) return this.materializing;
+    const operation = ++this.generation;
+    const attempt = (async () => {
+      try {
+        await this.waitForConnection();
+        const id = await this.createSession();
+        if (this.disposed || operation !== this.generation) return false;
+        await this.bind(id);
+        if (this.disposed || operation !== this.generation) return false;
+        this.drafting = false;
+        if (this.config.session.policy === "browser-persistent") {
+          this.chats.saveActive(id);
+        }
+        return true;
+      } catch (error) {
+        this.fail(
+          this.operationError === CONFIGURATION_ERROR
+            ? this.operationError
+            : "Не удалось начать чат.",
+          error,
+        );
+        return false;
+      }
+    })();
+    this.materializing = attempt;
+    this.publish();
+    // `attempt` never rejects: every failure path is caught and reports false.
+    void attempt.then(() => {
+      if (this.materializing === attempt) this.materializing = undefined;
+    });
+    return attempt;
   }
 
   /**
@@ -203,6 +242,7 @@ export class QaSessionController {
     )
       return;
     const operation = ++this.generation;
+    this.drafting = false;
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
@@ -261,7 +301,11 @@ export class QaSessionController {
       this.activeSessionId() === id &&
       this.config.session.policy !== "fixed"
     ) {
-      await this.reset();
+      // No replacement session is created: deleting the open chat falls back
+      // to a draft, and the next prompt materializes a fresh one. The stale
+      // persisted id is dropped so a reload cannot resurrect the deleted chat.
+      this.chats.clearActive();
+      await this.startDraft();
       return;
     }
     this.publish();
@@ -283,6 +327,7 @@ export class QaSessionController {
 
   private async ensureSessionNow(): Promise<void> {
     const operation = ++this.generation;
+    this.drafting = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
       chatsRevision: this.chatsRevision,
@@ -485,7 +530,7 @@ export class QaSessionController {
     if (!(await this.attestPolicy(reportAttestationFailure))) {
       throw new QaPolicyAttestationError();
     }
-    this.chats.rememberChat(String(this.session.sessionId));
+    this.chats.addChat(String(this.session.sessionId));
     this.publish();
   }
 
@@ -508,6 +553,24 @@ export class QaSessionController {
   private publish(): void {
     if (this.disposed) return;
     const connected = this.connection.getSnapshot() !== undefined;
+    if (this.drafting && this.session === undefined) {
+      // Draft state: an empty writable composer without a bound session. The
+      // session list is untouched — nothing exists until the first send.
+      const materializing = this.materializing !== undefined;
+      this.state = {
+        ...QA_SESSION_IDLE_STATE,
+        phase: materializing
+          ? "creating"
+          : !connected && this.connectedOnce
+            ? "reconnecting"
+            : "idle",
+        error: this.operationError,
+        canSend: connected && !materializing,
+        chatsRevision: this.chatsRevision,
+      };
+      this.emit();
+      return;
+    }
     if (this.session === undefined) {
       this.state = {
         ...this.state,

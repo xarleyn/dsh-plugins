@@ -70,10 +70,11 @@ function statusText(state: QaSessionState): string | null {
   return null;
 }
 
-function titleFromMessages(state: QaSessionState, fallback: string): string {
+function titleFromMessages(state: QaSessionState): string | null {
   const firstUser = state.messages.find((message) => message.role === "user");
-  if (firstUser === undefined) return fallback;
+  if (firstUser === undefined) return null;
   const title = firstUser.text.replace(/\s+/gu, " ").trim();
+  if (title === "") return null;
   if (title.length <= 52) return title;
   return `${title.slice(0, 51).trimEnd()}…`;
 }
@@ -167,7 +168,7 @@ export function QaSurface(props: QaSurfaceProps) {
 
   const status = statusText(state);
   const empty = state.messages.length === 0;
-  const conversationTitle = titleFromMessages(state, config.branding.title);
+  const conversationTitle = titleFromMessages(state);
   const showSidebar = config.ui.showSessionList && controller !== undefined;
   const allowNewChat =
     config.session.policy !== "fixed" &&
@@ -193,7 +194,7 @@ export function QaSurface(props: QaSurfaceProps) {
           showNewChat={allowNewChat}
           busy={state.phase === "creating"}
           onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
-          onNewChat={() => void controller?.reset()}
+          onNewChat={() => void controller?.startDraft()}
           onDelete={(sessionId) => void controller?.deleteChat(sessionId)}
         />
       ) : null}
@@ -209,7 +210,9 @@ export function QaSurface(props: QaSurfaceProps) {
                     alt=""
                   />
                 )}
-                <h1 title={conversationTitle}>{conversationTitle}</h1>
+                {conversationTitle === null ? null : (
+                  <h1 title={conversationTitle}>{conversationTitle}</h1>
+                )}
                 <span className="dsh-qa-header__mode">
                   <svg viewBox="0 0 16 16" aria-hidden="true">
                     <circle cx="8" cy="3.25" r="1.5" />
@@ -229,7 +232,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     disabled={
                       controller === undefined || state.phase === "creating"
                     }
-                    onClick={() => void controller?.reset()}
+                    onClick={() => void controller?.startDraft()}
                   >
                     Новый чат
                   </button>

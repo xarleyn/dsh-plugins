@@ -35,13 +35,15 @@ export class QaChatIndex {
     }
   }
 
-  /** Move one chat to the front of the index, capping the list. */
-  rememberChat(sessionId: string): void {
+  /**
+   * Add one chat to the index without reordering anything. Display order is
+   * the host's `updatedAt`, so merely opening a chat must not move it — the
+   * index is membership only.
+   */
+  addChat(sessionId: string): void {
     try {
-      const next = [
-        sessionId,
-        ...this.chatIds().filter((id) => id !== sessionId),
-      ].slice(0, MAX_INDEXED_CHATS);
+      if (this.chatIds().includes(sessionId)) return;
+      const next = [sessionId, ...this.chatIds()].slice(0, MAX_INDEXED_CHATS);
       this.storage?.setItem(this.chatKey, JSON.stringify(next));
     } catch {
       // A denied localStorage write must not prevent the bound chat.
