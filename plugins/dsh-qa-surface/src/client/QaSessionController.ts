@@ -4,7 +4,11 @@ import type {
   WorkspaceId,
 } from "@deepseek-ai/dsh-client-connection/client";
 import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
-import type { QaSessionState, ResolvedQaSurfaceConfig } from "../types.js";
+import type {
+  QaSessionState,
+  QaSubagentView,
+  ResolvedQaSurfaceConfig,
+} from "../types.js";
 import {
   QaPolicyAttestationError,
   attestationHint,
@@ -62,6 +66,9 @@ export class QaSessionController {
   private admissionPending = false;
   private policyReady = false;
   private drafting = false;
+  /** The chat session to return to when a subagent view closes. */
+  private chatSessionId: string | null = null;
+  private viewingSubagent: QaSubagentView | null = null;
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
@@ -258,6 +265,7 @@ export class QaSessionController {
       return;
     const operation = ++this.generation;
     this.drafting = false;
+    this.viewingSubagent = null;
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
@@ -291,6 +299,52 @@ export class QaSessionController {
         error,
       );
     }
+  }
+
+  /**
+   * Watch a subagent's transcript live. The binding is read-only by
+   * construction: no attestation runs (attestation admits sending, and the
+   * composer stays disabled here), the chat index is untouched, and
+   * {@link closeSubagent} returns to the chat the panel was opened from.
+   */
+  async viewSubagent(id: string, title: string): Promise<void> {
+    if (this.disposed) return;
+    if (
+      this.viewingSubagent !== null &&
+      this.viewingSubagent.id === id &&
+      this.session !== undefined
+    ) {
+      return;
+    }
+    const operation = ++this.generation;
+    this.drafting = false;
+    this.viewingSubagent = { id, title };
+    this.unbind();
+    this.operationError = null;
+    this.admissionPending = false;
+    this.policyReady = false;
+    this.state = {
+      ...QA_SESSION_IDLE_STATE,
+      chatsRevision: this.chatsRevision,
+      viewingSubagent: this.viewingSubagent,
+      phase: "creating",
+    };
+    this.emit();
+    try {
+      await this.waitForConnection();
+      await this.bind(id, { attest: false, track: false, report: false });
+    } catch (error) {
+      this.viewingSubagent = null;
+      this.fail("Не удалось открыть транскрипт субагента.", error);
+    }
+    if (this.disposed || operation !== this.generation) return;
+  }
+
+  /** Leave the subagent transcript and re-open the chat it was launched from. */
+  async closeSubagent(): Promise<void> {
+    const chat = this.chatSessionId;
+    if (chat === null) return;
+    await this.switchTo(chat);
   }
 
   /** This browser's indexed chat ids, most recently used first. */
@@ -380,7 +434,7 @@ export class QaSessionController {
       // replace it. A freshly created session must report a refusal at once —
       // it is the deployment's only chance to learn the reason.
       try {
-        await this.bind(id, !restored);
+        await this.bind(id, { report: !restored });
       } catch (error) {
         if (
           !restored ||
@@ -511,8 +565,9 @@ export class QaSessionController {
 
   private async bind(
     id: string,
-    reportAttestationFailure = true,
+    options: { report?: boolean; attest?: boolean; track?: boolean } = {},
   ): Promise<void> {
+    const { report = true, attest = true, track = true } = options;
     this.sessions.open(id as SessionId);
     let binding = this.sessions.binding(id as SessionId);
     if (binding === undefined) {
@@ -542,10 +597,14 @@ export class QaSessionController {
     if (binding.session.getSnapshot().openState !== "open") {
       throw new Error("Session binding could not be opened.");
     }
-    if (!(await this.attestPolicy(reportAttestationFailure))) {
+    if (attest && !(await this.attestPolicy(report))) {
       throw new QaPolicyAttestationError();
     }
-    this.chats.addChat(String(this.session.sessionId));
+    if (track) {
+      this.chatSessionId = String(this.session.sessionId);
+      this.viewingSubagent = null;
+      this.chats.addChat(String(this.session.sessionId));
+    }
     this.publish();
   }
 
@@ -629,6 +688,7 @@ export class QaSessionController {
         connected && snapshot.running && this.config.ui.showStop && !blocked,
       chatsRevision: this.chatsRevision,
       sources: projectSources(snapshot),
+      viewingSubagent: this.viewingSubagent,
     };
     this.emit();
   }

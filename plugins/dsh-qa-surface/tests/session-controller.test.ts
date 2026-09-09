@@ -558,6 +558,55 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("watches a subagent read-only and returns to the chat", async () => {
+    const world = harness(["chat-1"]);
+    // A subagent child of the chat, known to the host session list.
+    const childFace = sessionFace("child-1");
+    world.faces.set("child-1", childFace);
+    const list = world.list.getSnapshot();
+    world.list.set({
+      ...list,
+      byId: {
+        ...list.byId,
+        "child-1": {
+          id: "child-1",
+          displayTitle: "Print a greeting",
+          running: true,
+          blank: false,
+          updatedAt: 5,
+        },
+      } as SessionListState["byId"],
+    });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const chatId = controller.getSnapshot().sessionId;
+    expect(chatId).toBe("created-2");
+    const secureCallsBefore = world.secureSession.mock.calls.length;
+
+    await controller.viewSubagent("child-1", "Print a greeting");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "child-1",
+      canSend: false,
+      viewingSubagent: { id: "child-1", title: "Print a greeting" },
+    });
+    expect(childFace?.prompt).not.toHaveBeenCalled();
+
+    await controller.closeSubagent();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "created-2",
+      canSend: true,
+      viewingSubagent: null,
+    });
+    // The subagent bind skipped attestation entirely; returning attests.
+    expect(world.secureSession.mock.calls.length).toBe(secureCallsBefore + 1);
+    controller.dispose();
+  });
+
   it("regenerates by prompting the hidden marker instruction", async () => {
     const world = harness();
     const controller = new QaSessionController({

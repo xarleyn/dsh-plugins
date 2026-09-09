@@ -418,6 +418,98 @@ describe("transcript projection", () => {
     ).toBe(1);
   });
 
+  it("presents subagent launches with labels and the durable child id", () => {
+    const messages = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "assistant",
+            seq: 1,
+            time: 1_000,
+            turn: 1,
+            step: 1,
+            blocks: [
+              {
+                kind: "tool-call",
+                callId: "sa-1",
+                name: "subagent",
+                argsRaw:
+                  '{"description":"Print a greeting","prompt":"Hello","run_in_background":true}',
+              },
+            ],
+          },
+          {
+            kind: "tool-result",
+            seq: 2,
+            time: 2_000,
+            callId: "sa-1",
+            call: {
+              name: "subagent",
+              argsRaw:
+                '{"description":"Print a greeting","prompt":"Hello","run_in_background":true}',
+            },
+            callTime: 1_000,
+            content: [
+              {
+                type: "text",
+                text: "started subagent b5b84a41-5597-4ddb-8cb6-9a2fa90517ad",
+              },
+            ],
+            isError: false,
+            callView: null,
+            resultView: null,
+            subCalls: [],
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+      { showToolActivity: true },
+    );
+    const work = messages[0];
+    if (work?.role !== "work") throw new Error("missing work projection");
+    expect(work.items[0]).toMatchObject({
+      kind: "tool",
+      name: "subagent",
+      label: "Субагент",
+      summary: "Print a greeting",
+      subagentId: "b5b84a41-5597-4ddb-8cb6-9a2fa90517ad",
+      status: "ok",
+    });
+  });
+
+  it("projects subagent settlement notices and hides other context rows", () => {
+    const contextNode = (seq: number, label: string, text: string) => ({
+      kind: "context" as const,
+      seq,
+      time: seq * 10,
+      content: [{ type: "text" as const, text }],
+      source: {},
+      provenance: { role: "context", label },
+      form: null,
+    });
+    const messages = projectTranscript(
+      snapshot({
+        nodes: [
+          contextNode(
+            1,
+            "subagent-settled",
+            "Background subagent b5b84a41 finished a run. Its closing message: Hello from subagent",
+          ),
+          contextNode(2, "skill-catalog", "operator skill list"),
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({
+      role: "system",
+      status: "info",
+    });
+    const notice = messages[0];
+    expect(
+      notice !== undefined && notice.role !== "work" ? notice.text : "",
+    ).toContain("Hello from subagent");
+    expect(JSON.stringify(messages)).not.toContain("skill list");
+  });
+
   it("projects fetched pages, searches and files as deduplicated sources", () => {
     const toolResult = (
       seq: number,

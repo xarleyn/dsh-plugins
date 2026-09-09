@@ -153,6 +153,15 @@ drawer listing the pages fetched, searches run and files read in this chat,
 projected from the same tool activity the work groups render - no extra
 prompting or tooling is involved.
 
+Subagents: the deployment may opt the delegation family (`subagent`,
+`subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
+lockdown allow-list; the preset must mount them. Launches then render as
+first-class work items (description, background flag, durable child id),
+settlement notices appear as status rows, an "Агенты" header drawer lists the
+chat's subagents with live status, and any subagent opens as a read-only
+live transcript (composer disabled, one click back to the chat) - viewing
+never attests or writes.
+
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
 conversation. It lists only the chats this browser has actually used: the
 client keeps a per-browser id index under

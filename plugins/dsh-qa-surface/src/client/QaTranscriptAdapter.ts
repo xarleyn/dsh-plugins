@@ -150,7 +150,15 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   edit: "Правка",
   str_replace_editor: "Правка",
   run_code: "Код",
+  subagent: "Субагент",
+  subagent_fork: "Субагент (форк)",
+  send_message: "Сообщение агенту",
+  list_agents: "Список агентов",
+  interrupt_agent: "Остановка агента",
 });
+
+/** The durable id a continuable launch reports back ("started subagent <id>"). */
+const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
 
 function toolLabel(name: string): string {
   return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
@@ -198,6 +206,11 @@ function workTool(
   endedAt: number | undefined,
   output: string | null,
 ): QaWorkItem {
+  const launched =
+    name === "subagent" || name === "subagent_fork"
+      ? (SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
+        SUBAGENT_STARTED.exec(argsRaw)?.[1])
+      : undefined;
   return {
     id: `tool:${callId}`,
     kind: "tool",
@@ -207,6 +220,7 @@ function workTool(
     input: formatToolInput(argsRaw),
     output,
     status,
+    ...(launched === undefined ? {} : { subagentId: launched }),
     ...(startedAt === undefined ? {} : { startedAt }),
     ...(endedAt === undefined ? {} : { endedAt }),
   };
@@ -440,6 +454,26 @@ export function projectTranscript(
       });
     } else if (node.kind === "assistant") {
       collectAssistant(node, turns, toolHeads, options.showReasoning === true);
+    } else if (node.kind === "context") {
+      // Subagent settlement notices (the host injects them when a background
+      // child finishes) read as status rows; other context injections stay
+      // hidden — they are operator plumbing, not QA-facing content.
+      const label = node.provenance.label ?? "";
+      if (!label.toLowerCase().startsWith("subagent")) continue;
+      const text = visibleContentText(node.content)
+        .replace(/\s+/gu, " ")
+        .trim();
+      if (text === "") continue;
+      output.push({
+        order: node.seq,
+        message: {
+          id: `context:${node.seq}`,
+          role: "system",
+          text: text.length <= 280 ? text : `${text.slice(0, 279).trimEnd()}…`,
+          status: "info",
+          timestamp: node.time,
+        },
+      });
     } else if (node.kind === "turn-error") {
       output.push({
         order: node.seq,
