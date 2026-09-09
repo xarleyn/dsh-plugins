@@ -5,6 +5,7 @@ import QaSurface, { name, resolveConfig } from "../lib/index.js";
 const root = new URL("../", import.meta.url);
 const required = [
   "lib/index.js",
+  "lib/secure-session.js",
   "lib/host-route.js",
   "lib/navigation-marker.js",
   "lib/client.js",
@@ -58,6 +59,10 @@ assert.match(patch, /id:\s*dsh-qa-surface/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-qa-surface"/u);
 
 const host = await readFile(new URL("lib/index.js", root), "utf8");
+const admission = await readFile(
+  new URL("lib/secure-session.js", root),
+  "utf8",
+);
 const remote = await readFile(
   new URL("lib/typert.remote-client.js", root),
   "utf8",
@@ -70,14 +75,14 @@ const navigationMarker = await readFile(
 assert.match(host, /webServer/u);
 assert.match(`${hostRoute}\n${navigationMarker}`, /__dsh_qa_route/u);
 assert.doesNotMatch(`${host}\n${hostRoute}`, /registerFallback/u);
-assert.match(host, /permissionPresets\.set/u);
-assert.match(host, /agentPresets\.composedPreset/u);
-assert.match(host, /\.tools\.restrict/u);
-assert.match(host, /\.tools\.guard/u);
-assert.match(host, /qaToolPolicyPlan/u);
-assert.match(host, /allow:\s*policy\.allow/u);
-assert.doesNotMatch(host, /\.tools\.presentAs\("native"\)/u);
-assert.match(host, /existing non-QA session cannot be adopted/u);
+assert.match(admission, /permissionPresets\.set/u);
+assert.match(admission, /agentPresets\.composedPreset/u);
+assert.match(admission, /\.tools\.restrict/u);
+assert.match(admission, /\.tools\.guard/u);
+assert.match(admission, /qaToolPolicyPlan/u);
+assert.match(admission, /allow:\s*policy\.allow/u);
+assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
+assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
 
