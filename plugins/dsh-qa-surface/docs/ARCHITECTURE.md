@@ -25,7 +25,9 @@ helpers: `client/wait-for.ts` waits on observable stores, `client/chat-index.ts`
 (`QaChatIndex`) keeps the browser-local chat index and persisted active
 session in storage, and `client/attestation.ts` parses Host reason markers and
 validates proofs against the deployed lockdown config. `QaTranscriptAdapter`
-projects session snapshots to plugin-local messages. By default it excludes
+projects session snapshots to plugin-local messages. "New chat" enters a
+draft that materializes an attested session only when the first prompt is
+sent, and the chat list orders by the host's `updatedAt`. By default it excludes
 reasoning, tool arguments and tool results. When explicitly enabled, it
 correlates assistant blocks, paired tool results, running calls and turn
 timings into one plugin-local work group per turn; `QaWorkGroup` owns
