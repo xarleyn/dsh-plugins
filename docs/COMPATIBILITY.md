@@ -41,6 +41,7 @@ instance.
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
+| `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
