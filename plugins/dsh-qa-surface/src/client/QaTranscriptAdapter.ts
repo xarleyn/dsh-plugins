@@ -4,7 +4,16 @@ import type {
   RunningToolCall,
   ToolResultNode,
 } from "@deepseek-ai/dsh-client-runtime/client";
-import type { QaMessage, QaWorkItem } from "../types.js";
+import type { QaMessage, QaSource, QaWorkItem } from "../types.js";
+
+/**
+ * The hidden regeneration prompt. Regenerate sends this as an ordinary
+ * prompt — the session has no truncation seam, so a "variant" is a real
+ * follow-up turn — and the projection drops it from the visible transcript,
+ * leaving the consecutive answer turns to read as variants of one question.
+ */
+export const QA_REGENERATE_MARKER =
+  "Перегенерируй свой предыдущий ответ — дай новый вариант, не повторяя предыдущий.";
 
 interface OrderedWorkItem {
   readonly order: number;
@@ -23,6 +32,7 @@ interface TextMessage {
   readonly text: string;
   readonly status: "streaming" | "committed";
   readonly timestamp?: number;
+  readonly turn?: number;
   readonly stats?: QaMessageStats;
 }
 
@@ -226,6 +236,7 @@ function collectAssistant(
       text,
       status: "committed",
       timestamp: node.time,
+      turn: node.turn,
       stats: messageStats(text, node.timing),
     });
   }
@@ -373,6 +384,7 @@ function emitTurn(
           role: "assistant",
           text: message.text,
           status: message.status,
+          turn: turn.turn,
           ...(message.timestamp === undefined
             ? {}
             : { timestamp: message.timestamp }),
@@ -390,6 +402,7 @@ function emitTurn(
         role: "assistant",
         text: finalText.text,
         status: finalText.status,
+        turn: turn.turn,
         ...(finalText.timestamp === undefined
           ? {}
           : { timestamp: finalText.timestamp }),
@@ -414,18 +427,17 @@ export function projectTranscript(
   for (const node of snapshot.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
-      if (text !== "") {
-        output.push({
-          order: node.seq,
-          message: {
-            id: `${node.kind}:${node.seq}`,
-            role: "user",
-            text,
-            status: "committed",
-            timestamp: node.time,
-          },
-        });
-      }
+      if (text === "" || text === QA_REGENERATE_MARKER) continue;
+      output.push({
+        order: node.seq,
+        message: {
+          id: `${node.kind}:${node.seq}`,
+          role: "user",
+          text,
+          status: "committed",
+          timestamp: node.time,
+        },
+      });
     } else if (node.kind === "assistant") {
       collectAssistant(node, turns, toolHeads, options.showReasoning === true);
     } else if (node.kind === "turn-error") {
@@ -514,4 +526,102 @@ export function projectTranscript(
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);
+}
+
+const SOURCE_TOOLS: Readonly<Record<string, QaSource["kind"]>> = Object.freeze({
+  web_fetch: "web",
+  web_search: "search",
+  read: "file",
+  read_image: "file",
+});
+
+function sourceTitle(kind: QaSource["kind"], target: string): string {
+  if (kind === "web") {
+    try {
+      return new URL(target).hostname;
+    } catch {
+      return target;
+    }
+  }
+  if (kind === "file") {
+    const base = target.replaceAll("\\", "/").split("/").at(-1);
+    return base === undefined || base === "" ? target : base;
+  }
+  return target;
+}
+
+/** First meaningful line of a tool output, capped for the drawer. */
+function sourceSnippet(output: string | null): string {
+  const line =
+    output === null
+      ? ""
+      : (output.split(/\r?\n/u).find((part) => part.trim() !== "") ?? "");
+  const compact = line.trim().replace(/\s+/gu, " ");
+  return compact.length <= 200 ? compact : `${compact.slice(0, 199)}…`;
+}
+
+function sourceFromCall(
+  id: string,
+  name: string,
+  argsRaw: string,
+  output: string | null,
+): QaSource | null {
+  const kind = SOURCE_TOOLS[name];
+  if (kind === undefined) return null;
+  let target = name;
+  try {
+    const args = JSON.parse(argsRaw) as Record<string, unknown>;
+    for (const key of ["url", "file_path", "path", "query", "pattern"]) {
+      const value = args[key];
+      if (typeof value === "string" && value.trim() !== "") {
+        target = value.trim();
+        break;
+      }
+    }
+  } catch {
+    // A non-JSON head falls back to the tool name as the target.
+  }
+  return {
+    id,
+    kind,
+    target,
+    // A search answers with a result list, so the query itself is the title.
+    title: kind === "search" ? target : sourceTitle(kind, target),
+    snippet: sourceSnippet(output),
+  };
+}
+
+/**
+ * Collect the sources this chat has actually touched, in first-use order:
+ * fetched pages, searches, and files read. This is the same tool activity the
+ * work groups render, projected as a flat citation-style list, so it carries
+ * no information beyond `ui.showToolActivity`.
+ */
+export function projectSources(
+  snapshot: ConversationSnapshot,
+): readonly QaSource[] {
+  const sources: QaSource[] = [];
+  const seen = new Set<string>();
+  const add = (source: QaSource | null) => {
+    if (source === null) return;
+    const key = `${source.kind}:${source.target}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    sources.push(source);
+  };
+  for (const node of snapshot.nodes) {
+    if (node.kind !== "tool-result") continue;
+    add(
+      sourceFromCall(
+        `source:${node.callId}`,
+        node.call?.name ?? node.callId,
+        node.call?.argsRaw ?? "",
+        flattenToolOutput(node),
+      ),
+    );
+  }
+  for (const call of snapshot.runningCalls) {
+    add(sourceFromCall(`source:${call.callId}`, call.name, call.argsRaw, null));
+  }
+  return sources;
 }

@@ -9,6 +9,7 @@ import type {
   SessionListState,
 } from "@deepseek-ai/dsh-client-runtime/client";
 import { describe, expect, it, vi } from "vitest";
+import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
   QaSessionController,
@@ -554,6 +555,22 @@ describe("QA session controller", () => {
     await controller.startDraft();
     expect(world.create).toHaveBeenCalledOnce();
     expect(controller.getSnapshot().sessionId).toBe("created-1");
+    controller.dispose();
+  });
+
+  it("regenerates by prompting the hidden marker instruction", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const face = world.faces.get("created-1");
+    expect(await controller.regenerate()).toBe(true);
+    expect(face?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: QA_REGENERATE_MARKER }],
+      "queue",
+    );
     controller.dispose();
   });
 });
