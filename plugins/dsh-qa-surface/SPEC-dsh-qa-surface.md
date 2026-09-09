@@ -489,10 +489,10 @@ route:
   matchChildren: true
 
 branding:
-  title: Assistant
+  title: Помощник
   subtitle: ""
-  welcomeMessage: "How can I help?"
-  placeholder: "Ask a question..."
+  welcomeMessage: "Чем могу помочь?"
+  placeholder: "Задайте вопрос…"
   logoUrl: null
 
 session:
@@ -515,7 +515,10 @@ ui:
   renderMarkdown: true
   maxContentWidth: 900
 
-suggestedQuestions: []
+suggestedQuestions:
+  - "Что ты умеешь?"
+  - "С чего начать?"
+  - "Помоги разобраться с ошибкой"
 
 interaction:
   approvals: blocked
@@ -1066,6 +1069,10 @@ conversation. Contract:
   the index entry and surfaces the generic configuration error;
 - `New chat` in the sidebar follows the same `allowSessionReset` gate as the
   header control; the previous chat stays in the index;
+- each row carries a two-click delete control: the first click arms it, the
+  second removes the chat from this browser's index (the Host session stays —
+  DSH 0.1.x has no session-deletion seam); deleting the open chat continues
+  in a fresh attested session when resets are allowed;
 - the sidebar hides below 600px viewports and under `fixed` policy it renders
   without the new-chat control and never switches.
 

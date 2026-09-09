@@ -22,6 +22,11 @@
   agent out: the client re-binds the session (re-materializing the agent) and,
   when the refused session is still blank, continues in a fresh attested
   session instead of surfacing an error.
+- Added GFM table, ordered-list and horizontal-rule rendering to the safe
+  Markdown output.
+- Added a two-click chat delete control to the chat-history sidebar; it
+  removes the chat from the per-browser index only (DSH has no
+  session-deletion seam).
 - Added attestation diagnostics: the Host folds a coarse reason code into the
   refusal and the browser console prints one operator hint instead of a
   duplicate stack trace.
@@ -35,3 +40,6 @@
   overlay, and a `qaSurface/describe` Host Remote the browser falls back to
   when the loopback-pinned settings namespace is unavailable, so branding,
   session pinning and lockdown UI switches keep working over the network.
+- Localized the end-user chat interface into Russian, added rotating playful
+  thinking phrases, and moved the default quick-question chips next to the
+  composer on an empty chat.

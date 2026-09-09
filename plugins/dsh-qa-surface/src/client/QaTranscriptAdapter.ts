@@ -124,19 +124,19 @@ function toolSummary(name: string, argsRaw: string): string {
 const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   bash: "Bash",
   pwsh: "PowerShell",
-  read: "Read",
-  web_fetch: "Fetch",
-  web_search: "Search",
-  grep: "Search",
-  glob: "Search",
-  write: "Write",
-  edit: "Edit",
-  str_replace_editor: "Edit",
-  run_code: "Code",
+  read: "Чтение",
+  web_fetch: "Загрузка",
+  web_search: "Поиск",
+  grep: "Поиск",
+  glob: "Поиск",
+  write: "Запись",
+  edit: "Правка",
+  str_replace_editor: "Правка",
+  run_code: "Код",
 });
 
 function toolLabel(name: string): string {
-  return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Tool call";
+  return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
 }
 
 function toolStatus(node: ToolResultNode): "ok" | "error" | "stopped" {
@@ -396,7 +396,7 @@ export function projectTranscript(
         message: {
           id: `turn-error:${node.seq}`,
           role: "system",
-          text: "The assistant could not complete this response.",
+          text: "Помощнику не удалось завершить ответ.",
           status: "error",
           timestamp: node.time,
         },
@@ -407,7 +407,7 @@ export function projectTranscript(
         message: {
           id: `turn-max-tokens:${node.seq}`,
           role: "system",
-          text: "The response reached its length limit.",
+          text: "Ответ достиг предельной длины.",
           status: "info",
           timestamp: node.time,
         },

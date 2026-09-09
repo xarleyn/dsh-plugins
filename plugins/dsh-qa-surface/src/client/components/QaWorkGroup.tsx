@@ -12,12 +12,21 @@ export interface QaWorkGroupProps {
 
 export function formatWorkDuration(durationMs: number): string {
   const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  if (seconds < 1) return "<1s";
-  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 1) return "< 1 с";
+  if (seconds < 60) return `${seconds} с`;
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
-  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+  return remainder === 0 ? `${minutes} мин` : `${minutes} мин ${remainder} с`;
 }
+
+export const THINKING_PHRASES = Object.freeze([
+  "Скребу по сусекам…",
+  "Кумекаю…",
+  "Навожу резкость…",
+  "Собираю мысли в кучку…",
+  "Раскладываю по полочкам…",
+  "Сверяю приметы…",
+]);
 
 function Chevron({ open }: { readonly open: boolean }) {
   return (
@@ -69,13 +78,13 @@ function toolStatusLabel(
 ) {
   switch (status) {
     case "running":
-      return "Running";
+      return "Выполняется";
     case "ok":
-      return "Completed";
+      return "Готово";
     case "error":
-      return "Failed";
+      return "Ошибка";
     case "stopped":
-      return "Stopped";
+      return "Остановлено";
   }
 }
 
@@ -109,14 +118,14 @@ function QaToolWorkItem({
       </summary>
       <div className="dsh-qa-work-tool__body">
         {item.input === null ? null : (
-          <section aria-label={`${item.label} input`}>
-            <span>Input</span>
+          <section aria-label={`Входные данные: ${item.label}`}>
+            <span>Входные данные</span>
             <pre>{item.input}</pre>
           </section>
         )}
         {item.output === null ? null : (
-          <section aria-label={`${item.label} output`}>
-            <span>Output</span>
+          <section aria-label={`Результат: ${item.label}`}>
+            <span>Результат</span>
             <pre>{item.output}</pre>
           </section>
         )}
@@ -136,14 +145,14 @@ function QaTextWorkItem({
     <section
       className="dsh-qa-work-item dsh-qa-work-item--text"
       data-state={item.status}
-      aria-label={item.kind === "reasoning" ? "Reasoning" : "Progress update"}
+      aria-label={item.kind === "reasoning" ? "Рассуждение" : "Ход работы"}
     >
       <div className="dsh-qa-work-item__text-head">
         <span className="dsh-qa-work-item__icon">
           <ThinkIcon />
         </span>
         <span className="dsh-qa-work-item__label">
-          {item.kind === "reasoning" ? "Think" : "Progress"}
+          {item.kind === "reasoning" ? "Размышление" : "Ход работы"}
         </span>
       </div>
       <div className="dsh-qa-work-item__text">
@@ -186,12 +195,16 @@ export function QaWorkGroup({
       : formatWorkDuration((endedAt ?? now) - startedAt);
   const label =
     status === "running"
-      ? duration === null
-        ? "Working..."
-        : `Working for ${duration}`
+      ? `${
+          THINKING_PHRASES[
+            Math.floor(
+              Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
+            ) % THINKING_PHRASES.length
+          ]
+        }${duration === null ? "" : ` · ${duration}`}`
       : duration === null
-        ? "Work details"
-        : `Worked for ${duration}`;
+        ? "Ход работы"
+        : `Готово за ${duration}`;
 
   return (
     <section className="dsh-qa-work" data-state={status}>

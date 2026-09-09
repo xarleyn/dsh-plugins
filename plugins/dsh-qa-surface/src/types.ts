@@ -213,4 +213,6 @@ export interface QaSessionState {
   readonly error: string | null;
   readonly canSend: boolean;
   readonly canStop: boolean;
+  /** Bumped whenever this browser's chat index changes (add/forget). */
+  readonly chatsRevision: number;
 }

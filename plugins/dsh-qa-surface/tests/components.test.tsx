@@ -30,7 +30,7 @@ describe("QA composer", () => {
         onStop={vi.fn()}
       />,
     );
-    const input = screen.getByLabelText("Ask a question");
+    const input = screen.getByLabelText("Задать вопрос");
     fireEvent.change(input, { target: { value: "hello" } });
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(send).not.toHaveBeenCalled();
@@ -46,16 +46,16 @@ describe("QA composer", () => {
         canStop
         running
         showStop
-        status="Assistant is responding…"
+        status="Скребу по сусекам…"
         onSend={vi.fn()}
         onStop={vi.fn()}
       />,
     );
     expect(
-      (screen.getByRole("button", { name: "Stop" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Остановить" }) as HTMLButtonElement)
         .disabled,
     ).toBe(false);
-    expect(screen.queryByRole("button", { name: "Send" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Отправить" })).toBeNull();
   });
 
   it("renders the running status inside the composer", () => {
@@ -66,12 +66,31 @@ describe("QA composer", () => {
         canStop
         running
         showStop
-        status="Assistant is responding…"
+        status="Скребу по сусекам…"
         onSend={vi.fn()}
         onStop={vi.fn()}
       />,
     );
-    expect(screen.getByText("Assistant is responding…")).toBeTruthy();
+    expect(screen.getByText("Скребу по сусекам…")).toBeTruthy();
+  });
+
+  it("sends a quick question from the empty-chat shortcuts", async () => {
+    const send = vi.fn(async () => true);
+    render(
+      <QaComposer
+        placeholder="Спросите"
+        quickQuestions={["Что ты умеешь?", "С чего начать?"]}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={send}
+        onStop={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Что ты умеешь?" }));
+    await waitFor(() => expect(send).toHaveBeenCalledWith("Что ты умеешь?"));
   });
 });
 
@@ -94,11 +113,13 @@ describe("QA message", () => {
         showTimestamp={false}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Copy message" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Скопировать сообщение" }),
+    );
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith("Useful answer"),
     );
-    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Скопировано" })).toBeTruthy();
   });
 });
 
@@ -131,7 +152,9 @@ describe("QA work group", () => {
       />,
     );
 
-    const toggle = screen.getByRole("button", { name: "Worked for 1m 40s" });
+    const toggle = screen.getByRole("button", {
+      name: "Готово за 1 мин 40 с",
+    });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByText("Inspect the repository first.")).toBeNull();
     fireEvent.click(toggle);
@@ -157,7 +180,9 @@ describe("QA work group", () => {
         ]}
       />,
     );
-    const running = screen.getByRole("button", { name: /Working for/u });
+    const running = screen.getByRole("button", {
+      name: /Скребу по сусекам|Кумекаю|Навожу резкость|Собираю мысли|Раскладываю|Сверяю/u,
+    });
     expect(running.getAttribute("aria-expanded")).toBe("true");
 
     view.rerender(
@@ -180,16 +205,16 @@ describe("QA work group", () => {
     await waitFor(() =>
       expect(
         screen
-          .getByRole("button", { name: "Worked for 5s" })
+          .getByRole("button", { name: "Готово за 5 с" })
           .getAttribute("aria-expanded"),
       ).toBe("false"),
     );
   });
 
   it("formats short and minute-scale durations", () => {
-    expect(formatWorkDuration(100)).toBe("<1s");
-    expect(formatWorkDuration(17_000)).toBe("17s");
-    expect(formatWorkDuration(1_060_000)).toBe("17m 40s");
+    expect(formatWorkDuration(100)).toBe("< 1 с");
+    expect(formatWorkDuration(17_000)).toBe("17 с");
+    expect(formatWorkDuration(1_060_000)).toBe("17 мин 40 с");
   });
 });
 
@@ -204,6 +229,47 @@ describe("safe Markdown", () => {
     expect(container.querySelector("script")).toBeNull();
     expect(container.querySelector("a")).toBeNull();
     expect(container.textContent).toContain("<script>alert(1)</script>");
+  });
+
+  it("renders GFM tables with alignment and inline formatting", () => {
+    const { container } = render(
+      <Markdown
+        text={
+          "before\n\n| Name | Uses |\n| :--- | ---: |\n| **glob** | find `*.ts` |\n| grep | regex |\n\nafter"
+        }
+      />,
+    );
+    const table = container.querySelector(".dsh-qa-md-table table");
+    expect(table).toBeTruthy();
+    expect(container.querySelectorAll("thead th").length).toBe(2);
+    expect(container.querySelectorAll("tbody tr").length).toBe(2);
+    expect(container.querySelector("thead th")?.getAttribute("style")).toBe(
+      "text-align: left;",
+    );
+    expect(
+      container.querySelectorAll("thead th")[1]?.getAttribute("style"),
+    ).toBe("text-align: right;");
+    expect(container.querySelector("tbody strong")?.textContent).toBe("glob");
+    expect(container.querySelector("tbody code")?.textContent).toBe("*.ts");
+    const before = container.textContent ?? "";
+    expect(before.indexOf("before")).toBeLessThan(before.indexOf("Name"));
+    expect(before.indexOf("regex")).toBeLessThan(before.indexOf("after"));
+  });
+
+  it("renders ordered lists and horizontal rules", () => {
+    const { container } = render(
+      <Markdown text={"1. first step\n2. second step\n\n---\n\ndone"} />,
+    );
+    expect(container.querySelectorAll("ol li").length).toBe(2);
+    expect(container.querySelector("ol li")?.textContent).toBe("first step");
+    expect(container.querySelector("hr")).toBeTruthy();
+    expect(container.textContent).toContain("done");
+  });
+
+  it("does not turn a single pipe sentence into a table", () => {
+    const { container } = render(<Markdown text={"a | b sentence"} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.querySelector("p")?.textContent).toBe("a | b sentence");
   });
 });
 
@@ -230,17 +296,17 @@ describe("QA sidebar", () => {
     expect(rows).toEqual([
       {
         id: "s-2",
-        title: "New chat",
+        title: "Новый чат",
         running: true,
         active: false,
-        meta: "1m",
+        meta: "1 мин",
       },
       {
         id: "s-1",
         title: "How do I reset the cache?",
         running: false,
         active: true,
-        meta: "1m",
+        meta: "1 мин",
       },
     ]);
   });
@@ -259,14 +325,20 @@ describe("QA sidebar", () => {
     );
     const items = document.querySelectorAll(".dsh-qa-sidebar__item");
     expect(items.length).toBe(2);
-    const active = document.querySelector(".dsh-qa-sidebar__item--active");
+    const active = document.querySelector(
+      ".dsh-qa-sidebar__item--active .dsh-qa-sidebar__item-main",
+    );
     expect(active?.getAttribute("aria-current")).toBe("true");
-    expect(active?.textContent).toContain("New chat");
+    expect(active?.textContent).toContain("Новый чат");
     expect(document.querySelector(".dsh-qa-sidebar__dot")).toBeTruthy();
     fireEvent.click(
       document.querySelector(".dsh-qa-sidebar__new") as HTMLElement,
     );
-    fireEvent.click(items[1] as HTMLElement);
+    fireEvent.click(
+      (items[1] as HTMLElement).querySelector(
+        ".dsh-qa-sidebar__item-main",
+      ) as HTMLElement,
+    );
     expect(onSwitch).toHaveBeenCalledWith("s-1");
   });
 
@@ -280,7 +352,49 @@ describe("QA sidebar", () => {
         onNewChat={vi.fn()}
       />,
     );
-    expect(screen.getByText("No chats yet")).toBeTruthy();
-    expect(screen.queryByText("Chats")).toBeTruthy();
+    expect(screen.getByText("Здесь пока пусто")).toBeTruthy();
+    expect(screen.queryByText("Чаты")).toBeTruthy();
   });
+});
+
+it("deletes a chat after a second confirming click", () => {
+  const onDelete = vi.fn();
+  const rows = [
+    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+  ];
+  const { container } = render(
+    <QaSidebar
+      rows={rows}
+      showNewChat={false}
+      busy={false}
+      onSwitch={vi.fn()}
+      onNewChat={vi.fn()}
+      onDelete={onDelete}
+    />,
+  );
+  const del = container.querySelector(
+    ".dsh-qa-sidebar__item-delete",
+  ) as HTMLElement;
+  expect(del.getAttribute("aria-label")).toBe("Удалить чат");
+  fireEvent.click(del);
+  expect(onDelete).not.toHaveBeenCalled();
+  expect(del.getAttribute("aria-label")).toBe("Подтвердить удаление чата");
+  fireEvent.click(del);
+  expect(onDelete).toHaveBeenCalledWith("s-1");
+});
+
+it("hides the delete control when the deployment omits it", () => {
+  const rows = [
+    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+  ];
+  const { container } = render(
+    <QaSidebar
+      rows={rows}
+      showNewChat={false}
+      busy={false}
+      onSwitch={vi.fn()}
+      onNewChat={vi.fn()}
+    />,
+  );
+  expect(container.querySelector(".dsh-qa-sidebar__item-delete")).toBeNull();
 });

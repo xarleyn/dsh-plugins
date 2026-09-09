@@ -291,7 +291,7 @@ describe("QA session controller", () => {
     expect(controller.getSnapshot()).toMatchObject({
       phase: "error",
       canSend: false,
-      error: "Assistant configuration is unavailable.",
+      error: "Настройки помощника недоступны.",
     });
     expect(world.stored.has(storageKey)).toBe(false);
     controller.dispose();
@@ -335,7 +335,7 @@ describe("QA session controller", () => {
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     saved?.source.set({ ...saved.source.getSnapshot(), running: false });
     expect(await controller.send("/settings")).toBe(false);
-    expect(controller.getSnapshot().error).toMatch(/Slash commands/u);
+    expect(controller.getSnapshot().error).toMatch(/Команды со слешем/u);
 
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     await controller.stop();
@@ -419,7 +419,7 @@ describe("QA session controller", () => {
     expect(controller.getSnapshot()).toMatchObject({
       phase: "error",
       canSend: false,
-      error: "Assistant configuration is unavailable.",
+      error: "Настройки помощника недоступны.",
     });
     controller.dispose();
   });
@@ -507,7 +507,7 @@ describe("QA session controller", () => {
     expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
     expect(world.faces.get("created-2")?.prompt).not.toHaveBeenCalled();
     expect(controller.getSnapshot()).toMatchObject({
-      error: "Assistant configuration is unavailable.",
+      error: "Настройки помощника недоступны.",
     });
     controller.dispose();
   });
@@ -578,7 +578,7 @@ describe("QA chat index and switching", () => {
     await controller.switchTo("gone");
     expect(controller.getSnapshot()).toMatchObject({
       phase: "error",
-      error: "Unable to open that chat.",
+      error: "Не удалось открыть этот чат.",
     });
     expect(controller.chatIds()).toEqual(["created-2", "saved"]);
     controller.dispose();
@@ -595,7 +595,7 @@ describe("QA chat index and switching", () => {
     await controller.switchTo("saved");
     expect(controller.getSnapshot()).toMatchObject({
       phase: "error",
-      error: "Assistant configuration is unavailable.",
+      error: "Настройки помощника недоступны.",
     });
     expect(controller.chatIds()).toEqual(["created-2"]);
     controller.dispose();
@@ -677,7 +677,7 @@ describe("attestation diagnostics", () => {
     ).toEqual([]);
     expect(controller.getSnapshot()).toMatchObject({
       phase: "error",
-      error: "Assistant configuration is unavailable.",
+      error: "Настройки помощника недоступны.",
     });
     errorSpy.mockRestore();
     controller.dispose();
@@ -715,4 +715,39 @@ describe("attestation diagnostics", () => {
     errorSpy.mockRestore();
     controller.dispose();
   });
+});
+
+it("forgets a non-active chat without touching sessions", async () => {
+  const world = harness(["saved"]);
+  world.stored.set(
+    "dsh-qa-surface.session:v1:/qa:chats",
+    JSON.stringify(["saved", "other"]),
+  );
+  const controller = new QaSessionController({
+    ...world,
+    config: resolveConfig(),
+  });
+  await controller.ensureSession();
+  await controller.deleteChat("saved");
+  expect(world.create).toHaveBeenCalledTimes(1);
+  expect(controller.chatIds()).toEqual(["created-2", "other"]);
+  expect(controller.getSnapshot().sessionId).toBe("created-2");
+  controller.dispose();
+});
+
+it("deleting the active chat starts a fresh one", async () => {
+  const world = harness();
+  const controller = new QaSessionController({
+    ...world,
+    config: resolveConfig({ lockdown: { allowSessionReset: true } }),
+  });
+  await controller.ensureSession();
+  await controller.deleteChat("created-1");
+  expect(world.create).toHaveBeenCalledTimes(2);
+  expect(controller.getSnapshot().sessionId).toBe("created-2");
+  expect(controller.chatIds()).toEqual(["created-2"]);
+  expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
+    "created-2",
+  );
+  controller.dispose();
 });

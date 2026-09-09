@@ -508,11 +508,11 @@ try {
       );
     }
     await page
-      .getByRole("heading", { name: "Assistant", exact: true })
+      .getByRole("heading", { name: "Помощник", exact: true })
       .waitFor();
-    await page.getByRole("textbox", { name: "Ask a question" }).waitFor();
-    const prompt = page.getByRole("textbox", { name: "Ask a question" });
-    const send = page.getByRole("button", { name: "Send", exact: true });
+    await page.getByRole("textbox", { name: "Задать вопрос" }).waitFor();
+    const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
+    const send = page.getByRole("button", { name: "Отправить", exact: true });
     await send.waitFor();
     try {
       await waitFor(
@@ -538,7 +538,7 @@ try {
         { cause: error },
       );
     }
-    if (await page.getByRole("button", { name: "New chat" }).count()) {
+    if (await page.getByRole("button", { name: "Новый чат" }).count()) {
       throw new Error("locked QA surface exposed session reset");
     }
     await waitFor(

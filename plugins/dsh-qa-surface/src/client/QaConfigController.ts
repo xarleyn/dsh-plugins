@@ -98,7 +98,7 @@ export class QaConfigController {
       return {
         status: "error",
         config: DEFAULT_QA_SURFACE_CONFIG,
-        error: "The assistant configuration is unavailable.",
+        error: "Настройки помощника недоступны.",
       };
     }
   }
