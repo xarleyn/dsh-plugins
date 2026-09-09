@@ -281,6 +281,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   message={message}
                   renderMarkdown={config.ui.renderMarkdown}
                   showTimestamp={config.ui.showTimestamps}
+                  stateKey={`${config.session.storageKey}:v1:${config.route.path}`}
                 />
               ))
             )}

@@ -77,7 +77,10 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-message__actions button:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
 .dsh-qa-message__actions button:focus-visible{outline:2px solid var(--dsw-alias-button-info-fill);outline-offset:1px}
 .dsh-qa-message__actions svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round}
-.dsh-qa-message__actions time{padding:0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px}
+.dsh-qa-message__actions button[data-active]{color:var(--dsw-alias-state-business-primary)}
+.dsh-qa-message__actions button[data-active]:hover{color:var(--dsw-alias-state-business-primary)}
+.dsh-qa-message__meta{display:flex;align-items:center;gap:8px;min-width:0;padding:0 8px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;white-space:nowrap}
+.dsh-qa-message__meta-part::before{content:"·"}
 .dsh-qa-message__content p,.dsh-qa-message__content ul,.dsh-qa-message__content blockquote,.dsh-qa-message__content pre{margin:0 0 14px}
 .dsh-qa-message__content :last-child{margin-bottom:0}
 .dsh-qa-message__content h2,.dsh-qa-message__content h3,.dsh-qa-message__content h4{margin:18px 0 8px;line-height:1.35}
@@ -153,7 +156,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-composer__action--stop svg{fill:currentColor;stroke:none}
 .dsh-qa-composer__action:disabled{opacity:.4;cursor:default}
 .dsh-qa-composer__action:focus-visible,.dsh-qa-error button:focus-visible,.dsh-qa-header__reset:focus-visible{outline:2px solid var(--dsw-alias-button-info-fill);outline-offset:2px}
-@media (hover:hover){.dsh-qa-message__actions time{opacity:0;transition:opacity 80ms ease}.dsh-qa-message:hover .dsh-qa-message__actions time,.dsh-qa-message:focus-within .dsh-qa-message__actions time{opacity:1}}
+@media (hover:hover){.dsh-qa-message__actions .dsh-qa-message__meta{opacity:0;transition:opacity 80ms ease}.dsh-qa-message:hover .dsh-qa-message__actions .dsh-qa-message__meta,.dsh-qa-message:focus-within .dsh-qa-message__actions .dsh-qa-message__meta,.dsh-qa-message__actions[data-persistent] .dsh-qa-message__meta{opacity:1}}.dsh-qa-message__actions[data-persistent] .dsh-qa-message__meta{opacity:1}
 @media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__mode{font-size:12px}.dsh-qa-transcript__inner{padding:16px 16px 28px}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter — отправить";font-size:11px}}
 @media (max-height:480px) and (orientation:landscape){.dsh-qa-header__inner{padding-top:6px}.dsh-qa-header__tabs{display:none}.dsh-qa-transcript__inner{padding-top:12px}.dsh-qa-footer{padding-top:12px}.dsh-qa-composer{min-height:72px;gap:4px;padding-top:8px}}
 @media (prefers-reduced-motion:reduce){.dsh-qa-message__cursor,.dsh-qa-work__spinner,.dsh-qa-work-item__spinner{animation:none}.dsh-qa-work__chevron{transition:none}}

@@ -121,6 +121,131 @@ describe("QA message", () => {
     );
     expect(screen.getByRole("button", { name: "Скопировано" })).toBeTruthy();
   });
+
+  it("reveals date, duration, TTFT and token speed for assistant answers", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:1",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+          timestamp: new Date(2026, 8, 9, 15, 44).getTime(),
+          stats: { durationMs: 8_000, ttftMs: 1_100, tokensPerSecond: 89 },
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    const meta = document.querySelector(".dsh-qa-message__meta");
+    expect(meta?.textContent).toContain("9 сент 15:44");
+    expect(meta?.textContent).toContain("8 с");
+    expect(meta?.textContent).toContain("TTFT 1,1 с");
+    expect(meta?.textContent).toContain("89 ток/с");
+    expect(
+      document.querySelector(".dsh-qa-message__actions[data-persistent]"),
+    ).toBeNull();
+  });
+
+  it("keeps the metadata row persistent when timestamps are enabled", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:1",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+          timestamp: 1_000,
+          stats: { durationMs: 500, ttftMs: null, tokensPerSecond: null },
+        }}
+        renderMarkdown={false}
+        showTimestamp
+      />,
+    );
+    expect(
+      document.querySelector(".dsh-qa-message__actions[data-persistent]"),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(".dsh-qa-message__meta")?.textContent,
+    ).not.toContain("TTFT");
+  });
+
+  it("shows the date on the user message", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "user:1",
+          role: "user",
+          text: "Вопрос",
+          status: "committed",
+          timestamp: new Date(2026, 8, 9, 15, 50).getTime(),
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(
+      document.querySelector(".dsh-qa-message__meta")?.textContent,
+    ).toContain("9 сент 15:50");
+    expect(screen.queryByRole("button", { name: "Нравится" })).toBeNull();
+  });
+
+  it("rates answers with mutually exclusive, persisted like and dislike", () => {
+    window.localStorage.clear();
+    const stateKey = "dsh-qa-surface.session:v1:/qa";
+    const view = render(
+      <QaMessage
+        message={{
+          id: "assistant:7",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey={stateKey}
+      />,
+    );
+    const like = screen.getByRole("button", {
+      name: "Нравится",
+    }) as HTMLButtonElement;
+    const dislike = screen.getByRole("button", {
+      name: "Не нравится",
+    }) as HTMLButtonElement;
+    expect(like.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(like);
+    expect(like.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      JSON.parse(window.localStorage.getItem(`${stateKey}:ratings`) ?? "{}"),
+    ).toEqual({ "assistant:7": "up" });
+    fireEvent.click(dislike);
+    expect(dislike.getAttribute("aria-pressed")).toBe("true");
+    expect(like.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(dislike);
+    expect(dislike.getAttribute("aria-pressed")).toBe("false");
+    expect(window.localStorage.getItem(`${stateKey}:ratings`)).toBe("{}");
+    view.unmount();
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:7",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey={stateKey}
+      />,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Нравится",
+        }) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
 });
 
 describe("QA work group", () => {
