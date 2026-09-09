@@ -11,11 +11,10 @@ import type {
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
-  attestationReasonOf,
   QaSessionController,
   type QaSessionControllerOptions,
-  type StorageLike,
 } from "../src/client/QaSessionController.js";
+import type { StorageLike } from "../src/client/types.js";
 
 class Source<T> {
   private readonly listeners = new Set<() => void>();
@@ -636,17 +635,6 @@ describe("QA chat index and switching", () => {
 });
 
 describe("attestation diagnostics", () => {
-  it("parses the Host reason marker from wire failures", () => {
-    expect(
-      attestationReasonOf({
-        message:
-          "Assistant configuration is unavailable. (reason: unknown-tools)",
-      }),
-    ).toBe("unknown-tools");
-    expect(attestationReasonOf({ message: "plain refusal" })).toBeNull();
-    expect(attestationReasonOf(undefined)).toBeNull();
-  });
-
   it("reports the Host reason code once without a wrapper stack trace", async () => {
     const world = harness();
     const controller = new QaSessionController({

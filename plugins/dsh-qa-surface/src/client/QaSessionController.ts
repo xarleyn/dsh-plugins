@@ -1,160 +1,54 @@
 import type {
   HostDescriptionSource,
-  IApiClient,
   SessionId,
   WorkspaceId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ISessions,
-  SessionFace,
-  SessionListState,
-  SessionRuntime,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
 import type { QaSessionState, ResolvedQaSurfaceConfig } from "../types.js";
-import type { QaLockdownProof } from "../types.js";
+import {
+  QaPolicyAttestationError,
+  attestationHint,
+  attestationReasonOf,
+  proofMatchesConfig,
+} from "./attestation.js";
+import { QaChatIndex } from "./chat-index.js";
+import type {
+  QaSecureSession,
+  QaSessions,
+  QaSessionsApi,
+  StorageLike,
+} from "./types.js";
+import { QA_SESSION_IDLE_STATE } from "./types.js";
+import { waitFor } from "./wait-for.js";
 import { projectTranscript } from "./QaTranscriptAdapter.js";
-
-type QaSessions = ISessions & Pick<SessionRuntime, "create">;
-type QaSessionsApi = Pick<IApiClient["sessions"], "selectModel"> & {
-  readonly selectAgentPreset: IApiClient["agentPresets"]["select"];
-};
-
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
 
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
   readonly connection: HostDescriptionSource;
   readonly config: ResolvedQaSurfaceConfig;
-  readonly secureSession: (sessionId: string) => Promise<
-    | { readonly ok: true; readonly value: QaLockdownProof }
-    | {
-        readonly ok: false;
-        readonly error: unknown;
-      }
-  >;
+  readonly secureSession: QaSecureSession;
   readonly storage?: StorageLike;
   readonly timeoutMs?: number;
 }
 
-const EMPTY_STATE: QaSessionState = Object.freeze({
-  phase: "idle",
-  sessionId: null,
-  messages: Object.freeze([]),
-  error: null,
-  canSend: false,
-  canStop: false,
-  chatsRevision: 0,
-});
-
-/** Cap on the per-browser chat index so localStorage cannot grow unbounded. */
-const MAX_INDEXED_CHATS = 50;
 const CONFIGURATION_ERROR = "Настройки помощника недоступны.";
 
-/** The `(reason: <code>)` marker the Host folds into attestation wire failures. */
-const ATTESTATION_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
-
 /**
- * Extract the coarse attestation reason code from a Host wire failure, if the
- * failure carries the marker. The specific mismatch facts stay in the Host
- * logs; this code only tells the operator which class of check refused.
+ * The only module that couples QA behavior to DSH Session/client APIs. It owns
+ * the chat lifecycle state machine; the observable wait, browser-local chat
+ * bookkeeping and policy-attestation details live in their own modules.
  */
-export function attestationReasonOf(
-  failure:
-    | {
-        readonly message?: string;
-      }
-    | undefined
-    | null,
-): string | null {
-  const match = ATTESTATION_REASON_MARKER.exec(failure?.message ?? "");
-  const reason = match?.[1];
-  return reason === undefined ? null : reason;
-}
-
-function attestationHint(reason: string | null): string {
-  if (reason === "unknown-tools") {
-    return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
-  }
-  if (reason === "composition-mismatch") {
-    return "The session's agent preset, workspace or model no longer matches the deployment QA config.";
-  }
-  if (reason === "permission-preset") {
-    return "The configured permission preset did not resolve to the pinned sandbox/approval policy.";
-  }
-  if (reason === "adoption-refused") {
-    return "This browser tried to adopt a session created outside the current QA policy.";
-  }
-  return "The specific mismatch facts are written to the Host logs.";
-}
-
-class QaPolicyAttestationError extends Error {
-  constructor() {
-    super("QA session policy could not be attested.");
-    this.name = "QaPolicyAttestationError";
-  }
-}
-
-function waitFor<T>(
-  source: {
-    getSnapshot(): T;
-    subscribe(listener: () => void): () => void;
-  },
-  predicate: (value: T) => boolean,
-  timeoutMs: number,
-): Promise<T> {
-  const current = source.getSnapshot();
-  if (predicate(current)) return Promise.resolve(current);
-  return new Promise<T>((resolve, reject) => {
-    let settled = false;
-    const timeout: { id?: ReturnType<typeof setTimeout> } = {};
-    let unsubscribe: () => void = () => undefined;
-    const finish = (value: T) => {
-      if (settled) return;
-      settled = true;
-      if (timeout.id !== undefined) clearTimeout(timeout.id);
-      unsubscribe();
-      resolve(value);
-    };
-    unsubscribe = source.subscribe(() => {
-      const next = source.getSnapshot();
-      if (predicate(next)) finish(next);
-    });
-    // Tolerate observable implementations that notify synchronously while a
-    // subscriber is being installed, and close that subscription afterward.
-    if (settled) {
-      unsubscribe();
-      return;
-    }
-    const afterSubscribe = source.getSnapshot();
-    if (predicate(afterSubscribe)) {
-      finish(afterSubscribe);
-      return;
-    }
-    timeout.id = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      unsubscribe();
-      reject(new Error("Timed out waiting for the DSH runtime."));
-    }, timeoutMs);
-  });
-}
-
-/** The only module that couples QA behavior to DSH Session/client APIs. */
 export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
   private readonly api: QaSessionsApi;
   private readonly connection: HostDescriptionSource;
   private readonly config: ResolvedQaSurfaceConfig;
-  private readonly secureSessionRemote: QaSessionControllerOptions["secureSession"];
-  private readonly storage: StorageLike | undefined;
+  private readonly secureSessionRemote: QaSecureSession;
+  private readonly chats: QaChatIndex;
   private readonly timeoutMs: number;
-  private state: QaSessionState = EMPTY_STATE;
+  private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
   private unsubscribeSession: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
@@ -173,7 +67,10 @@ export class QaSessionController {
     this.connection = options.connection;
     this.config = options.config;
     this.secureSessionRemote = options.secureSession;
-    this.storage = options.storage;
+    this.chats = new QaChatIndex(
+      options.storage,
+      `${options.config.session.storageKey}:v1:${options.config.route.path}`,
+    );
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
     this.unsubscribeConnection = this.connection.subscribe(() => {
@@ -271,7 +168,7 @@ export class QaSessionController {
     this.admissionPending = false;
     this.policyReady = false;
     this.state = {
-      ...EMPTY_STATE,
+      ...QA_SESSION_IDLE_STATE,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -282,7 +179,7 @@ export class QaSessionController {
       if (this.disposed || operation !== this.generation) return;
       await this.bind(id);
       if (this.disposed || operation !== this.generation) return;
-      this.persist(id);
+      this.chats.saveActive(id);
     } catch (error) {
       this.fail(
         this.operationError === CONFIGURATION_ERROR
@@ -311,7 +208,7 @@ export class QaSessionController {
     this.admissionPending = false;
     this.policyReady = false;
     this.state = {
-      ...EMPTY_STATE,
+      ...QA_SESSION_IDLE_STATE,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -330,7 +227,7 @@ export class QaSessionController {
       }
       await this.bind(sessionId);
       if (this.disposed || operation !== this.generation) return;
-      this.persist(sessionId);
+      this.chats.saveActive(sessionId);
     } catch (error) {
       this.fail(
         this.operationError === CONFIGURATION_ERROR
@@ -343,16 +240,7 @@ export class QaSessionController {
 
   /** This browser's indexed chat ids, most recently used first. */
   chatIds(): readonly string[] {
-    try {
-      const raw = this.storage?.getItem(this.chatIndexKey()) ?? "[]";
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) return [];
-      return [
-        ...new Set(parsed.filter((id): id is string => typeof id === "string")),
-      ].slice(0, MAX_INDEXED_CHATS);
-    } catch {
-      return [];
-    }
+    return this.chats.chatIds();
   }
 
   /** The bound session id, or null while no chat is bound. */
@@ -379,6 +267,11 @@ export class QaSessionController {
     this.publish();
   }
 
+  /** Drop one chat id from this browser's index. */
+  forgetChat(sessionId: string): void {
+    this.chats.forgetChat(sessionId);
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -391,7 +284,7 @@ export class QaSessionController {
   private async ensureSessionNow(): Promise<void> {
     const operation = ++this.generation;
     this.state = {
-      ...EMPTY_STATE,
+      ...QA_SESSION_IDLE_STATE,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -411,12 +304,12 @@ export class QaSessionController {
           throw new Error("Configured fixed session is unavailable.");
         }
       } else if (this.config.session.policy === "browser-persistent") {
-        const stored = this.readPersisted();
+        const stored = this.chats.activeId();
         if (stored !== null && Object.hasOwn(list.byId, stored)) {
           id = stored;
           restored = true;
         } else if (stored !== null) {
-          this.clearPersisted();
+          this.chats.clearActive();
         }
       }
       if (id === null) {
@@ -442,13 +335,15 @@ export class QaSessionController {
         // forget it and bootstrap one fresh, policy-attested session instead.
         this.unbind();
         this.operationError = null;
-        this.clearPersisted();
+        this.chats.clearActive();
         id = await this.createSession();
         if (this.disposed || operation !== this.generation) return;
         await this.bind(id);
       }
       if (this.disposed || operation !== this.generation) return;
-      if (this.config.session.policy === "browser-persistent") this.persist(id);
+      if (this.config.session.policy === "browser-persistent") {
+        this.chats.saveActive(id);
+      }
     } catch (error) {
       this.fail(
         this.operationError === CONFIGURATION_ERROR
@@ -499,12 +394,12 @@ export class QaSessionController {
         return false;
       }
       this.unbind();
-      this.clearPersisted();
+      this.chats.clearActive();
       const created = await this.createSession();
       if (this.disposed || operation !== this.generation) return false;
       await this.bind(created);
       if (this.disposed || operation !== this.generation) return false;
-      this.persist(created);
+      this.chats.saveActive(created);
       return this.policyReady;
     } catch (error) {
       this.fail(
@@ -590,7 +485,7 @@ export class QaSessionController {
     if (!(await this.attestPolicy(reportAttestationFailure))) {
       throw new QaPolicyAttestationError();
     }
-    this.recordChat(String(this.session.sessionId));
+    this.chats.rememberChat(String(this.session.sessionId));
     this.publish();
   }
 
@@ -668,7 +563,7 @@ export class QaSessionController {
     if (this.disposed) return;
     this.operationError = message;
     this.state = {
-      ...EMPTY_STATE,
+      ...QA_SESSION_IDLE_STATE,
       phase: "error",
       error: message,
       chatsRevision: this.chatsRevision,
@@ -706,20 +601,15 @@ export class QaSessionController {
           attestationReasonOf(result.error as { readonly message?: string }),
         );
       }
-      const proof = result.value;
-      const valid =
-        proof.sessionId === String(this.session.sessionId) &&
-        proof.enabled &&
-        proof.agentPresetMatches &&
-        proof.workspaceMatches &&
-        proof.modelMatches &&
-        proof.sandboxIsReadOnly &&
-        proof.approvalIsNever &&
-        proof.permissionPreset === this.config.lockdown.permissionPreset &&
-        proof.toolPolicyLoaded &&
-        JSON.stringify(proof.toolAllowList) ===
-          JSON.stringify(this.config.lockdown.toolPolicy.allow);
-      if (!valid) return reject("proof-mismatch");
+      if (
+        !proofMatchesConfig(
+          result.value,
+          this.config.lockdown,
+          String(this.session.sessionId),
+        )
+      ) {
+        return reject("proof-mismatch");
+      }
       this.policyReady = true;
       this.operationError = null;
       this.publish();
@@ -738,64 +628,7 @@ export class QaSessionController {
     }
   }
 
-  private storageKey(): string {
-    return `${this.config.session.storageKey}:v1:${this.config.route.path}:session`;
-  }
-
-  private chatIndexKey(): string {
-    return `${this.config.session.storageKey}:v1:${this.config.route.path}:chats`;
-  }
-
-  /** Move one chat to the front of this browser's index, capping the list. */
-  private recordChat(sessionId: string): void {
-    try {
-      const next = [
-        sessionId,
-        ...this.chatIds().filter((id) => id !== sessionId),
-      ].slice(0, MAX_INDEXED_CHATS);
-      this.storage?.setItem(this.chatIndexKey(), JSON.stringify(next));
-    } catch {
-      // A denied localStorage write must not prevent the bound chat.
-    }
-  }
-
-  forgetChat(sessionId: string): void {
-    try {
-      const next = this.chatIds().filter((id) => id !== sessionId);
-      this.storage?.setItem(this.chatIndexKey(), JSON.stringify(next));
-    } catch {
-      // A denied localStorage removal is harmless; the id is revalidated later.
-    }
-  }
-
-  private readPersisted(): string | null {
-    try {
-      const value = this.storage?.getItem(this.storageKey())?.trim() ?? "";
-      return value === "" ? null : value;
-    } catch {
-      return null;
-    }
-  }
-
-  private persist(id: string): void {
-    try {
-      this.storage?.setItem(this.storageKey(), id);
-    } catch {
-      // A denied localStorage write must not prevent a real DSH session.
-    }
-  }
-
-  private clearPersisted(): void {
-    try {
-      this.storage?.removeItem(this.storageKey());
-    } catch {
-      // A denied localStorage removal is harmless; the id is revalidated later.
-    }
-  }
-
   private emit(): void {
     for (const listener of this.listeners) listener();
   }
 }
-
-export type { SessionListState };

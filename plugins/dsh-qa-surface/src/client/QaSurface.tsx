@@ -6,51 +6,30 @@ import {
   useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
-import type {
-  HostDescriptionSource,
-  IApiClient,
-} from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ISessions,
-  SessionRuntime,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { HostDescriptionSource } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaLockdownProof, QaSessionState } from "../types.js";
+import type { QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
+import type { QaSecureSession, QaSessions, QaSessionsApi } from "./types.js";
+import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 
-const INACTIVE_STATE: QaSessionState = Object.freeze({
-  phase: "idle",
-  sessionId: null,
-  messages: Object.freeze([]),
-  error: null,
-  canSend: false,
-  canStop: false,
-  chatsRevision: 0,
-});
 const noopSubscribe = () => () => undefined;
 
 export interface QaSurfaceFace {
   readonly route: QaRouteController;
   readonly config: QaConfigController;
-  readonly sessions: ISessions & Pick<SessionRuntime, "create">;
-  readonly api: Pick<IApiClient["sessions"], "selectModel"> & {
-    readonly selectAgentPreset: IApiClient["agentPresets"]["select"];
-  };
+  readonly sessions: QaSessions;
+  readonly api: QaSessionsApi;
   readonly connection: HostDescriptionSource;
-  readonly secureSession: (
-    sessionId: string,
-  ) => Promise<
-    | { readonly ok: true; readonly value: QaLockdownProof }
-    | { readonly ok: false; readonly error: unknown }
-  >;
+  readonly secureSession: QaSecureSession;
 }
 
 type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
@@ -150,8 +129,8 @@ export function QaSurface(props: QaSurfaceProps) {
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
-    controller?.getSnapshot ?? (() => INACTIVE_STATE),
-    controller?.getSnapshot ?? (() => INACTIVE_STATE),
+    controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
+    controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
   const listState = useSyncExternalStore(
     props.sessions.list.subscribe,
