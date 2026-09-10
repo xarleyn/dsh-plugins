@@ -15,6 +15,8 @@ export interface QaSurfaceConfig {
     readonly welcomeMessage?: string;
     readonly placeholder?: string;
     readonly logoUrl?: string | null;
+    /** Data-usage notice under the composer; empty string hides the plate. */
+    readonly disclaimer?: string | null;
   };
   readonly session?: {
     readonly policy?: QaSessionPolicy;
@@ -81,6 +83,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly welcomeMessage: string;
     readonly placeholder: string;
     readonly logoUrl: string | null;
+    readonly disclaimer: string;
   };
   readonly session: {
     readonly policy: QaSessionPolicy;

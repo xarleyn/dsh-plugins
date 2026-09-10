@@ -284,6 +284,8 @@ span.dsh-qa-message__image[data-state="loading"]{animation:dsh-qa-spin 1.2s line
 .dsh-qa-footer{position:relative;flex:none;padding:28px 16px max(12px,env(safe-area-inset-bottom));background:linear-gradient(180deg,color-mix(in srgb,var(--dsw-alias-bg-base) 0%,transparent) 0,var(--dsw-alias-bg-base) 28px)}
 .dsh-qa-footer__inner{width:100%;margin:0 auto}
 .dsh-qa-composer-wrap{display:flex;flex-direction:column;gap:10px;width:100%}
+.dsh-qa-footer__disclaimer{display:flex;align-items:flex-start;justify-content:center;gap:6px;margin:10px auto 0;max-width:640px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;text-align:left}
+.dsh-qa-footer__disclaimer svg{width:13px;height:13px;flex:none;margin-top:1px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round}
 .dsh-qa-quick-questions{display:flex;gap:8px;width:100%;padding:2px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:thin}
 .dsh-qa-quick-questions button{flex:none;max-width:min(360px,80vw);padding:8px 13px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 .dsh-qa-quick-questions button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}

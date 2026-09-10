@@ -122,6 +122,8 @@ assert.match(client, /dsh-qa-message__images/u);
 assert.match(client, /mediaType/u);
 assert.match(client, /dsh-qa-sourcedetail/u);
 assert.match(client, /Открыть/u);
+assert.match(client, /dsh-qa-footer__disclaimer/u);
+assert.match(client, /используются для улучшения качества ответов/u);
 assert.match(client, /Субагент/u);
 assert.match(client, /dsh-qa-agents/u);
 assert.match(client, /dsh-qa-agentview/u);

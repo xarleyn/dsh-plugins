@@ -18,6 +18,9 @@ const configSchema = z.object({
       welcomeMessage: z.string().default("Чем могу помочь?"),
       placeholder: z.string().default("Задайте вопрос…"),
       logoUrl: nullableString.default(null),
+      disclaimer: nullableString.default(
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов. Не делитесь конфиденциальными данными.",
+      ),
     })
     .default({
       title: "Помощник",
@@ -25,6 +28,8 @@ const configSchema = z.object({
       welcomeMessage: "Чем могу помочь?",
       placeholder: "Задайте вопрос…",
       logoUrl: null,
+      disclaimer:
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов. Не делитесь конфиденциальными данными.",
     }),
   session: z
     .object({

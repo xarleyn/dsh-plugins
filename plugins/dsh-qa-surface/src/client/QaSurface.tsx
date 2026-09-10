@@ -493,6 +493,15 @@ export function QaSurface(props: QaSurfaceProps) {
               }
               onStop={() => controller?.stop() ?? Promise.resolve()}
             />
+            {config.branding.disclaimer === "" ? null : (
+              <p className="dsh-qa-footer__disclaimer">
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <circle cx="8" cy="8" r="5.75" />
+                  <path d="M8 7.25v3.5m0-5.25v.5" />
+                </svg>
+                {config.branding.disclaimer}
+              </p>
+            )}
           </div>
         </footer>
       </div>
