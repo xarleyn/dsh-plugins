@@ -69,6 +69,9 @@ config:
     placeholder: Задайте вопрос…
     logoUrl: null
   session:
+    # Pin every chat to a directory (optional, one of):
+    # cwd: "D:/qa-docs"        # direct absolute directory pin
+    # workspaceId: "<uuid>"    # or a registered DSH workspace
     policy: browser-persistent
     storageKey: dsh-qa-surface.session
     workspaceId: company-knowledge

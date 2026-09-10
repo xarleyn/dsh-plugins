@@ -14,6 +14,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     session: Object.freeze({
       policy: "browser-persistent",
       storageKey: "dsh-qa-surface.session",
+      cwd: null,
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,
@@ -129,6 +130,20 @@ export function resolveConfig(
       "dsh-qa-surface: session.fixedSessionId is required for fixed policy",
     );
   }
+  // The cwd pin is the no-registry alternative to workspaceId; both pin the
+  // session to one directory, so together they are a configuration error.
+  const cwd = optionalText(input.session?.cwd);
+  if (cwd !== null && !/^([a-zA-Z]:[/\\]|\/)/u.test(cwd)) {
+    throw new TypeError(
+      "dsh-qa-surface: session.cwd must be an absolute directory path",
+    );
+  }
+  const workspaceId = optionalText(input.session?.workspaceId);
+  if (workspaceId !== null && cwd !== null) {
+    throw new TypeError(
+      "dsh-qa-surface: session.workspaceId and session.cwd are mutually exclusive",
+    );
+  }
   const provider = optionalText(input.session?.provider);
   const model = optionalText(input.session?.model);
   if ((provider === null) !== (model === null)) {
@@ -242,6 +257,7 @@ export function resolveConfig(
     session: Object.freeze({
       policy,
       storageKey,
+      cwd,
       workspaceId: optionalText(input.session?.workspaceId),
       fixedSessionId,
       agentPreset: optionalText(input.session?.agentPreset),

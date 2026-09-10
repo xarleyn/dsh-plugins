@@ -17,6 +17,22 @@ interface AppliedPolicy {
 const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = 120_000;
 
 /**
+ * Compare session cwds the way the host records them: separator- and
+ * case-normalized on Windows, so a deployment path written with either
+ * separator or case still matches the session header cwd.
+ */
+function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
+  if (headerCwd === undefined) return false;
+  const normalize = (value: string) =>
+    value.replaceAll("\\", "/").replace(/\/+$/u, "");
+  const left = normalize(headerCwd);
+  const right = normalize(pinned);
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+/**
  * Host-side QA policy admission boundary — the only browser-callable operation
  * that turns a session into a locked QA session. It verifies the immutable
  * session composition against the effective deployment config, refuses to
@@ -59,21 +75,35 @@ export class QaPolicyAdmission {
       };
     }
 
+    const expectedWorkspace = config.session.workspaceId;
+    const pinnedWorkspace =
+      expectedWorkspace === null
+        ? undefined
+        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
+    // A pin that resolves to nothing would refuse the cwd comparison anyway,
+    // but the precise reason saves an operator a round trip: the surface
+    // stays closed until the workspace exists or the id is fixed.
+    if (expectedWorkspace !== null && pinnedWorkspace === undefined) {
+      throw new QaAttestationError(
+        "workspace-unavailable",
+        `workspace ${expectedWorkspace} is not registered`,
+      );
+    }
+
     const expectedPreset = config.session.agentPreset;
     const agentPresetMatches =
       !lockdown.enforceFixedAgentPreset ||
       expectedPreset === null ||
       this.ctx.agentPresets.composedPreset(agent.ctx) === expectedPreset;
 
-    const expectedWorkspace = config.session.workspaceId;
-    const workspace =
-      expectedWorkspace === null
-        ? undefined
-        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
     const workspaceMatches =
       !lockdown.enforceFixedWorkspace ||
-      expectedWorkspace === null ||
-      (workspace !== undefined && agent.session.header.cwd === workspace.path);
+      (expectedWorkspace === null && config.session.cwd === null) ||
+      (pinnedWorkspace !== undefined &&
+        cwdMatches(agent.session.header.cwd, pinnedWorkspace.path)) ||
+      (expectedWorkspace === null &&
+        config.session.cwd !== null &&
+        cwdMatches(agent.session.header.cwd, config.session.cwd));
 
     const options = agent.options as Agent["options"] & {
       readonly reasoningEffort?: string;

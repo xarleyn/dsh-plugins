@@ -19,6 +19,8 @@ export interface QaSurfaceConfig {
   readonly session?: {
     readonly policy?: QaSessionPolicy;
     readonly storageKey?: string;
+    /** Absolute directory pinned as the session cwd (alternative to workspaceId). */
+    readonly cwd?: string | null;
     readonly workspaceId?: string | null;
     readonly fixedSessionId?: string | null;
     readonly agentPreset?: string | null;
@@ -83,6 +85,7 @@ export interface ResolvedQaSurfaceConfig {
   readonly session: {
     readonly policy: QaSessionPolicy;
     readonly storageKey: string;
+    readonly cwd: string | null;
     readonly workspaceId: string | null;
     readonly fixedSessionId: string | null;
     readonly agentPreset: string | null;

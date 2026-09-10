@@ -607,6 +607,17 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("creates the chat inside the pinned cwd", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
+    });
+    await controller.ensureSession();
+    expect(world.create).toHaveBeenCalledWith({ cwd: "D:/qa-docs" });
+    controller.dispose();
+  });
+
   it("regenerates by prompting the hidden marker instruction", async () => {
     const world = harness();
     const controller = new QaSessionController({

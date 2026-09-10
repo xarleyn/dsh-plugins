@@ -37,6 +37,9 @@ export function attestationHint(reason: string | null): string {
   if (reason === "unknown-tools") {
     return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
   }
+  if (reason === "workspace-unavailable") {
+    return "The configured session.workspaceId does not match a registered workspace - create the workspace or fix the id (session.cwd is the no-registry alternative).";
+  }
   if (reason === "composition-mismatch") {
     return "The session's agent preset, workspace or model no longer matches the deployment QA config.";
   }
