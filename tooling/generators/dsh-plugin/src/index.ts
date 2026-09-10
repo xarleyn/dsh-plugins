@@ -320,8 +320,8 @@ console.log("verify-package: all gates passed");
       {
         deepseekHarness: {
           channel: "next",
-          range: ">=0.1.1-rc.2 <0.2.0",
-          testedReleases: ["0.1.1-rc.2"],
+          range: ">=0.1.5-rc.2 <0.2.0",
+          testedReleases: ["0.1.5-rc.2"],
         },
         node: "^22.19.0 || >=24.0.0",
       },
@@ -352,7 +352,7 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.1-rc.2 <0.2.0
+- DeepSeek Harness >=0.1.5-rc.2 <0.2.0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -367,7 +367,7 @@ Configure the plugin under the \`${pluginName}\` key in the DSH profile.
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.1-rc.2 <0.2.0 (see \`compatibility.json\`)
+- DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see \`compatibility.json\`)
 
 ## Development
 

@@ -17,8 +17,8 @@ async function fixture(overrides = {}) {
   }
   writeJson(path.join(directory, "compatibility.json"), {
     deepseekHarness: {
-      range: ">=0.1.1-rc.2 <0.2.0",
-      testedReleases: ["0.1.1-rc.2"],
+      range: ">=0.1.5-rc.2 <0.2.0",
+      testedReleases: ["0.1.5-rc.2"],
     },
     node: ">=22",
   });

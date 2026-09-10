@@ -71,8 +71,8 @@ describe("dsh-plugin generator", () => {
       JSON.parse(tree.read(`${root}/compatibility.json`, "utf8") ?? "{}"),
     ).toMatchObject({
       deepseekHarness: {
-        range: ">=0.1.1-rc.2 <0.2.0",
-        testedReleases: ["0.1.1-rc.2"],
+        range: ">=0.1.5-rc.2 <0.2.0",
+        testedReleases: ["0.1.5-rc.2"],
       },
       node: "^22.19.0 || >=24.0.0",
     });
