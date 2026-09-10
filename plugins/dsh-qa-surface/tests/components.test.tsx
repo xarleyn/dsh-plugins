@@ -890,15 +890,13 @@ describe("render equality helpers", () => {
     timestamp: 97_000,
     notice: { title: "Субагент a1b2c3d4 завершён", body: "Готово." },
   };
-  const reasoningItem: Extract<
-    QaWorkItem,
-    { kind: "reasoning" | "progress" }
-  > = {
-    id: "reasoning:1:0",
-    kind: "reasoning",
-    text: "Мысль.",
-    status: "complete",
-  };
+  const reasoningItem: Extract<QaWorkItem, { kind: "reasoning" | "progress" }> =
+    {
+      id: "reasoning:1:0",
+      kind: "reasoning",
+      text: "Мысль.",
+      status: "complete",
+    };
   const toolItem: Extract<QaWorkItem, { kind: "tool" }> = {
     id: "tool:1:a",
     kind: "tool",
@@ -976,10 +974,12 @@ describe("render equality helpers", () => {
     expect(
       sameWorkItem(reasoningItem, { ...reasoningItem, text: "Другая мысль." }),
     ).toBe(false);
-    expect(
-      sameWorkItem(toolItem, { ...toolItem, output: "Другое" }),
-    ).toBe(false);
-    expect(sameWorkItem(toolItem, { ...toolItem, status: "error" })).toBe(false);
+    expect(sameWorkItem(toolItem, { ...toolItem, output: "Другое" })).toBe(
+      false,
+    );
+    expect(sameWorkItem(toolItem, { ...toolItem, status: "error" })).toBe(
+      false,
+    );
     expect(sameWorkItem(reasoningItem, toolItem)).toBe(false);
     expect(sameWorkItems(workMessage.items, [...workMessage.items])).toBe(true);
     expect(sameWorkItems(workMessage.items, [reasoningItem])).toBe(false);
