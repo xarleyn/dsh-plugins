@@ -10,10 +10,13 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       welcomeMessage: "Чем могу помочь?",
       placeholder: "Задайте вопрос…",
       logoUrl: null,
+      disclaimer:
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
     }),
     session: Object.freeze({
       policy: "browser-persistent",
       storageKey: "dsh-qa-surface.session",
+      cwd: null,
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,
@@ -129,6 +132,20 @@ export function resolveConfig(
       "dsh-qa-surface: session.fixedSessionId is required for fixed policy",
     );
   }
+  // The cwd pin is the no-registry alternative to workspaceId; both pin the
+  // session to one directory, so together they are a configuration error.
+  const cwd = optionalText(input.session?.cwd);
+  if (cwd !== null && !/^([a-zA-Z]:[/\\]|\/)/u.test(cwd)) {
+    throw new TypeError(
+      "dsh-qa-surface: session.cwd must be an absolute directory path",
+    );
+  }
+  const workspaceId = optionalText(input.session?.workspaceId);
+  if (workspaceId !== null && cwd !== null) {
+    throw new TypeError(
+      "dsh-qa-surface: session.workspaceId and session.cwd are mutually exclusive",
+    );
+  }
   const provider = optionalText(input.session?.provider);
   const model = optionalText(input.session?.model);
   if ((provider === null) !== (model === null)) {
@@ -238,10 +255,17 @@ export function resolveConfig(
         input.branding?.placeholder?.trim() ||
         DEFAULT_QA_SURFACE_CONFIG.branding.placeholder,
       logoUrl: optionalText(input.branding?.logoUrl),
+      // Undefined falls back to the default notice; an explicit null or
+      // empty string hides the plate entirely.
+      disclaimer:
+        input.branding?.disclaimer === undefined
+          ? DEFAULT_QA_SURFACE_CONFIG.branding.disclaimer
+          : (optionalText(input.branding.disclaimer) ?? ""),
     }),
     session: Object.freeze({
       policy,
       storageKey,
+      cwd,
       workspaceId: optionalText(input.session?.workspaceId),
       fixedSessionId,
       agentPreset: optionalText(input.session?.agentPreset),

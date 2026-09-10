@@ -59,7 +59,7 @@
   "files": [
     "lib/**/*.js",
     "lib/**/*.js.map",
-    "lib/types/**/*.d.ts",
+    "lib/**/*.d.ts",
     "cordis.patch.yml",
     "compatibility.json",
     "capability-policy.json",

@@ -8,16 +8,21 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 
 | Directory | npm package | Purpose |
 | --- | --- | --- |
+| `plugins/dsh-cas-results` | `@yadsh/dsh-cas-results` | Content-addressed offload store for bulky tool results |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
+| `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | Two-layer safety gate for prompts, streamed output, tools, and tool results |
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
+| `plugins/dsh-qa-surface` | `@yadsh/dsh-qa-surface` | Focused end-user QA surface backed by native sessions |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
+| `plugins/dsh-tool-offload` | `@yadsh/dsh-tool-offload` | Offloads large tool results to small one-shot worker agents |
+| `plugins/dsh-ui-repair` | `@yadsh/dsh-ui-repair` | Reversible DOM diagnostics and scoped UI repairs |
 | `plugins/dsh-user-correction-miner` | `@yadsh/dsh-user-correction-miner` | Mines project-rule candidates from user corrections |
-| `plugins/dsh-ui-repair` | not publishable yet | Design specification only |
+| `plugins/dsh-web-fetch-authenticated` | `@yadsh/dsh-web-fetch-authenticated` | Authenticated, policy-gated web_fetch provider |
 | `packages/config` | private workspace package | Shared tsconfig and vitest presets |
 | `packages/plugin-log` | `@yadsh/dsh-plugin-log` | Structured file logging and runtime consumer discovery |
 | `packages/plugin-kit` | private workspace package | Shared runtime helpers |

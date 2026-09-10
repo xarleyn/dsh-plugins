@@ -15,10 +15,14 @@ export interface QaSurfaceConfig {
     readonly welcomeMessage?: string;
     readonly placeholder?: string;
     readonly logoUrl?: string | null;
+    /** Data-usage notice under the composer; empty string hides the plate. */
+    readonly disclaimer?: string | null;
   };
   readonly session?: {
     readonly policy?: QaSessionPolicy;
     readonly storageKey?: string;
+    /** Absolute directory pinned as the session cwd (alternative to workspaceId). */
+    readonly cwd?: string | null;
     readonly workspaceId?: string | null;
     readonly fixedSessionId?: string | null;
     readonly agentPreset?: string | null;
@@ -79,10 +83,12 @@ export interface ResolvedQaSurfaceConfig {
     readonly welcomeMessage: string;
     readonly placeholder: string;
     readonly logoUrl: string | null;
+    readonly disclaimer: string;
   };
   readonly session: {
     readonly policy: QaSessionPolicy;
     readonly storageKey: string;
+    readonly cwd: string | null;
     readonly workspaceId: string | null;
     readonly fixedSessionId: string | null;
     readonly agentPreset: string | null;
@@ -152,6 +158,7 @@ export type QaMessage =
       readonly text: string;
       readonly status: "committed";
       readonly timestamp?: number;
+      readonly images?: readonly QaImageView[];
     }
   | {
       readonly id: string;
@@ -159,6 +166,17 @@ export type QaMessage =
       readonly text: string;
       readonly status: "streaming" | "committed" | "failed";
       readonly timestamp?: number;
+      /** Host turn this answer belongs to; groups regenerations into variants. */
+      readonly turn?: number;
+      /** Host-recorded response timing, present on finalized messages only. */
+      readonly stats?: {
+        /** step start → final message. */
+        readonly durationMs: number;
+        /** step start → first token; null when no token delta was recorded. */
+        readonly ttftMs: number | null;
+        /** Estimated from visible text (≈4 chars/token) over the generation window. */
+        readonly tokensPerSecond: number | null;
+      };
     }
   | {
       readonly id: string;
@@ -166,6 +184,11 @@ export type QaMessage =
       readonly text: string;
       readonly status: "info" | "error";
       readonly timestamp?: number;
+      /** Collapsible settlement row (subagent finished/stopped/failed). */
+      readonly notice?: {
+        readonly title: string;
+        readonly body: string;
+      };
     }
   | {
       readonly id: string;
@@ -193,6 +216,8 @@ export type QaWorkItem =
       readonly input: string | null;
       readonly output: string | null;
       readonly status: "running" | "ok" | "error" | "stopped";
+      /** Durable child id, present on subagent launch calls that started one. */
+      readonly subagentId?: string;
       readonly startedAt?: number;
       readonly endedAt?: number;
     };
@@ -206,6 +231,45 @@ export type QaSessionPhase =
   | "blocked"
   | "error";
 
+/** One tool-derived source shown in the sources drawer. */
+export interface QaSource {
+  readonly id: string;
+  readonly kind: "web" | "search" | "file";
+  /** URL, filesystem path or search query as the model supplied it. */
+  readonly target: string;
+  readonly title: string;
+  readonly snippet: string;
+  /** The tool's full text output, capped for the detail pane. */
+  readonly output: string;
+}
+
+/** Raster formats the attachment path accepts (mirrors the host contract). */
+export type QaImageMediaType =
+  "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+/** One image pending in the composer, browser-owned until the prompt lands. */
+export interface QaImageDraft {
+  readonly id: string;
+  readonly mediaType: QaImageMediaType;
+  readonly name: string;
+  /** Canonical base64 of the image bytes, without the data: URL prefix. */
+  readonly data: string;
+  /** Local object URL for the preview thumbnail. */
+  readonly previewUrl: string;
+}
+
+/** A durable image attached to a sent message. */
+export interface QaImageView {
+  readonly attachmentId: string;
+  readonly mediaType: QaImageMediaType;
+}
+
+/** A subagent transcript opened read-only from the agents panel. */
+export interface QaSubagentView {
+  readonly id: string;
+  readonly title: string;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -215,4 +279,8 @@ export interface QaSessionState {
   readonly canStop: boolean;
   /** Bumped whenever this browser's chat index changes (add/forget). */
   readonly chatsRevision: number;
+  /** Tool-derived sources of the current chat (web targets and files read). */
+  readonly sources: readonly QaSource[];
+  /** Set while the bound session is a subagent watched from the panel. */
+  readonly viewingSubagent: QaSubagentView | null;
 }

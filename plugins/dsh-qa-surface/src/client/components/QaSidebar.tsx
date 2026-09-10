@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import { relativeTime } from "./format.js";
 
 /** One renderable row of the chat-history sidebar. */
 export interface QaChatRow {
@@ -8,24 +9,14 @@ export interface QaChatRow {
   readonly running: boolean;
   readonly active: boolean;
   readonly meta: string;
-}
-
-function relativeTime(timestamp: number, now: number): string {
-  const seconds = Math.max(1, Math.round((now - timestamp) / 1000));
-  if (seconds < 60) return "только что";
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours} ч`;
-  const days = Math.round(hours / 24);
-  if (days < 7) return `${days} дн`;
-  return new Date(timestamp).toLocaleDateString("ru-RU");
+  readonly updatedAt: number;
 }
 
 /**
- * Project this browser's indexed chat ids onto the host session list. Ids the
- * host no longer lists are skipped (the controller prunes them on switch);
- * order stays the index's most-recently-used order.
+ * Project this browser's indexed chat ids onto the host session list, most
+ * recently updated first. Opening a chat is not an update: only the host's
+ * `updatedAt` (fresh messages) orders the list. Ids the host no longer lists
+ * are skipped (the controller prunes them on switch).
  */
 export function buildChatRows(
   chatIds: readonly string[],
@@ -43,13 +34,20 @@ export function buildChatRows(
       running: summary.running,
       active: id === activeId,
       meta: relativeTime(summary.updatedAt, now),
+      updatedAt: summary.updatedAt,
     });
   }
-  return rows;
+  return rows.sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
 export interface QaSidebarProps {
   readonly rows: readonly QaChatRow[];
+  /** Deployment brand shown next to the logo (also while collapsed). */
+  readonly title: string;
+  /** Optional image logo; a built-in mark is drawn when null. */
+  readonly logoUrl: string | null;
+  /** Storage prefix used to remember the collapsed state across reloads. */
+  readonly stateKey: string;
   readonly showNewChat: boolean;
   readonly busy: boolean;
   readonly onSwitch: (sessionId: string) => void;
@@ -58,43 +56,153 @@ export interface QaSidebarProps {
   readonly onDelete?: (sessionId: string) => void;
 }
 
-const TRASH_ICON = (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
-  </svg>
-);
+function readCollapsed(key: string): boolean {
+  try {
+    return window.localStorage.getItem(`${key}:sidebar-collapsed`) === "1";
+  } catch {
+    return false;
+  }
+}
 
-const CONFIRM_ICON = (
-  <svg viewBox="0 0 16 16" aria-hidden="true">
-    <path d="m3.5 8.5 3 3L12.5 5" />
-  </svg>
-);
+function writeCollapsed(key: string, collapsed: boolean): void {
+  try {
+    window.localStorage.setItem(
+      `${key}:sidebar-collapsed`,
+      collapsed ? "1" : "0",
+    );
+  } catch {
+    // A denied localStorage write only costs persistence across reloads.
+  }
+}
 
-/** The minimal per-browser chat history shown beside the QA conversation. */
+function DefaultMark() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M10 2.75a6.4 6.4 0 0 0-4.9 10.52c.2.24.28.5.24.79l-.2 1.44 1.9-.7c.24-.09.5-.06.74.05A6.4 6.4 0 1 0 10 2.75Z" />
+      <path d="M7.4 8.1h5.2M7.4 11h3.2" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <path d="M7 2.8v8.4M2.8 7h8.4" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <circle cx="6.25" cy="6.25" r="3.75" />
+      <path d="m9.2 9.2 2.55 2.55" />
+    </svg>
+  );
+}
+
+function ChevronIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
+    </svg>
+  );
+}
+
+function rowMatches(row: QaChatRow, query: string): boolean {
+  return row.title.toLowerCase().includes(query);
+}
+
+/** The per-browser chat history shown beside the QA conversation. */
 export function QaSidebar(props: QaSidebarProps) {
+  const [collapsed, setCollapsed] = useState(() =>
+    readCollapsed(props.stateKey),
+  );
+  const [query, setQuery] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const toggleCollapsed = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    writeCollapsed(props.stateKey, next);
+  };
+  if (collapsed) {
+    return (
+      <nav
+        className="dsh-qa-sidebar dsh-qa-sidebar--collapsed"
+        aria-label="История чатов"
+      >
+        <button
+          type="button"
+          className="dsh-qa-sidebar__expand"
+          aria-label="Развернуть историю чатов"
+          title="Развернуть историю чатов"
+          onClick={toggleCollapsed}
+        >
+          <ChevronIcon />
+        </button>
+      </nav>
+    );
+  }
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleRows =
+    normalizedQuery === ""
+      ? props.rows
+      : props.rows.filter((row) => rowMatches(row, normalizedQuery));
   const confirmingVisible =
     confirmingId !== null && props.rows.some((row) => row.id === confirmingId);
+  const brand: ReactNode =
+    props.logoUrl === null ? (
+      <DefaultMark />
+    ) : (
+      <img src={props.logoUrl} alt="" />
+    );
   return (
     <nav className="dsh-qa-sidebar" aria-label="История чатов">
       <div className="dsh-qa-sidebar__head">
-        <span className="dsh-qa-sidebar__title">Чаты</span>
-        {props.showNewChat ? (
+        <span className="dsh-qa-sidebar__brand" title={props.title}>
+          <span className="dsh-qa-sidebar__logo">{brand}</span>
+          <span className="dsh-qa-sidebar__name">{props.title}</span>
+        </span>
+        <button
+          type="button"
+          className="dsh-qa-sidebar__collapse"
+          aria-label="Свернуть историю чатов"
+          title="Свернуть историю чатов"
+          onClick={toggleCollapsed}
+        >
+          <ChevronIcon />
+        </button>
+      </div>
+      {props.showNewChat ? (
+        <div className="dsh-qa-sidebar__newbar">
           <button
             type="button"
             className="dsh-qa-sidebar__new"
             disabled={props.busy}
             onClick={props.onNewChat}
           >
+            <PlusIcon />
             Новый чат
           </button>
-        ) : null}
+        </div>
+      ) : null}
+      <div className="dsh-qa-sidebar__search">
+        <SearchIcon />
+        <input
+          type="search"
+          value={query}
+          placeholder="Поиск по чатам"
+          aria-label="Поиск по чатам"
+          onChange={(event) => setQuery(event.currentTarget.value)}
+        />
       </div>
       <div className="dsh-qa-sidebar__list">
         {props.rows.length === 0 ? (
           <p className="dsh-qa-sidebar__empty">Здесь пока пусто</p>
+        ) : visibleRows.length === 0 ? (
+          <p className="dsh-qa-sidebar__empty">Ничего не найдено</p>
         ) : (
-          props.rows.map((row) => {
+          visibleRows.map((row) => {
             const confirming = confirmingVisible && confirmingId === row.id;
             return (
               <div
@@ -150,7 +258,15 @@ export function QaSidebar(props: QaSidebarProps) {
                       setConfirmingId(row.id);
                     }}
                   >
-                    {confirming ? CONFIRM_ICON : TRASH_ICON}
+                    {confirming ? (
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="m3.5 8.5 3 3L12.5 5" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
+                      </svg>
+                    )}
                   </button>
                 )}
               </div>

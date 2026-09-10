@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { QaWorkItem } from "../../types.js";
+import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
 
 export interface QaWorkGroupProps {
@@ -8,15 +9,6 @@ export interface QaWorkGroupProps {
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
   readonly renderMarkdown: boolean;
-}
-
-export function formatWorkDuration(durationMs: number): string {
-  const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  if (seconds < 1) return "< 1 с";
-  if (seconds < 60) return `${seconds} с`;
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return remainder === 0 ? `${minutes} мин` : `${minutes} мин ${remainder} с`;
 }
 
 export const THINKING_PHRASES = Object.freeze([
@@ -58,8 +50,22 @@ function ToolIcon() {
   );
 }
 
+function RobotIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
+      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
+    </svg>
+  );
+}
+
+function isDelegationTool(name: string): boolean {
+  return name === "subagent" || name === "subagent_fork";
+}
+
 function WorkItemIcon({ item }: { readonly item: QaWorkItem }) {
   if (item.kind !== "tool") return <ThinkIcon />;
+  if (isDelegationTool(item.name)) return <RobotIcon />;
   if (item.status === "running") {
     return <span className="dsh-qa-work-item__spinner" aria-hidden="true" />;
   }
@@ -94,6 +100,7 @@ function QaToolWorkItem({
   readonly item: Extract<QaWorkItem, { kind: "tool" }>;
 }) {
   const expandable = item.input !== null || item.output !== null;
+  const delegation = isDelegationTool(item.name);
   const header = (
     <>
       <span className="dsh-qa-work-item__icon" data-state={item.status}>
@@ -101,6 +108,11 @@ function QaToolWorkItem({
       </span>
       <span className="dsh-qa-work-item__label">{item.label}</span>
       <span className="dsh-qa-work-item__summary">{item.summary}</span>
+      {item.subagentId === undefined ? null : (
+        <span className="dsh-qa-work-item__agent-id" title={item.subagentId}>
+          {item.subagentId.slice(0, 8)}
+        </span>
+      )}
       <span className="dsh-qa-sr-only">{toolStatusLabel(item.status)}</span>
       {expandable ? <Chevron open={false} /> : null}
     </>
@@ -108,11 +120,19 @@ function QaToolWorkItem({
 
   if (!expandable) {
     return (
-      <div className="dsh-qa-work-item dsh-qa-work-item--tool">{header}</div>
+      <div
+        className="dsh-qa-work-item dsh-qa-work-item--tool"
+        data-tool={delegation ? "subagent" : undefined}
+      >
+        {header}
+      </div>
     );
   }
   return (
-    <details className="dsh-qa-work-tool">
+    <details
+      className="dsh-qa-work-tool"
+      data-tool={delegation ? "subagent" : undefined}
+    >
       <summary className="dsh-qa-work-item dsh-qa-work-item--tool">
         {header}
       </summary>
@@ -201,7 +221,7 @@ export function QaWorkGroup({
               Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
             ) % THINKING_PHRASES.length
           ]
-        }${duration === null ? "" : ` · ${duration}`}`
+        }${duration === null ? "" : ` (${duration})`}`
       : duration === null
         ? "Ход работы"
         : `Готово за ${duration}`;
