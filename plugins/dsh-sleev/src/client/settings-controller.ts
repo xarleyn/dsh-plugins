@@ -1,8 +1,5 @@
-import {
-  createSnapshotStore,
-  type SettingsScope,
-  type SnapshotStore,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import { createSnapshotStore, type SnapshotStore } from "@deepseek-ai/dsh-client-store";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 
 export type SleevLogLevel = "off" | "info" | "debug";
 
