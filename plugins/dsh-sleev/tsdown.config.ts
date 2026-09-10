@@ -5,7 +5,7 @@ const CLIENT_MODULE_ID = "@yadsh/dsh-sleev";
 const CLIENT_EXTERNALS = [
   "@deepseek-ai/cordis",
   "@deepseek-ai/dsh-client-locale/client",
-  "@deepseek-ai/dsh-client-runtime/client",
+  "@deepseek-ai/dsh-client-store",
   "@deepseek-ai/dsh-client-ui-settings/client",
   "@deepseek-ai/dsh-client-ui-settings-plugins/client",
   "@deepseek-ai/dsh-client-ui-slots",

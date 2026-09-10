@@ -1,9 +1,9 @@
 import { Context } from "@deepseek-ai/cordis";
 import {
   BlockAssembler,
-  CallId,
   createUserMessage,
   LlmRuntime,
+  ToolCallId,
   type FinishReason,
   type GenerateOptions,
   type Message,
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
               content: [
                 {
                   type: "tool-result",
-                  toolCallId: CallId(call.id),
+                  toolCallId: ToolCallId(call.id),
                   content: [{ type: "text", text: `${TOOL_MARKER}: accepted` }],
                 },
               ],

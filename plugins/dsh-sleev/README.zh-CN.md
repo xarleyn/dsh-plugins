@@ -79,7 +79,7 @@ Sleev 目前没有记录原生 DeepSeek Harness 标识符。示例中的 `sleev-
 
 ## 兼容性
 
-完整的 DSH → llm-pi-ai → Sleev → NeuralDeep 流式链路已使用 DeepSeek Harness `0.1.1-rc.2`、Sleev `1.7.7` 和 NeuralDeep `gpt-oss-20b` 通过普通 completion、usage、工具调用和工具结果检查。
+完整的 DSH → llm-pi-ai → Sleev → NeuralDeep 流式链路已使用 DeepSeek Harness `0.1.5-rc.2`、Sleev `1.7.7` 和 NeuralDeep `gpt-oss-20b` 通过普通 completion、usage、工具调用和工具结果检查。
 
 这证明了传输兼容性，而不是 token 节省效果。小型验证提示词会暴露 Sleev 的固定指令开销；要得到有意义的压缩基准，仍需使用较长且工具密集型的会话。确切证据见[兼容性说明](docs/compatibility.md)。
 
@@ -87,7 +87,7 @@ Sleev 目前没有记录原生 DeepSeek Harness 标识符。示例中的 `sleev-
 
 - Node.js `^22.19.0` 或 `>=24.0.0`
 - pnpm 10.4.1（开发环境）
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 - 进行路由模型调用时，需要已配置并运行的 Sleev 网关
 

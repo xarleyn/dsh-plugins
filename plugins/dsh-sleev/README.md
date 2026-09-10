@@ -79,7 +79,7 @@ Sleev does not currently document a native DeepSeek Harness identifier. The samp
 
 ## Compatibility
 
-The complete DSH → llm-pi-ai → Sleev → NeuralDeep streaming path has passed ordinary completion, usage, tool-call, and tool-result checks with DeepSeek Harness `0.1.1-rc.2`, Sleev `1.7.7`, and NeuralDeep `gpt-oss-20b`.
+The complete DSH → llm-pi-ai → Sleev → NeuralDeep streaming path has passed ordinary completion, usage, tool-call, and tool-result checks with DeepSeek Harness `0.1.5-rc.2`, Sleev `1.7.7`, and NeuralDeep `gpt-oss-20b`.
 
 This establishes transport compatibility, not token savings. The small validation prompt exposed Sleev's fixed instruction overhead; a long, tool-heavy session is still required for a meaningful compression benchmark. See the [compatibility notes](docs/compatibility.md) for the exact evidence.
 
@@ -87,7 +87,7 @@ This establishes transport compatibility, not token savings. The small validatio
 
 - Node.js `^22.19.0` or `>=24.0.0`
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 - a configured and running Sleev gateway for routed model calls
 

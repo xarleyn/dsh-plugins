@@ -1,14 +1,14 @@
 import type {
   SettingsScope,
   SettingsScopeSnapshot,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { describe, expect, it, vi } from "vitest";
 import {
   SleevSettingsController,
   type SleevSettings,
 } from "../src/client/settings-controller.js";
 
-vi.mock("@deepseek-ai/dsh-client-runtime/client", () => ({
+vi.mock("@deepseek-ai/dsh-client-store", () => ({
   createSnapshotStore: <T>(initial: T) => {
     let value = initial;
     const listeners = new Set<() => void>();
@@ -26,6 +26,11 @@ vi.mock("@deepseek-ai/dsh-client-runtime/client", () => ({
     };
   },
 }));
+
+/** Structural stand-in for the wire `SettingsPathOpView` union. */
+type ScopePathOp =
+  | { op: "set"; path: readonly string[]; value: unknown }
+  | { op: "unset"; path: readonly string[] };
 
 class FakeScope implements SettingsScope<SleevSettings> {
   readonly listeners = new Set<() => void>();
@@ -60,28 +65,41 @@ class FakeScope implements SettingsScope<SleevSettings> {
     return () => this.listeners.delete(listener);
   }
 
-  async set(field: string, value: unknown): Promise<void> {
-    this.writes.push(["set", field, value]);
-    if (this.rejectWrites) return;
-    const user = { ...(this.snapshot.user as object), [field]: value };
-    this.snapshot = {
-      ...this.snapshot,
-      value: { ...this.snapshot.value, [field]: value },
-      user,
-      revision: (this.snapshot.revision ?? 0) + 1,
-    };
-    for (const listener of this.listeners) listener();
+  set(field: string, value: unknown): Promise<void> {
+    return this.mutate([{ op: "set", path: [field], value }]);
   }
 
-  async unset(field: string): Promise<void> {
-    this.writes.push(["unset", field]);
+  unset(field: string): Promise<void> {
+    return this.mutate([{ op: "unset", path: [field] }]);
+  }
+
+  async mutate(ops: readonly ScopePathOp[]): Promise<void> {
+    for (const op of ops) {
+      const field = op.path[0];
+      if (field !== undefined) {
+        this.writes.push(
+          op.op === "set" ? ["set", field, op.value] : ["unset", field],
+        );
+      }
+    }
     if (this.rejectWrites) return;
     const user = { ...(this.snapshot.user as Record<string, unknown>) };
-    delete user[field];
     const base = this.snapshot.base as Record<string, unknown>;
+    const value: Record<string, unknown> = { ...this.snapshot.value };
+    for (const op of ops) {
+      const field = op.path[0];
+      if (field === undefined) continue;
+      if (op.op === "set") {
+        user[field] = op.value;
+        value[field] = op.value;
+      } else {
+        delete user[field];
+        value[field] = base[field];
+      }
+    }
     this.snapshot = {
       ...this.snapshot,
-      value: { ...this.snapshot.value, [field]: base[field] },
+      value: value as SleevSettings,
       user,
       revision: (this.snapshot.revision ?? 0) + 1,
     };
