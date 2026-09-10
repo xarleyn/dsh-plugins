@@ -41,7 +41,7 @@ agent picks tools.
 dsh plugin add @yadsh/dsh-tool-offload
 ```
 
-Requires a DSH release in the `>=0.1.1-rc.2 <0.2.0` range with a subagent
+Requires a DSH release in the `>=0.1.5-rc.2 <0.2.0` range with a subagent
 provider that supports tool restrictions (the in-process `spawn` provider).
 
 ## Configuration
@@ -100,7 +100,7 @@ Example `cordis.patch.yml` profile override:
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (tested on `0.1.1-rc.2`); requires the
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested on `0.1.5-rc.2`); requires the
   `tools/post-execute` seam and the `subagents/start` service with a
   tool-restriction-capable provider — see `compatibility.json`.
 - Node.js `^22.19.0 || >=24.0.0`.
