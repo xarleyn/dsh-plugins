@@ -48,6 +48,13 @@ export interface QaSessionControllerOptions {
   readonly secureSession: QaSecureSession;
   readonly storage?: StorageLike;
   readonly timeoutMs?: number;
+  /**
+   * Minimum spacing between projections of a running turn's stream frames.
+   * The host runtime already batches deltas to one notification per
+   * animation frame; this ceiling keeps the render path flat on long
+   * transcripts and weak hardware. Zero disables the spacing.
+   */
+  readonly streamIntervalMs?: number;
 }
 
 const CONFIGURATION_ERROR = "Настройки помощника недоступны.";
@@ -66,6 +73,7 @@ export class QaSessionController {
   private readonly secureSessionRemote: QaSecureSession;
   private readonly chats: QaChatIndex;
   private readonly timeoutMs: number;
+  private readonly streamIntervalMs: number;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
   private unsubscribeSession: (() => void) | undefined;
@@ -76,6 +84,7 @@ export class QaSessionController {
   private admissionPending = false;
   private policyReady = false;
   private drafting = false;
+  private streamFlushTimer: ReturnType<typeof setTimeout> | undefined;
   /** The chat session to return to when a subagent view closes. */
   private chatSessionId: string | null = null;
   private viewingSubagent: QaSubagentView | null = null;
@@ -95,6 +104,7 @@ export class QaSessionController {
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
     );
     this.timeoutMs = options.timeoutMs ?? 15_000;
+    this.streamIntervalMs = options.streamIntervalMs ?? 66;
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
     this.unsubscribeConnection = this.connection.subscribe(() => {
       if (this.connection.getSnapshot() !== undefined)
@@ -433,6 +443,7 @@ export class QaSessionController {
     if (this.disposed) return;
     this.disposed = true;
     this.generation += 1;
+    this.clearStreamFlush();
     this.unsubscribeConnection();
     this.unbind();
     this.listeners.clear();
@@ -632,7 +643,7 @@ export class QaSessionController {
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
       this.operationError = null;
-      this.publish();
+      this.publishSessionUpdate();
     });
     await waitFor(
       binding.session,
@@ -655,6 +666,7 @@ export class QaSessionController {
   }
 
   private unbind(): void {
+    this.clearStreamFlush();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
     this.session = undefined;
@@ -668,6 +680,37 @@ export class QaSessionController {
       (description) => description !== undefined,
       this.timeoutMs,
     );
+  }
+
+  /**
+   * Project one session notification. A running turn's frames arrive at
+   * animation-frame cadence, so re-projections are spaced at least
+   * {@link streamIntervalMs} apart: the first frame of a window projects at
+   * once and further frames are absorbed (the memoized render path replays
+   * nothing, so absorbing a frame only defers it). Everything outside a
+   * running turn - phase flips, errors, turn completion - projects
+   * immediately.
+   */
+  private publishSessionUpdate(): void {
+    if (
+      this.streamIntervalMs <= 0 ||
+      this.session?.getSnapshot().running !== true
+    ) {
+      this.clearStreamFlush();
+      this.publish();
+      return;
+    }
+    if (this.streamFlushTimer !== undefined) return;
+    this.publish();
+    this.streamFlushTimer = setTimeout(() => {
+      this.streamFlushTimer = undefined;
+    }, this.streamIntervalMs);
+  }
+
+  private clearStreamFlush(): void {
+    if (this.streamFlushTimer === undefined) return;
+    clearTimeout(this.streamFlushTimer);
+    this.streamFlushTimer = undefined;
   }
 
   private publish(): void {
