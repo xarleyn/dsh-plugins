@@ -42,6 +42,29 @@ describe("qa surface config", () => {
     );
   });
 
+  it("accepts an absolute cwd pin and rejects relative ones", () => {
+    expect(resolveConfig({ session: { cwd: "D:/qa-docs" } }).session.cwd).toBe(
+      "D:/qa-docs",
+    );
+    expect(
+      resolveConfig({ session: { cwd: "/srv/qa-docs" } }).session.cwd,
+    ).toBe("/srv/qa-docs");
+    expect(() => resolveConfig({ session: { cwd: "qa-docs" } })).toThrow(
+      /absolute/u,
+    );
+  });
+
+  it("keeps workspaceId and cwd mutually exclusive", () => {
+    expect(() =>
+      resolveConfig({
+        session: { workspaceId: "ws-1", cwd: "D:/qa-docs" },
+      }),
+    ).toThrow(/mutually exclusive/u);
+    expect(
+      resolveConfig({ session: { workspaceId: "ws-1" } }).session.cwd,
+    ).toBeNull();
+  });
+
   it("requires provider and model together", () => {
     expect(() => resolveConfig({ session: { provider: "openai" } })).toThrow(
       /set together/u,

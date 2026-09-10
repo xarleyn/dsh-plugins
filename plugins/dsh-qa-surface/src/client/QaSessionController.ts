@@ -572,9 +572,11 @@ export class QaSessionController {
 
   private async createSession(): Promise<string> {
     const created = await this.sessions.create({
-      ...(this.config.session.workspaceId === null
-        ? {}
-        : { workspaceId: this.config.session.workspaceId as WorkspaceId }),
+      ...(this.config.session.workspaceId !== null
+        ? { workspaceId: this.config.session.workspaceId as WorkspaceId }
+        : this.config.session.cwd !== null
+          ? { cwd: this.config.session.cwd }
+          : {}),
     });
     const id = String(created);
     if (this.config.session.agentPreset !== null) {

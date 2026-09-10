@@ -32,6 +32,7 @@ const configSchema = z.object({
         .union(["browser-persistent", "new-on-load", "fixed"] as const)
         .default("browser-persistent"),
       storageKey: z.string().default("dsh-qa-surface.session"),
+      cwd: nullableString.default(null),
       workspaceId: nullableString.default(null),
       fixedSessionId: nullableString.default(null),
       agentPreset: nullableString.default(null),
@@ -42,6 +43,7 @@ const configSchema = z.object({
     .default({
       policy: "browser-persistent",
       storageKey: "dsh-qa-surface.session",
+      cwd: null,
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,
