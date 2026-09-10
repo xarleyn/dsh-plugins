@@ -1,69 +1,128 @@
 # dsh-ui-repair
 
-![Status: specification](https://img.shields.io/badge/status-specification-orange.svg)
+![Status: proof of concept](https://img.shields.io/badge/status-proof%20of%20concept-yellow.svg)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-Planned compatibility and repair layer for visual problems in [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin interfaces.
+An early, conservative compatibility layer for visual problems in
+[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin
+interfaces. It measures rendered DOM, reports narrowly defined layout
+anomalies, and can apply reversible scoped CSS without editing another
+plugin's source or package files.
 
-`dsh-ui-repair` is designed to detect layout regressions, propose narrowly scoped fixes, verify the result, and roll unsafe changes back without modifying third-party plugin source code.
+[Full specification](<dsh-ui-repair — спецификация плагина.md>) ·
+[DSH integration investigation](INVESTIGATE.md)
 
-[Specification](<dsh-ui-repair — спецификация плагина.md>)
+## Current proof of concept
 
-## Installation
+This first implementation slice includes:
 
-The plugin is not installable yet. This directory currently contains a design specification only; there is no package manifest, runtime bundle, or published npm package.
+- an installable Host package and classic DSH browser bundle;
+- semantic repair roots instead of coupling to hashed CSS-module classes;
+- `R001` repeated-row icon alignment diagnostics;
+- `R002` repeated-row icon size consistency diagnostics;
+- `R003`/`R004` repeated-row horizontal and vertical diagnostics;
+- `R005`/`R006` unexpected horizontal and vertical overflow diagnostics;
+- `R007` clipped-content diagnostics;
+- `R008` flex-shrink and `R009` missing-min-width diagnostics;
+- `R010` icon-to-label gap and `R011` repeated-row padding diagnostics;
+- `R012` clipped text and `R013` outside-parent diagnostics;
+- `observe`, `suggest`, and conservative `auto` runtime modes;
+- persistent Host settings and a standard Plugin Configuration card;
+- persistent selector/plugin/rule ignore policies;
+- allowlisted CSS writes scoped by per-repair data attributes;
+- animation-frame layout stabilization, verification, and rollback;
+- in-memory repair history;
+- bounded initial scans and mutation/resize-triggered targeted rescans;
+- automatic restoration of every owned DOM attribute and style tag on unload.
 
-## The intended experience
+The default mode is `observe`. Configuration is persisted by the DSH settings
+section under the `ui-repair` namespace. Generic overflow is reported but not mutated.
+An overflow target must opt in with `data-dsh-ui-repair-scroll` before the
+current auto mode can treat it as a safe scroll owner.
+
+## Repair roots
+
+The scanner recognizes these stable boundaries:
 
 ```text
-DSH Web UI
-├─ Core UI
-├─ Plugin A
-├─ Plugin B
-└─ dsh-ui-repair
-   ├─ DOM and layout diagnostics
-   ├─ scoped repair rules
-   ├─ visual verification
-   ├─ automatic rollback
-   └─ repair history
+[data-dsh-ui-repair-root]
+[data-dsh-plugin-root]
+[data-plugin-root]
+[data-slot="settings.plugin.item"] > *
+[role="dialog"][aria-modal="true"]
 ```
 
-The repair layer will observe the rendered interface, compare similar elements, and apply only high-confidence changes inside the affected plugin boundary.
+Plugin authors can make a fixture or owned surface unambiguous:
 
-## Planned MVP
+```html
+<section data-dsh-ui-repair-root="example-plugin">
+  <div data-dsh-ui-repair-scroll>...</div>
+</section>
+```
 
-- alignment checks for icons, labels, controls, and repeated rows;
-- overflow and scroll-container diagnostics;
-- size, spacing, typography, flex, grid, clipping, and position checks;
-- scoped CSS repairs that do not leak into other plugins or the DSH core;
-- `observe`, `suggest`, and `auto` modes;
-- confidence scoring and preview before mutation;
-- post-change visual verification with automatic rollback;
-- repair history, ignore rules, and persistent fixes;
-- `MutationObserver` and `ResizeObserver` integration with bounded work;
-- a settings page and per-plugin diagnostics view;
-- manual repair and extension rule APIs;
-- accessibility and visual-regression coverage.
+Repeated row groups may use `data-dsh-ui-repair-row-group`, with optional
+`data-dsh-ui-repair-row` and `data-dsh-ui-repair-icon` markers when their
+native semantics are not `button`, `a`, `li`, `svg`, or `img`.
+`data-dsh-ui-repair-row-height` explicitly permits normalizing an anomalous
+row height; without it, R004 remains diagnosis-only.
 
-## Design boundaries
+Potentially ambiguous layout ownership remains diagnosis-only unless the
+surface opts in. `data-dsh-ui-repair-scroll-x` marks a safe horizontal scroll
+owner, `data-dsh-ui-repair-no-shrink` marks a flex item that must preserve its
+intrinsic width, and `data-dsh-ui-repair-min-width-zero` marks a flex/grid item
+that may shrink below its content width.
 
-- Never edit or fork third-party plugin source code.
-- Target repairs by plugin-owned DOM boundaries and stable selectors.
-- Prefer the smallest local change that resolves a measured anomaly.
-- Do not add scroll containers until the actual height constraint and existing scroll ownership are known.
-- Treat clipping, sticky positioning, and responsive behavior as context-sensitive rather than automatically broken.
-- Verify every automatic repair and remove it if the layout becomes worse or unstable.
+Spacing repairs require `data-dsh-ui-repair-gap` or
+`data-dsh-ui-repair-padding` on the anomalous row. Text wrapping requires
+`data-dsh-ui-repair-text-wrap`; containment repairs require
+`data-dsh-ui-repair-contain`. Without these ownership markers, R010-R013 are
+reported but remain diagnosis-only.
 
-## Development status
+## Browser API
 
-Implementation has not started. The first milestone is a proof of concept that identifies one icon-alignment defect and one settings overflow defect, applies scoped fixes, verifies both results, and demonstrates rollback without affecting neighboring plugins.
+The browser module provides `ctx.uiRepair` for cooperating client plugins:
 
-See the full [specification](<dsh-ui-repair — спецификация плагина.md>) for priorities, APIs, safety rules, test cases, and the proposed project structure.
+```ts
+const report = await ctx.uiRepair.scan()
+ctx.uiRepair.setMode('suggest')
+await ctx.uiRepair.apply(report.issues[0].id)
+ctx.uiRepair.getHistory()
+ctx.uiRepair.rollbackAll()
+```
 
-## Contributing
+All repairs are temporary in this proof of concept. Unloading the plugin calls
+`rollbackAll()` and removes its observer, generated styles, and marker
+attributes.
 
-Design feedback and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) before starting implementation work.
+## Settings
+
+The standard Plugins → Plugin Configuration card exposes activation, mode,
+normal and risky confidence thresholds, startup, mutation, and resize scanning,
+manual scan/apply/ignore/rollback actions, session health counters, and
+persistent ignored selectors. Risky overflow/clipping repairs can never be
+configured below 98% confidence.
+
+## Development
+
+```bash
+pnpm --filter @yadsh/dsh-ui-repair check
+```
+
+The current tests cover detection without mutation, scoped vertical and
+horizontal overflow repair, sticky-content safety refusal, icon and row
+alignment/size outliers, flex constraints, plugin attribution, ResizeObserver,
+gap/padding consistency, text overflow, parent containment, manual suggestions,
+verification, rollback, client lifecycle, and browser bundle identity.
+
+## Not implemented yet
+
+The specification's persistent repair recipes, plugin-version revalidation,
+full per-plugin health view, screenshot verification, vision-toolkit
+integration, and the remaining P0/P1/P2 rules are intentionally deferred. The
+proof of concept establishes the lifecycle, measurement, configuration,
+scoping, and rollback seams they will use.
 
 ## License
 
-[MIT](../../LICENSE). This is an independent community project and is not affiliated with or endorsed by DeepSeek.
+[MIT](../../LICENSE). This is an independent community project and is not
+affiliated with or endorsed by DeepSeek.

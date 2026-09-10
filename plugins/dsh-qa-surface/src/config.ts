@@ -18,6 +18,9 @@ const configSchema = z.object({
       welcomeMessage: z.string().default("Чем могу помочь?"),
       placeholder: z.string().default("Задайте вопрос…"),
       logoUrl: nullableString.default(null),
+      disclaimer: nullableString.default(
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
+      ),
     })
     .default({
       title: "Помощник",
@@ -25,6 +28,8 @@ const configSchema = z.object({
       welcomeMessage: "Чем могу помочь?",
       placeholder: "Задайте вопрос…",
       logoUrl: null,
+      disclaimer:
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
     }),
   session: z
     .object({
@@ -32,6 +37,7 @@ const configSchema = z.object({
         .union(["browser-persistent", "new-on-load", "fixed"] as const)
         .default("browser-persistent"),
       storageKey: z.string().default("dsh-qa-surface.session"),
+      cwd: nullableString.default(null),
       workspaceId: nullableString.default(null),
       fixedSessionId: nullableString.default(null),
       agentPreset: nullableString.default(null),
@@ -42,6 +48,7 @@ const configSchema = z.object({
     .default({
       policy: "browser-persistent",
       storageKey: "dsh-qa-surface.session",
+      cwd: null,
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,

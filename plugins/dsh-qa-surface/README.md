@@ -69,6 +69,9 @@ config:
     placeholder: Задайте вопрос…
     logoUrl: null
   session:
+    # Pin every chat to a directory (optional, one of):
+    # cwd: "D:/qa-docs"        # direct absolute directory pin
+    # workspaceId: "<uuid>"    # or a registered DSH workspace
     policy: browser-persistent
     storageKey: dsh-qa-surface.session
     workspaceId: company-knowledge
@@ -136,8 +139,40 @@ Session policies:
 
 New chat is disabled by default. To expose it, set `lockdown.allowSessionReset:
 true` plus either `ui.showReset: true` (header button) or `ui.showSessionList:
-true` (sidebar button); it creates another DSH Session and leaves the old one
-intact for operator inspection.
+true` (sidebar button). Pressing it opens a draft composer and creates nothing:
+the DSH Session is materialized lazily by the first prompt, so the chat list
+stays quiet until a message is actually sent, and the old session stays intact
+for operator inspection. The sidebar orders chats by the host's last update,
+so merely opening a chat never moves it.
+
+Regeneration: the last committed answer offers a retry action. The session log
+is append-only, so "regenerate" sends a hidden instruction as an ordinary
+prompt and the answer arrives as a follow-up turn; the projection hides that
+instruction and the consecutive turns read as variants of one question,
+navigable with a `< 2/2 >` switcher (newest shown by default).
+
+Sources: with `ui.showToolActivity: true` a header button opens a right-hand
+drawer listing the pages fetched, searches run and files read in this chat,
+projected from the same tool activity the work groups render - no extra
+prompting or tooling is involved. Clicking a source opens its full tool
+output with every http(s) link clickable, and web sources carry an
+"Открыть" button straight to the page (a Jira issue, a wiki article).
+
+Images: the composer accepts PNG/JPEG/WebP/GIF via drag & drop onto the
+composer, paste, and the picker button, several at once (soft client caps:
+8 images, 15 MB each). Images ride the prompt as base64 uploads the Host
+promotes to durable attachments, so they survive reloads; sent images
+render as clickable thumbnails on the message. Whether the model can see
+them depends on the deployment's model (vision).
+
+Subagents: the deployment may opt the delegation family (`subagent`,
+`subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
+lockdown allow-list; the preset must mount them. Launches then render as
+first-class work items (description, background flag, durable child id),
+settlement notices appear as status rows, an "Агенты" header drawer lists the
+chat's subagents with live status, and any subagent opens as a read-only
+live transcript (composer disabled, one click back to the chat) - viewing
+never attests or writes.
 
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
 conversation. It lists only the chats this browser has actually used: the

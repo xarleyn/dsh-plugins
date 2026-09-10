@@ -3,11 +3,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
+import type { QaImageDraft } from "../src/types.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
-import {
-  formatWorkDuration,
-  QaWorkGroup,
-} from "../src/client/components/QaWorkGroup.js";
+import { collectSubagents } from "../src/client/components/QaAgentsDrawer.js";
+import { collectVariantGroups } from "../src/client/components/VariantSwitcher.js";
+import { formatWorkDuration } from "../src/client/components/format.js";
+import { QaWorkGroup } from "../src/client/components/QaWorkGroup.js";
 import { Markdown } from "../src/client/components/Markdown.js";
 import {
   buildChatRows,
@@ -21,6 +22,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend
         canStop={false}
         running={false}
@@ -35,13 +38,15 @@ describe("QA composer", () => {
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(send).toHaveBeenCalledWith("hello");
+    expect(send).toHaveBeenCalledWith("hello", []);
   });
 
   it("shows a real Stop button during generation", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend={false}
         canStop
         running
@@ -62,6 +67,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend={false}
         canStop
         running
@@ -79,6 +86,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Спросите"
+        images={[]}
+        onImagesChange={vi.fn()}
         quickQuestions={["Что ты умеешь?", "С чего начать?"]}
         canSend
         canStop={false}
@@ -90,7 +99,9 @@ describe("QA composer", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Что ты умеешь?" }));
-    await waitFor(() => expect(send).toHaveBeenCalledWith("Что ты умеешь?"));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("Что ты умеешь?", []),
+    );
   });
 });
 
@@ -120,6 +131,248 @@ describe("QA message", () => {
       expect(writeText).toHaveBeenCalledWith("Useful answer"),
     );
     expect(screen.getByRole("button", { name: "Скопировано" })).toBeTruthy();
+  });
+
+  it("reveals date, duration, TTFT and token speed for assistant answers", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:1",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+          timestamp: new Date(2026, 8, 9, 15, 44).getTime(),
+          stats: { durationMs: 8_000, ttftMs: 1_100, tokensPerSecond: 89 },
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    const meta = document.querySelector(".dsh-qa-message__meta");
+    expect(meta?.textContent).toContain("9 сент 15:44");
+    expect(meta?.textContent).toContain("8 с");
+    expect(meta?.textContent).toContain("TTFT 1,1 с");
+    expect(meta?.textContent).toContain("89 ток/с");
+    expect(
+      document.querySelector(".dsh-qa-message__actions[data-persistent]"),
+    ).toBeNull();
+  });
+
+  it("keeps the metadata row persistent when timestamps are enabled", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:1",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+          timestamp: 1_000,
+          stats: { durationMs: 500, ttftMs: null, tokensPerSecond: null },
+        }}
+        renderMarkdown={false}
+        showTimestamp
+      />,
+    );
+    expect(
+      document.querySelector(".dsh-qa-message__actions[data-persistent]"),
+    ).not.toBeNull();
+    expect(
+      document.querySelector(".dsh-qa-message__meta")?.textContent,
+    ).not.toContain("TTFT");
+  });
+
+  it("shows the date on the user message", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "user:1",
+          role: "user",
+          text: "Вопрос",
+          status: "committed",
+          timestamp: new Date(2026, 8, 9, 15, 50).getTime(),
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(
+      document.querySelector(".dsh-qa-message__meta")?.textContent,
+    ).toContain("9 сент 15:50");
+    expect(screen.queryByRole("button", { name: "Нравится" })).toBeNull();
+  });
+
+  it("attaches images from files and removes them before send", async () => {
+    const png = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", {
+      type: "image/png",
+    });
+    const onImagesChange = vi.fn();
+    const view = render(
+      <QaComposer
+        placeholder="Ask"
+        images={[]}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={vi.fn(async () => true)}
+        onStop={vi.fn()}
+      />,
+    );
+    const input = document.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [png] });
+    fireEvent.change(input);
+    await waitFor(() => expect(onImagesChange).toHaveBeenCalled());
+    const firstCall = onImagesChange.mock.calls[0] as unknown as [
+      readonly QaImageDraft[],
+    ];
+    const drafts = firstCall[0];
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.mediaType).toBe("image/png");
+
+    // With a draft attached, sending clears both text and images.
+    const onSend = vi.fn(async () => true);
+    view.rerender(
+      <QaComposer
+        placeholder="Ask"
+        images={drafts}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+    const input2 = screen.getByLabelText("Задать вопрос");
+    fireEvent.change(input2, { target: { value: "Смотри" } });
+    fireEvent.keyDown(input2, { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("Смотри", drafts));
+    expect(onImagesChange).toHaveBeenCalledWith([]);
+  });
+
+  it("rejects non-image files with a readable message", async () => {
+    const onImagesChange = vi.fn();
+    render(
+      <QaComposer
+        placeholder="Ask"
+        images={[]}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={vi.fn(async () => true)}
+        onStop={vi.fn()}
+      />,
+    );
+    const txt = new File(["hello"], "note.txt", { type: "text/plain" });
+    const input = document.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [txt] });
+    fireEvent.change(input);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("PNG"),
+    );
+    expect(onImagesChange).not.toHaveBeenCalled();
+  });
+
+  it("exposes the regenerate action on demand", () => {
+    const onRegenerate = vi.fn();
+    const view = render(
+      <QaMessage
+        message={{
+          id: "assistant:2",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        onRegenerate={onRegenerate}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Перегенерировать" }));
+    expect(onRegenerate).toHaveBeenCalledOnce();
+    view.rerender(
+      <QaMessage
+        message={{
+          id: "assistant:2",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Перегенерировать" }),
+    ).toBeNull();
+  });
+
+  it("rates answers with mutually exclusive, persisted like and dislike", () => {
+    window.localStorage.clear();
+    const stateKey = "dsh-qa-surface.session:v1:/qa";
+    const view = render(
+      <QaMessage
+        message={{
+          id: "assistant:7",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey={stateKey}
+      />,
+    );
+    const like = screen.getByRole("button", {
+      name: "Нравится",
+    }) as HTMLButtonElement;
+    const dislike = screen.getByRole("button", {
+      name: "Не нравится",
+    }) as HTMLButtonElement;
+    expect(like.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(like);
+    expect(like.getAttribute("aria-pressed")).toBe("true");
+    expect(
+      JSON.parse(window.localStorage.getItem(`${stateKey}:ratings`) ?? "{}"),
+    ).toEqual({ "assistant:7": "up" });
+    fireEvent.click(dislike);
+    expect(dislike.getAttribute("aria-pressed")).toBe("true");
+    expect(like.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(dislike);
+    expect(dislike.getAttribute("aria-pressed")).toBe("false");
+    expect(window.localStorage.getItem(`${stateKey}:ratings`)).toBe("{}");
+    view.unmount();
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:7",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey={stateKey}
+      />,
+    );
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Нравится",
+        }) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 });
 
@@ -218,6 +471,120 @@ describe("QA work group", () => {
   });
 });
 
+describe("subagent panel", () => {
+  const byId = {
+    parent: {
+      id: "parent",
+      displayTitle: "Chat",
+      running: false,
+      blank: false,
+      updatedAt: 1_000,
+    },
+    childRunning: {
+      id: "child-running",
+      displayTitle: "Count words in README.md",
+      running: true,
+      blank: false,
+      updatedAt: 3_000,
+      parentId: "parent",
+      origin: "subagent",
+    },
+    childDone: {
+      id: "child-done",
+      displayTitle: "Print a greeting",
+      running: false,
+      blank: false,
+      updatedAt: 2_000,
+      parentId: "parent",
+      origin: "subagent",
+      completed: true,
+    },
+    stranger: {
+      id: "stranger",
+      displayTitle: "Unrelated chat",
+      running: false,
+      blank: false,
+      updatedAt: 4_000,
+    },
+    grandchild: {
+      id: "grandchild",
+      displayTitle: "Nested",
+      running: false,
+      blank: false,
+      updatedAt: 5_000,
+      parentId: "child-running",
+      origin: "subagent",
+    },
+  } as unknown as Record<string, SessionSummary>;
+
+  it("lists direct subagent children running first", () => {
+    const rows = collectSubagents(byId, "parent", 90_000);
+    expect(rows.map((row) => row.id)).toEqual(["child-running", "child-done"]);
+    expect(rows[0]).toMatchObject({
+      title: "Count words in README.md",
+      running: true,
+      meta: "1 мин",
+    });
+    expect(rows[1]).toMatchObject({ completed: true });
+  });
+
+  it("follows the viewed subagent and ignores unrelated sessions", () => {
+    expect(collectSubagents(byId, null, 90_000)).toEqual([]);
+    expect(
+      collectSubagents(byId, "child-running", 90_000).map((row) => row.id),
+    ).toEqual(["grandchild"]);
+    expect(collectSubagents(byId, "stranger", 90_000)).toEqual([]);
+  });
+});
+
+describe("variant grouping", () => {
+  it("groups consecutive answer turns under their user message", () => {
+    const messages = [
+      { id: "user:1", role: "user", text: "Q", status: "committed" },
+      {
+        id: "assistant:1",
+        role: "assistant",
+        text: "A1",
+        status: "committed",
+        turn: 1,
+      },
+      {
+        id: "assistant:2",
+        role: "assistant",
+        text: "A2",
+        status: "committed",
+        turn: 2,
+      },
+      { id: "user:2", role: "user", text: "Q2", status: "committed" },
+      {
+        id: "assistant:3",
+        role: "assistant",
+        text: "A3",
+        status: "committed",
+        turn: 3,
+      },
+    ] as Parameters<typeof collectVariantGroups>[0];
+    const groups = collectVariantGroups(messages);
+    expect(groups).toEqual([
+      { groupId: "user:1", turns: [1, 2] },
+      { groupId: "user:2", turns: [3] },
+    ]);
+  });
+
+  it("ignores answers that precede any user message", () => {
+    const groups = collectVariantGroups([
+      {
+        id: "assistant:0",
+        role: "assistant",
+        text: "Boot",
+        status: "committed",
+        turn: 0,
+      },
+    ] as Parameters<typeof collectVariantGroups>[0]);
+    expect(groups).toEqual([]);
+  });
+});
+
 describe("safe Markdown", () => {
   it("renders formatting without interpreting HTML or unsafe links", () => {
     const { container } = render(
@@ -291,8 +658,8 @@ describe("QA sidebar", () => {
     },
   } as unknown as Record<string, SessionSummary>;
 
-  it("projects indexed ids onto the host session list", () => {
-    const rows = buildChatRows(["s-2", "s-1", "gone"], byId, "s-1", 90_000);
+  it("projects indexed ids onto the host session list, newest update first", () => {
+    const rows = buildChatRows(["s-1", "s-2", "gone"], byId, "s-1", 90_000);
     expect(rows).toEqual([
       {
         id: "s-2",
@@ -300,6 +667,7 @@ describe("QA sidebar", () => {
         running: true,
         active: false,
         meta: "1 мин",
+        updatedAt: 2_000,
       },
       {
         id: "s-1",
@@ -307,6 +675,7 @@ describe("QA sidebar", () => {
         running: false,
         active: true,
         meta: "1 мин",
+        updatedAt: 1_000,
       },
     ]);
   });
@@ -317,6 +686,9 @@ describe("QA sidebar", () => {
     render(
       <QaSidebar
         rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
         showNewChat
         busy={false}
         onSwitch={onSwitch}
@@ -342,10 +714,76 @@ describe("QA sidebar", () => {
     expect(onSwitch).toHaveBeenCalledWith("s-1");
   });
 
+  it("shows the brand head and filters rows through the search field", () => {
+    const rows = buildChatRows(["s-2", "s-1"], byId, null, 90_000);
+    render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
+    const search = screen.getByLabelText("Поиск по чатам") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "cache" } });
+    const items = document.querySelectorAll(".dsh-qa-sidebar__item");
+    expect(items.length).toBe(1);
+    expect(items[0]?.textContent).toContain("How do I reset the cache?");
+    fireEvent.change(search, { target: { value: "нет такого" } });
+    expect(screen.getByText("Ничего не найдено")).toBeTruthy();
+    fireEvent.change(search, { target: { value: "  " } });
+    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+  });
+
+  it("collapses to a rail and expands again, remembering the state", () => {
+    window.localStorage.clear();
+    const rows = buildChatRows(["s-1"], byId, null, 90_000);
+    const view = render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Свернуть историю чатов" }),
+    );
+    expect(document.querySelector(".dsh-qa-sidebar--collapsed")).toBeTruthy();
+    expect(
+      window.localStorage.getItem(
+        "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
+      ),
+    ).toBe("1");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Развернуть историю чатов" }),
+    );
+    expect(
+      view.container.querySelector(".dsh-qa-sidebar--collapsed"),
+    ).toBeNull();
+    expect(
+      window.localStorage.getItem(
+        "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
+      ),
+    ).toBe("0");
+  });
+
   it("renders the empty state without a new-chat control", () => {
     render(
       <QaSidebar
         rows={[]}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
         showNewChat={false}
         busy={false}
         onSwitch={vi.fn()}
@@ -353,18 +791,28 @@ describe("QA sidebar", () => {
       />,
     );
     expect(screen.getByText("Здесь пока пусто")).toBeTruthy();
-    expect(screen.queryByText("Чаты")).toBeTruthy();
+    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
   });
 });
 
 it("deletes a chat after a second confirming click", () => {
   const onDelete = vi.fn();
   const rows = [
-    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+    {
+      id: "s-1",
+      title: "Chat",
+      running: false,
+      active: false,
+      meta: "1m",
+      updatedAt: 1,
+    },
   ];
   const { container } = render(
     <QaSidebar
       rows={rows}
+      title="DeepSeek QA"
+      logoUrl={null}
+      stateKey="dsh-qa-surface.session:v1:/qa"
       showNewChat={false}
       busy={false}
       onSwitch={vi.fn()}
@@ -385,11 +833,21 @@ it("deletes a chat after a second confirming click", () => {
 
 it("hides the delete control when the deployment omits it", () => {
   const rows = [
-    { id: "s-1", title: "Chat", running: false, active: false, meta: "1m" },
+    {
+      id: "s-1",
+      title: "Chat",
+      running: false,
+      active: false,
+      meta: "1m",
+      updatedAt: 1,
+    },
   ];
   const { container } = render(
     <QaSidebar
       rows={rows}
+      title="DeepSeek QA"
+      logoUrl={null}
+      stateKey="dsh-qa-surface.session:v1:/qa"
       showNewChat={false}
       busy={false}
       onSwitch={vi.fn()}

@@ -1,0 +1,9 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/node",
+  "compilerOptions": {
+    "types": ["node"],
+    "rootDir": "src",
+    "outDir": "lib"
+  },
+  "include": ["src"]
+}

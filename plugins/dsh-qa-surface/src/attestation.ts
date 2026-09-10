@@ -10,6 +10,7 @@
  */
 export type QaAttestationReason =
   | "agent-unavailable"
+  | "workspace-unavailable"
   | "composition-mismatch"
   | "permission-preset"
   | "adoption-refused"

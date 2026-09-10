@@ -4,11 +4,32 @@ import type {
   RunningToolCall,
   ToolResultNode,
 } from "@deepseek-ai/dsh-client-runtime/client";
-import type { QaMessage, QaWorkItem } from "../types.js";
+import type {
+  QaImageMediaType,
+  QaImageView,
+  QaMessage,
+  QaSource,
+  QaWorkItem,
+} from "../types.js";
+
+/**
+ * The hidden regeneration prompt. Regenerate sends this as an ordinary
+ * prompt — the session has no truncation seam, so a "variant" is a real
+ * follow-up turn — and the projection drops it from the visible transcript,
+ * leaving the consecutive answer turns to read as variants of one question.
+ */
+export const QA_REGENERATE_MARKER =
+  "Перегенерируй свой предыдущий ответ — дай новый вариант, не повторяя предыдущий.";
 
 interface OrderedWorkItem {
   readonly order: number;
   readonly item: QaWorkItem;
+}
+
+interface QaMessageStats {
+  readonly durationMs: number;
+  readonly ttftMs: number | null;
+  readonly tokensPerSecond: number | null;
 }
 
 interface TextMessage {
@@ -17,6 +38,8 @@ interface TextMessage {
   readonly text: string;
   readonly status: "streaming" | "committed";
   readonly timestamp?: number;
+  readonly turn?: number;
+  readonly stats?: QaMessageStats;
 }
 
 interface TurnBuffer {
@@ -36,6 +59,61 @@ interface ToolHead {
 interface OrderedMessage {
   readonly order: number;
   readonly message: QaMessage;
+}
+
+/**
+ * Durable image references carried by user content. The core ContentBlock
+ * vocabulary is not installed client-side, so the shape is matched
+ * structurally against the host contract ({type:"image", attachment:{...}}).
+ */
+const SETTLED_HEAD =
+  /^Background subagent ([0-9a-f][0-9a-f-]*) (finished|was stopped|ran out of room|declined the task|failed)/u;
+const SETTLED_CLOSING = "Its closing message:";
+const SETTLED_TITLES: Readonly<Record<string, string>> = Object.freeze({
+  finished: "завершён",
+  "was stopped": "остановлен",
+  "ran out of room": "упёрся в лимит длины",
+  "declined the task": "отклонил задачу",
+  failed: "завершился ошибкой",
+});
+
+/** Fold the host settlement wording into a title plus the closing message. */
+function parseSettlement(
+  text: string,
+): { title: string; body: string } | undefined {
+  const head = SETTLED_HEAD.exec(text);
+  if (head === null) return undefined;
+  const id = (head[1] ?? "").slice(0, 8);
+  const title = `Субагент ${id} ${SETTLED_TITLES[head[2] ?? "finished"] ?? "завершён"}`;
+  const closeAt = text.indexOf(SETTLED_CLOSING);
+  const body =
+    closeAt === -1 ? "" : text.slice(closeAt + SETTLED_CLOSING.length).trim();
+  return {
+    title,
+    body: body.length <= 4_000 ? body : `${body.slice(0, 3_999)}…`,
+  };
+}
+
+function visibleContentImages(
+  content: readonly unknown[],
+): readonly QaImageView[] {
+  const images: QaImageView[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const record = block as Record<string, unknown>;
+    if (record.type !== "image") continue;
+    const attachment = record.attachment as Record<string, unknown> | undefined;
+    const attachmentId = attachment?.attachmentId;
+    const mediaType = attachment?.mediaType;
+    if (typeof attachmentId !== "string" || attachmentId === "") continue;
+    images.push({
+      attachmentId,
+      mediaType: (typeof mediaType === "string"
+        ? mediaType
+        : "image/png") as QaImageMediaType,
+    });
+  }
+  return images;
 }
 
 function visibleContentText(content: readonly unknown[]): string {
@@ -133,7 +211,15 @@ const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
   edit: "Правка",
   str_replace_editor: "Правка",
   run_code: "Код",
+  subagent: "Субагент",
+  subagent_fork: "Субагент (форк)",
+  send_message: "Сообщение агенту",
+  list_agents: "Список агентов",
+  interrupt_agent: "Остановка агента",
 });
+
+/** The durable id a continuable launch reports back ("started subagent <id>"). */
+const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
 
 function toolLabel(name: string): string {
   return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
@@ -142,6 +228,34 @@ function toolLabel(name: string): string {
 function toolStatus(node: ToolResultNode): "ok" | "error" | "stopped" {
   if (node.error?.code === "interrupted") return "stopped";
   return node.isError ? "error" : "ok";
+}
+
+/**
+ * Response timing for the message row, straight from the host-recorded step
+ * boundaries. Tokens per second is an estimate — the client never sees a
+ * token-count contract, so visible text is measured at the usual ≈4
+ * characters per token over the generation window (first token → completed).
+ */
+function messageStats(
+  text: string,
+  timing: AssistantMessageNode["timing"],
+): QaMessageStats | undefined {
+  if (timing === undefined) return undefined;
+  const start = timing.stepStartTime;
+  const first = timing.firstTokenTime;
+  const end = timing.completedTime;
+  if (start === null && first === null) return undefined;
+  const durationMs =
+    start === null
+      ? Math.max(0, end - (first ?? end))
+      : Math.max(0, end - start);
+  const ttftMs =
+    start === null || first === null ? null : Math.max(0, first - start);
+  let tokensPerSecond: number | null = null;
+  if (first !== null && end > first && text.length > 0) {
+    tokensPerSecond = Math.round(text.length / 4 / ((end - first) / 1_000));
+  }
+  return { durationMs, ttftMs, tokensPerSecond };
 }
 
 function workTool(
@@ -153,6 +267,11 @@ function workTool(
   endedAt: number | undefined,
   output: string | null,
 ): QaWorkItem {
+  const launched =
+    name === "subagent" || name === "subagent_fork"
+      ? (SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
+        SUBAGENT_STARTED.exec(argsRaw)?.[1])
+      : undefined;
   return {
     id: `tool:${callId}`,
     kind: "tool",
@@ -162,6 +281,7 @@ function workTool(
     input: formatToolInput(argsRaw),
     output,
     status,
+    ...(launched === undefined ? {} : { subagentId: launched }),
     ...(startedAt === undefined ? {} : { startedAt }),
     ...(endedAt === undefined ? {} : { endedAt }),
   };
@@ -191,6 +311,8 @@ function collectAssistant(
       text,
       status: "committed",
       timestamp: node.time,
+      turn: node.turn,
+      stats: messageStats(text, node.timing),
     });
   }
   node.blocks.forEach((block, index) => {
@@ -226,7 +348,7 @@ function collectSettledTools(
   let nearestTurn: number | undefined;
   for (const node of snapshot.nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
-    if (node.kind !== "tool-result") continue;
+    if (node.kind !== "tool-result" || node.isError) continue;
     const head = toolHeads.get(node.callId);
     const turnNumber = head?.turn ?? nearestTurn;
     if (turnNumber === undefined) continue;
@@ -337,9 +459,11 @@ function emitTurn(
           role: "assistant",
           text: message.text,
           status: message.status,
+          turn: turn.turn,
           ...(message.timestamp === undefined
             ? {}
             : { timestamp: message.timestamp }),
+          ...(message.stats === undefined ? {} : { stats: message.stats }),
         },
       });
     }
@@ -353,9 +477,11 @@ function emitTurn(
         role: "assistant",
         text: finalText.text,
         status: finalText.status,
+        turn: turn.turn,
         ...(finalText.timestamp === undefined
           ? {}
           : { timestamp: finalText.timestamp }),
+        ...(finalText.stats === undefined ? {} : { stats: finalText.stats }),
       },
     });
   }
@@ -376,20 +502,45 @@ export function projectTranscript(
   for (const node of snapshot.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
-      if (text !== "") {
-        output.push({
-          order: node.seq,
-          message: {
-            id: `${node.kind}:${node.seq}`,
-            role: "user",
-            text,
-            status: "committed",
-            timestamp: node.time,
-          },
-        });
-      }
+      const images = visibleContentImages(node.content);
+      if (text === QA_REGENERATE_MARKER) continue;
+      if (text === "" && images.length === 0) continue;
+      output.push({
+        order: node.seq,
+        message: {
+          id: `${node.kind}:${node.seq}`,
+          role: "user",
+          text,
+          status: "committed",
+          timestamp: node.time,
+          ...(images.length === 0 ? {} : { images }),
+        },
+      });
     } else if (node.kind === "assistant") {
       collectAssistant(node, turns, toolHeads, options.showReasoning === true);
+    } else if (node.kind === "context") {
+      // Subagent settlement notices (the host injects them when a background
+      // child finishes) read as status rows; other context injections stay
+      // hidden — they are operator plumbing, not QA-facing content.
+      const label = node.provenance.label ?? "";
+      if (!label.toLowerCase().startsWith("subagent")) continue;
+      const text = visibleContentText(node.content);
+      if (text.trim() === "") continue;
+      const notice = parseSettlement(text);
+      output.push({
+        order: node.seq,
+        message: {
+          id: `context:${node.seq}`,
+          role: "system",
+          text:
+            notice === undefined
+              ? text.replace(/\s+/gu, " ").trim().slice(0, 280)
+              : notice.title,
+          status: "info",
+          timestamp: node.time,
+          ...(notice === undefined ? {} : { notice }),
+        },
+      });
     } else if (node.kind === "turn-error") {
       output.push({
         order: node.seq,
@@ -476,4 +627,117 @@ export function projectTranscript(
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);
+}
+
+const SOURCE_TOOLS: Readonly<Record<string, QaSource["kind"]>> = Object.freeze({
+  web_fetch: "web",
+  web_search: "search",
+  read: "file",
+  read_image: "file",
+});
+
+function sourceTitle(kind: QaSource["kind"], target: string): string {
+  if (kind === "web") {
+    try {
+      return new URL(target).hostname;
+    } catch {
+      return target;
+    }
+  }
+  if (kind === "file") {
+    const base = target.replaceAll("\\", "/").split("/").at(-1);
+    return base === undefined || base === "" ? target : base;
+  }
+  return target;
+}
+
+/** First meaningful line of a tool output, capped for the drawer. */
+function sourceSnippet(output: string | null): string {
+  const line =
+    output === null
+      ? ""
+      : (output.split(/\r?\n/u).find((part) => part.trim() !== "") ?? "");
+  const compact = line.trim().replace(/\s+/gu, " ");
+  return compact.length <= 200 ? compact : `${compact.slice(0, 199)}…`;
+}
+
+/** Models occasionally wrap arguments in tags ("<path>...</path>") - strip them. */
+function sourceTarget(value: string): string {
+  return value.replace(/<\/?[a-zA-Z][^>]*>/gu, "").trim();
+}
+
+/** Whole tool output for the detail pane, capped hard. */
+function sourceOutput(output: string | null): string {
+  const text = (output ?? "").trim();
+  return text.length <= 4_000 ? text : `${text.slice(0, 3_999)}…`;
+}
+
+function sourceFromCall(
+  id: string,
+  name: string,
+  argsRaw: string,
+  output: string | null,
+): QaSource | null {
+  const kind = SOURCE_TOOLS[name];
+  if (kind === undefined) return null;
+  let target: string | null = null;
+  try {
+    const args = JSON.parse(argsRaw) as Record<string, unknown>;
+    for (const key of ["url", "file_path", "path", "query", "pattern"]) {
+      const value = args[key];
+      if (typeof value === "string" && value.trim() !== "") {
+        target = sourceTarget(value);
+        break;
+      }
+    }
+  } catch {
+    // A non-JSON head leaves the target unresolved.
+  }
+  // Without a resolvable target the row is noise (a failed search, an
+  // unnamed call) - the drawer shows sources, not tool errors.
+  if (target === null || target === "") return null;
+  return {
+    id,
+    kind,
+    target,
+    // A search answers with a result list, so the query itself is the title.
+    title: kind === "search" ? target : sourceTitle(kind, target),
+    snippet: sourceSnippet(output),
+    output: sourceOutput(output),
+  };
+}
+
+/**
+ * Collect the sources this chat has actually touched, in first-use order:
+ * fetched pages, searches, and files read. This is the same tool activity the
+ * work groups render, projected as a flat citation-style list, so it carries
+ * no information beyond `ui.showToolActivity`.
+ */
+export function projectSources(
+  snapshot: ConversationSnapshot,
+): readonly QaSource[] {
+  const sources: QaSource[] = [];
+  const seen = new Set<string>();
+  const add = (source: QaSource | null) => {
+    if (source === null) return;
+    const key = `${source.kind}:${source.target}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    sources.push(source);
+  };
+  for (const node of snapshot.nodes) {
+    if (node.kind !== "tool-result" || node.isError) continue;
+    add(
+      sourceFromCall(
+        `source:${node.callId}`,
+        node.call?.name ?? node.callId,
+        node.call?.argsRaw ?? "",
+        flattenToolOutput(node),
+      ),
+    );
+  }
+  for (const call of snapshot.runningCalls) {
+    add(sourceFromCall(`source:${call.callId}`, call.name, call.argsRaw, null));
+  }
+  return sources;
 }

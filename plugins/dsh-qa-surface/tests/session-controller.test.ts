@@ -9,13 +9,13 @@ import type {
   SessionListState,
 } from "@deepseek-ai/dsh-client-runtime/client";
 import { describe, expect, it, vi } from "vitest";
+import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
-  attestationReasonOf,
   QaSessionController,
   type QaSessionControllerOptions,
-  type StorageLike,
 } from "../src/client/QaSessionController.js";
+import type { StorageLike } from "../src/client/types.js";
 
 class Source<T> {
   private readonly listeners = new Set<() => void>();
@@ -343,7 +343,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("creates a fresh session on reset without deleting the old one", async () => {
+  it("starts a draft on reset and materializes the session on first send", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
@@ -353,11 +353,44 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    const first = controller.getSnapshot().sessionId;
-    await controller.reset();
-    expect(first).toBe("created-1");
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    await controller.startDraft();
+    expect(world.create).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "idle",
+      sessionId: null,
+      messages: [],
+      canSend: true,
+      canStop: false,
+    });
+    expect(await controller.send("hello draft")).toBe(true);
+    expect(world.create).toHaveBeenCalledTimes(2);
     expect(controller.getSnapshot().sessionId).toBe("created-2");
     expect(world.faces.has("created-1")).toBe(true);
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "hello draft" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("does not let a second send during draft materialization double-create", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ lockdown: { allowSessionReset: true } }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const first = controller.send("one");
+    const second = controller.send("two");
+    expect(await second).toBe(false);
+    expect(await first).toBe(true);
+    expect(world.create).toHaveBeenCalledTimes(2);
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "one" }],
+      "queue",
+    );
     controller.dispose();
   });
 
@@ -512,15 +545,92 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("does not reset a locked session by default", async () => {
+  it("does not draft a locked session by default", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
     });
     await controller.ensureSession();
-    await controller.reset();
+    await controller.startDraft();
     expect(world.create).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    controller.dispose();
+  });
+
+  it("watches a subagent read-only and returns to the chat", async () => {
+    const world = harness(["chat-1"]);
+    // A subagent child of the chat, known to the host session list.
+    const childFace = sessionFace("child-1");
+    world.faces.set("child-1", childFace);
+    const list = world.list.getSnapshot();
+    world.list.set({
+      ...list,
+      byId: {
+        ...list.byId,
+        "child-1": {
+          id: "child-1",
+          displayTitle: "Print a greeting",
+          running: true,
+          blank: false,
+          updatedAt: 5,
+        },
+      } as SessionListState["byId"],
+    });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const chatId = controller.getSnapshot().sessionId;
+    expect(chatId).toBe("created-2");
+    const secureCallsBefore = world.secureSession.mock.calls.length;
+
+    await controller.viewSubagent("child-1", "Print a greeting");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "child-1",
+      canSend: false,
+      viewingSubagent: { id: "child-1", title: "Print a greeting" },
+    });
+    expect(childFace?.prompt).not.toHaveBeenCalled();
+
+    await controller.closeSubagent();
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "created-2",
+      canSend: true,
+      viewingSubagent: null,
+    });
+    // The subagent bind skipped attestation entirely; returning attests.
+    expect(world.secureSession.mock.calls.length).toBe(secureCallsBefore + 1);
+    controller.dispose();
+  });
+
+  it("creates the chat inside the pinned cwd", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
+    });
+    await controller.ensureSession();
+    expect(world.create).toHaveBeenCalledWith({ cwd: "D:/qa-docs" });
+    controller.dispose();
+  });
+
+  it("regenerates by prompting the hidden marker instruction", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const face = world.faces.get("created-1");
+    expect(await controller.regenerate()).toBe(true);
+    expect(face?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: QA_REGENERATE_MARKER }],
+      "queue",
+    );
     controller.dispose();
   });
 });
@@ -636,17 +746,6 @@ describe("QA chat index and switching", () => {
 });
 
 describe("attestation diagnostics", () => {
-  it("parses the Host reason marker from wire failures", () => {
-    expect(
-      attestationReasonOf({
-        message:
-          "Assistant configuration is unavailable. (reason: unknown-tools)",
-      }),
-    ).toBe("unknown-tools");
-    expect(attestationReasonOf({ message: "plain refusal" })).toBeNull();
-    expect(attestationReasonOf(undefined)).toBeNull();
-  });
-
   it("reports the Host reason code once without a wrapper stack trace", async () => {
     const world = harness();
     const controller = new QaSessionController({
@@ -735,7 +834,7 @@ it("forgets a non-active chat without touching sessions", async () => {
   controller.dispose();
 });
 
-it("deleting the active chat starts a fresh one", async () => {
+it("deleting the active chat falls back to a draft without creating a session", async () => {
   const world = harness();
   const controller = new QaSessionController({
     ...world,
@@ -743,11 +842,13 @@ it("deleting the active chat starts a fresh one", async () => {
   });
   await controller.ensureSession();
   await controller.deleteChat("created-1");
-  expect(world.create).toHaveBeenCalledTimes(2);
-  expect(controller.getSnapshot().sessionId).toBe("created-2");
-  expect(controller.chatIds()).toEqual(["created-2"]);
-  expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
-    "created-2",
-  );
+  expect(world.create).toHaveBeenCalledOnce();
+  expect(controller.getSnapshot()).toMatchObject({
+    phase: "idle",
+    sessionId: null,
+    canSend: true,
+  });
+  expect(controller.chatIds()).toEqual([]);
+  expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(false);
   controller.dispose();
 });

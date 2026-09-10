@@ -25,6 +25,25 @@ rules are:
   mounted by an agent preset live in that preset's ancestor scope; the Host
   validates and restricts the complete agent-scoped view, not just globals.
 
+## Pinning chats to a directory
+
+By default a QA chat is created against the Host working directory. Two
+mutually exclusive pins anchor every new chat (and its subagents) to the
+deployment's own directory:
+
+- `session.cwd: "D:/qa-docs"` - an absolute directory used directly as the
+  session cwd; no registration needed. Attestation compares the session's
+  recorded cwd case- and separator-insensitively on Windows.
+- `session.workspaceId: "<uuid>"` - a registered DSH workspace (created in
+  the web UI or via the workspace API; the id is a generated uuid, not the
+  path). Sessions attach to the workspace, so they group under it in the
+  host UI. When the id does not resolve, attestation refuses with
+  `reason: workspace-unavailable` instead of an opaque mismatch.
+
+With `lockdown.enforceFixedWorkspace: true` (the default) a chat created
+anywhere else refuses to attest, so the QA audience can never pull the
+assistant out of the pinned directory.
+
 Browser persistence stores only the DSH session id under
 `<storageKey>:v1:<route>:session`, plus — when `ui.showSessionList` is
 enabled — a per-browser chat index under `<storageKey>:v1:<route>:chats`
@@ -44,7 +63,7 @@ Any unproved agent preset, workspace, model, permission bundle or tool policy
 disables Send with the generic message `Настройки помощника недоступны.`
 Detailed mismatch facts are written only to Host logs; the
 browser console additionally prints one line with a stable coarse reason code
-(`reason: unknown-tools`, `composition-mismatch`, `permission-preset`,
+(`reason: unknown-tools`, `workspace-unavailable`, `composition-mismatch`, `permission-preset`,
 `adoption-refused`, `proof-mismatch` or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
 
