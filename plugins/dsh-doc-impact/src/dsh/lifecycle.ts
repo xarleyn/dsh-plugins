@@ -10,10 +10,12 @@ export interface LifecycleContext {
   };
 }
 
+type SessionEventLike = { readonly type: string; readonly data: unknown };
+
 interface SessionLike {
   readonly id: string;
   readonly header: { readonly cwd?: string } | undefined;
-  readonly events: readonly { readonly type: string; readonly data: unknown }[];
+  snapshotEvents(): readonly SessionEventLike[];
 }
 
 interface AgentLike {
@@ -39,7 +41,7 @@ interface EngineFacade {
  * the engine follow this value, so tool/command call sites mid-turn and at the
  * stop boundary address the same runtime.
  */
-export function currentTurnNumber(events: SessionLike['events']): { turn: number; open: boolean } {
+export function currentTurnNumber(events: readonly SessionEventLike[]): { turn: number; open: boolean } {
   let turn = 0;
   let open = false;
   for (const event of events) {

@@ -64,12 +64,13 @@ async function makeHarness(userDirtyDoc = false): Promise<Harness> {
   });
 
   const steerCalls: string[] = [];
+  const sessionEvents: { type: string; data: unknown }[] = [];
   const agent = {
     id: 'e2e-agent',
     session: {
       id: 'e2e-agent',
       header: { cwd },
-      events: [] as { type: string; data: unknown }[],
+      snapshotEvents: () => sessionEvents,
     },
     steer(message: unknown) {
       steerCalls.push(JSON.stringify(message));
@@ -90,7 +91,7 @@ async function makeHarness(userDirtyDoc = false): Promise<Harness> {
 
   // The session log starts with one open turn, as the loop appends turn/start
   // before any step work.
-  agent.session.events.push({ type: 'turn/start', data: { turn: 1 } });
+  sessionEvents.push({ type: 'turn/start', data: { turn: 1 } });
 
   return {
     cwd,

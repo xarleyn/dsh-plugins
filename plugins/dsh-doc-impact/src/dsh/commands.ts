@@ -6,7 +6,7 @@ import type { ImpactRule } from '../config/types.js';
 interface SessionLike {
   readonly id: string;
   readonly header: { readonly cwd?: string } | undefined;
-  readonly events: readonly { readonly type: string; readonly data: unknown }[];
+  snapshotEvents(): readonly { readonly type: string; readonly data: unknown }[];
 }
 
 interface InvocationAgent {
@@ -46,9 +46,9 @@ const USAGE = [
   '  /doc-impact changed    — files the plugin attributes to this agent',
 ].join('\n');
 
-function currentTurn(events: SessionLike['events']): number {
+function currentTurn(session: SessionLike): number {
   let turn = 0;
-  for (const event of events) {
+  for (const event of session.snapshotEvents()) {
     if (event.type === 'turn/start') {
       const value = (event.data as { turn?: unknown }).turn;
       if (typeof value === 'number') turn = value;
@@ -73,7 +73,7 @@ export function createDocImpactCommand(engine: EngineFacade, configFacade: Confi
         return { kind: 'error', text: 'This session has no working directory; dsh-doc-impact is not active.' };
       }
       const sessionId = String(agent.id);
-      const turn = currentTurn(agent.session.events);
+      const turn = currentTurn(agent.session);
 
       const raw = invocation.rawInput.trim();
       if (raw === '') {
