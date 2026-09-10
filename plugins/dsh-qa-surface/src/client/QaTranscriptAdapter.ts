@@ -1,9 +1,11 @@
 import type {
   AssistantMessageNode,
+  ConversationNode,
   ConversationSnapshot,
   RunningToolCall,
   ToolResultNode,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
   QaImageMediaType,
   QaImageView,
@@ -59,6 +61,22 @@ interface ToolHead {
 interface OrderedMessage {
   readonly order: number;
   readonly message: QaMessage;
+}
+
+/** Empty Chat slice matching the host's EMPTY_CHAT_SNAPSHOT, without a value import. */
+const EMPTY_LEGACY: LegacyConversationSlice = Object.freeze({
+  nodes: Object.freeze([]),
+  turnTimings: new Map(),
+  turnEnds: new Map(),
+  partial: null,
+  runningCalls: Object.freeze([]),
+});
+
+/** The transcript-bearing Chat slice of one Conversation snapshot (absent before the view activates). */
+function chatLegacyOf(
+  snapshot: ConversationSnapshot | undefined,
+): LegacyConversationSlice {
+  return snapshot?.views.get("chat")?.legacy ?? EMPTY_LEGACY;
 }
 
 /**
@@ -340,13 +358,13 @@ function collectAssistant(
 }
 
 function collectSettledTools(
-  snapshot: ConversationSnapshot,
+  nodes: readonly ConversationNode[],
   turns: Map<number, TurnBuffer>,
   toolHeads: Map<string, ToolHead>,
 ): Set<string> {
   const settled = new Set<string>();
   let nearestTurn: number | undefined;
-  for (const node of snapshot.nodes) {
+  for (const node of nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
     if (node.kind !== "tool-result" || node.isError) continue;
     const head = toolHeads.get(node.callId);
@@ -392,13 +410,14 @@ function collectRunningTool(
 }
 
 function emitTurn(
-  snapshot: ConversationSnapshot,
+  legacy: LegacyConversationSlice,
+  running: boolean,
   turn: TurnBuffer,
   output: OrderedMessage[],
 ): void {
-  const timing = snapshot.turnTimings.get(turn.turn);
+  const timing = legacy.turnTimings.get(turn.turn);
   const completed =
-    timing?.endTime !== undefined || snapshot.turnEnds.has(turn.turn);
+    timing?.endTime !== undefined || legacy.turnEnds.has(turn.turn);
   const sortedText = [...turn.text].sort(
     (left, right) => left.order - right.order,
   );
@@ -407,7 +426,7 @@ function emitTurn(
     (message) => message.status === "committed",
   );
   const hasVisibleActiveWork =
-    snapshot.running &&
+    running &&
     !completed &&
     turn.work.some(({ item }) => item.status === "running");
   const finalText =
@@ -442,7 +461,7 @@ function emitTurn(
         id: `work:${turn.turn}`,
         role: "work",
         turn: turn.turn,
-        status: completed || !snapshot.running ? "complete" : "running",
+        status: completed || !running ? "complete" : "running",
         ...(timing?.startTime === undefined
           ? {}
           : { startedAt: timing.startTime }),
@@ -489,17 +508,21 @@ function emitTurn(
 
 /** Project end-user messages plus optional operator-approved work detail. */
 export function projectTranscript(
-  snapshot: ConversationSnapshot,
+  snapshot: ConversationSnapshot | undefined,
   options: {
+    /** Live turn lifecycle from the bound Session (drives running-row status). */
+    readonly running?: boolean;
     readonly showToolActivity?: boolean;
     readonly showReasoning?: boolean;
   } = {},
 ): readonly QaMessage[] {
+  const legacy = chatLegacyOf(snapshot);
+  const running = options.running === true;
   const output: OrderedMessage[] = [];
   const turns = new Map<number, TurnBuffer>();
   const toolHeads = new Map<string, ToolHead>();
 
-  for (const node of snapshot.nodes) {
+  for (const node of legacy.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
       const images = visibleContentImages(node.content);
@@ -567,26 +590,26 @@ export function projectTranscript(
   }
 
   if (options.showToolActivity === true) {
-    const settled = collectSettledTools(snapshot, turns, toolHeads);
-    for (const call of snapshot.runningCalls) {
+    const settled = collectSettledTools(legacy.nodes, turns, toolHeads);
+    for (const call of legacy.runningCalls) {
       if (!settled.has(call.callId)) {
         collectRunningTool(call, turns, toolHeads);
       }
     }
   }
 
-  if (snapshot.partial !== null) {
-    const partialTurn = getTurn(turns, snapshot.partial.turn);
-    const text = visibleAssistantText(snapshot.partial.blocks);
+  if (legacy.partial !== null) {
+    const partialTurn = getTurn(turns, legacy.partial.turn);
+    const text = visibleAssistantText(legacy.partial.blocks);
     if (text !== "") {
       partialTurn.text.push({
-        id: `assistant:partial:${snapshot.partial.turn}:${snapshot.partial.step}`,
+        id: `assistant:partial:${legacy.partial.turn}:${legacy.partial.step}`,
         order: Number.MAX_SAFE_INTEGER - 1,
         text,
         status: "streaming",
       });
     }
-    snapshot.partial.blocks.forEach((block, index) => {
+    legacy.partial.blocks.forEach((block, index) => {
       if (
         block.kind === "reasoning" &&
         options.showReasoning === true &&
@@ -595,7 +618,7 @@ export function projectTranscript(
         partialTurn.work.push({
           order: Number.MAX_SAFE_INTEGER - 10 + index / 1_000,
           item: {
-            id: `reasoning:partial:${snapshot.partial?.turn}:${snapshot.partial?.step}:${index}`,
+            id: `reasoning:partial:${legacy.partial?.turn}:${legacy.partial?.step}:${index}`,
             kind: "reasoning",
             text: block.text,
             status: "running",
@@ -605,7 +628,7 @@ export function projectTranscript(
         block.kind === "tool-call" &&
         options.showToolActivity === true &&
         block.callId !== "" &&
-        !snapshot.runningCalls.some((call) => call.callId === block.callId)
+        !legacy.runningCalls.some((call) => call.callId === block.callId)
       ) {
         partialTurn.work.push({
           order: Number.MAX_SAFE_INTEGER - 9 + index / 1_000,
@@ -623,7 +646,7 @@ export function projectTranscript(
     });
   }
 
-  for (const turn of turns.values()) emitTurn(snapshot, turn, output);
+  for (const turn of turns.values()) emitTurn(legacy, running, turn, output);
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);
@@ -714,8 +737,9 @@ function sourceFromCall(
  * no information beyond `ui.showToolActivity`.
  */
 export function projectSources(
-  snapshot: ConversationSnapshot,
+  snapshot: ConversationSnapshot | undefined,
 ): readonly QaSource[] {
+  const legacy = chatLegacyOf(snapshot);
   const sources: QaSource[] = [];
   const seen = new Set<string>();
   const add = (source: QaSource | null) => {
@@ -725,7 +749,7 @@ export function projectSources(
     seen.add(key);
     sources.push(source);
   };
-  for (const node of snapshot.nodes) {
+  for (const node of legacy.nodes) {
     if (node.kind !== "tool-result" || node.isError) continue;
     add(
       sourceFromCall(
@@ -736,7 +760,7 @@ export function projectSources(
       ),
     );
   }
-  for (const call of snapshot.runningCalls) {
+  for (const call of legacy.runningCalls) {
     add(sourceFromCall(`source:${call.callId}`, call.name, call.argsRaw, null));
   }
   return sources;

@@ -2,7 +2,7 @@
 
 The Host half validates the Loader configuration, registers the `qa-surface`
 settings namespace and owns one narrow GET/HEAD route for the configured QA
-path. Published DSH `0.1.1-rc.2` returns 404 for unknown frontend paths, so the
+path. Published DSH releases return 404 for unknown frontend paths, so the
 route redirects navigation through the canonical `/` index with an encoded
 same-origin path marker. It also exposes one typed
 `secureSession(sessionId)` operation whose policy is read only from Host

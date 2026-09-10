@@ -1,12 +1,9 @@
 import type {} from "@deepseek-ai/dsh-agent-presets";
 import type {} from "@deepseek-ai/dsh-permission-presets";
+import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
-import {
-  installSettingsSection,
-  settingsNamespace,
-} from "@deepseek-ai/dsh-settings";
 import {
   createHostLoggerSink,
   getPluginLogger,
@@ -30,7 +27,7 @@ export const inject = [
   "tools",
   "workspaceRegistry",
 ];
-export const QA_SURFACE_SETTINGS_NAMESPACE = settingsNamespace("qa-surface");
+export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
 export const Config = ConfigSchema;
 
 declare module "@deepseek-ai/cordis" {
@@ -72,29 +69,31 @@ export class QaSurface extends TypertRemoteService {
       () => () => this.admission.dispose(),
       "dsh-qa-surface.lockdown-policies",
     );
-    installSettingsSection(
-      ctx,
-      QA_SURFACE_SETTINGS_NAMESPACE,
-      ConfigSchema,
-      entry,
-      {
-        setSource: (source) => {
-          this.source = source;
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        QA_SURFACE_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        entry,
+        {
+          setSource: (source) => {
+            this.source = source;
+          },
+          onChange: () => {
+            const config = this.getConfig();
+            this.refreshRoute();
+            this.logger.info("config.updated", {
+              enabled: config.enabled,
+              route: config.route.path,
+              sessionPolicy: config.session.policy,
+            });
+          },
+          validate: (value) => {
+            resolveConfig(value);
+          },
         },
-        onChange: () => {
-          const config = this.getConfig();
-          this.refreshRoute();
-          this.logger.info("config.updated", {
-            enabled: config.enabled,
-            route: config.route.path,
-            sessionPolicy: config.session.policy,
-          });
-        },
-        validate: (value) => {
-          resolveConfig(value);
-        },
-      },
-    );
+      );
+    });
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();

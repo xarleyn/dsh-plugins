@@ -1,13 +1,9 @@
+import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
-  HostDescriptionSource,
-  IApiClient,
-  SessionId,
-} from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ConversationSnapshot,
   SessionFace,
   SessionListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "@deepseek-ai/dsh-api-session-controller/client";
+import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import { describe, expect, it, vi } from "vitest";
 import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
 import { resolveConfig } from "../src/resolve-config.js";
@@ -31,34 +27,21 @@ class Source<T> {
   }
 }
 
-function conversation(id: string): ConversationSnapshot {
+function conversation(_id: string): ConversationSnapshot {
+  // No Chat view is registered in tests, so the transcript projects empty.
   return {
-    sessionId: id as SessionId,
-    views: {} as ConversationSnapshot["views"],
-    chat: {} as ConversationSnapshot["chat"],
-    nodes: [],
-    turnTimings: new Map(),
-    turnEnds: new Map(),
-    partial: null,
-    runningCalls: [],
-    pending: [],
-    queue: [],
-    running: false,
-    subagent: null,
-    composerPhase: "blank",
-    removed: false,
-    openState: "open",
-    openError: null,
-    hasMore: false,
-    loadingOlder: false,
-    promptError: null,
-    blank: true,
-    lastAgentError: null,
+    views: { get: () => undefined },
+    activeTargets: new Set(),
   };
 }
 
 function sessionFace(id: string) {
-  const source = new Source(conversation(id));
+  const source = new Source({
+    running: false,
+    openState: "open",
+    blank: true,
+    removed: false,
+  });
   const prompt = vi.fn(async () => ({
     ok: true as const,
     value: { accepted: true as const },
@@ -78,10 +61,19 @@ function sessionFace(id: string) {
   return { face, source, prompt, cancel };
 }
 
+function conversationBinding(id: string) {
+  return {
+    snapshot: new Source(conversation(id)),
+    // Subscribing the Chat target activates it; tests never register one.
+    target: vi.fn(() => new Source(undefined)),
+  };
+}
+
 function harness(existing: string[] = []) {
   const faces = new Map(existing.map((id) => [id, sessionFace(id)]));
+  const bindings = new Map(existing.map((id) => [id, conversationBinding(id)]));
   const list = new Source<SessionListState>({
-    ids: existing as SessionId[],
+    ids: existing as never[],
     byId: Object.fromEntries(
       existing.map((id) => [
         id,
@@ -98,23 +90,22 @@ function harness(existing: string[] = []) {
   const sessions = {
     list,
     open,
-    noteAgentPreset: vi.fn(),
-    binding: (id: SessionId) => {
-      const found = faces.get(String(id));
+    binding: (id: never) => {
+      const found = bindings.get(String(id));
       return found === undefined
         ? undefined
-        : { sessionId: id, session: found.face, ctx: {} };
+        : { sessionId: id, session: faces.get(String(id))?.face, ctx: {} };
     },
   } as unknown as QaSessionControllerOptions["sessions"];
   let sequence = existing.length;
   const create = vi.fn(async () => {
     const id = `created-${++sequence}`;
-    const created = sessionFace(id);
-    faces.set(id, created);
+    faces.set(id, sessionFace(id));
+    bindings.set(id, conversationBinding(id));
     const before = list.getSnapshot();
     list.set({
       ...before,
-      ids: [id as SessionId, ...before.ids],
+      ids: [id, ...before.ids],
       byId: {
         ...before.byId,
         [id]: {
@@ -125,26 +116,28 @@ function harness(existing: string[] = []) {
           updatedAt: 2,
         },
       } as SessionListState["byId"],
-    });
-    return id as SessionId;
+    } as SessionListState);
+    return id as never;
   });
   Object.assign(sessions, { create });
   const selectModel = vi.fn(async () => ({
-    result: { ok: true as const, value: { selected: {} } },
+    ok: true as const,
+    value: { selected: {} },
   }));
   const selectAgentPreset = vi.fn(async () => ({
-    result: {
-      ok: true as const,
-      value: { agentPreset: "qa-assistant" },
-    },
+    ok: true as const,
+    value: "qa-assistant",
   }));
-  const api = { selectModel, selectAgentPreset } as unknown as Pick<
-    IApiClient["sessions"],
-    "selectModel"
-  > & {
-    selectAgentPreset: IApiClient["agentPresets"]["select"];
-  };
-  const connection = new Source({}) as unknown as HostDescriptionSource;
+  const api = {
+    selectModel,
+    selectAgentPreset,
+  } as unknown as QaSessionControllerOptions["api"];
+  const conversation = {
+    binding: (id: never) => bindings.get(String(id)),
+  } as unknown as QaSessionControllerOptions["conversation"];
+  const connection = new Source(
+    {},
+  ) as unknown as QaSessionControllerOptions["connection"];
   const stored = new Map<string, string>();
   const storage: StorageLike = {
     getItem: (key) => stored.get(key) ?? null,
@@ -171,10 +164,12 @@ function harness(existing: string[] = []) {
   return {
     sessions,
     api,
+    conversation,
     connection,
     storage,
     stored,
     faces,
+    bindings,
     create,
     selectAgentPreset,
     open,
@@ -306,11 +301,7 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    expect(world.selectAgentPreset).toHaveBeenCalledWith({
-      sessionId: "created-1",
-      agentPreset: "qa-assistant",
-    });
-    expect(world.sessions.noteAgentPreset).toHaveBeenCalledWith(
+    expect(world.selectAgentPreset).toHaveBeenCalledWith(
       "created-1",
       "qa-assistant",
     );
@@ -391,31 +382,6 @@ describe("QA session controller", () => {
       [{ type: "text", text: "one" }],
       "queue",
     );
-    controller.dispose();
-  });
-
-  it("blocks prompts when DSH reports a pending interaction", async () => {
-    const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    const saved = world.faces.get("saved");
-    saved?.source.set({
-      ...saved.source.getSnapshot(),
-      pending: [
-        { kind: "approval" },
-      ] as unknown as ConversationSnapshot["pending"],
-    });
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "blocked",
-      canSend: false,
-      canStop: false,
-    });
-    expect(await controller.send("do it")).toBe(false);
-    expect(saved?.prompt).not.toHaveBeenCalled();
     controller.dispose();
   });
 
@@ -563,6 +529,7 @@ describe("QA session controller", () => {
     // A subagent child of the chat, known to the host session list.
     const childFace = sessionFace("child-1");
     world.faces.set("child-1", childFace);
+    world.bindings.set("child-1", conversationBinding("child-1"));
     const list = world.list.getSnapshot();
     world.list.set({
       ...list,

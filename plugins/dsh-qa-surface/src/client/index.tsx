@@ -1,12 +1,14 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { ConnectionHandle } from "@deepseek-ai/dsh-client-connection/client";
 import type { SettingsScopeBinder } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {
-  RemoteResult,
-  TypertRemoteContribution,
-} from "@deepseek-ai/dsh-typert-protocol";
+import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import qaSurfaceRemote from "@yadsh/dsh-qa-surface/remote";
+import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
+import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { QaRouteController } from "./QaRouteController.js";
@@ -32,14 +34,13 @@ interface QaPolicyRemote {
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
 }
 
-interface ClientRemote {
-  $mount(contribution: TypertRemoteContribution): Promise<() => Promise<void>>;
-  qaSurface: QaPolicyRemote;
-}
+/** The assembled Client Remote plus this plugin's own qaSurface namespace. */
+type QaClientRemote = ClientRemote & { readonly qaSurface: QaPolicyRemote };
 
 export const inject = [
   "slots",
   "sessions",
+  "uiConversation",
   "connection",
   "settingsScope",
   "remote",
@@ -47,16 +48,16 @@ export const inject = [
 
 /** Register the route-aware, full-frame QA entry in the additive overlay slot. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  const remote = ctx.remote as unknown as ClientRemote;
+  const remote = ctx.remote as QaClientRemote;
   const disposeRemote = await remote.$mount(qaSurfaceRemote);
   await ctx.inject(["remote.qaSurface"], (remoteContext) => {
-    const policyRemote = (remoteContext.remote as unknown as ClientRemote)
-      .qaSurface;
+    const policyRemote = (remoteContext.remote as QaClientRemote).qaSurface;
     const secureSession: QaSecureSession = (sessionId) =>
       policyRemote.secureSession(sessionId);
     const qaApi: QaSessionsApi = {
-      selectModel: ctx.connection.api.sessions.selectModel,
-      selectAgentPreset: ctx.connection.api.agentPresets.select,
+      selectModel: (request) => ctx.remote.session.selectModel(request),
+      selectAgentPreset: (agentId, agentPreset) =>
+        ctx.remote.agentPresets.select(agentId, agentPreset),
     };
     const route = new QaRouteController();
     const config = new QaConfigController(
@@ -87,16 +88,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     // refuses. Loopback pages follow the settings mirror; this covers the
     // describe fallback (LAN browsers). Fires on every lost→restored
     // connection transition; while connected, ticks are ignored.
-    let connectionUp =
-      ctx.connection.hostDescription.getSnapshot() !== undefined;
-    const unsubscribeConnection = ctx.connection.hostDescription.subscribe(
-      () => {
-        const connected =
-          ctx.connection.hostDescription.getSnapshot() !== undefined;
-        if (connected && !connectionUp) config.refreshFallback();
-        connectionUp = connected;
-      },
-    );
+    let connectionUp = ctx.connection.generation.getSnapshot() !== undefined;
+    const unsubscribeConnection = ctx.connection.generation.subscribe(() => {
+      const connected = ctx.connection.generation.getSnapshot() !== undefined;
+      if (connected && !connectionUp) config.refreshFallback();
+      connectionUp = connected;
+    });
 
     ctx.effect(() => {
       const style = document.createElement("style");
@@ -125,9 +122,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           inject: () => ({
             route,
             config,
+            // The host dsh-session merge types ctx.sessions as SessionStore in
+            // this program; the client assembly provides the ISessions face.
             sessions: ctx.sessions as unknown as QaSessions,
+            conversation: ctx.uiConversation,
             api: qaApi,
-            connection: ctx.connection.hostDescription,
+            connection: ctx.connection.generation,
             secureSession,
           }),
         },

@@ -1,21 +1,30 @@
-import type { IApiClient } from "@deepseek-ai/dsh-client-connection/client";
+import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type {
   ISessions,
-  SessionRuntime,
-} from "@deepseek-ai/dsh-client-runtime/client";
+  SessionFace,
+} from "@deepseek-ai/dsh-api-session-controller/client";
+import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
+import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { QaLockdownProof, QaSessionState } from "../types.js";
-import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
 
 /** Wire content one prompt carries: text plus base64 image uploads. */
 export type QaPromptContent = Parameters<SessionFace["prompt"]>[0];
 
 /** DSH session runtime surface the QA controller is allowed to touch. */
-export type QaSessions = ISessions & Pick<SessionRuntime, "create">;
+export type QaSessions = ISessions;
 
 /** Narrow client API slice used to pin the preset and model of a fresh chat. */
-export type QaSessionsApi = Pick<IApiClient["sessions"], "selectModel"> & {
-  readonly selectAgentPreset: IApiClient["agentPresets"]["select"];
+export type QaSessionsApi = {
+  selectModel: ClientRemote["session"]["selectModel"];
+  selectAgentPreset: ClientRemote["agentPresets"]["select"];
 };
+
+/**
+ * Conversation assembly the QA transcript is projected from: the per-Session
+ * binding carries the assembled Chat view (nodes, partials, tool calls).
+ */
+export type QaConversation = Pick<UiConversation, "binding">;
 
 /** Attestation channel to the Host admission boundary (`qaSurface/secureSession`). */
 export type QaSecureSession = (

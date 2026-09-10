@@ -19,7 +19,7 @@ import {
   QaSidebar,
   sameChatRows,
 } from "../src/client/components/QaSidebar.js";
-import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 
 describe("QA composer", () => {
   it("sends on Enter and preserves Shift+Enter", async () => {

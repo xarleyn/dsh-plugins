@@ -43,8 +43,8 @@ Some DSH patch operations replace a row's complete `config` instead of deeply
 merging it. When editing an existing row, provide every value that deployment
 needs.
 
-DSH `0.1.1-rc.2` serves unknown frontend paths as 404 rather than falling back
-to `index.html`. The Host half therefore claims only the configured QA
+Tested DSH releases serve unknown frontend paths as 404 rather than falling
+back to `index.html`. The Host half therefore claims only the configured QA
 navigation path and redirects it through the canonical `/` document with a
 short-lived query marker. The browser restores the requested `/qa` URL with
 `history.replaceState` before mounting the overlay. No second server, duplicate
