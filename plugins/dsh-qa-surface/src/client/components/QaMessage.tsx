@@ -139,6 +139,72 @@ export function QaMessage({
     },
     [],
   );
+  if (message.role === "system" && message.notice !== undefined) {
+    return (
+      <details className="dsh-qa-notice">
+        <summary className="dsh-qa-notice__summary">
+          <svg
+            className="dsh-qa-notice__icon"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
+            <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
+          </svg>
+          <span className="dsh-qa-notice__title">{message.notice.title}</span>
+          <svg
+            className="dsh-qa-notice__chevron"
+            viewBox="0 0 14 14"
+            aria-hidden="true"
+          >
+            <path d="m5.25 3.5 3.5 3.5-3.5 3.5" />
+          </svg>
+        </summary>
+        <div className="dsh-qa-notice__body">
+          {message.notice.body === "" ? (
+            <p>Без итогового сообщения.</p>
+          ) : renderMarkdown ? (
+            <Markdown text={message.notice.body} />
+          ) : (
+            message.notice.body
+          )}
+        </div>
+      </details>
+    );
+  }
+  if (message.role === "system" && message.notice !== undefined) {
+    return (
+      <details className="dsh-qa-notice">
+        <summary className="dsh-qa-notice__summary">
+          <svg
+            className="dsh-qa-notice__icon"
+            viewBox="0 0 16 16"
+            aria-hidden="true"
+          >
+            <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
+            <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
+          </svg>
+          <span className="dsh-qa-notice__title">{message.notice.title}</span>
+          <svg
+            className="dsh-qa-notice__chevron"
+            viewBox="0 0 14 14"
+            aria-hidden="true"
+          >
+            <path d="m5.25 3.5 3.5 3.5-3.5 3.5" />
+          </svg>
+        </summary>
+        <div className="dsh-qa-notice__body">
+          {message.notice.body === "" ? (
+            <p>Без итогового сообщения.</p>
+          ) : renderMarkdown ? (
+            <Markdown text={message.notice.body} />
+          ) : (
+            message.notice.body
+          )}
+        </div>
+      </details>
+    );
+  }
   if (message.role === "work") {
     return (
       <article

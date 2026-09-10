@@ -264,18 +264,15 @@ export function QaSurface(props: QaSurfaceProps) {
         />
       ) : null}
       <div className="dsh-qa-body">
-        {state.viewingSubagent !== null ? (
+        {state.viewingSubagent !== null && !config.ui.showHeader ? (
           <div className="dsh-qa-agentview" role="status">
             <RobotBadge />
-            <span>
-              Смотрю субагента <strong>«{state.viewingSubagent.title}»</strong>.
-              Ответы недоступны, чат работает дальше.
-            </span>
+            <span>Просмотр субагента</span>
             <button
               type="button"
               onClick={() => void controller?.closeSubagent()}
             >
-              ← Вернуться к чату
+              ← В чат
             </button>
           </div>
         ) : null}
@@ -293,15 +290,29 @@ export function QaSurface(props: QaSurfaceProps) {
                 {conversationTitle === null ? null : (
                   <h1 title={conversationTitle}>{conversationTitle}</h1>
                 )}
-                <span className="dsh-qa-header__mode">
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <circle cx="8" cy="3.25" r="1.5" />
-                    <circle cx="4" cy="11.75" r="1.5" />
-                    <circle cx="12" cy="11.75" r="1.5" />
-                    <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-                  </svg>
-                  {modeLabel(config.session.agentPreset)}
-                </span>
+                {state.viewingSubagent !== null ? (
+                  <span className="dsh-qa-header__viewing">
+                    <RobotBadge />
+                    Просмотр субагента
+                    <button
+                      type="button"
+                      className="dsh-qa-header__back"
+                      onClick={() => void controller?.closeSubagent()}
+                    >
+                      ← В чат
+                    </button>
+                  </span>
+                ) : (
+                  <span className="dsh-qa-header__mode">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <circle cx="8" cy="3.25" r="1.5" />
+                      <circle cx="4" cy="11.75" r="1.5" />
+                      <circle cx="12" cy="11.75" r="1.5" />
+                      <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
+                    </svg>
+                    {modeLabel(config.session.agentPreset)}
+                  </span>
+                )}
                 <button
                   type="button"
                   className={

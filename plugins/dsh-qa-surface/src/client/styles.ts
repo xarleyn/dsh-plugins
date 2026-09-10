@@ -103,7 +103,12 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-header__agents[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-header__agents svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__agents:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
-.dsh-qa-agentview{display:flex;align-items:center;gap:8px;flex:none;padding:8px 28px;border-bottom:1px solid var(--dsh-qa-info-30);background:var(--dsh-qa-info-10);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.dsh-qa-agentview{display:flex;align-items:center;gap:8px;flex:none;padding:6px 28px;border-bottom:1px solid var(--dsh-qa-info-30);background:var(--dsh-qa-info-10);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
+.dsh-qa-header__viewing{display:inline-flex;align-items:center;gap:7px;flex:none;padding:3px 10px;border-radius:999px;background:var(--dsh-qa-info-10);color:var(--dsh-qa-info);font-size:13px;line-height:20px;white-space:nowrap}
+.dsh-qa-header__viewing > svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-header__back{border:0;background:transparent;padding:0;color:var(--dsh-qa-info);font:inherit;font-size:13px;font-weight:500;line-height:20px;cursor:pointer}
+.dsh-qa-header__back:hover{text-decoration:underline}
+.dsh-qa-header__back:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
 .dsh-qa-agentview strong{color:var(--dsw-alias-label-primary);font-weight:600}
 .dsh-qa-agentview__icon{width:16px;height:16px;flex:none;fill:none;stroke:var(--dsh-qa-info);stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-agentview button{margin-left:auto;flex:none;padding:4px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsh-qa-info);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
@@ -233,6 +238,17 @@ span.dsh-qa-message__image[data-state="loading"]{animation:dsh-qa-spin 1.2s line
 .dsh-qa-message__content blockquote{border-left:3px solid var(--dsw-alias-border-l2);padding-left:12px;color:var(--dsw-alias-label-secondary)}
 .dsh-qa-message__cursor{display:inline-block;width:7px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--dsw-alias-label-secondary);animation:dsh-qa-blink 1s steps(2,start) infinite}
 @keyframes dsh-qa-blink{50%{opacity:0}}
+.dsh-qa-notice{width:100%;min-width:0;margin:-4px 0 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
+.dsh-qa-notice__summary{display:flex;align-items:center;gap:7px;min-height:32px;padding:4px 10px;list-style:none;color:var(--dsw-alias-label-secondary);font-size:13px;cursor:pointer}
+.dsh-qa-notice__summary::-webkit-details-marker{display:none}
+.dsh-qa-notice__summary:hover{color:var(--dsw-alias-label-primary)}
+.dsh-qa-notice__summary:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
+.dsh-qa-notice__icon{width:15px;height:15px;flex:none;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-notice__title{flex:1;min-width:0;overflow:hidden;font-weight:500;text-overflow:ellipsis;white-space:nowrap}
+.dsh-qa-notice__chevron{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round;transition:transform .16s ease}
+.dsh-qa-notice[open] .dsh-qa-notice__chevron{transform:rotate(90deg)}
+.dsh-qa-notice__body{padding:2px 12px 10px 32px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
+.dsh-qa-notice__body p{margin:0}
 .dsh-qa-work{width:100%;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:22px}
 .dsh-qa-work__toggle{display:flex;align-items:center;gap:7px;min-height:30px;margin:0;padding:3px 5px 3px 0;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
 .dsh-qa-work__toggle:hover{color:var(--dsw-alias-label-primary)}

@@ -509,7 +509,7 @@ describe("transcript projection", () => {
     });
   });
 
-  it("projects subagent settlement notices and hides other context rows", () => {
+  it("folds subagent settlements into titled collapsible notices", () => {
     const contextNode = (seq: number, label: string, text: string) => ({
       kind: "context" as const,
       seq,
@@ -525,7 +525,7 @@ describe("transcript projection", () => {
           contextNode(
             1,
             "subagent-settled",
-            "Background subagent b5b84a41 finished a run. Its closing message: Hello from subagent",
+            "Background subagent b5b84a41-5597-4ddb-8cb6-9a2fa90517ad finished and will do no further work unless you send it more.Its closing message:**Found 130 TODO lines** | file | excerpt",
           ),
           contextNode(2, "skill-catalog", "operator skill list"),
         ] as ConversationSnapshot["nodes"],
@@ -535,12 +535,14 @@ describe("transcript projection", () => {
     expect(messages[0]).toMatchObject({
       role: "system",
       status: "info",
+      text: "Субагент b5b84a41 завершён",
+      notice: {
+        title: "Субагент b5b84a41 завершён",
+        body: "**Found 130 TODO lines** | file | excerpt",
+      },
     });
-    const notice = messages[0];
-    expect(
-      notice !== undefined && notice.role !== "work" ? notice.text : "",
-    ).toContain("Hello from subagent");
     expect(JSON.stringify(messages)).not.toContain("skill list");
+    expect(JSON.stringify(messages)).not.toContain("will do no further work");
   });
 
   it("projects fetched pages, searches and files as deduplicated sources", () => {

@@ -181,6 +181,11 @@ export type QaMessage =
       readonly text: string;
       readonly status: "info" | "error";
       readonly timestamp?: number;
+      /** Collapsible settlement row (subagent finished/stopped/failed). */
+      readonly notice?: {
+        readonly title: string;
+        readonly body: string;
+      };
     }
   | {
       readonly id: string;
