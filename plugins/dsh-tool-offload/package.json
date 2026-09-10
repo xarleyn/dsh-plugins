@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-tool-offload",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Offloads large, low-judgement DeepSeek Harness tool results to small one-shot worker agents before they enter the main model context",
   "repository": {
     "type": "git",
