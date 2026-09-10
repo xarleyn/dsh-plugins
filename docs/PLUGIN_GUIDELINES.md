@@ -500,8 +500,8 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.1-rc.2 <0.2.0",
-    "testedReleases": ["0.1.1-rc.2"],
+    "range": ">=0.1.5-rc.2 <0.2.0",
+    "testedReleases": ["0.1.5-rc.2"],
     "requiredClientFeatures": ["sidebar.footer.action"],
     "optionalClientProtocols": ["__dshNativeTabs@1"]
   },
