@@ -509,6 +509,37 @@ importers:
         specifier: catalog:tooling
         version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
 
+  plugins/dsh-git-readonly:
+    dependencies:
+      '@yadsh/dsh-plugin-log':
+        specifier: workspace:^
+        version: link:../../packages/plugin-log
+    devDependencies:
+      '@deepseek-ai/dsh-tools':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(da56d6dad84e0a320812a081b315229c)
+      '@deepseek-ai/schemastery':
+        specifier: catalog:dsh-dev
+        version: 3.18.2
+      '@types/node':
+        specifier: catalog:tooling
+        version: 26.4.0
+      '@yadsh/dsh-config':
+        specifier: workspace:^
+        version: link:../../packages/config
+      '@yadsh/dsh-test-kit':
+        specifier: workspace:^
+        version: link:../../packages/test-kit
+      eslint:
+        specifier: catalog:tooling
+        version: 10.9.1(jiti@2.7.0)
+      typescript:
+        specifier: catalog:plugin-tooling
+        version: 7.0.2
+      vitest:
+        specifier: catalog:tooling
+        version: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@26.1.0)(vite@7.3.6(@types/node@26.4.0)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   plugins/dsh-kv-persist:
     dependencies:
       '@yadsh/dsh-plugin-log':
