@@ -5,12 +5,16 @@
  * data must converge on exactly one valid CAS blob.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parseCasRef } from "../../src/cas/hash.js";
 import { buildStore, cleanupTempRoots, makeLog, tempRoot } from "../fixtures/store-fixtures.js";
+
+// The 100-writer race is CPU- and fs-scheduling sensitive; the default 5s
+// budget trips when the whole workspace test suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
 
 const encoder = new TextEncoder();
 
