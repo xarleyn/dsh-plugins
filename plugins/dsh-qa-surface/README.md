@@ -155,6 +155,13 @@ prompting or tooling is involved. Clicking a source opens its full tool
 output with every http(s) link clickable, and web sources carry an
 "Открыть" button straight to the page (a Jira issue, a wiki article).
 
+Images: the composer accepts PNG/JPEG/WebP/GIF via drag & drop onto the
+composer, paste, and the picker button, several at once (soft client caps:
+8 images, 15 MB each). Images ride the prompt as base64 uploads the Host
+promotes to durable attachments, so they survive reloads; sent images
+render as clickable thumbnails on the message. Whether the model can see
+them depends on the deployment's model (vision).
+
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
 lockdown allow-list; the preset must mount them. Launches then render as

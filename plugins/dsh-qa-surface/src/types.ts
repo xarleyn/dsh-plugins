@@ -152,6 +152,7 @@ export type QaMessage =
       readonly text: string;
       readonly status: "committed";
       readonly timestamp?: number;
+      readonly images?: readonly QaImageView[];
     }
   | {
       readonly id: string;
@@ -229,6 +230,27 @@ export interface QaSource {
   readonly snippet: string;
   /** The tool's full text output, capped for the detail pane. */
   readonly output: string;
+}
+
+/** Raster formats the attachment path accepts (mirrors the host contract). */
+export type QaImageMediaType =
+  "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+/** One image pending in the composer, browser-owned until the prompt lands. */
+export interface QaImageDraft {
+  readonly id: string;
+  readonly mediaType: QaImageMediaType;
+  readonly name: string;
+  /** Canonical base64 of the image bytes, without the data: URL prefix. */
+  readonly data: string;
+  /** Local object URL for the preview thumbnail. */
+  readonly previewUrl: string;
+}
+
+/** A durable image attached to a sent message. */
+export interface QaImageView {
+  readonly attachmentId: string;
+  readonly mediaType: QaImageMediaType;
 }
 
 /** A subagent transcript opened read-only from the agents panel. */

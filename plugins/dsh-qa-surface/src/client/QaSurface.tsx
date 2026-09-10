@@ -11,7 +11,7 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaSessionState } from "../types.js";
+import type { QaImageDraft, QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -130,6 +130,9 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
+    [],
+  );
 
   useEffect(() => {
     if (!route.active) {
@@ -413,6 +416,11 @@ export function QaSurface(props: QaSurfaceProps) {
                       renderMarkdown={config.ui.renderMarkdown}
                       showTimestamp={config.ui.showTimestamps}
                       stateKey={stateKey}
+                      resolveImage={
+                        controller === undefined
+                          ? undefined
+                          : (attachmentId) => controller.readImage(attachmentId)
+                      }
                       onRegenerate={
                         isLast &&
                         message.role === "assistant" &&
@@ -467,8 +475,10 @@ export function QaSurface(props: QaSurfaceProps) {
               running={state.phase === "running"}
               showStop={config.ui.showStop}
               status={status}
-              onSend={(text) =>
-                controller?.send(text) ?? Promise.resolve(false)
+              images={pendingImages}
+              onImagesChange={setPendingImages}
+              onSend={(text, images) =>
+                controller?.send(text, images) ?? Promise.resolve(false)
               }
               onStop={() => controller?.stop() ?? Promise.resolve()}
             />
