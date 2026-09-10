@@ -1,5 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import type {} from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
