@@ -8,8 +8,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import {
   authSummary,
@@ -34,13 +34,20 @@ import type {
   AuthenticatedFetchRule,
 } from '../types.js'
 
+/** Client face of the Host `credentials` Remote namespace (values never ride it). */
+export interface CredentialsRemote {
+  describe(refs: string[]): Promise<RemoteResult<Record<string, CredentialInfo>>>
+  set(ref: string, value: string): Promise<RemoteResult<void>>
+  unset(ref: string): Promise<RemoteResult<void>>
+}
+
 /** Client face injected into the card. */
 export interface CardFace {
   scope: SettingsScope<WebFetchAuthConfig>
   status: () => Promise<RemoteResult<ProviderStatusReport>>
   testRule: (ruleId: string, url?: string) => Promise<RemoteResult<RuleTestReport>>
   diagnose: (url: string) => Promise<RemoteResult<DiagnoseReport>>
-  credentials: IApiClient['credentials']
+  credentials: CredentialsRemote
 }
 
 function Pill({ tone, children }: { tone: 'ok' | 'warn' | 'err'; children: string }): JSX.Element {
@@ -392,10 +399,10 @@ function CredentialControl({ refName, onRefChange, credentials }: {
       return
     }
     let cancelled = false
-    void credentials.describe({ refs: [refName] }).then(response => {
+    void credentials.describe([refName]).then(response => {
       if (cancelled) return
-      if (response.result.ok) {
-        const view = response.result.value.credentials[refName]
+      if (response.ok) {
+        const view = response.value[refName]
         setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
       } else {
         setState(undefined)
@@ -411,11 +418,15 @@ function CredentialControl({ refName, onRefChange, credentials }: {
     setBusy(true)
     setMessage(undefined)
     try {
-      await credentials.set({ ref: refName, value: secret })
+      const written = await credentials.set(refName, secret)
+      if (!written.ok) {
+        setMessage('The Host refused the write (read-only source?).')
+        return
+      }
       setSecret('')
-      const response = await credentials.describe({ refs: [refName] })
-      if (response.result.ok) {
-        const view = response.result.value.credentials[refName]
+      const response = await credentials.describe([refName])
+      if (response.ok) {
+        const view = response.value[refName]
         setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
       }
       setMessage('Credential stored.')
@@ -430,10 +441,14 @@ function CredentialControl({ refName, onRefChange, credentials }: {
     setBusy(true)
     setMessage(undefined)
     try {
-      await credentials.unset({ ref: refName })
-      const response = await credentials.describe({ refs: [refName] })
-      if (response.result.ok) {
-        const view = response.result.value.credentials[refName]
+      const removed = await credentials.unset(refName)
+      if (!removed.ok) {
+        setMessage('The Host refused the removal.')
+        return
+      }
+      const response = await credentials.describe([refName])
+      if (response.ok) {
+        const view = response.value[refName]
         setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
       }
       setMessage('Credential removed.')

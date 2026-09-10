@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -12,7 +13,6 @@ import {
 } from '@yadsh/dsh-plugin-kit/client'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { validateConfig } from '../rule-validation.js'
-import type { IApiClient } from '@deepseek-ai/dsh-client-connection/client'
 import type {
   AuthenticatedFetchRule,
   DiagnoseReport,
@@ -21,7 +21,7 @@ import type {
   WebFetchAuthConfig,
 } from '../types.js'
 import { styles } from './styles.js'
-import { DiagnosticsSection, GlobalSection, RulesSection, StatusSection, type CardFace } from './sections.js'
+import { DiagnosticsSection, GlobalSection, RulesSection, StatusSection, type CardFace, type CredentialsRemote } from './sections.js'
 
 const SETTINGS_NAMESPACE = 'web-fetch-authenticated'
 const REFRESH_INTERVAL_MS = 5_000
@@ -35,6 +35,7 @@ interface RemoteService {
 interface ClientRemote {
   $mount(contribution: TypertRemoteContribution): Promise<() => Promise<void>>
   webFetchAuth: RemoteService
+  credentials: CredentialsRemote
 }
 
 type CardProps = PropsRuntime<'settings.plugin.item'> & InjectFace<CardFace>
@@ -124,26 +125,22 @@ function WebFetchAuthCard({ scope, status, testRule, diagnose, credentials }: Ca
   )
 }
 
-export const inject = ['slots', 'settingsScope', 'connection', 'remote']
+export const inject = ['slots', 'settingsScope', 'remote']
 
 /** Mount the generated Remote contribution and register the native Settings card. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
-  const remote = ctx.remote as unknown as ClientRemote
+  const remote = (ctx as unknown as { remote: ClientRemote }).remote
   const disposeRemote = await remote.$mount(webFetchAuthRemote)
   try {
     await ctx.inject(['remote.webFetchAuth'], (remoteCtx) => {
-      const injectedRemote = remoteCtx.remote as unknown as ClientRemote
+      const injectedRemote = (remoteCtx as unknown as { remote: ClientRemote }).remote
       const scope = remoteCtx.settingsScope.bind<WebFetchAuthConfig>({ namespace: SETTINGS_NAMESPACE })
-      const connection = (remoteCtx as unknown as {
-        connection?: { api?: { credentials?: unknown } }
-      }).connection
-      const credentials = connection?.api?.credentials as IApiClient['credentials']
       const face: CardFace = {
         scope,
         status: () => injectedRemote.webFetchAuth.status(),
         testRule: (ruleId, url) => injectedRemote.webFetchAuth.testRule(ruleId, url),
         diagnose: url => injectedRemote.webFetchAuth.diagnose(url),
-        credentials,
+        credentials: injectedRemote.credentials,
       }
 
       return registerSettingsCard(remoteCtx, {
