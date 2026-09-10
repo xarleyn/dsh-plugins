@@ -1,4 +1,4 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { DEFAULT_QA_SURFACE_CONFIG, resolveConfig } from "../resolve-config.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 

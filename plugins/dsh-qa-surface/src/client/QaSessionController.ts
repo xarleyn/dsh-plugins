@@ -1,9 +1,10 @@
 import type {
-  HostDescriptionSource,
+  ConnectionGenerationState,
   SessionId,
-  WorkspaceId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { WorkspaceId } from "@deepseek-ai/dsh-workspace/types";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -26,6 +27,7 @@ import {
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
 import type {
+  QaConversation,
   QaPromptContent,
   QaSecureSession,
   QaSessions,
@@ -43,7 +45,9 @@ import {
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
-  readonly connection: HostDescriptionSource;
+  /** Conversation assembly feeding the transcript projection. */
+  readonly conversation: QaConversation;
+  readonly connection: ConnectionGenerationState;
   readonly config: ResolvedQaSurfaceConfig;
   readonly secureSession: QaSecureSession;
   readonly storage?: StorageLike;
@@ -68,7 +72,8 @@ export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
   private readonly api: QaSessionsApi;
-  private readonly connection: HostDescriptionSource;
+  private readonly conversation: QaConversation;
+  private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
   private readonly secureSessionRemote: QaSecureSession;
   private readonly chats: QaChatIndex;
@@ -76,7 +81,9 @@ export class QaSessionController {
   private readonly streamIntervalMs: number;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
+  private conversationBinding: ConversationBinding | undefined;
   private unsubscribeSession: (() => void) | undefined;
+  private unsubscribeChat: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
   private materializing: Promise<boolean> | undefined;
@@ -96,6 +103,7 @@ export class QaSessionController {
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
     this.api = options.api;
+    this.conversation = options.conversation;
     this.connection = options.connection;
     this.config = options.config;
     this.secureSessionRemote = options.secureSession;
@@ -591,17 +599,19 @@ export class QaSessionController {
     });
     const id = String(created);
     if (this.config.session.agentPreset !== null) {
-      const selectedPreset = await this.api.selectAgentPreset({
-        sessionId: id as SessionId,
-        agentPreset: this.config.session.agentPreset,
-      });
-      if (!selectedPreset.result.ok) {
-        throw new Error(selectedPreset.result.error.code);
-      }
-      this.sessions.noteAgentPreset(
+      // The creation wire takes no preset, so the pin lands right after:
+      // agentPresets/select recomposes the still-blank session's agent and
+      // durably logs `agent-preset/selected`, which the client projection
+      // replays. The session is addressed only here — no prompt can run
+      // before this returns, because sending requires a passed attestation
+      // that verifies the composed preset.
+      const selectedPreset = await this.api.selectAgentPreset(
         id as SessionId,
         this.config.session.agentPreset,
       );
+      if (!selectedPreset.ok) {
+        throw new Error(selectedPreset.error.code);
+      }
     }
     if (
       this.config.session.provider !== null &&
@@ -615,7 +625,7 @@ export class QaSessionController {
           ? {}
           : { reasoningEffort: this.config.session.reasoningEffort }),
       });
-      if (!selected.result.ok) throw new Error(selected.result.error.code);
+      if (!selected.ok) throw new Error(selected.error.code);
     }
     return id;
   }
@@ -639,12 +649,20 @@ export class QaSessionController {
       throw new Error("Session binding is unavailable.");
     this.unbind();
     this.session = binding.session;
+    this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
       this.operationError = null;
       this.publishSessionUpdate();
     });
+    // Subscribing the Chat target activates it, so the assembled transcript
+    // (nodes, partials, running calls) materializes for the projection.
+    this.unsubscribeChat = this.conversationBinding
+      .target("chat")
+      .subscribe(() => {
+        this.publishSessionUpdate();
+      });
     await waitFor(
       binding.session,
       (snapshot) =>
@@ -669,6 +687,9 @@ export class QaSessionController {
     this.clearStreamFlush();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeChat?.();
+    this.unsubscribeChat = undefined;
+    this.conversationBinding = undefined;
     this.session = undefined;
     this.admissionPending = false;
     this.policyReady = false;
@@ -745,38 +766,39 @@ export class QaSessionController {
       return;
     }
     const snapshot = this.session.getSnapshot();
-    const blocked = snapshot.pending.length > 0;
+    // A pending approval interaction is invisible to this snapshot in 0.1.5;
+    // the QA lockdown pins approval=never and strips escalation-requiring
+    // tools, so no interaction the surface cannot answer should ever arise.
     const error =
       this.operationError ??
-      (blocked
-        ? "Для этого запроса нужно действие, недоступное в режиме помощника."
-        : snapshot.removed || snapshot.openState === "error"
-          ? "Этот чат больше недоступен."
-          : null);
+      (snapshot.removed || snapshot.openState === "error"
+        ? "Этот чат больше недоступен."
+        : null);
     const phase = !connected
       ? "reconnecting"
-      : blocked
-        ? "blocked"
-        : snapshot.removed || snapshot.openState === "error"
-          ? "error"
-          : snapshot.openState !== "open"
-            ? "creating"
-            : snapshot.running || this.admissionPending
-              ? "running"
-              : "ready";
+      : snapshot.removed || snapshot.openState === "error"
+        ? "error"
+        : snapshot.openState !== "open"
+          ? "creating"
+          : snapshot.running || this.admissionPending
+            ? "running"
+            : "ready";
     this.state = {
       phase,
       sessionId: String(this.session.sessionId),
-      messages: projectTranscript(snapshot, {
-        showToolActivity: this.config.ui.showToolActivity,
-        showReasoning: this.config.ui.showReasoning,
-      }),
+      messages: projectTranscript(
+        this.conversationBinding?.snapshot.getSnapshot(),
+        {
+          running: snapshot.running,
+          showToolActivity: this.config.ui.showToolActivity,
+          showReasoning: this.config.ui.showReasoning,
+        },
+      ),
       error,
       canSend: connected && phase === "ready" && this.policyReady,
-      canStop:
-        connected && snapshot.running && this.config.ui.showStop && !blocked,
+      canStop: connected && snapshot.running && this.config.ui.showStop,
       chatsRevision: this.chatsRevision,
-      sources: projectSources(snapshot),
+      sources: projectSources(this.conversationBinding?.snapshot.getSnapshot()),
       viewingSubagent: this.viewingSubagent,
     };
     this.emit();

@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
-import type { HostDescriptionSource } from "@deepseek-ai/dsh-client-connection/client";
+import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -17,7 +17,12 @@ import type { QaImageDraft, QaSessionState } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
-import type { QaSecureSession, QaSessions, QaSessionsApi } from "./types.js";
+import type {
+  QaConversation,
+  QaSecureSession,
+  QaSessions,
+  QaSessionsApi,
+} from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaMessage } from "./components/QaMessage.js";
@@ -41,8 +46,9 @@ export interface QaSurfaceFace {
   readonly route: QaRouteController;
   readonly config: QaConfigController;
   readonly sessions: QaSessions;
+  readonly conversation: QaConversation;
   readonly api: QaSessionsApi;
-  readonly connection: HostDescriptionSource;
+  readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
 }
 
@@ -147,6 +153,7 @@ export function QaSurface(props: QaSurfaceProps) {
     const next = new QaSessionController({
       sessions: props.sessions,
       api: props.api,
+      conversation: props.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
       config,
@@ -158,6 +165,7 @@ export function QaSurface(props: QaSurfaceProps) {
   }, [
     config,
     props.api,
+    props.conversation,
     props.connection,
     props.secureSession,
     props.sessions,

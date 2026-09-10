@@ -1,6 +1,8 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import { SessionId } from "@deepseek-ai/dsh-session";
+// The `types` subpath keeps the client ISessions Context merge authoritative;
+// the package root merges a conflicting host `sessions` service type.
+import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAttestationError } from "./attestation.js";
@@ -136,11 +138,12 @@ export class QaPolicyAdmission {
       );
     }
 
-    const currentPermission = this.ctx.permissionPresets.current(
-      agent.session.events,
-    );
-    const hasUserHistory = agent.session.events.some(
-      (event) => event.type === "user/message",
+    const currentPermission = this.ctx.permissionPresets.current(agent.session);
+    // History check over the model-visible surface: `user/message` is a
+    // surface event, so any adopted conversation shows up here regardless of
+    // window pagination.
+    const hasUserHistory = agent.session.surface.nodes.some(
+      (seq) => agent.session.eventAt(seq)?.type === "user/message",
     );
     if (
       currentPermission !== lockdown.permissionPreset &&
@@ -190,7 +193,7 @@ export class QaPolicyAdmission {
 
     this.ctx.permissionPresets.set(agent.session, lockdown.permissionPreset);
     const effectivePermission = this.ctx.permissionPresets.current(
-      agent.session.events,
+      agent.session,
     );
     const sandboxIsReadOnly = permission.sandbox === "read-only";
     const approvalIsNever = permission.approval === "never";

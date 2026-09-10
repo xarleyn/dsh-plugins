@@ -1,5 +1,5 @@
 import { memo, useState, type ReactNode } from "react";
-import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 import { relativeTime } from "./format.js";
 
 /** One renderable row of the chat-history sidebar. */

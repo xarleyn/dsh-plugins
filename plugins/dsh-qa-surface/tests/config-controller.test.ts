@@ -1,4 +1,4 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { describe, expect, it, vi } from "vitest";
 import { QaConfigController } from "../src/client/QaConfigController.js";
 import {

@@ -47,7 +47,9 @@ assert.equal(manifest.dsh.client.platform, "web");
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-layout"),
 );
-assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
+assert(
+  !manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"),
+);
 assert.equal(
   `/plugins/${manifest.name}/client.js`,
   "/plugins/@yadsh/dsh-qa-surface/client.js",
