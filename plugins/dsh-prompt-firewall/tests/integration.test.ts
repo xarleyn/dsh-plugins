@@ -18,23 +18,24 @@ describe('DSH system-prompt integration', () => {
     const result = await ctx.systemPrompt.assemble()
     expect(result.sections.map(section => section.name)).toEqual([
       'harness:identity',
-      'deployment:persona',
+      'deployment:persona-prefix',
       'plugin:clean',
       'tool:fake-tool',
+      'deployment:persona-suffix',
     ])
     expect(ctx.promptFirewall.inspectLast()).toMatchObject({
-      totalSections: 5,
+      totalSections: 6,
       blockedSections: 1,
     })
     expect(ctx.promptFirewall.inspectHistory()).toHaveLength(1)
     expect(ctx.promptFirewall.getMetrics()).toMatchObject({
       requestsTotal: 1,
-      sectionsTotal: 5,
+      sectionsTotal: 6,
       sectionsBlockedTotal: 1,
     })
     expect(ctx.promptFirewall.inspect()).toMatchObject({
       config: { mode: 'blocklist' },
-      last: { totalSections: 5, blockedSections: 1 },
+      last: { totalSections: 6, blockedSections: 1 },
       metrics: { requestsTotal: 1 },
     })
     expect(remoteMethods(ctx.promptFirewall).map(method => method.exportName ?? method.method))
@@ -83,8 +84,9 @@ describe('DSH system-prompt integration', () => {
     const result = await ctx.systemPrompt.assemble()
     expect(result.sections.map(section => section.name)).toEqual([
       'harness:identity',
-      'deployment:persona',
+      'deployment:persona-prefix',
       'tool:run_code',
+      'deployment:persona-suffix',
     ])
   })
 
