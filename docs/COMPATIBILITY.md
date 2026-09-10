@@ -35,6 +35,7 @@ instance.
 | `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
+| `@yadsh/dsh-git-readonly` | tools, schemastery |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
