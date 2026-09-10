@@ -42,6 +42,20 @@ describe("qa surface config", () => {
     );
   });
 
+  it("ships a default disclaimer and lets deployments hide it", () => {
+    const fallback = resolveConfig().branding.disclaimer;
+    expect(fallback).toContain("видны другим пользователям");
+    expect(fallback).toContain("улучшения качества");
+    expect(
+      resolveConfig({
+        branding: { disclaimer: "  Своё предупреждение.  " },
+      }).branding.disclaimer,
+    ).toBe("Своё предупреждение.");
+    expect(
+      resolveConfig({ branding: { disclaimer: null } }).branding.disclaimer,
+    ).toBe("");
+  });
+
   it("accepts an absolute cwd pin and rejects relative ones", () => {
     expect(resolveConfig({ session: { cwd: "D:/qa-docs" } }).session.cwd).toBe(
       "D:/qa-docs",

@@ -10,6 +10,8 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       welcomeMessage: "Чем могу помочь?",
       placeholder: "Задайте вопрос…",
       logoUrl: null,
+      disclaimer:
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов. Не делитесь конфиденциальными данными.",
     }),
     session: Object.freeze({
       policy: "browser-persistent",
@@ -253,6 +255,12 @@ export function resolveConfig(
         input.branding?.placeholder?.trim() ||
         DEFAULT_QA_SURFACE_CONFIG.branding.placeholder,
       logoUrl: optionalText(input.branding?.logoUrl),
+      // Undefined falls back to the default notice; an explicit null or
+      // empty string hides the plate entirely.
+      disclaimer:
+        input.branding?.disclaimer === undefined
+          ? DEFAULT_QA_SURFACE_CONFIG.branding.disclaimer
+          : (optionalText(input.branding.disclaimer) ?? ""),
     }),
     session: Object.freeze({
       policy,
