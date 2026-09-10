@@ -111,7 +111,7 @@ export class CorrectionMinerEngine {
     }
     const snapshot: SessionSnapshot = {
       session: session.header,
-      events: session.events,
+      events: session.snapshotEvents(),
     };
     const key = workspaceKey(cwd);
     void this.enqueue(key, () => this.runSnapshot(snapshot, key, true)).catch((error: unknown) => {

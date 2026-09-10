@@ -2,10 +2,11 @@ import type { SessionEvent, SessionHeader } from "@deepseek-ai/dsh-session";
 
 export function header(id = "session-1", cwd = "C:\\work\\project"): SessionHeader {
   return {
-    version: 0,
+    version: 3,
     id,
     createdAt: 1_700_000_000_000,
     cwd,
+    isSeeded: false,
   } as SessionHeader;
 }
 
