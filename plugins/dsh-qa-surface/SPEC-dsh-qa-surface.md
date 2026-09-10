@@ -1,8 +1,9 @@
 # SPEC / Implementation Plan: `dsh-qa-surface`
 
-**Status:** Draft / implementation-ready
-**Date:** 2026-09-05
-**Target:** DeepSeek Harness Web
+**Status:** Draft / implementation-ready  
+**Date:** 2026-09-05  
+**Last updated:** 2026-09-08 — added locked-down / read-only QA execution policy  
+**Target:** DeepSeek Harness Web  
 **Artifact type:** external DSH UI plugin with a dedicated `/qa` browser surface
 
 ---
@@ -232,6 +233,12 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - configurable fixed workspace/session target policy;
 - configurable agent preset;
 - configurable model override if explicitly set;
+- **locked-down QA mode enabled by default**;
+- fixed agent preset with no QA-user agent switching;
+- forced `read-only` sandbox mode;
+- forced `approval=never` / no permission escalation;
+- allow-list based tool exposure for QA sessions;
+- no model/workspace/permission/mode/settings switching from the QA surface;
 - safe handling of unsupported interactive states;
 - no leakage of tool calls/reasoning into the QA transcript by default;
 - same-origin use of the normal DSH connection/API stack;
@@ -274,6 +281,10 @@ The MVP must **not**:
 - automatically approve permission requests;
 - automatically answer agent questions;
 - expose admin/settings APIs to unauthenticated users;
+- rely on hidden/disabled UI controls as the only security boundary;
+- allow the QA user to switch agent preset, workspace, model, sandbox mode, approval policy, or permission preset;
+- expose a general-purpose shell/terminal/code-execution tool in the default locked-down preset;
+- expose mutable external-service tools by default;
 - expose raw reasoning by default;
 - expose raw tool arguments/results by default;
 - depend on private DSH component implementation details;
@@ -440,6 +451,30 @@ Preferred config transport:
 
 Avoid creating an unauthenticated `/qa-config.json` endpoint.
 
+### 10.2 LAN config channel
+
+DSH pins settings RPCs to loopback (`settings.*` sits in the gateway's
+privileged method set), so a browser served from a non-loopback bind always
+sees the namespace as `unavailable`. The Host half therefore exposes one
+additional read-only Remote, `qaSurface/describe`, returning the effective
+resolved configuration — the same projection `secureSession` attests against.
+It is the network-neutral answer to responsibility 3: still plugin-scoped,
+still no arbitrary Host config, no secrets, no file paths beyond the
+configured ids, and no admission authority (enforcement stays in
+`secureSession`).
+
+Client contract: when the settings namespace is `unavailable` — and only
+then — the browser calls `describe` once per controller lifetime, waits in
+`loading`, and adopts the returned configuration as `ready`; a rejected or
+invalid answer falls back to the client defaults under `unavailable`. A
+readable namespace always wins and keeps delivering live updates.
+
+LAN serving itself is a deployment composition concern, not plugin config:
+the shipped `deploy/qa-lan.patch.yml` overlay binds the `webserver` row to
+`0.0.0.0`, and the DSH `/api` browser-trust fence derives the LAN authorities
+on its own. See the README "Serving the QA rig over the LAN" section for the
+deployment responsibilities this creates.
+
 ---
 
 ## 11. Configuration model
@@ -454,10 +489,10 @@ route:
   matchChildren: true
 
 branding:
-  title: Assistant
+  title: Помощник
   subtitle: ""
-  welcomeMessage: "How can I help?"
-  placeholder: "Ask a question..."
+  welcomeMessage: "Чем могу помочь?"
+  placeholder: "Задайте вопрос…"
   logoUrl: null
 
 session:
@@ -472,7 +507,7 @@ session:
 
 ui:
   showHeader: true
-  showReset: true
+  showReset: false
   showStop: true
   showTimestamps: false
   showToolActivity: false
@@ -480,11 +515,33 @@ ui:
   renderMarkdown: true
   maxContentWidth: 900
 
-suggestedQuestions: []
+suggestedQuestions:
+  - "Что ты умеешь?"
+  - "С чего начать?"
+  - "Помоги разобраться с ошибкой"
 
 interaction:
   approvals: blocked
   questions: unsupported
+
+lockdown:
+  enabled: true
+  enforceFixedAgentPreset: true
+  enforceFixedWorkspace: true
+  enforceFixedModel: true
+  sandboxMode: read-only
+  approvalPolicy: never
+  permissionPreset: qa-read-only
+  allowPermissionChanges: false
+  allowSlashCommands: false
+  allowSettingsMutation: false
+  allowSessionReset: false
+  allowSessionRename: false
+  allowSessionDelete: false
+  allowArbitrarySessionOpen: false
+  toolPolicy:
+    mode: allow-list
+    allow: []
 
 embedding:
   frameAncestors: null
@@ -580,7 +637,247 @@ means use DSH deployment/session defaults.
 
 If both are configured, apply the model selection to the QA session through the public session model-selection path.
 
-Do not render a model picker unless a future config explicitly enables it.
+In locked-down mode, never render a model picker and do not expose a controller action for model switching. If provider/model are left `null`, operator deployment defaults may still determine the model for newly created sessions; that is an operator-side policy change, not a QA-user choice.
+
+
+
+### 11.6 Locked-down execution policy
+
+`/qa` must default to a **capability-reduced execution profile**, not merely a visually simplified UI.
+
+The desired invariant is:
+
+```text
+QA user can:
+  - submit text questions;
+  - receive assistant answers;
+  - stop the current turn;
+  - optionally start a fresh QA session.
+
+QA user cannot:
+  - change the agent preset;
+  - change workspace/cwd;
+  - change model/provider/reasoning mode;
+  - change permissions/sandbox/approval policy;
+  - invoke DSH slash commands;
+  - mutate settings;
+  - open arbitrary existing sessions;
+  - rename/delete sessions;
+  - gain a shell/terminal merely because it exists globally;
+  - trigger write-capable Jira/GitHub/Confluence/Slack/email/etc. actions;
+  - escalate from read-only to a wider sandbox mode.
+```
+
+This must be enforced in layers. Hiding selectors is only the presentation layer.
+
+#### Layer 1 — fixed session composition
+
+For every newly created QA session:
+
+- use exactly the configured `session.agentPreset`;
+- use exactly the configured `session.workspaceId`;
+- if model/provider are configured, use exactly those values;
+- refuse to silently fall back to another agent/workspace when the configured value is missing;
+- persist the selected QA session id, but do not persist user-selectable composition overrides.
+
+DSH currently treats the agent preset as a per-session composition fact. Existing upstream behavior already prevents changing the preset after a session has produced history; blank sessions may still have a preset choice before the first turn. Therefore the QA controller must create/bind the session with the configured preset and never expose the blank-session preset selector.
+
+Reference:
+
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-agent-preset/README.md
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/.agents/notes/implemented/architecture/2026-08-03-per-session-agent-presets.md
+
+#### Layer 2 — force `read-only` + `approval=never`
+
+The locked-down QA policy must pin both independent DSH permission knobs:
+
+```yaml
+sandbox: read-only
+approval: never
+```
+
+Prefer defining a named deployment preset:
+
+```yaml
+permissionPresets:
+  presets:
+    qa-read-only:
+      sandbox: read-only
+      approval: never
+      name: QA Read Only
+      description: No filesystem mutations and no permission escalation.
+```
+
+On a **shared operator + QA DSH instance**, do not make `qa-read-only` the process-wide `defaultPreset` merely for this plugin, because that would also change the default permissions of ordinary operator-created sessions. Instead, the QA bootstrap path must select/pin `qa-read-only` on the freshly created blank QA session **before the first prompt is accepted**, then verify the effective sandbox/approval facts.
+
+On a **dedicated QA DSH instance**, setting `defaultPreset: qa-read-only` is recommended as an additional fail-safe.
+
+The exact surrounding Cordis row/config syntax must be adapted to the target deployment.
+
+Important: DSH's shipped permission preset table normally contains `workspace-write` and `danger-full-access`; `qa-read-only` is an explicit custom table entry for this deployment. The underlying knobs are the authoritative enforcement facts.
+
+`approval=never` is required because it deterministically rejects operations that request approval instead of presenting an approval UI. The QA surface must never implement an auto-approve path.
+
+References:
+
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/permission-presets.md
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/approval.md
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sandbox/sandbox-policy/README.md
+
+#### Layer 3 — tool allow-list, not a deny-list
+
+`read-only` is **not equivalent to “no side effects.”** It governs file effects enforced by the DSH file sandbox; network and process visibility are outside that sandbox vocabulary. A shell command can still make network requests or trigger external side effects even when filesystem writes are denied.
+
+Therefore the default QA preset must use an explicit **allow-list of known read-only tools**.
+
+Conceptual policy:
+
+```yaml
+lockdown:
+  toolPolicy:
+    mode: allow-list
+    allow:
+      - knowledge.search
+      - knowledge.read
+      - web.search
+      - web.fetch
+```
+
+The actual names must come from the composed DSH deployment. Do not copy these illustrative names blindly.
+
+Prefer allow-list semantics because newly installed global tools are then excluded automatically. DSH has a scoped `ToolRestriction.allow` mechanism for inherited global tools. Note that tools registered directly inside the agent's own scope are intentionally exempt from inherited restrictions, so **the QA agent preset itself must also be reviewed and must not register write-capable tools**.
+
+References:
+
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.md
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/tools/src/index.ts
+
+Default deny category examples:
+
+| Capability | Default QA policy | Reason |
+|---|---|---|
+| generic shell / bash / terminal | deny | can create non-filesystem side effects and broad host visibility |
+| generic code runtime | deny | same reason unless a separately constrained pure-compute runtime exists |
+| fs write/edit/move/delete | deny | direct mutation |
+| git commit/push/checkout/reset | deny | repository mutation / remote side effects |
+| Jira create/update/comment/transition | deny | external mutation |
+| Confluence create/update/delete | deny | external mutation |
+| Slack/email send | deny | external mutation |
+| browser/computer-use click/type/submit | deny | arbitrary external side effects |
+| settings/plugin management | deny | can expand capabilities |
+| permission/preset management | deny | can expand capabilities |
+| agent-preset management | deny | can change composition |
+| read-only KB/search/fetch tools | allow only after review | intended QA capability |
+
+For MCP, allow-list at the **tool level**, not merely at the server name. A server may expose both read and write actions.
+
+#### Layer 4 — no mutation commands or alternate control paths
+
+The QA composer must call the plain public prompt path directly and must not expose the general DSH command dispatcher.
+
+Default:
+
+```yaml
+lockdown:
+  allowSlashCommands: false
+```
+
+At minimum prevent QA-side use of control paths equivalent to:
+
+```text
+/permission ...
+/permissionPresets ...
+agent/preset selectors
+model selectors
+workspace selectors
+settings mutation
+plugin management
+```
+
+Do not rely only on filtering strings that start with `/` if the DSH prompt API already provides a command-free prompt submission method. Prefer bypassing command adjudication entirely.
+
+#### Layer 5 — controller-side invariant checks
+
+`QaSessionController` must verify its effective session state before enabling Send.
+
+Conceptual check:
+
+```ts
+interface QaLockdownInvariant {
+  agentPresetMatches: boolean
+  workspaceMatches: boolean
+  modelMatches: boolean
+  sandboxIsReadOnly: boolean
+  approvalIsNever: boolean
+  toolPolicyLoaded: boolean
+}
+```
+
+If a required invariant cannot be proven, fail closed:
+
+```text
+Assistant configuration is unavailable.
+```
+
+and disable the composer. Do not continue under a wider or unknown policy.
+
+A mismatch should be operator-visible in logs with the expected and actual policy identifiers, but the QA page should not expose sensitive details.
+
+#### Layer 6 — host-side guard where public DSH seams allow it
+
+UI/controller checks protect normal use but are not enough against another client using the same authenticated DSH APIs. During implementation, use public Host-side DSH enforcement seams where available to bind QA-marked sessions to the locked policy.
+
+Preferred mechanisms, in order:
+
+1. compose the QA preset so forbidden tools are not mounted at all;
+2. apply scoped tool restrictions to inherited tools;
+3. pin sandbox and approval facts before the first QA prompt;
+4. prefer a Host-side QA session bootstrap operation that creates/binds the session and pins the QA permission facts in one controlled flow, if DSH exposes a clean public seam;
+5. otherwise create a blank session, immediately select `qa-read-only`, verify it, and keep Send disabled until verification succeeds;
+6. add a monotonic `tools/pre-execute` / execution guard for QA sessions if a second server-side side-effect check is needed;
+7. never implement capability expansion through the QA plugin.
+
+Do not monkey-patch private RPC handlers merely to create a guard. If DSH has no public seam for a particular mutation path, document that limitation and move the boundary to deployment isolation rather than pretending the browser UI makes it secure.
+
+#### Layer 7 — deployment isolation for strong guarantees
+
+A `/qa` overlay on the same fully privileged DSH Host is **not a security boundary by itself**. If the same authenticated user can navigate to normal `/`, call privileged DSH APIs, or use another DSH client, hiding controls on `/qa` does not revoke those Host capabilities.
+
+For an internal convenience UI, the layered session/tool policy above may be enough.
+
+For untrusted or semi-trusted QA users, prefer one of:
+
+```text
+Best isolation:
+  dedicated QA DSH instance/container
+  + only QA preset/tools mounted
+  + read-only corpus mounts
+  + no developer credentials
+  + restricted network egress
+
+Good isolation:
+  separate QA auth role/gateway
+  + Host-side API authorization for mutable capabilities
+  + locked QA preset/tool registry
+
+Weakest:
+  same privileged DSH Host/browser identity
+  + UI controls merely hidden
+```
+
+DSH upstream explicitly warns that it is developer-preview software and sandbox/approval controls are risk reducers, not a complete isolation boundary.
+
+Reference:
+
+- https://github.com/deepseek-ai/deepseek-harness/blob/master/SAFETY.md
+
+#### Read isolation caveat
+
+Current `read-only` means “no filesystem mutation,” not “the agent can only read its workspace.” Upstream discussion notes that read isolation outside the workspace is not currently guaranteed. Therefore a high-assurance QA deployment should avoid exposing generic shell/fs inspection tools and should mount only the data the QA runtime is intended to read.
+
+Reference:
+
+- https://github.com/deepseek-ai/deepseek-harness/discussions/492
 
 ---
 
@@ -601,12 +898,12 @@ Conceptual Cordis inject list:
 
 ```ts
 export const inject = [
-  "slots",
-  "sessions",
-  "connection",
-  "theme",
+  'slots',
+  'sessions',
+  'connection',
+  'theme',
   // settings service used for qa-surface config
-];
+]
 ```
 
 Exact service names must be resolved against the target DSH release.
@@ -622,15 +919,15 @@ shell.overlay
 Conceptually:
 
 ```ts
-ctx.slots.inject("shell.overlay", () =>
+ctx.slots.inject('shell.overlay', () =>
   ctx.slots.register(
     {
-      name: "shell.overlay",
-      key: "dsh-qa-surface",
+      name: 'shell.overlay',
+      key: 'dsh-qa-surface'
     },
     QaSurfaceEntry,
   ),
-);
+)
 ```
 
 The entry remains mounted but returns `null` whenever the route is not active.
@@ -725,27 +1022,27 @@ UI components consume a plugin-owned interface such as:
 ```ts
 interface QaSessionState {
   phase:
-    | "idle"
-    | "creating"
-    | "ready"
-    | "running"
-    | "reconnecting"
-    | "blocked"
-    | "error";
+    | 'idle'
+    | 'creating'
+    | 'ready'
+    | 'running'
+    | 'reconnecting'
+    | 'blocked'
+    | 'error'
 
-  sessionId: string | null;
-  messages: readonly QaMessage[];
-  error: string | null;
-  canSend: boolean;
-  canStop: boolean;
+  sessionId: string | null
+  messages: readonly QaMessage[]
+  error: string | null
+  canSend: boolean
+  canStop: boolean
 }
 
 interface QaSessionActions {
-  ensureSession(): Promise<void>;
-  send(text: string): Promise<void>;
-  stop(): Promise<void>;
-  reset(): Promise<void>;
-  retryConnection(): void;
+  ensureSession(): Promise<void>
+  send(text: string): Promise<void>
+  stop(): Promise<void>
+  reset(): Promise<void>
+  retryConnection(): void
 }
 ```
 
@@ -757,6 +1054,27 @@ Benefits:
 - avoids private component imports.
 
 ---
+
+### 15.1 Optional chat-history sidebar
+
+`ui.showSessionList` (default `false`) renders a minimal sidebar beside the
+conversation. Contract:
+
+- the index is per browser: localStorage `<storageKey>:v1:<route>:chats`,
+  session ids only, most recently used first, capped at 50;
+- rows are the index intersected with the Host session list, so shared-host
+  users never see each other's chats;
+- switching goes through the same bind + `secureSession` attestation path as
+  restore; a missing id is pruned and reported; an attestation failure keeps
+  the index entry and surfaces the generic configuration error;
+- `New chat` in the sidebar follows the same `allowSessionReset` gate as the
+  header control; the previous chat stays in the index;
+- each row carries a two-click delete control: the first click arms it, the
+  second removes the chat from this browser's index (the Host session stays —
+  DSH 0.1.x has no session-deletion seam); deleting the open chat continues
+  in a fresh attested session when resets are allowed;
+- the sidebar hides below 600px viewports and under `fixed` policy it renders
+  without the new-chat control and never switches.
 
 ## 16. Session creation / restore algorithm
 
@@ -809,10 +1127,22 @@ The DSH Session is the authoritative transcript store.
 
 ### 16.3 Reset
 
-Reset means:
+In default locked-down mode:
+
+```yaml
+lockdown:
+  allowSessionReset: false
+ui:
+  showReset: false
+```
+
+so the QA user gets one persistent conversation and cannot create arbitrary additional sessions from the surface.
+
+If an operator explicitly enables Reset, it means:
 
 - stop active generation if needed;
 - create a fresh DSH Session using the configured workspace/preset;
+- apply and verify the locked QA permission policy before enabling Send;
 - switch controller binding to it;
 - replace stored session id;
 - do not delete the old DSH Session automatically.
@@ -902,23 +1232,23 @@ Output:
 ```ts
 type QaMessage =
   | {
-      id: string;
-      role: "user";
-      text: string;
-      status: "committed";
+      id: string
+      role: 'user'
+      text: string
+      status: 'committed'
     }
   | {
-      id: string;
-      role: "assistant";
-      text: string;
-      status: "streaming" | "committed" | "failed";
+      id: string
+      role: 'assistant'
+      text: string
+      status: 'streaming' | 'committed' | 'failed'
     }
   | {
-      id: string;
-      role: "system";
-      text: string;
-      status: "info" | "error";
-    };
+      id: string
+      role: 'system'
+      text: string
+      status: 'info' | 'error'
+    }
 ```
 
 ### 18.1 Visible by default
@@ -932,7 +1262,8 @@ Render:
 
 ### 18.2 Hidden by default
 
-Do not render:
+Unless the corresponding operator-controlled work-detail option is enabled, do
+not render:
 
 - reasoning chunks;
 - tool call arguments;
@@ -953,16 +1284,22 @@ Optional config:
 ```yaml
 ui:
   showToolActivity: true
+  showReasoning: true
 ```
 
-may display only generic state such as:
+projects one work disclosure for each DSH turn. While the turn is running the
+disclosure is expanded and streams available reasoning/tool state. Once the
+turn completes it collapses before the final answer to a duration summary such
+as:
 
 ```text
-Searching knowledge…
-Working…
+Worked for 1m 24s
 ```
 
-Do not expose raw tool names/arguments unless a later explicit feature is designed.
+Expanding it shows reasoning, intermediate assistant progress, and tool rows.
+Tool rows may independently reveal their formatted arguments and results.
+These flags are presentation-only: they must not add tools, weaken
+`lockdown.toolPolicy`, or expose system/context events and raw Host failures.
 
 ---
 
@@ -1029,9 +1366,13 @@ interaction:
 
 Recommended deployment architecture:
 
-- choose an agent/permission preset appropriate for the QA assistant;
-- avoid tools that unexpectedly require developer approval;
-- grant only the minimum non-interactive permissions intentionally configured by the operator.
+- force the QA session to the dedicated `qa-read-only` permission bundle;
+- force `approval=never`;
+- remove tools that require escalation rather than allowing an approval flow;
+- use an allow-list of reviewed read-only tools;
+- grant no mutable external-service permissions to the QA agent.
+
+In locked-down mode, an approval request is treated as a policy/configuration failure or an unsupported operation, not as something the QA user may approve.
 
 If the Session enters an unsupported pending interaction state:
 
@@ -1100,14 +1441,14 @@ Map internal failures to QA-safe UI errors.
 
 Examples:
 
-| Internal class                 | QA message                                    |
-| ------------------------------ | --------------------------------------------- |
-| session creation rejected      | "Unable to start a chat."                     |
-| prompt rejected                | "Your message could not be sent."             |
-| model route unavailable        | "The assistant is temporarily unavailable."   |
-| connection lost                | "Connection lost. Reconnecting…"              |
-| unsupported approval           | "This request requires operator interaction." |
-| malformed persisted session id | silently clear and create a new session       |
+| Internal class | QA message |
+|---|---|
+| session creation rejected | "Unable to start a chat." |
+| prompt rejected | "Your message could not be sent." |
+| model route unavailable | "The assistant is temporarily unavailable." |
+| connection lost | "Connection lost. Reconnecting…" |
+| unsupported approval | "This request requires operator interaction." |
+| malformed persisted session id | silently clear and create a new session |
 
 Never render:
 
@@ -1216,6 +1557,35 @@ If iframe embedding is later enabled:
 
 ---
 
+### 26.5 Capability-change endpoints
+
+The QA browser bundle must not intentionally call mutable control-plane APIs for:
+
+- settings writes;
+- plugin enable/disable/config changes;
+- agent preset authoring/deletion/default changes;
+- permission preset switching;
+- sandbox mode changes;
+- approval policy changes;
+- workspace rebinding;
+- model/provider switching;
+- arbitrary session deletion/rename/import.
+
+If a public read API is needed to verify the effective state, use it read-only and project only the minimum information required by the QA controller.
+
+### 26.6 UI disabled state is defense-in-depth only
+
+For every forbidden control that might accidentally appear because of future DSH composition changes:
+
+- do not render it in the QA component;
+- if inherited UI becomes reachable, make it inaccessible/inert;
+- keep controller actions absent, not merely disabled;
+- add E2E tests proving no selector/menu/command can alter the locked policy.
+
+The absence of a button is not considered enforcement.
+
+---
+
 ## 27. Operator vs QA-user separation
 
 Desired deployment:
@@ -1311,8 +1681,27 @@ Illustrative only; exact Loader syntax must match the deployment.
           policy: browser-persistent
           workspaceId: company-knowledge
           agentPreset: qa-assistant
+          provider: null
+          model: null
+        lockdown:
+          enabled: true
+          enforceFixedAgentPreset: true
+          enforceFixedWorkspace: true
+          enforceFixedModel: true
+          sandboxMode: read-only
+          approvalPolicy: never
+          permissionPreset: qa-read-only
+          allowPermissionChanges: false
+          allowSlashCommands: false
+          allowSettingsMutation: false
+          allowSessionReset: false
+          allowArbitrarySessionOpen: false
+          toolPolicy:
+            mode: allow-list
+            allow:
+              - <reviewed-read-only-tool>
         ui:
-          showReset: true
+          showReset: false
           showStop: true
           showToolActivity: false
           showReasoning: false
@@ -1331,11 +1720,13 @@ Prefer a DSH agent preset conceptually like:
 ```text
 qa-assistant
 ├── system prompt / persona
-├── knowledge search tool
-├── Jira/Confluence MCP if allowed
+├── reviewed read-only knowledge/search tools only
+├── read-only Jira/Confluence MCP actions only, if needed
 ├── selected skills
-├── safe permission preset
-└── model policy
+├── no shell / terminal / generic code runtime by default
+├── no mutating external-service actions
+├── qa-read-only permission policy
+└── fixed model policy, if deployment requires it
 ```
 
 This makes the same assistant reusable from:
@@ -1486,7 +1877,10 @@ Use an existing external browser UI plugin as a packaging reference if necessary
 - invalid `/api` route rejected;
 - invalid session policy rejected;
 - fixed policy requires session id;
-- empty title/placeholder behavior defined.
+- empty title/placeholder behavior defined;
+- lockdown defaults to enabled;
+- locked-down default disables session reset;
+- `qa-read-only` selection is required before first prompt when lockdown is enabled.
 
 #### Route controller
 
@@ -1507,7 +1901,11 @@ Use an existing external browser UI plugin as a packaging reference if necessary
 - accepted send clears draft at correct time;
 - rejected send preserves draft;
 - stop calls public DSH cancellation path;
-- unsupported pending interaction blocks composer.
+- unsupported pending interaction blocks composer;
+- agent/workspace/model mismatch blocks composer;
+- non-`read-only` sandbox state blocks composer;
+- approval policy other than `never` blocks composer;
+- lockdown config cannot be weakened through browser-local state.
 
 #### Transcript adapter
 
@@ -1543,16 +1941,54 @@ Verify:
 7. tool execution can occur without tool details becoming visible;
 8. reload restores the same session under browser-persistent policy;
 9. normal DSH UI can inspect the QA-created session;
-10. `/qa` does not open a second server/connection stack.
+10. `/qa` does not open a second server/connection stack;
+11. every QA session starts with the configured agent preset;
+12. every QA session starts/effectively runs as `read-only`;
+13. approval policy is `never`;
+14. model/workspace selectors are absent;
+15. permission selectors/commands are absent;
+16. a denied write attempt cannot escalate;
+17. a newly installed global tool not present in the allow-list is not visible to the QA agent.
 
-### 37.4 Security tests
+### 37.4 Security / lockdown tests
 
 - route does not weaken `/api` trust checks;
 - config endpoint/settings do not leak secrets;
 - raw tool result not visible;
 - stack traces not visible;
 - unsupported approval not auto-approved;
+- `approval=never` rejects escalation deterministically;
+- sandbox effective mode remains `read-only`;
+- QA user cannot invoke `/permission` or equivalent command dispatch;
+- QA user cannot change agent preset, workspace, provider, model, or reasoning mode;
+- QA user cannot mutate DSH settings/plugin config;
+- QA user cannot reset/start additional sessions when `allowSessionReset=false`;
+- QA user cannot open arbitrary existing sessions when `allowArbitrarySessionOpen=false`;
+- write/edit/delete filesystem tools are absent or denied;
+- shell/terminal/code-runtime are absent by default;
+- mutable MCP actions are absent;
+- allow-listed MCP read actions still work;
+- adding a new global write-capable tool does not implicitly expose it to QA;
+- a preset-local tool is reviewed separately because scoped registrations may bypass inherited `ToolRestriction`;
+- direct malformed/browser-local attempts to weaken lockdown fail closed;
 - cross-origin behavior remains blocked unless deployment explicitly changes it.
+
+### 37.5 Side-effect regression suite
+
+Maintain a table of every tool visible to `qa-assistant` and classify it:
+
+```text
+read-only / pure
+external-read
+filesystem-write
+external-write
+privilege/control-plane
+unknown
+```
+
+CI must fail when a visible QA tool is `filesystem-write`, `external-write`, `privilege/control-plane`, or `unknown` unless the spec/config is intentionally updated and reviewed.
+
+This guards against future plugin installs silently expanding the QA agent's capability surface.
 
 ### 37.5 Mobile tests
 
@@ -1804,17 +2240,61 @@ Mitigation:
 
 ---
 
+### Risk: `read-only` is mistaken for “no side effects”
+
+DSH's read-only sandbox covers file mutation, not all process/network effects.
+
+Mitigation:
+
+- deny generic shell/terminal/code runtime by default;
+- explicit tool allow-list;
+- tool-by-tool MCP review;
+- `approval=never`;
+- optional network egress restrictions at container/proxy level.
+
+### Risk: QA user can reach normal DSH Web
+
+If `/` and `/qa` share the same privileged identity, the user may bypass UI lockdown by opening the normal operator surface.
+
+Mitigation:
+
+- do not claim `/qa` alone is an authorization boundary;
+- for untrusted users use separate auth roles/gateway or a dedicated QA DSH instance;
+- preferably expose only the QA surface to the QA audience.
+
+### Risk: global plugin installation expands tool surface
+
+Mitigation:
+
+- allow-list inherited tools;
+- inspect preset-local registrations separately;
+- CI capability inventory;
+- fail closed on unknown tools where practical.
+
+### Risk: read access is broader than intended
+
+Current DSH read-only mode does not imply workspace-only read isolation.
+
+Mitigation:
+
+- no generic shell/fs browsing in the default QA preset;
+- dedicated read-only corpus/workspace;
+- minimal container mounts;
+- dedicated QA container for high-assurance deployments.
+
+---
+
 ## 43. Future evolution
 
 Potential roadmap:
 
 ```text
-0.1  full-screen /qa overlay + one DSH session
-0.2  settings + branding + suggested questions
-0.3  user questions / approval UI
-0.4  attachments + citations + feedback
-0.5  iframe/embed SDK
-1.0  dedicated qa profile/bundle option
+0.1  full-screen /qa overlay + one DSH session + hard lockdown
+0.2  settings + branding + suggested questions + capability inventory
+0.3  read-only sources/citations + optional supported questions UI
+0.4  attachments + feedback (without capability escalation)
+0.5  iframe/embed SDK + auth-role integration
+1.0  dedicated qa profile/bundle / isolated QA deployment option
 ```
 
 Long term the project can become a reusable **DSH-powered assistant frontend** rather than merely an alternative theme.
@@ -1837,43 +2317,65 @@ Current architecture was checked against upstream DeepSeek Harness sources/docs 
 
 Key references:
 
-- DeepSeek Harness repository / developer-preview status
+- DeepSeek Harness repository / developer-preview status  
   https://github.com/deepseek-ai/deepseek-harness
 
-- Web app bundle composition (`dsh-base` + browser roster)
+- Web app bundle composition (`dsh-base` + browser roster)  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/web-app/cordis.patch.yml
 
-- Web app bundle README
+- Web app bundle README  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/web-app/README.md
 
-- Client modules / `dsh.client` / `window.__DSH_BOOT__`
+- Client modules / `dsh.client` / `window.__DSH_BOOT__`  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/client-modules.md
 
-- Host webserver route/fallback model
+- Host webserver route/fallback model  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/host/webserver/README.md
 
-- SPA frontend-static fallback
+- SPA frontend-static fallback  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/host/frontend-static/README.md
 
-- Client runtime / Host-born sessions
+- Client runtime / Host-born sessions  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/runtime/README.md
 
-- Session Controller
+- Session Controller  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/api/session-controller/README.md
 
-- Web client slots
+- Sandbox policy / `read-only` semantics  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/sandbox/sandbox-policy/README.md
+
+- Approval policy / `never` fail-closed behavior  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/approval.md
+
+- Permission presets (`sandbox` + `approval`)  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/permission-presets.md
+
+- Tool restrictions / allow-list semantics  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.md
+
+- Agent preset session semantics  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-agent-preset/README.md
+
+- DSH safety limitations  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/SAFETY.md
+
+- Current read-isolation limitation discussion  
+  https://github.com/deepseek-ai/deepseek-harness/discussions/492
+
+
+- Web client slots  
   https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/slots
 
-- Conversation slot contract / `conversation.session`
+- Conversation slot contract / `conversation.session`  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-conversation/src/client/contract/slots.ts
 
-- UI layout shell / `shell.overlay`
+- UI layout shell / `shell.overlay`  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-layout/README.md
 
-- Web client package rules / new UI plugin checklist
+- Web client package rules / new UI plugin checklist  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/AGENTS.md
 
-- Settings-card cookbook / external dual-face plugin pattern
+- Settings-card cookbook / external dual-face plugin pattern  
   https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-settings-card.md
 
 ### Upstream limitation worth tracking
@@ -1914,8 +2416,10 @@ At the time of writing there is no generic first-class global-page extension con
                                                     textarea / Send
 ```
 
-The core architectural principle is:
+The core architectural principles are:
 
 > **Replace the presentation, not the harness.**
 
-`dsh-qa-surface` should be a thin QA/browser surface over the existing DSH runtime, with `/qa` acting as a dedicated end-user presentation while `/` remains the full operator/developer interface.
+> **Remove capabilities at the runtime/tool-policy layer; hiding buttons is only defense in depth.**
+
+`dsh-qa-surface` should be a thin QA/browser surface over the existing DSH runtime, with `/qa` acting as a dedicated end-user presentation while `/` remains the full operator/developer interface. In locked-down deployments, QA sessions must be bound to a fixed composition and a fail-closed read-only capability set.

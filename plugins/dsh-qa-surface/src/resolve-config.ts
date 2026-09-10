@@ -5,15 +5,15 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     enabled: true,
     route: Object.freeze({ path: "/qa", matchChildren: true }),
     branding: Object.freeze({
-      title: "Assistant",
+      title: "Помощник",
       subtitle: "",
-      welcomeMessage: "How can I help?",
-      placeholder: "Ask a question...",
+      welcomeMessage: "Чем могу помочь?",
+      placeholder: "Задайте вопрос…",
       logoUrl: null,
     }),
     session: Object.freeze({
       policy: "browser-persistent",
-      storageKey: "dsh-qa-surface",
+      storageKey: "dsh-qa-surface.session",
       workspaceId: null,
       fixedSessionId: null,
       agentPreset: null,
@@ -23,18 +23,43 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     }),
     ui: Object.freeze({
       showHeader: true,
-      showReset: true,
+      showReset: false,
       showStop: true,
       showTimestamps: false,
       showToolActivity: false,
       showReasoning: false,
       renderMarkdown: true,
       maxContentWidth: 900,
+      showSessionList: false,
     }),
-    suggestedQuestions: Object.freeze([]),
+    suggestedQuestions: Object.freeze([
+      "Что ты умеешь?",
+      "С чего начать?",
+      "Помоги разобраться с ошибкой",
+    ]),
     interaction: Object.freeze({
       approvals: "blocked",
       questions: "unsupported",
+    }),
+    lockdown: Object.freeze({
+      enabled: true,
+      enforceFixedAgentPreset: true,
+      enforceFixedWorkspace: true,
+      enforceFixedModel: true,
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      permissionPreset: "qa-read-only",
+      allowPermissionChanges: false,
+      allowSlashCommands: false,
+      allowSettingsMutation: false,
+      allowSessionReset: false,
+      allowSessionRename: false,
+      allowSessionDelete: false,
+      allowArbitrarySessionOpen: false,
+      toolPolicy: Object.freeze({
+        mode: "allow-list",
+        allow: Object.freeze([]),
+      }),
     }),
     embedding: Object.freeze({ frameAncestors: null }),
   },
@@ -77,6 +102,18 @@ function uniqueQuestions(values: readonly string[]): readonly string[] {
   return Object.freeze(questions);
 }
 
+function uniqueToolNames(values: readonly string[]): readonly string[] {
+  const names = [
+    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ];
+  if (names.some((value) => value.length > 200)) {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.toolPolicy.allow names must be at most 200 characters",
+    );
+  }
+  return Object.freeze(names);
+}
+
 /** Materialize defaults and enforce route/session/model safety constraints. */
 export function resolveConfig(
   input: QaSurfaceConfig = {},
@@ -116,9 +153,68 @@ export function resolveConfig(
       "dsh-qa-surface: ui.maxContentWidth must be an integer from 480 to 1600",
     );
   }
-  if (input.ui?.showReasoning === true) {
+  const lockdownEnabled =
+    input.lockdown?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.lockdown.enabled;
+  const rawLockdown = input.lockdown as
+    Readonly<Record<string, unknown>> | undefined;
+  const forbiddenCapabilityFlags = [
+    ["allowPermissionChanges", rawLockdown?.allowPermissionChanges],
+    ["allowSlashCommands", rawLockdown?.allowSlashCommands],
+    ["allowSettingsMutation", rawLockdown?.allowSettingsMutation],
+    ["allowSessionRename", rawLockdown?.allowSessionRename],
+    ["allowSessionDelete", rawLockdown?.allowSessionDelete],
+    ["allowArbitrarySessionOpen", rawLockdown?.allowArbitrarySessionOpen],
+  ] as const;
+  const weakenedFlag = forbiddenCapabilityFlags.find(
+    ([, value]) => value === true,
+  );
+  if (weakenedFlag !== undefined) {
     throw new TypeError(
-      "dsh-qa-surface: ui.showReasoning is not supported by the safe MVP surface",
+      `dsh-qa-surface: lockdown.${weakenedFlag[0]} cannot be enabled`,
+    );
+  }
+  if (
+    input.lockdown?.sandboxMode !== undefined &&
+    input.lockdown.sandboxMode !== "read-only"
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.sandboxMode must be read-only",
+    );
+  }
+  if (
+    input.lockdown?.approvalPolicy !== undefined &&
+    input.lockdown.approvalPolicy !== "never"
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.approvalPolicy must be never",
+    );
+  }
+  if (
+    input.lockdown?.toolPolicy?.mode !== undefined &&
+    input.lockdown.toolPolicy.mode !== "allow-list"
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.toolPolicy.mode must be allow-list",
+    );
+  }
+  const permissionPreset =
+    input.lockdown?.permissionPreset?.trim() ??
+    DEFAULT_QA_SURFACE_CONFIG.lockdown.permissionPreset;
+  if (lockdownEnabled && permissionPreset === "") {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.permissionPreset is required when lockdown is enabled",
+    );
+  }
+  const allowSessionReset =
+    input.lockdown?.allowSessionReset ??
+    DEFAULT_QA_SURFACE_CONFIG.lockdown.allowSessionReset;
+  if (
+    lockdownEnabled &&
+    (input.ui?.showReset ?? DEFAULT_QA_SURFACE_CONFIG.ui.showReset) &&
+    !allowSessionReset
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: ui.showReset requires lockdown.allowSessionReset",
     );
   }
 
@@ -163,15 +259,47 @@ export function resolveConfig(
       showToolActivity:
         input.ui?.showToolActivity ??
         DEFAULT_QA_SURFACE_CONFIG.ui.showToolActivity,
-      showReasoning: false,
+      showReasoning:
+        input.ui?.showReasoning ?? DEFAULT_QA_SURFACE_CONFIG.ui.showReasoning,
       renderMarkdown:
         input.ui?.renderMarkdown ?? DEFAULT_QA_SURFACE_CONFIG.ui.renderMarkdown,
       maxContentWidth,
+      showSessionList:
+        input.ui?.showSessionList ??
+        DEFAULT_QA_SURFACE_CONFIG.ui.showSessionList,
     }),
-    suggestedQuestions: uniqueQuestions(input.suggestedQuestions ?? []),
+    suggestedQuestions: uniqueQuestions(
+      input.suggestedQuestions ?? DEFAULT_QA_SURFACE_CONFIG.suggestedQuestions,
+    ),
     interaction: Object.freeze({
       approvals: "blocked",
       questions: "unsupported",
+    }),
+    lockdown: Object.freeze({
+      enabled: lockdownEnabled,
+      enforceFixedAgentPreset:
+        input.lockdown?.enforceFixedAgentPreset ??
+        DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedAgentPreset,
+      enforceFixedWorkspace:
+        input.lockdown?.enforceFixedWorkspace ??
+        DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedWorkspace,
+      enforceFixedModel:
+        input.lockdown?.enforceFixedModel ??
+        DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedModel,
+      sandboxMode: "read-only",
+      approvalPolicy: "never",
+      permissionPreset,
+      allowPermissionChanges: false,
+      allowSlashCommands: false,
+      allowSettingsMutation: false,
+      allowSessionReset,
+      allowSessionRename: false,
+      allowSessionDelete: false,
+      allowArbitrarySessionOpen: false,
+      toolPolicy: Object.freeze({
+        mode: "allow-list",
+        allow: uniqueToolNames(input.lockdown?.toolPolicy?.allow ?? []),
+      }),
     }),
     embedding: Object.freeze({
       frameAncestors: optionalText(input.embedding?.frameAncestors),

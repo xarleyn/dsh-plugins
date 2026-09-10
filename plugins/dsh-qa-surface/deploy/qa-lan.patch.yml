@@ -1,0 +1,27 @@
+# LAN deployment overlay for the QA harness profile. Boot with:
+#
+#   dsh --profile qa-surface --no-open --port 3082 --patch <this-file>
+#
+# The webserver row only accepts `127.0.0.1` (default posture) and `0.0.0.0`
+# (deliberate network exposure). The `dsh --host 0.0.0.0` flag is intentionally
+# refused by the web app, so network exposure is expressed here, at the
+# composition layer, where the operator has already accepted the deployment
+# responsibilities: DSH has no TLS and no authentication, and the harness root
+# UI stays reachable next to /qa, so scope the reachability of this port (a
+# Windows Firewall rule limited to the serving subnet, a VPN/tailnet, or an
+# authenticating reverse proxy).
+#
+# The `port` expression keeps the `--port` flag working: a patch replaces the
+# targeted row's whole config, so the flag-driven expression must be restated
+# together with the host.
+#
+# Nothing else needs overriding for LAN clients to work: the /api browser-trust
+# fence derives trusted authorities from the host's LAN interfaces under a
+# 0.0.0.0 bind, and browsers that cannot read the loopback-pinned settings
+# namespace receive the effective QA configuration through the plugin's
+# `qaSurface/describe` Remote. Users reaching the server through a DNS name
+# instead of a LAN IP literal need `--trusted-host <name>` on the command line.
+- id: webserver
+  config:
+    host: "0.0.0.0"
+    port: !!js ctx.webStartup.port ?? 3082
