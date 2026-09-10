@@ -76,7 +76,7 @@ Version `0.6.0` implements the specification through Phase 4:
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Linux with bubblewrap for `isolated` mode
 
 ## Development
