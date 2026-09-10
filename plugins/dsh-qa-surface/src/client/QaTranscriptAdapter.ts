@@ -66,6 +66,34 @@ interface OrderedMessage {
  * vocabulary is not installed client-side, so the shape is matched
  * structurally against the host contract ({type:"image", attachment:{...}}).
  */
+const SETTLED_HEAD =
+  /^Background subagent ([0-9a-f][0-9a-f-]*) (finished|was stopped|ran out of room|declined the task|failed)/u;
+const SETTLED_CLOSING = "Its closing message:";
+const SETTLED_TITLES: Readonly<Record<string, string>> = Object.freeze({
+  finished: "завершён",
+  "was stopped": "остановлен",
+  "ran out of room": "упёрся в лимит длины",
+  "declined the task": "отклонил задачу",
+  failed: "завершился ошибкой",
+});
+
+/** Fold the host settlement wording into a title plus the closing message. */
+function parseSettlement(
+  text: string,
+): { title: string; body: string } | undefined {
+  const head = SETTLED_HEAD.exec(text);
+  if (head === null) return undefined;
+  const id = (head[1] ?? "").slice(0, 8);
+  const title = `Субагент ${id} ${SETTLED_TITLES[head[2] ?? "finished"] ?? "завершён"}`;
+  const closeAt = text.indexOf(SETTLED_CLOSING);
+  const body =
+    closeAt === -1 ? "" : text.slice(closeAt + SETTLED_CLOSING.length).trim();
+  return {
+    title,
+    body: body.length <= 4_000 ? body : `${body.slice(0, 3_999)}…`,
+  };
+}
+
 function visibleContentImages(
   content: readonly unknown[],
 ): readonly QaImageView[] {
@@ -496,18 +524,21 @@ export function projectTranscript(
       // hidden — they are operator plumbing, not QA-facing content.
       const label = node.provenance.label ?? "";
       if (!label.toLowerCase().startsWith("subagent")) continue;
-      const text = visibleContentText(node.content)
-        .replace(/\s+/gu, " ")
-        .trim();
-      if (text === "") continue;
+      const text = visibleContentText(node.content);
+      if (text.trim() === "") continue;
+      const notice = parseSettlement(text);
       output.push({
         order: node.seq,
         message: {
           id: `context:${node.seq}`,
           role: "system",
-          text: text.length <= 280 ? text : `${text.slice(0, 279).trimEnd()}…`,
+          text:
+            notice === undefined
+              ? text.replace(/\s+/gu, " ").trim().slice(0, 280)
+              : notice.title,
           status: "info",
           timestamp: node.time,
+          ...(notice === undefined ? {} : { notice }),
         },
       });
     } else if (node.kind === "turn-error") {
