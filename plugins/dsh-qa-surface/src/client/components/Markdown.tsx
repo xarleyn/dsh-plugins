@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { memo, Fragment, type ReactNode } from "react";
 
 const INLINE = /(\[[^\]]+\]\([^\s)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/gu;
 const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/u;
@@ -129,8 +129,16 @@ function renderTable(
   };
 }
 
-/** Deliberately small, HTML-free Markdown renderer for assistant-visible text. */
-export function Markdown({ text }: { readonly text: string }) {
+/**
+ * Deliberately small, HTML-free Markdown renderer for assistant-visible text.
+ * Memoized on the text value: stream updates re-render only the message whose
+ * text actually changed, so committed history is never re-parsed.
+ */
+export const Markdown = memo(function Markdown({
+  text,
+}: {
+  readonly text: string;
+}) {
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
   const blocks: ReactNode[] = [];
   for (let index = 0; index < lines.length;) {
@@ -238,4 +246,4 @@ export function Markdown({ text }: { readonly text: string }) {
     );
   }
   return <>{blocks}</>;
-}
+});

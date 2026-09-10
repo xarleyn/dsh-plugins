@@ -1,6 +1,8 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -31,6 +33,9 @@ import {
 } from "./components/VariantSwitcher.js";
 
 const noopSubscribe = () => () => undefined;
+
+/** Stable empty stand-in so memoized children see one identity, not a fresh []. */
+const NO_QUESTIONS: readonly string[] = Object.freeze([]);
 
 export interface QaSurfaceFace {
   readonly route: QaRouteController;
@@ -188,6 +193,44 @@ export function QaSurface(props: QaSurfaceProps) {
     };
   }, [route.active]);
 
+  // Stable identities for the memoized render path: message rows, the sidebar
+  // and the composer compare callbacks by reference, so per-frame closures
+  // here would defeat the memoization downstream.
+  const resolveImage = useMemo(
+    () =>
+      controller === undefined
+        ? undefined
+        : (attachmentId: string) => controller.readImage(attachmentId),
+    [controller],
+  );
+  const handleRegenerate = useCallback(() => {
+    void controller?.regenerate();
+  }, [controller]);
+  const handleSwitch = useCallback(
+    (sessionId: string) => {
+      void controller?.switchTo(sessionId);
+    },
+    [controller],
+  );
+  const handleNewChat = useCallback(() => {
+    void controller?.startDraft();
+  }, [controller]);
+  const handleDelete = useCallback(
+    (sessionId: string) => {
+      void controller?.deleteChat(sessionId);
+    },
+    [controller],
+  );
+  const handleSend = useCallback(
+    (text: string, images: readonly QaImageDraft[]) =>
+      controller?.send(text, images) ?? Promise.resolve(false),
+    [controller],
+  );
+  const handleStop = useCallback(
+    () => controller?.stop() ?? Promise.resolve(),
+    [controller],
+  );
+
   useLayoutEffect(() => {
     const element = transcript.current;
     if (element !== null && nearBottom.current) {
@@ -258,9 +301,9 @@ export function QaSurface(props: QaSurfaceProps) {
           stateKey={stateKey}
           showNewChat={allowNewChat}
           busy={state.phase === "creating"}
-          onSwitch={(sessionId) => void controller?.switchTo(sessionId)}
-          onNewChat={() => void controller?.startDraft()}
-          onDelete={(sessionId) => void controller?.deleteChat(sessionId)}
+          onSwitch={handleSwitch}
+          onNewChat={handleNewChat}
+          onDelete={handleDelete}
         />
       ) : null}
       <div className="dsh-qa-body">
@@ -427,17 +470,13 @@ export function QaSurface(props: QaSurfaceProps) {
                       renderMarkdown={config.ui.renderMarkdown}
                       showTimestamp={config.ui.showTimestamps}
                       stateKey={stateKey}
-                      resolveImage={
-                        controller === undefined
-                          ? undefined
-                          : (attachmentId) => controller.readImage(attachmentId)
-                      }
+                      resolveImage={resolveImage}
                       onRegenerate={
                         isLast &&
                         message.role === "assistant" &&
                         message.status === "committed" &&
                         controller !== undefined
-                          ? () => void controller.regenerate()
+                          ? handleRegenerate
                           : undefined
                       }
                     />
@@ -480,7 +519,7 @@ export function QaSurface(props: QaSurfaceProps) {
           >
             <QaComposer
               placeholder={config.branding.placeholder}
-              quickQuestions={empty ? config.suggestedQuestions : []}
+              quickQuestions={empty ? config.suggestedQuestions : NO_QUESTIONS}
               canSend={state.canSend}
               canStop={state.canStop}
               running={state.phase === "running"}
@@ -488,10 +527,8 @@ export function QaSurface(props: QaSurfaceProps) {
               status={status}
               images={pendingImages}
               onImagesChange={setPendingImages}
-              onSend={(text, images) =>
-                controller?.send(text, images) ?? Promise.resolve(false)
-              }
-              onStop={() => controller?.stop() ?? Promise.resolve()}
+              onSend={handleSend}
+              onStop={handleStop}
             />
             {config.branding.disclaimer === "" ? null : (
               <p className="dsh-qa-footer__disclaimer">

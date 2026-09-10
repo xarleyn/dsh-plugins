@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { QaImageDraft, QaImageMediaType } from "../../types.js";
 
 export interface QaComposerProps {
@@ -78,7 +78,12 @@ function ImagePickerIcon() {
   );
 }
 
-export function QaComposer(props: QaComposerProps) {
+/**
+ * Memoized with the default shallow compare: every prop is a scalar, a
+ * stable array or a stable callback, so a stream of transcript frames never
+ * re-renders the composer and typing stays responsive while an answer runs.
+ */
+export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -289,4 +294,4 @@ export function QaComposer(props: QaComposerProps) {
       </div>
     </div>
   );
-}
+});
