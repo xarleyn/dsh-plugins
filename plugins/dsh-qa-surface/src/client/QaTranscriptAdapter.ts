@@ -4,7 +4,13 @@ import type {
   RunningToolCall,
   ToolResultNode,
 } from "@deepseek-ai/dsh-client-runtime/client";
-import type { QaMessage, QaSource, QaWorkItem } from "../types.js";
+import type {
+  QaImageMediaType,
+  QaImageView,
+  QaMessage,
+  QaSource,
+  QaWorkItem,
+} from "../types.js";
 
 /**
  * The hidden regeneration prompt. Regenerate sends this as an ordinary
@@ -53,6 +59,33 @@ interface ToolHead {
 interface OrderedMessage {
   readonly order: number;
   readonly message: QaMessage;
+}
+
+/**
+ * Durable image references carried by user content. The core ContentBlock
+ * vocabulary is not installed client-side, so the shape is matched
+ * structurally against the host contract ({type:"image", attachment:{...}}).
+ */
+function visibleContentImages(
+  content: readonly unknown[],
+): readonly QaImageView[] {
+  const images: QaImageView[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const record = block as Record<string, unknown>;
+    if (record.type !== "image") continue;
+    const attachment = record.attachment as Record<string, unknown> | undefined;
+    const attachmentId = attachment?.attachmentId;
+    const mediaType = attachment?.mediaType;
+    if (typeof attachmentId !== "string" || attachmentId === "") continue;
+    images.push({
+      attachmentId,
+      mediaType: (typeof mediaType === "string"
+        ? mediaType
+        : "image/png") as QaImageMediaType,
+    });
+  }
+  return images;
 }
 
 function visibleContentText(content: readonly unknown[]): string {
@@ -441,7 +474,9 @@ export function projectTranscript(
   for (const node of snapshot.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
-      if (text === "" || text === QA_REGENERATE_MARKER) continue;
+      const images = visibleContentImages(node.content);
+      if (text === QA_REGENERATE_MARKER) continue;
+      if (text === "" && images.length === 0) continue;
       output.push({
         order: node.seq,
         message: {
@@ -450,6 +485,7 @@ export function projectTranscript(
           text,
           status: "committed",
           timestamp: node.time,
+          ...(images.length === 0 ? {} : { images }),
         },
       });
     } else if (node.kind === "assistant") {

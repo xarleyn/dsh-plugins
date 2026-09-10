@@ -368,6 +368,39 @@ describe("transcript projection", () => {
     ).toBeUndefined();
   });
 
+  it("projects durable image attachments on user messages", () => {
+    const messages = projectTranscript(
+      snapshot({
+        nodes: [
+          {
+            kind: "user",
+            seq: 1,
+            time: 1_000,
+            source: {},
+            content: [
+              { type: "text", text: "Что на скрине?" },
+              {
+                type: "image",
+                attachment: {
+                  attachmentId: "att-1",
+                  mediaType: "image/png",
+                  bytes: 12,
+                  width: 320,
+                  height: 200,
+                },
+              },
+            ],
+          },
+        ] as ConversationSnapshot["nodes"],
+      }),
+    );
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      text: "Что на скрине?",
+      images: [{ attachmentId: "att-1", mediaType: "image/png" }],
+    });
+  });
+
   it("hides the regeneration marker and labels answers with their turn", () => {
     const messages = projectTranscript(
       snapshot({

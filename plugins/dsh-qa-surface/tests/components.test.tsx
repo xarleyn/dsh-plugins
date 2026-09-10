@@ -3,6 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
+import type { QaImageDraft } from "../src/types.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
 import { collectSubagents } from "../src/client/components/QaAgentsDrawer.js";
 import { collectVariantGroups } from "../src/client/components/VariantSwitcher.js";
@@ -21,6 +22,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend
         canStop={false}
         running={false}
@@ -35,13 +38,15 @@ describe("QA composer", () => {
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(send).toHaveBeenCalledWith("hello");
+    expect(send).toHaveBeenCalledWith("hello", []);
   });
 
   it("shows a real Stop button during generation", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend={false}
         canStop
         running
@@ -62,6 +67,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Ask"
+        images={[]}
+        onImagesChange={vi.fn()}
         canSend={false}
         canStop
         running
@@ -79,6 +86,8 @@ describe("QA composer", () => {
     render(
       <QaComposer
         placeholder="Спросите"
+        images={[]}
+        onImagesChange={vi.fn()}
         quickQuestions={["Что ты умеешь?", "С чего начать?"]}
         canSend
         canStop={false}
@@ -90,7 +99,9 @@ describe("QA composer", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Что ты умеешь?" }));
-    await waitFor(() => expect(send).toHaveBeenCalledWith("Что ты умеешь?"));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("Что ты умеешь?", []),
+    );
   });
 });
 
@@ -188,6 +199,89 @@ describe("QA message", () => {
       document.querySelector(".dsh-qa-message__meta")?.textContent,
     ).toContain("9 сент 15:50");
     expect(screen.queryByRole("button", { name: "Нравится" })).toBeNull();
+  });
+
+  it("attaches images from files and removes them before send", async () => {
+    const png = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", {
+      type: "image/png",
+    });
+    const onImagesChange = vi.fn();
+    const view = render(
+      <QaComposer
+        placeholder="Ask"
+        images={[]}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={vi.fn(async () => true)}
+        onStop={vi.fn()}
+      />,
+    );
+    const input = document.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [png] });
+    fireEvent.change(input);
+    await waitFor(() => expect(onImagesChange).toHaveBeenCalled());
+    const firstCall = onImagesChange.mock.calls[0] as unknown as [
+      readonly QaImageDraft[],
+    ];
+    const drafts = firstCall[0];
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]?.mediaType).toBe("image/png");
+
+    // With a draft attached, sending clears both text and images.
+    const onSend = vi.fn(async () => true);
+    view.rerender(
+      <QaComposer
+        placeholder="Ask"
+        images={drafts}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={onSend}
+        onStop={vi.fn()}
+      />,
+    );
+    const input2 = screen.getByLabelText("Задать вопрос");
+    fireEvent.change(input2, { target: { value: "Смотри" } });
+    fireEvent.keyDown(input2, { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith("Смотри", drafts));
+    expect(onImagesChange).toHaveBeenCalledWith([]);
+  });
+
+  it("rejects non-image files with a readable message", async () => {
+    const onImagesChange = vi.fn();
+    render(
+      <QaComposer
+        placeholder="Ask"
+        images={[]}
+        onImagesChange={onImagesChange}
+        canSend
+        canStop={false}
+        running={false}
+        showStop
+        status={null}
+        onSend={vi.fn(async () => true)}
+        onStop={vi.fn()}
+      />,
+    );
+    const txt = new File(["hello"], "note.txt", { type: "text/plain" });
+    const input = document.querySelector(
+      "input[type='file']",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", { value: [txt] });
+    fireEvent.change(input);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("PNG"),
+    );
+    expect(onImagesChange).not.toHaveBeenCalled();
   });
 
   it("exposes the regenerate action on demand", () => {

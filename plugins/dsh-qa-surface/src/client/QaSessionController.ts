@@ -4,7 +4,16 @@ import type {
   WorkspaceId,
 } from "@deepseek-ai/dsh-client-connection/client";
 import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+  }
+  return btoa(binary);
+}
 import type {
+  QaImageDraft,
   QaSessionState,
   QaSubagentView,
   ResolvedQaSurfaceConfig,
@@ -17,6 +26,7 @@ import {
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
 import type {
+  QaPromptContent,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -109,9 +119,14 @@ export class QaSessionController {
     return operation;
   }
 
-  async send(text: string): Promise<boolean> {
+  async send(
+    text: string,
+    images: readonly QaImageDraft[] = [],
+  ): Promise<boolean> {
     const prompt = text.trim();
-    if (prompt === "" || !this.state.canSend) return false;
+    if ((prompt === "" && images.length === 0) || !this.state.canSend) {
+      return false;
+    }
     if (prompt.startsWith("/")) {
       this.operationError = "Команды со слешем недоступны в режиме помощника.";
       this.publish();
@@ -134,10 +149,16 @@ export class QaSessionController {
     this.admissionPending = true;
     this.publish();
     try {
-      const result = await this.session.prompt(
-        [{ type: "text", text: prompt }],
-        "queue",
-      );
+      const content: QaPromptContent = [
+        ...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]),
+        ...images.map((image) => ({
+          type: "image" as const,
+          mediaType: image.mediaType,
+          data: image.data,
+          name: image.name,
+        })),
+      ];
+      const result = await this.session.prompt(content, "queue");
       if (!result.ok) {
         this.admissionPending = false;
         this.operationError = "Не удалось отправить сообщение.";
@@ -355,6 +376,29 @@ export class QaSessionController {
   /** The bound session id, or null while no chat is bound. */
   activeSessionId(): string | null {
     return this.session === undefined ? null : String(this.session.sessionId);
+  }
+
+  /**
+   * Resolve one durable image attachment of the bound session into a
+   * browser-usable URL. The caller caches; failures surface as broken views.
+   */
+  async readImage(attachmentId: string): Promise<string> {
+    if (this.session === undefined) throw new Error("no bound session");
+    const result = await this.session.readAttachment(
+      attachmentId as Parameters<SessionFace["readAttachment"]>[0],
+    );
+    if (!result.ok) {
+      throw new Error(`${result.error.code}: ${result.error.message}`);
+    }
+    const { attachment, data } = result.value;
+    if (typeof URL.createObjectURL !== "function") {
+      return `data:${attachment.mediaType};base64,${bytesToBase64(data)}`;
+    }
+    return URL.createObjectURL(
+      new Blob([Uint8Array.from(data).buffer as ArrayBuffer], {
+        type: attachment.mediaType,
+      }),
+    );
   }
 
   /**

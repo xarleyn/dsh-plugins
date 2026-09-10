@@ -1,5 +1,60 @@
 import { useEffect, useRef, useState } from "react";
-import type { QaMessage as QaMessageModel } from "../../types.js";
+import type { QaMessage as QaMessageModel, QaImageView } from "../../types.js";
+
+/** Resolved image URLs live for the page lifetime; failures retry on demand. */
+const imageUrlCache = new Map<string, Promise<string>>();
+
+function cachedImageUrl(
+  attachmentId: string,
+  resolve: (attachmentId: string) => Promise<string>,
+): Promise<string> {
+  let pending = imageUrlCache.get(attachmentId);
+  if (pending === undefined) {
+    pending = resolve(attachmentId);
+    imageUrlCache.set(attachmentId, pending);
+    pending.catch(() => imageUrlCache.delete(attachmentId));
+  }
+  return pending;
+}
+
+function QaAttachedImage({
+  image,
+  resolve,
+}: {
+  readonly image: QaImageView;
+  readonly resolve: (attachmentId: string) => Promise<string>;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    cachedImageUrl(image.attachmentId, resolve).then(
+      (resolved) => {
+        if (alive) setUrl(resolved);
+      },
+      () => {
+        if (alive) setUrl("");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [image.attachmentId, resolve]);
+  if (url === null) {
+    return <span className="dsh-qa-message__image" data-state="loading" />;
+  }
+  if (url === "") {
+    return <span className="dsh-qa-message__image" data-state="broken" />;
+  }
+  return (
+    <a href={url} target="_blank" rel="noreferrer">
+      <img
+        className="dsh-qa-message__image"
+        src={url}
+        alt="Прикреплённое изображение"
+      />
+    </a>
+  );
+}
 import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";
@@ -12,6 +67,8 @@ export interface QaMessageProps {
   readonly stateKey?: string;
   /** Ask for a fresh variant of this answer; omit to hide the control. */
   readonly onRegenerate?: () => void;
+  /** Resolve one durable attachment into a viewable URL. */
+  readonly resolveImage?: (attachmentId: string) => Promise<string>;
 }
 
 type Rating = "up" | "down";
@@ -66,6 +123,7 @@ export function QaMessage({
   showTimestamp,
   stateKey,
   onRegenerate,
+  resolveImage,
 }: QaMessageProps) {
   const [copied, setCopied] = useState(false);
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -146,6 +204,19 @@ export function QaMessage({
       aria-label={`Сообщение: ${label}`}
     >
       <div className="dsh-qa-message__content">
+        {message.role === "user" && message.images !== undefined ? (
+          <div className="dsh-qa-message__images">
+            {message.images.map((image) =>
+              resolveImage === undefined ? null : (
+                <QaAttachedImage
+                  key={image.attachmentId}
+                  image={image}
+                  resolve={resolveImage}
+                />
+              ),
+            )}
+          </div>
+        ) : null}
         {message.role === "assistant" && renderMarkdown ? (
           <Markdown text={message.text} />
         ) : (

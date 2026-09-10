@@ -192,6 +192,13 @@ a.dsh-qa-sources__title:hover{text-decoration:underline}
 .dsh-qa-message--system{align-items:center;margin:4px auto 20px}
 .dsh-qa-message__content{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-size:15px;line-height:1.62}
 .dsh-qa-message--user .dsh-qa-message__content{max-width:min(525px,82%);padding:10px 16px;border-radius:22px;background:var(--dsw-specific-bubble);font-size:16px;line-height:24px}
+.dsh-qa-message__images{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+.dsh-qa-message--user .dsh-qa-message__images{justify-content:flex-end}
+.dsh-qa-message__image{display:block;width:132px;height:96px;border-radius:12px;border:1px solid var(--dsw-alias-border-l2);object-fit:cover;background:var(--dsw-alias-bg-layer-2)}
+a.dsh-qa-message__image{padding:0}
+span.dsh-qa-message__image{display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);font-size:11px}
+span.dsh-qa-message__image[data-state="broken"]::after{content:"Не удалось загрузить"}
+span.dsh-qa-message__image[data-state="loading"]{animation:dsh-qa-spin 1.2s linear infinite;border-style:dashed}
 .dsh-qa-message--assistant .dsh-qa-message__content{width:100%;padding:2px 0}
 .dsh-qa-message--system .dsh-qa-message__content{padding:7px 11px;border-radius:9px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .dsh-qa-message[data-status="info"] .dsh-qa-message__content{color:var(--dsh-qa-info)}
@@ -266,6 +273,20 @@ a.dsh-qa-sources__title:hover{text-decoration:underline}
 .dsh-qa-quick-questions button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-quick-questions button:disabled{opacity:.5;cursor:default}
 .dsh-qa-quick-questions button:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
+.dsh-qa-composer-wrap--drag .dsh-qa-composer{border-color:var(--dsh-qa-accent);border-style:dashed;background:color-mix(in srgb,var(--dsh-qa-accent) 6%,var(--dsw-specific-input-major))}
+.dsh-qa-composer__images{display:flex;flex-wrap:wrap;gap:8px}
+.dsh-qa-composer__image{position:relative;display:block;width:64px;height:64px;flex:none}
+.dsh-qa-composer__image img{display:block;width:100%;height:100%;object-fit:cover;border-radius:10px;border:1px solid var(--dsw-alias-border-l2)}
+.dsh-qa-composer__image button{position:absolute;top:-6px;right:-6px;display:grid;place-items:center;width:18px;height:18px;padding:0;border:0;border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer;box-shadow:var(--dsw-shadow-lv2)}
+.dsh-qa-composer__image button:hover{color:var(--dsh-qa-error)}
+.dsh-qa-composer__image button:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
+.dsh-qa-composer__image button svg{width:9px;height:9px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
+.dsh-qa-composer__attachment-error{margin:0;color:var(--dsh-qa-error);font-size:12px;line-height:18px}
+.dsh-qa-composer__attach{display:grid;place-items:center;flex:none;width:30px;height:30px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dsh-qa-composer__attach:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-composer__attach:disabled{opacity:.4;cursor:default}
+.dsh-qa-composer__attach:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
+.dsh-qa-composer__attach svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-composer{display:flex;flex-direction:column;gap:10px;width:100%;min-height:94px;padding:14px 10px 8px 16px;border:1px solid var(--dsw-alias-border-l2-darkmode-thin);border-radius:22px;background:var(--dsw-specific-input-major);box-shadow:var(--dsw-shadow-lv2);transition:border-color .12s,box-shadow .12s}
 .dsh-qa-composer:focus-within{border-color:var(--dsh-qa-accent)}
 .dsh-qa-composer textarea{display:block;width:100%;min-height:28px;max-height:168px;resize:none;overflow-y:auto;border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:16px;line-height:24px;padding:0 6px 0 0;caret-color:var(--dsh-qa-accent)}

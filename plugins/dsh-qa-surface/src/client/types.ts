@@ -4,6 +4,10 @@ import type {
   SessionRuntime,
 } from "@deepseek-ai/dsh-client-runtime/client";
 import type { QaLockdownProof, QaSessionState } from "../types.js";
+import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
+
+/** Wire content one prompt carries: text plus base64 image uploads. */
+export type QaPromptContent = Parameters<SessionFace["prompt"]>[0];
 
 /** DSH session runtime surface the QA controller is allowed to touch. */
 export type QaSessions = ISessions & Pick<SessionRuntime, "create">;
