@@ -56,7 +56,7 @@ DOM rules must use a non-empty CSS scope. They are deliberately conservative: su
 
 - Node.js `^22.19.0` or `>=24.0.0`
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 
 ## Development
