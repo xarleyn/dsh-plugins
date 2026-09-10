@@ -80,12 +80,22 @@ function options(
       open: async (value) => value,
     },
     sessions: {
-      list: snapshot({ current: "session-a" }) as never,
+      list: snapshot({
+        byId: { "session-a": { updatedAt: 1_000 } },
+        current: "session-a",
+        phase: "ready",
+      }) as never,
     },
     workspaces: {
       list: snapshot({
-        items: [{ workspaceId: "workspace-a", sessionIds: ["session-a"] }],
-        recentWorkspaceId: "workspace-recent",
+        items: [
+          {
+            workspaceId: "workspace-a",
+            sessionIds: ["session-a"],
+            createdAt: "1970-01-01T00:00:01.000Z",
+          },
+        ],
+        phase: "ready",
       }) as never,
     },
     ...overrides,
@@ -94,20 +104,34 @@ function options(
 
 describe("draft shortcut", () => {
   it("prefers the current Session Workspace and falls back to recent", () => {
+    const sessions = {
+      byId: { "session-a": { updatedAt: 20_000 } },
+      current: "session-a",
+      phase: "ready",
+    } as never;
     const workspaces = {
       items: [
-        { workspaceId: "workspace-a", sessionIds: ["session-a"] },
-        { workspaceId: "workspace-b", sessionIds: [] },
+        {
+          workspaceId: "workspace-a",
+          sessionIds: ["session-a"],
+          createdAt: "1970-01-01T00:00:01.000Z",
+        },
+        {
+          workspaceId: "workspace-b",
+          sessionIds: [],
+          createdAt: "1970-01-01T00:00:30.000Z",
+        },
       ],
-      recentWorkspaceId: "workspace-b",
+      phase: "ready",
     } as never;
 
+    expect(resolveDraftWorkspace(sessions, workspaces)).toBe("workspace-a");
     expect(
-      resolveDraftWorkspace({ current: "session-a" } as never, workspaces),
-    ).toBe("workspace-a");
-    expect(resolveDraftWorkspace({ current: undefined }, workspaces)).toBe(
-      "workspace-b",
-    );
+      resolveDraftWorkspace(
+        { byId: {}, current: undefined, phase: "ready" } as never,
+        workspaces,
+      ),
+    ).toBe("workspace-b");
   });
 
   it("flushes, creates a distinct draft, and opens it in order", async () => {

@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
-import type { RpcMessage } from "@deepseek-ai/dsh-client-connection/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DraftSessionLifecycle,
@@ -44,40 +43,48 @@ function remote(drafts: DraftStore): DraftSessionLifecycleOptions["drafts"] {
   };
 }
 
-function sessions(
-  overrides: Partial<DraftSessionLifecycleOptions["sessions"]> = {},
-): DraftSessionLifecycleOptions["sessions"] {
+function snapshot<T>(value: T) {
   return {
-    list: async () =>
-      ({
-        rpcId: "rpc-list",
-        result: { ok: true, value: { items: [] } },
-      }) as never,
-    create: async () =>
-      ({
-        rpcId: "rpc-create",
-        result: { ok: true, value: { sessionId: "session-new" } },
-      }) as never,
+    getSnapshot: () => value,
+    subscribe: () => () => undefined,
+  };
+}
+
+type SessionsApi = DraftSessionLifecycleOptions["sessions"];
+
+/** Session list store cut with only the fields the lifecycle reads. */
+function listStore(
+  byId: Record<string, { readonly blank: boolean; readonly updatedAt: number }>,
+): SessionsApi["list"] {
+  return snapshot({ byId, phase: "ready" }) as never;
+}
+
+function sessions(overrides: Partial<SessionsApi> = {}): SessionsApi {
+  return {
+    list: listStore({}),
+    refresh: async () => undefined,
+    create: async () => "session-new" as never,
     ...overrides,
   };
 }
 
-function envelopeObserver(): {
-  readonly source: NonNullable<DraftSessionLifecycleOptions["envelopes"]>;
-  emit(batch: readonly RpcMessage[]): void;
+function statusObserver(): {
+  readonly source: NonNullable<DraftSessionLifecycleOptions["status"]>;
+  emit(sessionId: string, running: boolean): void;
 } {
-  let listener: ((batch: readonly RpcMessage[]) => void) | undefined;
+  let listener: ((sessionId: string, running: boolean) => void) | undefined;
+  const source: NonNullable<DraftSessionLifecycleOptions["status"]> = (
+    next,
+  ) => {
+    listener = next;
+    return () => {
+      listener = undefined;
+    };
+  };
   return {
-    source: {
-      subscribeEnvelopes(next) {
-        listener = next;
-        return () => {
-          listener = undefined;
-        };
-      },
-    },
-    emit(batch) {
-      listener?.(batch);
+    source,
+    emit(sessionId, running) {
+      listener?.(sessionId, running);
     },
   };
 }
@@ -93,15 +100,12 @@ afterEach(async () => {
 describe("DraftSessionLifecycle", () => {
   it("persists a Session id only after distinct Session creation succeeds", async () => {
     const drafts = await store();
-    const create = vi.fn(async (request: { workspaceId?: unknown }) => {
+    const create = vi.fn(async (request?: { workspaceId?: unknown }) => {
       expect(request).toEqual({ workspaceId: "workspace-a" });
       expect(await drafts.list()).toMatchObject([
         { sessionId: null, state: "materializing", text: "unsent" },
       ]);
-      return {
-        rpcId: "rpc-create",
-        result: { ok: true, value: { sessionId: "session-a" } },
-      } as never;
+      return "session-a" as never;
     });
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
@@ -128,18 +132,15 @@ describe("DraftSessionLifecycle", () => {
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({
-        create: async () =>
-          ({
-            rpcId: "rpc-create",
-            result: {
-              ok: false,
-              error: {
-                code: "workspace-not-found",
-                message: "workspace disappeared",
-                details: { workspaceId: "workspace-a" },
-              },
+        create: async () => {
+          throw Object.assign(new Error("workspace disappeared"), {
+            rpcError: {
+              code: "workspace/not-found",
+              message: "workspace disappeared",
+              details: {},
             },
-          }) as never,
+          });
+        },
       }),
     });
 
@@ -148,7 +149,7 @@ describe("DraftSessionLifecycle", () => {
     ).rejects.toMatchObject({
       name: "DraftLifecycleError",
       stage: "session-create",
-      code: "workspace-not-found",
+      code: "workspace/not-found",
       draft: {
         sessionId: null,
         state: "error",
@@ -168,13 +169,7 @@ describe("DraftSessionLifecycle", () => {
       sessionId: "session-missing",
       text: "recover me",
     });
-    const create = vi.fn(
-      async () =>
-        ({
-          rpcId: "rpc-create",
-          result: { ok: true, value: { sessionId: "session-replacement" } },
-        }) as never,
-    );
+    const create = vi.fn(async () => "session-replacement" as never);
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({ create }),
@@ -201,23 +196,9 @@ describe("DraftSessionLifecycle", () => {
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({
-        list: async () =>
-          ({
-            rpcId: "rpc-list",
-            result: {
-              ok: true,
-              value: {
-                items: [
-                  {
-                    sessionId: "session-current",
-                    updatedAt: 1_000,
-                    running: false,
-                    blank: true,
-                  },
-                ],
-              },
-            },
-          }) as never,
+        list: listStore({
+          "session-current": { blank: true, updatedAt: 1_000 },
+        }),
         create,
       }),
     });
@@ -226,100 +207,51 @@ describe("DraftSessionLifecycle", () => {
     expect(create).not.toHaveBeenCalled();
   });
 
-  it("finalizes a draft after an accepted prompt makes its Session nonblank", async () => {
+  it("finalizes a draft after a running status makes its Session nonblank", async () => {
     const drafts = await store();
     await drafts.create({
       workspaceId: "workspace-a",
       sessionId: "session-current",
       text: "send me",
     });
-    const observed = envelopeObserver();
+    const observed = statusObserver();
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({
-        list: async () =>
-          ({
-            rpcId: "rpc-list",
-            result: {
-              ok: true,
-              value: {
-                items: [
-                  {
-                    sessionId: "session-current",
-                    updatedAt: 1_001,
-                    running: true,
-                    blank: false,
-                  },
-                ],
-              },
-            },
-          }) as never,
+        list: listStore({
+          "session-current": { blank: false, updatedAt: 1_001 },
+        }),
       }),
-      envelopes: observed.source,
+      status: observed.source,
     });
 
     expect(lifecycle).toBeDefined();
-    observed.emit([
-      {
-        type: "client-request",
-        rpcId: "rpc-prompt",
-        method: "session.prompt",
-        payload: {
-          sessionId: "session-current",
-          mode: "queue",
-          content: [{ type: "text", text: "send me" }],
-        },
-      } as never,
-      {
-        type: "server-response",
-        rpcId: "rpc-prompt",
-        result: { ok: true, value: { accepted: true } },
-      } as never,
-    ]);
+    observed.emit("session-current", true);
 
     await vi.waitFor(async () => {
       expect(await drafts.list()).toHaveLength(0);
     });
   });
 
-  it("preserves a draft after a rejected prompt", async () => {
+  it("preserves a draft while its Session is not running", async () => {
     const drafts = await store();
     const current = await drafts.create({
       workspaceId: "workspace-a",
       sessionId: "session-current",
       text: "do not lose me",
     });
-    const observed = envelopeObserver();
-    const list = vi.fn();
+    const observed = statusObserver();
+    const refresh = vi.fn();
     new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
-      sessions: sessions({ list }),
-      envelopes: observed.source,
+      sessions: sessions({ refresh }),
+      status: observed.source,
     });
 
-    observed.emit([
-      {
-        type: "client-request",
-        rpcId: "rpc-prompt",
-        method: "session.prompt",
-        payload: { sessionId: "session-current" },
-      } as never,
-      {
-        type: "server-response",
-        rpcId: "rpc-prompt",
-        result: {
-          ok: false,
-          error: {
-            code: "agent-busy",
-            message: "prompt rejected before acceptance",
-            details: { reason: "busy" },
-          },
-        },
-      } as never,
-    ]);
+    observed.emit("session-current", false);
     await Promise.resolve();
 
-    expect(list).not.toHaveBeenCalled();
+    expect(refresh).not.toHaveBeenCalled();
     expect(await drafts.list()).toEqual([current]);
   });
 
@@ -333,23 +265,9 @@ describe("DraftSessionLifecycle", () => {
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({
-        list: async () =>
-          ({
-            rpcId: "rpc-list",
-            result: {
-              ok: true,
-              value: {
-                items: [
-                  {
-                    sessionId: "session-current",
-                    updatedAt: 1_001,
-                    running: false,
-                    blank: true,
-                  },
-                ],
-              },
-            },
-          }) as never,
+        list: listStore({
+          "session-current": { blank: true, updatedAt: 1_001 },
+        }),
       }),
     });
 
@@ -368,23 +286,9 @@ describe("DraftSessionLifecycle", () => {
     const lifecycle = new DraftSessionLifecycle(new Context(), {
       drafts: remote(drafts),
       sessions: sessions({
-        list: async () =>
-          ({
-            rpcId: "rpc-list",
-            result: {
-              ok: true,
-              value: {
-                items: [
-                  {
-                    sessionId: "session-current",
-                    updatedAt: 1_001,
-                    running: false,
-                    blank: false,
-                  },
-                ],
-              },
-            },
-          }) as never,
+        list: listStore({
+          "session-current": { blank: false, updatedAt: 1_001 },
+        }),
       }),
     });
 
