@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import type { QaWorkItem } from "../../types.js";
 import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
@@ -63,6 +63,43 @@ function isDelegationTool(name: string): boolean {
   return name === "subagent" || name === "subagent_fork";
 }
 
+/**
+ * Whether two work items render identically. The transcript projection
+ * rebuilds every item object on each published frame, so memoized work rows
+ * compare by rendered content instead of by reference.
+ */
+export function sameWorkItem(a: QaWorkItem, b: QaWorkItem): boolean {
+  if (a === b) return true;
+  if (a.id !== b.id || a.kind !== b.kind) return false;
+  if (a.kind === "tool" && b.kind === "tool") {
+    return (
+      a.name === b.name &&
+      a.label === b.label &&
+      a.summary === b.summary &&
+      a.input === b.input &&
+      a.output === b.output &&
+      a.status === b.status &&
+      a.subagentId === b.subagentId &&
+      a.startedAt === b.startedAt &&
+      a.endedAt === b.endedAt
+    );
+  }
+  if (a.kind !== "tool" && b.kind !== "tool") {
+    return a.text === b.text && a.status === b.status;
+  }
+  return false;
+}
+
+/** Whether two work item lists render identically, item for item. */
+export function sameWorkItems(
+  a: readonly QaWorkItem[],
+  b: readonly QaWorkItem[],
+): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => sameWorkItem(item, b[index] as QaWorkItem));
+}
+
 function WorkItemIcon({ item }: { readonly item: QaWorkItem }) {
   if (item.kind !== "tool") return <ThinkIcon />;
   if (isDelegationTool(item.name)) return <RobotIcon />;
@@ -94,167 +131,186 @@ function toolStatusLabel(
   }
 }
 
-function QaToolWorkItem({
-  item,
-}: {
-  readonly item: Extract<QaWorkItem, { kind: "tool" }>;
-}) {
-  const expandable = item.input !== null || item.output !== null;
-  const delegation = isDelegationTool(item.name);
-  const header = (
-    <>
-      <span className="dsh-qa-work-item__icon" data-state={item.status}>
-        <WorkItemIcon item={item} />
-      </span>
-      <span className="dsh-qa-work-item__label">{item.label}</span>
-      <span className="dsh-qa-work-item__summary">{item.summary}</span>
-      {item.subagentId === undefined ? null : (
-        <span className="dsh-qa-work-item__agent-id" title={item.subagentId}>
-          {item.subagentId.slice(0, 8)}
+const QaToolWorkItem = memo(
+  function QaToolWorkItem({
+    item,
+  }: {
+    readonly item: Extract<QaWorkItem, { kind: "tool" }>;
+  }) {
+    const expandable = item.input !== null || item.output !== null;
+    const delegation = isDelegationTool(item.name);
+    const header = (
+      <>
+        <span className="dsh-qa-work-item__icon" data-state={item.status}>
+          <WorkItemIcon item={item} />
         </span>
-      )}
-      <span className="dsh-qa-sr-only">{toolStatusLabel(item.status)}</span>
-      {expandable ? <Chevron open={false} /> : null}
-    </>
-  );
+        <span className="dsh-qa-work-item__label">{item.label}</span>
+        <span className="dsh-qa-work-item__summary">{item.summary}</span>
+        {item.subagentId === undefined ? null : (
+          <span className="dsh-qa-work-item__agent-id" title={item.subagentId}>
+            {item.subagentId.slice(0, 8)}
+          </span>
+        )}
+        <span className="dsh-qa-sr-only">{toolStatusLabel(item.status)}</span>
+        {expandable ? <Chevron open={false} /> : null}
+      </>
+    );
 
-  if (!expandable) {
+    if (!expandable) {
+      return (
+        <div
+          className="dsh-qa-work-item dsh-qa-work-item--tool"
+          data-tool={delegation ? "subagent" : undefined}
+        >
+          {header}
+        </div>
+      );
+    }
     return (
-      <div
-        className="dsh-qa-work-item dsh-qa-work-item--tool"
+      <details
+        className="dsh-qa-work-tool"
         data-tool={delegation ? "subagent" : undefined}
       >
-        {header}
-      </div>
-    );
-  }
-  return (
-    <details
-      className="dsh-qa-work-tool"
-      data-tool={delegation ? "subagent" : undefined}
-    >
-      <summary className="dsh-qa-work-item dsh-qa-work-item--tool">
-        {header}
-      </summary>
-      <div className="dsh-qa-work-tool__body">
-        {item.input === null ? null : (
-          <section aria-label={`Входные данные: ${item.label}`}>
-            <span>Входные данные</span>
-            <pre>{item.input}</pre>
-          </section>
-        )}
-        {item.output === null ? null : (
-          <section aria-label={`Результат: ${item.label}`}>
-            <span>Результат</span>
-            <pre>{item.output}</pre>
-          </section>
-        )}
-      </div>
-    </details>
-  );
-}
-
-function QaTextWorkItem({
-  item,
-  renderMarkdown,
-}: {
-  readonly item: Extract<QaWorkItem, { kind: "reasoning" | "progress" }>;
-  readonly renderMarkdown: boolean;
-}) {
-  return (
-    <section
-      className="dsh-qa-work-item dsh-qa-work-item--text"
-      data-state={item.status}
-      aria-label={item.kind === "reasoning" ? "Рассуждение" : "Ход работы"}
-    >
-      <div className="dsh-qa-work-item__text-head">
-        <span className="dsh-qa-work-item__icon">
-          <ThinkIcon />
-        </span>
-        <span className="dsh-qa-work-item__label">
-          {item.kind === "reasoning" ? "Размышление" : "Ход работы"}
-        </span>
-      </div>
-      <div className="dsh-qa-work-item__text">
-        {renderMarkdown ? <Markdown text={item.text} /> : item.text}
-      </div>
-    </section>
-  );
-}
-
-export function QaWorkGroup({
-  status,
-  startedAt,
-  endedAt,
-  items,
-  renderMarkdown,
-}: QaWorkGroupProps) {
-  const [open, setOpen] = useState(status === "running");
-  const [now, setNow] = useState(() => Date.now());
-  const previousStatus = useRef(status);
-
-  useEffect(() => {
-    if (previousStatus.current === "running" && status === "complete") {
-      setOpen(false);
-    } else if (previousStatus.current === "complete" && status === "running") {
-      setOpen(true);
-    }
-    previousStatus.current = status;
-  }, [status]);
-
-  useEffect(() => {
-    if (status !== "running" || startedAt === undefined) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1_000);
-    return () => clearInterval(timer);
-  }, [startedAt, status]);
-
-  const duration =
-    startedAt === undefined
-      ? null
-      : formatWorkDuration((endedAt ?? now) - startedAt);
-  const label =
-    status === "running"
-      ? `${
-          THINKING_PHRASES[
-            Math.floor(
-              Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
-            ) % THINKING_PHRASES.length
-          ]
-        }${duration === null ? "" : ` (${duration})`}`
-      : duration === null
-        ? "Ход работы"
-        : `Готово за ${duration}`;
-
-  return (
-    <section className="dsh-qa-work" data-state={status}>
-      <button
-        type="button"
-        className="dsh-qa-work__toggle"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {status === "running" ? (
-          <span className="dsh-qa-work__spinner" aria-hidden="true" />
-        ) : null}
-        <span>{label}</span>
-        <Chevron open={open} />
-      </button>
-      {open ? (
-        <div className="dsh-qa-work__body">
-          {items.map((item) =>
-            item.kind === "tool" ? (
-              <QaToolWorkItem key={item.id} item={item} />
-            ) : (
-              <QaTextWorkItem
-                key={item.id}
-                item={item}
-                renderMarkdown={renderMarkdown}
-              />
-            ),
+        <summary className="dsh-qa-work-item dsh-qa-work-item--tool">
+          {header}
+        </summary>
+        <div className="dsh-qa-work-tool__body">
+          {item.input === null ? null : (
+            <section aria-label={`Входные данные: ${item.label}`}>
+              <span>Входные данные</span>
+              <pre>{item.input}</pre>
+            </section>
+          )}
+          {item.output === null ? null : (
+            <section aria-label={`Результат: ${item.label}`}>
+              <span>Результат</span>
+              <pre>{item.output}</pre>
+            </section>
           )}
         </div>
-      ) : null}
-    </section>
-  );
-}
+      </details>
+    );
+  },
+  (prev, next) => sameWorkItem(prev.item, next.item),
+);
+
+const QaTextWorkItem = memo(
+  function QaTextWorkItem({
+    item,
+    renderMarkdown,
+  }: {
+    readonly item: Extract<QaWorkItem, { kind: "reasoning" | "progress" }>;
+    readonly renderMarkdown: boolean;
+  }) {
+    return (
+      <section
+        className="dsh-qa-work-item dsh-qa-work-item--text"
+        data-state={item.status}
+        aria-label={item.kind === "reasoning" ? "Рассуждение" : "Ход работы"}
+      >
+        <div className="dsh-qa-work-item__text-head">
+          <span className="dsh-qa-work-item__icon">
+            <ThinkIcon />
+          </span>
+          <span className="dsh-qa-work-item__label">
+            {item.kind === "reasoning" ? "Размышление" : "Ход работы"}
+          </span>
+        </div>
+        <div className="dsh-qa-work-item__text">
+          {renderMarkdown ? <Markdown text={item.text} /> : item.text}
+        </div>
+      </section>
+    );
+  },
+  (prev, next) =>
+    prev.renderMarkdown === next.renderMarkdown &&
+    sameWorkItem(prev.item, next.item),
+);
+
+export const QaWorkGroup = memo(
+  function QaWorkGroup({
+    status,
+    startedAt,
+    endedAt,
+    items,
+    renderMarkdown,
+  }: QaWorkGroupProps) {
+    const [open, setOpen] = useState(status === "running");
+    const [now, setNow] = useState(() => Date.now());
+    const previousStatus = useRef(status);
+
+    useEffect(() => {
+      if (previousStatus.current === "running" && status === "complete") {
+        setOpen(false);
+      } else if (
+        previousStatus.current === "complete" &&
+        status === "running"
+      ) {
+        setOpen(true);
+      }
+      previousStatus.current = status;
+    }, [status]);
+
+    useEffect(() => {
+      if (status !== "running" || startedAt === undefined) return;
+      setNow(Date.now());
+      const timer = setInterval(() => setNow(Date.now()), 1_000);
+      return () => clearInterval(timer);
+    }, [startedAt, status]);
+
+    const duration =
+      startedAt === undefined
+        ? null
+        : formatWorkDuration((endedAt ?? now) - startedAt);
+    const label =
+      status === "running"
+        ? `${
+            THINKING_PHRASES[
+              Math.floor(
+                Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
+              ) % THINKING_PHRASES.length
+            ]
+          }${duration === null ? "" : ` (${duration})`}`
+        : duration === null
+          ? "Ход работы"
+          : `Готово за ${duration}`;
+
+    return (
+      <section className="dsh-qa-work" data-state={status}>
+        <button
+          type="button"
+          className="dsh-qa-work__toggle"
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          {status === "running" ? (
+            <span className="dsh-qa-work__spinner" aria-hidden="true" />
+          ) : null}
+          <span>{label}</span>
+          <Chevron open={open} />
+        </button>
+        {open ? (
+          <div className="dsh-qa-work__body">
+            {items.map((item) =>
+              item.kind === "tool" ? (
+                <QaToolWorkItem key={item.id} item={item} />
+              ) : (
+                <QaTextWorkItem
+                  key={item.id}
+                  item={item}
+                  renderMarkdown={renderMarkdown}
+                />
+              ),
+            )}
+          </div>
+        ) : null}
+      </section>
+    );
+  },
+  (prev, next) =>
+    prev.status === next.status &&
+    prev.startedAt === next.startedAt &&
+    prev.endedAt === next.endedAt &&
+    prev.renderMarkdown === next.renderMarkdown &&
+    sameWorkItems(prev.items, next.items),
+);
