@@ -11,7 +11,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       placeholder: "Задайте вопрос…",
       logoUrl: null,
       disclaimer:
-        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов. Не делитесь конфиденциальными данными.",
+        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
     }),
     session: Object.freeze({
       policy: "browser-persistent",
