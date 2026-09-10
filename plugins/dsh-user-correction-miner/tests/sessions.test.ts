@@ -1,4 +1,5 @@
 import type { SessionLogSnapshot, SessionRecord } from "@deepseek-ai/dsh-session-query";
+import { SessionLogOffset } from "@deepseek-ai/dsh-session";
 import { describe, expect, it, vi } from "vitest";
 import { SessionSource } from "../src/dsh/sessions.js";
 import { header } from "./fixtures/sessions.js";
@@ -10,7 +11,11 @@ describe("SessionSource", () => {
     const records = [wanted, other].map(
       (value) => ({ header: value, live: false, persisted: true }) as SessionRecord,
     );
-    const snapshot = { session: wanted, events: [] } as SessionLogSnapshot;
+    const snapshot = {
+      session: wanted,
+      events: [],
+      inheritedEventCount: SessionLogOffset(0),
+    } as SessionLogSnapshot;
     const readSession = vi.fn(async () => snapshot);
     const source = new SessionSource({
       async listSessions() {
