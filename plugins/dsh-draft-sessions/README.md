@@ -117,7 +117,7 @@ The current implementation deliberately does not send prompts, modify ordinary S
 
 - Node.js `^22.19.0` or `>=24.0.0`
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` with the public `sidebar.footer.action` list slot
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` with the public `sidebar.footer.action` list slot
 
 The published rc.2 client is supported without patches. Sidebar tab hosts are detected through the optional versioned `__dshNativeTabs@1` cooperation protocol; the plugin falls back to the stock footer action instead of replacing the workspace browser.
 

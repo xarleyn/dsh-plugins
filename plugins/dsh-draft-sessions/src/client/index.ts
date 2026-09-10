@@ -1,17 +1,13 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type {
-  ConnectionHandle,
-  IApiClient,
-} from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ISessions,
-  IWorkspaces,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { IWorkspaces } from "@deepseek-ai/dsh-api-workspace-controller/client";
 import type { IConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-api-session-controller/remote-events";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import draftSessionsRemote from "../remote.js";
 import { DraftComposerBridge } from "./composer.js";
-import { DraftSessionLifecycle, envelopeSource } from "./lifecycle.js";
+import { DraftSessionLifecycle } from "./lifecycle.js";
 import { DraftSidebarSource } from "./sidebar.js";
 import { DraftShortcutController } from "./shortcut.js";
 import { activateWorkspaceContribution } from "./workspace-contribution.js";
@@ -25,7 +21,6 @@ export * from "./workspace-contribution.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
-    connection: ConnectionHandle & { readonly api: IApiClient };
     sessions: ISessions;
     workspaces: IWorkspaces;
     conversation: IConversation;
@@ -38,7 +33,6 @@ declare module "@deepseek-ai/cordis" {
 
 export const inject = [
   "remote",
-  "connection",
   "sessions",
   "workspaces",
   "conversation",
@@ -51,12 +45,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const dispose = await ctx.remote.$mount(draftSessionsRemote);
   await ctx.inject(["remote.draftSessions"], (remoteCtx) => {
     const drafts = remoteCtx.remote.draftSessions;
-    const envelopes = envelopeSource(remoteCtx.connection.api);
     const sidebar = new DraftSidebarSource(remoteCtx, drafts);
     const lifecycle = new DraftSessionLifecycle(remoteCtx, {
       drafts,
-      sessions: remoteCtx.connection.api.sessions,
-      ...(envelopes === undefined ? {} : { envelopes }),
+      sessions: remoteCtx.sessions,
+      status: (listener) =>
+        remoteCtx.remote.$on("api-session/status", listener),
       sidebar,
     });
     const composer = new DraftComposerBridge(remoteCtx, {

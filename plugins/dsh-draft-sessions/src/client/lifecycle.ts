@@ -1,15 +1,13 @@
 import { Service, type Context } from "@deepseek-ai/cordis";
-import type {
-  IApiClient,
-  RpcError,
-  RpcMessage,
-  WorkspaceId,
-} from "@deepseek-ai/dsh-client-connection/client";
+import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { WorkspaceId } from "@deepseek-ai/dsh-api-workspace-controller/client";
+import type { SessionId } from "@deepseek-ai/dsh-session/types";
 import type {
   RemoteFailure,
   RemoteResult,
   TypertRemoteNamespace,
 } from "@deepseek-ai/dsh-typert-protocol";
+import type {} from "@deepseek-ai/dsh-api-session-controller/remote-events";
 import type {
   CreateDraftRequest,
   DraftSession,
@@ -18,13 +16,12 @@ import type {
 import type { DraftSidebarSource } from "./sidebar.js";
 
 type DraftSessionsRemote = TypertRemoteNamespace<"draftSessions">;
-type SessionsApi = Pick<IApiClient["sessions"], "create" | "list">;
+type SessionsApi = Pick<ISessions, "create" | "list" | "refresh">;
 
-export interface ApiEnvelopeSource {
-  subscribeEnvelopes(
-    listener: (batch: readonly RpcMessage[]) => void,
-  ): () => void;
-}
+/** Subscription seam for the Host Session running-status events. */
+export type SessionStatusSource = (
+  listener: (sessionId: string, running: boolean) => void,
+) => () => void;
 
 export type CreateManagedDraftRequest = Omit<CreateDraftRequest, "sessionId">;
 
@@ -67,7 +64,8 @@ export class DraftLifecycleError extends Error {
 export interface DraftSessionLifecycleOptions {
   readonly drafts: DraftSessionsRemote;
   readonly sessions: SessionsApi;
-  readonly envelopes?: ApiEnvelopeSource;
+  /** Session running-status subscription; omitted wires the ctx remote face. */
+  readonly status?: SessionStatusSource;
   readonly sidebar?: Pick<DraftSidebarSource, "accept" | "remove">;
 }
 
@@ -75,30 +73,17 @@ export type BeforeDraftFinalizeListener = (
   sessionId: string,
 ) => void | Promise<void>;
 
-const MAX_PENDING_PROMPTS = 1_000;
-
-export function envelopeSource(api: IApiClient): ApiEnvelopeSource | undefined {
-  const candidate = api as IApiClient & Partial<ApiEnvelopeSource>;
-  const subscribeEnvelopes = candidate.subscribeEnvelopes;
-  return typeof subscribeEnvelopes === "function"
-    ? { subscribeEnvelopes: subscribeEnvelopes.bind(candidate) }
-    : undefined;
+function sessionStatusSource(ctx: Context): SessionStatusSource {
+  return (listener) => ctx.remote.$on("api-session/status", listener);
 }
 
-function promptSessionId(payload: unknown): string | undefined {
-  if (typeof payload !== "object" || payload === null) return undefined;
-  const sessionId = Reflect.get(payload, "sessionId");
-  return typeof sessionId === "string" && sessionId !== ""
-    ? sessionId
-    : undefined;
-}
-
-function promptAccepted(value: unknown): boolean {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Reflect.get(value, "accepted") === true
-  );
+function failureOf(cause: unknown): Pick<RemoteFailure, "code" | "message"> {
+  // SessionCreateError folds the wire failure into `rpcError`; keep its code
+  // so consumers can discriminate the same business codes as before.
+  const rpcError = (cause as { readonly rpcError?: RemoteFailure } | undefined)
+    ?.rpcError;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return rpcError ?? { code: "gateway/internal", message };
 }
 
 /**
@@ -112,7 +97,6 @@ export class DraftSessionLifecycle extends Service {
   private readonly sessions: SessionsApi;
   private readonly sidebar:
     Pick<DraftSidebarSource, "accept" | "remove"> | undefined;
-  private readonly pendingPrompts = new Map<string, string>();
   private readonly beforeFinalizeListeners =
     new Set<BeforeDraftFinalizeListener>();
   private observationQueue = Promise.resolve();
@@ -120,16 +104,20 @@ export class DraftSessionLifecycle extends Service {
   constructor(ctx: Context, options?: DraftSessionLifecycleOptions) {
     super(ctx, "draftSessionLifecycle");
     this.drafts = options?.drafts ?? ctx.remote.draftSessions;
-    this.sessions = options?.sessions ?? ctx.connection.api.sessions;
+    this.sessions = options?.sessions ?? ctx.sessions;
     this.sidebar = options?.sidebar;
-    const envelopes =
-      options?.envelopes ??
-      (options === undefined ? envelopeSource(ctx.connection.api) : undefined);
-    if (envelopes !== undefined) {
+    const status =
+      options?.status ??
+      (options === undefined ? sessionStatusSource(ctx) : undefined);
+    if (status !== undefined) {
       ctx.effect(
         () =>
-          envelopes.subscribeEnvelopes((batch) => {
-            this.observeEnvelopes(batch);
+          status((sessionId, running) => {
+            // A running Session means the Host accepted a prompt for it.
+            if (!running) return;
+            this.enqueueObservation(() =>
+              this.finalizeAcceptedSession(sessionId),
+            );
           }),
         "draft-sessions.observe-prompts",
       );
@@ -160,16 +148,10 @@ export class DraftSessionLifecycle extends Service {
 
   /** Return the draft unchanged when its Session exists, otherwise rebind it. */
   async ensureShell(draft: DraftSession): Promise<DraftSession> {
-    const response = await this.sessions.list({});
-    if (!response.result.ok) {
-      throw this.apiError("session-list", response.result.error, { draft });
-    }
     if (
       draft.sessionId !== null &&
-      response.result.value.items.some(
-        (session: { readonly sessionId: unknown }) =>
-          session.sessionId === draft.sessionId,
-      )
+      this.sessions.list.getSnapshot().byId[draft.sessionId as SessionId] !==
+        undefined
     ) {
       return draft;
     }
@@ -182,22 +164,15 @@ export class DraftSessionLifecycle extends Service {
       await this.drafts.list({ workspaceId }),
       "draft-list",
     );
-    const response = await this.sessions.list({});
-    if (!response.result.ok) {
-      throw this.apiError("session-list", response.result.error);
-    }
-    const existing = new Map(
-      response.result.value.items.map(
-        (session: { readonly sessionId: unknown; readonly blank: unknown }) => [
-          String(session.sessionId),
-          session.blank !== false,
-        ],
+    const blankById = new Map(
+      Object.entries(this.sessions.list.getSnapshot().byId).map(
+        ([sessionId, summary]) => [sessionId, summary.blank],
       ),
     );
     const reconciled: DraftSession[] = [];
     for (const draft of drafts) {
       const blank =
-        draft.sessionId === null ? undefined : existing.get(draft.sessionId);
+        draft.sessionId === null ? undefined : blankById.get(draft.sessionId);
       if (blank === false) {
         await this.deleteDraft(draft);
       } else {
@@ -220,15 +195,17 @@ export class DraftSessionLifecycle extends Service {
    * as nonblank. Returns false while the transition is not yet observable.
    */
   async finalizeAcceptedSession(sessionId: string): Promise<boolean> {
-    const response = await this.sessions.list({});
-    if (!response.result.ok) {
-      throw this.apiError("session-list", response.result.error);
+    try {
+      // The store may lag the running-status event; re-pull the Host cut first.
+      await this.sessions.refresh();
+    } catch (cause) {
+      throw new DraftLifecycleError("session-list", failureOf(cause), {
+        cause,
+      });
     }
-    const materialized = response.result.value.items.some(
-      (session: { readonly sessionId: unknown; readonly blank: unknown }) =>
-        session.sessionId === sessionId && session.blank === false,
-    );
-    if (!materialized) return false;
+    const summary =
+      this.sessions.list.getSnapshot().byId[sessionId as SessionId];
+    if (summary === undefined || summary.blank) return false;
 
     for (const listener of [...this.beforeFinalizeListeners]) {
       await listener(sessionId);
@@ -256,35 +233,24 @@ export class DraftSessionLifecycle extends Service {
     );
     this.sidebar?.accept(materializing);
 
-    let response: Awaited<ReturnType<SessionsApi["create"]>>;
+    let sessionId: string;
     try {
-      response = await this.sessions.create({
-        workspaceId: materializing.workspaceId as WorkspaceId,
-        ...(materializing.agentPresetId === undefined
-          ? {}
-          : { agentPreset: materializing.agentPresetId }),
-      });
+      // The Host derives the Session's agent preset itself; the draft's
+      // stored preset id stays metadata on the durable record.
+      sessionId = String(
+        await this.sessions.create({
+          workspaceId: materializing.workspaceId as WorkspaceId,
+        }),
+      );
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      const failed = await this.markFailed(materializing, message);
-      throw new DraftLifecycleError(
-        "session-create",
-        { code: "transport", message },
-        { draft: failed, cause },
-      );
-    }
-
-    if (!response.result.ok) {
-      const failed = await this.markFailed(
-        materializing,
-        response.result.error.message,
-      );
-      throw this.apiError("session-create", response.result.error, {
+      const failure = failureOf(cause);
+      const failed = await this.markFailed(materializing, failure.message);
+      throw new DraftLifecycleError("session-create", failure, {
         draft: failed,
+        cause,
       });
     }
 
-    const sessionId = String(response.result.value.sessionId);
     const rebound = this.remoteValue(
       await this.drafts.rebind({
         id: materializing.id,
@@ -327,33 +293,6 @@ export class DraftSessionLifecycle extends Service {
     return deleted;
   }
 
-  private observeEnvelopes(batch: readonly RpcMessage[]): void {
-    for (const message of batch) {
-      const rpcId = String(message.rpcId);
-      if (
-        message.type === "client-request" &&
-        message.method === "session.prompt"
-      ) {
-        const sessionId = promptSessionId(message.payload);
-        if (sessionId === undefined) continue;
-        this.pendingPrompts.set(rpcId, sessionId);
-        while (this.pendingPrompts.size > MAX_PENDING_PROMPTS) {
-          const oldest = this.pendingPrompts.keys().next().value as
-            string | undefined;
-          if (oldest === undefined) break;
-          this.pendingPrompts.delete(oldest);
-        }
-        continue;
-      }
-      if (message.type !== "server-response") continue;
-      const sessionId = this.pendingPrompts.get(rpcId);
-      if (sessionId === undefined) continue;
-      this.pendingPrompts.delete(rpcId);
-      if (!message.result.ok || !promptAccepted(message.result.value)) continue;
-      this.enqueueObservation(() => this.finalizeAcceptedSession(sessionId));
-    }
-  }
-
   private enqueueObservation(operation: () => Promise<unknown>): void {
     const result = this.observationQueue.then(operation, operation);
     this.observationQueue = result.then(
@@ -375,16 +314,5 @@ export class DraftSessionLifecycle extends Service {
   ): T {
     if (result.ok) return result.value;
     throw new DraftLifecycleError(stage, result.error, options);
-  }
-
-  private apiError(
-    stage: DraftLifecycleStage,
-    error: RpcError,
-    options: {
-      readonly draft?: DraftSession;
-      readonly sessionId?: string;
-    } = {},
-  ): DraftLifecycleError {
-    return new DraftLifecycleError(stage, error, options);
   }
 }

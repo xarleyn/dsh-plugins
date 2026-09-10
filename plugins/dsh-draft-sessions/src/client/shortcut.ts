@@ -1,10 +1,13 @@
 import { Service, type Context } from "@deepseek-ai/cordis";
 import type {
   ISessions,
-  IWorkspaces,
   SessionListState,
-  WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "@deepseek-ai/dsh-api-session-controller/client";
+import type {
+  IWorkspaces,
+  WorkspaceSnapshot,
+  WorkspaceView,
+} from "@deepseek-ai/dsh-api-workspace-controller/client";
 import type { DraftSession } from "../shared/types.js";
 import type { DraftComposerBridge } from "./composer.js";
 import type { DraftSessionLifecycle } from "./lifecycle.js";
@@ -42,10 +45,14 @@ function browserShortcuts(): ShortcutSource | undefined {
   };
 }
 
-/** Resolve the same current/recent Workspace axis used by New Session. */
+/**
+ * Resolve the same current/recent Workspace axis used by New Session: the
+ * current Session's Workspace first, then the most recently active Workspace
+ * in Host order (activity mirrors ui-workspace's own fallback).
+ */
 export function resolveDraftWorkspace(
-  sessions: Pick<SessionListState, "current">,
-  workspaces: Pick<WorkspaceListState, "items" | "recentWorkspaceId">,
+  sessions: Pick<SessionListState, "current" | "byId" | "phase">,
+  workspaces: Pick<WorkspaceSnapshot, "items" | "phase">,
 ): string | undefined {
   const currentId = sessions.current;
   if (currentId !== undefined) {
@@ -54,9 +61,34 @@ export function resolveDraftWorkspace(
     );
     if (current !== undefined) return String(current.workspaceId);
   }
-  return workspaces.recentWorkspaceId === undefined
-    ? undefined
-    : String(workspaces.recentWorkspaceId);
+  if (workspaces.phase !== "ready" || sessions.phase !== "ready") {
+    return undefined;
+  }
+  return recentWorkspaceId(workspaces.items, sessions.byId);
+}
+
+/** Stable tie-breaking follows Host Workspace order (mirrors ui-workspace). */
+function recentWorkspaceId(
+  workspaces: readonly WorkspaceView[],
+  sessions: SessionListState["byId"],
+): string | undefined {
+  let selected: string | undefined;
+  let selectedTime = Number.NEGATIVE_INFINITY;
+  for (const workspace of workspaces) {
+    let latest = Number.NEGATIVE_INFINITY;
+    for (const sessionId of workspace.sessionIds) {
+      const session = sessions[sessionId];
+      if (session !== undefined) latest = Math.max(latest, session.updatedAt);
+    }
+    if (latest === Number.NEGATIVE_INFINITY) {
+      latest = Date.parse(workspace.createdAt);
+    }
+    if (selected === undefined || latest > selectedTime) {
+      selected = String(workspace.workspaceId);
+      selectedTime = latest;
+    }
+  }
+  return selected;
 }
 
 /** Global Ctrl/Cmd+Shift+N action for a distinct draft Session. */
