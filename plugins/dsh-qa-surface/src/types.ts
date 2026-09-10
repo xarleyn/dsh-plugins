@@ -1,4 +1,7 @@
 export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
+export type QaSandboxMode = "read-only";
+export type QaApprovalPolicy = "never";
+export type QaToolPolicyMode = "allow-list";
 
 export interface QaSurfaceConfig {
   readonly enabled?: boolean;
@@ -32,11 +35,32 @@ export interface QaSurfaceConfig {
     readonly showReasoning?: boolean;
     readonly renderMarkdown?: boolean;
     readonly maxContentWidth?: number;
+    readonly showSessionList?: boolean;
   };
   readonly suggestedQuestions?: readonly string[];
   readonly interaction?: {
     readonly approvals?: "blocked";
     readonly questions?: "unsupported";
+  };
+  readonly lockdown?: {
+    readonly enabled?: boolean;
+    readonly enforceFixedAgentPreset?: boolean;
+    readonly enforceFixedWorkspace?: boolean;
+    readonly enforceFixedModel?: boolean;
+    readonly sandboxMode?: QaSandboxMode;
+    readonly approvalPolicy?: QaApprovalPolicy;
+    readonly permissionPreset?: string;
+    readonly allowPermissionChanges?: false;
+    readonly allowSlashCommands?: false;
+    readonly allowSettingsMutation?: false;
+    readonly allowSessionReset?: boolean;
+    readonly allowSessionRename?: false;
+    readonly allowSessionDelete?: false;
+    readonly allowArbitrarySessionOpen?: false;
+    readonly toolPolicy?: {
+      readonly mode?: QaToolPolicyMode;
+      readonly allow?: readonly string[];
+    };
   };
   readonly embedding?: {
     readonly frameAncestors?: string | null;
@@ -72,18 +96,53 @@ export interface ResolvedQaSurfaceConfig {
     readonly showStop: boolean;
     readonly showTimestamps: boolean;
     readonly showToolActivity: boolean;
-    readonly showReasoning: false;
+    readonly showReasoning: boolean;
     readonly renderMarkdown: boolean;
     readonly maxContentWidth: number;
+    readonly showSessionList: boolean;
   };
   readonly suggestedQuestions: readonly string[];
   readonly interaction: {
     readonly approvals: "blocked";
     readonly questions: "unsupported";
   };
+  readonly lockdown: {
+    readonly enabled: boolean;
+    readonly enforceFixedAgentPreset: boolean;
+    readonly enforceFixedWorkspace: boolean;
+    readonly enforceFixedModel: boolean;
+    readonly sandboxMode: QaSandboxMode;
+    readonly approvalPolicy: QaApprovalPolicy;
+    readonly permissionPreset: string;
+    readonly allowPermissionChanges: false;
+    readonly allowSlashCommands: false;
+    readonly allowSettingsMutation: false;
+    readonly allowSessionReset: boolean;
+    readonly allowSessionRename: false;
+    readonly allowSessionDelete: false;
+    readonly allowArbitrarySessionOpen: false;
+    readonly toolPolicy: {
+      readonly mode: QaToolPolicyMode;
+      readonly allow: readonly string[];
+    };
+  };
   readonly embedding: {
     readonly frameAncestors: string | null;
   };
+}
+
+/** Host-attested facts required before the QA composer may become writable. */
+export interface QaLockdownProof {
+  readonly sessionId: string;
+  readonly enabled: boolean;
+  readonly agentPresetMatches: boolean;
+  readonly workspaceMatches: boolean;
+  readonly modelMatches: boolean;
+  readonly sandboxIsReadOnly: boolean;
+  readonly approvalIsNever: boolean;
+  readonly permissionPreset: string;
+  readonly toolPolicyLoaded: boolean;
+  readonly toolAllowList: readonly string[];
 }
 
 export type QaMessage =
@@ -107,6 +166,35 @@ export type QaMessage =
       readonly text: string;
       readonly status: "info" | "error";
       readonly timestamp?: number;
+    }
+  | {
+      readonly id: string;
+      readonly role: "work";
+      readonly turn: number;
+      readonly status: "running" | "complete";
+      readonly startedAt?: number;
+      readonly endedAt?: number;
+      readonly items: readonly QaWorkItem[];
+    };
+
+export type QaWorkItem =
+  | {
+      readonly id: string;
+      readonly kind: "reasoning" | "progress";
+      readonly text: string;
+      readonly status: "running" | "complete";
+    }
+  | {
+      readonly id: string;
+      readonly kind: "tool";
+      readonly name: string;
+      readonly label: string;
+      readonly summary: string;
+      readonly input: string | null;
+      readonly output: string | null;
+      readonly status: "running" | "ok" | "error" | "stopped";
+      readonly startedAt?: number;
+      readonly endedAt?: number;
     };
 
 export type QaSessionPhase =
@@ -125,4 +213,6 @@ export interface QaSessionState {
   readonly error: string | null;
   readonly canSend: boolean;
   readonly canStop: boolean;
+  /** Bumped whenever this browser's chat index changes (add/forget). */
+  readonly chatsRevision: number;
 }

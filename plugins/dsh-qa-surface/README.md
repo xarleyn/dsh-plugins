@@ -11,8 +11,13 @@ Session and Agent Loop.
 - stays invisible outside the configured route;
 - creates or restores one real DSH Session;
 - renders only user text, assistant-visible text and safe status messages;
-- supports streaming, Stop, New chat, safe Markdown and mobile layouts;
+- supports streaming, Stop, optional New chat, safe Markdown, copy actions and
+  a responsive first-party-style conversation layout;
+- optionally shows a minimal per-browser chat-history sidebar
+  (`ui.showSessionList`) whose switching re-runs policy attestation;
 - blocks unsupported approvals/questions instead of auto-approving them;
+- pins locked sessions to `read-only` + `approval=never` before Send is enabled;
+- applies a Host-side tool allow-list plus a monotonic execution guard;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
@@ -58,14 +63,14 @@ config:
     path: /qa
     matchChildren: true
   branding:
-    title: Internal Assistant
-    subtitle: Answers about the internal platform
-    welcomeMessage: How can I help?
-    placeholder: Ask a question...
+    title: Внутренний помощник
+    subtitle: Отвечает на вопросы о внутренней платформе
+    welcomeMessage: Чем могу помочь?
+    placeholder: Задайте вопрос…
     logoUrl: null
   session:
     policy: browser-persistent
-    storageKey: dsh-qa-surface
+    storageKey: dsh-qa-surface.session
     workspaceId: company-knowledge
     fixedSessionId: null
     agentPreset: qa-assistant
@@ -74,19 +79,38 @@ config:
     reasoningEffort: null
   ui:
     showHeader: true
-    showReset: true
+    showReset: false
     showStop: true
     showTimestamps: false
     showToolActivity: false
     showReasoning: false
     renderMarkdown: true
     maxContentWidth: 900
+    showSessionList: false
   suggestedQuestions:
-    - How do I request access?
-    - Where is the runbook?
+    - Как запросить доступ?
+    - Где лежит инструкция?
   interaction:
     approvals: blocked
     questions: unsupported
+  lockdown:
+    enabled: true
+    enforceFixedAgentPreset: true
+    enforceFixedWorkspace: true
+    enforceFixedModel: true
+    sandboxMode: read-only
+    approvalPolicy: never
+    permissionPreset: qa-read-only
+    allowPermissionChanges: false
+    allowSlashCommands: false
+    allowSettingsMutation: false
+    allowSessionReset: false
+    allowSessionRename: false
+    allowSessionDelete: false
+    allowArbitrarySessionOpen: false
+    toolPolicy:
+      mode: allow-list
+      allow: []
 ```
 
 `workspaceId` is recommended for a deterministic assistant. Without it, DSH
@@ -95,8 +119,12 @@ skills, knowledge connections and permission policy in `agentPreset`, not in
 this UI plugin.
 
 Model override is opt-in: `provider` and `model` must be set together. Slash
-commands are rejected as plain QA input in this MVP. `showReasoning: true` is
-also rejected; raw reasoning is intentionally outside the safe MVP surface.
+commands are rejected as plain QA input. Reasoning and tool details remain
+hidden by default. Enabling `ui.showReasoning` and `ui.showToolActivity` adds a
+turn-scoped work disclosure: it stays open while the assistant is working,
+then collapses to `Worked for ...` before the final answer. Tool capability is
+still controlled exclusively by `lockdown.toolPolicy.allow`; the display flags
+do not grant tools.
 
 Session policies:
 
@@ -106,8 +134,53 @@ Session policies:
 - `fixed` requires `fixedSessionId`, never creates a replacement, and is meant
   only for controlled single-user deployments.
 
-New chat creates another DSH Session and leaves the old one intact for operator
-inspection.
+New chat is disabled by default. To expose it, set `lockdown.allowSessionReset:
+true` plus either `ui.showReset: true` (header button) or `ui.showSessionList:
+true` (sidebar button); it creates another DSH Session and leaves the old one
+intact for operator inspection.
+
+`ui.showSessionList: true` renders a minimal chat-history sidebar beside the
+conversation. It lists only the chats this browser has actually used: the
+client keeps a per-browser id index under
+`<storageKey>:v1:<route>:chats` in localStorage (capped at 50, most recently
+used first) and intersects it with the Host session list, so users sharing the
+deployment never see each other's chats. Switching re-runs the full policy
+attestation; a chat the Host no longer lists is pruned from the index. Each
+row carries a two-click delete control that removes the chat from this
+browser's index; deleting the chat that is currently open continues in a
+fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
+exposes no session-deletion seam. The sidebar hides below 600px viewports.
+
+Locked mode requires a deployment permission preset named `qa-read-only`.
+Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
+its process-wide default:
+
+```yaml
+- id: permission
+  name: "@deepseek-ai/dsh-permission-presets"
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      qa-read-only:
+        sandbox: read-only
+        approval: never
+        name: QA Read Only
+        description: No filesystem mutations and no permission escalation.
+```
+
+The shipped tool allow-list is empty. Add only reviewed read-only tool names
+from the actual deployment. A name that is not registered fails closed. The
+Host restriction retains exact allow-listed tools from the agent preset's
+ancestor scope, and the additional execution guard also denies session-scoped
+tools and `run_code` unless their exact names are allowed.
 
 ## Security and deployment
 
@@ -115,11 +188,51 @@ inspection.
 with the same deployment authentication and DSH browser trust policy as the
 operator UI. The plugin never auto-approves a permission request or answers an
 interactive agent question. Configure a least-privilege, non-interactive agent
-preset for end-user deployments.
+preset for end-user deployments. On a shared Host, a user who can open `/`,
+call the normal DSH APIs, or use another authenticated client can bypass the
+QA presentation. Use a dedicated DSH process/identity and network boundary
+when `/qa` must be a strong security boundary.
 
 The `embedding.frameAncestors` field is reserved deployment metadata in 0.1.x;
 the plugin does not mutate CSP headers. Configure `frame-ancestors` at the
 trusted reverse proxy if iframe embedding is required.
+
+### Serving the QA rig over the LAN
+
+The plugin itself needs no changes to be reachable from other machines; the
+web server's bind address is a deployment composition decision. DSH refuses
+`dsh --host 0.0.0.0` on the command line on purpose, so network exposure is
+expressed with the shipped patch overlay instead:
+
+```bash
+pnpm dsh --profile qa-surface --no-open --port 3082 \
+  --patch plugins/dsh-qa-surface/deploy/qa-lan.patch.yml
+```
+
+The overlay sets the `webserver` row to `0.0.0.0` while keeping the `--port`
+flag working. On an all-interfaces bind DSH derives trusted `/api` authorities
+from the machine's LAN IPv4 addresses, so `http://<lan-ip>:3082/qa` works
+without extra configuration; users reaching a DNS name instead of an IP
+literal need `--trusted-host <name>` on the same command line.
+
+LAN browsers cannot read the DSH settings namespace (settings RPCs are pinned
+to loopback by the gateway). The plugin covers this itself: a browser that
+sees the namespace as unavailable reads the effective configuration through
+the `qaSurface/describe` Host Remote, so branding, session pinning and
+lockdown UI switches keep working over the LAN. Host-side enforcement was
+never dependent on that read path.
+
+What a LAN deployment does not change:
+
+- DSH has no authentication or TLS on this port; anyone who can reach it can
+  drive the harness, and the full operator UI at `/` stays reachable next to
+  `/qa`. Scope the port's reachability (subnet-limited firewall rule, VPN or
+  tailnet, authenticating reverse proxy) and use a dedicated process identity.
+- Loopback-only settings, directory picking and credential RPCs stay refused
+  for LAN clients; the first-load welcome notice re-appears on reload because
+  remote browsers have no settings persistence.
+
+See [Configuration](docs/CONFIGURATION.md) for the config-channel details.
 
 See [Architecture](docs/ARCHITECTURE.md),
 [Configuration](docs/CONFIGURATION.md), and

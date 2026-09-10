@@ -10,9 +10,10 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import http from "node:http";
 
 const repo = dirname(
   fileURLToPath(new URL("../package.json", import.meta.url)),
@@ -22,6 +23,8 @@ const compatibility = JSON.parse(
 );
 const dshVersion = compatibility.deepseekHarness.testedReleases.at(-1);
 const withBrowser = process.argv.includes("--browser");
+const presetScopedTool = process.platform === "win32" ? "pwsh" : "bash";
+const keepFailedSmoke = process.env.DSH_QA_KEEP_SMOKE === "1";
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-qa-packed-smoke-"));
 const packageDirectory = join(temporaryRoot, "package");
 const toolDirectory = join(temporaryRoot, "tool");
@@ -112,12 +115,51 @@ function stopHost() {
   });
 }
 
+/**
+ * One HTTP request against the loopback socket with an explicit Host header.
+ * The /api browser-trust fence judges the Host header, so this speaks with
+ * the exact authority a real LAN browser would send while the connection
+ * itself never leaves loopback.
+ */
+function requestWithAuthority(port, authority, path, payload) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: payload === undefined ? "GET" : "POST",
+        headers: {
+          host: authority,
+          ...(payload === undefined
+            ? {}
+            : { "content-type": "application/json" }),
+        },
+      },
+      (response) => {
+        let raw = "";
+        response.setEncoding("utf8").on("data", (chunk) => (raw += chunk));
+        response.once("end", () =>
+          resolve({
+            status: response.statusCode,
+            headers: response.headers,
+            body: raw,
+          }),
+        );
+      },
+    );
+    request.once("error", reject);
+    request.end(payload === undefined ? undefined : JSON.stringify(payload));
+  });
+}
+
 let completed = false;
 const hostLog = [];
 try {
   await Promise.all([
     mkdir(packageDirectory, { recursive: true }),
     mkdir(toolDirectory, { recursive: true }),
+    mkdir(dshHome, { recursive: true }),
     mkdir(workspacePath, { recursive: true }),
   ]);
   await writeFile(join(toolDirectory, "package.json"), '{"private":true}\n');
@@ -162,6 +204,51 @@ try {
       cwd: workspacePath,
       env: dshEnv,
     },
+  );
+  await writeFile(
+    join(dshHome, "profiles", "web", "cordis.patch.yml"),
+    `- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      qa-read-only:
+        sandbox: read-only
+        approval: never
+        name: QA Read Only
+        description: No filesystem mutations and no permission escalation.
+- id: dsh-qa-surface
+  config:
+    enabled: true
+    route:
+      path: /qa
+      matchChildren: true
+    session:
+      agentPreset: minimal
+    ui:
+      showReset: false
+    lockdown:
+      enabled: true
+      sandboxMode: read-only
+      approvalPolicy: never
+      permissionPreset: qa-read-only
+      allowSessionReset: false
+      toolPolicy:
+        mode: allow-list
+        # The minimal preset contributes its shell through an ancestor scope. Keeping
+        # this non-empty catches a regression where the first attestation
+        # accidentally restricts the session to global-only tools and makes
+        # every later attestation fail with unknown-tools.
+        allow:
+          - ${presetScopedTool}
+`,
   );
   const composed = await run(
     process.execPath,
@@ -211,14 +298,184 @@ try {
     );
   }
 
+  // LAN pass: boot a second host through the shipped deployment overlay
+  // (all-interfaces bind) and speak to it with the Host header a LAN browser
+  // would send. The browser-trust fence derives trusted authorities from the
+  // machine's LAN IPv4 literals under a 0.0.0.0 bind, so a LAN client must
+  // pass the fence, receive the effective QA configuration through the
+  // plugin's describe Remote (settings RPCs are loopback-pinned), and get the
+  // /qa navigation redirect. Machines without a LAN IPv4 literal skip the pass.
+  const lanAddress = Object.values(networkInterfaces())
+    .flat()
+    .find(
+      (iface) => iface?.family === "IPv4" && iface?.internal === false,
+    )?.address;
+  if (lanAddress === undefined) {
+    console.log(
+      "packed DSH QA smoke: no LAN IPv4 interface; skipped the LAN pass",
+    );
+  } else {
+    const lanPort = await freePort();
+    const lanAuthority = `${lanAddress}:${lanPort}`;
+    const strangerAuthority = `203.0.113.9:${lanPort}`;
+    let lanHost;
+    let lanExited = true;
+    const lanLog = [];
+    try {
+      lanHost = spawn(
+        process.execPath,
+        [
+          dshBin,
+          // The launcher's --patch must precede the first web-app flag.
+          "web",
+          "--patch",
+          join(repo, "deploy", "qa-lan.patch.yml"),
+          "--no-open",
+          "--port",
+          String(lanPort),
+        ],
+        {
+          cwd: workspacePath,
+          env: dshEnv,
+          stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
+        },
+      );
+      lanHost.stdout
+        .setEncoding("utf8")
+        .on("data", (chunk) => lanLog.push(chunk));
+      lanHost.stderr
+        .setEncoding("utf8")
+        .on("data", (chunk) => lanLog.push(chunk));
+      lanHost.once("exit", () => (lanExited = true));
+      lanExited = false;
+      await waitFor(async () => {
+        const response = await requestWithAuthority(
+          lanPort,
+          `127.0.0.1:${lanPort}`,
+          "/",
+        );
+        return response.status === 200;
+      }, "LAN-bound DSH host");
+      const navigation = await requestWithAuthority(
+        lanPort,
+        lanAuthority,
+        "/qa",
+      );
+      if (
+        navigation.status !== 302 ||
+        !navigation.headers.location?.startsWith("/?__dsh_qa_route=%2Fqa")
+      ) {
+        throw new Error(
+          `LAN /qa did not redirect through the QA navigation route: ${navigation.status} ${JSON.stringify(navigation.headers.location)}`,
+        );
+      }
+      const described = await requestWithAuthority(
+        lanPort,
+        lanAuthority,
+        "/api/qaSurface/describe",
+        {
+          type: "client-request",
+          rpcId: `qa-smoke-${randomUUID()}`,
+          method: "qaSurface/describe",
+          payload: { args: {} },
+        },
+      );
+      const describedEnvelope = JSON.parse(described.body);
+      const describedConfig = describedEnvelope.result?.value;
+      if (
+        described.status !== 200 ||
+        describedEnvelope.result?.ok !== true ||
+        describedConfig?.enabled !== true ||
+        describedConfig?.route?.path !== "/qa" ||
+        describedConfig?.session?.agentPreset !== "minimal" ||
+        describedConfig?.lockdown?.permissionPreset !== "qa-read-only"
+      ) {
+        throw new Error(
+          `LAN describe did not return the effective QA configuration: ${described.status} ${described.body.slice(0, 400)}`,
+        );
+      }
+      const pinned = await requestWithAuthority(
+        lanPort,
+        lanAuthority,
+        "/api/settings.describe",
+        {
+          type: "client-request",
+          rpcId: `qa-smoke-${randomUUID()}`,
+          method: "settings.describe",
+          payload: { args: {} },
+        },
+      );
+      if (pinned.status !== 403) {
+        throw new Error(
+          `LAN settings RPC must stay loopback-pinned, got ${pinned.status}`,
+        );
+      }
+      const stranger = await requestWithAuthority(
+        lanPort,
+        strangerAuthority,
+        "/api/qaSurface/describe",
+        {
+          type: "client-request",
+          rpcId: `qa-smoke-${randomUUID()}`,
+          method: "qaSurface/describe",
+          payload: { args: {} },
+        },
+      );
+      if (stranger.status !== 403) {
+        throw new Error(
+          `an untrusted Host authority must not reach the plugin Remote, got ${stranger.status}`,
+        );
+      }
+    } catch (error) {
+      hostLog.push(...lanLog);
+      throw error;
+    } finally {
+      if (!lanExited && lanHost !== undefined) {
+        await new Promise((resolve) => {
+          lanHost.once("exit", resolve);
+          lanHost.kill("SIGTERM");
+        });
+      }
+    }
+  }
+
   if (withBrowser) {
     const { chromium } = await import("playwright");
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({
       viewport: { width: 375, height: 720 },
     });
+    const incompatibleSession = await rpc(origin, "session.create", {
+      agentPreset: "standard",
+    });
+    await page.addInitScript(
+      ({ key, sessionId }) => globalThis.localStorage.setItem(key, sessionId),
+      {
+        key: "dsh-qa-surface.session:v1:/qa:session",
+        sessionId: incompatibleSession.sessionId,
+      },
+    );
     const errors = [];
+    const apiRequests = [];
+    const policyResponses = [];
     page.on("pageerror", (error) => errors.push(String(error)));
+    page.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    page.on("request", (request) => {
+      if (request.url().includes("/api/")) apiRequests.push(request.url());
+    });
+    page.on("response", (response) => {
+      if (response.url().includes("/api/qaSurface/secureSession")) {
+        void response
+          .text()
+          .then((body) => policyResponses.push(`${response.status()}: ${body}`))
+          .catch((error) =>
+            policyResponses.push(`read failed: ${String(error)}`),
+          );
+      }
+    });
     await page.goto(`${origin}/qa`);
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
     const qaUrl = new URL(page.url());
@@ -251,20 +508,72 @@ try {
       );
     }
     await page
-      .getByRole("heading", { name: "Assistant", exact: true })
+      .getByRole("heading", { name: "Помощник", exact: true })
       .waitFor();
-    await page.getByRole("textbox", { name: "Ask a question" }).waitFor();
-    await page.getByRole("button", { name: "Send", exact: true }).waitFor();
+    await page.getByRole("textbox", { name: "Задать вопрос" }).waitFor();
+    const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
+    const send = page.getByRole("button", { name: "Отправить", exact: true });
+    await send.waitFor();
+    try {
+      await waitFor(
+        () => prompt.isEnabled(),
+        "locked QA policy attestation",
+        15_000,
+      );
+    } catch (error) {
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      const alerts = await page.getByRole("alert").allTextContents();
+      const surfaceText = await page.locator("main.dsh-qa-surface").innerText();
+      const phase = await page
+        .locator("main.dsh-qa-surface")
+        .getAttribute("data-phase");
+      const persistedSession = await page.evaluate(() =>
+        globalThis.localStorage.getItem(
+          "dsh-qa-surface.session:v1:/qa:session",
+        ),
+      );
+      const hostSessions = await rpc(origin, "session.list", {});
+      throw new Error(
+        `locked QA policy did not attest; phase=${phase} session=${JSON.stringify(persistedSession)} alerts=${JSON.stringify(alerts)} surface=${JSON.stringify(surfaceText)} hostSessions=${hostSessions.items.length} policyResponses=${JSON.stringify(policyResponses)} apiRequests=${JSON.stringify(apiRequests)} browserErrors=${JSON.stringify(errors)}`,
+        { cause: error },
+      );
+    }
+    if (await page.getByRole("button", { name: "Новый чат" }).count()) {
+      throw new Error("locked QA surface exposed session reset");
+    }
     await waitFor(
       () =>
         page.evaluate(() =>
-          globalThis.localStorage.getItem("dsh-qa-surface:v1:/qa:session"),
+          globalThis.localStorage.getItem(
+            "dsh-qa-surface.session:v1:/qa:session",
+          ),
         ),
       "QA session persistence",
     );
     const sessions = await rpc(origin, "session.list", {});
-    if (sessions.items.length === 0)
-      throw new Error("QA route did not create a DSH Session");
+    const persistedSession = await page.evaluate(() =>
+      globalThis.localStorage.getItem("dsh-qa-surface.session:v1:/qa:session"),
+    );
+    if (
+      sessions.items.length !== 2 ||
+      persistedSession === incompatibleSession.sessionId
+    ) {
+      throw new Error(
+        `QA route did not replace its incompatible persisted Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
+      );
+    }
+    const repeatedProof = await rpc(origin, "qaSurface/secureSession", {
+      args: { sessionId: persistedSession },
+    });
+    if (
+      repeatedProof.sessionId !== persistedSession ||
+      JSON.stringify(repeatedProof.toolAllowList) !==
+        JSON.stringify([presetScopedTool])
+    ) {
+      throw new Error(
+        `repeat policy attestation did not preserve preset-scoped tools: ${JSON.stringify(repeatedProof)}`,
+      );
+    }
     await page.goto(origin);
     await page.locator("main.dsh-qa-surface").waitFor({ state: "detached" });
     if (
@@ -288,5 +597,9 @@ try {
   await browser?.close().catch(() => undefined);
   await stopHost().catch(() => undefined);
   if (!completed) console.error(hostLog.join(""));
-  await rm(temporaryRoot, { recursive: true, force: true });
+  if (!completed && keepFailedSmoke) {
+    console.error(`kept failed smoke workspace: ${temporaryRoot}`);
+  } else {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
 }
