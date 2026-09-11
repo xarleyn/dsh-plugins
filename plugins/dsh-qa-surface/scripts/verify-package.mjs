@@ -106,6 +106,8 @@ assert.match(client, /secureSession/u);
 assert.match(client, /Настройки помощника недоступны\./u);
 assert.match(client, /dsh-qa-surface:v1|:v1:/u);
 assert.match(client, /dsh-qa-sidebar/u);
+assert.match(client, /dsh-qa-width-handle/u);
+assert.match(client, /:content-width/u);
 assert.match(client, /История чатов/u);
 assert.match(client, /policy attestation failed \(reason:/u);
 assert.match(client, /data-dsh-qa-surface|dshQaSurface/u);

@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type KeyboardEvent,
 } from "react";
 import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
@@ -38,6 +39,10 @@ import {
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
 import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
+import {
+  QaWidthHandle,
+  useQaContentWidth,
+} from "./components/QaWidthHandle.js";
 import {
   collectVariantGroups,
   VariantSwitcher,
@@ -141,6 +146,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const config = configState.config;
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
+  const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   /** Per group: how many answers back from the newest is shown (0 = newest). */
   const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
@@ -158,6 +164,14 @@ export function QaSurface(props: QaSurfaceProps) {
   const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
     [],
   );
+  const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
+  const widthHandlers = useQaContentWidth({
+    active: route.active,
+    root: chat,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:content-width`,
+    maxContentWidth: config.ui.maxContentWidth,
+  });
 
   useEffect(() => {
     if (!route.active) {
@@ -287,7 +301,6 @@ export function QaSurface(props: QaSurfaceProps) {
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
-  const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
   const groups = collectVariantGroups(state.messages);
   const turnToGroup = new Map<number, string>();
   const selectedTurn = new Map<string, number>();
@@ -473,123 +486,137 @@ export function QaSurface(props: QaSurfaceProps) {
         ) : null}
 
         <div
-          ref={transcript}
-          className="dsh-qa-transcript"
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            nearBottom.current =
-              element.scrollHeight - element.scrollTop - element.clientHeight <
-              96;
-          }}
+          ref={chat}
+          className="dsh-qa-chat"
+          style={
+            {
+              "--dsh-qa-content-width": `${config.ui.maxContentWidth}px`,
+            } as CSSProperties
+          }
         >
           <div
-            className="dsh-qa-transcript__inner"
-            style={{ maxWidth: config.ui.maxContentWidth }}
+            ref={transcript}
+            className="dsh-qa-transcript"
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              nearBottom.current =
+                element.scrollHeight -
+                  element.scrollTop -
+                  element.clientHeight <
+                96;
+            }}
           >
-            {empty ? (
-              <section
-                className="dsh-qa-welcome"
-                aria-labelledby="dsh-qa-welcome-title"
-              >
-                <h2 id="dsh-qa-welcome-title">
-                  {config.branding.welcomeMessage}
-                </h2>
-                {config.branding.subtitle === "" ? null : (
-                  <p>{config.branding.subtitle}</p>
-                )}
-              </section>
-            ) : (
-              visibleMessages.map((message, index) => {
-                const group =
-                  message.role === "user"
-                    ? groups.find(
-                        (candidate) => candidate.groupId === message.id,
-                      )
-                    : undefined;
-                const isLast = index === visibleMessages.length - 1;
-                return (
-                  <div key={message.id} className="dsh-qa-message-slot">
-                    <QaMessage
-                      message={message}
-                      renderMarkdown={config.ui.renderMarkdown}
-                      showTimestamp={config.ui.showTimestamps}
-                      stateKey={stateKey}
-                      resolveImage={resolveImage}
-                      onRegenerate={
-                        isLast &&
-                        message.role === "assistant" &&
-                        message.status === "committed" &&
-                        controller !== undefined
-                          ? handleRegenerate
-                          : undefined
-                      }
-                      onOpenSources={
-                        config.sources.enabled && config.sources.display.footer
-                          ? handleOpenSources
-                          : undefined
-                      }
-                    />
-                    {group !== undefined && group.turns.length > 1 ? (
-                      <VariantSwitcher
-                        count={group.turns.length}
-                        offset={variantOffsets[group.groupId] ?? 0}
-                        onStep={(step) =>
-                          setVariantOffsets((offsets) => ({
-                            ...offsets,
-                            [group.groupId]: step,
-                          }))
+            <div className="dsh-qa-transcript__inner">
+              {empty ? (
+                <section
+                  className="dsh-qa-welcome"
+                  aria-labelledby="dsh-qa-welcome-title"
+                >
+                  <h2 id="dsh-qa-welcome-title">
+                    {config.branding.welcomeMessage}
+                  </h2>
+                  {config.branding.subtitle === "" ? null : (
+                    <p>{config.branding.subtitle}</p>
+                  )}
+                </section>
+              ) : (
+                visibleMessages.map((message, index) => {
+                  const group =
+                    message.role === "user"
+                      ? groups.find(
+                          (candidate) => candidate.groupId === message.id,
+                        )
+                      : undefined;
+                  const isLast = index === visibleMessages.length - 1;
+                  return (
+                    <div key={message.id} className="dsh-qa-message-slot">
+                      <QaMessage
+                        message={message}
+                        renderMarkdown={config.ui.renderMarkdown}
+                        showTimestamp={config.ui.showTimestamps}
+                        stateKey={stateKey}
+                        resolveImage={resolveImage}
+                        onRegenerate={
+                          isLast &&
+                          message.role === "assistant" &&
+                          message.status === "committed" &&
+                          controller !== undefined
+                            ? handleRegenerate
+                            : undefined
+                        }
+                        onOpenSources={
+                          config.sources.enabled &&
+                          config.sources.display.footer
+                            ? handleOpenSources
+                            : undefined
                         }
                       />
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-            {state.error === null ? null : (
-              <div className="dsh-qa-error" role="alert">
-                <span>{state.error}</span>
-                {state.phase === "error" ? (
-                  <button
-                    type="button"
-                    onClick={() => void controller?.ensureSession()}
-                  >
-                    Повторить
-                  </button>
-                ) : null}
-              </div>
-            )}
+                      {group !== undefined && group.turns.length > 1 ? (
+                        <VariantSwitcher
+                          count={group.turns.length}
+                          offset={variantOffsets[group.groupId] ?? 0}
+                          onStep={(step) =>
+                            setVariantOffsets((offsets) => ({
+                              ...offsets,
+                              [group.groupId]: step,
+                            }))
+                          }
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+              {state.error === null ? null : (
+                <div className="dsh-qa-error" role="alert">
+                  <span>{state.error}</span>
+                  {state.phase === "error" ? (
+                    <button
+                      type="button"
+                      onClick={() => void controller?.ensureSession()}
+                    >
+                      Повторить
+                    </button>
+                  ) : null}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <footer className="dsh-qa-footer">
-          <div
-            className="dsh-qa-footer__inner"
-            style={{ maxWidth: config.ui.maxContentWidth }}
-          >
-            <QaComposer
-              placeholder={config.branding.placeholder}
-              quickQuestions={empty ? config.suggestedQuestions : NO_QUESTIONS}
-              canSend={state.canSend}
-              canStop={state.canStop}
-              running={state.phase === "running"}
-              showStop={config.ui.showStop}
-              status={status}
-              images={pendingImages}
-              onImagesChange={setPendingImages}
-              onSend={handleSend}
-              onStop={handleStop}
-            />
-            {config.branding.disclaimer === "" ? null : (
-              <p className="dsh-qa-footer__disclaimer">
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <circle cx="8" cy="8" r="5.75" />
-                  <path d="M8 7.25v3.5m0-5.25v.5" />
-                </svg>
-                {config.branding.disclaimer}
-              </p>
-            )}
-          </div>
-        </footer>
+          <footer className="dsh-qa-footer">
+            <div className="dsh-qa-footer__inner">
+              <QaComposer
+                placeholder={config.branding.placeholder}
+                quickQuestions={
+                  empty ? config.suggestedQuestions : NO_QUESTIONS
+                }
+                canSend={state.canSend}
+                canStop={state.canStop}
+                running={state.phase === "running"}
+                showStop={config.ui.showStop}
+                status={status}
+                images={pendingImages}
+                onImagesChange={setPendingImages}
+                onSend={handleSend}
+                onStop={handleStop}
+              />
+              {config.branding.disclaimer === "" ? null : (
+                <p className="dsh-qa-footer__disclaimer">
+                  <svg viewBox="0 0 16 16" aria-hidden="true">
+                    <circle cx="8" cy="8" r="5.75" />
+                    <path d="M8 7.25v3.5m0-5.25v.5" />
+                  </svg>
+                  {config.branding.disclaimer}
+                </p>
+              )}
+            </div>
+          </footer>
+          {!empty
+            ? (["left", "right"] as const).map((side) => (
+                <QaWidthHandle key={side} side={side} {...widthHandlers} />
+              ))
+            : null}
+        </div>
       </div>
       {agentsOpen && agentRows.length > 0 ? (
         <QaAgentsDrawer

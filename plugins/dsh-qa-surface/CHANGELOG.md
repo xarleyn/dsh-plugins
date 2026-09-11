@@ -1,5 +1,7 @@
 ## 0.2.0 (2026-09-10)
 
+- Added DSH-style symmetric transcript/composer width handles with adaptive
+  defaults, viewport clamping, and per-route browser persistence.
 - Added Host-owned structured source provenance for parent and delegated turns,
   replayable `qa/sources` snapshots, dedupe/ranking, opaque-provider reporting,
   grouped source UI, and safe rendered/raw file previews.
