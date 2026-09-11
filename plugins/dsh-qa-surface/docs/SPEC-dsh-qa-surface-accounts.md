@@ -160,3 +160,32 @@ channel) keeps projecting only client-safe values.
   auth-required recovery; auth gate rendering in the component suite.
 - Packed verification keeps asserting the standard card shell and now the
   auth gate markup.
+
+## Follow-ups adopted from dsh-auth-gate (same release)
+
+A review of the independent `dsh-auth-gate` plugin yielded four additions,
+folded into this spec rather than shipped as a separate design:
+
+1. **Proxy-side config-plane deny list** (qa-deploy kit). The deploy proxy
+   rewrites Host/Origin to loopback, which makes the `/api` trust fence treat
+   every proxied request as loopback — including the privileged methods
+   (`settings.*`, `credentials.*`, `host.*`, `llm.*`). The proxy now answers
+   403 for those method prefixes when the caller is not loopback. The QA
+   surface never calls them (its configuration rides `qaSurface/describe`);
+   the operator on the serving machine keeps the full plane.
+2. **Plugin-side launch-token bridge.** The `/qa` route handler defers the
+   marker hand-off for cookie-less browsers: it 302s to a relative
+   `/?token=…` first (token resolved once per process from
+   `connection.authenticatedUrl`, the dsh-auth-gate pattern), so the
+   transparent entry works without the proxy. `entry.cookieBootstrap`
+   (default true) turns it off. Presence of any `dsh-auth-` cookie skips the
+   bridge; a token-less bridge or a disabled flag falls back to the marker
+   hand-off.
+3. **`qa-accounts` management CLI** (`bin` entry). `list`, `add
+--password-stdin`, `set-role`, `disable`, `enable`, `revoke` — so account
+   administration never requires hand-editing the JSON file.
+4. **Account state and token revocation.** Accounts gain a `disabled` flag
+   (refused at login with `account-disabled`, invisible to `whoami`) and a
+   `tokenVersion` burned into every token: `disable` and `revoke` bump it,
+   invalidating all live tokens server-side — logout is no longer purely a
+   client-side act.

@@ -21,3 +21,13 @@ non-loopback hostnames into the QA route - the navigation-marker hand-off is
 never redirected (no loops), `/?ui=admin` persists an operator bypass and
 `/?ui=qa` clears it. Accounts are an identity layer for the QA surface, not a
 harness boundary: QA users still hold the shared host launch-token cookie.
+
+Follow-ups adopted from a review of the independent dsh-auth-gate plugin: a
+proxy-side deny list for the privileged config-plane RPC methods behind the
+deploy proxy's Host/Origin rewrite, a plugin-side launch-token bridge
+(`entry.cookieBootstrap`) that performs the one-time host-cookie exchange on
+the `/qa` route itself, a `qa-accounts` bin CLI (list/add/set-role/disable/
+enable/revoke) so account administration never requires hand-editing the
+JSON file, and per-account state — a `disabled` flag refusing logins with
+`account-disabled` plus a `tokenVersion` burned into tokens that
+`disable`/`revoke` bump, making logout and lockout server-side facts.
