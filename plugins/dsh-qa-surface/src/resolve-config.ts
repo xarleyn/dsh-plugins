@@ -65,6 +65,12 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       }),
     }),
     embedding: Object.freeze({ frameAncestors: null }),
+    accounts: Object.freeze({
+      enabled: false,
+      allowRegistration: true,
+      sessionTtlDays: 30,
+    }),
+    entry: Object.freeze({ redirectNonLoopback: true }),
     sources: Object.freeze({
       enabled: true,
       collect: Object.freeze({
@@ -311,6 +317,18 @@ export function resolveConfig(
       "dsh-qa-surface: sources.filePreview.maxMarkdownRenderBytes cannot exceed maxBytes",
     );
   }
+  const sessionTtlDays =
+    input.accounts?.sessionTtlDays ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.sessionTtlDays;
+  if (
+    !Number.isSafeInteger(sessionTtlDays) ||
+    sessionTtlDays < 1 ||
+    sessionTtlDays > 365
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: accounts.sessionTtlDays must be an integer from 1 to 365",
+    );
+  }
 
   return Object.freeze({
     enabled: input.enabled ?? DEFAULT_QA_SURFACE_CONFIG.enabled,
@@ -404,6 +422,19 @@ export function resolveConfig(
     }),
     embedding: Object.freeze({
       frameAncestors: optionalText(input.embedding?.frameAncestors),
+    }),
+    accounts: Object.freeze({
+      enabled:
+        input.accounts?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.accounts.enabled,
+      allowRegistration:
+        input.accounts?.allowRegistration ??
+        DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,
+      sessionTtlDays,
+    }),
+    entry: Object.freeze({
+      redirectNonLoopback:
+        input.entry?.redirectNonLoopback ??
+        DEFAULT_QA_SURFACE_CONFIG.entry.redirectNonLoopback,
     }),
     sources: Object.freeze({
       enabled:
