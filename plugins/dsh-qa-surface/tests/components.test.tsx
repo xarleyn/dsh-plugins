@@ -15,6 +15,10 @@ import {
 } from "../src/client/components/QaWorkGroup.js";
 import { Markdown } from "../src/client/components/Markdown.js";
 import { QaSourcesDrawer } from "../src/client/components/QaSourcesDrawer.js";
+import {
+  QA_CHANGELOG,
+  QA_VERSION,
+} from "../src/client/components/QaChangelog.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import {
   buildChatRows,
@@ -995,6 +999,85 @@ it("hides the delete control when the deployment omits it", () => {
     />,
   );
   expect(container.querySelector(".dsh-qa-sidebar__item-delete")).toBeNull();
+});
+
+describe("sidebar version and changelog", () => {
+  it("opens the changelog dialog from the footer version button", () => {
+    const { container } = render(
+      <QaSidebar
+        rows={[]}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    expect(container.querySelector(".dsh-qa-changelog")).toBeNull();
+    const version = screen.getByRole("button", { name: /Версия / });
+    expect(version.textContent).toBe(`Версия ${QA_VERSION}`);
+    fireEvent.click(version);
+    const dialog = document.querySelector(".dsh-qa-changelog") as HTMLElement;
+    expect(dialog.getAttribute("role")).toBe("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByText("История версий")).toBeTruthy();
+    expect(document.querySelectorAll(".dsh-qa-changelog__entry").length).toBe(
+      QA_CHANGELOG.length,
+    );
+    expect(document.querySelectorAll(".dsh-qa-changelog__current").length).toBe(
+      1,
+    );
+    fireEvent.click(screen.getByLabelText("Закрыть историю версий"));
+    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+  });
+
+  it("closes the changelog dialog on Escape and backdrop clicks", () => {
+    render(
+      <QaSidebar
+        rows={[]}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Версия / }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Версия / }));
+    fireEvent.click(document.querySelector(".dsh-qa-changelog") as HTMLElement);
+    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+    // A click inside the panel does not close the dialog.
+    fireEvent.click(screen.getByRole("button", { name: /Версия / }));
+    fireEvent.click(
+      document.querySelector(".dsh-qa-changelog__panel") as HTMLElement,
+    );
+    expect(document.querySelector(".dsh-qa-changelog")).toBeTruthy();
+  });
+
+  it("keeps the bundled version in sync with the package and changelog", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    // jsdom gives import.meta.url an http scheme; resolve from the package root.
+    const packageJson = JSON.parse(
+      await readFile(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { version: string };
+    expect(QA_VERSION).toBe(packageJson.version);
+    const changelog = await readFile(
+      resolve(process.cwd(), "CHANGELOG.md"),
+      "utf8",
+    );
+    const released = [
+      // git-cliff releases use "## X.Y.Z (date)", the legacy header " - ".
+      ...changelog.matchAll(/^## (\d+\.\d+\.\d+)(?: \(| - )/gmu),
+    ].map((match) => match[1] as string);
+    expect(QA_CHANGELOG.map((entry) => entry.version)).toEqual(released);
+  });
 });
 
 describe("render equality helpers", () => {

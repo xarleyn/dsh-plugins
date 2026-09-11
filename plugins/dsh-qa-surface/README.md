@@ -231,6 +231,10 @@ browser's index; deleting the chat that is currently open continues in a
 fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
 exposes no session-deletion seam. The sidebar hides below 600px viewports.
 
+The sidebar footer shows the deployed plugin version. Clicking it opens a
+changelog dialog with a curated per-version summary (features and fixes);
+Escape or a backdrop click closes it.
+
 Locked mode requires a deployment permission preset named `qa-read-only`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
 its process-wide default:
