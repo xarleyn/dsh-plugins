@@ -497,7 +497,9 @@ describe("QA message", () => {
 
   it("rates answers with mutually exclusive, persisted like and dislike", () => {
     window.localStorage.clear();
-    const stateKey = "dsh-qa-surface.session:v1:/qa";
+    // The surface scopes the ratings prefix to the chat: message ids repeat
+    // across chats, so the key below is what QaSurface hands to QaMessage.
+    const stateKey = "dsh-qa-surface.session:v1:/qa:chat:session-a";
     const view = render(
       <QaMessage
         message={{
@@ -550,6 +552,35 @@ describe("QA message", () => {
         }) as HTMLButtonElement
       ).getAttribute("aria-pressed"),
     ).toBe("false");
+  });
+
+  it("keeps equal message ids of different chats rated independently", () => {
+    window.localStorage.clear();
+    const chatA = "dsh-qa-surface.session:v1:/qa:chat:session-a";
+    const chatB = "dsh-qa-surface.session:v1:/qa:chat:session-b";
+    const message = {
+      id: "assistant:3",
+      role: "assistant" as const,
+      text: "Answer",
+      status: "committed" as const,
+    };
+    const base = { message, renderMarkdown: false, showTimestamp: false };
+    const first = render(<QaMessage {...base} stateKey={chatA} />);
+    fireEvent.click(screen.getByRole("button", { name: "Нравится" }));
+    first.unmount();
+    const second = render(<QaMessage {...base} stateKey={chatB} />);
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Нравится",
+        }) as HTMLButtonElement
+      ).getAttribute("aria-pressed"),
+    ).toBe("false");
+    expect(
+      JSON.parse(window.localStorage.getItem(`${chatA}:ratings`) ?? "{}"),
+    ).toEqual({ "assistant:3": "up" });
+    expect(window.localStorage.getItem(`${chatB}:ratings`)).toBeNull();
+    second.unmount();
   });
 });
 

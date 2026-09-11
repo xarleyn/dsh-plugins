@@ -8,22 +8,6 @@ import type {
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
 
-/** Resolved image URLs live for the page lifetime; failures retry on demand. */
-const imageUrlCache = new Map<string, Promise<string>>();
-
-function cachedImageUrl(
-  attachmentId: string,
-  resolve: (attachmentId: string) => Promise<string>,
-): Promise<string> {
-  let pending = imageUrlCache.get(attachmentId);
-  if (pending === undefined) {
-    pending = resolve(attachmentId);
-    imageUrlCache.set(attachmentId, pending);
-    pending.catch(() => imageUrlCache.delete(attachmentId));
-  }
-  return pending;
-}
-
 function QaAttachedImage({
   image,
   resolve,
@@ -34,7 +18,9 @@ function QaAttachedImage({
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
-    cachedImageUrl(image.attachmentId, resolve).then(
+    // Deduplication and revocation live in the controller's per-chat asset
+    // repository; this effect only projects one resolution.
+    resolve(image.attachmentId).then(
       (resolved) => {
         if (alive) setUrl(resolved);
       },
@@ -70,7 +56,10 @@ export interface QaMessageProps {
   readonly message: QaMessageModel;
   readonly renderMarkdown: boolean;
   readonly showTimestamp: boolean;
-  /** Storage prefix persisted message ratings live under. */
+  /**
+   * Storage prefix persisted message ratings live under. Callers scope it to
+   * the chat: message ids repeat across chats (`assistant:<seq>`).
+   */
   readonly stateKey?: string;
   /** Ask for a fresh variant of this answer; omit to hide the control. */
   readonly onRegenerate?: () => void;
