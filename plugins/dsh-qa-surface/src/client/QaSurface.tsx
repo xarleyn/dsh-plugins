@@ -45,6 +45,14 @@ import {
 } from "./components/QaAgentsDrawer.js";
 import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
 import {
+  QA_TURN_ANCHOR_ATTRIBUTE,
+  QaTurnRail,
+  buildTurnRailItems,
+  computeActiveTurn,
+  turnScrollTarget,
+  type QaTurnRailItem,
+} from "./components/QaTurnRail.js";
+import {
   QaWidthHandle,
   useQaContentWidth,
 } from "./components/QaWidthHandle.js";
@@ -166,6 +174,10 @@ export function QaSurface(props: QaSurfaceProps) {
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
+  /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
+  const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
+  const [activeTurn, setActiveTurn] = useState<number | null>(null);
+  const activeTurnFrame = useRef<number | null>(null);
   /** Per group: how many answers back from the newest is shown (0 = newest). */
   const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
     {},
@@ -325,6 +337,55 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
+  /** Turn the transcript's reading line currently owns; rAF-throttled. */
+  const syncActiveTurn = useCallback(() => {
+    const element = transcript.current;
+    const items = railItemsRef.current;
+    if (element === null || items.length === 0) {
+      setActiveTurn((current) => (current === null ? current : null));
+      return;
+    }
+    const next = computeActiveTurn(element, items);
+    setActiveTurn((current) => (current === next ? current : next));
+  }, []);
+  const scheduleActiveTurnSync = useCallback(() => {
+    if (activeTurnFrame.current !== null) return;
+    if (typeof requestAnimationFrame === "undefined") {
+      syncActiveTurn();
+      return;
+    }
+    activeTurnFrame.current = requestAnimationFrame(() => {
+      activeTurnFrame.current = null;
+      syncActiveTurn();
+    });
+  }, [syncActiveTurn]);
+  useEffect(
+    () => () => {
+      if (
+        activeTurnFrame.current !== null &&
+        typeof cancelAnimationFrame !== "undefined"
+      ) {
+        cancelAnimationFrame(activeTurnFrame.current);
+      }
+    },
+    [],
+  );
+  const handleTurnNavigate = useCallback((item: QaTurnRailItem) => {
+    const element = transcript.current;
+    if (element === null) return;
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(item.id)
+        : item.id;
+    const row = element.querySelector<HTMLElement>(
+      `[${QA_TURN_ANCHOR_ATTRIBUTE}="${escaped}"]`,
+    );
+    if (row === null) return;
+    element.scrollTop = turnScrollTarget(element, row);
+    nearBottom.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+    setActiveTurn(item.turn);
+  }, []);
   const handleOpenSources = useCallback(
     (
       sources: readonly QaSource[],
@@ -347,7 +408,8 @@ export function QaSurface(props: QaSurfaceProps) {
     if (element !== null && nearBottom.current) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [state.messages]);
+    scheduleActiveTurnSync();
+  }, [state.messages, scheduleActiveTurnSync]);
 
   if (!route.active) return null;
 
@@ -412,6 +474,10 @@ export function QaSurface(props: QaSurfaceProps) {
     listState.byId,
     controller?.activeSessionId() ?? null,
   );
+  const railItems = buildTurnRailItems(visibleMessages);
+  railItemsRef.current = railItems;
+  const busyTurn =
+    state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
   const chatRows = showSidebar
     ? buildChatRows(
         controller?.chatIds() ?? [],
@@ -596,8 +662,18 @@ export function QaSurface(props: QaSurfaceProps) {
                   element.scrollTop -
                   element.clientHeight <
                 96;
+              scheduleActiveTurnSync();
             }}
           >
+            {empty ? null : (
+              <QaTurnRail
+                items={railItems}
+                activeTurn={activeTurn}
+                busyTurn={busyTurn}
+                scrollerRef={transcript}
+                onNavigate={handleTurnNavigate}
+              />
+            )}
             <div className="dsh-qa-transcript__inner">
               {empty ? (
                 <section
@@ -621,7 +697,13 @@ export function QaSurface(props: QaSurfaceProps) {
                       : undefined;
                   const isLast = index === visibleMessages.length - 1;
                   return (
-                    <div key={message.id} className="dsh-qa-message-slot">
+                    <div
+                      key={message.id}
+                      className="dsh-qa-message-slot"
+                      data-dsh-qa-turn-anchor={
+                        message.role === "user" ? message.id : undefined
+                      }
+                    >
                       <QaMessage
                         message={message}
                         renderMarkdown={config.ui.renderMarkdown}
