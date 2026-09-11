@@ -77,12 +77,17 @@ function makeCtx(scope: unknown) {
   const ctx = {
     registered,
     slotInjections,
-    get(service: string) {
-      if (service === 'settingsScope' && scope !== undefined) {
-        return { bind: (options: { namespace: string }) => (void options, scope) };
-      }
-      return undefined;
+    // The 0.1.5 client runtime exposes declared inject services as context
+    // properties, so the stub mirrors that contract (the former ctx.get
+    // indirection was a 0.1.1 leftover that left the card unregistered).
+    locale: {
+      register: () => undefined,
+      bind: () => (text: string) => text,
     },
+    settingsScope:
+      scope === undefined
+        ? undefined
+        : { bind: (options: { namespace: string }) => (void options, scope) },
     slots: {
       // The kit bootstrap registers through a plain factory that returns the
       // register disposer (the shared host contract), not a generator.
