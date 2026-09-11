@@ -1,30 +1,8 @@
 import { useState } from "react";
-import type { ReactNode } from "react";
 import type { QaSource } from "../../types.js";
 
-/** Split text into plain runs and safe http(s) links. */
-function linkify(text: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /https?:\/\/[^\s<>"')]+/gu;
-  let offset = 0;
-  for (const match of text.matchAll(pattern)) {
-    const index = match.index;
-    if (index > offset) nodes.push(text.slice(offset, index));
-    const href = match[0];
-    nodes.push(
-      <a
-        key={href + String(index)}
-        href={href}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {href}
-      </a>,
-    );
-    offset = index + href.length;
-  }
-  if (offset < text.length) nodes.push(text.slice(offset));
-  return nodes;
+function sourceTarget(source: QaSource): string {
+  return source.path ?? source.uri ?? source.title;
 }
 
 function SourceIcon({ kind }: { readonly kind: QaSource["kind"] }) {
@@ -36,7 +14,7 @@ function SourceIcon({ kind }: { readonly kind: QaSource["kind"] }) {
       </svg>
     );
   }
-  if (kind === "search") {
+  if (kind === "jira" || kind === "confluence" || kind === "knowledge") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <circle cx="7.1" cy="7.1" r="4.3" />
@@ -66,8 +44,8 @@ function QaSourceCard({
       </span>
       <span className="dsh-qa-sources__text">
         <span className="dsh-qa-sources__title">{source.title}</span>
-        <span className="dsh-qa-sources__target">{source.target}</span>
-        {source.snippet === "" ? null : <p>{source.snippet}</p>}
+        <span className="dsh-qa-sources__target">{sourceTarget(source)}</span>
+        {source.snippet === undefined ? null : <p>{source.snippet}</p>}
       </span>
     </button>
   );
@@ -81,9 +59,19 @@ function QaSourceDetail({
   readonly onBack: () => void;
 }) {
   const external =
-    source.kind === "web" && /^https?:\/\//iu.test(source.target)
-      ? source.target
+    source.uri !== undefined && /^https?:\/\//iu.test(source.uri)
+      ? source.uri
       : undefined;
+  const ranges = source.locations
+    .filter(
+      (location) =>
+        location.lineStart !== undefined || location.lineEnd !== undefined,
+    )
+    .map((location) =>
+      location.lineStart === location.lineEnd
+        ? `строка ${location.lineStart}`
+        : `строки ${location.lineStart ?? "?"}–${location.lineEnd ?? "?"}`,
+    );
   return (
     <div className="dsh-qa-sourcedetail">
       <div className="dsh-qa-sourcedetail__head">
@@ -113,15 +101,19 @@ function QaSourceDetail({
           </a>
         )}
       </div>
-      <div className="dsh-qa-sourcedetail__target">{source.target}</div>
+      <div className="dsh-qa-sourcedetail__target">{sourceTarget(source)}</div>
       <div className="dsh-qa-sourcedetail__body">
-        {source.output === "" ? (
+        {source.snippet === undefined ? (
           <p className="dsh-qa-sourcedetail__empty">
-            У источника нет текстового вывода.
+            У источника нет текстового фрагмента.
           </p>
         ) : (
-          linkify(source.output)
+          <p>{source.snippet}</p>
         )}
+        {ranges.length === 0 ? null : <p>{ranges.join(", ")}</p>}
+        <p>
+          Использован {source.origins.length} раз(а) · {source.evidence}
+        </p>
       </div>
     </div>
   );

@@ -36,8 +36,8 @@ import type {
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { waitFor } from "./wait-for.js";
-import { projectSources } from "./QaTranscriptAdapter.js";
 import {
+  projectTurnSources,
   projectTranscript,
   QA_REGENERATE_MARKER,
 } from "./QaTranscriptAdapter.js";
@@ -783,22 +783,36 @@ export class QaSessionController {
           : snapshot.running || this.admissionPending
             ? "running"
             : "ready";
+    const conversationSnapshot =
+      this.conversationBinding?.snapshot.getSnapshot();
+    const sourceBundles = projectTurnSources(
+      conversationSnapshot,
+      String(this.session.sessionId),
+    );
+    const sourcesByTurn = new Map(
+      sourceBundles.map((bundle) => [bundle.turn, bundle.sources] as const),
+    );
+    const messages = projectTranscript(conversationSnapshot, {
+      running: snapshot.running,
+      showToolActivity: this.config.ui.showToolActivity,
+      showReasoning: this.config.ui.showReasoning,
+    }).map((message) => {
+      if (message.role !== "assistant" || message.turn === undefined)
+        return message;
+      const sources = sourcesByTurn.get(message.turn);
+      return sources === undefined || sources.length === 0
+        ? message
+        : { ...message, sources };
+    });
     this.state = {
       phase,
       sessionId: String(this.session.sessionId),
-      messages: projectTranscript(
-        this.conversationBinding?.snapshot.getSnapshot(),
-        {
-          running: snapshot.running,
-          showToolActivity: this.config.ui.showToolActivity,
-          showReasoning: this.config.ui.showReasoning,
-        },
-      ),
+      messages,
       error,
       canSend: connected && phase === "ready" && this.policyReady,
       canStop: connected && snapshot.running && this.config.ui.showStop,
       chatsRevision: this.chatsRevision,
-      sources: projectSources(this.conversationBinding?.snapshot.getSnapshot()),
+      sources: sourceBundles.at(-1)?.sources ?? [],
       viewingSubagent: this.viewingSubagent,
     };
     this.emit();

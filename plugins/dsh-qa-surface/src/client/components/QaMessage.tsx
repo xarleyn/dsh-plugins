@@ -1,5 +1,9 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { QaMessage as QaMessageModel, QaImageView } from "../../types.js";
+import type {
+  QaMessage as QaMessageModel,
+  QaImageView,
+  QaSource,
+} from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 
 /** Resolved image URLs live for the page lifetime; failures retry on demand. */
@@ -70,6 +74,8 @@ export interface QaMessageProps {
   readonly onRegenerate?: () => void;
   /** Resolve one durable attachment into a viewable URL. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
+  /** Open the drawer at the exact canonical snapshot shown in this footer. */
+  readonly onOpenSources?: (sources: readonly QaSource[]) => void;
 }
 
 type Rating = "up" | "down";
@@ -96,6 +102,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
   if (a.text !== b.text || a.timestamp !== b.timestamp) return false;
   if (a.role === "assistant" && b.role === "assistant") {
     return (
+      sameSources(a.sources, b.sources) &&
       (a.stats === undefined) === (b.stats === undefined) &&
       (a.stats === undefined ||
         b.stats === undefined ||
@@ -116,6 +123,27 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
     );
   }
   return false;
+}
+
+function sameSources(
+  a: readonly QaSource[] | undefined,
+  b: readonly QaSource[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (source, index) =>
+      source.id === b[index]?.id &&
+      source.title === b[index]?.title &&
+      source.uri === b[index]?.uri &&
+      source.path === b[index]?.path &&
+      source.snippet === b[index]?.snippet &&
+      source.evidence === b[index]?.evidence &&
+      source.score === b[index]?.score &&
+      JSON.stringify(source.locations) ===
+        JSON.stringify(b[index]?.locations) &&
+      JSON.stringify(source.origins) === JSON.stringify(b[index]?.origins),
+  );
 }
 
 function sameImages(
@@ -183,6 +211,7 @@ export const QaMessage = memo(
     stateKey,
     onRegenerate,
     resolveImage,
+    onOpenSources,
   }: QaMessageProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -320,6 +349,18 @@ export const QaMessage = memo(
             <span className="dsh-qa-message__cursor" aria-hidden="true" />
           ) : null}
         </div>
+        {message.role === "assistant" &&
+        onOpenSources !== undefined &&
+        message.sources !== undefined &&
+        message.sources.length > 0 ? (
+          <button
+            type="button"
+            className="dsh-qa-message__sources"
+            onClick={() => onOpenSources(message.sources ?? [])}
+          >
+            Источники · {message.sources.length}
+          </button>
+        ) : null}
         {showActions ? (
           <div
             className="dsh-qa-message__actions"
@@ -395,5 +436,6 @@ export const QaMessage = memo(
     prev.stateKey === next.stateKey &&
     prev.onRegenerate === next.onRegenerate &&
     prev.resolveImage === next.resolveImage &&
+    prev.onOpenSources === next.onOpenSources &&
     sameMessage(prev.message, next.message),
 );

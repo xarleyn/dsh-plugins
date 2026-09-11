@@ -205,6 +205,9 @@ span.dsh-qa-message__image{display:grid;place-items:center;color:var(--dsw-alias
 span.dsh-qa-message__image[data-state="broken"]::after{content:"Не удалось загрузить"}
 span.dsh-qa-message__image[data-state="loading"]{animation:dsh-qa-spin 1.2s linear infinite;border-style:dashed}
 .dsh-qa-message--assistant .dsh-qa-message__content{width:100%;padding:2px 0}
+.dsh-qa-message__sources{appearance:none;margin-top:10px;padding:4px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;cursor:pointer}
+.dsh-qa-message__sources:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-primary)}
+.dsh-qa-message__sources:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
 .dsh-qa-message--system .dsh-qa-message__content{padding:7px 11px;border-radius:9px;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 .dsh-qa-message[data-status="info"] .dsh-qa-message__content{color:var(--dsh-qa-info)}
 .dsh-qa-message[data-status="error"] .dsh-qa-message__content{color:var(--dsh-qa-error)}

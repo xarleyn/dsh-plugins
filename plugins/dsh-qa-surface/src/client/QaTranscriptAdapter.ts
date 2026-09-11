@@ -11,8 +11,13 @@ import type {
   QaImageView,
   QaMessage,
   QaSource,
+  QaTurnSources,
   QaWorkItem,
 } from "../types.js";
+import {
+  createDefaultSourceExtractorRegistry,
+  QaSourceCollector,
+} from "../provenance/index.js";
 
 /**
  * The hidden regeneration prompt. Regenerate sends this as an ordinary
@@ -652,116 +657,98 @@ export function projectTranscript(
     .map(({ message }) => message);
 }
 
-const SOURCE_TOOLS: Readonly<Record<string, QaSource["kind"]>> = Object.freeze({
-  web_fetch: "web",
-  web_search: "search",
-  read: "file",
-  read_image: "file",
-});
+const DEFAULT_SOURCE_EXTRACTORS = createDefaultSourceExtractorRegistry();
 
-function sourceTitle(kind: QaSource["kind"], target: string): string {
-  if (kind === "web") {
-    try {
-      return new URL(target).hostname;
-    } catch {
-      return target;
-    }
-  }
-  if (kind === "file") {
-    const base = target.replaceAll("\\", "/").split("/").at(-1);
-    return base === undefined || base === "" ? target : base;
-  }
-  return target;
-}
-
-/** First meaningful line of a tool output, capped for the drawer. */
-function sourceSnippet(output: string | null): string {
-  const line =
-    output === null
-      ? ""
-      : (output.split(/\r?\n/u).find((part) => part.trim() !== "") ?? "");
-  const compact = line.trim().replace(/\s+/gu, " ");
-  return compact.length <= 200 ? compact : `${compact.slice(0, 199)}…`;
-}
-
-/** Models occasionally wrap arguments in tags ("<path>...</path>") - strip them. */
-function sourceTarget(value: string): string {
-  return value.replace(/<\/?[a-zA-Z][^>]*>/gu, "").trim();
-}
-
-/** Whole tool output for the detail pane, capped hard. */
-function sourceOutput(output: string | null): string {
-  const text = (output ?? "").trim();
-  return text.length <= 4_000 ? text : `${text.slice(0, 3_999)}…`;
-}
-
-function sourceFromCall(
-  id: string,
-  name: string,
-  argsRaw: string,
-  output: string | null,
-): QaSource | null {
-  const kind = SOURCE_TOOLS[name];
-  if (kind === undefined) return null;
-  let target: string | null = null;
-  try {
-    const args = JSON.parse(argsRaw) as Record<string, unknown>;
-    for (const key of ["url", "file_path", "path", "query", "pattern"]) {
-      const value = args[key];
-      if (typeof value === "string" && value.trim() !== "") {
-        target = sourceTarget(value);
-        break;
-      }
-    }
-  } catch {
-    // A non-JSON head leaves the target unresolved.
-  }
-  // Without a resolvable target the row is noise (a failed search, an
-  // unnamed call) - the drawer shows sources, not tool errors.
-  if (target === null || target === "") return null;
-  return {
-    id,
-    kind,
-    target,
-    // A search answers with a result list, so the query itself is the title.
-    title: kind === "search" ? target : sourceTitle(kind, target),
-    snippet: sourceSnippet(output),
-    output: sourceOutput(output),
-  };
+interface SourceCallHead {
+  readonly turn: number;
+  readonly step: number;
+  readonly name: string;
+  readonly argsRaw: string;
 }
 
 /**
- * Collect the sources this chat has actually touched, in first-use order:
- * fetched pages, searches, and files read. This is the same tool activity the
- * work groups render, projected as a flat citation-style list, so it carries
- * no information beyond `ui.showToolActivity`.
+ * Rebuild canonical turn bundles from durable tool-result metadata. Since the
+ * metadata is persisted by DSH, this projection is identical on live updates
+ * and replay and requires no assistant-authored bibliography.
  */
-export function projectSources(
+export function projectTurnSources(
   snapshot: ConversationSnapshot | undefined,
-): readonly QaSource[] {
+  sessionId = "unknown",
+): readonly QaTurnSources[] {
   const legacy = chatLegacyOf(snapshot);
-  const sources: QaSource[] = [];
-  const seen = new Set<string>();
-  const add = (source: QaSource | null) => {
-    if (source === null) return;
-    const key = `${source.kind}:${source.target}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    sources.push(source);
+  const heads = new Map<string, SourceCallHead>();
+  for (const node of legacy.nodes) {
+    if (node.kind !== "assistant") continue;
+    for (const block of node.blocks) {
+      if (block.kind !== "tool-call" || block.callId === "") continue;
+      heads.set(block.callId, {
+        turn: node.turn,
+        step: node.step,
+        name: block.name,
+        argsRaw: block.argsRaw,
+      });
+    }
+  }
+
+  const collectors = new Map<number, QaSourceCollector>();
+  const collectorFor = (turn: number) => {
+    let collector = collectors.get(turn);
+    if (collector === undefined) {
+      collector = new QaSourceCollector({
+        sessionId,
+        turn,
+        registry: DEFAULT_SOURCE_EXTRACTORS,
+      });
+      collectors.set(turn, collector);
+    }
+    return collector;
   };
   for (const node of legacy.nodes) {
+    if (node.kind === "assistant") collectorFor(node.turn);
+  }
+
+  let nearestTurn: number | undefined;
+  let nearestStep: number | undefined;
+  for (const node of legacy.nodes) {
+    if (node.kind === "assistant") {
+      nearestTurn = node.turn;
+      nearestStep = node.step;
+      continue;
+    }
     if (node.kind !== "tool-result" || node.isError) continue;
-    add(
-      sourceFromCall(
-        `source:${node.callId}`,
-        node.call?.name ?? node.callId,
-        node.call?.argsRaw ?? "",
-        flattenToolOutput(node),
-      ),
-    );
+    const head = heads.get(node.callId);
+    // A truncated event window can retain a result after its assistant call
+    // head. Keep it addressable in the synthetic turn 0 instead of dropping
+    // durable evidence altogether.
+    const turn = head?.turn ?? nearestTurn ?? 0;
+    const name = head?.name ?? node.call?.name ?? node.callId;
+    const argsRaw = head?.argsRaw ?? node.call?.argsRaw ?? "";
+    collectorFor(turn).observe({
+      toolName: name,
+      args: argsRaw,
+      result: node.content,
+      presentation: node.meta,
+      origin: {
+        sessionId,
+        turn,
+        ...((head?.step ?? nearestStep) === undefined
+          ? {}
+          : { step: head?.step ?? nearestStep }),
+        toolCallId: node.callId,
+        toolName: name,
+        role: "parent",
+      },
+    });
   }
-  for (const call of legacy.runningCalls) {
-    add(sourceFromCall(`source:${call.callId}`, call.name, call.argsRaw, null));
-  }
-  return sources;
+  return [...collectors.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, collector]) => collector.snapshot());
+}
+
+/** Visible evidence sources for the latest turn, shared by the drawer/footer. */
+export function projectSources(
+  snapshot: ConversationSnapshot | undefined,
+  sessionId = "unknown",
+): readonly QaSource[] {
+  return projectTurnSources(snapshot, sessionId).at(-1)?.sources ?? [];
 }
