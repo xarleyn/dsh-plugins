@@ -202,94 +202,83 @@ Suggested types:
 
 ```ts
 export type QaSourceKind =
-  | 'file'
-  | 'code'
-  | 'web'
-  | 'jira'
-  | 'confluence'
-  | 'knowledge'
-  | 'other'
+  "file" | "code" | "web" | "jira" | "confluence" | "knowledge" | "other";
 
 export type QaSourceEvidence =
-  | 'read'
-  | 'fetched'
-  | 'queried'
-  | 'reported'
-  | 'inherited'
-  | 'discovered'
+  "read" | "fetched" | "queried" | "reported" | "inherited" | "discovered";
 
 export interface QaSourceLocation {
-  path?: string
-  lineStart?: number
-  lineEnd?: number
-  anchor?: string
+  path?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  anchor?: string;
 
-  jiraKey?: string
-  confluencePageId?: string
+  jiraKey?: string;
+  confluencePageId?: string;
 }
 
 export interface QaSourceOrigin {
-  sessionId: string
-  turn: number
-  step?: number
-  toolCallId?: string
-  toolName?: string
+  sessionId: string;
+  turn: number;
+  step?: number;
+  toolCallId?: string;
+  toolName?: string;
 
-  agentId?: string
-  role: 'parent' | 'subagent'
+  agentId?: string;
+  role: "parent" | "subagent";
 
-  subagentRunId?: string
-  subagentSessionId?: string
+  subagentRunId?: string;
+  subagentSessionId?: string;
 }
 
 export interface QaSourceReference {
   /** Stable canonical identity after normalization. */
-  id: string
+  id: string;
 
-  kind: QaSourceKind
-  title: string
+  kind: QaSourceKind;
+  title: string;
 
   /** Click target for remote sources. */
-  uri?: string
+  uri?: string;
 
   /** Canonical path for workspace/local sources. */
-  path?: string
+  path?: string;
 
   /** Optional human-facing description/snippet. */
-  snippet?: string
+  snippet?: string;
 
   /** All useful ranges/anchors retained after dedupe. */
-  locations: QaSourceLocation[]
+  locations: QaSourceLocation[];
 
   /** Why this object is considered a source. */
-  evidence: QaSourceEvidence
+  evidence: QaSourceEvidence;
 
   /** All parent/subagent/tool origins merged by dedupe. */
-  origins: QaSourceOrigin[]
+  origins: QaSourceOrigin[];
 
   /** Higher means more suitable for main Sources UI. */
-  score: number
+  score: number;
 
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>;
 }
 
 export interface QaTurnSources {
-  version: 1
-  sessionId: string
-  turn: number
+  version: 1;
+  sessionId: string;
+  turn: number;
 
-  sources: QaSourceReference[]
+  sources: QaSourceReference[];
 
   /** Optional low-value candidates hidden from the default source list. */
-  discovered?: QaSourceReference[]
+  discovered?: QaSourceReference[];
 
-  complete: boolean
+  complete: boolean;
 
   incompleteOrigins?: Array<{
-    subagentRunId?: string
-    provider?: string
-    reason: string
-  }>
+    subagentRunId?: string;
+    provider?: string;
+    reason: string;
+  }>;
 }
 ```
 
@@ -350,21 +339,21 @@ Suggested registry:
 
 ```ts
 interface SourceExtractorContext {
-  toolName: string
-  args: unknown
-  result: unknown
-  presentation?: unknown
-  origin: QaSourceOrigin
+  toolName: string;
+  args: unknown;
+  result: unknown;
+  presentation?: unknown;
+  origin: QaSourceOrigin;
 }
 
 interface SourceExtractor {
-  matches(ctx: SourceExtractorContext): boolean
-  extract(ctx: SourceExtractorContext): QaSourceReference[]
+  matches(ctx: SourceExtractorContext): boolean;
+  extract(ctx: SourceExtractorContext): QaSourceReference[];
 }
 
 class SourceExtractorRegistry {
-  register(extractor: SourceExtractor): Disposable
-  extract(ctx: SourceExtractorContext): QaSourceReference[]
+  register(extractor: SourceExtractor): Disposable;
+  extract(ctx: SourceExtractorContext): QaSourceReference[];
 }
 ```
 
@@ -389,12 +378,7 @@ For a successful `ReadResultView`:
 
 ```ts
 {
-  card: 'read',
-  path,
-  offset,
-  lines,
-  totalLines,
-  lang
+  card: ("read", path, offset, lines, totalLines, lang);
 }
 ```
 
@@ -556,13 +540,13 @@ Maintain a runtime mapping:
 
 ```ts
 interface SubagentLineage {
-  runId: string
-  parentSessionId: string
-  parentTurn: number
-  childAgentId?: string
-  childSessionId?: string
-  provider?: string
-  parentRunId?: string
+  runId: string;
+  parentSessionId: string;
+  parentTurn: number;
+  childAgentId?: string;
+  childSessionId?: string;
+  provider?: string;
+  parentRunId?: string;
 }
 ```
 
@@ -609,14 +593,14 @@ Suggested schema:
 ```ts
 {
   sources: Array<{
-    kind: 'file' | 'web' | 'jira' | 'confluence' | 'knowledge' | 'other'
-    title: string
-    uri?: string
-    path?: string
-    lineStart?: number
-    lineEnd?: number
-    externalId?: string
-  }>
+    kind: "file" | "web" | "jira" | "confluence" | "knowledge" | "other";
+    title: string;
+    uri?: string;
+    path?: string;
+    lineStart?: number;
+    lineEnd?: number;
+    externalId?: string;
+  }>;
 }
 ```
 
@@ -649,12 +633,13 @@ The parent agent should not be asked to reconstruct child sources from prose.
 If a child provider is opaque and no `qa_report_sources` calls were received:
 
 ```ts
-complete = false
+complete = false;
 incompleteOrigins.push({
   subagentRunId,
   provider,
-  reason: 'Child tool provenance is not observable and no structured source report was received.'
-})
+  reason:
+    "Child tool provenance is not observable and no structured source report was received.",
+});
 ```
 
 In normal QA mode this warning may stay hidden unless the source drawer is expanded into details/debug.
@@ -688,9 +673,9 @@ Use a plugin-owned durable session event if current DSH plugin API allows Sessio
 Suggested event:
 
 ```ts
-declare module '@deepseek-ai/dsh-session' {
+declare module "@deepseek-ai/dsh-session" {
   interface SessionEventMap {
-    'qa/sources': QaTurnSources
+    "qa/sources": QaTurnSources;
   }
 }
 ```
@@ -768,17 +753,17 @@ Final source becomes one object with `evidence='fetched'`.
 
 Initial policy, configurable later:
 
-| Event | Score |
-|---|---:|
-| explicit file read | 100 |
-| web fetch | 100 |
-| Jira issue read | 100 |
-| Confluence page read | 100 |
-| knowledge document get | 100 |
-| structured subagent report | 90 |
-| web search source without fetch | 55 |
-| grep matched file without read | 30 |
-| glob/path discovery | 10 |
+| Event                           | Score |
+| ------------------------------- | ----: |
+| explicit file read              |   100 |
+| web fetch                       |   100 |
+| Jira issue read                 |   100 |
+| Confluence page read            |   100 |
+| knowledge document get          |   100 |
+| structured subagent report      |    90 |
+| web search source without fetch |    55 |
+| grep matched file without read  |    30 |
+| glob/path discovery             |    10 |
 
 ### 10.4. Default display threshold
 
@@ -1259,16 +1244,16 @@ Example narrow contract:
 ```ts
 interface QaSourcePreviewApi {
   readFile(input: {
-    sessionId: string
-    path: string
-    maxBytes?: number
+    sessionId: string;
+    path: string;
+    maxBytes?: number;
   }): Promise<{
-    path: string
-    content: string
-    size: number
-    truncated: boolean
-    mime?: string
-  }>
+    path: string;
+    content: string;
+    size: number;
+    truncated: boolean;
+    mime?: string;
+  }>;
 }
 ```
 
@@ -1287,15 +1272,15 @@ Security requirements:
 
 Suggested source labels/icons:
 
-| Kind | Label | Example |
-|---|---|---|
-| `file` | Documentation / File | `technicalDiagnosis.md` |
-| `code` | Code | `ActivitySectionTypeEnum.cs` |
-| `jira` | Jira | `MDC-24929` |
-| `confluence` | Confluence | `Вибродиагностика MM3` |
-| `knowledge` | Knowledge | KB document |
-| `web` | Web | GitHub / docs site |
-| `other` | Other | connector-specific source |
+| Kind         | Label                | Example                      |
+| ------------ | -------------------- | ---------------------------- |
+| `file`       | Documentation / File | `technicalDiagnosis.md`      |
+| `code`       | Code                 | `ActivitySectionTypeEnum.cs` |
+| `jira`       | Jira                 | `MDC-24929`                  |
+| `confluence` | Confluence           | `Вибродиагностика MM3`       |
+| `knowledge`  | Knowledge            | KB document                  |
+| `web`        | Web                  | GitHub / docs site           |
+| `other`      | Other                | connector-specific source    |
 
 Web source title fallback order:
 

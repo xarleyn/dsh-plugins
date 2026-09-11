@@ -114,6 +114,38 @@ config:
     toolPolicy:
       mode: allow-list
       allow: []
+  sources:
+    enabled: true
+    collect:
+      parentAgent: true
+      subagents: true
+      persistTurnEvent: true
+    display:
+      sidebar: true
+      footer: true
+      groupByKind: true
+      showDiscovered: false
+      showOriginBadges: false
+      maxInitiallyVisiblePerGroup: 8
+    webSearch:
+      promoteSearchResultsWithoutFetch: true
+      maxPromotedPerSearch: 5
+    dedupe:
+      normalizeUrls: true
+      stripTrackingParams: true
+      mergeFileRanges: true
+    filePreview:
+      enabled: true
+      markdownRenderedByDefault: true
+      allowRawToggle: true
+      maxBytes: 2000000
+      maxMarkdownRenderBytes: 1000000
+    subagents:
+      inheritSources: true
+      enableReportToolFallback: true
+      markIncompleteOpaqueRuns: true
+    legacy:
+      parseAssistantSourcesBlock: false
 ```
 
 `workspaceId` is recommended for a deterministic assistant. Without it, DSH
@@ -151,12 +183,25 @@ prompt and the answer arrives as a follow-up turn; the projection hides that
 instruction and the consecutive turns read as variants of one question,
 navigable with a `< 2/2 >` switcher (newest shown by default).
 
-Sources: with `ui.showToolActivity: true` a header button opens a right-hand
-drawer listing the pages fetched, searches run and files read in this chat,
-projected from the same tool activity the work groups render - no extra
-prompting or tooling is involved. Clicking a source opens its full tool
-output with every http(s) link clickable, and web sources carry an
-"Открыть" button straight to the page (a Jira issue, a wiki article).
+Sources are structured Host-owned provenance, independent of
+`ui.showToolActivity`. Successful reads/fetches, bounded web-search evidence,
+Jira/Confluence/knowledge results, and inherited subagent sources are
+normalized and deduplicated into one turn bundle. That exact bundle feeds the
+answer footer and grouped drawer and is persisted as `qa/sources`, so reload
+does not rerun tools. Search-only discovery stays hidden by default.
+
+Local file cards open a source-scoped, read-only preview after Host-side real
+path validation against the attested session root. Markdown opens rendered by
+default with an HTML-free renderer and offers `Rendered / Raw`; raw mode jumps
+to recorded line ranges. The endpoint cannot browse or write files and refuses
+paths that are not evidence in the canonical bundle.
+
+Observable local subagents are inherited recursively. The internal
+`qa_report_sources` tool covers opaque delegated providers and is admitted as
+a provenance-only capability even when it is not listed among ordinary QA
+tools. A provider that neither exposes events nor reports sources marks the
+turn provenance incomplete. The QA prompt tells models not to append a manual
+`Sources`/`Источники` bibliography.
 
 Images: the composer accepts PNG/JPEG/WebP/GIF via drag & drop onto the
 composer, paste, and the picker button, several at once (soft client caps:

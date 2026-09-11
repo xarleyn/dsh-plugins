@@ -197,6 +197,70 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("uses the Host provenance snapshot as the authoritative source view", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const sources = vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          version: 1 as const,
+          sessionId: "saved",
+          turn: 3,
+          complete: false,
+          incompleteOrigins: [
+            {
+              subagentRunId: "opaque-run",
+              provider: "remote",
+              reason: "opaque",
+            },
+          ],
+          sources: [
+            {
+              id: "web:https://example.com/docs",
+              kind: "web" as const,
+              title: "Host docs",
+              uri: "https://example.com/docs",
+              locations: [],
+              evidence: "reported" as const,
+              origins: [
+                {
+                  role: "subagent" as const,
+                  sessionId: "saved",
+                  turn: 3,
+                  subagentRunId: "opaque-run",
+                },
+              ],
+              score: 80,
+            },
+          ],
+        },
+      ],
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      sourceApi: {
+        sources,
+        readSourceFile: vi.fn(async () => ({
+          ok: false as const,
+          error: { code: "not-found" },
+        })),
+      },
+      config: resolveConfig(),
+    });
+
+    await controller.ensureSession();
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot()).toMatchObject({
+        sources: [{ id: "web:https://example.com/docs" }],
+        sourcesComplete: false,
+        incompleteSourceOrigins: [{ subagentRunId: "opaque-run" }],
+      });
+    });
+    expect(sources).toHaveBeenCalledWith("saved");
+    controller.dispose();
+  });
+
   it("replaces a stale id and applies configured model selection", async () => {
     const world = harness();
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");

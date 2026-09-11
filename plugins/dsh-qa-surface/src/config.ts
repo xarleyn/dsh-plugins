@@ -135,6 +135,136 @@ const configSchema = z.object({
   embedding: z
     .object({ frameAncestors: nullableString.default(null) })
     .default({ frameAncestors: null }),
+  sources: z
+    .object({
+      enabled: z.boolean().default(true),
+      collect: z
+        .object({
+          parentAgent: z.boolean().default(true),
+          subagents: z.boolean().default(true),
+          persistTurnEvent: z.boolean().default(true),
+        })
+        .default({
+          parentAgent: true,
+          subagents: true,
+          persistTurnEvent: true,
+        }),
+      display: z
+        .object({
+          sidebar: z.boolean().default(true),
+          footer: z.boolean().default(true),
+          groupByKind: z.boolean().default(true),
+          showDiscovered: z.boolean().default(false),
+          showOriginBadges: z.boolean().default(false),
+          maxInitiallyVisiblePerGroup: z
+            .number()
+            .step(1)
+            .min(1)
+            .max(100)
+            .default(8),
+        })
+        .default({
+          sidebar: true,
+          footer: true,
+          groupByKind: true,
+          showDiscovered: false,
+          showOriginBadges: false,
+          maxInitiallyVisiblePerGroup: 8,
+        }),
+      webSearch: z
+        .object({
+          promoteSearchResultsWithoutFetch: z.boolean().default(true),
+          maxPromotedPerSearch: z.number().step(1).min(0).max(50).default(5),
+        })
+        .default({
+          promoteSearchResultsWithoutFetch: true,
+          maxPromotedPerSearch: 5,
+        }),
+      dedupe: z
+        .object({
+          normalizeUrls: z.boolean().default(true),
+          stripTrackingParams: z.boolean().default(true),
+          mergeFileRanges: z.boolean().default(true),
+        })
+        .default({
+          normalizeUrls: true,
+          stripTrackingParams: true,
+          mergeFileRanges: true,
+        }),
+      filePreview: z
+        .object({
+          enabled: z.boolean().default(true),
+          markdownRenderedByDefault: z.boolean().default(true),
+          allowRawToggle: z.boolean().default(true),
+          maxBytes: z
+            .number()
+            .step(1)
+            .min(1024)
+            .max(20_000_000)
+            .default(2_000_000),
+          maxMarkdownRenderBytes: z
+            .number()
+            .step(1)
+            .min(1024)
+            .max(10_000_000)
+            .default(1_000_000),
+        })
+        .default({
+          enabled: true,
+          markdownRenderedByDefault: true,
+          allowRawToggle: true,
+          maxBytes: 2_000_000,
+          maxMarkdownRenderBytes: 1_000_000,
+        }),
+      subagents: z
+        .object({
+          inheritSources: z.boolean().default(true),
+          enableReportToolFallback: z.boolean().default(true),
+          markIncompleteOpaqueRuns: z.boolean().default(true),
+        })
+        .default({
+          inheritSources: true,
+          enableReportToolFallback: true,
+          markIncompleteOpaqueRuns: true,
+        }),
+      legacy: z
+        .object({ parseAssistantSourcesBlock: z.boolean().default(false) })
+        .default({ parseAssistantSourcesBlock: false }),
+    })
+    .default({
+      enabled: true,
+      collect: { parentAgent: true, subagents: true, persistTurnEvent: true },
+      display: {
+        sidebar: true,
+        footer: true,
+        groupByKind: true,
+        showDiscovered: false,
+        showOriginBadges: false,
+        maxInitiallyVisiblePerGroup: 8,
+      },
+      webSearch: {
+        promoteSearchResultsWithoutFetch: true,
+        maxPromotedPerSearch: 5,
+      },
+      dedupe: {
+        normalizeUrls: true,
+        stripTrackingParams: true,
+        mergeFileRanges: true,
+      },
+      filePreview: {
+        enabled: true,
+        markdownRenderedByDefault: true,
+        allowRawToggle: true,
+        maxBytes: 2_000_000,
+        maxMarkdownRenderBytes: 1_000_000,
+      },
+      subagents: {
+        inheritSources: true,
+        enableReportToolFallback: true,
+        markIncompleteOpaqueRuns: true,
+      },
+      legacy: { parseAssistantSourcesBlock: false },
+    }),
 });
 
 export const ConfigSchema = configSchema as unknown as z<QaSurfaceConfig>;

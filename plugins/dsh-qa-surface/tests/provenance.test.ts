@@ -6,6 +6,7 @@ import {
   createDefaultSourceExtractorRegistry,
   dedupeAndRankSources,
   QaSourceCollector,
+  normalizeReportedSource,
 } from "../src/provenance/index.js";
 import type {
   QaSourceOrigin,
@@ -29,6 +30,15 @@ describe("source normalization", () => {
       ),
     ).toBe("https://example.com/docs?a=1&b=2");
     expect(canonicalizeUrl("file:///secret.txt")).toBeNull();
+  });
+
+  it("honors URL normalization and tracking switches", () => {
+    expect(
+      canonicalizeUrl("https://Example.com/docs/?utm_source=qa&b=2#part", {
+        normalize: false,
+        stripTrackingParams: false,
+      }),
+    ).toBe("https://example.com/docs/?utm_source=qa&b=2#part");
   });
 
   it("normalizes workspace paths and compacts adjacent ranges", () => {
@@ -86,6 +96,32 @@ describe("source dedupe", () => {
         score: 100,
         origins: [parentOrigin, fetched.origins[0]],
       }),
+    ]);
+  });
+
+  it("keeps exact file ranges separate when compaction is disabled", () => {
+    const source: QaSourceReference = {
+      id: "file:src/a.ts",
+      kind: "code",
+      title: "a.ts",
+      path: "src/a.ts",
+      locations: [{ path: "src/a.ts", lineStart: 1, lineEnd: 3 }],
+      evidence: "read",
+      origins: [parentOrigin],
+      score: 100,
+    };
+    const next = {
+      ...source,
+      locations: [{ path: "src/a.ts", lineStart: 4, lineEnd: 6 }],
+      origins: [{ ...parentOrigin, toolCallId: "call-2" }],
+    };
+
+    expect(
+      dedupeAndRankSources([source, next], { mergeFileRanges: false })[0]
+        ?.locations,
+    ).toEqual([
+      { path: "src/a.ts", lineStart: 1, lineEnd: 3 },
+      { path: "src/a.ts", lineStart: 4, lineEnd: 6 },
     ]);
   });
 });
@@ -175,5 +211,67 @@ describe("structured extractors", () => {
     expect(snapshot.discovered?.map((source) => source.id)).toEqual([
       "web:https://example.com/c",
     ]);
+  });
+
+  it("extracts structured Jira, Confluence and knowledge records", () => {
+    const registry = createDefaultSourceExtractorRegistry();
+    const cases = [
+      {
+        toolName: "jira_get_issue",
+        result: {
+          key: "mdc-12",
+          fields: { summary: "Fix history" },
+          url: "https://jira.example/browse/MDC-12",
+        },
+        id: "jira:MDC-12",
+      },
+      {
+        toolName: "confluence_get_page",
+        result: {
+          type: "page",
+          id: "12345",
+          title: "Architecture",
+          url: "https://wiki.example/pages/12345",
+        },
+        id: "confluence:12345",
+      },
+      {
+        toolName: "knowledge_get",
+        result: { documentId: "doc-7", title: "Runbook", backend: "internal" },
+        id: "knowledge:internal:doc-7",
+      },
+    ];
+    for (const candidate of cases) {
+      expect(
+        registry
+          .extract({
+            toolName: candidate.toolName,
+            args: {},
+            result: candidate.result,
+            origin: parentOrigin,
+          })
+          .map((source) => source.id),
+      ).toContain(candidate.id);
+    }
+  });
+
+  it("normalizes structured fallback reports without parsing prose", () => {
+    expect(
+      normalizeReportedSource(
+        {
+          kind: "code",
+          title: "worker.ts",
+          path: "D:/repo/src/worker.ts",
+          locations: [{ lineStart: 10, lineEnd: 20 }],
+        },
+        { ...parentOrigin, role: "subagent" },
+        "D:/repo",
+      ),
+    ).toMatchObject({
+      id: "file:src/worker.ts",
+      kind: "code",
+      evidence: "reported",
+      locations: [{ path: "src/worker.ts", lineStart: 10, lineEnd: 20 }],
+    });
   });
 });

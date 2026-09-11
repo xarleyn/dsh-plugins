@@ -4,13 +4,14 @@ import type {
   QaTurnSources,
   SourceExtractorContext,
 } from "./types.js";
-import { SourceExtractorRegistry } from "./extractors.js";
+import type { SourceExtractorRegistry } from "./extractors.js";
 
 export interface QaSourceCollectorOptions {
   readonly sessionId: string;
   readonly turn: number;
   readonly registry: SourceExtractorRegistry;
   readonly displayScoreThreshold?: number;
+  readonly mergeFileRanges?: boolean;
 }
 
 /** Mutable turn-local accumulator; snapshots are immutable plain data. */
@@ -44,7 +45,12 @@ export class QaSourceCollector {
   }
 
   snapshot(): QaTurnSources {
-    const ranked = dedupeAndRankSources(this.collected);
+    const ranked = dedupeAndRankSources(
+      this.collected,
+      this.options.mergeFileRanges === undefined
+        ? {}
+        : { mergeFileRanges: this.options.mergeFileRanges },
+    );
     const sources = ranked.filter(
       (source) =>
         source.evidence !== "discovered" && source.score >= this.threshold,

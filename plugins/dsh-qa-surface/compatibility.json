@@ -2,9 +2,7 @@
   "deepseekHarness": {
     "channel": "next",
     "range": ">=0.1.5-rc.2 <0.2.0",
-    "testedReleases": [
-      "0.1.5-rc.2"
-    ],
+    "testedReleases": ["0.1.5-rc.2"],
     "requiredClientFeatures": [
       "shell.overlay",
       "remote.session.selectModel",
@@ -18,6 +16,11 @@
       "permissionPresets.set",
       "tools.restrict",
       "tools.guard",
+      "tools.register",
+      "session.event-extension",
+      "agent.turn-stopping",
+      "agent.currentInitiator",
+      "systemPrompt.section",
       "workspaceRegistry.get"
     ]
   },

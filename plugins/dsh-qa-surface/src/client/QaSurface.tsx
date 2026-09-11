@@ -13,7 +13,12 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaImageDraft, QaSessionState, QaSource } from "../types.js";
+import type {
+  QaImageDraft,
+  QaSessionState,
+  QaSource,
+  QaTurnSources,
+} from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -22,6 +27,7 @@ import type {
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaComposer } from "./components/QaComposer.js";
@@ -50,6 +56,7 @@ export interface QaSurfaceFace {
   readonly api: QaSessionsApi;
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
+  readonly sourceApi: QaSourceApi;
 }
 
 type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
@@ -143,6 +150,10 @@ export function QaSurface(props: QaSurfaceProps) {
   const [drawerSources, setDrawerSources] = useState<
     readonly QaSource[] | null
   >(null);
+  const [drawerCompleteness, setDrawerCompleteness] = useState<{
+    readonly complete: boolean;
+    readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
+  } | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
     [],
@@ -159,6 +170,7 @@ export function QaSurface(props: QaSurfaceProps) {
       conversation: props.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
+      sourceApi: props.sourceApi,
       config,
       storage: window.localStorage,
     });
@@ -171,6 +183,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.conversation,
     props.connection,
     props.secureSession,
+    props.sourceApi,
     props.sessions,
     route.active,
   ]);
@@ -241,11 +254,22 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
-  const handleOpenSources = useCallback((sources: readonly QaSource[]) => {
-    setDrawerSources(sources);
-    setSourcesOpen(true);
-    setAgentsOpen(false);
-  }, []);
+  const handleOpenSources = useCallback(
+    (
+      sources: readonly QaSource[],
+      complete: boolean,
+      incompleteOrigins: QaTurnSources["incompleteOrigins"],
+    ) => {
+      setDrawerSources(sources);
+      setDrawerCompleteness({
+        complete,
+        ...(incompleteOrigins === undefined ? {} : { incompleteOrigins }),
+      });
+      setSourcesOpen(true);
+      setAgentsOpen(false);
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
     const element = transcript.current;
@@ -375,7 +399,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 <button
                   type="button"
                   className={
-                    config.ui.showToolActivity
+                    config.sources.enabled && config.sources.display.sidebar
                       ? "dsh-qa-header__agents"
                       : "dsh-qa-header__agents dsh-qa-header__agents--end"
                   }
@@ -393,7 +417,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   Агенты
                   {agentRows.length === 0 ? null : ` (${agentRows.length})`}
                 </button>
-                {config.ui.showToolActivity ? (
+                {config.sources.enabled && config.sources.display.sidebar ? (
                   <button
                     type="button"
                     className={
@@ -404,11 +428,14 @@ export function QaSurface(props: QaSurfaceProps) {
                         ? "dsh-qa-header__sources"
                         : "dsh-qa-header__sources dsh-qa-header__sources--end"
                     }
-                    disabled={state.sources.length === 0}
+                    disabled={
+                      state.sources.length === 0 && state.sourcesComplete
+                    }
                     aria-expanded={sourcesOpen}
                     onClick={() => {
                       setSourcesOpen((open) => !open);
                       setDrawerSources(null);
+                      setDrawerCompleteness(null);
                       setAgentsOpen(false);
                     }}
                   >
@@ -417,7 +444,7 @@ export function QaSurface(props: QaSurfaceProps) {
                       <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
                     </svg>
                     Источники
-                    {state.sources.length === 0
+                    {state.sources.length === 0 && state.sourcesComplete
                       ? null
                       : ` (${state.sources.length})`}
                   </button>
@@ -496,7 +523,11 @@ export function QaSurface(props: QaSurfaceProps) {
                           ? handleRegenerate
                           : undefined
                       }
-                      onOpenSources={handleOpenSources}
+                      onOpenSources={
+                        config.sources.enabled && config.sources.display.footer
+                          ? handleOpenSources
+                          : undefined
+                      }
                     />
                     {group !== undefined && group.turns.length > 1 ? (
                       <VariantSwitcher
@@ -568,12 +599,24 @@ export function QaSurface(props: QaSurfaceProps) {
           onClose={() => setAgentsOpen(false)}
         />
       ) : null}
-      {sourcesOpen && (drawerSources ?? state.sources).length > 0 ? (
+      {sourcesOpen &&
+      ((drawerSources ?? state.sources).length > 0 ||
+        !(drawerCompleteness?.complete ?? state.sourcesComplete)) ? (
         <QaSourcesDrawer
           sources={drawerSources ?? state.sources}
+          complete={drawerCompleteness?.complete ?? state.sourcesComplete}
+          incompleteOrigins={
+            drawerCompleteness?.incompleteOrigins ??
+            state.incompleteSourceOrigins
+          }
+          sessionId={state.sessionId}
+          sourceApi={props.sourceApi}
+          display={config.sources.display}
+          filePreview={config.sources.filePreview}
           onClose={() => {
             setSourcesOpen(false);
             setDrawerSources(null);
+            setDrawerCompleteness(null);
           }}
         />
       ) : null}

@@ -65,6 +65,44 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       }),
     }),
     embedding: Object.freeze({ frameAncestors: null }),
+    sources: Object.freeze({
+      enabled: true,
+      collect: Object.freeze({
+        parentAgent: true,
+        subagents: true,
+        persistTurnEvent: true,
+      }),
+      display: Object.freeze({
+        sidebar: true,
+        footer: true,
+        groupByKind: true,
+        showDiscovered: false,
+        showOriginBadges: false,
+        maxInitiallyVisiblePerGroup: 8,
+      }),
+      webSearch: Object.freeze({
+        promoteSearchResultsWithoutFetch: true,
+        maxPromotedPerSearch: 5,
+      }),
+      dedupe: Object.freeze({
+        normalizeUrls: true,
+        stripTrackingParams: true,
+        mergeFileRanges: true,
+      }),
+      filePreview: Object.freeze({
+        enabled: true,
+        markdownRenderedByDefault: true,
+        allowRawToggle: true,
+        maxBytes: 2_000_000,
+        maxMarkdownRenderBytes: 1_000_000,
+      }),
+      subagents: Object.freeze({
+        inheritSources: true,
+        enableReportToolFallback: true,
+        markIncompleteOpaqueRuns: true,
+      }),
+      legacy: Object.freeze({ parseAssistantSourcesBlock: false }),
+    }),
   },
 );
 
@@ -234,6 +272,45 @@ export function resolveConfig(
       "dsh-qa-surface: ui.showReset requires lockdown.allowSessionReset",
     );
   }
+  const maxInitiallyVisiblePerGroup =
+    input.sources?.display?.maxInitiallyVisiblePerGroup ??
+    DEFAULT_QA_SURFACE_CONFIG.sources.display.maxInitiallyVisiblePerGroup;
+  const maxPromotedPerSearch =
+    input.sources?.webSearch?.maxPromotedPerSearch ??
+    DEFAULT_QA_SURFACE_CONFIG.sources.webSearch.maxPromotedPerSearch;
+  const maxBytes =
+    input.sources?.filePreview?.maxBytes ??
+    DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.maxBytes;
+  const maxMarkdownRenderBytes =
+    input.sources?.filePreview?.maxMarkdownRenderBytes ??
+    DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.maxMarkdownRenderBytes;
+  for (const [name, value, min, max] of [
+    [
+      "sources.display.maxInitiallyVisiblePerGroup",
+      maxInitiallyVisiblePerGroup,
+      1,
+      100,
+    ],
+    ["sources.webSearch.maxPromotedPerSearch", maxPromotedPerSearch, 0, 50],
+    ["sources.filePreview.maxBytes", maxBytes, 1_024, 20_000_000],
+    [
+      "sources.filePreview.maxMarkdownRenderBytes",
+      maxMarkdownRenderBytes,
+      1_024,
+      10_000_000,
+    ],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw new TypeError(
+        `dsh-qa-surface: ${name} must be an integer from ${min} to ${max}`,
+      );
+    }
+  }
+  if (maxMarkdownRenderBytes > maxBytes) {
+    throw new TypeError(
+      "dsh-qa-surface: sources.filePreview.maxMarkdownRenderBytes cannot exceed maxBytes",
+    );
+  }
 
   return Object.freeze({
     enabled: input.enabled ?? DEFAULT_QA_SURFACE_CONFIG.enabled,
@@ -327,6 +404,87 @@ export function resolveConfig(
     }),
     embedding: Object.freeze({
       frameAncestors: optionalText(input.embedding?.frameAncestors),
+    }),
+    sources: Object.freeze({
+      enabled:
+        input.sources?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.sources.enabled,
+      collect: Object.freeze({
+        parentAgent:
+          input.sources?.collect?.parentAgent ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.collect.parentAgent,
+        subagents:
+          input.sources?.collect?.subagents ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.collect.subagents,
+        persistTurnEvent:
+          input.sources?.collect?.persistTurnEvent ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.collect.persistTurnEvent,
+      }),
+      display: Object.freeze({
+        sidebar:
+          input.sources?.display?.sidebar ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.display.sidebar,
+        footer:
+          input.sources?.display?.footer ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.display.footer,
+        groupByKind:
+          input.sources?.display?.groupByKind ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.display.groupByKind,
+        showDiscovered:
+          input.sources?.display?.showDiscovered ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.display.showDiscovered,
+        showOriginBadges:
+          input.sources?.display?.showOriginBadges ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.display.showOriginBadges,
+        maxInitiallyVisiblePerGroup,
+      }),
+      webSearch: Object.freeze({
+        promoteSearchResultsWithoutFetch:
+          input.sources?.webSearch?.promoteSearchResultsWithoutFetch ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.webSearch
+            .promoteSearchResultsWithoutFetch,
+        maxPromotedPerSearch,
+      }),
+      dedupe: Object.freeze({
+        normalizeUrls:
+          input.sources?.dedupe?.normalizeUrls ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.dedupe.normalizeUrls,
+        stripTrackingParams:
+          input.sources?.dedupe?.stripTrackingParams ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.dedupe.stripTrackingParams,
+        mergeFileRanges:
+          input.sources?.dedupe?.mergeFileRanges ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.dedupe.mergeFileRanges,
+      }),
+      filePreview: Object.freeze({
+        enabled:
+          input.sources?.filePreview?.enabled ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.enabled,
+        markdownRenderedByDefault:
+          input.sources?.filePreview?.markdownRenderedByDefault ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.filePreview
+            .markdownRenderedByDefault,
+        allowRawToggle:
+          input.sources?.filePreview?.allowRawToggle ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.allowRawToggle,
+        maxBytes,
+        maxMarkdownRenderBytes,
+      }),
+      subagents: Object.freeze({
+        inheritSources:
+          input.sources?.subagents?.inheritSources ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.subagents.inheritSources,
+        enableReportToolFallback:
+          input.sources?.subagents?.enableReportToolFallback ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.subagents.enableReportToolFallback,
+        markIncompleteOpaqueRuns:
+          input.sources?.subagents?.markIncompleteOpaqueRuns ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.subagents.markIncompleteOpaqueRuns,
+      }),
+      legacy: Object.freeze({
+        parseAssistantSourcesBlock:
+          input.sources?.legacy?.parseAssistantSourcesBlock ??
+          DEFAULT_QA_SURFACE_CONFIG.sources.legacy.parseAssistantSourcesBlock,
+      }),
     }),
   });
 }

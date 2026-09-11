@@ -17,6 +17,7 @@ import type {
   QaImageDraft,
   QaSessionState,
   QaSubagentView,
+  QaTurnSources,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import {
@@ -32,6 +33,7 @@ import type {
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaSourceApi,
   StorageLike,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
@@ -50,6 +52,7 @@ export interface QaSessionControllerOptions {
   readonly connection: ConnectionGenerationState;
   readonly config: ResolvedQaSurfaceConfig;
   readonly secureSession: QaSecureSession;
+  readonly sourceApi?: QaSourceApi;
   readonly storage?: StorageLike;
   readonly timeoutMs?: number;
   /**
@@ -76,6 +79,7 @@ export class QaSessionController {
   private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
   private readonly secureSessionRemote: QaSecureSession;
+  private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
   private readonly timeoutMs: number;
   private readonly streamIntervalMs: number;
@@ -99,6 +103,9 @@ export class QaSessionController {
   private disposed = false;
   private generation = 0;
   private chatsRevision = 0;
+  private hostSourceBundles: readonly QaTurnSources[] = [];
+  private hostSourcesSignature = "";
+  private refreshingHostSources = false;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -107,6 +114,15 @@ export class QaSessionController {
     this.connection = options.connection;
     this.config = options.config;
     this.secureSessionRemote = options.secureSession;
+    this.sourceApi =
+      options.sourceApi ??
+      ({
+        sources: async () => ({ ok: true as const, value: [] }),
+        readSourceFile: async () => ({
+          ok: false as const,
+          error: "unavailable",
+        }),
+      } satisfies QaSourceApi);
     this.chats = new QaChatIndex(
       options.storage,
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
@@ -691,6 +707,9 @@ export class QaSessionController {
     this.unsubscribeChat = undefined;
     this.conversationBinding = undefined;
     this.session = undefined;
+    this.hostSourceBundles = [];
+    this.hostSourcesSignature = "";
+    this.refreshingHostSources = false;
     this.admissionPending = false;
     this.policyReady = false;
   }
@@ -785,12 +804,15 @@ export class QaSessionController {
             : "ready";
     const conversationSnapshot =
       this.conversationBinding?.snapshot.getSnapshot();
-    const sourceBundles = projectTurnSources(
+    const projectedSourceBundles = projectTurnSources(
       conversationSnapshot,
       String(this.session.sessionId),
+      this.config.session.cwd ?? undefined,
     );
+    const sourceBundles = this.mergeSourceBundles(projectedSourceBundles);
+    if (!snapshot.running) void this.refreshHostSourceBundles();
     const sourcesByTurn = new Map(
-      sourceBundles.map((bundle) => [bundle.turn, bundle.sources] as const),
+      sourceBundles.map((bundle) => [bundle.turn, bundle] as const),
     );
     const messages = projectTranscript(conversationSnapshot, {
       running: snapshot.running,
@@ -799,10 +821,26 @@ export class QaSessionController {
     }).map((message) => {
       if (message.role !== "assistant" || message.turn === undefined)
         return message;
-      const sources = sourcesByTurn.get(message.turn);
+      const bundle = sourcesByTurn.get(message.turn);
+      const sources =
+        bundle === undefined
+          ? undefined
+          : [
+              ...bundle.sources,
+              ...(this.config.sources.display.showDiscovered
+                ? (bundle.discovered ?? [])
+                : []),
+            ];
       return sources === undefined || sources.length === 0
         ? message
-        : { ...message, sources };
+        : {
+            ...message,
+            sources,
+            sourcesComplete: bundle?.complete ?? true,
+            ...(bundle?.incompleteOrigins === undefined
+              ? {}
+              : { incompleteSourceOrigins: bundle.incompleteOrigins }),
+          };
     });
     this.state = {
       phase,
@@ -812,10 +850,52 @@ export class QaSessionController {
       canSend: connected && phase === "ready" && this.policyReady,
       canStop: connected && snapshot.running && this.config.ui.showStop,
       chatsRevision: this.chatsRevision,
-      sources: sourceBundles.at(-1)?.sources ?? [],
+      sources:
+        sourceBundles.at(-1) === undefined
+          ? []
+          : [
+              ...(sourceBundles.at(-1)?.sources ?? []),
+              ...(this.config.sources.display.showDiscovered
+                ? (sourceBundles.at(-1)?.discovered ?? [])
+                : []),
+            ],
+      sourcesComplete: sourceBundles.at(-1)?.complete ?? true,
+      incompleteSourceOrigins: sourceBundles.at(-1)?.incompleteOrigins,
       viewingSubagent: this.viewingSubagent,
     };
     this.emit();
+  }
+
+  private mergeSourceBundles(
+    projected: readonly QaTurnSources[],
+  ): readonly QaTurnSources[] {
+    const merged = new Map<number, QaTurnSources>();
+    for (const bundle of projected) merged.set(bundle.turn, bundle);
+    for (const bundle of this.hostSourceBundles)
+      merged.set(bundle.turn, bundle);
+    return [...merged.values()].sort((left, right) => left.turn - right.turn);
+  }
+
+  private async refreshHostSourceBundles(): Promise<void> {
+    if (this.refreshingHostSources || this.session === undefined) return;
+    const sessionId = String(this.session.sessionId);
+    this.refreshingHostSources = true;
+    try {
+      const result = await this.sourceApi.sources(sessionId);
+      if (
+        !result.ok ||
+        this.session === undefined ||
+        String(this.session.sessionId) !== sessionId
+      )
+        return;
+      const signature = JSON.stringify(result.value);
+      if (signature === this.hostSourcesSignature) return;
+      this.hostSourcesSignature = signature;
+      this.hostSourceBundles = result.value;
+      this.publish();
+    } finally {
+      this.refreshingHostSources = false;
+    }
   }
 
   private fail(message: string, error: unknown): void {

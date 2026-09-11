@@ -50,6 +50,7 @@ function bestText(
 function mergePair(
   left: QaSourceReference,
   right: QaSourceReference,
+  mergeFileRanges: boolean,
 ): QaSourceReference {
   const stronger =
     EVIDENCE_STRENGTH[right.evidence] > EVIDENCE_STRENGTH[left.evidence]
@@ -73,7 +74,16 @@ function mergePair(
     ...(uri === undefined ? {} : { uri }),
     ...(path === undefined ? {} : { path }),
     ...(snippet === undefined ? {} : { snippet }),
-    locations: compactLocations([...left.locations, ...right.locations]),
+    locations: mergeFileRanges
+      ? compactLocations([...left.locations, ...right.locations])
+      : [
+          ...new Map(
+            [...left.locations, ...right.locations].map((location) => [
+              JSON.stringify(location),
+              location,
+            ]),
+          ).values(),
+        ],
     evidence: stronger.evidence,
     origins: mergeOrigins(left.origins, right.origins),
     score: Math.max(left.score, right.score),
@@ -84,6 +94,7 @@ function mergePair(
 /** Merge by canonical id and rank by score, preserving first-use order on ties. */
 export function dedupeAndRankSources(
   sources: readonly QaSourceReference[],
+  options: { readonly mergeFileRanges?: boolean } = {},
 ): readonly QaSourceReference[] {
   const merged = new Map<
     string,
@@ -93,7 +104,9 @@ export function dedupeAndRankSources(
     const previous = merged.get(source.id);
     merged.set(source.id, {
       source:
-        previous === undefined ? source : mergePair(previous.source, source),
+        previous === undefined
+          ? source
+          : mergePair(previous.source, source, options.mergeFileRanges ?? true),
       order: previous?.order ?? order,
     });
   });

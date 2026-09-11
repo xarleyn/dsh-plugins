@@ -9,7 +9,7 @@ const BLOCK_START =
 
 function safeHref(value: string): string | undefined {
   try {
-    const url = new URL(value, window.location.origin);
+    const url = new URL(value);
     return ["http:", "https:", "mailto:"].includes(url.protocol)
       ? value
       : undefined;

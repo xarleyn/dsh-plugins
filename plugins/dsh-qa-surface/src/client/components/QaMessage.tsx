@@ -3,6 +3,7 @@ import type {
   QaMessage as QaMessageModel,
   QaImageView,
   QaSource,
+  QaTurnSources,
 } from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 
@@ -75,7 +76,11 @@ export interface QaMessageProps {
   /** Resolve one durable attachment into a viewable URL. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
   /** Open the drawer at the exact canonical snapshot shown in this footer. */
-  readonly onOpenSources?: (sources: readonly QaSource[]) => void;
+  readonly onOpenSources?: (
+    sources: readonly QaSource[],
+    complete: boolean,
+    incompleteOrigins: QaTurnSources["incompleteOrigins"],
+  ) => void;
 }
 
 type Rating = "up" | "down";
@@ -356,7 +361,13 @@ export const QaMessage = memo(
           <button
             type="button"
             className="dsh-qa-message__sources"
-            onClick={() => onOpenSources(message.sources ?? [])}
+            onClick={() =>
+              onOpenSources(
+                message.sources ?? [],
+                message.sourcesComplete ?? true,
+                message.incompleteSourceOrigins,
+              )
+            }
           >
             Источники · {message.sources.length}
           </button>

@@ -4,6 +4,18 @@ export type QaSourceKind =
 export type QaSourceEvidence =
   "read" | "fetched" | "queried" | "reported" | "inherited" | "discovered";
 
+export type QaSourceMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly QaSourceMetadataValue[]
+  | { readonly [key: string]: QaSourceMetadataValue };
+
+export interface QaSourceMetadata {
+  readonly [key: string]: QaSourceMetadataValue;
+}
+
 export interface QaSourceLocation {
   readonly path?: string;
   readonly lineStart?: number;
@@ -37,7 +49,7 @@ export interface QaSourceReference {
   readonly evidence: QaSourceEvidence;
   readonly origins: readonly QaSourceOrigin[];
   readonly score: number;
-  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly metadata?: QaSourceMetadata;
 }
 
 export interface QaTurnSources {
@@ -60,6 +72,18 @@ export interface SourceExtractorContext {
   readonly result: unknown;
   readonly presentation?: unknown;
   readonly origin: QaSourceOrigin;
+  /** Canonical session/workspace root used to make local paths portable. */
+  readonly workspaceRoot?: string;
+}
+
+export interface QaReportedSource {
+  readonly kind: QaSourceKind;
+  readonly title: string;
+  readonly uri?: string;
+  readonly path?: string;
+  readonly snippet?: string;
+  readonly locations?: readonly QaSourceLocation[];
+  readonly metadata?: QaSourceMetadata;
 }
 
 export interface SourceExtractor {
