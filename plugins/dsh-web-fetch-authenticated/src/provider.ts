@@ -17,6 +17,8 @@ import { validateFetchUrl } from './policy/url.js'
 import * as errors from './errors.js'
 import { authenticatedFetch } from './transport/fetch.js'
 import type { TransportGlobals } from './transport/fetch.js'
+import { applyAdapter } from './adapters/index.js'
+import type { AdapterRequestContext } from './adapters/index.js'
 import type { CredentialResolver } from './credentials/resolver.js'
 import type { ResolvedAuthSecrets } from './auth/index.js'
 
@@ -72,14 +74,17 @@ export class AuthenticatedFetchProvider implements WebFetchProvider {
 
     const startedAt = Date.now()
     try {
-      const result = await authenticatedFetch({
-        url,
+      const adapterContext: AdapterRequestContext = {
         rule,
         rules: config.rules,
         globals: this.globals(),
         resolveSecrets: candidate => this.resolveSecrets(candidate),
         ...(signal === undefined ? {} : { signal }),
-      })
+      }
+      // A rule with a content adapter serves recognized URLs from the product
+      // REST API and normalizes them; unrecognized URLs fall through to raw.
+      const adapted = await applyAdapter(url, adapterContext)
+      const result = adapted ?? await authenticatedFetch({ url, ...adapterContext })
       this.auditOk(rule, url, Date.now() - startedAt, result.statusCode)
       return result
     } catch (error: unknown) {

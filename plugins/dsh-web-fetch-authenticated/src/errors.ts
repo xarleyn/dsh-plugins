@@ -26,6 +26,7 @@ export const AUTH_FETCH_ERROR_CODES = {
   timeout: 'AUTH_FETCH_TIMEOUT',
   invalidUrl: 'AUTH_FETCH_INVALID_URL',
   providerError: 'AUTH_FETCH_PROVIDER_ERROR',
+  adapterFailed: 'AUTH_FETCH_ADAPTER_FAILED',
 } as const
 
 /** Scrub free text before it enters an error message. */
@@ -116,6 +117,15 @@ export function providerError(detail: string, cause?: unknown): WebError {
   return new WebError(
     `authenticated fetch failed: ${detail}`,
     AUTH_FETCH_ERROR_CODES.providerError,
+    cause === undefined ? undefined : { cause },
+  )
+}
+
+/** A content adapter could not produce its normalized text (SPEC §15.2). */
+export function adapterFailed(detail: string, cause?: unknown): WebError {
+  return new WebError(
+    `content adapter failed: ${detail}`,
+    AUTH_FETCH_ERROR_CODES.adapterFailed,
     cause === undefined ? undefined : { cause },
   )
 }

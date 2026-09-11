@@ -80,6 +80,36 @@ export type AuthConfig =
   | { readonly type: 'basic'; readonly username: string; readonly passwordCredential: string }
   | { readonly type: 'header'; readonly headerName: string; readonly credential: string; readonly prefix?: string }
 
+/**
+ * Per-rule content adapter (SPEC §15.2): `none` returns the raw response to
+ * `dsh-tool-web` (HTML → Markdown conversion upstream); `jira` and
+ * `confluence` rewrite a recognized URL to the product's REST API, fetch it
+ * through the same authenticated transport, and normalize the response into
+ * compact Markdown text.
+ */
+export type AdapterType = 'none' | 'jira' | 'confluence'
+
+/** Which Jira REST dialect to speak (SPEC §15.2: Server/DC/Cloud differ). */
+export type JiraFlavor = 'server' | 'cloud'
+
+export interface AdapterConfig {
+  readonly type: AdapterType
+  /** Jira only: REST API flavor. Default `server` (REST v2, wiki-markup bodies). */
+  readonly jiraFlavor?: JiraFlavor
+  /** Jira only: include issue comments in the normalized text. Default `false`. */
+  readonly includeComments?: boolean
+  /** Jira only: include issue links (blocks/duplicates/…) in the text. Default `false`. */
+  readonly includeLinks?: boolean
+}
+
+/** Fully resolved adapter settings of a rule (defaults applied). */
+export interface ResolvedAdapter {
+  readonly type: AdapterType
+  readonly jiraFlavor: JiraFlavor
+  readonly includeComments: boolean
+  readonly includeLinks: boolean
+}
+
 /** Match section of a rule (SPEC §7/§9): exact hosts, glob paths. */
 export interface RuleMatch {
   /** Default `['https']`. */
@@ -108,6 +138,8 @@ export interface AuthenticatedFetchRule {
   networkPolicy?: NetworkPolicy
   redirects?: RedirectPolicy
   limits?: FetchLimits
+  /** Optional content adapter (SPEC §15.2). Omitted = raw HTTP/HTML passthrough. */
+  adapter?: AdapterConfig
 }
 
 /** What happens when no rule matches (SPEC §17). v1 supports `block` only. */
@@ -162,6 +194,7 @@ export interface ResolvedRule {
   readonly networkPolicy: ResolvedNetworkPolicy
   readonly redirects: ResolvedRedirectPolicy
   readonly limits: ResolvedLimits
+  readonly adapter: ResolvedAdapter
 }
 
 export interface ResolvedConfig {
@@ -225,6 +258,8 @@ export interface RuleTestReport {
   readonly detail?: string
   /** Short secret-scrubbed response preview. */
   readonly preview?: string
+  /** Adapter applied for the request (`jira`/`confluence`) when the rule selects one. */
+  readonly adapter?: string
   readonly truncated: boolean
 }
 
