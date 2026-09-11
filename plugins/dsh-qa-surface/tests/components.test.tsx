@@ -3,7 +3,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
-import type { QaImageDraft, QaWorkItem } from "../src/types.js";
+import type { QaImageDraft, QaSource, QaWorkItem } from "../src/types.js";
 import { QaMessage, sameMessage } from "../src/client/components/QaMessage.js";
 import { collectSubagents } from "../src/client/components/QaAgentsDrawer.js";
 import { collectVariantGroups } from "../src/client/components/VariantSwitcher.js";
@@ -161,6 +161,39 @@ describe("QA message", () => {
     expect(
       document.querySelector(".dsh-qa-message__actions[data-persistent]"),
     ).toBeNull();
+  });
+
+  it("opens the exact canonical source snapshot from the answer footer", () => {
+    const onOpenSources = vi.fn();
+    const sources: readonly QaSource[] = [
+      {
+        id: "web:https://example.com/docs",
+        kind: "web",
+        title: "Documentation",
+        uri: "https://example.com/docs",
+        locations: [],
+        evidence: "fetched",
+        origins: [{ sessionId: "s1", turn: 1, role: "parent" }],
+        score: 100,
+      },
+    ];
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:source",
+          role: "assistant",
+          text: "Answer with evidence",
+          status: "committed",
+          turn: 1,
+          sources,
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        onOpenSources={onOpenSources}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Источники · 1" }));
+    expect(onOpenSources).toHaveBeenCalledWith(sources);
   });
 
   it("keeps the metadata row persistent when timestamps are enabled", () => {

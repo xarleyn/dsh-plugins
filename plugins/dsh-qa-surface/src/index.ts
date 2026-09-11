@@ -180,5 +180,6 @@ export type { QaAttestationReason } from "./attestation.js";
 export { registerQaNavigationRoute } from "./host-route.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export { QaPolicyAdmission } from "./secure-session.js";
+export * from "./provenance/index.js";
 export type * from "./types.js";
 export default QaSurface;

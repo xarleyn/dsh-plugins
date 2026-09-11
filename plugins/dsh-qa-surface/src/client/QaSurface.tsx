@@ -13,7 +13,7 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaImageDraft, QaSessionState } from "../types.js";
+import type { QaImageDraft, QaSessionState, QaSource } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import { QaSessionController } from "./QaSessionController.js";
@@ -140,6 +140,9 @@ export function QaSurface(props: QaSurfaceProps) {
     {},
   );
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [drawerSources, setDrawerSources] = useState<
+    readonly QaSource[] | null
+  >(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
     [],
@@ -238,6 +241,11 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
+  const handleOpenSources = useCallback((sources: readonly QaSource[]) => {
+    setDrawerSources(sources);
+    setSourcesOpen(true);
+    setAgentsOpen(false);
+  }, []);
 
   useLayoutEffect(() => {
     const element = transcript.current;
@@ -400,6 +408,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     aria-expanded={sourcesOpen}
                     onClick={() => {
                       setSourcesOpen((open) => !open);
+                      setDrawerSources(null);
                       setAgentsOpen(false);
                     }}
                   >
@@ -487,6 +496,7 @@ export function QaSurface(props: QaSurfaceProps) {
                           ? handleRegenerate
                           : undefined
                       }
+                      onOpenSources={handleOpenSources}
                     />
                     {group !== undefined && group.turns.length > 1 ? (
                       <VariantSwitcher
@@ -558,10 +568,13 @@ export function QaSurface(props: QaSurfaceProps) {
           onClose={() => setAgentsOpen(false)}
         />
       ) : null}
-      {sourcesOpen && state.sources.length > 0 ? (
+      {sourcesOpen && (drawerSources ?? state.sources).length > 0 ? (
         <QaSourcesDrawer
-          sources={state.sources}
-          onClose={() => setSourcesOpen(false)}
+          sources={drawerSources ?? state.sources}
+          onClose={() => {
+            setSourcesOpen(false);
+            setDrawerSources(null);
+          }}
         />
       ) : null}
     </main>

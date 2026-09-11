@@ -569,6 +569,7 @@ describe("transcript projection", () => {
       call: { name: string; argsRaw: string } | null,
       text: string,
       isError = false,
+      meta?: unknown,
     ) => ({
       kind: "tool-result" as const,
       seq,
@@ -578,6 +579,7 @@ describe("transcript projection", () => {
       callTime: null,
       content: [{ type: "text" as const, text }],
       isError,
+      ...(meta === undefined ? {} : { meta }),
       subCalls: [],
     });
     const sources = projectSources(
@@ -592,6 +594,12 @@ describe("transcript projection", () => {
                 argsRaw: '{"url":"https://github.com/x/y"}',
               },
               "Первые строки страницы\nвторая строка",
+              false,
+              {
+                url: "https://github.com/x/y?utm_source=search",
+                statusCode: 200,
+                truncated: false,
+              },
             ),
             toolResult(
               2,
@@ -601,6 +609,22 @@ describe("transcript projection", () => {
                 argsRaw: '{"query":"dsh plugin api"}',
               },
               'Результаты поиска "dsh plugin api"',
+              false,
+              {
+                sources: [
+                  {
+                    url: "https://github.com/x/y",
+                    title: "Repository docs",
+                    snippet: "same page",
+                  },
+                  {
+                    url: "https://docs.example.com/plugin",
+                    title: "Plugin API",
+                    snippet: "API reference",
+                  },
+                ],
+                truncated: false,
+              },
             ),
             toolResult(
               3,
@@ -619,6 +643,14 @@ describe("transcript projection", () => {
                 argsRaw: '{"file_path":"D:/repo/src/a.ts"}',
               },
               "export const a = 1",
+              false,
+              {
+                path: "D:/repo/src/a.ts",
+                offset: 40,
+                lines: [{ number: 40, text: "export const a = 1" }],
+                totalLines: 80,
+                lang: "ts",
+              },
             ),
             toolResult(
               5,
@@ -664,47 +696,34 @@ describe("transcript projection", () => {
         }),
       ),
     );
+    expect(sources).toHaveLength(4);
     expect(sources).toEqual([
-      {
-        id: "source:c1",
+      expect.objectContaining({
+        id: "web:https://github.com/x/y",
         kind: "web",
-        target: "https://github.com/x/y",
-        title: "github.com",
-        snippet: "Первые строки страницы",
-        output: "Первые строки страницы\nвторая строка",
-      },
-      {
-        id: "source:c2",
-        kind: "search",
-        target: "dsh plugin api",
-        title: "dsh plugin api",
-        snippet: 'Результаты поиска "dsh plugin api"',
-        output: 'Результаты поиска "dsh plugin api"',
-      },
-      {
-        id: "source:c3",
+        evidence: "fetched",
+        score: 100,
+      }),
+      expect.objectContaining({
+        id: "file:d:/repo/src/a.ts",
+        kind: "code",
+        locations: [{ path: "d:/repo/src/a.ts", lineStart: 40, lineEnd: 40 }],
+        evidence: "read",
+      }),
+      expect.objectContaining({
+        id: "file:d:/repo/AGENTS.md",
         kind: "file",
-        target: "D:/repo/src/a.ts",
-        title: "a.ts",
-        snippet: "export const a = 1",
-        output: "export const a = 1",
-      },
-      {
-        id: "source:c7",
-        kind: "file",
-        target: "D:/repo/AGENTS.md",
-        title: "AGENTS.md",
-        snippet: "# AGENTS",
-        output: "# AGENTS",
-      },
-      {
-        id: "source:c5",
+        evidence: "read",
+      }),
+      expect.objectContaining({
+        id: "web:https://docs.example.com/plugin",
         kind: "web",
-        target: "https://example.com",
-        title: "example.com",
-        snippet: "",
-        output: "",
-      },
+        title: "Plugin API",
+        evidence: "queried",
+        score: 55,
+      }),
     ]);
+    expect(JSON.stringify(sources)).not.toContain("dsh plugin api");
+    expect(JSON.stringify(sources)).not.toContain("https://example.com");
   });
 });

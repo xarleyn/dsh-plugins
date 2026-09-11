@@ -168,6 +168,8 @@ export type QaMessage =
       readonly timestamp?: number;
       /** Host turn this answer belongs to; groups regenerations into variants. */
       readonly turn?: number;
+      /** Canonical evidence snapshot shared with this answer's source drawer. */
+      readonly sources?: readonly QaSource[];
       /** Host-recorded response timing, present on finalized messages only. */
       readonly stats?: {
         /** step start → final message. */
@@ -231,17 +233,17 @@ export type QaSessionPhase =
   | "blocked"
   | "error";
 
-/** One tool-derived source shown in the sources drawer. */
-export interface QaSource {
-  readonly id: string;
-  readonly kind: "web" | "search" | "file";
-  /** URL, filesystem path or search query as the model supplied it. */
-  readonly target: string;
-  readonly title: string;
-  readonly snippet: string;
-  /** The tool's full text output, capped for the detail pane. */
-  readonly output: string;
-}
+export type {
+  QaSourceEvidence,
+  QaSourceKind,
+  QaSourceLocation,
+  QaSourceOrigin,
+  QaSourceReference,
+  QaTurnSources,
+} from "./provenance/types.js";
+
+/** Transitional UI name; the drawer now consumes the canonical source object. */
+export type QaSource = import("./provenance/types.js").QaSourceReference;
 
 /** Raster formats the attachment path accepts (mirrors the host contract). */
 export type QaImageMediaType =
