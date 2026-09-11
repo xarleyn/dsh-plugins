@@ -18,7 +18,8 @@
     "projectsRelationship": "independent",
     "versionPlans": {
       "ignorePatternsForPlanCheck": [
-        "**/CHANGELOG.md"
+        "**/CHANGELOG.md",
+        "**/package.json"
       ]
     },
     "version": {

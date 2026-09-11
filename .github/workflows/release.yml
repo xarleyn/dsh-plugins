@@ -38,11 +38,13 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main
+      - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          # Release whatever ref the workflow was dispatched on: main for
+          # regular releases, a branch for test releases without touching main.
+          ref: ${{ github.ref_name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -139,7 +141,7 @@ jobs:
 
       - name: Push release commit and tags
         if: inputs.dry_run == false && inputs.publish_only == false
-        run: git push origin HEAD:main --follow-tags
+        run: git push origin HEAD:${{ github.ref_name }} --follow-tags
 
       - name: Upgrade npm for trusted publishing
         if: inputs.dry_run == false || inputs.publish_only
