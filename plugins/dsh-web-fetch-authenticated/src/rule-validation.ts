@@ -6,7 +6,7 @@
  * @module rule-validation
  */
 
-import type { AuthConfig, AuthenticatedFetchRule, AuthType, WebFetchAuthConfig, NetworkPolicy, RedirectPolicy } from './types.js'
+import type { AdapterConfig, AuthConfig, AuthenticatedFetchRule, AuthType, WebFetchAuthConfig, NetworkPolicy, RedirectPolicy } from './types.js'
 import { isCidr } from './policy/network.js'
 import { compilePathPattern, isValidConfiguredHost, normalizeHost } from './policy/match.js'
 
@@ -104,6 +104,8 @@ export function validateRule(rule: AuthenticatedFetchRule, index: number): strin
     }
   }
 
+  errors.push(...validateAdapter(rule.adapter, label))
+
   errors.push(...validateAuth(rule.auth, label))
 
   errors.push(...validateNetworkPolicy(rule.networkPolicy, label))
@@ -122,6 +124,26 @@ export function validateRule(rule: AuthenticatedFetchRule, index: number): strin
     } catch {
       errors.push(`${label}: testUrl is not a valid absolute URL`)
     }
+  }
+  return errors
+}
+
+function validateAdapter(adapter: AdapterConfig | undefined, label: string): string[] {
+  if (adapter === undefined) return []
+  const errors: string[] = []
+  const type = adapter.type
+  // Schemastery normalizes an absent section to `{}`; treat a missing type as
+  // absent rather than invalid, and still validate any other present fields.
+  if (type !== undefined && type !== 'none' && type !== 'jira' && type !== 'confluence') {
+    errors.push(`${label}: unsupported adapter type "${String(type)}"`)
+  }
+  const flavor = adapter.jiraFlavor
+  if (flavor !== undefined && flavor !== 'server' && flavor !== 'cloud') {
+    errors.push(`${label}: adapter.jiraFlavor must be "server" or "cloud"`)
+  }
+  for (const field of ['includeComments', 'includeLinks'] as const) {
+    const value = adapter[field]
+    if (value !== undefined && typeof value !== 'boolean') errors.push(`${label}: adapter.${field} must be a boolean`)
   }
   return errors
 }

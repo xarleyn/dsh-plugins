@@ -244,6 +244,10 @@ interface RuleDraft {
   headerName: string
   headerRef: string
   headerPrefix: string
+  adapterType: 'none' | 'jira' | 'confluence'
+  jiraFlavor: 'server' | 'cloud'
+  includeComments: boolean
+  includeLinks: boolean
   network: NetworkDraft
   redirectMode: RedirectMode
   maxRedirects: string
@@ -255,6 +259,7 @@ interface RuleDraft {
 
 function ruleToDraft(rule: AuthenticatedFetchRule): RuleDraft {
   const auth = rule.auth
+  const adapter = rule.adapter
   return {
     id: rule.id,
     name: rule.name,
@@ -273,6 +278,10 @@ function ruleToDraft(rule: AuthenticatedFetchRule): RuleDraft {
     headerName: auth.type === 'header' ? auth.headerName : '',
     headerRef: auth.type === 'header' ? auth.credential : '',
     headerPrefix: auth.type === 'header' ? auth.prefix ?? '' : '',
+    adapterType: adapter?.type ?? 'none',
+    jiraFlavor: adapter?.jiraFlavor ?? 'server',
+    includeComments: adapter?.includeComments ?? false,
+    includeLinks: adapter?.includeLinks ?? false,
     network: networkToDraft(rule.networkPolicy),
     redirectMode: rule.redirects?.mode ?? 'same-origin',
     maxRedirects: rule.redirects?.maxRedirects === undefined ? '' : String(rule.redirects.maxRedirects),
@@ -302,6 +311,10 @@ function emptyDraft(): RuleDraft {
     headerName: '',
     headerRef: '',
     headerPrefix: '',
+    adapterType: 'none',
+    jiraFlavor: 'server',
+    includeComments: false,
+    includeLinks: false,
     network: networkToDraft(undefined),
     redirectMode: 'same-origin',
     maxRedirects: '',
@@ -359,6 +372,16 @@ function draftToRule(draft: RuleDraft): { rule: AuthenticatedFetchRule; errors: 
       ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
     },
     limits: buildLimits(draft, errors),
+  }
+  if (draft.adapterType !== 'none') {
+    rule.adapter = draft.adapterType === 'jira'
+      ? {
+          type: 'jira',
+          ...(draft.jiraFlavor !== 'server' ? { jiraFlavor: draft.jiraFlavor } : {}),
+          ...(draft.includeComments ? { includeComments: true } : {}),
+          ...(draft.includeLinks ? { includeLinks: true } : {}),
+        }
+      : { type: 'confluence' }
   }
   if (draft.description.trim().length > 0) rule.description = draft.description.trim()
   if (draft.testUrl.trim().length > 0) rule.testUrl = draft.testUrl.trim()
@@ -644,6 +667,51 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
         />
       )}
 
+      <div className="wfa-grid">
+        <Field label="Content adapter">
+          <select
+            className="wfa-control"
+            value={draft.adapterType}
+            onChange={event => { patch({ adapterType: event.target.value as RuleDraft['adapterType'] }) }}
+          >
+            <option value="none">Raw HTTP/HTML</option>
+            <option value="jira">Jira issue (REST → clean text)</option>
+            <option value="confluence">Confluence page (REST → clean text)</option>
+          </select>
+        </Field>
+        {draft.adapterType === 'jira' && (
+          <Field label="Jira flavor">
+            <select
+              className="wfa-control"
+              value={draft.jiraFlavor}
+              onChange={event => { patch({ jiraFlavor: event.target.value as RuleDraft['jiraFlavor'] }) }}
+            >
+              <option value="server">Server / Data Center (REST v2, wiki markup)</option>
+              <option value="cloud">Cloud (REST v3, Atlassian Document Format)</option>
+            </select>
+          </Field>
+        )}
+      </div>
+      {draft.adapterType === 'jira' && (
+        <div className="wfa-checks">
+          <label className="wfa-check">
+            <input type="checkbox" checked={draft.includeComments} onChange={event => { patch({ includeComments: event.target.checked }) }} />
+            Include comments
+          </label>
+          <label className="wfa-check">
+            <input type="checkbox" checked={draft.includeLinks} onChange={event => { patch({ includeLinks: event.target.checked }) }} />
+            Include issue links
+          </label>
+        </div>
+      )}
+      {draft.adapterType !== 'none' && (
+        <p className="wfa-note">
+          Recognized URLs ({draft.adapterType === 'jira' ? '/browse/ISSUE-KEY' : '/pages/<id>, /display/SPACE/Title'}) are
+          fetched from the product REST API with the same credentials and policy and returned as clean Markdown text;
+          everything else falls back to raw HTTP/HTML.
+        </p>
+      )}
+
       <details className="wfa-advanced">
         <summary>Network policy, redirects, and limits</summary>
         <div className="wfa-advanced-content">
@@ -793,6 +861,7 @@ function TestReport({ report }: { report: RuleTestReport }): JSX.Element {
       </div>
       <div>
         <b>Auth applied:</b> {report.authApplied ? 'yes' : 'no'}
+        {report.adapter !== undefined && <> · <b>Adapter:</b> {report.adapter}</>}
         {report.credentialState !== undefined && (
           <> · <b>Credential</b> {report.credentialState.ref}: {report.credentialState.configured ? 'configured' : 'missing'}</>
         )}
@@ -932,6 +1001,7 @@ export function RulesSection({ config, writable, setRules, face }: {
               <span className="wfa-actions" style={{ gap: 5 }}>
                 <Pill tone={rule.enabled ? 'ok' : 'warn'}>{rule.enabled ? 'enabled' : 'disabled'}</Pill>
                 <Pill tone="warn">{authSummary(rule.auth)}</Pill>
+                {rule.adapter !== undefined && rule.adapter.type !== 'none' && <Pill tone="ok">{rule.adapter.type}</Pill>}
               </span>
               <span className="wfa-actions">
                 <button className="wfa-btn link" type="button" disabled={!writable} onClick={() => { toggleRule(rule.id, !rule.enabled) }}>

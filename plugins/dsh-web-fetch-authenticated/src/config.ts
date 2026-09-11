@@ -8,6 +8,7 @@
 
 import z from '@deepseek-ai/schemastery'
 import type {
+  AdapterConfig,
   AuthConfig,
   AuditConfig,
   AuthenticatedFetchRule,
@@ -15,6 +16,7 @@ import type {
   DefaultPolicy,
   FetchLimits,
   NetworkPolicy,
+  ResolvedAdapter,
   ResolvedConfig,
   ResolvedRule,
   RedirectPolicy,
@@ -89,6 +91,12 @@ const ruleSchema = z.object({
   networkPolicy: networkPolicySchema as z<NetworkPolicy>,
   redirects: redirectSchema as z<RedirectPolicy>,
   limits: fetchLimitsSchema as z<FetchLimits>,
+  adapter: z.object({
+    type: z.union(['none', 'jira', 'confluence'] as const),
+    jiraFlavor: z.union(['server', 'cloud'] as const),
+    includeComments: z.boolean(),
+    includeLinks: z.boolean(),
+  }) as z<AdapterConfig>,
 })
 
 /** Runtime schema consumed by the Cordis loader and the settings section. */
@@ -114,6 +122,15 @@ function resolveLimits(globalLimits: FetchLimits | undefined, ruleLimits: FetchL
   }
 }
 
+function resolveAdapter(adapter: AdapterConfig | undefined): ResolvedAdapter {
+  return Object.freeze({
+    type: adapter?.type ?? 'none',
+    jiraFlavor: adapter?.jiraFlavor ?? 'server',
+    includeComments: adapter?.includeComments ?? false,
+    includeLinks: adapter?.includeLinks ?? false,
+  })
+}
+
 function resolveRule(rule: AuthenticatedFetchRule, globalLimits: FetchLimits | undefined): ResolvedRule {
   const networkPolicySource = rule.networkPolicy ?? {}
   const redirects = rule.redirects ?? {}
@@ -135,6 +152,7 @@ function resolveRule(rule: AuthenticatedFetchRule, globalLimits: FetchLimits | u
       allowedOrigins: Object.freeze([...(redirects.allowedOrigins ?? [])]),
     }),
     limits: Object.freeze(resolveLimits(globalLimits, rule.limits)),
+    adapter: resolveAdapter(rule.adapter),
   }
 }
 
