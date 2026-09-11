@@ -91,6 +91,32 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-sidebar__version{appearance:none;display:inline-flex;align-items:center;padding:2px 0;border:0;background:0 0;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:12px;line-height:16px;cursor:pointer;transition:color .12s}
 .dsh-qa-sidebar__version:hover{color:var(--dsw-alias-label-primary)}
 .dsh-qa-sidebar__version:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px;border-radius:4px}
+.dsh-qa-sidebar__account{display:flex;align-items:center;gap:6px;min-width:0;margin-bottom:6px}
+.dsh-qa-sidebar__account-name{min-width:0;overflow:hidden;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:16px;text-overflow:ellipsis;white-space:nowrap}
+.dsh-qa-sidebar__account-exit{appearance:none;display:grid;place-items:center;flex:none;width:24px;height:24px;padding:0;border:0;border-radius:7px;background:0 0;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.dsh-qa-sidebar__account-exit:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-sidebar__account-exit:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
+.dsh-qa-sidebar__account-exit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-auth{align-items:center;justify-content:center;padding:24px}
+.dsh-qa-auth__card{display:flex;flex-direction:column;gap:14px;width:min(360px,100%);padding:28px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 18px 48px var(--dsh-qa-overlay)}
+.dsh-qa-auth__brand{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.dsh-qa-auth__logo{width:32px;height:32px;fill:none;stroke:var(--dsh-qa-brand);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-auth__brand h1{margin:0;color:var(--dsw-alias-label-primary);font-size:19px;font-weight:600;line-height:26px}
+.dsh-qa-auth__tabs{display:flex;gap:4px;padding:3px;border-radius:9px;background:var(--dsw-alias-bg-module-platform)}
+.dsh-qa-auth__tab{appearance:none;flex:1;padding:6px 0;border:0;border-radius:7px;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;line-height:18px;cursor:pointer;transition:background .12s,color .12s}
+.dsh-qa-auth__tab:hover{color:var(--dsw-alias-label-primary)}
+.dsh-qa-auth__tab--active{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
+.dsh-qa-auth__tab:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
+.dsh-qa-auth__field{display:flex;flex-direction:column;gap:5px}
+.dsh-qa-auth__field span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:16px}
+.dsh-qa-auth__field input{appearance:none;width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
+.dsh-qa-auth__field input:focus{outline:none;border-color:var(--dsh-qa-brand)}
+.dsh-qa-auth__field input:disabled{opacity:.55}
+.dsh-qa-auth__error{margin:0;color:var(--dsh-qa-error);font-size:12px;line-height:17px}
+.dsh-qa-auth__submit{appearance:none;margin-top:2px;padding:10px 0;border:0;border-radius:9px;background:var(--dsh-qa-brand);color:var(--dsh-qa-accent-contrast);font:inherit;font-size:14px;font-weight:600;line-height:20px;cursor:pointer;transition:background .12s}
+.dsh-qa-auth__submit:hover{background:var(--dsh-qa-accent-hover)}
+.dsh-qa-auth__submit:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
+.dsh-qa-auth__submit:disabled{opacity:.6;cursor:default}
 .dsh-qa-changelog{position:fixed;inset:0;z-index:2147483600;display:grid;place-items:center;padding:24px;background:var(--dsh-qa-overlay)}
 .dsh-qa-changelog__panel{display:flex;flex-direction:column;width:min(560px,100%);max-height:min(640px,100%);border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 18px 48px var(--dsh-qa-overlay);overflow:hidden}
 .dsh-qa-changelog__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;padding:16px 18px 12px;border-bottom:1px solid var(--dsw-alias-border-l2)}

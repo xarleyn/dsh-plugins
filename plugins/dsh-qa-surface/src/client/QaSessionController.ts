@@ -44,6 +44,17 @@ import {
   QA_REGENERATE_MARKER,
 } from "./QaTranscriptAdapter.js";
 
+export interface QaAccountsFacade {
+  /** The account bearer token, or null while anonymous. */
+  readonly token: () => string | null;
+  /** Server-owned chat ids; the list authority while accounts are on. */
+  readonly ownedIds: () => readonly string[];
+  /** Called after a new chat binds, so ownership stays current. */
+  readonly onSessionCreated: (sessionId: string) => void;
+  /** Called when the Host refuses with auth-required (expired/rotated). */
+  readonly onAuthRequired: () => void;
+}
+
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
@@ -54,6 +65,8 @@ export interface QaSessionControllerOptions {
   readonly secureSession: QaSecureSession;
   readonly sourceApi?: QaSourceApi;
   readonly storage?: StorageLike;
+  /** Present while the deployment gates QA users with accounts. */
+  readonly accounts?: QaAccountsFacade;
   readonly timeoutMs?: number;
   /**
    * Minimum spacing between projections of a running turn's stream frames.
@@ -81,6 +94,7 @@ export class QaSessionController {
   private readonly secureSessionRemote: QaSecureSession;
   private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
+  private readonly accounts: QaAccountsFacade | undefined;
   private readonly timeoutMs: number;
   private readonly streamIntervalMs: number;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
@@ -127,6 +141,7 @@ export class QaSessionController {
       options.storage,
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
     );
+    this.accounts = options.accounts;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamIntervalMs = options.streamIntervalMs ?? 66;
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -402,9 +417,13 @@ export class QaSessionController {
     await this.switchTo(chat);
   }
 
-  /** This browser's indexed chat ids, most recently used first. */
+  /** This browser's chat ids: the owned list when accounts are on, else the
+   * local index. Both intersect the host session list at projection time. */
   chatIds(): readonly string[] {
-    return this.chats.chatIds();
+    const owned = this.accounts?.ownedIds() ?? [];
+    if (owned.length === 0) return this.chats.chatIds();
+    const local = this.chats.chatIds();
+    return [...new Set([...owned, ...local])];
   }
 
   /** The bound session id, or null while no chat is bound. */
@@ -695,6 +714,7 @@ export class QaSessionController {
       this.chatSessionId = String(this.session.sessionId);
       this.viewingSubagent = null;
       this.chats.addChat(String(this.session.sessionId));
+      this.accounts?.onSessionCreated(String(this.session.sessionId));
     }
     this.publish();
   }
@@ -881,7 +901,10 @@ export class QaSessionController {
     const sessionId = String(this.session.sessionId);
     this.refreshingHostSources = true;
     try {
-      const result = await this.sourceApi.sources(sessionId);
+      const result = await this.sourceApi.sources(
+        this.accounts?.token() ?? "",
+        sessionId,
+      );
       if (
         !result.ok ||
         this.session === undefined ||
@@ -938,12 +961,25 @@ export class QaSessionController {
     };
     try {
       const result = await this.secureSessionRemote(
+        this.accounts?.token() ?? "",
         String(this.session.sessionId),
       );
       if (!result.ok) {
-        return reject(
-          attestationReasonOf(result.error as { readonly message?: string }),
+        const reason = attestationReasonOf(
+          result.error as { readonly message?: string },
         );
+        if (reason === "auth-required") {
+          // The identity expired or was rotated: back to the gate instead of
+          // the generic configuration error.
+          if (reportFailure) {
+            console.error(
+              "dsh-qa-surface: policy attestation failed (reason: auth-required). The account token is absent or expired.",
+            );
+          }
+          this.accounts?.onAuthRequired();
+          return false;
+        }
+        return reject(reason);
       }
       if (
         !proofMatchesConfig(

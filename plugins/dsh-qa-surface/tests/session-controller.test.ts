@@ -145,7 +145,7 @@ function harness(existing: string[] = []) {
     removeItem: (key) => stored.delete(key),
   };
   const secureSession = vi.fn<QaSessionControllerOptions["secureSession"]>(
-    async (sessionId: string) => ({
+    async (token: string, sessionId: string) => ({
       ok: true as const,
       value: {
         sessionId,
@@ -257,7 +257,7 @@ describe("QA session controller", () => {
         incompleteSourceOrigins: [{ subagentRunId: "opaque-run" }],
       });
     });
-    expect(sources).toHaveBeenCalledWith("saved");
+    expect(sources).toHaveBeenCalledWith("", "saved");
     controller.dispose();
   });
 
@@ -292,27 +292,28 @@ describe("QA session controller", () => {
     const world = harness(["saved"]);
     const storageKey = "dsh-qa-surface.session:v1:/qa:session";
     world.stored.set(storageKey, "saved");
-    world.secureSession.mockImplementation(async (sessionId: string) =>
-      sessionId === "saved"
-        ? {
-            ok: false as const,
-            error: { code: "policy-unavailable" },
-          }
-        : {
-            ok: true as const,
-            value: {
-              sessionId,
-              enabled: true,
-              agentPresetMatches: true,
-              workspaceMatches: true,
-              modelMatches: true,
-              sandboxIsReadOnly: true,
-              approvalIsNever: true,
-              permissionPreset: "qa-read-only",
-              toolPolicyLoaded: true,
-              toolAllowList: [],
+    world.secureSession.mockImplementation(
+      async (token: string, sessionId: string) =>
+        sessionId === "saved"
+          ? {
+              ok: false as const,
+              error: { code: "policy-unavailable" },
+            }
+          : {
+              ok: true as const,
+              value: {
+                sessionId,
+                enabled: true,
+                agentPresetMatches: true,
+                workspaceMatches: true,
+                modelMatches: true,
+                sandboxIsReadOnly: true,
+                approvalIsNever: true,
+                permissionPreset: "qa-read-only",
+                toolPolicyLoaded: true,
+                toolAllowList: [],
+              },
             },
-          },
     );
     const controller = new QaSessionController({
       ...world,
@@ -327,8 +328,8 @@ describe("QA session controller", () => {
       canSend: true,
       error: null,
     });
-    expect(world.secureSession).toHaveBeenNthCalledWith(1, "saved");
-    expect(world.secureSession).toHaveBeenNthCalledWith(2, "created-2");
+    expect(world.secureSession).toHaveBeenNthCalledWith(1, "", "saved");
+    expect(world.secureSession).toHaveBeenNthCalledWith(2, "", "created-2");
     expect(world.stored.get(storageKey)).toBe("created-2");
     controller.dispose();
   });
@@ -369,7 +370,7 @@ describe("QA session controller", () => {
       "created-1",
       "qa-assistant",
     );
-    expect(world.secureSession).toHaveBeenCalledWith("created-1");
+    expect(world.secureSession).toHaveBeenCalledWith("", "created-1");
     controller.dispose();
   });
 
@@ -458,22 +459,24 @@ describe("QA session controller", () => {
     "toolPolicyLoaded",
   ] as const)("fails closed when %s cannot be proven", async (field) => {
     const world = harness();
-    world.secureSession.mockImplementation(async (sessionId: string) => ({
-      ok: true as const,
-      value: {
-        sessionId,
-        enabled: true,
-        agentPresetMatches: true,
-        workspaceMatches: true,
-        modelMatches: true,
-        sandboxIsReadOnly: true,
-        approvalIsNever: true,
-        permissionPreset: "qa-read-only",
-        toolPolicyLoaded: true,
-        toolAllowList: [],
-        [field]: false,
-      },
-    }));
+    world.secureSession.mockImplementation(
+      async (token: string, sessionId: string) => ({
+        ok: true as const,
+        value: {
+          sessionId,
+          enabled: true,
+          agentPresetMatches: true,
+          workspaceMatches: true,
+          modelMatches: true,
+          sandboxIsReadOnly: true,
+          approvalIsNever: true,
+          permissionPreset: "qa-read-only",
+          toolPolicyLoaded: true,
+          toolAllowList: [],
+          [field]: false,
+        },
+      }),
+    );
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
