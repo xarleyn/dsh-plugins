@@ -369,7 +369,10 @@ function collectSettledTools(
   let nearestTurn: number | undefined;
   for (const node of nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
-    if (node.kind !== "tool-result" || node.isError) continue;
+    // Errored results render as failed rows (toolStatus maps them) so the
+    // work view does not silently drop activity; source collection keeps
+    // skipping them — a failed tool produced no evidence.
+    if (node.kind !== "tool-result") continue;
     const head = toolHeads.get(node.callId);
     const turnNumber = head?.turn ?? nearestTurn;
     if (turnNumber === undefined) continue;

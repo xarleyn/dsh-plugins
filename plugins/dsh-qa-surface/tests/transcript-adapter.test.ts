@@ -279,6 +279,76 @@ describe("transcript projection", () => {
     });
   });
 
+  it("renders failed and interrupted tool results instead of dropping them", () => {
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "assistant",
+              seq: 1,
+              time: 1_000,
+              turn: 1,
+              step: 1,
+              blocks: [
+                {
+                  kind: "tool-call",
+                  callId: "call-err",
+                  name: "read",
+                  argsRaw: '{"path":"D:/secret"}',
+                },
+                {
+                  kind: "tool-call",
+                  callId: "call-stop",
+                  name: "web_fetch",
+                  argsRaw: '{"url":"https://example.com"}',
+                },
+              ],
+            },
+            {
+              kind: "tool-result",
+              seq: 2,
+              time: 2_000,
+              callId: "call-err",
+              call: { name: "read", argsRaw: '{"path":"D:/secret"}' },
+              callTime: 1_100,
+              content: [],
+              isError: true,
+              error: { name: "ToolError", code: "denied" },
+              subCalls: [],
+            },
+            {
+              kind: "tool-result",
+              seq: 3,
+              time: 3_000,
+              callId: "call-stop",
+              call: {
+                name: "web_fetch",
+                argsRaw: '{"url":"https://example.com"}',
+              },
+              callTime: 1_200,
+              content: [],
+              isError: false,
+              error: { name: "AbortError", code: "interrupted" },
+              subCalls: [],
+            },
+          ] as ConversationNode[],
+          turnEnds: new Map([[1, 4]]),
+        }),
+      ),
+      { showToolActivity: true },
+    );
+
+    const work = messages[0];
+    if (work?.role !== "work") throw new Error("missing work projection");
+    const tools = work.items.filter((item) => item.kind === "tool");
+    expect(tools).toMatchObject([
+      { name: "read", status: "error" },
+      { name: "web_fetch", status: "stopped" },
+    ]);
+    expect(tools[0]).toMatchObject({ output: "ToolError: denied" });
+  });
+
   it("maps raw turn failures to safe copy", () => {
     const messages = projectTranscript(
       snapshot(
