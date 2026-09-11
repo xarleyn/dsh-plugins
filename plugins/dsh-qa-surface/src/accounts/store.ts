@@ -157,7 +157,11 @@ export class QaAccounts {
     let raw: string;
     try {
       raw = readFileSync(this.filePath, "utf8");
-    } catch {
+    } catch (error) {
+      // Only a missing file means "first run": anything else (permissions,
+      // a directory in the way, I/O failure) must surface, or the store
+      // would silently reset every account it cannot read.
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       const created: AccountsFile = {
         version: 1,
         secret: base64Url(randomBytes(SECRET_BYTES)),
