@@ -20,7 +20,8 @@ Session and Agent Loop.
 - applies a Host-side tool allow-list plus a monotonic execution guard;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
-  migration of the browser's existing chats, and a coarse honest boundary:
+  migration of the browser's existing chats, a `qa-accounts` management CLI
+  (list/add/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost

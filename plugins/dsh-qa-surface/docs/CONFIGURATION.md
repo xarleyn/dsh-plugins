@@ -124,6 +124,20 @@ QA surface and turns on server-side session ownership:
   per-browser chats migrate on the first login). Sessions owned by another
   user are refused with the coarse `session-owned-elsewhere` reason and
   hidden from the sidebar; admins are not refused.
+- Manage accounts with the bundled CLI (no hand-editing of the JSON):
+
+  ```sh
+  qa-accounts list
+  qa-accounts add user@example.com --password-stdin --role user
+  qa-accounts set-role user@example.com admin
+  qa-accounts disable user@example.com   # blocks logins, revokes live tokens
+  qa-accounts revoke user@example.com    # invalidates every issued token
+  ```
+
+  `disable` bumps the account's token version, so all outstanding tokens die
+  server-side; `enable` requires a fresh sign-in. After a secret rotation
+  suspicion, `revoke` is the single-step response.
+
 - Honest boundary: accounts identify QA users and gate the QA surface and
   its remotes. They do not fence the harness: every QA user also holds the
   host launch-token cookie, with which the full root UI stays technically
@@ -139,6 +153,13 @@ so LAN visitors never see the full harness root. The check is client-side on
 looks loopback to the server. The navigation hand-off `/?__dsh_qa_route=…`
 is never redirected (that would loop), `/?ui=admin` bypasses the redirect
 and is remembered for the browser, and `/?ui=qa` clears the bypass.
+
+`entry.cookieBootstrap: true` (default) additionally lets the `/qa` route
+itself bootstrap the host cookie: a browser without any `dsh-auth-` cookie is
+sent to the one-time `/?token=…` exchange (relative redirect, token resolved
+from the host connection service) before the marker hand-off. This makes the
+transparent entry work without the deploy proxy; with the proxy in front,
+either side may perform the exchange and the other becomes a no-op.
 
 ## Configuration channel over the LAN
 
