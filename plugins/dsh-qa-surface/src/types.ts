@@ -4,6 +4,34 @@ export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
 export type QaSandboxMode = "read-only";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
+export type QaAccountRole = "user" | "admin";
+
+/** The account fields projected to browsers; never includes credentials. */
+export interface QaAccountUserPublic {
+  readonly id: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly role: QaAccountRole;
+  readonly createdAt: string;
+  readonly lastLoginAt: string | null;
+}
+
+/** One successful login/registration: the bearer token plus the user. */
+export interface QaAccountSession {
+  readonly token: string;
+  readonly user: QaAccountUserPublic;
+}
+
+export type QaWhoamiResult =
+  | { readonly authenticated: false }
+  | { readonly authenticated: true; readonly user: QaAccountUserPublic };
+
+/** Bulk ownership claim outcome for one browser's local chat index. */
+export interface QaClaimResult {
+  readonly claimed: number;
+  /** Ids already owned by a different user; the browser drops them. */
+  readonly conflicts: readonly string[];
+}
 
 export interface QaSourcesConfig {
   readonly enabled?: boolean;
@@ -112,6 +140,16 @@ export interface QaSurfaceConfig {
   readonly embedding?: {
     readonly frameAncestors?: string | null;
   };
+  readonly accounts?: {
+    /** Opt-in; the QA gate stays off until the deployment turns this on. */
+    readonly enabled?: boolean;
+    readonly allowRegistration?: boolean;
+    readonly sessionTtlDays?: number;
+  };
+  readonly entry?: {
+    /** Inject the root → /qa redirect for non-loopback hostnames. */
+    readonly redirectNonLoopback?: boolean;
+  };
   readonly sources?: QaSourcesConfig;
 }
 
@@ -178,6 +216,14 @@ export interface ResolvedQaSurfaceConfig {
   };
   readonly embedding: {
     readonly frameAncestors: string | null;
+  };
+  readonly accounts: {
+    readonly enabled: boolean;
+    readonly allowRegistration: boolean;
+    readonly sessionTtlDays: number;
+  };
+  readonly entry: {
+    readonly redirectNonLoopback: boolean;
   };
   readonly sources: {
     readonly enabled: boolean;

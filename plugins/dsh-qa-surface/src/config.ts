@@ -135,6 +135,16 @@ const configSchema = z.object({
   embedding: z
     .object({ frameAncestors: nullableString.default(null) })
     .default({ frameAncestors: null }),
+  accounts: z
+    .object({
+      enabled: z.boolean().default(false),
+      allowRegistration: z.boolean().default(true),
+      sessionTtlDays: z.number().step(1).min(1).max(365).default(30),
+    })
+    .default({ enabled: false, allowRegistration: true, sessionTtlDays: 30 }),
+  entry: z
+    .object({ redirectNonLoopback: z.boolean().default(true) })
+    .default({ redirectNonLoopback: true }),
   sources: z
     .object({
       enabled: z.boolean().default(true),

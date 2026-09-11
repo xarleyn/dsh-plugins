@@ -168,4 +168,29 @@ describe("qa surface config", () => {
       } as never),
     ).toThrow(new RegExp(field, "u"));
   });
+
+  it("keeps accounts off and registration open by default", () => {
+    expect(resolveConfig().accounts).toEqual({
+      enabled: false,
+      allowRegistration: true,
+      sessionTtlDays: 30,
+    });
+    expect(resolveConfig().entry).toEqual({ redirectNonLoopback: true });
+  });
+
+  it("validates the account token lifetime", () => {
+    expect(() => resolveConfig({ accounts: { sessionTtlDays: 0 } })).toThrow(
+      /sessionTtlDays/u,
+    );
+    expect(() => resolveConfig({ accounts: { sessionTtlDays: 366 } })).toThrow(
+      /sessionTtlDays/u,
+    );
+    expect(resolveConfig({ accounts: { sessionTtlDays: 7 } }).accounts).toEqual(
+      {
+        enabled: false,
+        allowRegistration: true,
+        sessionTtlDays: 7,
+      },
+    );
+  });
 });
