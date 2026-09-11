@@ -37,6 +37,7 @@ function session(token: string): {
         role: "admin",
         createdAt: "2026-09-11T00:00:00.000Z",
         lastLoginAt: null,
+        disabled: false,
       },
     },
   };

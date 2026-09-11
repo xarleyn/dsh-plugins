@@ -143,8 +143,11 @@ const configSchema = z.object({
     })
     .default({ enabled: false, allowRegistration: true, sessionTtlDays: 30 }),
   entry: z
-    .object({ redirectNonLoopback: z.boolean().default(true) })
-    .default({ redirectNonLoopback: true }),
+    .object({
+      redirectNonLoopback: z.boolean().default(true),
+      cookieBootstrap: z.boolean().default(true),
+    })
+    .default({ redirectNonLoopback: true, cookieBootstrap: true }),
   sources: z
     .object({
       enabled: z.boolean().default(true),

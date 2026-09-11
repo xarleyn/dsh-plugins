@@ -70,7 +70,10 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       allowRegistration: true,
       sessionTtlDays: 30,
     }),
-    entry: Object.freeze({ redirectNonLoopback: true }),
+    entry: Object.freeze({
+      redirectNonLoopback: true,
+      cookieBootstrap: true,
+    }),
     sources: Object.freeze({
       enabled: true,
       collect: Object.freeze({
@@ -435,6 +438,9 @@ export function resolveConfig(
       redirectNonLoopback:
         input.entry?.redirectNonLoopback ??
         DEFAULT_QA_SURFACE_CONFIG.entry.redirectNonLoopback,
+      cookieBootstrap:
+        input.entry?.cookieBootstrap ??
+        DEFAULT_QA_SURFACE_CONFIG.entry.cookieBootstrap,
     }),
     sources: Object.freeze({
       enabled:

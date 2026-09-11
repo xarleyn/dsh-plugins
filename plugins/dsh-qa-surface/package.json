@@ -14,6 +14,9 @@
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
+  "bin": {
+    "qa-accounts": "./lib/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",

@@ -19,6 +19,7 @@ import {
 import { QaAttestationError } from "./attestation.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
+import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { readSourceFilePreview } from "./provenance/file-preview.js";
@@ -70,6 +71,7 @@ export class QaSurface extends TypertRemoteService {
   private readonly provenance: QaProvenanceHost;
   private accounts: QaAccounts | undefined;
   private accountsOptions: string | undefined;
+  private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
@@ -98,6 +100,17 @@ export class QaSurface extends TypertRemoteService {
       },
     );
     this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
+    // The /qa route hands cookie-less browsers to the one-time host token
+    // exchange; the proxy in the deploy kit does the same and either alone
+    // suffices. Resolved lazily and once per process; unavailable bridges
+    // warn once and leave the old marker hand-off in place.
+    this.launchToken = makeLaunchTokenSource(
+      () =>
+        (ctx as unknown as { get(service: string): unknown }).get(
+          "connection",
+        ) as { authenticatedUrl?(baseUrl: string): string } | undefined,
+      (message) => this.logger.warn("entry.token-bridge", { message }),
+    );
     ctx.effect(() => async () => this.logger.close(), "dsh-qa-surface.logger");
     ctx.effect(
       () => () => this.admission.dispose(),
@@ -346,7 +359,9 @@ export class QaSurface extends TypertRemoteService {
     this.disposeRoute = undefined;
     this.routeKey = undefined;
     if (key === undefined || this.webServer === undefined) return;
-    this.disposeRoute = registerQaNavigationRoute(this.webServer, config);
+    this.disposeRoute = registerQaNavigationRoute(this.webServer, config, {
+      launchToken: this.launchToken,
+    });
     this.routeKey = key;
   }
 }

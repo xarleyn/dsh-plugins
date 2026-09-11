@@ -33,6 +33,8 @@ export function accountsErrorMessage(code: string | null): string {
   switch (code) {
     case "invalid-credentials":
       return "Неверный email или пароль.";
+    case "account-disabled":
+      return "Аккаунт отключён администратором.";
     case "email-taken":
       return "Этот email уже зарегистрирован.";
     case "invalid-email":

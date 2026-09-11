@@ -14,6 +14,7 @@ export interface QaAccountUserPublic {
   readonly role: QaAccountRole;
   readonly createdAt: string;
   readonly lastLoginAt: string | null;
+  readonly disabled: boolean;
 }
 
 /** One successful login/registration: the bearer token plus the user. */
@@ -149,6 +150,8 @@ export interface QaSurfaceConfig {
   readonly entry?: {
     /** Inject the root → /qa redirect for non-loopback hostnames. */
     readonly redirectNonLoopback?: boolean;
+    /** Cookie-less /qa navigations go through the one-time ?token= exchange. */
+    readonly cookieBootstrap?: boolean;
   };
   readonly sources?: QaSourcesConfig;
 }
@@ -224,6 +227,7 @@ export interface ResolvedQaSurfaceConfig {
   };
   readonly entry: {
     readonly redirectNonLoopback: boolean;
+    readonly cookieBootstrap: boolean;
   };
   readonly sources: {
     readonly enabled: boolean;

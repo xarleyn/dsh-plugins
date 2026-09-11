@@ -175,7 +175,10 @@ describe("qa surface config", () => {
       allowRegistration: true,
       sessionTtlDays: 30,
     });
-    expect(resolveConfig().entry).toEqual({ redirectNonLoopback: true });
+    expect(resolveConfig().entry).toEqual({
+      redirectNonLoopback: true,
+      cookieBootstrap: true,
+    });
   });
 
   it("validates the account token lifetime", () => {
