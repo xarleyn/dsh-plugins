@@ -6,6 +6,7 @@ import type {
   QaTurnSources,
 } from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
+import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
 
 /** Resolved image URLs live for the page lifetime; failures retry on demand. */
 const imageUrlCache = new Map<string, Promise<string>>();
@@ -81,6 +82,8 @@ export interface QaMessageProps {
     complete: boolean,
     incompleteOrigins: QaTurnSources["incompleteOrigins"],
   ) => void;
+  /** Open one path-backed source's detail (an inline footnote click). */
+  readonly onSourceDetail?: (source: QaSource) => void;
 }
 
 type Rating = "up" | "down";
@@ -217,12 +220,30 @@ export const QaMessage = memo(
     onRegenerate,
     resolveImage,
     onOpenSources,
+    onSourceDetail,
   }: QaMessageProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     );
     const [rating, setRating] = useState<Rating | null>(null);
+    // Source-footnote registry, cached by the source-id set so the memoized
+    // Markdown keeps one resolver identity across streaming frames.
+    const refsCache = useRef<{ ids: string; refs: QaSourceRefs }>({
+      ids: "",
+      refs: buildSourceRefs([]),
+    });
+    if (message.role === "assistant") {
+      const ids = message.sources?.map((source) => source.id).join("|") ?? "";
+      if (refsCache.current.ids !== ids) {
+        refsCache.current = {
+          ids,
+          refs: buildSourceRefs(message.sources ?? []),
+        };
+      }
+    }
+    const sourceRefs =
+      message.role === "assistant" ? refsCache.current.refs : undefined;
     useEffect(() => {
       setRating(readRatings(stateKey)[message.id] ?? null);
     }, [stateKey, message.id]);
@@ -346,7 +367,11 @@ export const QaMessage = memo(
             </div>
           ) : null}
           {message.role === "assistant" && renderMarkdown ? (
-            <Markdown text={message.text} />
+            <Markdown
+              text={message.text}
+              sourceRefs={sourceRefs}
+              onSourceOpen={onSourceDetail}
+            />
           ) : (
             message.text
           )}
@@ -448,5 +473,6 @@ export const QaMessage = memo(
     prev.onRegenerate === next.onRegenerate &&
     prev.resolveImage === next.resolveImage &&
     prev.onOpenSources === next.onOpenSources &&
+    prev.onSourceDetail === next.onSourceDetail &&
     sameMessage(prev.message, next.message),
 );

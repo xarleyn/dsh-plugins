@@ -190,6 +190,7 @@ export function QaSurface(props: QaSurfaceProps) {
     readonly complete: boolean;
     readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
   } | null>(null);
+  const [drawerDetail, setDrawerDetail] = useState<QaSource | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
     [],
@@ -397,11 +398,19 @@ export function QaSurface(props: QaSurfaceProps) {
         complete,
         ...(incompleteOrigins === undefined ? {} : { incompleteOrigins }),
       });
+      setDrawerDetail(null);
       setSourcesOpen(true);
       setAgentsOpen(false);
     },
     [],
   );
+  const handleSourceDetail = useCallback((source: QaSource) => {
+    setDrawerSources(null);
+    setDrawerCompleteness(null);
+    setDrawerDetail(source);
+    setSourcesOpen(true);
+    setAgentsOpen(false);
+  }, []);
 
   useLayoutEffect(() => {
     const element = transcript.current;
@@ -724,6 +733,11 @@ export function QaSurface(props: QaSurfaceProps) {
                             ? handleOpenSources
                             : undefined
                         }
+                        onSourceDetail={
+                          config.sources.enabled
+                            ? handleSourceDetail
+                            : undefined
+                        }
                       />
                       {group !== undefined && group.turns.length > 1 ? (
                         <VariantSwitcher
@@ -814,10 +828,12 @@ export function QaSurface(props: QaSurfaceProps) {
           sourceApi={boundSourceApi}
           display={config.sources.display}
           filePreview={config.sources.filePreview}
+          initialDetail={drawerDetail}
           onClose={() => {
             setSourcesOpen(false);
             setDrawerSources(null);
             setDrawerCompleteness(null);
+            setDrawerDetail(null);
           }}
         />
       ) : null}
