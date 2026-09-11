@@ -494,6 +494,12 @@ export function QaSurface(props: QaSurfaceProps) {
         controller?.activeSessionId() ?? null,
       )
     : [];
+  // Message ids repeat across chats (`assistant:<seq>`), so the persisted
+  // ratings key is chat-scoped; the sidebar keeps the deployment-wide key.
+  const messageStateKey =
+    state.sessionId === null
+      ? undefined
+      : `${stateKey}:chat:${state.sessionId}`;
   return (
     <main
       className="dsh-qa-surface"
@@ -717,7 +723,7 @@ export function QaSurface(props: QaSurfaceProps) {
                         message={message}
                         renderMarkdown={config.ui.renderMarkdown}
                         showTimestamp={config.ui.showTimestamps}
-                        stateKey={stateKey}
+                        stateKey={messageStateKey}
                         resolveImage={resolveImage}
                         onRegenerate={
                           isLast &&

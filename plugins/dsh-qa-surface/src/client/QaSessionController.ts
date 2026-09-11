@@ -27,6 +27,7 @@ import {
   proofMatchesConfig,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
+import { SessionAssetRepository } from "./session-assets.js";
 import type {
   QaConversation,
   QaPromptContent,
@@ -95,6 +96,8 @@ export class QaSessionController {
   private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
   private readonly accounts: QaAccountsFacade | undefined;
+  /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
+  private readonly assets = new SessionAssetRepository();
   private readonly timeoutMs: number;
   private readonly streamIntervalMs: number;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
@@ -433,11 +436,22 @@ export class QaSessionController {
 
   /**
    * Resolve one durable image attachment of the bound session into a
-   * browser-usable URL. The caller caches; failures surface as broken views.
+   * browser-usable URL. Resolutions are cached per chat in the asset
+   * repository (attachment ids repeat across chats) and revoked when the chat
+   * is unbound; failures surface as broken views and retry on demand.
    */
   async readImage(attachmentId: string): Promise<string> {
     if (this.session === undefined) throw new Error("no bound session");
-    const result = await this.session.readAttachment(
+    const sessionId = String(this.session.sessionId);
+    return this.assets.resolve(sessionId, attachmentId, (id) =>
+      this.readAttachmentUrl(id),
+    );
+  }
+
+  private async readAttachmentUrl(attachmentId: string): Promise<string> {
+    const session = this.session;
+    if (session === undefined) throw new Error("no bound session");
+    const result = await session.readAttachment(
       attachmentId as Parameters<SessionFace["readAttachment"]>[0],
     );
     if (!result.ok) {
@@ -489,6 +503,7 @@ export class QaSessionController {
     this.clearStreamFlush();
     this.unsubscribeConnection();
     this.unbind();
+    this.assets.dispose();
     this.listeners.clear();
   }
 
@@ -726,6 +741,11 @@ export class QaSessionController {
     this.unsubscribeChat?.();
     this.unsubscribeChat = undefined;
     this.conversationBinding = undefined;
+    if (this.session !== undefined) {
+      // Leaving the chat retires its attachment URLs; a later re-bind
+      // re-resolves them from the durable store.
+      this.assets.release(String(this.session.sessionId));
+    }
     this.session = undefined;
     this.hostSourceBundles = [];
     this.hostSourcesSignature = "";
