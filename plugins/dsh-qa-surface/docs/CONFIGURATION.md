@@ -7,7 +7,9 @@ rules are:
   `/`, `/api` or `/plugins`;
 - `fixed` requires `fixedSessionId`;
 - `provider` and `model` are either both absent or both present;
-- `maxContentWidth` is an integer from 480 through 1600;
+- `maxContentWidth` is an integer from 480 through 1600 and caps the
+  user-resizable transcript/composer width; each QA route persists its chosen
+  width in browser storage;
 - duplicate/blank suggested questions are removed;
 - approval and question policies are fixed to safe blocking behavior;
 - reasoning and tool details are opt-in through `ui.showReasoning` and
