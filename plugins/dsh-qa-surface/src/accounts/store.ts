@@ -23,9 +23,11 @@ import type {
 export type QaAccountsErrorReason =
   | "auth-required"
   | "invalid-credentials"
+  | "account-disabled"
   | "email-taken"
   | "invalid-email"
   | "invalid-display-name"
+  | "invalid-role"
   | "weak-password"
   | "registration-disabled"
   | "rate-limited"
@@ -50,6 +52,13 @@ interface StoredUser {
   readonly passwordHash: { readonly salt: string; readonly hash: string };
   readonly createdAt: string;
   lastLoginAt: string | null;
+  /** Disabled accounts are refused at login and lose their live tokens. */
+  disabled?: boolean;
+  /**
+   * Bumped to invalidate every token ever issued to the account: the value
+   * rides the token payload and must match at verification time.
+   */
+  tokenVersion?: number;
 }
 
 interface AccountsFile {
@@ -95,6 +104,7 @@ function toPublic(user: StoredUser): QaAccountUserPublic {
     role: user.role,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
+    disabled: user.disabled === true,
   };
 }
 
@@ -263,6 +273,7 @@ export class QaAccounts {
       passwordHash: hashPassword(password),
       createdAt: new Date().toISOString(),
       lastLoginAt: new Date().toISOString(),
+      tokenVersion: 0,
     };
     this.file = { ...this.file, users: [...this.file.users, user] };
     this.save();
@@ -287,6 +298,12 @@ export class QaAccounts {
         "email or password is incorrect",
       );
     }
+    if (user.disabled === true) {
+      throw new QaAccountsError(
+        "account-disabled",
+        "this account has been disabled by the operator",
+      );
+    }
     user.lastLoginAt = new Date().toISOString();
     this.save();
     return { token: this.mintToken(user.id), user: toPublic(user) };
@@ -296,7 +313,7 @@ export class QaAccounts {
     const userId = this.verifyToken(token);
     if (userId === null) return { authenticated: false };
     const user = this.file.users.find((candidate) => candidate.id === userId);
-    return user === undefined
+    return user === undefined || user.disabled === true
       ? { authenticated: false }
       : { authenticated: true, user: toPublic(user) };
   }
@@ -310,7 +327,7 @@ export class QaAccounts {
     const signature = parts[2];
     if (payload === undefined || signature === undefined) return null;
     let expected: Buffer;
-    let decoded: { uid?: unknown; exp?: unknown };
+    let decoded: { uid?: unknown; exp?: unknown; ver?: unknown };
     try {
       expected = createHmac("sha256", this.file.secret)
         .update(payload)
@@ -333,14 +350,25 @@ export class QaAccounts {
     ) {
       return null;
     }
+    // The account's current token version must match the one burned into the
+    // token: bumping it (disable/revoke) invalidates every issued token.
+    const user = this.file.users.find(
+      (candidate) => candidate.id === decoded.uid,
+    );
+    const version = typeof decoded.ver === "number" ? decoded.ver : undefined;
+    if (user === undefined || version !== (user.tokenVersion ?? 0)) {
+      return null;
+    }
     return decoded.uid;
   }
 
   private mintToken(userId: string): string {
+    const user = this.file.users.find((candidate) => candidate.id === userId);
     const payload = base64Url(
       JSON.stringify({
         uid: userId,
         exp: Date.now() + this.sessionTtlDays * 86_400_000,
+        ver: user?.tokenVersion ?? 0,
       }),
     );
     const signature = base64Url(
@@ -356,7 +384,7 @@ export class QaAccounts {
       userId === null
         ? undefined
         : this.file.users.find((candidate) => candidate.id === userId);
-    if (user === undefined) {
+    if (user === undefined || user.disabled === true) {
       throw new QaAccountsError(
         "auth-required",
         "a valid QA account token is required",
@@ -382,7 +410,7 @@ export class QaAccounts {
         },
       };
       this.save();
-      return user;
+      return toPublic(user);
     }
     if (owner.userId !== user.id && user.role !== "admin") {
       throw new QaAccountsError(
@@ -390,7 +418,7 @@ export class QaAccounts {
         "this session belongs to another QA user",
       );
     }
-    return user;
+    return toPublic(user);
   }
 
   /** Bulk-claim a browser's local chat index; foreign ids come back as conflicts. */
@@ -433,5 +461,138 @@ export class QaAccounts {
         right[1].claimedAt.localeCompare(left[1].claimedAt),
       )
       .map(([sessionId]) => sessionId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Operator management surface (the qa-accounts CLI; never browser-callable).
+  // ---------------------------------------------------------------------------
+
+  /** Every account, file order; for `qa-accounts list`. */
+  listUsers(): readonly {
+    readonly email: string;
+    readonly displayName: string;
+    readonly role: QaAccountRole;
+    readonly disabled: boolean;
+    readonly createdAt: string;
+    readonly lastLoginAt: string | null;
+  }[] {
+    return this.file.users.map((user) => ({
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      disabled: user.disabled === true,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+    }));
+  }
+
+  /** Create an account outside the self-registration gate. */
+  addUser(
+    email: string,
+    password: string,
+    options: { displayName?: string; role?: QaAccountRole } = {},
+  ): QaAccountUserPublic {
+    this.assertAuthBudget();
+    const normalized = email.trim().toLowerCase();
+    if (!EMAIL_PATTERN.test(normalized) || normalized.length > 254) {
+      throw new QaAccountsError(
+        "invalid-email",
+        "email is not a usable address",
+      );
+    }
+    if (password.length < MIN_PASSWORD_LENGTH || password.length > 200) {
+      throw new QaAccountsError(
+        "weak-password",
+        `password must be ${MIN_PASSWORD_LENGTH} to 200 characters`,
+      );
+    }
+    const name = (options.displayName ?? "").trim();
+    if (name.length > MAX_DISPLAY_NAME_LENGTH) {
+      throw new QaAccountsError(
+        "invalid-display-name",
+        `display name must be at most ${MAX_DISPLAY_NAME_LENGTH} characters`,
+      );
+    }
+    if (
+      options.role !== undefined &&
+      options.role !== "admin" &&
+      options.role !== "user"
+    ) {
+      throw new QaAccountsError("invalid-role", "role must be admin or user");
+    }
+    if (this.userByEmail(normalized) !== undefined) {
+      throw new QaAccountsError(
+        "email-taken",
+        "this email is already registered",
+      );
+    }
+    const user: StoredUser = {
+      id: randomUUID(),
+      email: normalized,
+      displayName:
+        name === "" ? (normalized.split("@")[0] ?? normalized) : name,
+      role: options.role ?? (this.file.users.length === 0 ? "admin" : "user"),
+      passwordHash: hashPassword(password),
+      createdAt: new Date().toISOString(),
+      lastLoginAt: null,
+      tokenVersion: 0,
+    };
+    this.file = { ...this.file, users: [...this.file.users, user] };
+    this.save();
+    return toPublic(user);
+  }
+
+  private editUser(
+    email: string,
+    edit: (user: StoredUser) => StoredUser,
+  ): StoredUser {
+    const normalized = email.trim().toLowerCase();
+    const index = this.file.users.findIndex(
+      (user) => user.email === normalized,
+    );
+    if (index === -1) {
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    }
+    const updated = edit(this.file.users[index] as StoredUser);
+    const users = [...this.file.users];
+    users[index] = updated;
+    this.file = { ...this.file, users };
+    this.save();
+    return updated;
+  }
+
+  /** Grant or revoke the admin role. */
+  setUserRole(email: string, role: QaAccountRole): QaAccountUserPublic {
+    return toPublic(this.editUser(email, (user) => ({ ...user, role })));
+  }
+
+  /**
+   * Disable an account: future logins are refused and every live token is
+   * invalidated (the token version bumps). `enable` does not resurrect old
+   * tokens — the account signs in again.
+   */
+  setUserDisabled(email: string, disabled: boolean): QaAccountUserPublic {
+    return toPublic(
+      this.editUser(email, (user) => {
+        const next = user;
+        if (disabled) {
+          next.disabled = true;
+          next.tokenVersion = (next.tokenVersion ?? 0) + 1;
+        } else {
+          delete next.disabled;
+        }
+        return next;
+      }),
+    );
+  }
+
+  /** Invalidate every token of the account (password-leak response). */
+  revokeTokens(email: string): QaAccountUserPublic {
+    return toPublic(
+      this.editUser(email, (user) => ({
+        ...user,
+        tokenVersion: (user.tokenVersion ?? 0) + 1,
+      })),
+    );
   }
 }

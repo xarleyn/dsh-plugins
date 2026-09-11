@@ -41,7 +41,7 @@ describe("QA entry redirect", () => {
     expect(
       entryRedirectRow({
         ...configured,
-        entry: { redirectNonLoopback: false },
+        entry: { redirectNonLoopback: false, cookieBootstrap: true },
       }),
     ).toBeUndefined();
   });

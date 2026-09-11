@@ -254,4 +254,35 @@ describe("QA accounts store", () => {
       "auth-required",
     );
   });
+
+  it("disables accounts and revokes their live tokens", () => {
+    const accounts = store();
+    const session = accounts.register("a@b.co", "password-1");
+    expect(accounts.whoami(session.token)).toMatchObject({
+      authenticated: true,
+    });
+    expect(accounts.setUserDisabled("a@b.co", true).disabled).toBe(true);
+    expect(accounts.whoami(session.token)).toEqual({ authenticated: false });
+    expect(reasonOf(() => accounts.login("a@b.co", "password-1"))).toBe(
+      "account-disabled",
+    );
+    expect(
+      reasonOf(() => accounts.ensureSessionAccess(session.token, "s-1")),
+    ).toBe("auth-required");
+    // Re-enabling requires a fresh sign-in; the old token stays dead.
+    accounts.setUserDisabled("a@b.co", false);
+    expect(accounts.whoami(session.token)).toEqual({ authenticated: false });
+    expect(accounts.login("a@b.co", "password-1").user.email).toBe("a@b.co");
+  });
+
+  it("revokes tokens on demand and rejects unknown emails", () => {
+    const accounts = store();
+    const session = accounts.register("a@b.co", "password-1");
+    accounts.revokeTokens("a@b.co");
+    expect(accounts.whoami(session.token)).toEqual({ authenticated: false });
+    expect(accounts.login("a@b.co", "password-1").user.email).toBe("a@b.co");
+    expect(reasonOf(() => accounts.revokeTokens("ghost@b.co"))).toBe(
+      "invalid-credentials",
+    );
+  });
 });
