@@ -22,7 +22,7 @@ function sourceTarget(source: QaSource): string {
   return source.path ?? source.uri ?? source.title;
 }
 
-function SourceIcon({ kind }: { readonly kind: QaSource["kind"] }) {
+export function SourceIcon({ kind }: { readonly kind: QaSource["kind"] }) {
   if (kind === "web") {
     return (
       <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -321,6 +321,8 @@ export interface QaSourcesDrawerProps {
   readonly sourceApi: QaBoundSourceApi;
   readonly display: ResolvedQaSurfaceConfig["sources"]["display"];
   readonly filePreview: ResolvedQaSurfaceConfig["sources"]["filePreview"];
+  /** Open straight onto this source's detail (an inline footnote click). */
+  readonly initialDetail?: QaSource | null;
   readonly onClose: () => void;
 }
 
@@ -333,16 +335,20 @@ export function QaSourcesDrawer({
   sourceApi,
   display,
   filePreview,
+  initialDetail = null,
   onClose,
 }: QaSourcesDrawerProps) {
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(
+    initialDetail?.id ?? null,
+  );
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
   const detail =
     detailId === null
       ? undefined
-      : sources.find((source) => source.id === detailId);
+      : (sources.find((source) => source.id === detailId) ??
+        (initialDetail?.id === detailId ? initialDetail : undefined));
   const groups = useMemo(() => {
     if (!display.groupByKind)
       return [{ key: "all", label: "Источники", sources }];
