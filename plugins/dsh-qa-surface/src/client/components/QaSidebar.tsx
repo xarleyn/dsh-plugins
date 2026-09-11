@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
+import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { relativeTime } from "./format.js";
 
 /** One renderable row of the chat-history sidebar. */
@@ -145,6 +146,7 @@ export const QaSidebar = memo(
     );
     const [query, setQuery] = useState("");
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
+    const [changelogOpen, setChangelogOpen] = useState(false);
     const toggleCollapsed = () => {
       const next = !collapsed;
       setCollapsed(next);
@@ -300,6 +302,21 @@ export const QaSidebar = memo(
             })
           )}
         </div>
+        <div className="dsh-qa-sidebar__footer">
+          <button
+            type="button"
+            className="dsh-qa-sidebar__version"
+            aria-haspopup="dialog"
+            title="История версий"
+            onClick={() => setChangelogOpen(true)}
+          >
+            Версия {QA_VERSION}
+          </button>
+        </div>
+        <QaChangelogModal
+          open={changelogOpen}
+          onClose={() => setChangelogOpen(false)}
+        />
       </nav>
     );
   },
