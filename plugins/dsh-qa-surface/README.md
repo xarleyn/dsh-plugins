@@ -18,6 +18,13 @@ Session and Agent Loop.
 - blocks unsupported approvals/questions instead of auto-approving them;
 - pins locked sessions to `read-only` + `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
+- optionally gates the surface behind email + password accounts
+  (`accounts.enabled`) with server-side session ownership, a first-login
+  migration of the browser's existing chats, and a coarse honest boundary:
+  accounts identify QA users, they do not fence the harness root;
+- optionally redirects non-loopback hostnames from the harness root into the
+  QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
+  harness UI untouched;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or

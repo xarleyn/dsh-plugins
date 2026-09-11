@@ -15,6 +15,8 @@ rules are:
 - reasoning and tool details are opt-in through `ui.showReasoning` and
   `ui.showToolActivity`; enable them only where those contents are appropriate
   for the QA audience;
+- accounts default to disabled; when enabled, `sessionTtlDays` is an integer
+  from 1 through 365;
 - lockdown defaults to enabled and requires a non-empty permission preset;
 - the preset must resolve on the Host to exactly `read-only` + `never`;
 - permission, slash-command, settings, rename, delete and arbitrary-open
@@ -101,6 +103,42 @@ incomplete.
 
 See [Structured sources migration](SOURCES-MIGRATION.md) before removing an
 older prompt-authored bibliography convention.
+
+## Accounts and the QA gate
+
+`accounts.enabled: true` mounts the login/registration gate in front of the
+QA surface and turns on server-side session ownership:
+
+- The store lives at `$DSH_HOME/qa-accounts.json` (created on first use). It
+  holds scrypt password hashes, a persisted HMAC secret for the account
+  tokens, and the session ownership map. The path is not configurable and no
+  secret ever reaches `describe()`.
+- `accounts.allowRegistration` (default true) controls self-service signup
+  in the gate; the first account ever registered becomes `admin`.
+- `accounts.sessionTtlDays` (default 30) is the account token lifetime. The
+  token is an HMAC-signed value the browser keeps in `localStorage`; logout
+  or expiry returns the browser to the gate, and the Host re-derives the
+  identity on every attestation.
+- Session ownership is first come, first served: attesting or bulk-claiming
+  an unowned session binds it to the caller's account (this is how existing
+  per-browser chats migrate on the first login). Sessions owned by another
+  user are refused with the coarse `session-owned-elsewhere` reason and
+  hidden from the sidebar; admins are not refused.
+- Honest boundary: accounts identify QA users and gate the QA surface and
+  its remotes. They do not fence the harness: every QA user also holds the
+  host launch-token cookie, with which the full root UI stays technically
+  reachable. Keep the network scoping advice from the deployment kit.
+
+## Entry redirect
+
+`entry.redirectNonLoopback: true` (default) injects one script into the
+served root `index.html`: browsers whose URL host is not loopback
+(`localhost`, `127.0.0.1`, `::1`, `*.localhost`) continue into the QA route,
+so LAN visitors never see the full harness root. The check is client-side on
+`location.hostname` on purpose - behind a local reverse proxy every request
+looks loopback to the server. The navigation hand-off `/?__dsh_qa_route=…`
+is never redirected (that would loop), `/?ui=admin` bypasses the redirect
+and is remembered for the browser, and `/?ui=qa` clears the bypass.
 
 ## Configuration channel over the LAN
 
