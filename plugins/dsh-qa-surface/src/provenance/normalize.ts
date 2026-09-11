@@ -14,23 +14,36 @@ export function unwrapSourceTarget(value: string): string {
 }
 
 /** Canonical HTTP(S) identity while retaining business-relevant parameters. */
-export function canonicalizeUrl(value: string): string | null {
+export function canonicalizeUrl(
+  value: string,
+  options: {
+    readonly normalize?: boolean;
+    readonly stripTrackingParams?: boolean;
+  } = {},
+): string | null {
   try {
     const url = new URL(unwrapSourceTarget(value));
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    url.hash = "";
+    const normalize = options.normalize ?? true;
+    const stripTrackingParams = options.stripTrackingParams ?? true;
+    if (normalize) url.hash = "";
     url.username = "";
     url.password = "";
-    for (const key of [...url.searchParams.keys()]) {
-      if (
-        key.toLowerCase().startsWith("utm_") ||
-        TRACKING_PARAMETERS.has(key.toLowerCase())
-      ) {
-        url.searchParams.delete(key);
+    if (stripTrackingParams) {
+      for (const key of [...url.searchParams.keys()]) {
+        if (
+          key.toLowerCase().startsWith("utm_") ||
+          TRACKING_PARAMETERS.has(key.toLowerCase())
+        ) {
+          url.searchParams.delete(key);
+        }
       }
     }
-    url.searchParams.sort();
-    if (url.pathname !== "/") url.pathname = url.pathname.replace(/\/+$/u, "");
+    if (normalize) {
+      url.searchParams.sort();
+      if (url.pathname !== "/")
+        url.pathname = url.pathname.replace(/\/+$/u, "");
+    }
     return url.toString();
   } catch {
     return null;

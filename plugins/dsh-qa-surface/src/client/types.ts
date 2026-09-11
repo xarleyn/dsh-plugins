@@ -6,7 +6,12 @@ import type {
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
 import type {} from "@deepseek-ai/dsh-agent-presets/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
-import type { QaLockdownProof, QaSessionState } from "../types.js";
+import type {
+  QaLockdownProof,
+  QaSessionState,
+  QaSourceFilePreview,
+  QaTurnSources,
+} from "../types.js";
 
 /** Wire content one prompt carries: text plus base64 image uploads. */
 export type QaPromptContent = Parameters<SessionFace["prompt"]>[0];
@@ -34,6 +39,22 @@ export type QaSecureSession = (
   | { readonly ok: false; readonly error: unknown }
 >;
 
+export interface QaSourceApi {
+  sources(
+    sessionId: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: readonly QaTurnSources[] }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  readSourceFile(
+    sessionId: string,
+    sourcePath: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaSourceFilePreview }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+}
+
 /** Minimal persistence contract; backed by `window.localStorage` in the app. */
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -51,5 +72,7 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   canStop: false,
   chatsRevision: 0,
   sources: Object.freeze([]),
+  sourcesComplete: true,
+  incompleteSourceOrigins: undefined,
   viewingSubagent: null,
 });

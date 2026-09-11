@@ -14,10 +14,8 @@ import type {
   QaTurnSources,
   QaWorkItem,
 } from "../types.js";
-import {
-  createDefaultSourceExtractorRegistry,
-  QaSourceCollector,
-} from "../provenance/index.js";
+import { QaSourceCollector } from "../provenance/collector.js";
+import { createDefaultSourceExtractorRegistry } from "../provenance/extractors.js";
 
 /**
  * The hidden regeneration prompt. Regenerate sends this as an ordinary
@@ -674,6 +672,7 @@ interface SourceCallHead {
 export function projectTurnSources(
   snapshot: ConversationSnapshot | undefined,
   sessionId = "unknown",
+  workspaceRoot?: string,
 ): readonly QaTurnSources[] {
   const legacy = chatLegacyOf(snapshot);
   const heads = new Map<string, SourceCallHead>();
@@ -738,6 +737,7 @@ export function projectTurnSources(
         toolName: name,
         role: "parent",
       },
+      ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
     });
   }
   return [...collectors.entries()]
@@ -749,6 +749,9 @@ export function projectTurnSources(
 export function projectSources(
   snapshot: ConversationSnapshot | undefined,
   sessionId = "unknown",
+  workspaceRoot?: string,
 ): readonly QaSource[] {
-  return projectTurnSources(snapshot, sessionId).at(-1)?.sources ?? [];
+  return (
+    projectTurnSources(snapshot, sessionId, workspaceRoot).at(-1)?.sources ?? []
+  );
 }

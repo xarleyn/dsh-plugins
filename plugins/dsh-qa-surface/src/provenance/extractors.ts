@@ -5,6 +5,11 @@ import type {
   SourceExtractor,
   SourceExtractorContext,
 } from "./types.js";
+import {
+  createConfluenceExtractor,
+  createJiraExtractor,
+  createKnowledgeExtractor,
+} from "./connectors.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -135,7 +140,7 @@ export const readFileExtractor: SourceExtractor = {
             ? args.path
             : undefined;
     if (rawPath === undefined || rawPath.trim() === "") return [];
-    const path = canonicalizeWorkspacePath(rawPath);
+    const path = canonicalizeWorkspacePath(rawPath, context.workspaceRoot);
     const lines = Array.isArray(meta?.lines)
       ? meta.lines
           .map(record)
@@ -194,6 +199,7 @@ function webSources(meta: UnknownRecord | undefined): UnknownRecord[] {
 
 export function createWebSearchExtractor(
   maxPromotedPerSearch = 5,
+  urlOptions: Parameters<typeof canonicalizeUrl>[1] = {},
 ): SourceExtractor {
   return {
     id: "dsh-web-search",
@@ -205,7 +211,7 @@ export function createWebSearchExtractor(
       const meta = presentationRecord(context.presentation);
       return webSources(meta).flatMap((item, index): QaSourceReference[] => {
         if (typeof item.url !== "string") return [];
-        const uri = canonicalizeUrl(item.url);
+        const uri = canonicalizeUrl(item.url, urlOptions);
         if (uri === null) return [];
         const promoted = index < maxPromotedPerSearch;
         const explicitTitle =
@@ -241,56 +247,63 @@ export function createWebSearchExtractor(
   };
 }
 
-export const webFetchExtractor: SourceExtractor = {
-  id: "dsh-web-fetch",
-  matches(context) {
-    const meta = presentationRecord(context.presentation);
-    return (
-      context.toolName === "web_fetch" ||
-      (typeof meta?.url === "string" && typeof meta.statusCode === "number")
-    );
-  },
-  extract(context) {
-    const args = parsedArgs(context.args);
-    const meta = presentationRecord(context.presentation);
-    const rawUrl =
-      typeof meta?.url === "string"
-        ? meta.url
-        : typeof args.url === "string"
-          ? args.url
+export function createWebFetchExtractor(
+  urlOptions: Parameters<typeof canonicalizeUrl>[1] = {},
+): SourceExtractor {
+  return {
+    id: "dsh-web-fetch",
+    matches(context) {
+      const meta = presentationRecord(context.presentation);
+      return (
+        context.toolName === "web_fetch" ||
+        (typeof meta?.url === "string" && typeof meta.statusCode === "number")
+      );
+    },
+    extract(context) {
+      const args = parsedArgs(context.args);
+      const meta = presentationRecord(context.presentation);
+      const rawUrl =
+        typeof meta?.url === "string"
+          ? meta.url
+          : typeof args.url === "string"
+            ? args.url
+            : undefined;
+      const uri =
+        rawUrl === undefined ? null : canonicalizeUrl(rawUrl, urlOptions);
+      if (uri === null) return [];
+      const explicitTitle =
+        typeof meta?.title === "string" && meta.title.trim() !== ""
+          ? meta.title.trim()
           : undefined;
-    const uri = rawUrl === undefined ? null : canonicalizeUrl(rawUrl);
-    if (uri === null) return [];
-    const explicitTitle =
-      typeof meta?.title === "string" && meta.title.trim() !== ""
-        ? meta.title.trim()
-        : undefined;
-    const titleExplicit = explicitTitle !== undefined;
-    const sourceSnippet = snippet(firstText(context.result));
-    return [
-      {
-        id: `web:${uri}`,
-        kind: "web",
-        title: explicitTitle ?? sourceTitleFromUrl(uri),
-        uri,
-        ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
-        locations: [],
-        evidence: "fetched",
-        origins: [context.origin],
-        score: 100,
-        metadata: {
-          titleExplicit,
-          ...(typeof meta?.statusCode === "number"
-            ? { statusCode: meta.statusCode }
-            : {}),
-          ...(typeof meta?.truncated === "boolean"
-            ? { truncated: meta.truncated }
-            : {}),
+      const titleExplicit = explicitTitle !== undefined;
+      const sourceSnippet = snippet(firstText(context.result));
+      return [
+        {
+          id: `web:${uri}`,
+          kind: "web",
+          title: explicitTitle ?? sourceTitleFromUrl(uri),
+          uri,
+          ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
+          locations: [],
+          evidence: "fetched",
+          origins: [context.origin],
+          score: 100,
+          metadata: {
+            titleExplicit,
+            ...(typeof meta?.statusCode === "number"
+              ? { statusCode: meta.statusCode }
+              : {}),
+            ...(typeof meta?.truncated === "boolean"
+              ? { truncated: meta.truncated }
+              : {}),
+          },
         },
-      },
-    ];
-  },
-};
+      ];
+    },
+  };
+}
+
+export const webFetchExtractor: SourceExtractor = createWebFetchExtractor();
 
 export const fileSearchExtractor: SourceExtractor = {
   id: "dsh-file-search",
@@ -304,7 +317,7 @@ export const fileSearchExtractor: SourceExtractor = {
     return meta.files.flatMap((candidate): QaSourceReference[] => {
       const file = record(candidate);
       if (typeof file?.path !== "string") return [];
-      const path = canonicalizeWorkspacePath(file.path);
+      const path = canonicalizeWorkspacePath(file.path, context.workspaceRoot);
       const matches = Array.isArray(file.matches)
         ? file.matches
             .map(record)
@@ -362,12 +375,16 @@ export class SourceExtractorRegistry {
 
 export function createDefaultSourceExtractorRegistry(
   maxPromotedPerSearch = 5,
+  urlOptions: Parameters<typeof canonicalizeUrl>[1] = {},
 ): SourceExtractorRegistry {
   const registry = new SourceExtractorRegistry();
   // Strong consumers go first; dedupe promotes them over discovery candidates.
   registry.register(readFileExtractor);
-  registry.register(webFetchExtractor);
-  registry.register(createWebSearchExtractor(maxPromotedPerSearch));
+  registry.register(createWebFetchExtractor(urlOptions));
+  registry.register(createWebSearchExtractor(maxPromotedPerSearch, urlOptions));
   registry.register(fileSearchExtractor);
+  registry.register(createJiraExtractor(urlOptions));
+  registry.register(createConfluenceExtractor(urlOptions));
+  registry.register(createKnowledgeExtractor(urlOptions));
   return registry;
 }

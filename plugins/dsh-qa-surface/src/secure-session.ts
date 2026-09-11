@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-system-prompt";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -7,12 +8,14 @@ import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
 
 interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
+  readonly disposeGuidance: () => void;
 }
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
@@ -157,8 +160,14 @@ export class QaPolicyAdmission {
       );
     }
 
+    const policyAllow =
+      config.sources.enabled &&
+      config.sources.subagents.enableReportToolFallback &&
+      !lockdown.toolPolicy.allow.includes(QA_REPORT_SOURCES_TOOL)
+        ? [...lockdown.toolPolicy.allow, QA_REPORT_SOURCES_TOOL]
+        : lockdown.toolPolicy.allow;
     const policy = qaToolPolicyPlan(
-      lockdown.toolPolicy.allow,
+      policyAllow,
       (toolName) => this.ctx.tools.get(toolName, agent) !== undefined,
     );
     if (policy.unknown.length > 0) {
@@ -174,6 +183,11 @@ export class QaPolicyAdmission {
       const disposeGuard = agent.ctx.tools.guard((execution) =>
         qaToolDenial(allowed, execution.name),
       );
+      const disposeGuidance = agent.ctx.systemPrompt.section({
+        name: "dsh-qa-surface:structured-sources",
+        order: 950,
+        text: "Source provenance is collected automatically from tools. Do not append a manual Sources/Источники bibliography to the answer. Delegated providers that cannot expose tool events should call qa_report_sources before finishing.",
+      });
       try {
         const disposeRestriction = agent.ctx.tools.restrict({
           allow: policy.allow,
@@ -182,11 +196,14 @@ export class QaPolicyAdmission {
           fingerprint,
           disposeGuard,
           disposeRestriction,
+          disposeGuidance,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
+        prior?.disposeGuidance();
       } catch (error) {
         disposeGuard();
+        disposeGuidance();
         throw error;
       }
     }
@@ -223,7 +240,9 @@ export class QaPolicyAdmission {
       approvalIsNever,
       permissionPreset: lockdown.permissionPreset,
       toolPolicyLoaded: true,
-      toolAllowList: policy.allow,
+      // The fallback reporter is an internal read-only provenance capability,
+      // not an operator-configured QA tool grant.
+      toolAllowList: lockdown.toolPolicy.allow,
     };
   }
 
@@ -232,6 +251,7 @@ export class QaPolicyAdmission {
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeRestriction();
       policy.disposeGuard();
+      policy.disposeGuidance();
     }
     this.appliedPolicies.clear();
   }

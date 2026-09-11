@@ -77,6 +77,29 @@ part of the same change. The package's
 [default inventory](../capability-policy.json) is intentionally empty, matching
 the default `toolPolicy.allow`.
 
+## Structured sources
+
+The `sources` block controls provenance independently from Activity rendering.
+The defaults collect parent and subagent results, persist a `qa/sources` event,
+hide discovery-only candidates, group visible evidence by kind, and promote at
+most five substantive `web_search` results when no fetch occurs. URL tracking
+parameters and overlapping file ranges are normalized during deduplication.
+
+`sources.filePreview` is a narrow read capability, not a filesystem browser.
+The Host serves only a path already present in the attested session's canonical
+evidence bundle, resolves symlinks with `realpath`, rejects root escape, and
+applies `maxBytes` plus `maxMarkdownRenderBytes`. Markdown uses the client's
+HTML-free renderer; relative links and executable raw HTML are not activated.
+
+Set `sources.display.showOriginBadges: true` while auditing inheritance. Local
+subagent sources carry run/session origins automatically. An opaque provider
+can call the internal `qa_report_sources` tool; if it does not, and
+`markIncompleteOpaqueRuns` remains enabled, the bundle is explicitly marked
+incomplete.
+
+See [Structured sources migration](SOURCES-MIGRATION.md) before removing an
+older prompt-authored bibliography convention.
+
 ## Configuration channel over the LAN
 
 The browser normally reads the effective configuration from the Host-owned

@@ -48,8 +48,12 @@ assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-layout"),
 );
 assert(
-  !manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"),
+  manifest.dsh.client.inject.includes(
+    "@deepseek-ai/dsh-api-session-controller",
+  ),
 );
+assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
+assert(!manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
 assert.equal(
   `/plugins/${manifest.name}/client.js`,
   "/plugins/@yadsh/dsh-qa-surface/client.js",

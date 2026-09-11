@@ -65,11 +65,14 @@ export async function waitFor(check, description, timeoutMs = 60_000) {
 }
 
 /** Issue one browser-trust RPC envelope against the DSH gateway. */
-export async function rpc(origin, method, payload) {
+export async function rpc(origin, method, payload, cookie) {
   const rpcId = `qa-smoke-${randomUUID()}`;
   const response = await fetch(`${origin}/api/${method}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(cookie === undefined ? {} : { cookie }),
+    },
     body: JSON.stringify({ type: "client-request", rpcId, method, payload }),
   });
   const envelope = await response.json();
@@ -87,7 +90,13 @@ export async function rpc(origin, method, payload) {
  * the exact authority a real LAN browser would send while the connection
  * itself never leaves loopback.
  */
-export function requestWithAuthority(port, authority, path, payload) {
+export function requestWithAuthority(
+  port,
+  authority,
+  path,
+  payload,
+  headers = {},
+) {
   return new Promise((resolve, reject) => {
     const request = http.request(
       {
@@ -97,6 +106,7 @@ export function requestWithAuthority(port, authority, path, payload) {
         method: payload === undefined ? "GET" : "POST",
         headers: {
           host: authority,
+          ...headers,
           ...(payload === undefined
             ? {}
             : { "content-type": "application/json" }),

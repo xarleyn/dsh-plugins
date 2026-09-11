@@ -35,22 +35,18 @@ It does not parse assistant prose.
 
 ## Replay and persistence
 
-The first slice rebuilds `QaTurnSources` from persisted `tool/result` metadata.
-Consequently reload/replay is deterministic without rerunning tools, although a
-separate materialized `qa/sources` event is not written yet.
+The completed implementation rebuilds collectors from persisted
+`tool/call`/`tool/result.meta` events and writes one materialized `qa/sources`
+snapshot at `agent/turn-stopping`. The type is declaration-merged into
+`SessionEventMap`.
 
-There is an upstream API gap for that materialized event in `0.1.5-rc.2`:
-
-- downstream packages may declaration-merge `SessionEventMap`;
-- persistence requires unknown downstream events to carry
-  `SessionEvent.ignorable === true`;
-- public `Session.append(type, data)` does not expose an envelope option for
-  `ignorable`, and its implementation constructs the envelope internally.
-
-Writing `qa/sources` through a runtime patch would therefore risk producing a
-log that a fresh pinned DSH process refuses to restore. The implementation must
-not add such a patch. The next persistence step needs either an upstream
-ignorable-event append API or a plugin-owned sidecar store.
+The pinned DSH exports its live `KNOWN_SESSION_EVENT_TYPES` set. As already
+demonstrated by the repository's `dsh-session-scope` plugin, registering the
+plugin event there is the supported compatibility mechanism when
+`Session.append` cannot mark an extension event ignorable. Registration is
+effect-scoped and removed on plugin disposal. A Host that owns sessions with
+these events must load `dsh-qa-surface`, just as it must load any plugin that
+owns a required durable event vocabulary.
 
 ## Subagent lifecycle
 
@@ -60,28 +56,33 @@ session `id`, and `local`; the terminal payload additionally carries
 `stopReason` and optional `lastAssistantMessage`. Scoped dispatch is keyed by
 the delegating parent.
 
-This is sufficient for the next phase's lineage registry. Observable local
-children can be read from their durable session logs. Opaque providers will
-still need the specified report-tool fallback and completeness tracking.
+The Host now maintains that lineage registry, uses the child header or causal
+`AgentRegistry.currentInitiator()` attribution, bubbles nested local-child
+sources to the original root turn, and retains run/session origin fields.
+Opaque providers can call `qa_report_sources`; an unreported opaque run sets
+`complete=false` with an `incompleteOrigins` entry.
 
 ## File preview reuse
 
-The current QA plugin has an attachment reader, but no browser-visible,
-source-scoped local text-file reader. A preview remote must therefore be narrow,
-read-only, tied to paths already present in the canonical bundle, and validated
-against the attested session workspace. It must not expose general filesystem
-navigation.
+The new `readSourceFile` Remote is limited to evidence paths in canonical
+bundles, re-attests the session, resolves both root and target with `realpath`,
+rejects traversal/symlink escape, caps bytes, and exposes no write/list API.
 
-## Implemented first slice
+## Implemented scope
 
 - canonical source and turn-bundle types;
 - URL/path/range normalization;
 - extractor registry with read, grep discovery, web search, and web fetch;
 - evidence promotion, deduplication, ranking, and a default display threshold;
 - bounded structured web-search promotion (five results by default);
-- per-turn projection from durable conversation metadata;
-- one canonical snapshot used by the answer footer and Sources drawer.
+- Host per-turn collectors and materialized/replayable `qa/sources` events;
+- local and nested subagent inheritance plus opaque-provider reporting;
+- structured Jira, Confluence, knowledge and reported-source adapters;
+- one canonical snapshot used by grouped drawer and answer footer;
+- source details, origin/partial badges and completeness state;
+- safe local-file preview, rendered/raw Markdown, range chips and exact raw
+  line highlighting;
+- configuration and tests for the feature surface.
 
-Remaining work starts with Host-side lineage/subagent inheritance and the
-persistence decision described above, followed by grouped UX and secure file
-preview.
+Optional inline citation rendering (SPEC Phase 5) remains intentionally out of
+the MVP, as specified.

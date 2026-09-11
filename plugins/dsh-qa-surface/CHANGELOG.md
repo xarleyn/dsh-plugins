@@ -1,5 +1,12 @@
 ## 0.2.0 (2026-09-10)
 
+- Added Host-owned structured source provenance for parent and delegated turns,
+  replayable `qa/sources` snapshots, dedupe/ranking, opaque-provider reporting,
+  grouped source UI, and safe rendered/raw file previews.
+- Updated packed Host/browser smoke coverage for browser authentication,
+  revisioned client batches, scoped Remote injection, and current Typert RPC
+  envelopes.
+
 ### 🚀 Features
 
 - Make the QA surface a complete end-user assistant shell: image attachments ([b9af082](https://github.com/xarleyn/dsh-plugins/commit/b9af082))
@@ -18,7 +25,6 @@
   pinning with a dedicated `workspace-unavailable` refusal, the company
   interaction palette as `--dsh-qa-*` tokens, and a split of the surface into
   focused drawer, switcher, and formatting modules.
-
 
 ### 🩹 Fixes
 

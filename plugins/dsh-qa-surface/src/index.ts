@@ -2,6 +2,7 @@ import type {} from "@deepseek-ai/dsh-agent-presets";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
+import type {} from "@deepseek-ai/dsh-system-prompt";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { Context } from "@deepseek-ai/cordis";
 import {
@@ -13,18 +14,24 @@ import { ConfigSchema, resolveConfig } from "./config.js";
 import { QaAttestationError } from "./attestation.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { QaPolicyAdmission } from "./secure-session.js";
+import { QaProvenanceHost } from "./provenance/host-store.js";
+import { readSourceFilePreview } from "./provenance/file-preview.js";
+import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaLockdownProof,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaSourceFilePreview,
 } from "./types.js";
 
 export const name = "qa-surface";
 export const inject = [
   "agents",
+  "sessions",
   "agentPresets",
   "permissionPresets",
   "tools",
+  "systemPrompt",
   "workspaceRegistry",
 ];
 export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
@@ -46,6 +53,7 @@ export class QaSurface extends TypertRemoteService {
   private source: () => QaSurfaceConfig;
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
+  private readonly provenance: QaProvenanceHost;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
@@ -64,10 +72,15 @@ export class QaSurface extends TypertRemoteService {
       () => this.getConfig(),
       this.logger,
     );
+    this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
     ctx.effect(() => async () => this.logger.close(), "dsh-qa-surface.logger");
     ctx.effect(
       () => () => this.admission.dispose(),
       "dsh-qa-surface.lockdown-policies",
+    );
+    ctx.effect(
+      () => () => this.provenance.dispose(),
+      "dsh-qa-surface.provenance",
     );
     ctx.inject(["settings"], (settingsCtx) => {
       settingsCtx.settings.installSection(
@@ -151,6 +164,44 @@ export class QaSurface extends TypertRemoteService {
       throw new Error(`${CONFIGURATION_ERROR} (reason: ${reason})`, {
         cause: error,
       });
+    }
+  }
+
+  /** Return canonical Host snapshots; replay is rebuilt from qa/sources events. */
+  @Remote("sources")
+  sources(sessionId: string): readonly QaTurnSources[] {
+    this.admission.secureSession(sessionId);
+    return this.provenance.bundles(sessionId);
+  }
+
+  /** Narrow read-only preview capability for files already present as sources. */
+  @Remote("readSourceFile")
+  async readSourceFile(
+    sessionId: string,
+    sourcePath: string,
+  ): Promise<QaSourceFilePreview> {
+    this.admission.secureSession(sessionId);
+    const config = this.getConfig().sources.filePreview;
+    if (
+      !config.enabled ||
+      !this.provenance.sourceAllowed(sessionId, sourcePath)
+    ) {
+      throw new Error("Source preview is unavailable.");
+    }
+    const agent = this.ctx.agents.get(
+      (await import("@deepseek-ai/dsh-session/types")).SessionId(sessionId),
+    );
+    const root = agent?.session.header.cwd;
+    if (root === undefined) throw new Error("Source preview is unavailable.");
+    try {
+      return await readSourceFilePreview({
+        root,
+        sourcePath,
+        maxBytes: config.maxBytes,
+        maxMarkdownRenderBytes: config.maxMarkdownRenderBytes,
+      });
+    } catch {
+      throw new Error("Source preview is unavailable.");
     }
   }
 

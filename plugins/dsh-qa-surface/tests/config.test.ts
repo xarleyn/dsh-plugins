@@ -24,7 +24,34 @@ describe("qa surface config", () => {
         allowSessionReset: false,
         toolPolicy: { mode: "allow-list", allow: [] },
       },
+      sources: {
+        enabled: true,
+        collect: { parentAgent: true, subagents: true, persistTurnEvent: true },
+        display: { sidebar: true, footer: true, showDiscovered: false },
+        filePreview: {
+          enabled: true,
+          markdownRenderedByDefault: true,
+          allowRawToggle: true,
+          maxBytes: 2_000_000,
+          maxMarkdownRenderBytes: 1_000_000,
+        },
+      },
     });
+  });
+
+  it("validates source display and preview limits", () => {
+    expect(() =>
+      resolveConfig({
+        sources: {
+          filePreview: { maxBytes: 2_000, maxMarkdownRenderBytes: 3_000 },
+        },
+      }),
+    ).toThrow(/cannot exceed/u);
+    expect(() =>
+      resolveConfig({
+        sources: { display: { maxInitiallyVisiblePerGroup: 0 } },
+      }),
+    ).toThrow(/maxInitiallyVisiblePerGroup/u);
   });
 
   it("normalizes trailing route slashes", () => {
