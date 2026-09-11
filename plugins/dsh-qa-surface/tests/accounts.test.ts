@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  existsSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -145,6 +151,23 @@ describe("QA accounts store", () => {
       "s-2",
       "s-3",
     ]);
+  });
+
+  it("resets only on a missing file, not on any read failure", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
+    // A directory at the accounts path reads as EISDIR, not ENOENT: the
+    // constructor must surface it instead of silently starting a fresh store.
+    const filePath = path.join(dir, "qa-accounts.json");
+    mkdirSync(filePath);
+    expect(
+      () =>
+        new QaAccounts(filePath, {
+          sessionTtlDays: 30,
+          allowRegistration: true,
+        }),
+    ).toThrow(/EISDIR/u);
+    expect(readdirSync(dir)).toEqual(["qa-accounts.json"]);
+    expect(existsSync(`${filePath}.tmp`)).toBe(false);
   });
 
   it("claims unowned sessions first-come and reports foreign conflicts", () => {
