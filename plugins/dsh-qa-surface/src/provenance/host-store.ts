@@ -131,6 +131,9 @@ export class QaProvenanceHost {
         (session, event) => this.observeEvent(session, event),
         { global: true },
       ),
+      ctx.on("session/disposed", (session) => this.forget(session), {
+        global: true,
+      }),
       ctx.on(
         "agent/turn-stopping",
         ({ agent, turn }) => this.materialize(agent, turn),
@@ -148,6 +151,27 @@ export class QaProvenanceHost {
 
   dispose(): void {
     for (const dispose of this.disposers.splice(0).reverse()) dispose();
+    this.forgetAll();
+  }
+
+  /**
+   * Drop every per-session record of one chat. Long-lived servers outlive
+   * their sessions by weeks; without this the collector, snapshot, call and
+   * lineage maps grow with every chat and turn forever.
+   */
+  private forget(session: Session): void {
+    const sessionId = String(session.id);
+    this.collectors.delete(sessionId);
+    this.snapshots.delete(sessionId);
+    this.calls.delete(sessionId);
+    this.lineage.delete(sessionId);
+  }
+
+  private forgetAll(): void {
+    this.collectors.clear();
+    this.snapshots.clear();
+    this.calls.clear();
+    this.lineage.clear();
   }
 
   bundles(sessionId: string): readonly QaTurnSources[] {
@@ -199,13 +223,18 @@ export class QaProvenanceHost {
       });
       return;
     }
-    if (event.type !== "tool/result" || event.data.error !== undefined) return;
+    if (event.type !== "tool/result") return;
+    // The pairing record is dead once its result lands, whatever the outcome;
+    // error results are never collected, so keeping the call would only leak.
     const callId = eventCallId(event);
-    const call =
-      callId === undefined
-        ? undefined
-        : this.sessionCalls(sessionId).get(callId);
-    if (call === undefined || !this.shouldCollect(session)) return;
+    const calls = this.sessionCalls(sessionId);
+    const call = callId === undefined ? undefined : calls.get(callId);
+    if (callId !== undefined) {
+      calls.delete(callId);
+      if (calls.size === 0) this.calls.delete(sessionId);
+    }
+    if (call === undefined || event.data.error !== undefined) return;
+    if (!this.shouldCollect(session)) return;
     this.collector(sessionId, call.turn).observe({
       toolName: call.name,
       args: call.args,
@@ -239,10 +268,20 @@ export class QaProvenanceHost {
   private materialize(agent: Agent, turn: number): void {
     const config = this.config().sources;
     if (!config.enabled || !config.collect.persistTurnEvent) return;
-    const bundle = this.collector(String(agent.id), turn).snapshot();
-    const previous = this.snapshots.get(String(agent.id))?.get(turn);
-    if (JSON.stringify(previous) === JSON.stringify(bundle)) return;
-    agent.session.append(QA_SOURCES_EVENT, bundle);
+    const sessionId = String(agent.id);
+    const bundle = this.collector(sessionId, turn).snapshot();
+    const previous = this.snapshots.get(sessionId)?.get(turn);
+    if (JSON.stringify(previous) !== JSON.stringify(bundle)) {
+      this.sessionSnapshots(sessionId).set(turn, bundle);
+      agent.session.append(QA_SOURCES_EVENT, bundle);
+    }
+    // The durable event (or its earlier copy) now mirrors the collector;
+    // bundles() falls back to the snapshot, so the collector can go.
+    const byTurn = this.collectors.get(sessionId);
+    if (byTurn !== undefined) {
+      byTurn.delete(turn);
+      if (byTurn.size === 0) this.collectors.delete(sessionId);
+    }
   }
 
   private startSubagent(info: SubagentInfo): void {
@@ -275,6 +314,9 @@ export class QaProvenanceHost {
   private endSubagent(info: SubagentInfo): void {
     const lineage = this.lineage.get(info.id);
     if (lineage === undefined) return;
+    // The run is over: the report tool can no longer fire for it, so the
+    // record dies with its end event instead of leaking per delegation.
+    this.lineage.delete(info.id);
     const config = this.config().sources.subagents;
     const root = this.collector(lineage.rootSessionId, lineage.rootTurn);
     if (info.local && config.inheritSources) {
