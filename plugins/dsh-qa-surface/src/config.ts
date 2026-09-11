@@ -1,282 +1,252 @@
 import z from "@deepseek-ai/schemastery";
+import { DEFAULT_QA_SURFACE_CONFIG } from "./resolve-config.js";
 import type { QaSurfaceConfig } from "./types.js";
+
+// Every schema default derives from the canonical resolved defaults: the Host
+// feeds the schema-parsed config into resolveConfig, so a default that exists
+// only here would reach the resolver as an explicit value (and, for
+// ui.showReset, trip the lockdown cross-check on untouched deployments).
+const D = DEFAULT_QA_SURFACE_CONFIG;
 
 const nullableString = z.union([z.string(), z.const(null)]);
 
 const configSchema = z.object({
-  enabled: z.boolean().default(true),
+  enabled: z.boolean().default(D.enabled),
   route: z
     .object({
-      path: z.string().default("/qa"),
-      matchChildren: z.boolean().default(true),
+      path: z.string().default(D.route.path),
+      matchChildren: z.boolean().default(D.route.matchChildren),
     })
-    .default({ path: "/qa", matchChildren: true }),
+    .default({ ...D.route }),
   branding: z
     .object({
-      title: z.string().default("Помощник"),
-      subtitle: z.string().default(""),
-      welcomeMessage: z.string().default("Чем могу помочь?"),
-      placeholder: z.string().default("Задайте вопрос…"),
-      logoUrl: nullableString.default(null),
-      disclaimer: nullableString.default(
-        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
-      ),
+      title: z.string().default(D.branding.title),
+      subtitle: z.string().default(D.branding.subtitle),
+      welcomeMessage: z.string().default(D.branding.welcomeMessage),
+      placeholder: z.string().default(D.branding.placeholder),
+      logoUrl: nullableString.default(D.branding.logoUrl),
+      disclaimer: nullableString.default(D.branding.disclaimer),
     })
-    .default({
-      title: "Помощник",
-      subtitle: "",
-      welcomeMessage: "Чем могу помочь?",
-      placeholder: "Задайте вопрос…",
-      logoUrl: null,
-      disclaimer:
-        "Диалоги могут быть видны другим пользователям сервера и используются для улучшения качества ответов.",
-    }),
+    .default({ ...D.branding }),
   session: z
     .object({
       policy: z
         .union(["browser-persistent", "new-on-load", "fixed"] as const)
-        .default("browser-persistent"),
-      storageKey: z.string().default("dsh-qa-surface.session"),
-      cwd: nullableString.default(null),
-      workspaceId: nullableString.default(null),
-      fixedSessionId: nullableString.default(null),
-      agentPreset: nullableString.default(null),
-      provider: nullableString.default(null),
-      model: nullableString.default(null),
-      reasoningEffort: nullableString.default(null),
+        .default(D.session.policy),
+      storageKey: z.string().default(D.session.storageKey),
+      cwd: nullableString.default(D.session.cwd),
+      workspaceId: nullableString.default(D.session.workspaceId),
+      fixedSessionId: nullableString.default(D.session.fixedSessionId),
+      agentPreset: nullableString.default(D.session.agentPreset),
+      provider: nullableString.default(D.session.provider),
+      model: nullableString.default(D.session.model),
+      reasoningEffort: nullableString.default(D.session.reasoningEffort),
     })
-    .default({
-      policy: "browser-persistent",
-      storageKey: "dsh-qa-surface.session",
-      cwd: null,
-      workspaceId: null,
-      fixedSessionId: null,
-      agentPreset: null,
-      provider: null,
-      model: null,
-      reasoningEffort: null,
-    }),
+    .default({ ...D.session }),
   ui: z
     .object({
-      showHeader: z.boolean().default(true),
-      showReset: z.boolean().default(true),
-      showStop: z.boolean().default(true),
-      showTimestamps: z.boolean().default(false),
-      showToolActivity: z.boolean().default(false),
-      showReasoning: z.boolean().default(false),
-      renderMarkdown: z.boolean().default(true),
-      maxContentWidth: z.number().step(1).min(480).max(1600).default(900),
-      showSessionList: z.boolean().default(false),
+      showHeader: z.boolean().default(D.ui.showHeader),
+      showReset: z.boolean().default(D.ui.showReset),
+      showStop: z.boolean().default(D.ui.showStop),
+      showTimestamps: z.boolean().default(D.ui.showTimestamps),
+      showToolActivity: z.boolean().default(D.ui.showToolActivity),
+      showReasoning: z.boolean().default(D.ui.showReasoning),
+      renderMarkdown: z.boolean().default(D.ui.renderMarkdown),
+      maxContentWidth: z
+        .number()
+        .step(1)
+        .min(480)
+        .max(1600)
+        .default(D.ui.maxContentWidth),
+      showSessionList: z.boolean().default(D.ui.showSessionList),
     })
-    .default({
-      showHeader: true,
-      showReset: true,
-      showStop: true,
-      showTimestamps: false,
-      showToolActivity: false,
-      showReasoning: false,
-      renderMarkdown: true,
-      maxContentWidth: 900,
-      showSessionList: false,
-    }),
-  suggestedQuestions: z
-    .array(z.string())
-    .default([
-      "Что ты умеешь?",
-      "С чего начать?",
-      "Помоги разобраться с ошибкой",
-    ]),
+    .default({ ...D.ui }),
+  suggestedQuestions: z.array(z.string()).default([...D.suggestedQuestions]),
   interaction: z
     .object({
-      approvals: z.union(["blocked"] as const).default("blocked"),
-      questions: z.union(["unsupported"] as const).default("unsupported"),
+      approvals: z.union(["blocked"] as const).default(D.interaction.approvals),
+      questions: z
+        .union(["unsupported"] as const)
+        .default(D.interaction.questions),
     })
-    .default({ approvals: "blocked", questions: "unsupported" }),
+    .default({ ...D.interaction }),
   lockdown: z
     .object({
-      enabled: z.boolean().default(true),
-      enforceFixedAgentPreset: z.boolean().default(true),
-      enforceFixedWorkspace: z.boolean().default(true),
-      enforceFixedModel: z.boolean().default(true),
-      sandboxMode: z.union(["read-only"] as const).default("read-only"),
-      approvalPolicy: z.union(["never"] as const).default("never"),
-      permissionPreset: z.string().default("qa-read-only"),
-      allowPermissionChanges: z.const(false).default(false),
-      allowSlashCommands: z.const(false).default(false),
-      allowSettingsMutation: z.const(false).default(false),
-      allowSessionReset: z.boolean().default(false),
-      allowSessionRename: z.const(false).default(false),
-      allowSessionDelete: z.const(false).default(false),
-      allowArbitrarySessionOpen: z.const(false).default(false),
+      enabled: z.boolean().default(D.lockdown.enabled),
+      enforceFixedAgentPreset: z
+        .boolean()
+        .default(D.lockdown.enforceFixedAgentPreset),
+      enforceFixedWorkspace: z
+        .boolean()
+        .default(D.lockdown.enforceFixedWorkspace),
+      enforceFixedModel: z.boolean().default(D.lockdown.enforceFixedModel),
+      sandboxMode: z
+        .union(["read-only"] as const)
+        .default(D.lockdown.sandboxMode),
+      approvalPolicy: z
+        .union(["never"] as const)
+        .default(D.lockdown.approvalPolicy),
+      permissionPreset: z.string().default(D.lockdown.permissionPreset),
+      allowPermissionChanges: z
+        .const(false)
+        .default(D.lockdown.allowPermissionChanges),
+      allowSlashCommands: z.const(false).default(D.lockdown.allowSlashCommands),
+      allowSettingsMutation: z
+        .const(false)
+        .default(D.lockdown.allowSettingsMutation),
+      allowSessionReset: z.boolean().default(D.lockdown.allowSessionReset),
+      allowSessionRename: z.const(false).default(D.lockdown.allowSessionRename),
+      allowSessionDelete: z.const(false).default(D.lockdown.allowSessionDelete),
+      allowArbitrarySessionOpen: z
+        .const(false)
+        .default(D.lockdown.allowArbitrarySessionOpen),
       toolPolicy: z
         .object({
-          mode: z.union(["allow-list"] as const).default("allow-list"),
-          allow: z.array(z.string()).default([]),
-        })
-        .default({ mode: "allow-list", allow: [] }),
-    })
-    .default({
-      enabled: true,
-      enforceFixedAgentPreset: true,
-      enforceFixedWorkspace: true,
-      enforceFixedModel: true,
-      sandboxMode: "read-only",
-      approvalPolicy: "never",
-      permissionPreset: "qa-read-only",
-      allowPermissionChanges: false,
-      allowSlashCommands: false,
-      allowSettingsMutation: false,
-      allowSessionReset: false,
-      allowSessionRename: false,
-      allowSessionDelete: false,
-      allowArbitrarySessionOpen: false,
-      toolPolicy: { mode: "allow-list", allow: [] },
-    }),
-  embedding: z
-    .object({ frameAncestors: nullableString.default(null) })
-    .default({ frameAncestors: null }),
-  accounts: z
-    .object({
-      enabled: z.boolean().default(false),
-      allowRegistration: z.boolean().default(true),
-      sessionTtlDays: z.number().step(1).min(1).max(365).default(30),
-    })
-    .default({ enabled: false, allowRegistration: true, sessionTtlDays: 30 }),
-  entry: z
-    .object({
-      redirectNonLoopback: z.boolean().default(true),
-      cookieBootstrap: z.boolean().default(true),
-    })
-    .default({ redirectNonLoopback: true, cookieBootstrap: true }),
-  sources: z
-    .object({
-      enabled: z.boolean().default(true),
-      collect: z
-        .object({
-          parentAgent: z.boolean().default(true),
-          subagents: z.boolean().default(true),
-          persistTurnEvent: z.boolean().default(true),
+          mode: z
+            .union(["allow-list"] as const)
+            .default(D.lockdown.toolPolicy.mode),
+          allow: z.array(z.string()).default([...D.lockdown.toolPolicy.allow]),
         })
         .default({
-          parentAgent: true,
-          subagents: true,
-          persistTurnEvent: true,
+          mode: D.lockdown.toolPolicy.mode,
+          allow: [...D.lockdown.toolPolicy.allow],
         }),
+    })
+    .default({
+      ...D.lockdown,
+      toolPolicy: {
+        mode: D.lockdown.toolPolicy.mode,
+        allow: [...D.lockdown.toolPolicy.allow],
+      },
+    }),
+  embedding: z
+    .object({
+      frameAncestors: nullableString.default(D.embedding.frameAncestors),
+    })
+    .default({ ...D.embedding }),
+  accounts: z
+    .object({
+      enabled: z.boolean().default(D.accounts.enabled),
+      allowRegistration: z.boolean().default(D.accounts.allowRegistration),
+      sessionTtlDays: z
+        .number()
+        .step(1)
+        .min(1)
+        .max(365)
+        .default(D.accounts.sessionTtlDays),
+    })
+    .default({ ...D.accounts }),
+  entry: z
+    .object({
+      redirectNonLoopback: z.boolean().default(D.entry.redirectNonLoopback),
+    })
+    .default({ ...D.entry }),
+  sources: z
+    .object({
+      enabled: z.boolean().default(D.sources.enabled),
+      collect: z
+        .object({
+          parentAgent: z.boolean().default(D.sources.collect.parentAgent),
+          subagents: z.boolean().default(D.sources.collect.subagents),
+          persistTurnEvent: z
+            .boolean()
+            .default(D.sources.collect.persistTurnEvent),
+        })
+        .default({ ...D.sources.collect }),
       display: z
         .object({
-          sidebar: z.boolean().default(true),
-          footer: z.boolean().default(true),
-          groupByKind: z.boolean().default(true),
-          showDiscovered: z.boolean().default(false),
-          showOriginBadges: z.boolean().default(false),
+          sidebar: z.boolean().default(D.sources.display.sidebar),
+          footer: z.boolean().default(D.sources.display.footer),
+          groupByKind: z.boolean().default(D.sources.display.groupByKind),
+          showDiscovered: z.boolean().default(D.sources.display.showDiscovered),
+          showOriginBadges: z
+            .boolean()
+            .default(D.sources.display.showOriginBadges),
           maxInitiallyVisiblePerGroup: z
             .number()
             .step(1)
             .min(1)
             .max(100)
-            .default(8),
+            .default(D.sources.display.maxInitiallyVisiblePerGroup),
         })
-        .default({
-          sidebar: true,
-          footer: true,
-          groupByKind: true,
-          showDiscovered: false,
-          showOriginBadges: false,
-          maxInitiallyVisiblePerGroup: 8,
-        }),
+        .default({ ...D.sources.display }),
       webSearch: z
         .object({
-          promoteSearchResultsWithoutFetch: z.boolean().default(true),
-          maxPromotedPerSearch: z.number().step(1).min(0).max(50).default(5),
+          promoteSearchResultsWithoutFetch: z
+            .boolean()
+            .default(D.sources.webSearch.promoteSearchResultsWithoutFetch),
+          maxPromotedPerSearch: z
+            .number()
+            .step(1)
+            .min(0)
+            .max(50)
+            .default(D.sources.webSearch.maxPromotedPerSearch),
         })
-        .default({
-          promoteSearchResultsWithoutFetch: true,
-          maxPromotedPerSearch: 5,
-        }),
+        .default({ ...D.sources.webSearch }),
       dedupe: z
         .object({
-          normalizeUrls: z.boolean().default(true),
-          stripTrackingParams: z.boolean().default(true),
-          mergeFileRanges: z.boolean().default(true),
+          normalizeUrls: z.boolean().default(D.sources.dedupe.normalizeUrls),
+          stripTrackingParams: z
+            .boolean()
+            .default(D.sources.dedupe.stripTrackingParams),
+          mergeFileRanges: z
+            .boolean()
+            .default(D.sources.dedupe.mergeFileRanges),
         })
-        .default({
-          normalizeUrls: true,
-          stripTrackingParams: true,
-          mergeFileRanges: true,
-        }),
+        .default({ ...D.sources.dedupe }),
       filePreview: z
         .object({
-          enabled: z.boolean().default(true),
-          markdownRenderedByDefault: z.boolean().default(true),
-          allowRawToggle: z.boolean().default(true),
+          enabled: z.boolean().default(D.sources.filePreview.enabled),
+          markdownRenderedByDefault: z
+            .boolean()
+            .default(D.sources.filePreview.markdownRenderedByDefault),
+          allowRawToggle: z
+            .boolean()
+            .default(D.sources.filePreview.allowRawToggle),
           maxBytes: z
             .number()
             .step(1)
             .min(1024)
             .max(20_000_000)
-            .default(2_000_000),
+            .default(D.sources.filePreview.maxBytes),
           maxMarkdownRenderBytes: z
             .number()
             .step(1)
             .min(1024)
             .max(10_000_000)
-            .default(1_000_000),
+            .default(D.sources.filePreview.maxMarkdownRenderBytes),
         })
-        .default({
-          enabled: true,
-          markdownRenderedByDefault: true,
-          allowRawToggle: true,
-          maxBytes: 2_000_000,
-          maxMarkdownRenderBytes: 1_000_000,
-        }),
+        .default({ ...D.sources.filePreview }),
       subagents: z
         .object({
-          inheritSources: z.boolean().default(true),
-          enableReportToolFallback: z.boolean().default(true),
-          markIncompleteOpaqueRuns: z.boolean().default(true),
+          inheritSources: z
+            .boolean()
+            .default(D.sources.subagents.inheritSources),
+          enableReportToolFallback: z
+            .boolean()
+            .default(D.sources.subagents.enableReportToolFallback),
+          markIncompleteOpaqueRuns: z
+            .boolean()
+            .default(D.sources.subagents.markIncompleteOpaqueRuns),
         })
-        .default({
-          inheritSources: true,
-          enableReportToolFallback: true,
-          markIncompleteOpaqueRuns: true,
-        }),
+        .default({ ...D.sources.subagents }),
       legacy: z
-        .object({ parseAssistantSourcesBlock: z.boolean().default(false) })
-        .default({ parseAssistantSourcesBlock: false }),
+        .object({
+          parseAssistantSourcesBlock: z
+            .boolean()
+            .default(D.sources.legacy.parseAssistantSourcesBlock),
+        })
+        .default({ ...D.sources.legacy }),
     })
     .default({
-      enabled: true,
-      collect: { parentAgent: true, subagents: true, persistTurnEvent: true },
-      display: {
-        sidebar: true,
-        footer: true,
-        groupByKind: true,
-        showDiscovered: false,
-        showOriginBadges: false,
-        maxInitiallyVisiblePerGroup: 8,
-      },
-      webSearch: {
-        promoteSearchResultsWithoutFetch: true,
-        maxPromotedPerSearch: 5,
-      },
-      dedupe: {
-        normalizeUrls: true,
-        stripTrackingParams: true,
-        mergeFileRanges: true,
-      },
-      filePreview: {
-        enabled: true,
-        markdownRenderedByDefault: true,
-        allowRawToggle: true,
-        maxBytes: 2_000_000,
-        maxMarkdownRenderBytes: 1_000_000,
-      },
-      subagents: {
-        inheritSources: true,
-        enableReportToolFallback: true,
-        markIncompleteOpaqueRuns: true,
-      },
-      legacy: { parseAssistantSourcesBlock: false },
+      ...D.sources,
+      collect: { ...D.sources.collect },
+      display: { ...D.sources.display },
+      webSearch: { ...D.sources.webSearch },
+      dedupe: { ...D.sources.dedupe },
+      filePreview: { ...D.sources.filePreview },
+      subagents: { ...D.sources.subagents },
+      legacy: { ...D.sources.legacy },
     }),
 });
 

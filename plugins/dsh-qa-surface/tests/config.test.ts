@@ -1,9 +1,48 @@
 import { describe, expect, it } from "vitest";
+import { ConfigSchema } from "../src/config.js";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   normalizeRoutePath,
   resolveConfig,
 } from "../src/resolve-config.js";
+import type { QaSurfaceConfig } from "../src/types.js";
+
+/** Parse through the Host's config path: schema first, resolver second. */
+function schemaParse(input: unknown): QaSurfaceConfig {
+  const result = ConfigSchema["~standard"].validate(input);
+  if ("issues" in result && result.issues !== undefined) {
+    throw new Error(`schema rejected ${JSON.stringify(input)}`);
+  }
+  return (result as { value: QaSurfaceConfig }).value;
+}
+
+describe("ConfigSchema defaults", () => {
+  // The host materializes schema defaults before resolveConfig sees the
+  // config, so a schema-only default would reach the resolver as an explicit
+  // value; these tests pin the schema against the canonical defaults.
+  it("resolves schema-materialized defaults to the canonical config", () => {
+    for (const input of [undefined, {}]) {
+      expect(resolveConfig(schemaParse(input))).toEqual(
+        DEFAULT_QA_SURFACE_CONFIG,
+      );
+    }
+  });
+
+  it("keeps ui.showReset off until lockdown authorizes it", () => {
+    expect(resolveConfig(schemaParse(undefined)).ui.showReset).toBe(false);
+    expect(() => resolveConfig({ ui: { showReset: true } })).toThrow(
+      /allowSessionReset/u,
+    );
+    expect(
+      resolveConfig(
+        schemaParse({
+          ui: { showReset: true },
+          lockdown: { allowSessionReset: true },
+        }),
+      ).ui.showReset,
+    ).toBe(true);
+  });
+});
 
 describe("qa surface config", () => {
   it("materializes safe defaults", () => {
