@@ -5,7 +5,7 @@ import type {
   QaTurnSources,
   ResolvedQaSurfaceConfig,
 } from "../../types.js";
-import type { QaSourceApi } from "../types.js";
+import type { QaBoundSourceApi } from "../types.js";
 import { Markdown } from "./Markdown.js";
 
 const KIND_LABELS: Readonly<Record<QaSource["kind"], string>> = {
@@ -146,7 +146,7 @@ function QaSourceDetail({
 }: {
   readonly source: QaSource;
   readonly sessionId: string | null;
-  readonly sourceApi: QaSourceApi;
+  readonly sourceApi: QaBoundSourceApi;
   readonly filePreviewConfig: ResolvedQaSurfaceConfig["sources"]["filePreview"];
   readonly showOriginBadges: boolean;
   readonly onBack: () => void;
@@ -318,7 +318,7 @@ export interface QaSourcesDrawerProps {
   readonly complete: boolean;
   readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
   readonly sessionId: string | null;
-  readonly sourceApi: QaSourceApi;
+  readonly sourceApi: QaBoundSourceApi;
   readonly display: ResolvedQaSurfaceConfig["sources"]["display"];
   readonly filePreview: ResolvedQaSurfaceConfig["sources"]["filePreview"];
   readonly onClose: () => void;

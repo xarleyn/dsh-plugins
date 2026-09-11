@@ -15,6 +15,8 @@ export type QaAttestationReason =
   | "permission-preset"
   | "adoption-refused"
   | "unknown-tools"
+  | "auth-required"
+  | "session-owned-elsewhere"
   | "attestation-failed";
 
 /** Host rejection whose wire message carries the coarse reason marker. */

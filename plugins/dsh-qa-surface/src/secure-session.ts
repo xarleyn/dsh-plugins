@@ -6,6 +6,7 @@ import type {} from "@deepseek-ai/dsh-system-prompt";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
+import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
@@ -16,6 +17,15 @@ interface AppliedPolicy {
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
   readonly disposeGuidance: () => void;
+}
+
+/**
+ * The accounts half of admission, resolved per call by the entry (accounts
+ * may be toggled at runtime). A gate must either accept the token/session
+ * pair or throw the coarse `QaAttestationError`; see {@link QaAccounts}.
+ */
+export interface QaAccountsGate {
+  enforceSessionAccess(token: string, sessionId: string): void;
 }
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
@@ -52,15 +62,35 @@ export class QaPolicyAdmission {
     private readonly ctx: Context,
     private readonly config: () => ResolvedQaSurfaceConfig,
     private readonly logger: PluginLogger,
+    private readonly accounts?: QaAccountsGate,
   ) {
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
     });
   }
 
-  secureSession(sessionId: string): QaLockdownProof {
+  secureSession(token: string, sessionId: string): QaLockdownProof {
     const config = this.config();
     const lockdown = config.lockdown;
+    // Account identity is checked before any policy work: an invalid token
+    // must not learn whether a session exists or how the deployment composes.
+    // Independent of lockdown — a deployment may gate users without pinning
+    // the policy, and the gate itself no-ops while accounts are disabled.
+    if (this.accounts !== undefined) {
+      try {
+        this.accounts.enforceSessionAccess(token, sessionId);
+      } catch (error) {
+        if (error instanceof QaAccountsError) {
+          throw new QaAttestationError(
+            error.reason === "session-owned-elsewhere"
+              ? "session-owned-elsewhere"
+              : "auth-required",
+            error.message,
+          );
+        }
+        throw error;
+      }
+    }
     const agent = this.ctx.agents.get(SessionId(sessionId));
     if (agent === undefined) {
       throw new QaAttestationError("agent-unavailable", "agent is unavailable");

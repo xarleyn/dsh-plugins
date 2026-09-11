@@ -49,6 +49,12 @@ export function attestationHint(reason: string | null): string {
   if (reason === "adoption-refused") {
     return "This browser tried to adopt a session created outside the current QA policy.";
   }
+  if (reason === "session-owned-elsewhere") {
+    return "The session belongs to another QA account; the deployment's ownership map refused this browser.";
+  }
+  if (reason === "auth-required") {
+    return "The account token is absent, expired or rotated - sign in again through the QA gate.";
+  }
   return "The specific mismatch facts are written to the Host logs.";
 }
 

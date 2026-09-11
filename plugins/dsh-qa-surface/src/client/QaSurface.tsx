@@ -22,6 +22,10 @@ import type {
 } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
+import type {
+  QaAccountsController,
+  QaAccountsSnapshot,
+} from "./QaAccountsController.js";
 import { QaSessionController } from "./QaSessionController.js";
 import type {
   QaConversation,
@@ -31,6 +35,7 @@ import type {
   QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
+import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
@@ -53,6 +58,10 @@ const noopSubscribe = () => () => undefined;
 /** Stable empty stand-in so memoized children see one identity, not a fresh []. */
 const NO_QUESTIONS: readonly string[] = Object.freeze([]);
 
+const ACCOUNTS_CHECKING_SNAPSHOT: QaAccountsSnapshot = { stage: "checking" };
+const noopAccountsSnapshot = (): QaAccountsSnapshot =>
+  ACCOUNTS_CHECKING_SNAPSHOT;
+
 export interface QaSurfaceFace {
   readonly route: QaRouteController;
   readonly config: QaConfigController;
@@ -62,6 +71,8 @@ export interface QaSurfaceFace {
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
   readonly sourceApi: QaSourceApi;
+  /** Present when the deployment mounts the QA account gate. */
+  readonly accounts?: QaAccountsController;
 }
 
 type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
@@ -144,6 +155,13 @@ export function QaSurface(props: QaSurfaceProps) {
     props.config.getSnapshot,
   );
   const config = configState.config;
+  const accounts = props.accounts;
+  const accountsSnapshot = useSyncExternalStore(
+    accounts?.subscribe ?? noopSubscribe,
+    accounts?.getSnapshot ?? noopAccountsSnapshot,
+    accounts?.getSnapshot ?? noopAccountsSnapshot,
+  );
+  const accountsStage = accountsSnapshot.stage;
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
@@ -178,6 +196,24 @@ export function QaSurface(props: QaSurfaceProps) {
       setController(undefined);
       return;
     }
+    const accountsEnabled = config.accounts.enabled && accounts !== undefined;
+    // The gate owns the frame until the browser holds a valid identity; the
+    // session controller (and every attestation it triggers) waits for it.
+    if (accountsEnabled && accountsStage !== "authed") {
+      setController(undefined);
+      return;
+    }
+    const facade =
+      accountsEnabled && accounts
+        ? {
+            token: () => accounts.token(),
+            ownedIds: () => accounts.ownedIds(),
+            onSessionCreated: (sessionId: string) => {
+              void accounts.claimNewSession(sessionId);
+            },
+            onAuthRequired: () => accounts.signOut(),
+          }
+        : undefined;
     const next = new QaSessionController({
       sessions: props.sessions,
       api: props.api,
@@ -187,11 +223,14 @@ export function QaSurface(props: QaSurfaceProps) {
       sourceApi: props.sourceApi,
       config,
       storage: window.localStorage,
+      accounts: facade,
     });
     setController(next);
     void next.ensureSession();
     return () => next.dispose();
   }, [
+    accounts,
+    accountsStage,
     config,
     props.api,
     props.conversation,
@@ -201,6 +240,24 @@ export function QaSurface(props: QaSurfaceProps) {
     props.sessions,
     route.active,
   ]);
+
+  // The drawer receives a token-bound view; its props keep the simple shape.
+  const boundSourceApi = useMemo(
+    () => ({
+      sources: (sessionId: string) =>
+        props.sourceApi.sources(accounts?.token() ?? "", sessionId),
+      readSourceFile: (sessionId: string, sourcePath: string) =>
+        props.sourceApi.readSourceFile(
+          accounts?.token() ?? "",
+          sessionId,
+          sourcePath,
+        ),
+    }),
+    [accounts, props.sourceApi],
+  );
+  const handleLogout = useCallback(() => {
+    accounts?.signOut();
+  }, [accounts]);
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
@@ -294,6 +351,30 @@ export function QaSurface(props: QaSurfaceProps) {
 
   if (!route.active) return null;
 
+  if (config.accounts.enabled && accounts !== undefined) {
+    if (accountsStage === "checking") {
+      return (
+        <main
+          className="dsh-qa-surface"
+          aria-busy="true"
+          aria-label={config.branding.title}
+          tabIndex={-1}
+        />
+      );
+    }
+    if (accountsStage === "gate") {
+      return (
+        <QaAuthGate
+          accounts={accounts}
+          snapshot={accountsSnapshot}
+          title={config.branding.title}
+          logoUrl={config.branding.logoUrl}
+          allowRegistration={config.accounts.allowRegistration}
+        />
+      );
+    }
+  }
+
   const status = statusText(state);
   const empty = state.messages.length === 0;
   const conversationTitle = titleFromMessages(state);
@@ -357,6 +438,17 @@ export function QaSurface(props: QaSurfaceProps) {
           onSwitch={handleSwitch}
           onNewChat={handleNewChat}
           onDelete={handleDelete}
+          account={
+            config.accounts.enabled &&
+            accounts !== undefined &&
+            accountsStage === "authed"
+              ? {
+                  email: accountsSnapshot.user.email,
+                  role: accountsSnapshot.user.role,
+                  onLogout: handleLogout,
+                }
+              : undefined
+          }
         />
       ) : null}
       <div className="dsh-qa-body">
@@ -637,7 +729,7 @@ export function QaSurface(props: QaSurfaceProps) {
             state.incompleteSourceOrigins
           }
           sessionId={state.sessionId}
-          sourceApi={props.sourceApi}
+          sourceApi={boundSourceApi}
           display={config.sources.display}
           filePreview={config.sources.filePreview}
           onClose={() => {

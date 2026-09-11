@@ -12,6 +12,8 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { QaRouteController } from "./QaRouteController.js";
+import { QaAccountsController } from "./QaAccountsController.js";
+import { QaChatIndex } from "./chat-index.js";
 import { QaSurface } from "./QaSurface.js";
 import type {
   QaSecureSession,
@@ -21,9 +23,12 @@ import type {
 } from "./types.js";
 import { QA_SURFACE_STYLES } from "./styles.js";
 import type {
+  QaAccountSession,
+  QaClaimResult,
   QaLockdownProof,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaWhoamiResult,
 } from "../types.js";
 
 const SETTINGS_NAMESPACE = "qa-surface";
@@ -35,21 +40,49 @@ declare module "@deepseek-ai/cordis" {
 }
 
 interface QaPolicyRemote {
-  secureSession(sessionId: string): Promise<RemoteResult<QaLockdownProof>>;
+  secureSession(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<QaLockdownProof>>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
-  sources(sessionId: string): QaSourceApi extends {
-    sources(sessionId: string): infer Result;
+  sources(
+    token: string,
+    sessionId: string,
+  ): QaSourceApi extends {
+    sources(token: string, sessionId: string): infer Result;
   }
     ? Result
     : never;
   readSourceFile(
+    token: string,
     sessionId: string,
     sourcePath: string,
   ): QaSourceApi extends {
-    readSourceFile(sessionId: string, sourcePath: string): infer Result;
+    readSourceFile(
+      token: string,
+      sessionId: string,
+      sourcePath: string,
+    ): infer Result;
   }
     ? Result
     : never;
+  accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
+  accountsLogin(
+    email: string,
+    password: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  accountsRegister(
+    email: string,
+    password: string,
+    displayName?: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  accountsClaimSessions(
+    token: string,
+    sessionIds: readonly string[],
+  ): Promise<RemoteResult<QaClaimResult>>;
+  accountsOwnedSessions(
+    token: string,
+  ): Promise<RemoteResult<{ readonly ids: readonly string[] }>>;
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
@@ -73,24 +106,52 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     (remoteContext) => {
       const injectedRemote = remoteContext.remote as QaClientRemote;
       const policyRemote = injectedRemote.qaSurface;
-      const secureSession: QaSecureSession = (sessionId) =>
-        policyRemote.secureSession(sessionId);
+      const secureSession: QaSecureSession = (token, sessionId) =>
+        policyRemote.secureSession(token, sessionId);
       const qaApi: QaSessionsApi = {
         selectModel: (request) => injectedRemote.session.selectModel(request),
         selectAgentPreset: (agentId, agentPreset) =>
           injectedRemote.agentPresets.select(agentId, agentPreset),
       };
       const sourceApi: QaSourceApi = {
-        sources: (sessionId) =>
-          policyRemote.sources(sessionId) as unknown as ReturnType<
+        sources: (token, sessionId) =>
+          policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]
           >,
-        readSourceFile: (sessionId, sourcePath) =>
+        readSourceFile: (token, sessionId, sourcePath) =>
           policyRemote.readSourceFile(
+            token,
             sessionId,
             sourcePath,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
       };
+      // The account gate rides its own remote; a stale token simply answers
+      // "not authenticated" and the browser shows the login card.
+      const accounts = new QaAccountsController({
+        remote: policyRemote,
+        storage: window.localStorage,
+        config: () => config.getSnapshot().config,
+        legacyChatIds: () => {
+          // A standalone index view over the same prefix: reads the chat ids
+          // this browser accumulated before accounts existed.
+          const snapshot = config.getSnapshot().config;
+          const index = new QaChatIndex(
+            window.localStorage,
+            `${snapshot.session.storageKey}:v1:${snapshot.route.path}`,
+          );
+          const ids = [...index.chatIds()];
+          const active = index.activeId();
+          if (active !== null && !ids.includes(active)) ids.push(active);
+          return ids;
+        },
+        forgetChat: (sessionId) => {
+          const snapshot = config.getSnapshot().config;
+          new QaChatIndex(
+            window.localStorage,
+            `${snapshot.session.storageKey}:v1:${snapshot.route.path}`,
+          ).forgetChat(sessionId);
+        },
+      });
       const route = new QaRouteController();
       const config = new QaConfigController(
         (ctx.settingsScope as SettingsScopeBinder).bind<QaSurfaceConfig>({
@@ -127,9 +188,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       let connectionUp = ctx.connection.generation.getSnapshot() !== undefined;
       const unsubscribeConnection = ctx.connection.generation.subscribe(() => {
         const connected = ctx.connection.generation.getSnapshot() !== undefined;
-        if (connected && !connectionUp) config.refreshFallback();
+        if (connected && !connectionUp) {
+          config.refreshFallback();
+          // A boot-time whoami may have raced the lost connection; the
+          // controller no-ops unless it is still in the checking stage.
+          void accounts.start();
+        }
         connectionUp = connected;
       });
+      void accounts.start();
 
       ctx.effect(() => {
         const style = document.createElement("style");
@@ -166,6 +233,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               connection: ctx.connection.generation,
               secureSession,
               sourceApi,
+              accounts,
             }),
           },
           QaSurface,
@@ -177,6 +245,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 }
 
 export { QaConfigController } from "./QaConfigController.js";
+export { QaAccountsController } from "./QaAccountsController.js";
 export { QaRouteController, matchesQaRoute } from "./QaRouteController.js";
 export { QaSessionController } from "./QaSessionController.js";
 export { projectTranscript } from "./QaTranscriptAdapter.js";

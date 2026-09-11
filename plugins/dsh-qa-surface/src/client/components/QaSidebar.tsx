@@ -55,6 +55,12 @@ export interface QaSidebarProps {
   readonly onNewChat: () => void;
   /** Removes a chat from this browser's index; omit to hide the control. */
   readonly onDelete?: (sessionId: string) => void;
+  /** The signed-in account; omit when accounts are disabled. */
+  readonly account?: {
+    readonly email: string;
+    readonly role: string;
+    readonly onLogout: () => void;
+  };
 }
 
 function readCollapsed(key: string): boolean {
@@ -303,6 +309,28 @@ export const QaSidebar = memo(
           )}
         </div>
         <div className="dsh-qa-sidebar__footer">
+          {props.account === undefined ? null : (
+            <div
+              className="dsh-qa-sidebar__account"
+              title={`${props.account.email} (${props.account.role})`}
+            >
+              <span className="dsh-qa-sidebar__account-name">
+                {props.account.email}
+                {props.account.role === "admin" ? " · admin" : ""}
+              </span>
+              <button
+                type="button"
+                className="dsh-qa-sidebar__account-exit"
+                title="Выйти из аккаунта"
+                aria-label="Выйти из аккаунта"
+                onClick={props.account.onLogout}
+              >
+                <svg viewBox="0 0 14 14" aria-hidden="true">
+                  <path d="M8.5 2.5h3v9h-3M5.5 9.5 3 7l2.5-2.5M3 7h6" />
+                </svg>
+              </button>
+            </div>
+          )}
           <button
             type="button"
             className="dsh-qa-sidebar__version"
@@ -329,5 +357,8 @@ export const QaSidebar = memo(
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&
     prev.onDelete === next.onDelete &&
+    prev.account?.email === next.account?.email &&
+    prev.account?.role === next.account?.role &&
+    prev.account?.onLogout === next.account?.onLogout &&
     sameChatRows(prev.rows, next.rows),
 );
