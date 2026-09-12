@@ -26,6 +26,7 @@ import { attestQaPolicy } from "./session-admission.js";
 import { QaHostSourceBridge } from "./session-sources.js";
 import type {
   QaConversation,
+  QaCreateSession,
   QaPromptContent,
   QaSecureSession,
   QaSessions,
@@ -58,6 +59,7 @@ export interface QaAccountsFacade {
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
+  readonly createSession: QaCreateSession;
   /** Conversation assembly feeding the transcript projection. */
   readonly conversation: QaConversation;
   readonly connection: ConnectionGenerationState;
@@ -87,7 +89,7 @@ const CONFIGURATION_ERROR = "Настройки помощника недост�
 export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
-  private readonly api: QaSessionsApi;
+  private readonly createSessionRemote: QaCreateSession;
   private readonly conversation: QaConversation;
   private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
@@ -124,7 +126,7 @@ export class QaSessionController {
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
-    this.api = options.api;
+    this.createSessionRemote = options.createSession;
     this.conversation = options.conversation;
     this.connection = options.connection;
     this.config = options.config;
@@ -322,9 +324,8 @@ export class QaSessionController {
       try {
         await this.waitForConnection();
         const id = await createQaSession({
-          sessions: this.sessions,
-          api: this.api,
-          config: this.config,
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
         });
         if (this.disposed || operation !== this.generation) return false;
         await this.bind(id);
@@ -575,9 +576,8 @@ export class QaSessionController {
       }
       if (id === null) {
         id = await createQaSession({
-          sessions: this.sessions,
-          api: this.api,
-          config: this.config,
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
         });
       }
       if (this.disposed || operation !== this.generation) return;
@@ -605,9 +605,8 @@ export class QaSessionController {
         this.operationError = null;
         this.chats.clearActive();
         id = await createQaSession({
-          sessions: this.sessions,
-          api: this.api,
-          config: this.config,
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
         });
         if (this.disposed || operation !== this.generation) return;
         await this.bind(id);
@@ -671,9 +670,8 @@ export class QaSessionController {
       this.unbind();
       this.chats.clearActive();
       const created = await createQaSession({
-        sessions: this.sessions,
-        api: this.api,
-        config: this.config,
+        createSession: this.createSessionRemote,
+        token: this.accounts?.token() ?? "",
       });
       if (this.disposed || operation !== this.generation) return null;
       await this.bind(created);

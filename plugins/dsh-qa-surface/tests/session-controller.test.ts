@@ -92,7 +92,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("replaces a stale id and applies configured model selection", async () => {
+  it("replaces a stale id through Host-authoritative creation", async () => {
     const world = harness();
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");
     const controller = new QaSessionController({
@@ -110,12 +110,8 @@ describe("QA session controller", () => {
     expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
       "created-1",
     );
-    expect(world.api.selectModel).toHaveBeenCalledWith({
-      sessionId: "created-1",
-      provider: "provider",
-      model: "model",
-      reasoningEffort: "high",
-    });
+    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.api.selectModel).not.toHaveBeenCalled();
     controller.dispose();
   });
 
@@ -138,7 +134,7 @@ describe("QA session controller", () => {
                 agentPresetMatches: true,
                 workspaceMatches: true,
                 modelMatches: true,
-                sandboxIsReadOnly: true,
+                sandboxModeMatches: true,
                 approvalIsNever: true,
                 permissionPreset: "qa-read-only",
                 toolPolicyLoaded: true,
@@ -188,7 +184,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("selects a configured agent preset before policy attestation", async () => {
+  it("leaves configured composition to Host creation", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
@@ -197,10 +193,8 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    expect(world.selectAgentPreset).toHaveBeenCalledWith(
-      "created-1",
-      "qa-assistant",
-    );
+    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.selectAgentPreset).not.toHaveBeenCalled();
     expect(world.secureSession).toHaveBeenCalledWith("", "created-1");
     controller.dispose();
   });
@@ -285,7 +279,7 @@ describe("QA session controller", () => {
     "agentPresetMatches",
     "workspaceMatches",
     "modelMatches",
-    "sandboxIsReadOnly",
+    "sandboxModeMatches",
     "approvalIsNever",
     "toolPolicyLoaded",
   ] as const)("fails closed when %s cannot be proven", async (field) => {
@@ -299,7 +293,7 @@ describe("QA session controller", () => {
           agentPresetMatches: true,
           workspaceMatches: true,
           modelMatches: true,
-          sandboxIsReadOnly: true,
+          sandboxModeMatches: true,
           approvalIsNever: true,
           permissionPreset: "qa-read-only",
           toolPolicyLoaded: true,
@@ -472,14 +466,15 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("creates the chat inside the pinned cwd", async () => {
+  it("does not send the pinned cwd through browser session creation", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
     });
     await controller.ensureSession();
-    expect(world.create).toHaveBeenCalledWith({ cwd: "D:/qa-docs" });
+    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.create).toHaveBeenCalledWith();
     controller.dispose();
   });
 

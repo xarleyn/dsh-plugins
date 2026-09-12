@@ -48,6 +48,9 @@ export type QaSecureSession = (
   | { readonly ok: false; readonly error: unknown }
 >;
 
+/** Host-authoritative creation: identity, cwd and policy never come from the browser. */
+export type QaCreateSession = (token: string) => Promise<RemoteResult<string>>;
+
 export interface QaSourceApi {
   sources(
     token: string,

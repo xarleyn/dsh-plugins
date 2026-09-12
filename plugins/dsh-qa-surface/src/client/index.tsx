@@ -42,6 +42,7 @@ declare module "@deepseek-ai/cordis" {
 }
 
 interface QaPolicyRemote {
+  createSession(token: string): Promise<RemoteResult<string>>;
   secureSession(
     token: string,
     sessionId: string,
@@ -117,7 +118,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const injectedRemote = remoteContext.remote as QaClientRemote;
       const policyRemote = injectedRemote.qaSurface;
       const secureSession: QaSecureSession = (token, sessionId) =>
-        policyRemote.secureSession(token, sessionId);
+        policyRemote.secureSession(
+          token,
+          sessionId,
+        ) as unknown as ReturnType<QaSecureSession>;
       const qaApi: QaSessionsApi = {
         selectModel: (request) => injectedRemote.session.selectModel(request),
         selectAgentPreset: (agentId, agentPreset) =>
@@ -286,6 +290,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               api: qaApi,
               connection: ctx.connection.generation,
               secureSession,
+              createSession: (token: string) =>
+                policyRemote.createSession(token),
               sourceApi,
               accounts,
             }),

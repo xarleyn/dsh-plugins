@@ -235,7 +235,8 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - configurable model override if explicitly set;
 - **locked-down QA mode enabled by default**;
 - fixed agent preset with no QA-user agent switching;
-- forced `read-only` sandbox mode;
+- `read-only` by default, with an opt-in fenced per-account
+  `workspace-write` mode;
 - forced `approval=never` / no permission escalation;
 - allow-list based tool exposure for QA sessions;
 - no model/workspace/permission/mode/settings switching from the QA surface;
@@ -258,7 +259,7 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - custom branding/logo;
 - iframe embedding helper;
 - embeddable JS launcher/widget;
-- per-user session mapping;
+- richer per-user session hierarchy;
 - anonymous guest sessions behind a dedicated auth gateway;
 - dedicated `qa` DSH profile/bundle;
 - multiple assistant presets selected by URL;
@@ -665,7 +666,7 @@ QA user cannot:
   - rename/delete sessions;
   - gain a shell/terminal merely because it exists globally;
   - trigger write-capable Jira/GitHub/Confluence/Slack/email/etc. actions;
-  - escalate from read-only to a wider sandbox mode.
+  - escalate from the configured sandbox mode to a wider mode.
 ```
 
 This must be enforced in layers. Hiding selectors is only the presentation layer.
@@ -675,7 +676,8 @@ This must be enforced in layers. Hiding selectors is only the presentation layer
 For every newly created QA session:
 
 - use exactly the configured `session.agentPreset`;
-- use exactly the configured `session.workspaceId`;
+- use exactly the configured `session.workspaceId`; in per-user mode resolve
+  its path and use only `.qa-users/<account UUID>` below it as cwd;
 - if model/provider are configured, use exactly those values;
 - refuse to silently fall back to another agent/workspace when the configured value is missing;
 - persist the selected QA session id, but do not persist user-selectable composition overrides.
@@ -714,6 +716,13 @@ On a **dedicated QA DSH instance**, setting `defaultPreset: qa-read-only` is rec
 
 The exact surrounding Cordis row/config syntax must be adapted to the target deployment.
 
+The only wider supported policy is `workspace-write`, and only when
+`accounts.perUserWorkspace` is enabled. That mode requires accounts, a
+registered `workspaceId`, fixed-workspace enforcement, Host-owned session
+creation, canonical read/write path checks, subagent root propagation, and
+fixed storage quotas. Child account directories are not registered as DSH
+Workspaces.
+
 Important: DSH's shipped permission preset table normally contains `workspace-write` and `danger-full-access`; `qa-read-only` is an explicit custom table entry for this deployment. The underlying knobs are the authoritative enforcement facts.
 
 `approval=never` is required because it deterministically rejects operations that request approval instead of presenting an approval UI. The QA surface must never implement an auto-approve path.
@@ -728,7 +737,9 @@ References:
 
 `read-only` is **not equivalent to “no side effects.”** It governs file effects enforced by the DSH file sandbox; network and process visibility are outside that sandbox vocabulary. A shell command can still make network requests or trigger external side effects even when filesystem writes are denied.
 
-Therefore the default QA preset must use an explicit **allow-list of known read-only tools**.
+Therefore the default QA preset must use an explicit **allow-list of reviewed tools**.
+The writable per-user mode may add `write`/`edit`; process, LSP, ancestor-git,
+and unrestricted downloader tools remain denied.
 
 Conceptual policy:
 
@@ -758,7 +769,7 @@ Default deny category examples:
 |---|---|---|
 | generic shell / bash / terminal | deny | can create non-filesystem side effects and broad host visibility |
 | generic code runtime | deny | same reason unless a separately constrained pure-compute runtime exists |
-| fs write/edit/move/delete | deny | direct mutation |
+| fs write/edit | deny by default; allow only in fenced per-user mode | direct mutation |
 | git commit/push/checkout/reset | deny | repository mutation / remote side effects |
 | Jira create/update/comment/transition | deny | external mutation |
 | Confluence create/update/delete | deny | external mutation |
@@ -807,7 +818,7 @@ interface QaLockdownInvariant {
   agentPresetMatches: boolean
   workspaceMatches: boolean
   modelMatches: boolean
-  sandboxIsReadOnly: boolean
+  sandboxModeMatches: boolean
   approvalIsNever: boolean
   toolPolicyLoaded: boolean
 }
@@ -1943,7 +1954,8 @@ Verify:
 9. normal DSH UI can inspect the QA-created session;
 10. `/qa` does not open a second server/connection stack;
 11. every QA session starts with the configured agent preset;
-12. every QA session starts/effectively runs as `read-only`;
+12. every QA session runs in its configured, Host-attested sandbox; writable
+    mode uses only the owning account's child cwd;
 13. approval policy is `never`;
 14. model/workspace selectors are absent;
 15. permission selectors/commands are absent;
@@ -1958,13 +1970,13 @@ Verify:
 - stack traces not visible;
 - unsupported approval not auto-approved;
 - `approval=never` rejects escalation deterministically;
-- sandbox effective mode remains `read-only`;
+- sandbox effective mode exactly matches the configured QA permission preset;
 - QA user cannot invoke `/permission` or equivalent command dispatch;
 - QA user cannot change agent preset, workspace, provider, model, or reasoning mode;
 - QA user cannot mutate DSH settings/plugin config;
 - QA user cannot reset/start additional sessions when `allowSessionReset=false`;
 - QA user cannot open arbitrary existing sessions when `allowArbitrarySessionOpen=false`;
-- write/edit/delete filesystem tools are absent or denied;
+- write/edit/delete tools are absent or denied outside fenced per-user mode;
 - shell/terminal/code-runtime are absent by default;
 - mutable MCP actions are absent;
 - allow-listed MCP read actions still work;
@@ -2273,7 +2285,7 @@ Mitigation:
 
 ### Risk: read access is broader than intended
 
-Current DSH read-only mode does not imply workspace-only read isolation.
+DSH sandbox mode alone does not imply workspace-only read isolation.
 
 Mitigation:
 
@@ -2281,6 +2293,9 @@ Mitigation:
 - dedicated read-only corpus/workspace;
 - minimal container mounts;
 - dedicated QA container for high-assurance deployments.
+- for writable per-user mode, canonicalize every model-controlled file path
+  and deny process/LSP/ancestor-git escape hatches in addition to
+  `workspace-write`.
 
 ---
 

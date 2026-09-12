@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
+import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-agent-presets";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-system-prompt";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { SessionId } from "@deepseek-ai/dsh-session/types";
+import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { Context } from "@deepseek-ai/cordis";
 import {
   createHostLoggerSink,
@@ -23,6 +27,10 @@ import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { readSourceFilePreview } from "./provenance/file-preview.js";
+import {
+  existingQaUserWorkspace,
+  prepareQaUserWorkspace,
+} from "./user-workspace.js";
 import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountSession,
@@ -44,6 +52,7 @@ export const inject = [
   "tools",
   "systemPrompt",
   "workspaceRegistry",
+  "sessionController",
 ];
 export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
 export const Config = ConfigSchema;
@@ -93,11 +102,13 @@ export class QaSurface extends TypertRemoteService {
       // Identity half of admission; no-ops while accounts stay disabled.
       {
         enforceSessionAccess: (token, sessionId) => {
-          this.accountsFor(this.getConfig())?.ensureSessionAccess(
+          return this.accountsFor(this.getConfig())?.ensureSessionAccess(
             token,
             sessionId,
           );
         },
+        userWorkspace: (userId, registeredWorkspacePath) =>
+          existingQaUserWorkspace(registeredWorkspacePath, userId),
       },
     );
     this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
@@ -297,6 +308,82 @@ export class QaSurface extends TypertRemoteService {
   @Remote("describe")
   describe(): ResolvedQaSurfaceConfig {
     return this.getConfig();
+  }
+
+  /**
+   * Create a QA session from Host-owned inputs. With account workspaces on,
+   * cwd is `<configured workspace>/.qa-users/<account UUID>` and the child is
+   * intentionally not registered or attached as another DSH workspace.
+   */
+  @Remote("createSession")
+  async createSession(token: string): Promise<string> {
+    const config = this.getConfig();
+    if (config.session.policy === "fixed") {
+      throw new Error("Fixed QA sessions cannot be created.");
+    }
+    const id = SessionId(`session-${randomUUID()}`);
+    const accounts = this.accountsFor(config);
+    const owner =
+      accounts === undefined
+        ? undefined
+        : this.accountsRemote(() => accounts.reserveSession(token, String(id)));
+    let hostCreated = false;
+    try {
+      let userCwd: string | undefined;
+      if (config.accounts.perUserWorkspace) {
+        const workspaceId = config.session.workspaceId;
+        if (owner === undefined || workspaceId === null) {
+          throw new Error(
+            "Per-user QA workspace configuration is unavailable.",
+          );
+        }
+        const workspace = this.ctx.workspaceRegistry.get(
+          WorkspaceId(workspaceId),
+        );
+        if (workspace === undefined) {
+          throw new Error(
+            `Configured QA workspace ${workspaceId} is unavailable.`,
+          );
+        }
+        userCwd = prepareQaUserWorkspace(workspace.path, owner.id);
+      }
+
+      const created = await this.ctx.sessionController.create({
+        sessionId: id,
+        ...(userCwd !== undefined
+          ? { cwd: userCwd }
+          : config.session.workspaceId !== null
+            ? { workspaceId: WorkspaceId(config.session.workspaceId) }
+            : config.session.cwd !== null
+              ? { cwd: config.session.cwd }
+              : {}),
+        ...(config.session.agentPreset === null
+          ? {}
+          : { agentPreset: config.session.agentPreset }),
+      });
+      hostCreated = true;
+      if (config.session.provider !== null && config.session.model !== null) {
+        await this.ctx.sessionController.selectModel({
+          sessionId: created.sessionId,
+          provider: config.session.provider,
+          model: config.session.model,
+          ...(config.session.reasoningEffort === null
+            ? {}
+            : { reasoningEffort: config.session.reasoningEffort }),
+        });
+      }
+      this.admission.secureSession(token, String(created.sessionId));
+      return String(created.sessionId);
+    } catch (error) {
+      if (!hostCreated && owner !== undefined) {
+        accounts?.releaseSessionReservation(owner.id, String(id));
+      }
+      this.logger.error("session.create-rejected", {
+        sessionId: String(id),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error("Unable to create a QA session.", { cause: error });
+    }
   }
 
   /** Pin and attest the effective policy. The browser supplies identity only. */

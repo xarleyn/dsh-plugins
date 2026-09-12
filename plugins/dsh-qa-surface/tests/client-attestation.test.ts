@@ -14,7 +14,7 @@ function proof(overrides: Partial<QaLockdownProof> = {}): QaLockdownProof {
     agentPresetMatches: true,
     workspaceMatches: true,
     modelMatches: true,
-    sandboxIsReadOnly: true,
+    sandboxModeMatches: true,
     approvalIsNever: true,
     permissionPreset: "qa-read-only",
     toolPolicyLoaded: true,
@@ -68,7 +68,7 @@ describe("proofMatchesConfig", () => {
       "agentPresetMatches",
       "workspaceMatches",
       "modelMatches",
-      "sandboxIsReadOnly",
+      "sandboxModeMatches",
       "approvalIsNever",
       "toolPolicyLoaded",
     ] as const) {

@@ -75,6 +75,7 @@ export interface QaSessionTestWorld {
   faces: Map<string, ReturnType<typeof sessionFace>>;
   bindings: Map<string, ReturnType<typeof conversationBinding>>;
   create: Mock;
+  createSession: Mock;
   selectAgentPreset: Mock;
   open: Mock;
   list: Source<SessionListState>;
@@ -165,13 +166,16 @@ export function harness(existing: string[] = []): QaSessionTestWorld {
         agentPresetMatches: true,
         workspaceMatches: true,
         modelMatches: true,
-        sandboxIsReadOnly: true,
+        sandboxModeMatches: true,
         approvalIsNever: true,
         permissionPreset: "qa-read-only",
         toolPolicyLoaded: true,
         toolAllowList: [],
       },
     }),
+  );
+  const createSession = vi.fn<QaSessionControllerOptions["createSession"]>(
+    async () => ({ ok: true, value: String(await create()) }),
   );
   return {
     sessions,
@@ -183,6 +187,7 @@ export function harness(existing: string[] = []): QaSessionTestWorld {
     faces,
     bindings,
     create,
+    createSession,
     selectAgentPreset,
     open,
     list,

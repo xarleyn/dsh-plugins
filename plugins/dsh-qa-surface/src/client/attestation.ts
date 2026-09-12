@@ -74,7 +74,7 @@ export function proofMatchesConfig(
     proof.agentPresetMatches &&
     proof.workspaceMatches &&
     proof.modelMatches &&
-    proof.sandboxIsReadOnly &&
+    proof.sandboxModeMatches &&
     proof.approvalIsNever &&
     proof.permissionPreset === lockdown.permissionPreset &&
     proof.toolPolicyLoaded &&

@@ -228,8 +228,9 @@ describe("QA accounts store", () => {
 
     const gate: QaAccountsGate = {
       enforceSessionAccess: (token, sessionId) => {
-        accounts.ensureSessionAccess(token, sessionId);
+        return accounts.ensureSessionAccess(token, sessionId);
       },
+      userWorkspace: () => "D:/qa-user",
     };
     const admission = new QaPolicyAdmission(
       // The fake context cannot resolve agents on purpose: the account gate
@@ -237,6 +238,7 @@ describe("QA accounts store", () => {
       {
         on: () => () => undefined,
         agents: { get: () => undefined },
+        tools: { guard: () => () => undefined },
       } as never,
       () => resolveConfig(),
       {
@@ -294,8 +296,8 @@ describe("QA accounts store", () => {
     ).toBe("session-owned-elsewhere");
     // ...unless the account administers the deployment.
     expect(accounts.ensureSessionAccess(admin.token, "s-fresh")).toMatchObject({
-      id: admin.user.id,
-      role: "admin",
+      id: user.user.id,
+      role: "user",
     });
     // Unowned sessions are claimed for whoever attests first.
     expect(accounts.ensureSessionAccess(admin.token, "s-other")).toMatchObject({
@@ -306,6 +308,27 @@ describe("QA accounts store", () => {
     expect(reasonOf(() => accounts.ensureSessionAccess("", "s-fresh"))).toBe(
       "auth-required",
     );
+  });
+
+  it("reserves Host-created session ids atomically and can roll back failures", () => {
+    const accounts = store();
+    const user = accounts.register("owner@b.co", "password-1");
+    const other = accounts.register("other@b.co", "password-2");
+
+    expect(
+      accounts.reserveSession(user.token, "session-created"),
+    ).toMatchObject({
+      id: user.user.id,
+    });
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-created"]);
+    expect(() =>
+      accounts.reserveSession(other.token, "session-created"),
+    ).toThrow(/unavailable/u);
+
+    accounts.releaseSessionReservation(other.user.id, "session-created");
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-created"]);
+    accounts.releaseSessionReservation(user.user.id, "session-created");
+    expect(accounts.ownedSessionIds(user.token)).toEqual([]);
   });
 
   it("lists chat ownership for admins with resolved display names", () => {
