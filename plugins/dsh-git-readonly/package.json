@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-git-readonly",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Read-only git provenance tools for DeepSeek Harness agents",
   "repository": {
     "type": "git",

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-qa-surface",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A focused end-user QA surface backed by native DeepSeek Harness sessions",
   "repository": {
     "type": "git",

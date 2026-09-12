@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-l10n-overrides",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "English localization overrides for DeepSeek Harness plugins",
   "repository": {
     "type": "git",

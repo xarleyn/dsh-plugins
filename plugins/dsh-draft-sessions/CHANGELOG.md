@@ -1,3 +1,18 @@
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Rebuild the draft-sessions client on the 0.1.5 session/workspace controllers: ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  the client-runtime face is gone, session creation goes through the ISessions
+  list store with a throwing create, prompt observation rides the forwarded
+  api-session/status event, and workspace resolution follows the host
+  recent-workspace heuristic over WorkspaceSnapshot. The supported host range
+  moves to >=0.1.5-rc.2 <0.2.0, dropping 0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.2 (2026-09-06)
 
 ### 🩹 Fixes

@@ -1,3 +1,16 @@
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Migrate to the 0.1.5 settings surface (SettingsProvider.installSection) and ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  declare the gateway remote and renderer slot Context merges in the client
+  half. The supported host range moves to >=0.1.5-rc.2 <0.2.0, dropping
+  0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.1 (2026-09-06)
 
 ### 🩹 Fixes

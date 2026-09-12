@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-prompt-firewall",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Prompt hygiene, observability, and policy middleware for DeepSeek Harness",
   "repository": {
     "type": "git",
