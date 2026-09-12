@@ -28,6 +28,7 @@ import type {
   QaAccountSession,
   QaClaimResult,
   QaLockdownProof,
+  QaOwnershipEntry,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaSourceFilePreview,
@@ -269,6 +270,22 @@ export class QaSurface extends TypertRemoteService {
     const accounts = this.requireAccounts();
     return this.accountsRemote(() => ({
       ids: accounts.ownedSessionIds(token),
+    }));
+  }
+
+  /**
+   * Every chat-ownership entry with owner display names; the cross-user view
+   * admin browsers group the sidebar by. Ordinary accounts are refused with
+   * the dedicated reason, anonymous ones with auth-required.
+   */
+  @Remote("accountsListOwnership")
+  accountsListOwnership(token: string): {
+    readonly entries: readonly QaOwnershipEntry[];
+  } {
+    if (!this.getConfig().accounts.enabled) return { entries: [] };
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => ({
+      entries: accounts.listOwnership(token),
     }));
   }
 

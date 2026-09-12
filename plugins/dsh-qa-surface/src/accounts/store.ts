@@ -12,6 +12,7 @@ import type {
   QaAccountSession,
   QaAccountUserPublic,
   QaClaimResult,
+  QaOwnershipEntry,
   QaWhoamiResult,
 } from "../types.js";
 
@@ -22,6 +23,7 @@ import type {
  */
 export type QaAccountsErrorReason =
   | "auth-required"
+  | "admin-required"
   | "invalid-credentials"
   | "account-disabled"
   | "email-taken"
@@ -465,6 +467,32 @@ export class QaAccounts {
         right[1].claimedAt.localeCompare(left[1].claimedAt),
       )
       .map(([sessionId]) => sessionId);
+  }
+
+  /**
+   * Every ownership entry with the owner's display name resolved at read
+   * time, oldest claim first. Admin-only: this is the cross-user view the
+   * admin sidebar groups chats by; ordinary accounts get a dedicated refusal.
+   */
+  listOwnership(token: string): readonly QaOwnershipEntry[] {
+    const user = this.requireUser(token);
+    if (user.role !== "admin") {
+      throw new QaAccountsError(
+        "admin-required",
+        "listing chat ownership requires an admin account",
+      );
+    }
+    const names = new Map(
+      this.file.users.map((candidate) => [candidate.id, candidate.displayName]),
+    );
+    return Object.entries(this.file.ownership)
+      .map(([sessionId, owner]) => ({
+        sessionId,
+        userId: owner.userId,
+        displayName: names.get(owner.userId) ?? owner.userId,
+        claimedAt: owner.claimedAt,
+      }))
+      .sort((left, right) => left.claimedAt.localeCompare(right.claimedAt));
   }
 
   // ---------------------------------------------------------------------------

@@ -34,6 +34,18 @@ export interface QaClaimResult {
   readonly conflicts: readonly string[];
 }
 
+/**
+ * One chat-ownership entry as the admin views see it: the session, its owner
+ * and the owner's display name resolved at read time (a disabled account
+ * still names its chats).
+ */
+export interface QaOwnershipEntry {
+  readonly sessionId: string;
+  readonly userId: string;
+  readonly displayName: string;
+  readonly claimedAt: string;
+}
+
 export interface QaSourcesConfig {
   readonly enabled?: boolean;
   readonly collect?: {
@@ -302,6 +314,11 @@ export type QaMessage =
       readonly status: "committed";
       readonly timestamp?: number;
       readonly images?: readonly QaImageView[];
+      /**
+       * Chat owner's display name, set only for an admin reading a foreign
+       * chat; the owner themself sees their messages unlabeled.
+       */
+      readonly author?: string;
     }
   | {
       readonly id: string;
