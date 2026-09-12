@@ -3,19 +3,21 @@ import type {
   ConversationNode,
   ConversationSnapshot,
   RunningToolCall,
-  ToolResultNode,
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
   QaImageMediaType,
   QaImageView,
   QaMessage,
-  QaSource,
-  QaTurnSources,
   QaWorkItem,
 } from "../types.js";
-import { QaSourceCollector } from "../provenance/collector.js";
-import { createDefaultSourceExtractorRegistry } from "../provenance/extractors.js";
+import { chatLegacyOf } from "./turn-sources.js";
+import { parseSettlement } from "./settlement.js";
+import {
+  flattenToolOutput,
+  toolStatus,
+  workTool,
+} from "./tool-presentation.js";
 
 /**
  * The hidden regeneration prompt. Regenerate sends this as an ordinary
@@ -66,55 +68,11 @@ interface OrderedMessage {
   readonly message: QaMessage;
 }
 
-/** Empty Chat slice matching the host's EMPTY_CHAT_SNAPSHOT, without a value import. */
-const EMPTY_LEGACY: LegacyConversationSlice = Object.freeze({
-  nodes: Object.freeze([]),
-  turnTimings: new Map(),
-  turnEnds: new Map(),
-  partial: null,
-  runningCalls: Object.freeze([]),
-});
-
-/** The transcript-bearing Chat slice of one Conversation snapshot (absent before the view activates). */
-function chatLegacyOf(
-  snapshot: ConversationSnapshot | undefined,
-): LegacyConversationSlice {
-  return snapshot?.views.get("chat")?.legacy ?? EMPTY_LEGACY;
-}
-
 /**
  * Durable image references carried by user content. The core ContentBlock
  * vocabulary is not installed client-side, so the shape is matched
  * structurally against the host contract ({type:"image", attachment:{...}}).
  */
-const SETTLED_HEAD =
-  /^Background subagent ([0-9a-f][0-9a-f-]*) (finished|was stopped|ran out of room|declined the task|failed)/u;
-const SETTLED_CLOSING = "Its closing message:";
-const SETTLED_TITLES: Readonly<Record<string, string>> = Object.freeze({
-  finished: "завершён",
-  "was stopped": "остановлен",
-  "ran out of room": "упёрся в лимит длины",
-  "declined the task": "отклонил задачу",
-  failed: "завершился ошибкой",
-});
-
-/** Fold the host settlement wording into a title plus the closing message. */
-function parseSettlement(
-  text: string,
-): { title: string; body: string } | undefined {
-  const head = SETTLED_HEAD.exec(text);
-  if (head === null) return undefined;
-  const id = (head[1] ?? "").slice(0, 8);
-  const title = `Субагент ${id} ${SETTLED_TITLES[head[2] ?? "finished"] ?? "завершён"}`;
-  const closeAt = text.indexOf(SETTLED_CLOSING);
-  const body =
-    closeAt === -1 ? "" : text.slice(closeAt + SETTLED_CLOSING.length).trim();
-  return {
-    title,
-    body: body.length <= 4_000 ? body : `${body.slice(0, 3_999)}…`,
-  };
-}
-
 function visibleContentImages(
   content: readonly unknown[],
 ): readonly QaImageView[] {
@@ -161,96 +119,6 @@ function visibleAssistantText(
     .join("");
 }
 
-function flattenToolOutput(node: ToolResultNode): string | null {
-  const parts = node.content.map((block) =>
-    block.type === "text" ? block.text : JSON.stringify(block, null, 2),
-  );
-  if (parts.length === 0 && node.error !== undefined) {
-    parts.push(`${node.error.name}: ${node.error.code}`);
-  }
-  return parts.join("\n") || null;
-}
-
-function formatToolInput(argsRaw: string): string | null {
-  if (argsRaw === "") return null;
-  try {
-    return JSON.stringify(JSON.parse(argsRaw), null, 2);
-  } catch {
-    return argsRaw;
-  }
-}
-
-function firstLine(value: string): string {
-  return value.split(/\r?\n/u, 1)[0]?.trim() ?? "";
-}
-
-function truncate(value: string, length = 140): string {
-  return value.length <= length ? value : `${value.slice(0, length - 3)}...`;
-}
-
-function toolSummary(name: string, argsRaw: string): string {
-  try {
-    const parsed = JSON.parse(argsRaw) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      const values = parsed as Record<string, unknown>;
-      for (const key of [
-        "description",
-        "path",
-        "file_path",
-        "query",
-        "pattern",
-        "url",
-        "command",
-      ]) {
-        const value = values[key];
-        if (typeof value === "string" && value.trim() !== "") {
-          return truncate(firstLine(value));
-        }
-      }
-      const fallback = Object.values(values).find(
-        (value): value is string =>
-          typeof value === "string" && value.trim() !== "",
-      );
-      if (fallback !== undefined) return truncate(firstLine(fallback));
-    }
-  } catch {
-    const raw = firstLine(argsRaw);
-    if (raw !== "") return truncate(raw);
-  }
-  return name;
-}
-
-const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
-  bash: "Bash",
-  pwsh: "PowerShell",
-  read: "Чтение",
-  web_fetch: "Загрузка",
-  web_search: "Поиск",
-  grep: "Поиск",
-  glob: "Поиск",
-  write: "Запись",
-  edit: "Правка",
-  str_replace_editor: "Правка",
-  run_code: "Код",
-  subagent: "Субагент",
-  subagent_fork: "Субагент (форк)",
-  send_message: "Сообщение агенту",
-  list_agents: "Список агентов",
-  interrupt_agent: "Остановка агента",
-});
-
-/** The durable id a continuable launch reports back ("started subagent <id>"). */
-const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
-
-function toolLabel(name: string): string {
-  return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
-}
-
-function toolStatus(node: ToolResultNode): "ok" | "error" | "stopped" {
-  if (node.error?.code === "interrupted") return "stopped";
-  return node.isError ? "error" : "ok";
-}
-
 /**
  * Response timing for the message row, straight from the host-recorded step
  * boundaries. Tokens per second is an estimate — the client never sees a
@@ -277,35 +145,6 @@ function messageStats(
     tokensPerSecond = Math.round(text.length / 4 / ((end - first) / 1_000));
   }
   return { durationMs, ttftMs, tokensPerSecond };
-}
-
-function workTool(
-  callId: string,
-  name: string,
-  argsRaw: string,
-  status: "running" | "ok" | "error" | "stopped",
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-  output: string | null,
-): QaWorkItem {
-  const launched =
-    name === "subagent" || name === "subagent_fork"
-      ? (SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
-        SUBAGENT_STARTED.exec(argsRaw)?.[1])
-      : undefined;
-  return {
-    id: `tool:${callId}`,
-    kind: "tool",
-    name,
-    label: toolLabel(name),
-    summary: toolSummary(name, argsRaw),
-    input: formatToolInput(argsRaw),
-    output,
-    status,
-    ...(launched === undefined ? {} : { subagentId: launched }),
-    ...(startedAt === undefined ? {} : { startedAt }),
-    ...(endedAt === undefined ? {} : { endedAt }),
-  };
 }
 
 function getTurn(turns: Map<number, TurnBuffer>, turn: number): TurnBuffer {
@@ -656,105 +495,4 @@ export function projectTranscript(
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);
-}
-
-const DEFAULT_SOURCE_EXTRACTORS = createDefaultSourceExtractorRegistry();
-
-interface SourceCallHead {
-  readonly turn: number;
-  readonly step: number;
-  readonly name: string;
-  readonly argsRaw: string;
-}
-
-/**
- * Rebuild canonical turn bundles from durable tool-result metadata. Since the
- * metadata is persisted by DSH, this projection is identical on live updates
- * and replay and requires no assistant-authored bibliography.
- */
-export function projectTurnSources(
-  snapshot: ConversationSnapshot | undefined,
-  sessionId = "unknown",
-  workspaceRoot?: string,
-): readonly QaTurnSources[] {
-  const legacy = chatLegacyOf(snapshot);
-  const heads = new Map<string, SourceCallHead>();
-  for (const node of legacy.nodes) {
-    if (node.kind !== "assistant") continue;
-    for (const block of node.blocks) {
-      if (block.kind !== "tool-call" || block.callId === "") continue;
-      heads.set(block.callId, {
-        turn: node.turn,
-        step: node.step,
-        name: block.name,
-        argsRaw: block.argsRaw,
-      });
-    }
-  }
-
-  const collectors = new Map<number, QaSourceCollector>();
-  const collectorFor = (turn: number) => {
-    let collector = collectors.get(turn);
-    if (collector === undefined) {
-      collector = new QaSourceCollector({
-        sessionId,
-        turn,
-        registry: DEFAULT_SOURCE_EXTRACTORS,
-      });
-      collectors.set(turn, collector);
-    }
-    return collector;
-  };
-  for (const node of legacy.nodes) {
-    if (node.kind === "assistant") collectorFor(node.turn);
-  }
-
-  let nearestTurn: number | undefined;
-  let nearestStep: number | undefined;
-  for (const node of legacy.nodes) {
-    if (node.kind === "assistant") {
-      nearestTurn = node.turn;
-      nearestStep = node.step;
-      continue;
-    }
-    if (node.kind !== "tool-result" || node.isError) continue;
-    const head = heads.get(node.callId);
-    // A truncated event window can retain a result after its assistant call
-    // head. Keep it addressable in the synthetic turn 0 instead of dropping
-    // durable evidence altogether.
-    const turn = head?.turn ?? nearestTurn ?? 0;
-    const name = head?.name ?? node.call?.name ?? node.callId;
-    const argsRaw = head?.argsRaw ?? node.call?.argsRaw ?? "";
-    collectorFor(turn).observe({
-      toolName: name,
-      args: argsRaw,
-      result: node.content,
-      presentation: node.meta,
-      origin: {
-        sessionId,
-        turn,
-        ...((head?.step ?? nearestStep) === undefined
-          ? {}
-          : { step: head?.step ?? nearestStep }),
-        toolCallId: node.callId,
-        toolName: name,
-        role: "parent",
-      },
-      ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
-    });
-  }
-  return [...collectors.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([, collector]) => collector.snapshot());
-}
-
-/** Visible evidence sources for the latest turn, shared by the drawer/footer. */
-export function projectSources(
-  snapshot: ConversationSnapshot | undefined,
-  sessionId = "unknown",
-  workspaceRoot?: string,
-): readonly QaSource[] {
-  return (
-    projectTurnSources(snapshot, sessionId, workspaceRoot).at(-1)?.sources ?? []
-  );
 }

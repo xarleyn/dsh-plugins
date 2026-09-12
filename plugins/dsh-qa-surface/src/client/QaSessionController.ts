@@ -39,8 +39,8 @@ import type {
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { waitFor } from "./wait-for.js";
+import { projectTurnSources } from "./turn-sources.js";
 import {
-  projectTurnSources,
   projectTranscript,
   QA_REGENERATE_MARKER,
 } from "./QaTranscriptAdapter.js";
