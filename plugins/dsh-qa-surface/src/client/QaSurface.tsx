@@ -419,32 +419,6 @@ export function QaSurface(props: QaSurfaceProps) {
     scheduleActiveTurnSync();
   }, [state.messages, scheduleActiveTurnSync]);
 
-  if (!route.active) return null;
-
-  if (config.accounts.enabled && accounts !== undefined) {
-    if (accountsStage === "checking") {
-      return (
-        <main
-          className="dsh-qa-surface"
-          aria-busy="true"
-          aria-label={config.branding.title}
-          tabIndex={-1}
-        />
-      );
-    }
-    if (accountsStage === "gate") {
-      return (
-        <QaAuthGate
-          accounts={accounts}
-          snapshot={accountsSnapshot}
-          title={config.branding.title}
-          logoUrl={config.branding.logoUrl}
-          allowRegistration={config.accounts.allowRegistration}
-        />
-      );
-    }
-  }
-
   const status = statusText(state);
   const empty = state.messages.length === 0;
   const conversationTitle = titleFromMessages(state);
@@ -499,6 +473,32 @@ export function QaSurface(props: QaSurfaceProps) {
     state.sessionId === null
       ? undefined
       : `${stateKey}:chat:${state.sessionId}`;
+  if (!route.active) return null;
+
+  if (config.accounts.enabled && accounts !== undefined) {
+    if (accountsStage === "checking") {
+      return (
+        <main
+          className="dsh-qa-surface"
+          aria-busy="true"
+          aria-label={config.branding.title}
+          tabIndex={-1}
+        />
+      );
+    }
+    if (accountsStage === "gate") {
+      return (
+        <QaAuthGate
+          accounts={accounts}
+          snapshot={accountsSnapshot}
+          title={config.branding.title}
+          logoUrl={config.branding.logoUrl}
+          allowRegistration={config.accounts.allowRegistration}
+        />
+      );
+    }
+  }
+
   return (
     <main
       className="dsh-qa-surface"
