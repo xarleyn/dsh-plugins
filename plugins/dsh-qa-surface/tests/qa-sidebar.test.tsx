@@ -8,7 +8,9 @@ import {
 } from "../src/client/components/QaChangelog.js";
 import {
   buildChatRows,
+  buildOwnerSections,
   QaSidebar,
+  type QaChatRow,
 } from "../src/client/components/QaSidebar.js";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 
@@ -31,7 +33,13 @@ describe("QA sidebar", () => {
   } as unknown as Record<string, SessionSummary>;
 
   it("projects indexed ids onto the host session list, newest update first", () => {
-    const rows = buildChatRows(["s-1", "s-2", "gone"], byId, "s-1", 90_000);
+    const rows = buildChatRows(
+      ["s-1", "s-2", "gone"],
+      byId,
+      "s-1",
+      undefined,
+      90_000,
+    );
     expect(rows).toEqual([
       {
         id: "s-2",
@@ -54,7 +62,7 @@ describe("QA sidebar", () => {
 
   it("renders rows with the active mark and a new-chat control", () => {
     const onSwitch = vi.fn();
-    const rows = buildChatRows(["s-2", "s-1"], byId, "s-2", 90_000);
+    const rows = buildChatRows(["s-2", "s-1"], byId, "s-2", undefined, 90_000);
     render(
       <QaSidebar
         rows={rows}
@@ -87,7 +95,7 @@ describe("QA sidebar", () => {
   });
 
   it("shows the brand head and filters rows through the search field", () => {
-    const rows = buildChatRows(["s-2", "s-1"], byId, null, 90_000);
+    const rows = buildChatRows(["s-2", "s-1"], byId, null, undefined, 90_000);
     render(
       <QaSidebar
         rows={rows}
@@ -112,9 +120,65 @@ describe("QA sidebar", () => {
     expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
   });
 
+  it("orders owner sections by freshness with unclaimed chats last", () => {
+    const row = (
+      id: string,
+      updatedAt: number,
+      ownerName?: string,
+    ): QaChatRow => ({
+      id,
+      title: id,
+      running: false,
+      active: false,
+      meta: "",
+      updatedAt,
+      ...(ownerName === undefined ? {} : { ownerName }),
+    });
+    const sections = buildOwnerSections([
+      row("a", 100, "Аня"),
+      row("b", 900, "Борис"),
+      row("c", 500),
+      row("d", 50, "Аня"),
+    ]);
+    expect(sections.map((section) => section.name)).toEqual([
+      "Борис",
+      "Аня",
+      "Без владельца",
+    ]);
+    expect(sections[1]?.rows.map((entry) => entry.id)).toEqual(["a", "d"]);
+  });
+
+  it("renders per-owner section headers in the admin grouping", () => {
+    const rows = buildChatRows(
+      ["s-2", "s-1"],
+      byId,
+      null,
+      (id) => (id === "s-1" ? "Аня" : "Борис"),
+      90_000,
+    );
+    render(
+      <QaSidebar
+        rows={rows}
+        groupByOwner
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    const names = [
+      ...document.querySelectorAll(".dsh-qa-sidebar__group-name"),
+    ].map((node) => node.textContent);
+    expect(names).toEqual(["Борис (1)", "Аня (1)"]);
+    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+  });
+
   it("collapses to a rail and expands again, remembering the state", () => {
     window.localStorage.clear();
-    const rows = buildChatRows(["s-1"], byId, null, 90_000);
+    const rows = buildChatRows(["s-1"], byId, null, undefined, 90_000);
     const view = render(
       <QaSidebar
         rows={rows}

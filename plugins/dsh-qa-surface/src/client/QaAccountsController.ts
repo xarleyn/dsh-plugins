@@ -1,6 +1,7 @@
 import type {
   QaAccountSession,
   QaAccountUserPublic,
+  QaOwnershipEntry,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import type { QaAccountsApi, StorageLike } from "./types.js";
@@ -19,11 +20,30 @@ export type QaAccountsSnapshot =
   | {
       readonly stage: "authed";
       readonly user: QaAccountUserPublic;
-      /** Server-owned session ids; the sidebar list authority. */
+      /**
+       * Server-known chat ids; the sidebar list authority. Own chats always,
+       * plus every mapped chat for an admin (the cross-user grouping view).
+       */
       readonly ownedIds: readonly string[];
-      /** Bumped whenever ownedIds changes, so list consumers re-project. */
+      /**
+       * The full ownership map; admins only, empty for ordinary accounts and
+       * whenever the admin listing was refused or unavailable.
+       */
+      readonly ownership: readonly QaOwnershipEntry[];
+      /** Bumped whenever ownedIds or ownership changes; re-projects lists. */
       readonly ownedRevision: number;
     };
+
+/** Union of the own chat ids and every mapped one, own ids first. */
+function mergeOwnershipIds(
+  ownedIds: readonly string[],
+  ownership: readonly QaOwnershipEntry[],
+): readonly string[] {
+  if (ownership.length === 0) return ownedIds;
+  return [
+    ...new Set([...ownedIds, ...ownership.map((entry) => entry.sessionId)]),
+  ];
+}
 
 /**
  * Audience-safe copy for the coarse account refusal codes; anything unknown
@@ -33,6 +53,8 @@ export function accountsErrorMessage(code: string | null): string {
   switch (code) {
     case "invalid-credentials":
       return "Неверный email или пароль.";
+    case "admin-required":
+      return "Недостаточно прав: действие доступно администратору.";
     case "account-disabled":
       return "Аккаунт отключён администратором.";
     case "email-taken":
@@ -226,6 +248,7 @@ export class QaAccountsController {
   ): Promise<void> {
     const migration = this.options.legacyChatIds?.() ?? [];
     let ownedIds: readonly string[] = [];
+    let ownership: readonly QaOwnershipEntry[] = [];
     try {
       const claimed = await this.options.remote.accountsClaimSessions(
         token,
@@ -238,6 +261,11 @@ export class QaAccountsController {
       }
       const ids = await this.options.remote.accountsOwnedSessions(token);
       ownedIds = ids.ok ? ids.value.ids : [];
+      // Admins additionally pull the cross-user ownership view; a refusal
+      // only costs the grouping, never the chats themselves.
+      if (user.role === "admin") {
+        ownership = await this.fetchOwnership(token);
+      }
     } catch (error) {
       console.warn("dsh-qa-surface: chat migration claim failed", error);
     }
@@ -245,7 +273,8 @@ export class QaAccountsController {
     this.publish({
       stage: "authed",
       user,
-      ownedIds,
+      ownedIds: mergeOwnershipIds(ownedIds, ownership),
+      ownership,
       ownedRevision: 1,
     });
   }
@@ -264,19 +293,76 @@ export class QaAccountsController {
         this.tokenValue,
       );
       if (this.disposed || !ids.ok || this.snapshot.stage !== "authed") return;
+      let ownership = this.snapshot.ownership;
+      if (this.snapshot.user.role === "admin") {
+        ownership = await this.fetchOwnership(this.tokenValue);
+        if (this.disposed || this.snapshot.stage !== "authed") return;
+      }
+      const ownedIds = mergeOwnershipIds(ids.value.ids, ownership);
       if (
-        JSON.stringify(ids.value.ids) === JSON.stringify(this.snapshot.ownedIds)
+        JSON.stringify(ownedIds) === JSON.stringify(this.snapshot.ownedIds) &&
+        JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership)
       ) {
         return;
       }
       this.publish({
         ...this.snapshot,
-        ownedIds: ids.value.ids,
+        ownedIds,
+        ownership,
         ownedRevision: this.snapshot.ownedRevision + 1,
       });
     } catch (error) {
       console.warn("dsh-qa-surface: owned sessions refresh failed", error);
     }
+  }
+
+  /** The admin cross-user ownership view; failures degrade to an empty map. */
+  private async fetchOwnership(
+    token: string,
+  ): Promise<readonly QaOwnershipEntry[]> {
+    try {
+      const listed = await this.options.remote.accountsListOwnership(token);
+      return listed.ok ? listed.value.entries : [];
+    } catch (error) {
+      console.warn("dsh-qa-surface: ownership list failed", error);
+      return [];
+    }
+  }
+
+  /** Session id → owner display name; empty unless an admin is signed in. */
+  ownerNames(): ReadonlyMap<string, string> {
+    if (
+      this.snapshot.stage !== "authed" ||
+      this.snapshot.user.role !== "admin"
+    ) {
+      return new Map();
+    }
+    return new Map(
+      this.snapshot.ownership.map((entry) => [
+        entry.sessionId,
+        entry.displayName,
+      ]),
+    );
+  }
+
+  /**
+   * The chat owner's display name for author labels: admins see it on
+   * foreign chats only; the owner themself and ordinary accounts see none.
+   */
+  messageAuthorOf(sessionId: string): string | undefined {
+    if (
+      this.snapshot.stage !== "authed" ||
+      this.snapshot.user.role !== "admin"
+    ) {
+      return undefined;
+    }
+    const entry = this.snapshot.ownership.find(
+      (candidate) => candidate.sessionId === sessionId,
+    );
+    if (entry === undefined || entry.userId === this.snapshot.user.id) {
+      return undefined;
+    }
+    return entry.displayName;
   }
 
   private readStoredToken(): string | null {

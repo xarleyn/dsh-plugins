@@ -109,7 +109,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
     );
   }
   if (a.role === "user" && b.role === "user") {
-    return sameImages(a.images, b.images);
+    return a.author === b.author && sameImages(a.images, b.images);
   }
   if (a.role === "system" && b.role === "system") {
     return (
@@ -297,7 +297,7 @@ export const QaMessage = memo(
       message.role === "assistant"
         ? "Помощник"
         : message.role === "user"
-          ? "Вы"
+          ? (message.author ?? "Вы")
           : "Статус";
     const copy = async () => {
       if (copied || navigator.clipboard?.writeText === undefined) return;
@@ -342,6 +342,9 @@ export const QaMessage = memo(
         aria-label={`Сообщение: ${label}`}
       >
         <div className="dsh-qa-message__content">
+          {message.role === "user" && message.author !== undefined ? (
+            <span className="dsh-qa-message__byline">{message.author}</span>
+          ) : null}
           {message.role === "user" && message.images !== undefined ? (
             <div className="dsh-qa-message__images">
               {message.images.map((image) =>

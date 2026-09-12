@@ -11,6 +11,8 @@ export interface QaChatRow {
   readonly active: boolean;
   readonly meta: string;
   readonly updatedAt: number;
+  /** Chat owner's display name; present in the admin ownership view only. */
+  readonly ownerName?: string;
 }
 
 /**
@@ -23,12 +25,14 @@ export function buildChatRows(
   chatIds: readonly string[],
   byId: Readonly<Record<string, SessionSummary>>,
   activeId: string | null,
+  ownerNameOf?: (sessionId: string) => string | undefined,
   now: number = Date.now(),
 ): readonly QaChatRow[] {
   const rows: QaChatRow[] = [];
   for (const id of chatIds) {
     const summary = byId[id];
     if (summary === undefined) continue;
+    const ownerName = ownerNameOf?.(id);
     rows.push({
       id,
       title: summary.blank ? "Новый чат" : summary.displayTitle,
@@ -36,13 +40,56 @@ export function buildChatRows(
       active: id === activeId,
       meta: relativeTime(summary.updatedAt, now),
       updatedAt: summary.updatedAt,
+      ...(ownerName === undefined ? {} : { ownerName }),
     });
   }
   return rows.sort((left, right) => right.updatedAt - left.updatedAt);
 }
 
+/** One per-owner section of the admin sidebar grouping. */
+export interface QaSidebarSection {
+  /**
+   * Section header; chats nobody claimed group under "Без владельца". An
+   * empty name renders no header (the flat, non-grouped mode).
+   */
+  readonly name: string;
+  readonly rows: readonly QaChatRow[];
+}
+
+/**
+ * Group rows into per-owner sections for the admin view. Sections order by
+ * their freshest row so the busiest users float up; unclaimed chats go last.
+ * Row order inside a section is already the global updatedAt order.
+ */
+export function buildOwnerSections(
+  rows: readonly QaChatRow[],
+): readonly QaSidebarSection[] {
+  const groups = new Map<string, QaChatRow[]>();
+  for (const row of rows) {
+    const key = row.ownerName ?? "";
+    const bucket = groups.get(key);
+    if (bucket === undefined) groups.set(key, [row]);
+    else bucket.push(row);
+  }
+  const sections: QaSidebarSection[] = [...groups].map(([name, groupRows]) => ({
+    name: name === "" ? "Без владельца" : name,
+    rows: groupRows,
+  }));
+  sections.sort((left, right) => {
+    if (left.name === "Без владельца") return 1;
+    if (right.name === "Без владельца") return -1;
+    return (right.rows[0]?.updatedAt ?? 0) - (left.rows[0]?.updatedAt ?? 0);
+  });
+  return sections;
+}
+
 export interface QaSidebarProps {
   readonly rows: readonly QaChatRow[];
+  /**
+   * Render per-owner sections instead of the flat list; the admin ownership
+   * view. Rows without an owner name fall into a trailing section.
+   */
+  readonly groupByOwner?: boolean;
   /** Deployment brand shown next to the logo (also while collapsed). */
   readonly title: string;
   /** Optional image logo; a built-in mark is drawn when null. */
@@ -139,7 +186,8 @@ export function sameChatRows(
       row.running === other.running &&
       row.active === other.active &&
       row.meta === other.meta &&
-      row.updatedAt === other.updatedAt
+      row.updatedAt === other.updatedAt &&
+      row.ownerName === other.ownerName
     );
   });
 }
@@ -184,6 +232,76 @@ export const QaSidebar = memo(
     const confirmingVisible =
       confirmingId !== null &&
       props.rows.some((row) => row.id === confirmingId);
+    const sections: readonly QaSidebarSection[] =
+      props.groupByOwner === true
+        ? buildOwnerSections(visibleRows)
+        : [{ name: "", rows: visibleRows }];
+    const renderRow = (row: QaChatRow) => {
+      const confirming = confirmingVisible && confirmingId === row.id;
+      return (
+        <div
+          key={row.id}
+          className={
+            row.active
+              ? "dsh-qa-sidebar__item dsh-qa-sidebar__item--active"
+              : "dsh-qa-sidebar__item"
+          }
+        >
+          <button
+            type="button"
+            className="dsh-qa-sidebar__item-main"
+            aria-current={row.active ? "true" : undefined}
+            onClick={() => props.onSwitch(row.id)}
+          >
+            <span className="dsh-qa-sidebar__item-title">{row.title}</span>
+            <span className="dsh-qa-sidebar__item-meta">
+              {row.running ? (
+                <span
+                  className="dsh-qa-sidebar__dot"
+                  role="img"
+                  aria-label="Выполняется"
+                />
+              ) : null}
+              {row.meta}
+            </span>
+          </button>
+          {props.onDelete === undefined ? null : (
+            <button
+              type="button"
+              className={
+                confirming
+                  ? "dsh-qa-sidebar__item-delete dsh-qa-sidebar__item-delete--confirm"
+                  : "dsh-qa-sidebar__item-delete"
+              }
+              aria-label={
+                confirming ? "Подтвердить удаление чата" : "Удалить чат"
+              }
+              title={
+                confirming ? "Нажмите ещё раз для удаления" : "Удалить чат"
+              }
+              onClick={() => {
+                if (confirming) {
+                  setConfirmingId(null);
+                  props.onDelete?.(row.id);
+                  return;
+                }
+                setConfirmingId(row.id);
+              }}
+            >
+              {confirming ? (
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="m3.5 8.5 3 3L12.5 5" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
+      );
+    };
     const brand: ReactNode =
       props.logoUrl === null ? (
         <DefaultMark />
@@ -236,76 +354,19 @@ export const QaSidebar = memo(
           ) : visibleRows.length === 0 ? (
             <p className="dsh-qa-sidebar__empty">Ничего не найдено</p>
           ) : (
-            visibleRows.map((row) => {
-              const confirming = confirmingVisible && confirmingId === row.id;
-              return (
-                <div
-                  key={row.id}
-                  className={
-                    row.active
-                      ? "dsh-qa-sidebar__item dsh-qa-sidebar__item--active"
-                      : "dsh-qa-sidebar__item"
-                  }
-                >
-                  <button
-                    type="button"
-                    className="dsh-qa-sidebar__item-main"
-                    aria-current={row.active ? "true" : undefined}
-                    onClick={() => props.onSwitch(row.id)}
-                  >
-                    <span className="dsh-qa-sidebar__item-title">
-                      {row.title}
-                    </span>
-                    <span className="dsh-qa-sidebar__item-meta">
-                      {row.running ? (
-                        <span
-                          className="dsh-qa-sidebar__dot"
-                          role="img"
-                          aria-label="Выполняется"
-                        />
-                      ) : null}
-                      {row.meta}
-                    </span>
-                  </button>
-                  {props.onDelete === undefined ? null : (
-                    <button
-                      type="button"
-                      className={
-                        confirming
-                          ? "dsh-qa-sidebar__item-delete dsh-qa-sidebar__item-delete--confirm"
-                          : "dsh-qa-sidebar__item-delete"
-                      }
-                      aria-label={
-                        confirming ? "Подтвердить удаление чата" : "Удалить чат"
-                      }
-                      title={
-                        confirming
-                          ? "Нажмите ещё раз для удаления"
-                          : "Удалить чат"
-                      }
-                      onClick={() => {
-                        if (confirming) {
-                          setConfirmingId(null);
-                          props.onDelete?.(row.id);
-                          return;
-                        }
-                        setConfirmingId(row.id);
-                      }}
-                    >
-                      {confirming ? (
-                        <svg viewBox="0 0 16 16" aria-hidden="true">
-                          <path d="m3.5 8.5 3 3L12.5 5" />
-                        </svg>
-                      ) : (
-                        <svg viewBox="0 0 16 16" aria-hidden="true">
-                          <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })
+            sections.map((section) => (
+              <div
+                key={section.name || "__all"}
+                className="dsh-qa-sidebar__group"
+              >
+                {section.name === "" ? null : (
+                  <div className="dsh-qa-sidebar__group-name">
+                    {section.name} ({section.rows.length})
+                  </div>
+                )}
+                {section.rows.map(renderRow)}
+              </div>
+            ))
           )}
         </div>
         <div className="dsh-qa-sidebar__footer">
@@ -354,6 +415,7 @@ export const QaSidebar = memo(
     prev.stateKey === next.stateKey &&
     prev.showNewChat === next.showNewChat &&
     prev.busy === next.busy &&
+    prev.groupByOwner === next.groupByOwner &&
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&
     prev.onDelete === next.onDelete &&

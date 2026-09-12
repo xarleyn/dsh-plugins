@@ -218,6 +218,8 @@ export function QaSurface(props: QaSurfaceProps) {
         ? {
             token: () => accounts.token(),
             ownedIds: () => accounts.ownedIds(),
+            messageAuthorOf: (sessionId: string) =>
+              accounts.messageAuthorOf(sessionId),
             onSessionCreated: (sessionId: string) => {
               void accounts.claimNewSession(sessionId);
             },
@@ -457,6 +459,17 @@ export function QaSurface(props: QaSurfaceProps) {
     () => collectSubagents(listState.byId, activeSessionId),
     [listState, activeSessionId],
   );
+  // Admins group the sidebar by chat owner; everyone else sees the flat list.
+  const ownerNames = useMemo(
+    () =>
+      config.accounts.enabled &&
+      accounts !== undefined &&
+      accountsSnapshot.stage === "authed" &&
+      accountsSnapshot.user.role === "admin"
+        ? accounts.ownerNames()
+        : undefined,
+    [config, accounts, accountsSnapshot],
+  );
   const railItems = view.railItems;
   railItemsRef.current = railItems;
   const busyTurn =
@@ -468,6 +481,7 @@ export function QaSurface(props: QaSurfaceProps) {
             controller?.chatIds() ?? [],
             listState.byId,
             activeSessionId,
+            (id) => ownerNames?.get(id),
           )
         : [],
     [
@@ -475,8 +489,8 @@ export function QaSurface(props: QaSurfaceProps) {
       controller,
       listState,
       activeSessionId,
+      ownerNames,
       state.chatsRevision,
-      accountsSnapshot,
     ],
   );
   // Message ids repeat across chats (`assistant:<seq>`), so the persisted
@@ -496,6 +510,7 @@ export function QaSurface(props: QaSurfaceProps) {
       {showSidebar ? (
         <QaSidebar
           rows={chatRows}
+          groupByOwner={ownerNames !== undefined}
           title={config.branding.title}
           logoUrl={config.branding.logoUrl}
           stateKey={stateKey}

@@ -26,6 +26,7 @@ import type {
   QaAccountSession,
   QaClaimResult,
   QaLockdownProof,
+  QaOwnershipEntry,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
@@ -83,6 +84,9 @@ interface QaPolicyRemote {
   accountsOwnedSessions(
     token: string,
   ): Promise<RemoteResult<{ readonly ids: readonly string[] }>>;
+  accountsListOwnership(
+    token: string,
+  ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */

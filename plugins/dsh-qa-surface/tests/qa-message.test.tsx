@@ -135,6 +135,42 @@ describe("QA message", () => {
     expect(screen.queryByRole("button", { name: "Нравится" })).toBeNull();
   });
 
+  it("labels a foreign chat's user messages with the chat owner", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "user:1",
+          role: "user",
+          text: "Вопрос",
+          status: "committed",
+          author: "Аня",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(
+      document.querySelector(".dsh-qa-message__byline")?.textContent,
+    ).toBe("Аня");
+    expect(screen.getByRole("article", { name: "Сообщение: Аня" })).toBeTruthy();
+  });
+
+  it("keeps the owner's own messages unlabeled", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "user:1",
+          role: "user",
+          text: "Вопрос",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    expect(document.querySelector(".dsh-qa-message__byline")).toBeNull();
+  });
+
   it("attaches images from files and removes them before send", async () => {
     const png = new File([new Uint8Array([137, 80, 78, 71])], "shot.png", {
       type: "image/png",

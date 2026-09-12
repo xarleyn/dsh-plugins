@@ -10,6 +10,7 @@ import type {
   QaAccountSession,
   QaClaimResult,
   QaLockdownProof,
+  QaOwnershipEntry,
   QaSessionState,
   QaSourceFilePreview,
   QaTurnSources,
@@ -101,6 +102,9 @@ export interface QaAccountsApi {
   accountsOwnedSessions(
     token: string,
   ): Promise<RemoteResult<{ readonly ids: readonly string[] }>>;
+  accountsListOwnership(
+    token: string,
+  ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;
 }
 
 type RemoteResult<Value> =
