@@ -31,3 +31,12 @@ enable/revoke) so account administration never requires hand-editing the
 JSON file, and per-account state — a `disabled` flag refusing logins with
 `account-disabled` plus a `tokenVersion` burned into tokens that
 `disable`/`revoke` bump, making logout and lockout server-side facts.
+
+Admins get cross-user views over the same ownership map:
+`qaSurface/accountsListOwnership` (admin-only, `admin-required` refusal
+otherwise) returns every chat with its owner's resolved display name, the
+admin sidebar switches to per-owner sections ordered by their freshest chat
+(unclaimed chats trail under "Без владельца"), and user messages in foreign
+chats carry an `author` byline naming the chat owner. Ordinary accounts and
+deployments with accounts disabled keep the flat sidebar and unlabeled
+messages.
