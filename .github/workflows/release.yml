@@ -61,10 +61,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Require a version plan
+      # A plan file nx cannot parse is ignored without a warning, so requiring
+      # the files to exist is not enough to guarantee a release has work to do.
+      - name: Require a valid version plan
         if: inputs.publish_only == false
-        shell: bash
-        run: compgen -G '.nx/version-plans/*.md' > /dev/null
+        run: node scripts/verify-package-hygiene.mjs --version-plans-only
 
       - name: Preview release
         if: inputs.dry_run && inputs.publish_only == false
