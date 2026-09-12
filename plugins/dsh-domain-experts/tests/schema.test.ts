@@ -196,6 +196,7 @@ describe("schema: helpers", () => {
       primaryPaths: 2,
       sharedPaths: 1,
       memoryNamespaces: 2,
+      // The configured tool count; the service reports the visible one.
       tools: 2,
       degradations: 2,
     });
