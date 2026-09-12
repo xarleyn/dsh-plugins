@@ -5,6 +5,10 @@
  * config, objects, work tree), must never trigger repo-controlled helpers
  * (external diff, textconv, fsmonitor), must ignore a poisoned ambient
  * environment, and must fail closed without a session repository.
+ *
+ * Snapshots are compared path by path, so a regression reports the files it
+ * touched. The fixture keeps the throwaway repositories free of git's own
+ * background maintenance, which would otherwise race the comparison.
  */
 
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -24,10 +28,11 @@ import type { GitShowResult } from '../src/tools/show.js';
 import { silentPluginLogger } from '../src/logging.js';
 import {
   createTempRepo,
+  diffManifests,
   existsSync as fsExists,
   makeExec,
   normalizePath,
-  snapshotRepo,
+  repoManifest,
   type TempRepo,
 } from './fixtures/git.js';
 
@@ -107,11 +112,23 @@ const runAllTools = async () => {
 
 describe('read-only guarantee', () => {
   it('leaves the repository byte-identical across repeated tool calls', async () => {
-    const before = await snapshotRepo(repo.dir);
+    const before = await repoManifest(repo.dir);
     await runAllTools();
     await runAllTools();
-    const after = await snapshotRepo(repo.dir);
-    expect(after).toBe(before);
+    const after = await repoManifest(repo.dir);
+    // An empty difference is byte-identity; anything else names the files that
+    // moved, which two digests alone never did.
+    expect(diffManifests(before, after)).toEqual([]);
+  });
+
+  it('snapshots a repository that schedules no background work', async () => {
+    // `git commit` ends by spawning a detached `git maintenance run --auto`
+    // that holds `.git/objects/maintenance.lock` until it exits. Left enabled
+    // it outlives the commit on a loaded machine and drops that file into one
+    // snapshot but not the other, failing the test above over a file no tool
+    // wrote.
+    expect((await repo.run(['config', '--get', 'maintenance.auto'])).trim()).toBe('false');
+    expect((await repo.run(['config', '--get', 'gc.auto'])).trim()).toBe('0');
   });
 
   it('never executes repo-controlled diff, textconv or fsmonitor helpers', async () => {
@@ -166,6 +183,42 @@ describe('ambient environment hardening', () => {
         if (value === undefined) delete process.env[key];
         else process.env[key] = value;
       }
+    }
+  });
+});
+
+describe('snapshot diagnostics', () => {
+  // The byte-identity assertion is only as strong as the difference it
+  // reports: an empty list must mean "identical", never "not looking".
+  it('names added, removed and changed files', () => {
+    expect(diffManifests(new Map(), new Map())).toEqual([]);
+    const before = new Map([
+      ['keep.txt', 'a'],
+      ['gone.txt', 'b'],
+      ['edit.txt', 'c'],
+    ]);
+    const after = new Map([
+      ['keep.txt', 'a'],
+      ['edit.txt', 'd'],
+      ['new.txt', 'e'],
+    ]);
+    expect(diffManifests(before, after)).toEqual([
+      'changed edit.txt',
+      'removed gone.txt',
+      'added new.txt',
+    ]);
+  });
+
+  it('sees a file written into .git by something other than a tool', async () => {
+    const probe = join(repo.dir, '.git', 'snapshot-probe');
+    const before = await repoManifest(repo.dir);
+    await writeFile(probe, 'foreign\n', 'utf8');
+    try {
+      expect(diffManifests(before, await repoManifest(repo.dir))).toEqual([
+        'added .git/snapshot-probe',
+      ]);
+    } finally {
+      await rm(probe, { force: true });
     }
   });
 });

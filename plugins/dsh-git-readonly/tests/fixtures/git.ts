@@ -4,6 +4,10 @@
  *
  * Snapshots cover the work tree and every `.git` file except reflogs, so a
  * mutation (refs, index, config, packed objects) is detectable byte-for-byte.
+ *
+ * The repositories are also pinned against git's *own* background work: see
+ * `createTempRepo` for why auto-maintenance has to stay off for a snapshot
+ * comparison to mean anything.
  */
 
 import { execFile } from 'node:child_process';
@@ -47,6 +51,16 @@ export async function createTempRepo(): Promise<TempRepo> {
   await runGit(['config', 'user.email', 'qa@example.com'], dir);
   await runGit(['config', 'core.autocrlf', 'false'], dir);
   await runGit(['config', 'commit.gpgsign', 'false'], dir);
+  // Auto-maintenance off. `git commit` ends with a detached
+  // `git maintenance run --auto`, which takes `.git/objects/maintenance.lock`
+  // for as long as it lives. On Linux the daemon outlives the commit (and,
+  // on a loaded CI runner, the test's own snapshot window), so a file that no
+  // tool wrote lands in one snapshot and not the other. Windows cannot fork
+  // there, which is why the flake only ever showed up in CI. What the
+  // mutation suite proves is that the *tools* never write; git's background
+  // housekeeping is not part of that promise.
+  await runGit(['config', 'maintenance.auto', 'false'], dir);
+  await runGit(['config', 'gc.auto', '0'], dir);
 
   const repo: TempRepo = {
     dir,
@@ -72,12 +86,21 @@ export async function createTempRepo(): Promise<TempRepo> {
   return repo;
 }
 
-async function hashTree(root: string, skip: (relPath: string) => boolean): Promise<string> {
-  const hash = createHash('sha256');
+/** Per-file content digests of one tree: repository-relative path → sha256. */
+export type TreeManifest = ReadonlyMap<string, string>;
+
+async function buildManifest(
+  root: string,
+  prefix: string,
+  skip: (relPath: string) => boolean,
+): Promise<TreeManifest> {
+  const manifest = new Map<string, string>();
   const walk = async (relative: string): Promise<void> => {
     if (skip(relative)) return;
     const absolute = relative === '' ? root : join(root, relative);
     const entries = await readdir(absolute, { withFileTypes: true });
+    // The manifest must not depend on the order readdir happens to return.
+    entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     for (const entry of entries) {
       const entryRel = relative === '' ? entry.name : `${relative}/${entry.name}`;
       if (skip(entryRel)) continue;
@@ -86,30 +109,72 @@ async function hashTree(root: string, skip: (relPath: string) => boolean): Promi
         continue;
       }
       const content = await readFile(join(root, entryRel));
-      hash.update(`${entryRel}\n${createHash('sha256').update(content).digest('hex')}\n`);
+      manifest.set(`${prefix}${entryRel}`, createHash('sha256').update(content).digest('hex'));
     }
   };
   await walk('');
+  return manifest;
+}
+
+/** Work tree manifest; paths are relative to the repository root. */
+export function worktreeManifest(dir: string): Promise<TreeManifest> {
+  return buildManifest(dir, '', (relPath) => relPath === '.git' || relPath.startsWith('.git/'));
+}
+
+/** Git-directory manifest minus reflogs; paths are prefixed with `.git/`. */
+export function gitDirManifest(dir: string): Promise<TreeManifest> {
+  return buildManifest(join(dir, '.git'), '.git/', (relPath) => relPath === 'logs' || relPath.startsWith('logs/'));
+}
+
+/** Work tree plus git directory as one path→digest map. */
+export async function repoManifest(dir: string): Promise<TreeManifest> {
+  return new Map([...(await worktreeManifest(dir)), ...(await gitDirManifest(dir))]);
+}
+
+/** Stable digest of a manifest: two equal trees digest equally. */
+export function manifestDigest(manifest: TreeManifest): string {
+  const hash = createHash('sha256');
+  for (const path of [...manifest.keys()].sort()) {
+    hash.update(`${path}\n${manifest.get(path)}\n`);
+  }
   return hash.digest('hex');
 }
 
+/**
+ * Which files were added, removed or changed between two manifests. An empty
+ * list means the trees are byte-identical; every other entry names the file
+ * that moved, so a failed snapshot assertion reports what changed instead of
+ * printing two opaque digests.
+ */
+export function diffManifests(before: TreeManifest, after: TreeManifest): string[] {
+  const paths = [...new Set([...before.keys(), ...after.keys()])].sort();
+  const differences: string[] = [];
+  for (const path of paths) {
+    const was = before.get(path);
+    const now = after.get(path);
+    if (was === now) continue;
+    if (was === undefined) differences.push(`added ${path}`);
+    else if (now === undefined) differences.push(`removed ${path}`);
+    else differences.push(`changed ${path}`);
+  }
+  return differences;
+}
+
 /** Hash of the whole work tree (relative paths + file content hashes). */
-export function snapshotWorktree(dir: string): Promise<string> {
-  return hashTree(dir, (relPath) => relPath === '.git' || relPath.startsWith('.git/'));
+export async function snapshotWorktree(dir: string): Promise<string> {
+  return manifestDigest(await worktreeManifest(dir));
 }
 
 /**
  * Hash of the git directory except reflogs: refs, index, config, HEAD and
  * object files must stay byte-identical across read-only tool calls.
  */
-export function snapshotGitDir(dir: string): Promise<string> {
-  return hashTree(join(dir, '.git'), (relPath) => relPath === 'logs' || relPath.startsWith('logs/'));
+export async function snapshotGitDir(dir: string): Promise<string> {
+  return manifestDigest(await gitDirManifest(dir));
 }
 
 export async function snapshotRepo(dir: string): Promise<string> {
-  const worktree = await snapshotWorktree(dir);
-  const gitDir = await snapshotGitDir(dir);
-  return createHash('sha256').update(`${worktree}\n${gitDir}`).digest('hex');
+  return manifestDigest(await repoManifest(dir));
 }
 
 /** Structural tool-execution context for a pinned session cwd. */
