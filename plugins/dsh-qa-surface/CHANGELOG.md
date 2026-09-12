@@ -1,3 +1,78 @@
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Optional QA accounts and entry routing. `accounts.enabled` mounts a ([dc2f582](https://github.com/xarleyn/dsh-plugins/commit/dc2f582))
+  full-frame login/registration gate (email + password, coarse audience-safe
+  refusals, per-store rate limiting, self-registration toggle) backed by
+  `$DSH_HOME/qa-accounts.json`: scrypt password hashes, a persisted HMAC secret
+  for stateful-expiry account tokens, and a session ownership map. Ownership is
+  first come, first served - attesting or bulk-claiming an unowned session binds
+  it to the caller (the migration path for existing per-browser chats on first
+  login); sessions owned by another user refuse attestation with
+  `session-owned-elsewhere` and stay hidden from the sidebar, admins are not
+  refused. The identity rides as an explicit token argument into the gated
+  `qaSurface` remotes (the typert carrier never exposes HTTP requests), the
+  policy admission checks it before any session fact is revealed
+  (`auth-required` reopens the gate on expiry), and the account chip with
+  logout lives in the sidebar footer. `entry.redirectNonLoopback` injects a
+  guarded head script through the `webserver/index-inject` event that continues
+  non-loopback hostnames into the QA route - the navigation-marker hand-off is
+  never redirected (no loops), `/?ui=admin` persists an operator bypass and
+  `/?ui=qa` clears it. Accounts are an identity layer for the QA surface, not a
+  harness boundary: QA users still hold the shared host launch-token cookie.
+
+  Follow-ups adopted from a review of the independent dsh-auth-gate plugin: a
+  proxy-side deny list for the privileged config-plane RPC methods behind the
+  deploy proxy's Host/Origin rewrite, a plugin-side launch-token bridge
+  (`entry.cookieBootstrap`) that performs the one-time host-cookie exchange on
+  the `/qa` route itself, a `qa-accounts` bin CLI (list/add/set-role/disable/
+  enable/revoke) so account administration never requires hand-editing the
+  JSON file, and per-account state — a `disabled` flag refusing logins with
+  `account-disabled` plus a `tokenVersion` burned into tokens that
+  `disable`/`revoke` bump, making logout and lockout server-side facts.
+
+  Admins get cross-user views over the same ownership map:
+  `qaSurface/accountsListOwnership` (admin-only, `admin-required` refusal
+  otherwise) returns every chat with its owner's resolved display name, the
+  admin sidebar switches to per-owner sections ordered by their freshest chat
+  (unclaimed chats trail under "Без владельца"), and user messages in foreign
+  chats carry an `author` byline naming the chat owner. Ordinary accounts and
+  deployments with accounts disabled keep the flat sidebar and unlabeled
+  messages.
+
+- The chat-history sidebar gained a footer version button that opens an ([d9d5868](https://github.com/xarleyn/dsh-plugins/commit/d9d5868))
+  end-user changelog dialog: a curated per-version summary (new features and
+  fixes in Russian) rendered in a themed modal with Escape/backdrop close.
+  The bundled version and entries are pinned to package.json and the release
+  CHANGELOG by a unit test, so a release cannot ship a stale dialog.
+
+- Rebuild the client on the 0.1.5 surfaces: the transcript projects from the ([458b9c2](https://github.com/xarleyn/dsh-plugins/commit/458b9c2))
+  ui-chat conversation view's legacy slice, chat/model pinning moves to the
+  wire remotes (`agentPresets.select` on the still-blank session, then
+  `session.selectModel`) with the attestation ordering preserved, and
+  history reads go through the session-v3 surface. The supported host range
+  moves to `>=0.1.5-rc.2 <0.2.0`, dropping 0.1.1-rc.2.
+
+- Harden the gated QA experience and make cross-user history explicitly ([2ed2024](https://github.com/xarleyn/dsh-plugins/commit/2ed2024))
+  opt-in. A new `accounts.showOtherUsersChats` setting defaults to `false`, so
+  administrators only see their own chats unless the deployment enables the
+  shared ownership view. Account storage now follows external CLI updates and
+  uses process-scoped temporary writes, while session admission and client state
+  handling avoid stale async results and reset session-bound assets reliably.
+
+  The QA client now presents a dedicated test-interface disclosure, improves
+  chat search and owner matching, keeps row actions from disturbing result
+  layout, distinguishes administrator roles, and removes decorative middle-dot
+  separators from the sidebar, messages, and source details. Its curated 0.3.0
+  history entry is prepared in advance, while the current-version marker is
+  injected from package.json at build time so the release bump promotes it
+  without another source edit.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-10)
 
 - Added DSH-style symmetric transcript/composer width handles with adaptive

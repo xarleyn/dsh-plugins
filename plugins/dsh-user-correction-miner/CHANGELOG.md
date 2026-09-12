@@ -1,3 +1,16 @@
+## 0.2.0 (2026-09-12)
+
+### 🚀 Features
+
+- Port to the DSH session format v3: the live-session snapshot feeds from ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  session.snapshotEvents() and fixtures use the isSeeded header with branded
+  log offsets. The supported host range moves to >=0.1.5-rc.2 <0.2.0, dropping
+  0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.1 (2026-09-06)
 
 ### 🩹 Fixes

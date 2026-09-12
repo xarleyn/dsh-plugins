@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-model-safety-gate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Independent two-layer safety gate around the DeepSeek Harness agent loop: deterministic and model-classifier verdicts for prompts, streamed output, tools, and tool results",
   "repository": {
     "type": "git",

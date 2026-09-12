@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-web-fetch-authenticated",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web)",
   "repository": {
     "type": "git",

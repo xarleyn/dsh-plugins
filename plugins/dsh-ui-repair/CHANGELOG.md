@@ -1,3 +1,17 @@
+## 0.2.0 (2026-09-12)
+
+### 🚀 Features
+
+- Migrate to the 0.1.5 settings surface: the settings section installs via ([458b9c2](https://github.com/xarleyn/dsh-plugins/commit/458b9c2))
+  SettingsProvider.installSection under ctx.inject(['settings']) with the
+  plain "ui-repair" namespace, and ctx.slots resolves through the
+  client-ui-renderer merge. The supported host range moves to
+  `>=0.1.5-rc.2 <0.2.0`, dropping 0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.1 (2026-09-10)
 
 ### 🩹 Fixes

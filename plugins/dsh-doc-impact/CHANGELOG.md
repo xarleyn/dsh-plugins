@@ -1,3 +1,16 @@
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Port to the DSH session format v3: the tool context now derives from the ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  host ToolRunContext and reads the raw log via session.snapshotEvents()
+  instead of the removed session.events. The supported host range moves to
+  >=0.1.5-rc.2 <0.2.0, dropping 0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.4 (2026-09-06)
 
 ### 🩹 Fixes

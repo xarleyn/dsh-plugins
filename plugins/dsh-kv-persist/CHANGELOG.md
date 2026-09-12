@@ -1,3 +1,15 @@
+## 0.2.3 (2026-09-12)
+
+### 🩹 Fixes
+
+- Retest against the DSH 0.1.5-rc.2 baseline with no code changes; the ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  compatibility contract and README requirements move to
+  >=0.1.5-rc.2 <0.2.0.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.2 (2026-09-06)
 
 ### 🩹 Fixes
