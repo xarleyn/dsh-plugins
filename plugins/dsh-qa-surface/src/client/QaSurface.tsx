@@ -47,7 +47,6 @@ import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
 import {
   QA_TURN_ANCHOR_ATTRIBUTE,
   QaTurnRail,
-  buildTurnRailItems,
   computeActiveTurn,
   turnScrollTarget,
   type QaTurnRailItem,
@@ -56,10 +55,8 @@ import {
   QaWidthHandle,
   useQaContentWidth,
 } from "./components/QaWidthHandle.js";
-import {
-  collectVariantGroups,
-  VariantSwitcher,
-} from "./components/VariantSwitcher.js";
+import { VariantSwitcher } from "./components/VariantSwitcher.js";
+import { useTranscriptView } from "./use-transcript-view.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -453,47 +450,35 @@ export function QaSurface(props: QaSurfaceProps) {
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
-  const groups = collectVariantGroups(state.messages);
-  const turnToGroup = new Map<number, string>();
-  const selectedTurn = new Map<string, number>();
-  for (const group of groups) {
-    const offset = variantOffsets[group.groupId] ?? 0;
-    const turn =
-      group.turns[Math.max(0, group.turns.length - 1 - offset)] ??
-      group.turns.at(-1);
-    if (turn !== undefined) {
-      selectedTurn.set(group.groupId, turn);
-      for (const groupTurn of group.turns)
-        turnToGroup.set(groupTurn, group.groupId);
-    }
-  }
-  const visibleMessages = state.messages.filter((message) => {
-    if (
-      (message.role === "assistant" || message.role === "work") &&
-      message.turn !== undefined
-    ) {
-      const groupId = turnToGroup.get(message.turn);
-      return (
-        groupId === undefined || selectedTurn.get(groupId) === message.turn
-      );
-    }
-    return true;
-  });
-  const agentRows = collectSubagents(
-    listState.byId,
-    controller?.activeSessionId() ?? null,
+  const view = useTranscriptView(state.messages, variantOffsets);
+  const visibleMessages = view.visibleMessages;
+  const activeSessionId = controller?.activeSessionId() ?? null;
+  const agentRows = useMemo(
+    () => collectSubagents(listState.byId, activeSessionId),
+    [listState, activeSessionId],
   );
-  const railItems = buildTurnRailItems(visibleMessages);
+  const railItems = view.railItems;
   railItemsRef.current = railItems;
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
-  const chatRows = showSidebar
-    ? buildChatRows(
-        controller?.chatIds() ?? [],
-        listState.byId,
-        controller?.activeSessionId() ?? null,
-      )
-    : [];
+  const chatRows = useMemo(
+    () =>
+      showSidebar
+        ? buildChatRows(
+            controller?.chatIds() ?? [],
+            listState.byId,
+            activeSessionId,
+          )
+        : [],
+    [
+      showSidebar,
+      controller,
+      listState,
+      activeSessionId,
+      state.chatsRevision,
+      accountsSnapshot,
+    ],
+  );
   // Message ids repeat across chats (`assistant:<seq>`), so the persisted
   // ratings key is chat-scoped; the sidebar keeps the deployment-wide key.
   const messageStateKey =
@@ -706,9 +691,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 visibleMessages.map((message, index) => {
                   const group =
                     message.role === "user"
-                      ? groups.find(
-                          (candidate) => candidate.groupId === message.id,
-                        )
+                      ? view.groupByPromptId.get(message.id)
                       : undefined;
                   const isLast = index === visibleMessages.length - 1;
                   return (
