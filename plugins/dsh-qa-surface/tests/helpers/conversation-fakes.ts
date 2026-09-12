@@ -4,7 +4,6 @@ import type {
   LegacyConversationSlice,
 } from "@deepseek-ai/dsh-client-ui-chat/client";
 
-
 export function legacy(
   overrides: Partial<LegacyConversationSlice> = {},
 ): LegacyConversationSlice {
