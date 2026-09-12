@@ -45,6 +45,9 @@ gated remote, and login/register return it in the value:
 - `accountsWhoami(token)` → `{ authenticated: true, user } | { authenticated: false }`
 - `accountsClaimSessions(token, sessionIds)` → `{ claimed, conflicts }`
 - `accountsOwnedSessions(token)` → `{ ids }`
+- `accountsListOwnership(token)` → `{ entries: [{ sessionId, userId,
+displayName, claimedAt }] }` — admin-only (`admin-required` refusal for
+  ordinary accounts, `auth-required` for anonymous)
 - `secureSession(token, sessionId)` — now requires a valid token when
   accounts are enabled
 - `sources(token, sessionId)`, `readSourceFile(token, sessionId, path)` — same
@@ -118,6 +121,25 @@ redirects when the plugin is disabled or the flag is off.
 - A small account chip (email, role, logout) lives in the sidebar footer;
   logout clears the token and returns to the gate.
 
+## Admin ownership views
+
+For admins the sidebar switches from the flat list to per-owner sections:
+`accountsListOwnership` returns every ownership entry with the owner's
+display name resolved at read time (disabled accounts still name their
+chats), the controller merges those session ids into the visible list, and
+`QaSidebar` renders one section per owner ordered by its freshest chat, with
+unclaimed chats trailing under "Без владельца". Search filters rows first,
+so empty sections disappear while searching. Ordinary accounts and
+deployments with accounts disabled keep the exact flat list as before.
+
+The same data drives author labels: user messages carry an `author` byline
+with the chat owner's display name, but only for an admin reading a foreign
+chat — the owner themself sees no label, and authorship is chat-level (the
+ownership map), not per-message. Admins replying inside someone else's chat
+are therefore labeled with the chat owner, not with their own name; the
+per-message identity channel (the client-minted `requestId` on
+`session/prompt`) is a possible future refinement.
+
 ## Config surface
 
 ```yaml
@@ -158,6 +180,9 @@ channel) keeps projecting only client-safe values.
   event.
 - Client: controller state machine, migration claim, token threading,
   auth-required recovery; auth gate rendering in the component suite.
+- Admin views: ownership listing (display-name resolution, admin/anonymous
+  refusals), the visible-id merge, author-label rules, owner section
+  ordering and rendering.
 - Packed verification keeps asserting the standard card shell and now the
   auth gate markup.
 
