@@ -5,7 +5,14 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import type { Stats } from "node:fs";
 import path from "node:path";
 import type {
   QaAccountRole,
@@ -133,6 +140,10 @@ function base64Url(value: Buffer | string): string {
   return Buffer.from(value).toString("base64url");
 }
 
+function stampOf(stat: Stats): { mtimeMs: number; size: number } {
+  return { mtimeMs: stat.mtimeMs, size: stat.size };
+}
+
 /**
  * Host authority for QA accounts: the file-backed user list, the session
  * ownership map and the HMAC account tokens. All mutations are synchronous
@@ -144,6 +155,8 @@ export class QaAccounts {
   private readonly maxAuthAttemptsPerMinute: number;
   private readonly sessionTtlDays: number;
   private readonly allowRegistration: boolean;
+  /** mtime+size of the file as of the last load; the external-change probe. */
+  private lastLoadStamp = { mtimeMs: Number.NEGATIVE_INFINITY, size: -1 };
 
   constructor(
     readonly filePath: string = defaultAccountsFilePath(),
@@ -155,10 +168,38 @@ export class QaAccounts {
     this.file = this.load();
   }
 
+  /**
+   * The qa-accounts CLI runs in its own process against the same file. Re-read
+   * it whenever it changed on disk, before every read or read-modify-write:
+   * without this a running Host would keep honoring tokens the CLI revoked
+   * and its next save would resurrect the CLI's change from a stale snapshot.
+   * One file, one writer at a time remains the deployment's discipline; LAN
+   * scale keeps the stat per operation trivial.
+   */
+  private reloadIfChanged(): void {
+    let stat: Stats;
+    try {
+      stat = statSync(this.filePath);
+    } catch {
+      // The file vanished between operations (never by our hand): keep
+      // serving the in-memory state instead of resetting every account.
+      return;
+    }
+    if (
+      stat.mtimeMs === this.lastLoadStamp.mtimeMs &&
+      stat.size === this.lastLoadStamp.size
+    ) {
+      return;
+    }
+    this.file = this.load();
+  }
+
   private load(): AccountsFile {
     let raw: string;
+    let stat: Stats | undefined;
     try {
       raw = readFileSync(this.filePath, "utf8");
+      stat = statSync(this.filePath);
     } catch (error) {
       // Only a missing file means "first run": anything else (permissions,
       // a directory in the way, I/O failure) must surface, or the store
@@ -186,6 +227,7 @@ export class QaAccounts {
       );
     }
     const file = parsed as AccountsFile;
+    if (stat !== undefined) this.lastLoadStamp = stampOf(stat);
     return {
       version: 1,
       secret: file.secret,
@@ -196,9 +238,11 @@ export class QaAccounts {
 
   private persist(file: AccountsFile): void {
     mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const temp = `${this.filePath}.tmp`;
+    // A per-process temp name: the Host and the CLI never race on one file.
+    const temp = `${this.filePath}.${process.pid}.tmp`;
     writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, "utf8");
     renameSync(temp, this.filePath);
+    this.lastLoadStamp = stampOf(statSync(this.filePath));
   }
 
   private save(): void {
@@ -235,6 +279,7 @@ export class QaAccounts {
     password: string,
     displayName?: string,
   ): QaAccountSession {
+    this.reloadIfChanged();
     this.assertAuthBudget();
     if (!this.allowRegistration) {
       throw new QaAccountsError(
@@ -287,6 +332,7 @@ export class QaAccounts {
   }
 
   login(email: string, password: string): QaAccountSession {
+    this.reloadIfChanged();
     this.assertAuthBudget();
     const user = this.userByEmail(email.trim().toLowerCase());
     // One message for unknown email and wrong password, both scrypt-checked
@@ -316,6 +362,7 @@ export class QaAccounts {
   }
 
   whoami(token: string): QaWhoamiResult {
+    this.reloadIfChanged();
     const userId = this.verifyToken(token);
     if (userId === null) return { authenticated: false };
     const user = this.file.users.find((candidate) => candidate.id === userId);
@@ -405,6 +452,7 @@ export class QaAccounts {
    * foreign sessions unless the caller administers the deployment.
    */
   ensureSessionAccess(token: string, sessionId: string): QaAccountUserPublic {
+    this.reloadIfChanged();
     const user = this.requireUser(token);
     const owner = this.file.ownership[sessionId];
     if (owner === undefined) {
@@ -429,6 +477,7 @@ export class QaAccounts {
 
   /** Bulk-claim a browser's local chat index; foreign ids come back as conflicts. */
   claimSessions(token: string, sessionIds: readonly string[]): QaClaimResult {
+    this.reloadIfChanged();
     const user = this.requireUser(token);
     if (sessionIds.length > MAX_CLAIM_BATCH) {
       throw new QaAccountsError("auth-required", "claim batch is too large");
@@ -460,6 +509,7 @@ export class QaAccounts {
 
   /** Session ids owned by the token's user, most recently claimed first. */
   ownedSessionIds(token: string): readonly string[] {
+    this.reloadIfChanged();
     const user = this.requireUser(token);
     return Object.entries(this.file.ownership)
       .filter(([, owner]) => owner.userId === user.id)
@@ -508,6 +558,7 @@ export class QaAccounts {
     readonly createdAt: string;
     readonly lastLoginAt: string | null;
   }[] {
+    this.reloadIfChanged();
     return this.file.users.map((user) => ({
       email: user.email,
       displayName: user.displayName,
@@ -524,6 +575,7 @@ export class QaAccounts {
     password: string,
     options: { displayName?: string; role?: QaAccountRole } = {},
   ): QaAccountUserPublic {
+    this.reloadIfChanged();
     this.assertAuthBudget();
     const normalized = email.trim().toLowerCase();
     if (!EMAIL_PATTERN.test(normalized) || normalized.length > 254) {
@@ -578,6 +630,7 @@ export class QaAccounts {
     email: string,
     edit: (user: StoredUser) => StoredUser,
   ): StoredUser {
+    this.reloadIfChanged();
     const normalized = email.trim().toLowerCase();
     const index = this.file.users.findIndex(
       (user) => user.email === normalized,

@@ -10,6 +10,7 @@
       "uiConversation.binding",
       "sessions.binding",
       "settingsScope",
+      "settings.onboarding list-slot shadowing",
       "webServer.register",
       "typert.remote",
       "agentPresets.composedPreset",

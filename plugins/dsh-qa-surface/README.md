@@ -98,6 +98,11 @@ config:
     renderMarkdown: true
     maxContentWidth: 900
     showSessionList: false
+  accounts:
+    enabled: false
+    allowRegistration: true
+    sessionTtlDays: 30
+    showOtherUsersChats: false
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
@@ -228,11 +233,13 @@ live transcript (composer disabled, one click back to the chat) - viewing
 never attests or writes.
 
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
-conversation. It lists only the chats this browser has actually used: the
+conversation. By default it lists only the current user's chats: the
 client keeps a per-browser id index under
 `<storageKey>:v1:<route>:chats` in localStorage (capped at 50, most recently
 used first) and intersects it with the Host session list, so users sharing the
-deployment never see each other's chats. Switching re-runs the full policy
+deployment never see each other's chats. An admin can explicitly enable
+`accounts.showOtherUsersChats: true` to add chats owned by other QA accounts,
+grouped by owner. Switching re-runs the full policy
 attestation; a chat the Host no longer lists is pruned from the index. Each
 row carries a two-click delete control that removes the chat from this
 browser's index; deleting the chat that is currently open continues in a
@@ -242,6 +249,15 @@ exposes no session-deletion seam. The sidebar hides below 600px viewports.
 The sidebar footer shows the deployed plugin version. Clicking it opens a
 changelog dialog with a curated per-version summary (features and fixes);
 Escape or a backdrop click closes it.
+
+On `/qa`, the plugin shadows DSH's stock `welcome-notice` onboarding entry and
+renders a route-owned Russian testing disclosure. Keeping the visible dialog
+in the QA overlay prevents DSH's blank-session onboarding lifecycle from
+dismissing it when a question is submitted. It explains the DeepSeek Harness
+preview foundation, QA review of questions and answers, the work-related
+scope, and local in-contour model processing. Explicit acknowledgement is
+stored as a versioned browser-local flag; changing the disclosure version
+shows it again. Other DSH routes retain the stock onboarding entry.
 
 Locked mode requires a deployment permission preset named `qa-read-only`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
@@ -321,8 +337,10 @@ What a LAN deployment does not change:
   `/qa`. Scope the port's reachability (subnet-limited firewall rule, VPN or
   tailnet, authenticating reverse proxy) and use a dedicated process identity.
 - Loopback-only settings, directory picking and credential RPCs stay refused
-  for LAN clients; the first-load welcome notice re-appears on reload because
-  remote browsers have no settings persistence.
+  for LAN clients. On `/qa`, the plugin replaces DSH's non-persistent welcome
+  step with a QA-specific testing disclosure and remembers its exact copy
+  version in that browser's local storage. The stock DSH notice remains
+  unchanged on operator routes.
 
 See [Configuration](docs/CONFIGURATION.md) for the config-channel details.
 

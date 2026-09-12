@@ -158,6 +158,14 @@ describe("qa surface config", () => {
     ).toBe(true);
   });
 
+  it("hides other users' chats by default and allows admins to opt in", () => {
+    expect(resolveConfig().accounts.showOtherUsersChats).toBe(false);
+    expect(
+      resolveConfig({ accounts: { showOtherUsersChats: true } }).accounts
+        .showOtherUsersChats,
+    ).toBe(true);
+  });
+
   it("allows operators to opt into reasoning and tool activity", () => {
     expect(
       resolveConfig({
@@ -213,6 +221,7 @@ describe("qa surface config", () => {
       enabled: false,
       allowRegistration: true,
       sessionTtlDays: 30,
+      showOtherUsersChats: false,
     });
     expect(resolveConfig().entry).toEqual({
       redirectNonLoopback: true,
@@ -232,6 +241,7 @@ describe("qa surface config", () => {
         enabled: false,
         allowRegistration: true,
         sessionTtlDays: 7,
+        showOtherUsersChats: false,
       },
     );
   });

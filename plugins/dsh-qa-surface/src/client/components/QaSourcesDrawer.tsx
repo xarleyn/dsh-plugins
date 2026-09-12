@@ -306,7 +306,8 @@ function QaSourceDetail({
           )
         ) : null}
         <p className="dsh-qa-sourcedetail__provenance">
-          Использован {source.origins.length} раз(а) · {source.evidence}
+          <span>Использован {source.origins.length} раз(а)</span>
+          <span>{source.evidence}</span>
         </p>
       </div>
     </div>

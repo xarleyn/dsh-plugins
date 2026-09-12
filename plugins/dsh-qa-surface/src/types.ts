@@ -158,6 +158,8 @@ export interface QaSurfaceConfig {
     readonly enabled?: boolean;
     readonly allowRegistration?: boolean;
     readonly sessionTtlDays?: number;
+    /** Let admins see chats owned by other QA accounts. */
+    readonly showOtherUsersChats?: boolean;
   };
   readonly entry?: {
     /** Inject the root → /qa redirect for non-loopback hostnames. */
@@ -236,6 +238,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly enabled: boolean;
     readonly allowRegistration: boolean;
     readonly sessionTtlDays: number;
+    readonly showOtherUsersChats: boolean;
   };
   readonly entry: {
     readonly redirectNonLoopback: boolean;

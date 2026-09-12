@@ -14,9 +14,13 @@ const client: UserConfig = {
   clean: false,
   deps: {
     neverBundle: (specifier) =>
-      specifier === "react" || specifier === "react/jsx-runtime",
+      specifier === "react" ||
+      specifier === "react-dom" ||
+      specifier === "react/jsx-runtime",
     alwaysBundle: (specifier) =>
-      specifier !== "react" && specifier !== "react/jsx-runtime",
+      specifier !== "react" &&
+      specifier !== "react-dom" &&
+      specifier !== "react/jsx-runtime",
   },
   outputOptions: {
     entryFileNames: "client.js",

@@ -195,10 +195,27 @@ export class QaSessionController {
       }
     }
     this.operationError = null;
-    let attested = await this.attestPolicy();
-    if (!attested) {
-      attested = await this.recoverForSend();
-      if (!attested) return false;
+    const step = await this.attestPolicy();
+    if (step.kind === "stale") {
+      // The user moved to another chat while the proof was pending; that
+      // binding attests through its own flow and must not receive a prompt
+      // meant for the old one.
+      return false;
+    }
+    let attestedId = step.kind === "ok" ? step.sessionId : null;
+    if (attestedId === null) {
+      attestedId = await this.recoverForSend();
+      if (attestedId === null) return false;
+    }
+    // Nothing can interleave between the last await and here, so matching the
+    // attested id proves the prompt rides exactly the session it proved.
+    const target = this.session;
+    if (
+      this.disposed ||
+      target === undefined ||
+      String(target.sessionId) !== attestedId
+    ) {
+      return false;
     }
     this.admissionPending = true;
     this.publish();
@@ -212,7 +229,8 @@ export class QaSessionController {
           name: image.name,
         })),
       ];
-      const result = await this.session.prompt(content, "queue");
+      const result = await target.prompt(content, "queue");
+      if (this.session !== target) return false;
       if (!result.ok) {
         this.admissionPending = false;
         this.operationError = "Не удалось отправить сообщение.";
@@ -224,8 +242,10 @@ export class QaSessionController {
     } catch (error) {
       this.admissionPending = false;
       console.error("dsh-qa-surface: prompt failed", error);
-      this.operationError = "Не удалось отправить сообщение.";
-      this.publish();
+      if (this.session === target) {
+        this.operationError = "Не удалось отправить сообщение.";
+        this.publish();
+      }
       return false;
     }
   }
@@ -242,12 +262,15 @@ export class QaSessionController {
   }
 
   async stop(): Promise<void> {
-    if (this.session === undefined || !this.state.canStop) return;
+    const target = this.session;
+    if (target === undefined || !this.state.canStop) return;
     try {
-      const result = await this.session.cancel();
+      const result = await target.cancel();
+      if (this.session !== target) return;
       if (!result.ok) this.operationError = "Не удалось остановить ответ.";
     } catch (error) {
       console.error("dsh-qa-surface: stop failed", error);
+      if (this.session !== target) return;
       this.operationError = "Не удалось остановить ответ.";
     }
     this.publish();
@@ -312,6 +335,7 @@ export class QaSessionController {
         }
         return true;
       } catch (error) {
+        if (this.disposed || operation !== this.generation) return false;
         this.fail(
           this.operationError === CONFIGURATION_ERROR
             ? this.operationError
@@ -371,6 +395,8 @@ export class QaSessionController {
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
+      // A newer operation superseded this switch: its own outcome governs.
+      if (this.disposed || operation !== this.generation) return;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
@@ -413,6 +439,8 @@ export class QaSessionController {
       await this.waitForConnection();
       await this.bind(id, { attest: false, track: false, report: false });
     } catch (error) {
+      // A newer operation superseded this view request: leave its state alone.
+      if (this.disposed || operation !== this.generation) return;
       this.viewingSubagent = null;
       this.fail("Не удалось открыть транскрипт субагента.", error);
     }
@@ -559,6 +587,9 @@ export class QaSessionController {
       try {
         await this.bind(id, { report: !restored });
       } catch (error) {
+        // A stale restore must not start its recovery ladder against a newer
+        // operation; rethrow for the generation-guarded outer catch.
+        if (this.disposed || operation !== this.generation) throw error;
         if (
           !restored ||
           this.config.session.policy !== "browser-persistent" ||
@@ -586,6 +617,8 @@ export class QaSessionController {
         this.chats.saveActive(id);
       }
     } catch (error) {
+      // A newer operation superseded this bootstrap: its own outcome governs.
+      if (this.disposed || operation !== this.generation) return;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
@@ -602,9 +635,10 @@ export class QaSessionController {
    * re-opening re-materializes it. Step 2 — when that refused session is
    * still blank (it never received the prompt, so there is nothing to lose) —
    * starts a fresh attested session instead. A session with history is left
-   * alone: recreating it would silently drop the conversation.
+   * alone: recreating it would silently drop the conversation. Returns the
+   * attested session id, or null when nothing was attested.
    */
-  private async recoverForSend(): Promise<boolean> {
+  private async recoverForSend(): Promise<string | null> {
     const id =
       this.session === undefined ? null : String(this.session.sessionId);
     if (
@@ -612,7 +646,7 @@ export class QaSessionController {
       this.disposed ||
       this.config.session.policy === "fixed"
     ) {
-      return false;
+      return null;
     }
     const operation = ++this.generation;
     this.unbind();
@@ -624,15 +658,15 @@ export class QaSessionController {
       await this.waitForConnection();
       try {
         await this.bind(id);
-        if (this.disposed || operation !== this.generation) return false;
-        if (this.policyReady) return true;
+        if (this.disposed || operation !== this.generation) return null;
+        if (this.policyReady) return id;
       } catch (error) {
         if (!(error instanceof QaPolicyAttestationError)) throw error;
-        if (this.disposed || operation !== this.generation) return false;
+        if (this.disposed || operation !== this.generation) return null;
       }
       if (this.session !== undefined && !this.session.getSnapshot().blank) {
         this.fail(CONFIGURATION_ERROR, new QaPolicyAttestationError());
-        return false;
+        return null;
       }
       this.unbind();
       this.chats.clearActive();
@@ -641,19 +675,20 @@ export class QaSessionController {
         api: this.api,
         config: this.config,
       });
-      if (this.disposed || operation !== this.generation) return false;
+      if (this.disposed || operation !== this.generation) return null;
       await this.bind(created);
-      if (this.disposed || operation !== this.generation) return false;
+      if (this.disposed || operation !== this.generation) return null;
       this.chats.saveActive(created);
-      return this.policyReady;
+      return this.policyReady ? created : null;
     } catch (error) {
+      if (this.disposed || operation !== this.generation) return null;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
           : "Не удалось открыть этот чат.",
         error,
       );
-      return false;
+      return null;
     }
   }
 
@@ -699,8 +734,9 @@ export class QaSessionController {
     if (binding.session.getSnapshot().openState !== "open") {
       throw new Error("Session binding could not be opened.");
     }
-    if (attest && !(await this.attestPolicy(report))) {
-      throw new QaPolicyAttestationError();
+    if (attest) {
+      const step = await this.attestPolicy(report);
+      if (step.kind !== "ok") throw new QaPolicyAttestationError();
     }
     if (track) {
       this.chatSessionId = String(this.session.sessionId);
@@ -848,37 +884,50 @@ export class QaSessionController {
     this.emit();
   }
 
-  private async attestPolicy(reportFailure = true): Promise<boolean> {
-    if (this.session === undefined) return false;
+  /**
+   * Attest the currently bound session. `ok` carries the session id the proof
+   * was issued for; `stale` means the binding changed while the request was
+   * in flight, so nothing was written — the newer binding manages its own
+   * attestation; `refused` is a genuine admission refusal of this binding.
+   */
+  private async attestPolicy(
+    reportFailure = true,
+  ): Promise<
+    { kind: "ok"; sessionId: string } | { kind: "refused" } | { kind: "stale" }
+  > {
+    const session = this.session;
+    if (session === undefined) return { kind: "refused" };
+    const sessionId = String(session.sessionId);
     if (!this.config.lockdown.enabled) {
       this.policyReady = true;
-      return true;
+      return { kind: "ok", sessionId };
     }
     this.policyReady = false;
     this.publish();
     const outcome = await attestQaPolicy({
       secureSession: this.secureSessionRemote,
       token: this.accounts?.token() ?? "",
-      sessionId: String(this.session.sessionId),
+      sessionId,
       lockdown: this.config.lockdown,
       report: reportFailure,
     });
+    if (this.session !== session) return { kind: "stale" };
     if (outcome.ok) {
       this.policyReady = true;
       this.operationError = null;
       this.publish();
-      return true;
+      return { kind: "ok", sessionId };
     }
     if (outcome.authRequired) {
       // The identity expired or was rotated: back to the gate instead of
       // the generic configuration error.
       this.accounts?.onAuthRequired();
-      return false;
+      return { kind: "refused" };
     }
     this.policyReady = false;
     this.operationError = CONFIGURATION_ERROR;
     this.publish();
-    return false;
+    return { kind: "refused" };
   }
 
   private emit(): void {

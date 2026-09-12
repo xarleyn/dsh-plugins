@@ -88,7 +88,7 @@ describe("QA message", () => {
         onOpenSources={onOpenSources}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Источники · 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Источники (1)" }));
     expect(onOpenSources).toHaveBeenCalledWith(sources, true, undefined);
   });
 

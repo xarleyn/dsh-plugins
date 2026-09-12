@@ -69,6 +69,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       enabled: false,
       allowRegistration: true,
       sessionTtlDays: 30,
+      showOtherUsersChats: false,
     }),
     entry: Object.freeze({
       redirectNonLoopback: true,
@@ -433,6 +434,9 @@ export function resolveConfig(
         input.accounts?.allowRegistration ??
         DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,
       sessionTtlDays,
+      showOtherUsersChats:
+        input.accounts?.showOtherUsersChats ??
+        DEFAULT_QA_SURFACE_CONFIG.accounts.showOtherUsersChats,
     }),
     entry: Object.freeze({
       redirectNonLoopback:

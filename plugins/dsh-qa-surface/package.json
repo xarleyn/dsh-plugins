@@ -75,7 +75,7 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
-    "build": "pnpm run clean && node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
+    "build": "pnpm run lint && pnpm run clean && node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
     "lint": "eslint src tests scripts tsdown.config.ts",
     "format": "prettier --check . --end-of-line auto",
     "format:write": "prettier --write . --end-of-line auto",
@@ -125,7 +125,8 @@
     "@deepseek-ai/dsh-tools": "catalog:dsh",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
     "@deepseek-ai/dsh-workspace": "catalog:dsh",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
@@ -159,6 +160,7 @@
     "@testing-library/react": "^16.3.0",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
@@ -166,6 +168,7 @@
     "playwright": "catalog:tooling",
     "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

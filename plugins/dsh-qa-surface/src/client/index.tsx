@@ -11,10 +11,11 @@ import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { QaConfigController } from "./QaConfigController.js";
-import { QaRouteController } from "./QaRouteController.js";
+import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
 import { QaChatIndex } from "./chat-index.js";
 import { QaSurface } from "./QaSurface.js";
+import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
   QaSecureSession,
   QaSessions,
@@ -90,6 +91,12 @@ interface QaPolicyRemote {
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
 type QaClientRemote = ClientRemote & { readonly qaSurface: QaPolicyRemote };
+
+const QA_WELCOME_SLOT_ID = "welcome-notice";
+
+function qaWelcomeStorageKey(config: ResolvedQaSurfaceConfig): string {
+  return `${config.session.storageKey}:v1:${config.route.path}:welcome-notice`;
+}
 
 export const inject = [
   "slots",
@@ -200,6 +207,50 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         connectionUp = connected;
       });
       void accounts.start();
+
+      // The stock DSH welcome notice cannot persist its acknowledgement for
+      // non-loopback browsers. Shadow only its list-slot cell while the QA
+      // route is selected; leaving /qa immediately restores the host entry.
+      ctx.slots.inject("settings.onboarding", () => {
+        let removeEntry: (() => void) | undefined;
+        let mountedKey: string | undefined;
+        const reconcile = () => {
+          const configSnapshot = config.getSnapshot().config;
+          const routeSnapshot = route.getSnapshot();
+          const active =
+            configSnapshot.enabled &&
+            matchesQaRoute(routeSnapshot.pathname, configSnapshot.route);
+          const nextKey = active
+            ? qaWelcomeStorageKey(configSnapshot)
+            : undefined;
+          if (nextKey === mountedKey) return;
+          removeEntry?.();
+          removeEntry = undefined;
+          mountedKey = nextKey;
+          if (nextKey === undefined) return;
+          removeEntry = ctx.slots.register(
+            {
+              name: "settings.onboarding",
+              id: QA_WELCOME_SLOT_ID,
+              order: -100,
+              priority: -1_000,
+              inject: () => ({
+                storage: window.localStorage,
+                storageKey: nextKey,
+              }),
+            },
+            QaWelcomeNoticeStep,
+          );
+        };
+        reconcile();
+        const unsubscribeRoute = route.subscribe(reconcile);
+        const unsubscribeConfig = config.subscribe(reconcile);
+        return () => {
+          unsubscribeRoute();
+          unsubscribeConfig();
+          removeEntry?.();
+        };
+      });
 
       ctx.effect(() => {
         const style = document.createElement("style");

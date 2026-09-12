@@ -3,6 +3,22 @@ import { resolveConfig } from "../src/resolve-config.js";
 import { QaSessionController } from "../src/client/QaSessionController.js";
 import { harness } from "./helpers/session-fakes.js";
 
+const PROOF = (sessionId: string) => ({
+  ok: true as const,
+  value: {
+    sessionId,
+    enabled: true,
+    agentPresetMatches: true,
+    workspaceMatches: true,
+    modelMatches: true,
+    sandboxIsReadOnly: true,
+    approvalIsNever: true,
+    permissionPreset: "qa-read-only",
+    toolPolicyLoaded: true,
+    toolAllowList: [],
+  },
+});
+
 describe("attestation diagnostics", () => {
   it("reports the Host reason code once without a wrapper stack trace", async () => {
     const world = harness();
@@ -109,4 +125,58 @@ it("deleting the active chat falls back to a draft without creating a session", 
   expect(controller.chatIds()).toEqual([]);
   expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(false);
   controller.dispose();
+});
+
+describe("attestation races", () => {
+  it("does not relay a prompt into a chat switched to mid-attestation", async () => {
+    const world = harness(["saved", "chat-b"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "saved",
+      canSend: true,
+    });
+
+    // Hold send's attestation open until the switch has landed.
+    let release: (proof: unknown) => void = () => undefined;
+    world.secureSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    const sending = controller.send("Привет");
+    await controller.switchTo("chat-b");
+    expect(controller.getSnapshot().sessionId).toBe("chat-b");
+    release(PROOF("saved"));
+
+    // The proof was issued for "saved", but the user is in "chat-b": the
+    // prompt must go nowhere instead of riding the newer binding.
+    expect(await sending).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(world.faces.get("chat-b")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "chat-b",
+      canSend: true,
+      error: null,
+    });
+    controller.dispose();
+  });
+
+  it("still sends when no switch interleaves the attestation", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("Привет")).toBe(true);
+    expect(world.faces.get("saved")?.prompt).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
 });

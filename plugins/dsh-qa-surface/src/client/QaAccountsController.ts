@@ -261,9 +261,12 @@ export class QaAccountsController {
       }
       const ids = await this.options.remote.accountsOwnedSessions(token);
       ownedIds = ids.ok ? ids.value.ids : [];
-      // Admins additionally pull the cross-user ownership view; a refusal
-      // only costs the grouping, never the chats themselves.
-      if (user.role === "admin") {
+      // The cross-user ownership view is a separate operator opt-in. A
+      // refusal only costs the grouping, never the admin's own chats.
+      if (
+        user.role === "admin" &&
+        this.options.config().accounts.showOtherUsersChats
+      ) {
         ownership = await this.fetchOwnership(token);
       }
     } catch (error) {
@@ -294,9 +297,14 @@ export class QaAccountsController {
       );
       if (this.disposed || !ids.ok || this.snapshot.stage !== "authed") return;
       let ownership = this.snapshot.ownership;
-      if (this.snapshot.user.role === "admin") {
+      if (
+        this.snapshot.user.role === "admin" &&
+        this.options.config().accounts.showOtherUsersChats
+      ) {
         ownership = await this.fetchOwnership(this.tokenValue);
         if (this.disposed || this.snapshot.stage !== "authed") return;
+      } else {
+        ownership = [];
       }
       const ownedIds = mergeOwnershipIds(ids.value.ids, ownership);
       if (
@@ -333,7 +341,8 @@ export class QaAccountsController {
   ownerNames(): ReadonlyMap<string, string> {
     if (
       this.snapshot.stage !== "authed" ||
-      this.snapshot.user.role !== "admin"
+      this.snapshot.user.role !== "admin" ||
+      !this.options.config().accounts.showOtherUsersChats
     ) {
       return new Map();
     }
@@ -352,7 +361,8 @@ export class QaAccountsController {
   messageAuthorOf(sessionId: string): string | undefined {
     if (
       this.snapshot.stage !== "authed" ||
-      this.snapshot.user.role !== "admin"
+      this.snapshot.user.role !== "admin" ||
+      !this.options.config().accounts.showOtherUsersChats
     ) {
       return undefined;
     }

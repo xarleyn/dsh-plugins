@@ -16,7 +16,8 @@ rules are:
   `ui.showToolActivity`; enable them only where those contents are appropriate
   for the QA audience;
 - accounts default to disabled; when enabled, `sessionTtlDays` is an integer
-  from 1 through 365;
+  from 1 through 365, and other users' chats stay hidden unless an admin view
+  explicitly enables `accounts.showOtherUsersChats`;
 - lockdown defaults to enabled and requires a non-empty permission preset;
 - the preset must resolve on the Host to exactly `read-only` + `never`;
 - permission, slash-command, settings, rename, delete and arbitrary-open
@@ -119,6 +120,8 @@ QA surface and turns on server-side session ownership:
   token is an HMAC-signed value the browser keeps in `localStorage`; logout
   or expiry returns the browser to the gate, and the Host re-derives the
   identity on every attestation.
+- `accounts.showOtherUsersChats` (default false) lets admins load and display
+  chats owned by other QA accounts. It has no effect for ordinary users.
 - Session ownership is first come, first served: attesting or bulk-claiming
   an unowned session binds it to the caller's account (this is how existing
   per-browser chats migrate on the first login). Sessions owned by another

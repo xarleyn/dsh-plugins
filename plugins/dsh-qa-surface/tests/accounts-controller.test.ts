@@ -74,13 +74,15 @@ function controller(
   options: {
     legacyChatIds?: () => readonly string[];
     forgetChat?: (id: string) => void;
+    showOtherUsersChats?: boolean;
   } = {},
 ): QaAccountsController {
+  const { showOtherUsersChats = false, ...controllerOptions } = options;
   return new QaAccountsController({
     remote: api,
     storage: storage(),
-    config: () => resolveConfig(),
-    ...options,
+    config: () => resolveConfig({ accounts: { showOtherUsersChats } }),
+    ...controllerOptions,
   });
 }
 
@@ -231,7 +233,7 @@ describe("QA accounts controller", () => {
         },
       })),
     });
-    const accounts = controller(api);
+    const accounts = controller(api, { showOtherUsersChats: true });
     await accounts.start();
     await accounts.login("a@b.co", "password-1");
     expect(api.accountsListOwnership).toHaveBeenCalledWith("t-login");
@@ -243,6 +245,39 @@ describe("QA accounts controller", () => {
     // Author labels: foreign chats only.
     expect(accounts.messageAuthorOf("s-foreign")).toBe("Борис");
     expect(accounts.messageAuthorOf("s-mine")).toBeUndefined();
+  });
+
+  it("does not request or show other users' chats by default", async () => {
+    const api = remote({
+      accountsOwnedSessions: vi.fn(async () => ({
+        ok: true as const,
+        value: { ids: ["s-mine"] },
+      })),
+      accountsListOwnership: vi.fn(async () => ({
+        ok: true as const,
+        value: {
+          entries: [
+            {
+              sessionId: "s-foreign",
+              userId: "u-2",
+              displayName: "Boris",
+              claimedAt: "2026-09-11T00:01:00.000Z",
+            },
+          ],
+        },
+      })),
+    });
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    expect(api.accountsListOwnership).not.toHaveBeenCalled();
+    expect(accounts.getSnapshot()).toMatchObject({
+      stage: "authed",
+      ownedIds: ["s-mine"],
+      ownership: [],
+    });
+    expect(accounts.ownerNames().size).toBe(0);
+    expect(accounts.messageAuthorOf("s-foreign")).toBeUndefined();
   });
 
   it("keeps ordinary accounts out of the ownership view", async () => {
@@ -279,7 +314,7 @@ describe("QA accounts controller", () => {
         error: new Error("refused (reason: admin-required)"),
       })),
     });
-    const accounts = controller(api);
+    const accounts = controller(api, { showOtherUsersChats: true });
     await accounts.start();
     await accounts.login("a@b.co", "password-1");
     expect(accounts.getSnapshot()).toMatchObject({

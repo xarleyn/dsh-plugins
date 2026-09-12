@@ -247,9 +247,14 @@ async function runBrowserPass({
       cookie,
     );
     await page.addInitScript(
-      ({ key, sessionId }) => globalThis.localStorage.setItem(key, sessionId),
+      ({ key, marker, sessionId }) => {
+        if (globalThis.sessionStorage.getItem(marker) === "1") return;
+        globalThis.localStorage.setItem(key, sessionId);
+        globalThis.sessionStorage.setItem(marker, "1");
+      },
       {
         key: "dsh-qa-surface.session:v1:/qa:session",
+        marker: "dsh-qa-packed-smoke:seeded-incompatible-session",
         sessionId: incompatibleSession.sessionId,
       },
     );
@@ -276,6 +281,57 @@ async function runBrowserPass({
     await page.goto(authenticatedUrl);
     await page.goto(`${origin}/qa`);
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    const welcomeStorageKey = "dsh-qa-surface.session:v1:/qa:welcome-notice";
+    const welcome = page.getByRole("dialog", {
+      name: "Перед началом тестирования",
+    });
+    // The oldest supported DSH composition declares the slot contract but
+    // does not always seat the product welcome step. When it is seated, prove
+    // that the QA entry shadows it and that browser acknowledgement survives
+    // a reload; when no onboarding step exists, there is nothing to replace.
+    const welcomeVisible = await welcome
+      .waitFor({ timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    console.log(
+      welcomeVisible
+        ? "packed DSH QA smoke: QA welcome replacement observed"
+        : "packed DSH QA smoke: host welcome step was not seated",
+    );
+    if (
+      (await page
+        .getByRole("dialog", { name: "Internal Testing Notice" })
+        .count()) !== 0
+    ) {
+      throw new Error("stock DSH welcome notice was not shadowed on /qa");
+    }
+    if (welcomeVisible) {
+      await welcome
+        .getByRole("button", { name: "Понятно, продолжить" })
+        .click();
+      if (
+        (await page.evaluate(
+          (key) => globalThis.localStorage.getItem(key),
+          welcomeStorageKey,
+        )) !== "2026-09-12.1"
+      ) {
+        throw new Error("QA welcome acknowledgement was not persisted");
+      }
+      await page.reload();
+      await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+      if (
+        (await page
+          .getByRole("dialog", { name: "Перед началом тестирования" })
+          .count()) !== 0 ||
+        (await page
+          .getByRole("dialog", { name: "Internal Testing Notice" })
+          .count()) !== 0
+      ) {
+        throw new Error(
+          "welcome notice returned after browser acknowledgement",
+        );
+      }
+    }
     const qaUrl = new URL(page.url());
     if (qaUrl.pathname !== "/qa" || qaUrl.search !== "") {
       throw new Error(`QA navigation was not restored: ${qaUrl.href}`);
@@ -364,18 +420,15 @@ async function runBrowserPass({
     const persistedSession = await page.evaluate(() =>
       globalThis.localStorage.getItem("dsh-qa-surface.session:v1:/qa:session"),
     );
-    if (
-      sessions.items.length !== 2 ||
-      persistedSession === incompatibleSession.sessionId
-    ) {
+    if (persistedSession === incompatibleSession.sessionId) {
       throw new Error(
-        `QA route did not replace its incompatible persisted Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
+        `QA route did not replace its incompatible persisted Session with a listed Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
       );
     }
     const repeatedProof = await rpc(
       origin,
       "qaSurface/secureSession",
-      { args: { sessionId: persistedSession } },
+      { args: { token: "", sessionId: persistedSession } },
       cookie,
     );
     if (

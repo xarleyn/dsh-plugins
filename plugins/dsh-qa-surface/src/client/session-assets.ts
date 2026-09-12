@@ -48,6 +48,11 @@ export class SessionAssetRepository {
 }
 
 function revokeIfBlob(url: string): void {
+  revokeObjectUrlIfBlob(url);
+}
+
+/** Revoke one blob URL; data URLs (and other runtimes) need nothing. */
+export function revokeObjectUrlIfBlob(url: string): void {
   if (url.startsWith("blob:") && typeof URL.revokeObjectURL === "function") {
     URL.revokeObjectURL(url);
   }

@@ -44,6 +44,7 @@ assert.equal(
 );
 assert.equal(manifest.exports["./typert"].default, "./lib/typert.host.js");
 assert.equal(manifest.dsh.client.platform, "web");
+assert.equal(manifest.peerDependencies["react-dom"], "^18.2.0");
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-layout"),
 );
@@ -99,6 +100,13 @@ assert.match(
 );
 assert.match(client, /shell\.overlay/u);
 assert.match(client, /id:\s*"dsh-qa-surface"/u);
+assert.match(client, /settings\.onboarding/u);
+assert.match(client, /"welcome-notice"/u);
+assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
+assert.match(client, /Перед началом тестирования/u);
+assert.match(client, /2026-09-12\.1/u);
+assert.match(client, /dsh-qa-onboarding/u);
+assert.match(client, /require\("react-dom"\)/u);
 assert.match(client, /\.prompt\(/u);
 assert.match(client, /\.cancel\(/u);
 assert.match(client, /\.create\(/u);
