@@ -99,6 +99,9 @@ describe("render equality helpers", () => {
       }),
     ).toBe(false);
     expect(
+      sameMessage(userMessage, { ...userMessage, author: "Аня" }),
+    ).toBe(false);
+    expect(
       sameMessage(systemMessage, {
         ...systemMessage,
         notice: { title: "Субагент a1b2c3d4 завершён", body: "Другое." },
@@ -143,6 +146,7 @@ describe("render equality helpers", () => {
     };
     expect(sameChatRows([row], [{ ...row }])).toBe(true);
     expect(sameChatRows([row], [{ ...row, meta: "2m" }])).toBe(false);
+    expect(sameChatRows([row], [{ ...row, ownerName: "Аня" }])).toBe(false);
     expect(sameChatRows([row], [])).toBe(false);
   });
 });

@@ -44,6 +44,11 @@ export interface QaAccountsFacade {
   readonly token: () => string | null;
   /** Server-owned chat ids; the list authority while accounts are on. */
   readonly ownedIds: () => readonly string[];
+  /**
+   * The chat owner's display name for author labels; admins see it on
+   * foreign chats only, everyone else gets undefined.
+   */
+  readonly messageAuthorOf: (sessionId: string) => string | undefined;
   /** Called after a new chat binds, so ownership stays current. */
   readonly onSessionCreated: (sessionId: string) => void;
   /** Called when the Host refuses with auth-required (expired/rotated). */
@@ -813,6 +818,9 @@ export class QaSessionController {
       sessionSnapshot: snapshot,
       conversationSnapshot,
       sourceBundles,
+      // Ownership is chat-level: every user message of a foreign chat
+      // carries its owner's name when an admin reads it.
+      author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
       policyReady: this.policyReady,
       admissionPending: this.admissionPending,

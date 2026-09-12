@@ -22,6 +22,11 @@ export interface QaBoundProjectionInput {
   readonly chatsRevision: number;
   readonly viewingSubagent: QaSubagentView | null;
   readonly config: ResolvedQaSurfaceConfig;
+  /**
+   * The chat owner's display name for author labels; present only when an
+   * admin reads a foreign chat (chat-level, not per-message).
+   */
+  readonly author?: string;
 }
 
 /**
@@ -58,6 +63,9 @@ export function projectBoundSessionState(
     showToolActivity: config.ui.showToolActivity,
     showReasoning: config.ui.showReasoning,
   }).map((message) => {
+    if (message.role === "user" && input.author !== undefined) {
+      return { ...message, author: input.author };
+    }
     if (message.role !== "assistant" || message.turn === undefined)
       return message;
     const bundle = sourcesByTurn.get(message.turn);
