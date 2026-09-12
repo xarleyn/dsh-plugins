@@ -11,12 +11,20 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .dx-title{color:var(--dsw-alias-label-primary);font-size:18px;font-weight:600;line-height:1.35;margin:0}
 .dx-subtitle{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5;margin:4px 0 0}
-.dx-layout{display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);gap:16px;align-items:start}
-@media (max-width:900px){.dx-layout{grid-template-columns:minmax(0,1fr)}}
-.dx-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none}
-.dx-list-item{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:12px 14px;transition:border-color .16s,background .16s}
-.dx-list-item:hover{border-color:var(--dsw-alias-label-dimmed)}
-.dx-list-item[aria-current="true"]{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-brand-primary)}
+/* Two columns that collapse on their own when the container is narrow. A
+   viewport media query cannot do this job: the page renders inside the settings
+   dialog, where the available width is far below the viewport width. */
+.dx-layout{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;min-width:0}
+.dx-column{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 260px}
+.dx-column--detail{flex:2 1 380px}
+.dx-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none;min-width:0}
+.dx-list-card{display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;transition:border-color .16s,background .16s;min-width:0}
+.dx-list-card:hover{border-color:var(--dsw-alias-label-dimmed)}
+.dx-list-card[data-selected="true"]{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-brand-primary)}
+.dx-list-item{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;background:0 0;border:0;border-radius:10px 10px 0 0;padding:12px 14px;min-width:0}
+.dx-list-item:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dx-list-actions{display:flex;gap:8px;align-items:center;border-top:1px solid var(--dsw-alias-border-l2);padding:8px 14px}
+.dx-button--small{font-size:12px;padding:3px 9px}
 .dx-list-name{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600}
 .dx-list-desc{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.5}
 .dx-list-meta{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}
