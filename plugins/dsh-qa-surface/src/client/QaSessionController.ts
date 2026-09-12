@@ -4,7 +4,6 @@ import type {
 } from "@deepseek-ai/dsh-client-connection/client";
 import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
-import type { WorkspaceId } from "@deepseek-ai/dsh-workspace/types";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -17,17 +16,14 @@ import type {
   QaImageDraft,
   QaSessionState,
   QaSubagentView,
-  QaTurnSources,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
-import {
-  QaPolicyAttestationError,
-  attestationHint,
-  attestationReasonOf,
-  proofMatchesConfig,
-} from "./attestation.js";
+import { QaPolicyAttestationError } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
 import { SessionAssetRepository } from "./session-assets.js";
+import { createQaSession } from "./create-session.js";
+import { attestQaPolicy } from "./session-admission.js";
+import { QaHostSourceBridge } from "./session-sources.js";
 import type {
   QaConversation,
   QaPromptContent,
@@ -39,11 +35,9 @@ import type {
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { waitFor } from "./wait-for.js";
+import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
+import { projectBoundSessionState } from "./project-session-state.js";
 import { projectTurnSources } from "./turn-sources.js";
-import {
-  projectTranscript,
-  QA_REGENERATE_MARKER,
-} from "./QaTranscriptAdapter.js";
 
 export interface QaAccountsFacade {
   /** The account bearer token, or null while anonymous. */
@@ -120,9 +114,8 @@ export class QaSessionController {
   private disposed = false;
   private generation = 0;
   private chatsRevision = 0;
-  private hostSourceBundles: readonly QaTurnSources[] = [];
-  private hostSourcesSignature = "";
-  private refreshingHostSources = false;
+  /** Host-side provenance of the bound chat, merged into the projection. */
+  private readonly hostSources: QaHostSourceBridge;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -145,6 +138,10 @@ export class QaSessionController {
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
     );
     this.accounts = options.accounts;
+    this.hostSources = new QaHostSourceBridge(
+      this.sourceApi,
+      () => this.accounts?.token() ?? "",
+    );
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamIntervalMs = options.streamIntervalMs ?? 66;
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -296,7 +293,11 @@ export class QaSessionController {
     const attempt = (async () => {
       try {
         await this.waitForConnection();
-        const id = await this.createSession();
+        const id = await createQaSession({
+          sessions: this.sessions,
+          api: this.api,
+          config: this.config,
+        });
         if (this.disposed || operation !== this.generation) return false;
         await this.bind(id);
         if (this.disposed || operation !== this.generation) return false;
@@ -540,7 +541,11 @@ export class QaSessionController {
         }
       }
       if (id === null) {
-        id = await this.createSession();
+        id = await createQaSession({
+          sessions: this.sessions,
+          api: this.api,
+          config: this.config,
+        });
       }
       if (this.disposed || operation !== this.generation) return;
       // A restored id's first bind stays quiet: the recovery path below may
@@ -563,7 +568,11 @@ export class QaSessionController {
         this.unbind();
         this.operationError = null;
         this.chats.clearActive();
-        id = await this.createSession();
+        id = await createQaSession({
+          sessions: this.sessions,
+          api: this.api,
+          config: this.config,
+        });
         if (this.disposed || operation !== this.generation) return;
         await this.bind(id);
       }
@@ -622,7 +631,11 @@ export class QaSessionController {
       }
       this.unbind();
       this.chats.clearActive();
-      const created = await this.createSession();
+      const created = await createQaSession({
+        sessions: this.sessions,
+        api: this.api,
+        config: this.config,
+      });
       if (this.disposed || operation !== this.generation) return false;
       await this.bind(created);
       if (this.disposed || operation !== this.generation) return false;
@@ -637,47 +650,6 @@ export class QaSessionController {
       );
       return false;
     }
-  }
-
-  private async createSession(): Promise<string> {
-    const created = await this.sessions.create({
-      ...(this.config.session.workspaceId !== null
-        ? { workspaceId: this.config.session.workspaceId as WorkspaceId }
-        : this.config.session.cwd !== null
-          ? { cwd: this.config.session.cwd }
-          : {}),
-    });
-    const id = String(created);
-    if (this.config.session.agentPreset !== null) {
-      // The creation wire takes no preset, so the pin lands right after:
-      // agentPresets/select recomposes the still-blank session's agent and
-      // durably logs `agent-preset/selected`, which the client projection
-      // replays. The session is addressed only here — no prompt can run
-      // before this returns, because sending requires a passed attestation
-      // that verifies the composed preset.
-      const selectedPreset = await this.api.selectAgentPreset(
-        id as SessionId,
-        this.config.session.agentPreset,
-      );
-      if (!selectedPreset.ok) {
-        throw new Error(selectedPreset.error.code);
-      }
-    }
-    if (
-      this.config.session.provider !== null &&
-      this.config.session.model !== null
-    ) {
-      const selected = await this.api.selectModel({
-        sessionId: id as SessionId,
-        provider: this.config.session.provider,
-        model: this.config.session.model,
-        ...(this.config.session.reasoningEffort === null
-          ? {}
-          : { reasoningEffort: this.config.session.reasoningEffort }),
-      });
-      if (!selected.ok) throw new Error(selected.error.code);
-    }
-    return id;
   }
 
   private async bind(
@@ -747,9 +719,7 @@ export class QaSessionController {
       this.assets.release(String(this.session.sessionId));
     }
     this.session = undefined;
-    this.hostSourceBundles = [];
-    this.hostSourcesSignature = "";
-    this.refreshingHostSources = false;
+    this.hostSources.reset();
     this.admissionPending = false;
     this.policyReady = false;
   }
@@ -825,120 +795,32 @@ export class QaSessionController {
       return;
     }
     const snapshot = this.session.getSnapshot();
-    // A pending approval interaction is invisible to this snapshot in 0.1.5;
-    // the QA lockdown pins approval=never and strips escalation-requiring
-    // tools, so no interaction the surface cannot answer should ever arise.
-    const error =
-      this.operationError ??
-      (snapshot.removed || snapshot.openState === "error"
-        ? "Этот чат больше недоступен."
-        : null);
-    const phase = !connected
-      ? "reconnecting"
-      : snapshot.removed || snapshot.openState === "error"
-        ? "error"
-        : snapshot.openState !== "open"
-          ? "creating"
-          : snapshot.running || this.admissionPending
-            ? "running"
-            : "ready";
+    const sessionId = String(this.session.sessionId);
     const conversationSnapshot =
       this.conversationBinding?.snapshot.getSnapshot();
     const projectedSourceBundles = projectTurnSources(
       conversationSnapshot,
-      String(this.session.sessionId),
+      sessionId,
       this.config.session.cwd ?? undefined,
     );
-    const sourceBundles = this.mergeSourceBundles(projectedSourceBundles);
-    if (!snapshot.running) void this.refreshHostSourceBundles();
-    const sourcesByTurn = new Map(
-      sourceBundles.map((bundle) => [bundle.turn, bundle] as const),
-    );
-    const messages = projectTranscript(conversationSnapshot, {
-      running: snapshot.running,
-      showToolActivity: this.config.ui.showToolActivity,
-      showReasoning: this.config.ui.showReasoning,
-    }).map((message) => {
-      if (message.role !== "assistant" || message.turn === undefined)
-        return message;
-      const bundle = sourcesByTurn.get(message.turn);
-      const sources =
-        bundle === undefined
-          ? undefined
-          : [
-              ...bundle.sources,
-              ...(this.config.sources.display.showDiscovered
-                ? (bundle.discovered ?? [])
-                : []),
-            ];
-      return sources === undefined || sources.length === 0
-        ? message
-        : {
-            ...message,
-            sources,
-            sourcesComplete: bundle?.complete ?? true,
-            ...(bundle?.incompleteOrigins === undefined
-              ? {}
-              : { incompleteSourceOrigins: bundle.incompleteOrigins }),
-          };
-    });
-    this.state = {
-      phase,
-      sessionId: String(this.session.sessionId),
-      messages,
-      error,
-      canSend: connected && phase === "ready" && this.policyReady,
-      canStop: connected && snapshot.running && this.config.ui.showStop,
-      chatsRevision: this.chatsRevision,
-      sources:
-        sourceBundles.at(-1) === undefined
-          ? []
-          : [
-              ...(sourceBundles.at(-1)?.sources ?? []),
-              ...(this.config.sources.display.showDiscovered
-                ? (sourceBundles.at(-1)?.discovered ?? [])
-                : []),
-            ],
-      sourcesComplete: sourceBundles.at(-1)?.complete ?? true,
-      incompleteSourceOrigins: sourceBundles.at(-1)?.incompleteOrigins,
-      viewingSubagent: this.viewingSubagent,
-    };
-    this.emit();
-  }
-
-  private mergeSourceBundles(
-    projected: readonly QaTurnSources[],
-  ): readonly QaTurnSources[] {
-    const merged = new Map<number, QaTurnSources>();
-    for (const bundle of projected) merged.set(bundle.turn, bundle);
-    for (const bundle of this.hostSourceBundles)
-      merged.set(bundle.turn, bundle);
-    return [...merged.values()].sort((left, right) => left.turn - right.turn);
-  }
-
-  private async refreshHostSourceBundles(): Promise<void> {
-    if (this.refreshingHostSources || this.session === undefined) return;
-    const sessionId = String(this.session.sessionId);
-    this.refreshingHostSources = true;
-    try {
-      const result = await this.sourceApi.sources(
-        this.accounts?.token() ?? "",
-        sessionId,
-      );
-      if (
-        !result.ok ||
-        this.session === undefined ||
-        String(this.session.sessionId) !== sessionId
-      )
-        return;
-      const signature = JSON.stringify(result.value);
-      if (signature === this.hostSourcesSignature) return;
-      this.hostSourcesSignature = signature;
-      this.hostSourceBundles = result.value;
-      this.publish();
-    } finally {
-      this.refreshingHostSources = false;
+    const sourceBundles = this.hostSources.merge(projectedSourceBundles);
+    if (!snapshot.running) {
+      void this.hostSources.refresh(sessionId, () => this.publish());
     }
+    this.state = projectBoundSessionState({
+      connected,
+      sessionId,
+      sessionSnapshot: snapshot,
+      conversationSnapshot,
+      sourceBundles,
+      operationError: this.operationError,
+      policyReady: this.policyReady,
+      admissionPending: this.admissionPending,
+      chatsRevision: this.chatsRevision,
+      viewingSubagent: this.viewingSubagent,
+      config: this.config,
+    });
+    this.emit();
   }
 
   private fail(message: string, error: unknown): void {
@@ -966,66 +848,29 @@ export class QaSessionController {
     }
     this.policyReady = false;
     this.publish();
-    // One precise console diagnostic per refusal: the coarse Host reason code
-    // plus an operator hint. The QA-facing message stays generic by design.
-    const reject = (reason: string | null): false => {
-      if (reportFailure) {
-        console.error(
-          `dsh-qa-surface: policy attestation failed (reason: ${reason ?? "unknown"}). ${attestationHint(reason)}`,
-        );
-      }
-      this.policyReady = false;
-      this.operationError = CONFIGURATION_ERROR;
-      this.publish();
-      return false;
-    };
-    try {
-      const result = await this.secureSessionRemote(
-        this.accounts?.token() ?? "",
-        String(this.session.sessionId),
-      );
-      if (!result.ok) {
-        const reason = attestationReasonOf(
-          result.error as { readonly message?: string },
-        );
-        if (reason === "auth-required") {
-          // The identity expired or was rotated: back to the gate instead of
-          // the generic configuration error.
-          if (reportFailure) {
-            console.error(
-              "dsh-qa-surface: policy attestation failed (reason: auth-required). The account token is absent or expired.",
-            );
-          }
-          this.accounts?.onAuthRequired();
-          return false;
-        }
-        return reject(reason);
-      }
-      if (
-        !proofMatchesConfig(
-          result.value,
-          this.config.lockdown,
-          String(this.session.sessionId),
-        )
-      ) {
-        return reject("proof-mismatch");
-      }
+    const outcome = await attestQaPolicy({
+      secureSession: this.secureSessionRemote,
+      token: this.accounts?.token() ?? "",
+      sessionId: String(this.session.sessionId),
+      lockdown: this.config.lockdown,
+      report: reportFailure,
+    });
+    if (outcome.ok) {
       this.policyReady = true;
       this.operationError = null;
       this.publish();
       return true;
-    } catch (error) {
-      if (reportFailure) {
-        console.error(
-          "dsh-qa-surface: policy attestation request failed",
-          error,
-        );
-      }
-      this.policyReady = false;
-      this.operationError = CONFIGURATION_ERROR;
-      this.publish();
+    }
+    if (outcome.authRequired) {
+      // The identity expired or was rotated: back to the gate instead of
+      // the generic configuration error.
+      this.accounts?.onAuthRequired();
       return false;
     }
+    this.policyReady = false;
+    this.operationError = CONFIGURATION_ERROR;
+    this.publish();
+    return false;
   }
 
   private emit(): void {
