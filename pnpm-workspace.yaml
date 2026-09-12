@@ -107,6 +107,7 @@ catalogs:
     prettier: '^3.6.2'
     '@types/node': '^26.4.0'
     eslint: '10.9.1'
+    eslint-plugin-react-hooks: '^7.1.1'
     '@eslint/js': '10.0.1'
     typescript-eslint: '8.68.0'
     nx: '22.7.8'

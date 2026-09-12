@@ -134,6 +134,7 @@ const configSchema = z.object({
         .min(1)
         .max(365)
         .default(D.accounts.sessionTtlDays),
+      showOtherUsersChats: z.boolean().default(D.accounts.showOtherUsersChats),
     })
     .default({ ...D.accounts }),
   entry: z

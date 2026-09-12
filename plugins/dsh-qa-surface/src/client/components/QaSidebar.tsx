@@ -155,6 +155,14 @@ function SearchIcon() {
   );
 }
 
+function ClearIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <path d="m3.5 3.5 7 7m0-7-7 7" />
+    </svg>
+  );
+}
+
 function ChevronIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true">
@@ -164,7 +172,10 @@ function ChevronIcon() {
 }
 
 function rowMatches(row: QaChatRow, query: string): boolean {
-  return row.title.toLowerCase().includes(query);
+  return (
+    row.title.toLowerCase().includes(query) ||
+    row.ownerName?.toLowerCase().includes(query) === true
+  );
 }
 
 /**
@@ -347,6 +358,17 @@ export const QaSidebar = memo(
             aria-label="Поиск по чатам"
             onChange={(event) => setQuery(event.currentTarget.value)}
           />
+          {query === "" ? null : (
+            <button
+              type="button"
+              className="dsh-qa-sidebar__search-clear"
+              aria-label="Очистить поиск"
+              title="Очистить поиск"
+              onClick={() => setQuery("")}
+            >
+              <ClearIcon />
+            </button>
+          )}
         </div>
         <div className="dsh-qa-sidebar__list">
           {props.rows.length === 0 ? (
@@ -377,8 +399,10 @@ export const QaSidebar = memo(
             >
               <span className="dsh-qa-sidebar__account-name">
                 {props.account.email}
-                {props.account.role === "admin" ? " · admin" : ""}
               </span>
+              {props.account.role === "admin" ? (
+                <span className="dsh-qa-sidebar__account-role">admin</span>
+              ) : null}
               <button
                 type="button"
                 className="dsh-qa-sidebar__account-exit"

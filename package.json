@@ -39,6 +39,7 @@
     "@swc-node/register": "catalog:tooling",
     "@swc/core": "catalog:tooling",
     "eslint": "catalog:tooling",
+    "eslint-plugin-react-hooks": "catalog:tooling",
     "nx": "catalog:tooling",
     "typescript": "catalog:tooling",
     "typescript-eslint": "catalog:tooling",

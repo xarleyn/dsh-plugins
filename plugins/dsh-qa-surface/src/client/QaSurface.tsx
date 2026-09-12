@@ -56,7 +56,9 @@ import {
   useQaContentWidth,
 } from "./components/QaWidthHandle.js";
 import { VariantSwitcher } from "./components/VariantSwitcher.js";
+import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { useTranscriptView } from "./use-transcript-view.js";
+import { useSessionUiState } from "./use-session-ui-state.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -173,25 +175,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const nearBottom = useRef(true);
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
-  const [activeTurn, setActiveTurn] = useState<number | null>(null);
   const activeTurnFrame = useRef<number | null>(null);
-  /** Per group: how many answers back from the newest is shown (0 = newest). */
-  const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
-    {},
-  );
-  const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [drawerSources, setDrawerSources] = useState<
-    readonly QaSource[] | null
-  >(null);
-  const [drawerCompleteness, setDrawerCompleteness] = useState<{
-    readonly complete: boolean;
-    readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
-  } | null>(null);
-  const [drawerDetail, setDrawerDetail] = useState<QaSource | null>(null);
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
-    [],
-  );
   const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
   const widthHandlers = useQaContentWidth({
     active: route.active,
@@ -281,6 +265,26 @@ export function QaSurface(props: QaSurfaceProps) {
     props.sessions.list.getSnapshot,
     props.sessions.list.getSnapshot,
   );
+  // Draft text, attachments, variant offsets and drawers are chat-local; the
+  // hook clears them whenever the bound session changes.
+  const {
+    activeTurn,
+    setActiveTurn,
+    variantOffsets,
+    setVariantOffsets,
+    pendingImages,
+    setPendingImages,
+    agentsOpen,
+    setAgentsOpen,
+    sourcesOpen,
+    setSourcesOpen,
+    drawerSources,
+    setDrawerSources,
+    drawerCompleteness,
+    setDrawerCompleteness,
+    drawerDetail,
+    setDrawerDetail,
+  } = useSessionUiState(state.sessionId);
 
   useEffect(() => {
     if (!route.active) return;
@@ -437,6 +441,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const ownerNames = useMemo(
     () =>
       config.accounts.enabled &&
+      config.accounts.showOtherUsersChats &&
       accounts !== undefined &&
       accountsSnapshot.stage === "authed" &&
       accountsSnapshot.user.role === "admin"
@@ -475,372 +480,395 @@ export function QaSurface(props: QaSurfaceProps) {
       : `${stateKey}:chat:${state.sessionId}`;
   if (!route.active) return null;
 
+  // DSH only seats onboarding while the active Session is blank. Keep the QA
+  // disclosure in this route-owned overlay so sending a prompt cannot dismiss
+  // it; the shadow step registered in index.tsx only suppresses the stock copy.
+  const welcomeNotice = (
+    <QaWelcomeNotice
+      key={stateKey}
+      storage={window.localStorage}
+      storageKey={`${stateKey}:welcome-notice`}
+    />
+  );
+
   if (config.accounts.enabled && accounts !== undefined) {
     if (accountsStage === "checking") {
       return (
-        <main
-          className="dsh-qa-surface"
-          aria-busy="true"
-          aria-label={config.branding.title}
-          tabIndex={-1}
-        />
+        <>
+          {welcomeNotice}
+          <main
+            className="dsh-qa-surface"
+            aria-busy="true"
+            aria-label={config.branding.title}
+            tabIndex={-1}
+          />
+        </>
       );
     }
     if (accountsStage === "gate") {
       return (
-        <QaAuthGate
-          accounts={accounts}
-          snapshot={accountsSnapshot}
-          title={config.branding.title}
-          logoUrl={config.branding.logoUrl}
-          allowRegistration={config.accounts.allowRegistration}
-        />
+        <>
+          {welcomeNotice}
+          <QaAuthGate
+            accounts={accounts}
+            snapshot={accountsSnapshot}
+            title={config.branding.title}
+            logoUrl={config.branding.logoUrl}
+            allowRegistration={config.accounts.allowRegistration}
+          />
+        </>
       );
     }
   }
 
   return (
-    <main
-      className="dsh-qa-surface"
-      data-phase={state.phase}
-      aria-label={config.branding.title}
-      tabIndex={-1}
-      onKeyDown={trapKeys}
-    >
-      {showSidebar ? (
-        <QaSidebar
-          rows={chatRows}
-          groupByOwner={ownerNames !== undefined}
-          title={config.branding.title}
-          logoUrl={config.branding.logoUrl}
-          stateKey={stateKey}
-          showNewChat={allowNewChat}
-          busy={state.phase === "creating"}
-          onSwitch={handleSwitch}
-          onNewChat={handleNewChat}
-          onDelete={handleDelete}
-          account={
-            config.accounts.enabled &&
-            accounts !== undefined &&
-            accountsStage === "authed"
-              ? {
-                  email: accountsSnapshot.user.email,
-                  role: accountsSnapshot.user.role,
-                  onLogout: handleLogout,
-                }
-              : undefined
-          }
-        />
-      ) : null}
-      <div className="dsh-qa-body">
-        {state.viewingSubagent !== null && !config.ui.showHeader ? (
-          <div className="dsh-qa-agentview" role="status">
-            <RobotBadge />
-            <span>Просмотр субагента</span>
-            <button
-              type="button"
-              onClick={() => void controller?.closeSubagent()}
-            >
-              ← В чат
-            </button>
-          </div>
-        ) : null}
-        {config.ui.showHeader ? (
-          <header className="dsh-qa-header">
-            <div className="dsh-qa-header__inner">
-              <div className="dsh-qa-header__title-row">
-                {config.branding.logoUrl === null ? null : (
-                  <img
-                    className="dsh-qa-header__logo"
-                    src={config.branding.logoUrl}
-                    alt=""
-                  />
-                )}
-                {conversationTitle === null ? null : (
-                  <h1 title={conversationTitle}>{conversationTitle}</h1>
-                )}
-                {state.viewingSubagent !== null ? (
-                  <span className="dsh-qa-header__viewing">
-                    <RobotBadge />
-                    Просмотр субагента
-                    <button
-                      type="button"
-                      className="dsh-qa-header__back"
-                      onClick={() => void controller?.closeSubagent()}
-                    >
-                      ← В чат
-                    </button>
-                  </span>
-                ) : (
-                  <span className="dsh-qa-header__mode">
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="8" cy="3.25" r="1.5" />
-                      <circle cx="4" cy="11.75" r="1.5" />
-                      <circle cx="12" cy="11.75" r="1.5" />
-                      <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-                    </svg>
-                    {modeLabel(config.session.agentPreset)}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={
-                    config.sources.enabled && config.sources.display.sidebar
-                      ? "dsh-qa-header__agents"
-                      : "dsh-qa-header__agents dsh-qa-header__agents--end"
+    <>
+      {welcomeNotice}
+      <main
+        className="dsh-qa-surface"
+        data-phase={state.phase}
+        aria-label={config.branding.title}
+        tabIndex={-1}
+        onKeyDown={trapKeys}
+      >
+        {showSidebar ? (
+          <QaSidebar
+            rows={chatRows}
+            groupByOwner={ownerNames !== undefined}
+            title={config.branding.title}
+            logoUrl={config.branding.logoUrl}
+            stateKey={stateKey}
+            showNewChat={allowNewChat}
+            busy={state.phase === "creating"}
+            onSwitch={handleSwitch}
+            onNewChat={handleNewChat}
+            onDelete={handleDelete}
+            account={
+              config.accounts.enabled &&
+              accounts !== undefined &&
+              accountsStage === "authed"
+                ? {
+                    email: accountsSnapshot.user.email,
+                    role: accountsSnapshot.user.role,
+                    onLogout: handleLogout,
                   }
-                  disabled={agentRows.length === 0}
-                  aria-expanded={agentsOpen}
-                  onClick={() => {
-                    setAgentsOpen((open) => !open);
-                    setSourcesOpen(false);
-                  }}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
-                    <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
-                  </svg>
-                  Агенты
-                  {agentRows.length === 0 ? null : ` (${agentRows.length})`}
-                </button>
-                {config.sources.enabled && config.sources.display.sidebar ? (
+                : undefined
+            }
+          />
+        ) : null}
+        <div className="dsh-qa-body">
+          {state.viewingSubagent !== null && !config.ui.showHeader ? (
+            <div className="dsh-qa-agentview" role="status">
+              <RobotBadge />
+              <span>Просмотр субагента</span>
+              <button
+                type="button"
+                onClick={() => void controller?.closeSubagent()}
+              >
+                ← В чат
+              </button>
+            </div>
+          ) : null}
+          {config.ui.showHeader ? (
+            <header className="dsh-qa-header">
+              <div className="dsh-qa-header__inner">
+                <div className="dsh-qa-header__title-row">
+                  {config.branding.logoUrl === null ? null : (
+                    <img
+                      className="dsh-qa-header__logo"
+                      src={config.branding.logoUrl}
+                      alt=""
+                    />
+                  )}
+                  {conversationTitle === null ? null : (
+                    <h1 title={conversationTitle}>{conversationTitle}</h1>
+                  )}
+                  {state.viewingSubagent !== null ? (
+                    <span className="dsh-qa-header__viewing">
+                      <RobotBadge />
+                      Просмотр субагента
+                      <button
+                        type="button"
+                        className="dsh-qa-header__back"
+                        onClick={() => void controller?.closeSubagent()}
+                      >
+                        ← В чат
+                      </button>
+                    </span>
+                  ) : (
+                    <span className="dsh-qa-header__mode">
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="3.25" r="1.5" />
+                        <circle cx="4" cy="11.75" r="1.5" />
+                        <circle cx="12" cy="11.75" r="1.5" />
+                        <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
+                      </svg>
+                      {modeLabel(config.session.agentPreset)}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className={
-                      config.ui.showReset &&
-                      config.session.policy !== "fixed" &&
-                      (!config.lockdown.enabled ||
-                        config.lockdown.allowSessionReset)
-                        ? "dsh-qa-header__sources"
-                        : "dsh-qa-header__sources dsh-qa-header__sources--end"
+                      config.sources.enabled && config.sources.display.sidebar
+                        ? "dsh-qa-header__agents"
+                        : "dsh-qa-header__agents dsh-qa-header__agents--end"
                     }
-                    disabled={
-                      state.sources.length === 0 && state.sourcesComplete
-                    }
-                    aria-expanded={sourcesOpen}
+                    disabled={agentRows.length === 0}
+                    aria-expanded={agentsOpen}
                     onClick={() => {
-                      setSourcesOpen((open) => !open);
-                      setDrawerSources(null);
-                      setDrawerCompleteness(null);
-                      setAgentsOpen(false);
+                      setAgentsOpen((open) => !open);
+                      setSourcesOpen(false);
                     }}
                   >
                     <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="8" cy="8" r="5.75" />
-                      <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
+                      <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
+                      <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
                     </svg>
-                    Источники
-                    {state.sources.length === 0 && state.sourcesComplete
-                      ? null
-                      : ` (${state.sources.length})`}
+                    Агенты
+                    {agentRows.length === 0 ? null : ` (${agentRows.length})`}
                   </button>
-                ) : null}
-                {config.ui.showReset &&
-                config.session.policy !== "fixed" &&
-                (!config.lockdown.enabled ||
-                  config.lockdown.allowSessionReset) ? (
-                  <button
-                    type="button"
-                    className="dsh-qa-header__reset"
-                    disabled={
-                      controller === undefined || state.phase === "creating"
-                    }
-                    onClick={() => void controller?.startDraft()}
-                  >
-                    Новый чат
-                  </button>
-                ) : null}
-              </div>
-              <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
-                <span aria-current="page">Чат</span>
-              </div>
-            </div>
-          </header>
-        ) : null}
-
-        <div
-          ref={chat}
-          className="dsh-qa-chat"
-          style={
-            {
-              "--dsh-qa-content-width": `${config.ui.maxContentWidth}px`,
-            } as CSSProperties
-          }
-        >
-          <div
-            ref={transcript}
-            className="dsh-qa-transcript"
-            onScroll={(event) => {
-              const element = event.currentTarget;
-              nearBottom.current =
-                element.scrollHeight -
-                  element.scrollTop -
-                  element.clientHeight <
-                96;
-              scheduleActiveTurnSync();
-            }}
-          >
-            {empty ? null : (
-              <QaTurnRail
-                items={railItems}
-                activeTurn={activeTurn}
-                busyTurn={busyTurn}
-                scrollerRef={transcript}
-                onNavigate={handleTurnNavigate}
-              />
-            )}
-            <div className="dsh-qa-transcript__inner">
-              {empty ? (
-                <section
-                  className="dsh-qa-welcome"
-                  aria-labelledby="dsh-qa-welcome-title"
-                >
-                  <h2 id="dsh-qa-welcome-title">
-                    {config.branding.welcomeMessage}
-                  </h2>
-                  {config.branding.subtitle === "" ? null : (
-                    <p>{config.branding.subtitle}</p>
-                  )}
-                </section>
-              ) : (
-                visibleMessages.map((message, index) => {
-                  const group =
-                    message.role === "user"
-                      ? view.groupByPromptId.get(message.id)
-                      : undefined;
-                  const isLast = index === visibleMessages.length - 1;
-                  return (
-                    <div
-                      key={message.id}
-                      className="dsh-qa-message-slot"
-                      data-dsh-qa-turn-anchor={
-                        message.role === "user" ? message.id : undefined
-                      }
-                    >
-                      <QaMessage
-                        message={message}
-                        renderMarkdown={config.ui.renderMarkdown}
-                        showTimestamp={config.ui.showTimestamps}
-                        stateKey={messageStateKey}
-                        resolveImage={resolveImage}
-                        onRegenerate={
-                          isLast &&
-                          message.role === "assistant" &&
-                          message.status === "committed" &&
-                          controller !== undefined
-                            ? handleRegenerate
-                            : undefined
-                        }
-                        onOpenSources={
-                          config.sources.enabled &&
-                          config.sources.display.footer
-                            ? handleOpenSources
-                            : undefined
-                        }
-                        onSourceDetail={
-                          config.sources.enabled
-                            ? handleSourceDetail
-                            : undefined
-                        }
-                      />
-                      {group !== undefined && group.turns.length > 1 ? (
-                        <VariantSwitcher
-                          count={group.turns.length}
-                          offset={variantOffsets[group.groupId] ?? 0}
-                          onStep={(step) =>
-                            setVariantOffsets((offsets) => ({
-                              ...offsets,
-                              [group.groupId]: step,
-                            }))
-                          }
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })
-              )}
-              {state.error === null ? null : (
-                <div className="dsh-qa-error" role="alert">
-                  <span>{state.error}</span>
-                  {state.phase === "error" ? (
+                  {config.sources.enabled && config.sources.display.sidebar ? (
                     <button
                       type="button"
-                      onClick={() => void controller?.ensureSession()}
+                      className={
+                        config.ui.showReset &&
+                        config.session.policy !== "fixed" &&
+                        (!config.lockdown.enabled ||
+                          config.lockdown.allowSessionReset)
+                          ? "dsh-qa-header__sources"
+                          : "dsh-qa-header__sources dsh-qa-header__sources--end"
+                      }
+                      disabled={
+                        state.sources.length === 0 && state.sourcesComplete
+                      }
+                      aria-expanded={sourcesOpen}
+                      onClick={() => {
+                        setSourcesOpen((open) => !open);
+                        setDrawerSources(null);
+                        setDrawerCompleteness(null);
+                        setAgentsOpen(false);
+                      }}
                     >
-                      Повторить
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="5.75" />
+                        <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
+                      </svg>
+                      Источники
+                      {state.sources.length === 0 && state.sourcesComplete
+                        ? null
+                        : ` (${state.sources.length})`}
+                    </button>
+                  ) : null}
+                  {config.ui.showReset &&
+                  config.session.policy !== "fixed" &&
+                  (!config.lockdown.enabled ||
+                    config.lockdown.allowSessionReset) ? (
+                    <button
+                      type="button"
+                      className="dsh-qa-header__reset"
+                      disabled={
+                        controller === undefined || state.phase === "creating"
+                      }
+                      onClick={() => void controller?.startDraft()}
+                    >
+                      Новый чат
                     </button>
                   ) : null}
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
+                  <span aria-current="page">Чат</span>
+                </div>
+              </div>
+            </header>
+          ) : null}
 
-          <footer className="dsh-qa-footer">
-            <div className="dsh-qa-footer__inner">
-              <QaComposer
-                placeholder={config.branding.placeholder}
-                quickQuestions={
-                  empty ? config.suggestedQuestions : NO_QUESTIONS
-                }
-                canSend={state.canSend}
-                canStop={state.canStop}
-                running={state.phase === "running"}
-                showStop={config.ui.showStop}
-                status={status}
-                images={pendingImages}
-                onImagesChange={setPendingImages}
-                onSend={handleSend}
-                onStop={handleStop}
-              />
-              {config.branding.disclaimer === "" ? null : (
-                <p className="dsh-qa-footer__disclaimer">
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <circle cx="8" cy="8" r="5.75" />
-                    <path d="M8 7.25v3.5m0-5.25v.5" />
-                  </svg>
-                  {config.branding.disclaimer}
-                </p>
+          <div
+            ref={chat}
+            className="dsh-qa-chat"
+            style={
+              {
+                "--dsh-qa-content-width": `${config.ui.maxContentWidth}px`,
+              } as CSSProperties
+            }
+          >
+            <div
+              ref={transcript}
+              className="dsh-qa-transcript"
+              onScroll={(event) => {
+                const element = event.currentTarget;
+                nearBottom.current =
+                  element.scrollHeight -
+                    element.scrollTop -
+                    element.clientHeight <
+                  96;
+                scheduleActiveTurnSync();
+              }}
+            >
+              {empty ? null : (
+                <QaTurnRail
+                  items={railItems}
+                  activeTurn={activeTurn}
+                  busyTurn={busyTurn}
+                  scrollerRef={transcript}
+                  onNavigate={handleTurnNavigate}
+                />
               )}
+              <div className="dsh-qa-transcript__inner">
+                {empty ? (
+                  <section
+                    className="dsh-qa-welcome"
+                    aria-labelledby="dsh-qa-welcome-title"
+                  >
+                    <h2 id="dsh-qa-welcome-title">
+                      {config.branding.welcomeMessage}
+                    </h2>
+                    {config.branding.subtitle === "" ? null : (
+                      <p>{config.branding.subtitle}</p>
+                    )}
+                  </section>
+                ) : (
+                  visibleMessages.map((message, index) => {
+                    const group =
+                      message.role === "user"
+                        ? view.groupByPromptId.get(message.id)
+                        : undefined;
+                    const isLast = index === visibleMessages.length - 1;
+                    return (
+                      <div
+                        key={message.id}
+                        className="dsh-qa-message-slot"
+                        data-dsh-qa-turn-anchor={
+                          message.role === "user" ? message.id : undefined
+                        }
+                      >
+                        <QaMessage
+                          message={message}
+                          renderMarkdown={config.ui.renderMarkdown}
+                          showTimestamp={config.ui.showTimestamps}
+                          stateKey={messageStateKey}
+                          resolveImage={resolveImage}
+                          onRegenerate={
+                            isLast &&
+                            message.role === "assistant" &&
+                            message.status === "committed" &&
+                            controller !== undefined
+                              ? handleRegenerate
+                              : undefined
+                          }
+                          onOpenSources={
+                            config.sources.enabled &&
+                            config.sources.display.footer
+                              ? handleOpenSources
+                              : undefined
+                          }
+                          onSourceDetail={
+                            config.sources.enabled
+                              ? handleSourceDetail
+                              : undefined
+                          }
+                        />
+                        {group !== undefined && group.turns.length > 1 ? (
+                          <VariantSwitcher
+                            count={group.turns.length}
+                            offset={variantOffsets[group.groupId] ?? 0}
+                            onStep={(step) =>
+                              setVariantOffsets((offsets) => ({
+                                ...offsets,
+                                [group.groupId]: step,
+                              }))
+                            }
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })
+                )}
+                {state.error === null ? null : (
+                  <div className="dsh-qa-error" role="alert">
+                    <span>{state.error}</span>
+                    {state.phase === "error" ? (
+                      <button
+                        type="button"
+                        onClick={() => void controller?.ensureSession()}
+                      >
+                        Повторить
+                      </button>
+                    ) : null}
+                  </div>
+                )}
+              </div>
             </div>
-          </footer>
-          {!empty
-            ? (["left", "right"] as const).map((side) => (
-                <QaWidthHandle key={side} side={side} {...widthHandlers} />
-              ))
-            : null}
+
+            <footer className="dsh-qa-footer">
+              <div className="dsh-qa-footer__inner">
+                {/* Keyed by chat: the composer's draft text is chat-local, so a
+                  switch remounts it empty instead of carrying text across. */}
+                <QaComposer
+                  key={state.sessionId ?? "draft"}
+                  placeholder={config.branding.placeholder}
+                  quickQuestions={
+                    empty ? config.suggestedQuestions : NO_QUESTIONS
+                  }
+                  canSend={state.canSend}
+                  canStop={state.canStop}
+                  running={state.phase === "running"}
+                  showStop={config.ui.showStop}
+                  status={status}
+                  images={pendingImages}
+                  onImagesChange={setPendingImages}
+                  onSend={handleSend}
+                  onStop={handleStop}
+                />
+                {config.branding.disclaimer === "" ? null : (
+                  <p className="dsh-qa-footer__disclaimer">
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <circle cx="8" cy="8" r="5.75" />
+                      <path d="M8 7.25v3.5m0-5.25v.5" />
+                    </svg>
+                    {config.branding.disclaimer}
+                  </p>
+                )}
+              </div>
+            </footer>
+            {!empty
+              ? (["left", "right"] as const).map((side) => (
+                  <QaWidthHandle key={side} side={side} {...widthHandlers} />
+                ))
+              : null}
+          </div>
         </div>
-      </div>
-      {agentsOpen && agentRows.length > 0 ? (
-        <QaAgentsDrawer
-          agents={agentRows}
-          activeId={state.viewingSubagent?.id ?? null}
-          onView={(id, title) => void controller?.viewSubagent(id, title)}
-          onClose={() => setAgentsOpen(false)}
-        />
-      ) : null}
-      {sourcesOpen &&
-      ((drawerSources ?? state.sources).length > 0 ||
-        !(drawerCompleteness?.complete ?? state.sourcesComplete)) ? (
-        <QaSourcesDrawer
-          sources={drawerSources ?? state.sources}
-          complete={drawerCompleteness?.complete ?? state.sourcesComplete}
-          incompleteOrigins={
-            drawerCompleteness?.incompleteOrigins ??
-            state.incompleteSourceOrigins
-          }
-          sessionId={state.sessionId}
-          sourceApi={boundSourceApi}
-          display={config.sources.display}
-          filePreview={config.sources.filePreview}
-          initialDetail={drawerDetail}
-          onClose={() => {
-            setSourcesOpen(false);
-            setDrawerSources(null);
-            setDrawerCompleteness(null);
-            setDrawerDetail(null);
-          }}
-        />
-      ) : null}
-    </main>
+        {agentsOpen && agentRows.length > 0 ? (
+          <QaAgentsDrawer
+            agents={agentRows}
+            activeId={state.viewingSubagent?.id ?? null}
+            onView={(id, title) => void controller?.viewSubagent(id, title)}
+            onClose={() => setAgentsOpen(false)}
+          />
+        ) : null}
+        {sourcesOpen &&
+        ((drawerSources ?? state.sources).length > 0 ||
+          !(drawerCompleteness?.complete ?? state.sourcesComplete)) ? (
+          <QaSourcesDrawer
+            sources={drawerSources ?? state.sources}
+            complete={drawerCompleteness?.complete ?? state.sourcesComplete}
+            incompleteOrigins={
+              drawerCompleteness?.incompleteOrigins ??
+              state.incompleteSourceOrigins
+            }
+            sessionId={state.sessionId}
+            sourceApi={boundSourceApi}
+            display={config.sources.display}
+            filePreview={config.sources.filePreview}
+            initialDetail={drawerDetail}
+            onClose={() => {
+              setSourcesOpen(false);
+              setDrawerSources(null);
+              setDrawerCompleteness(null);
+              setDrawerDetail(null);
+            }}
+          />
+        ) : null}
+      </main>
+    </>
   );
 }

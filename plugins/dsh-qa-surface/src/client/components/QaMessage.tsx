@@ -386,7 +386,7 @@ export const QaMessage = memo(
               )
             }
           >
-            Источники · {message.sources.length}
+            Источники ({message.sources.length})
           </button>
         ) : null}
         {showActions ? (

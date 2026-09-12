@@ -123,7 +123,9 @@ redirects when the plugin is disabled or the flag is off.
 
 ## Admin ownership views
 
-For admins the sidebar switches from the flat list to per-owner sections:
+When `accounts.showOtherUsersChats: true`, the admin sidebar switches from the
+flat list to per-owner sections. The option defaults to false, so admins see
+only their own chats unless the deployment explicitly opts in.
 `accountsListOwnership` returns every ownership entry with the owner's
 display name resolved at read time (disabled accounts still name their
 chats), the controller merges those session ids into the visible list, and
@@ -147,6 +149,7 @@ accounts:
   enabled: false # opt-in; the qa-deploy profile patch turns it on
   allowRegistration: true # self-service signup in the gate
   sessionTtlDays: 30 # account token lifetime
+  showOtherUsersChats: false # opt-in cross-user admin view
 entry:
   redirectNonLoopback: true # the root → /qa script above
 ```

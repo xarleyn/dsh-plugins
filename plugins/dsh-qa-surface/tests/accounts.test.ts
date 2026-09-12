@@ -170,6 +170,36 @@ describe("QA accounts store", () => {
     expect(existsSync(`${filePath}.tmp`)).toBe(false);
   });
 
+  it("sees another process's file changes instead of overwriting them", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
+    const filePath = path.join(dir, "qa-accounts.json");
+    const host = new QaAccounts(filePath, {
+      sessionTtlDays: 30,
+      allowRegistration: true,
+    });
+    const session = host.register("op@example.com", "password-1");
+    expect(host.whoami(session.token)).toMatchObject({ authenticated: true });
+
+    // The CLI is a separate process with its own store instance.
+    const cli = new QaAccounts(filePath, {
+      sessionTtlDays: 30,
+      allowRegistration: false,
+    });
+    cli.setUserDisabled("op@example.com", true);
+
+    // The running Host must see the revocation on its next account check...
+    expect(host.whoami(session.token)).toEqual({ authenticated: false });
+    // ...and a later Host write must not resurrect the disabled account.
+    host.register("second@example.com", "password-2");
+    const reopened = new QaAccounts(filePath, {
+      sessionTtlDays: 30,
+      allowRegistration: false,
+    });
+    expect(reasonOf(() => reopened.login("op@example.com", "password-1"))).toBe(
+      "account-disabled",
+    );
+  });
+
   it("claims unowned sessions first-come and reports foreign conflicts", () => {
     const accounts = store();
     const a = accounts.register("a@b.co", "password-1");

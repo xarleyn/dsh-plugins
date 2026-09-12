@@ -114,10 +114,41 @@ describe("QA sidebar", () => {
     const items = document.querySelectorAll(".dsh-qa-sidebar__item");
     expect(items.length).toBe(1);
     expect(items[0]?.textContent).toContain("How do I reset the cache?");
+    fireEvent.click(screen.getByRole("button", { name: "Очистить поиск" }));
+    expect(search.value).toBe("");
+    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
     fireEvent.change(search, { target: { value: "нет такого" } });
     expect(screen.getByText("Ничего не найдено")).toBeTruthy();
     fireEvent.change(search, { target: { value: "  " } });
     expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+  });
+
+  it("matches owner names in the admin search", () => {
+    const rows = buildChatRows(
+      ["s-2", "s-1"],
+      byId,
+      null,
+      (id) => (id === "s-1" ? "Аня" : "Борис"),
+      90_000,
+    );
+    render(
+      <QaSidebar
+        rows={rows}
+        groupByOwner
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Поиск по чатам"), {
+      target: { value: "аня" },
+    });
+    expect(document.querySelectorAll(".dsh-qa-sidebar__item")).toHaveLength(1);
+    expect(screen.getByText("Аня (1)")).toBeTruthy();
   });
 
   it("orders owner sections by freshness with unclaimed chats last", () => {
