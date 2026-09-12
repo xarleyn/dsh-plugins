@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-prompt-firewall",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Prompt hygiene, observability, and policy middleware for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -84,7 +84,7 @@
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
@@ -100,7 +100,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",

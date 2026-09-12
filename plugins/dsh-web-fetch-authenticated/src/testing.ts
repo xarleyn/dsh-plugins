@@ -22,6 +22,7 @@ import { AddressPolicyDeniedError, resolveApprovedAddresses } from './policy/dns
 import type { CredentialResolver } from './credentials/resolver.js'
 import { authenticatedFetch } from './transport/fetch.js'
 import type { FetchMetrics } from './transport/fetch.js'
+import { applyAdapter } from './adapters/index.js'
 import { primaryCredentialRef, requiredCredentialRefs } from './auth/index.js'
 import { sanitizePreview } from './audit/redact.js'
 import * as errors from './errors.js'
@@ -158,8 +159,7 @@ export async function testRule(deps: TesterDeps, ruleId: string, requestedUrl?: 
   }
 
   try {
-    const result = await authenticatedFetch({
-      url,
+    const adapterContext = {
       rule,
       rules: config.rules,
       globals: { maxUrlLength: DEFAULT_MAX_URL_LENGTH, userAgent: testerUserAgent() },
@@ -175,10 +175,11 @@ export async function testRule(deps: TesterDeps, ruleId: string, requestedUrl?: 
         if (auth.type === 'basic') return { password: value }
         return { credential: value }
       },
-      onMetrics: update => {
-        Object.assign(metrics, update)
-      },
-    })
+    }
+    // Same adapter seam as the live provider: Test shows the normalized text.
+    const result = await (await applyAdapter(url, adapterContext)) ?? await authenticatedFetch({ url, ...adapterContext, onMetrics: update => {
+      Object.assign(metrics, update)
+    } })
     return {
       ...base,
       ok: true,
@@ -194,6 +195,7 @@ export async function testRule(deps: TesterDeps, ruleId: string, requestedUrl?: 
       redirectCount: metrics.redirectCount ?? 0,
       authApplied: rule.source.auth.type !== 'none',
       ...credentialStateFields(credentialStateView),
+      ...(rule.adapter.type === 'none' ? {} : { adapter: rule.adapter.type }),
       outcome: 'ok',
       preview: sanitizePreview(result.body.content, PREVIEW_CHARS),
       truncated: result.truncated,

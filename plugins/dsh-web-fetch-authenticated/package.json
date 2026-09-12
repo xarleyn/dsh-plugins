@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-web-fetch-authenticated",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web)",
   "repository": {
     "type": "git",
@@ -48,7 +48,6 @@
       "inject": [
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
@@ -62,6 +61,7 @@
     "lib/client.js",
     "cordis.patch.yml",
     "compatibility.json",
+    "docs/**/*.md",
     "README.md",
     "LICENSE"
   ],
@@ -85,7 +85,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-client-connection": "catalog:dsh",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
@@ -103,7 +103,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-connection": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",

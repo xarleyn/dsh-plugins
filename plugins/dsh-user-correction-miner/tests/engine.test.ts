@@ -1,5 +1,6 @@
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { SessionLogSnapshot, SessionRecord } from "@deepseek-ai/dsh-session-query";
+import { SessionLogOffset } from "@deepseek-ai/dsh-session";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/config.js";
 import { MemoryCorrectionStore } from "../src/dsh/storage.js";
@@ -15,7 +16,11 @@ const logger: MinerLogger = {
 
 function liveSession(id: string, events: SessionEvent[] = []): Session {
   const sessionHeader = header(id);
-  return { id, header: sessionHeader, events } as unknown as Session;
+  return {
+    id,
+    header: sessionHeader,
+    snapshotEvents: () => events,
+  } as unknown as Session;
 }
 
 function turnEnd(seq: number): SessionEvent {
@@ -61,6 +66,7 @@ describe("CorrectionMinerEngine", () => {
     const sessionHeader = header();
     const snapshot = {
       session: sessionHeader,
+      inheritedEventCount: SessionLogOffset(0),
       events: [
         userEvent(0, "Начни"),
         userEvent(1, "Используй token=super-secret-value и pnpm, не npm."),
@@ -108,6 +114,7 @@ describe("CorrectionMinerEngine", () => {
         if (sessionId === "broken") throw new Error("corrupt");
         return {
           session: secondHeader,
+          inheritedEventCount: SessionLogOffset(0),
           events: [userEvent(0, "Не запускай deploy.")],
         } as SessionLogSnapshot;
       },

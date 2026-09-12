@@ -1,9 +1,48 @@
 import { describe, expect, it } from "vitest";
+import { ConfigSchema } from "../src/config.js";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   normalizeRoutePath,
   resolveConfig,
 } from "../src/resolve-config.js";
+import type { QaSurfaceConfig } from "../src/types.js";
+
+/** Parse through the Host's config path: schema first, resolver second. */
+function schemaParse(input: unknown): QaSurfaceConfig {
+  const result = ConfigSchema["~standard"].validate(input);
+  if ("issues" in result && result.issues !== undefined) {
+    throw new Error(`schema rejected ${JSON.stringify(input)}`);
+  }
+  return (result as { value: QaSurfaceConfig }).value;
+}
+
+describe("ConfigSchema defaults", () => {
+  // The host materializes schema defaults before resolveConfig sees the
+  // config, so a schema-only default would reach the resolver as an explicit
+  // value; these tests pin the schema against the canonical defaults.
+  it("resolves schema-materialized defaults to the canonical config", () => {
+    for (const input of [undefined, {}]) {
+      expect(resolveConfig(schemaParse(input))).toEqual(
+        DEFAULT_QA_SURFACE_CONFIG,
+      );
+    }
+  });
+
+  it("keeps ui.showReset off until lockdown authorizes it", () => {
+    expect(resolveConfig(schemaParse(undefined)).ui.showReset).toBe(false);
+    expect(() => resolveConfig({ ui: { showReset: true } })).toThrow(
+      /allowSessionReset/u,
+    );
+    expect(
+      resolveConfig(
+        schemaParse({
+          ui: { showReset: true },
+          lockdown: { allowSessionReset: true },
+        }),
+      ).ui.showReset,
+    ).toBe(true);
+  });
+});
 
 describe("qa surface config", () => {
   it("materializes safe defaults", () => {
@@ -24,7 +63,34 @@ describe("qa surface config", () => {
         allowSessionReset: false,
         toolPolicy: { mode: "allow-list", allow: [] },
       },
+      sources: {
+        enabled: true,
+        collect: { parentAgent: true, subagents: true, persistTurnEvent: true },
+        display: { sidebar: true, footer: true, showDiscovered: false },
+        filePreview: {
+          enabled: true,
+          markdownRenderedByDefault: true,
+          allowRawToggle: true,
+          maxBytes: 2_000_000,
+          maxMarkdownRenderBytes: 1_000_000,
+        },
+      },
     });
+  });
+
+  it("validates source display and preview limits", () => {
+    expect(() =>
+      resolveConfig({
+        sources: {
+          filePreview: { maxBytes: 2_000, maxMarkdownRenderBytes: 3_000 },
+        },
+      }),
+    ).toThrow(/cannot exceed/u);
+    expect(() =>
+      resolveConfig({
+        sources: { display: { maxInitiallyVisiblePerGroup: 0 } },
+      }),
+    ).toThrow(/maxInitiallyVisiblePerGroup/u);
   });
 
   it("normalizes trailing route slashes", () => {
@@ -92,6 +158,14 @@ describe("qa surface config", () => {
     ).toBe(true);
   });
 
+  it("hides other users' chats by default and allows admins to opt in", () => {
+    expect(resolveConfig().accounts.showOtherUsersChats).toBe(false);
+    expect(
+      resolveConfig({ accounts: { showOtherUsersChats: true } }).accounts
+        .showOtherUsersChats,
+    ).toBe(true);
+  });
+
   it("allows operators to opt into reasoning and tool activity", () => {
     expect(
       resolveConfig({
@@ -140,5 +214,71 @@ describe("qa surface config", () => {
         lockdown: { [field]: value },
       } as never),
     ).toThrow(new RegExp(field, "u"));
+  });
+
+  it("keeps accounts off and registration open by default", () => {
+    expect(resolveConfig().accounts).toEqual({
+      enabled: false,
+      allowRegistration: true,
+      sessionTtlDays: 30,
+      showOtherUsersChats: false,
+      perUserWorkspace: false,
+    });
+    expect(resolveConfig().entry).toEqual({
+      redirectNonLoopback: true,
+      cookieBootstrap: true,
+    });
+  });
+
+  it("validates the account token lifetime", () => {
+    expect(() => resolveConfig({ accounts: { sessionTtlDays: 0 } })).toThrow(
+      /sessionTtlDays/u,
+    );
+    expect(() => resolveConfig({ accounts: { sessionTtlDays: 366 } })).toThrow(
+      /sessionTtlDays/u,
+    );
+    expect(resolveConfig({ accounts: { sessionTtlDays: 7 } }).accounts).toEqual(
+      {
+        enabled: false,
+        allowRegistration: true,
+        sessionTtlDays: 7,
+        showOtherUsersChats: false,
+        perUserWorkspace: false,
+      },
+    );
+  });
+
+  it("requires the complete per-user writable workspace boundary", () => {
+    const valid = resolveConfig({
+      session: { workspaceId: "workspace-1" },
+      accounts: { enabled: true, perUserWorkspace: true },
+      lockdown: {
+        sandboxMode: "workspace-write",
+        permissionPreset: "qa-workspace-write",
+      },
+    });
+    expect(valid.accounts.perUserWorkspace).toBe(true);
+    expect(valid.lockdown.sandboxMode).toBe("workspace-write");
+
+    expect(() =>
+      resolveConfig({
+        accounts: { enabled: true, perUserWorkspace: true },
+        lockdown: { sandboxMode: "workspace-write" },
+      }),
+    ).toThrow(/workspaceId/u);
+    expect(() =>
+      resolveConfig({ lockdown: { sandboxMode: "workspace-write" } }),
+    ).toThrow(/perUserWorkspace/u);
+    expect(() =>
+      resolveConfig({
+        session: {
+          workspaceId: "workspace-1",
+          policy: "fixed",
+          fixedSessionId: "fixed",
+        },
+        accounts: { enabled: true, perUserWorkspace: true },
+        lockdown: { sandboxMode: "workspace-write" },
+      }),
+    ).toThrow(/fixed sessions/u);
   });
 });

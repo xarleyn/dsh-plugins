@@ -92,7 +92,7 @@ override layers or profile patches). All fields are optional.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (host-service plugin; no client UI).
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (host-service plugin; no client UI).
 - Node.js `^22.19.0 || >=24.0.0`.
 - See [compatibility.json](./compatibility.json) for the machine-readable
   contract.

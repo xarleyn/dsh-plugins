@@ -118,7 +118,7 @@ entirely.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (channel `next`), extension points:
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (channel `next`), extension points:
   `agent/pre-step`, `llm/stream`, `tools/pre-execute`, `tools/post-execute`.
 - Node.js `^22.19.0 || >=24.0.0`.
 - See [compatibility.json](./compatibility.json) for the machine-readable

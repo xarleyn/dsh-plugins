@@ -136,7 +136,7 @@ When the DSH settings provider is mounted, configuration is registered under `pr
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 
 ## Development

@@ -1,5 +1,5 @@
 import { Service, type Context } from "@deepseek-ai/cordis";
-import type { SessionId } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionId } from "@deepseek-ai/dsh-session/types";
 import type { UpdateDraftRequest } from "../shared/types.js";
 import type { DraftSession } from "../shared/types.js";
 

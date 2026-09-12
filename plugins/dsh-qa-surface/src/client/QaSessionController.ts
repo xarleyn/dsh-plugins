@@ -1,9 +1,9 @@
 import type {
-  HostDescriptionSource,
+  ConnectionGenerationState,
   SessionId,
-  WorkspaceId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SessionFace } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -18,35 +18,57 @@ import type {
   QaSubagentView,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
-import {
-  QaPolicyAttestationError,
-  attestationHint,
-  attestationReasonOf,
-  proofMatchesConfig,
-} from "./attestation.js";
+import { QaPolicyAttestationError } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
+import { SessionAssetRepository } from "./session-assets.js";
+import { createQaSession } from "./create-session.js";
+import { attestQaPolicy } from "./session-admission.js";
+import { QaHostSourceBridge } from "./session-sources.js";
 import type {
+  QaConversation,
+  QaCreateSession,
   QaPromptContent,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaSourceApi,
   StorageLike,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { waitFor } from "./wait-for.js";
-import { projectSources } from "./QaTranscriptAdapter.js";
-import {
-  projectTranscript,
-  QA_REGENERATE_MARKER,
-} from "./QaTranscriptAdapter.js";
+import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
+import { projectBoundSessionState } from "./project-session-state.js";
+import { projectTurnSources } from "./turn-sources.js";
+
+export interface QaAccountsFacade {
+  /** The account bearer token, or null while anonymous. */
+  readonly token: () => string | null;
+  /** Server-owned chat ids; the list authority while accounts are on. */
+  readonly ownedIds: () => readonly string[];
+  /**
+   * The chat owner's display name for author labels; admins see it on
+   * foreign chats only, everyone else gets undefined.
+   */
+  readonly messageAuthorOf: (sessionId: string) => string | undefined;
+  /** Called after a new chat binds, so ownership stays current. */
+  readonly onSessionCreated: (sessionId: string) => void;
+  /** Called when the Host refuses with auth-required (expired/rotated). */
+  readonly onAuthRequired: () => void;
+}
 
 export interface QaSessionControllerOptions {
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
-  readonly connection: HostDescriptionSource;
+  readonly createSession: QaCreateSession;
+  /** Conversation assembly feeding the transcript projection. */
+  readonly conversation: QaConversation;
+  readonly connection: ConnectionGenerationState;
   readonly config: ResolvedQaSurfaceConfig;
   readonly secureSession: QaSecureSession;
+  readonly sourceApi?: QaSourceApi;
   readonly storage?: StorageLike;
+  /** Present while the deployment gates QA users with accounts. */
+  readonly accounts?: QaAccountsFacade;
   readonly timeoutMs?: number;
   /**
    * Minimum spacing between projections of a running turn's stream frames.
@@ -67,16 +89,23 @@ const CONFIGURATION_ERROR = "Настройки помощника недост�
 export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
-  private readonly api: QaSessionsApi;
-  private readonly connection: HostDescriptionSource;
+  private readonly createSessionRemote: QaCreateSession;
+  private readonly conversation: QaConversation;
+  private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
   private readonly secureSessionRemote: QaSecureSession;
+  private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
+  private readonly accounts: QaAccountsFacade | undefined;
+  /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
+  private readonly assets = new SessionAssetRepository();
   private readonly timeoutMs: number;
   private readonly streamIntervalMs: number;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
+  private conversationBinding: ConversationBinding | undefined;
   private unsubscribeSession: (() => void) | undefined;
+  private unsubscribeChat: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
   private materializing: Promise<boolean> | undefined;
@@ -92,16 +121,33 @@ export class QaSessionController {
   private disposed = false;
   private generation = 0;
   private chatsRevision = 0;
+  /** Host-side provenance of the bound chat, merged into the projection. */
+  private readonly hostSources: QaHostSourceBridge;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
-    this.api = options.api;
+    this.createSessionRemote = options.createSession;
+    this.conversation = options.conversation;
     this.connection = options.connection;
     this.config = options.config;
     this.secureSessionRemote = options.secureSession;
+    this.sourceApi =
+      options.sourceApi ??
+      ({
+        sources: async () => ({ ok: true as const, value: [] }),
+        readSourceFile: async () => ({
+          ok: false as const,
+          error: "unavailable",
+        }),
+      } satisfies QaSourceApi);
     this.chats = new QaChatIndex(
       options.storage,
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
+    );
+    this.accounts = options.accounts;
+    this.hostSources = new QaHostSourceBridge(
+      this.sourceApi,
+      () => this.accounts?.token() ?? "",
     );
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamIntervalMs = options.streamIntervalMs ?? 66;
@@ -151,10 +197,27 @@ export class QaSessionController {
       }
     }
     this.operationError = null;
-    let attested = await this.attestPolicy();
-    if (!attested) {
-      attested = await this.recoverForSend();
-      if (!attested) return false;
+    const step = await this.attestPolicy();
+    if (step.kind === "stale") {
+      // The user moved to another chat while the proof was pending; that
+      // binding attests through its own flow and must not receive a prompt
+      // meant for the old one.
+      return false;
+    }
+    let attestedId = step.kind === "ok" ? step.sessionId : null;
+    if (attestedId === null) {
+      attestedId = await this.recoverForSend();
+      if (attestedId === null) return false;
+    }
+    // Nothing can interleave between the last await and here, so matching the
+    // attested id proves the prompt rides exactly the session it proved.
+    const target = this.session;
+    if (
+      this.disposed ||
+      target === undefined ||
+      String(target.sessionId) !== attestedId
+    ) {
+      return false;
     }
     this.admissionPending = true;
     this.publish();
@@ -168,7 +231,8 @@ export class QaSessionController {
           name: image.name,
         })),
       ];
-      const result = await this.session.prompt(content, "queue");
+      const result = await target.prompt(content, "queue");
+      if (this.session !== target) return false;
       if (!result.ok) {
         this.admissionPending = false;
         this.operationError = "Не удалось отправить сообщение.";
@@ -180,8 +244,10 @@ export class QaSessionController {
     } catch (error) {
       this.admissionPending = false;
       console.error("dsh-qa-surface: prompt failed", error);
-      this.operationError = "Не удалось отправить сообщение.";
-      this.publish();
+      if (this.session === target) {
+        this.operationError = "Не удалось отправить сообщение.";
+        this.publish();
+      }
       return false;
     }
   }
@@ -198,12 +264,15 @@ export class QaSessionController {
   }
 
   async stop(): Promise<void> {
-    if (this.session === undefined || !this.state.canStop) return;
+    const target = this.session;
+    if (target === undefined || !this.state.canStop) return;
     try {
-      const result = await this.session.cancel();
+      const result = await target.cancel();
+      if (this.session !== target) return;
       if (!result.ok) this.operationError = "Не удалось остановить ответ.";
     } catch (error) {
       console.error("dsh-qa-surface: stop failed", error);
+      if (this.session !== target) return;
       this.operationError = "Не удалось остановить ответ.";
     }
     this.publish();
@@ -254,7 +323,10 @@ export class QaSessionController {
     const attempt = (async () => {
       try {
         await this.waitForConnection();
-        const id = await this.createSession();
+        const id = await createQaSession({
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
+        });
         if (this.disposed || operation !== this.generation) return false;
         await this.bind(id);
         if (this.disposed || operation !== this.generation) return false;
@@ -264,6 +336,7 @@ export class QaSessionController {
         }
         return true;
       } catch (error) {
+        if (this.disposed || operation !== this.generation) return false;
         this.fail(
           this.operationError === CONFIGURATION_ERROR
             ? this.operationError
@@ -323,6 +396,8 @@ export class QaSessionController {
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
+      // A newer operation superseded this switch: its own outcome governs.
+      if (this.disposed || operation !== this.generation) return;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
@@ -365,6 +440,8 @@ export class QaSessionController {
       await this.waitForConnection();
       await this.bind(id, { attest: false, track: false, report: false });
     } catch (error) {
+      // A newer operation superseded this view request: leave its state alone.
+      if (this.disposed || operation !== this.generation) return;
       this.viewingSubagent = null;
       this.fail("Не удалось открыть транскрипт субагента.", error);
     }
@@ -378,9 +455,13 @@ export class QaSessionController {
     await this.switchTo(chat);
   }
 
-  /** This browser's indexed chat ids, most recently used first. */
+  /** This browser's chat ids: the owned list when accounts are on, else the
+   * local index. Both intersect the host session list at projection time. */
   chatIds(): readonly string[] {
-    return this.chats.chatIds();
+    const owned = this.accounts?.ownedIds() ?? [];
+    if (owned.length === 0) return this.chats.chatIds();
+    const local = this.chats.chatIds();
+    return [...new Set([...owned, ...local])];
   }
 
   /** The bound session id, or null while no chat is bound. */
@@ -390,11 +471,22 @@ export class QaSessionController {
 
   /**
    * Resolve one durable image attachment of the bound session into a
-   * browser-usable URL. The caller caches; failures surface as broken views.
+   * browser-usable URL. Resolutions are cached per chat in the asset
+   * repository (attachment ids repeat across chats) and revoked when the chat
+   * is unbound; failures surface as broken views and retry on demand.
    */
   async readImage(attachmentId: string): Promise<string> {
     if (this.session === undefined) throw new Error("no bound session");
-    const result = await this.session.readAttachment(
+    const sessionId = String(this.session.sessionId);
+    return this.assets.resolve(sessionId, attachmentId, (id) =>
+      this.readAttachmentUrl(id),
+    );
+  }
+
+  private async readAttachmentUrl(attachmentId: string): Promise<string> {
+    const session = this.session;
+    if (session === undefined) throw new Error("no bound session");
+    const result = await session.readAttachment(
       attachmentId as Parameters<SessionFace["readAttachment"]>[0],
     );
     if (!result.ok) {
@@ -446,6 +538,7 @@ export class QaSessionController {
     this.clearStreamFlush();
     this.unsubscribeConnection();
     this.unbind();
+    this.assets.dispose();
     this.listeners.clear();
   }
 
@@ -482,7 +575,10 @@ export class QaSessionController {
         }
       }
       if (id === null) {
-        id = await this.createSession();
+        id = await createQaSession({
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
+        });
       }
       if (this.disposed || operation !== this.generation) return;
       // A restored id's first bind stays quiet: the recovery path below may
@@ -491,6 +587,9 @@ export class QaSessionController {
       try {
         await this.bind(id, { report: !restored });
       } catch (error) {
+        // A stale restore must not start its recovery ladder against a newer
+        // operation; rethrow for the generation-guarded outer catch.
+        if (this.disposed || operation !== this.generation) throw error;
         if (
           !restored ||
           this.config.session.policy !== "browser-persistent" ||
@@ -505,7 +604,10 @@ export class QaSessionController {
         this.unbind();
         this.operationError = null;
         this.chats.clearActive();
-        id = await this.createSession();
+        id = await createQaSession({
+          createSession: this.createSessionRemote,
+          token: this.accounts?.token() ?? "",
+        });
         if (this.disposed || operation !== this.generation) return;
         await this.bind(id);
       }
@@ -514,6 +616,8 @@ export class QaSessionController {
         this.chats.saveActive(id);
       }
     } catch (error) {
+      // A newer operation superseded this bootstrap: its own outcome governs.
+      if (this.disposed || operation !== this.generation) return;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
@@ -530,9 +634,10 @@ export class QaSessionController {
    * re-opening re-materializes it. Step 2 — when that refused session is
    * still blank (it never received the prompt, so there is nothing to lose) —
    * starts a fresh attested session instead. A session with history is left
-   * alone: recreating it would silently drop the conversation.
+   * alone: recreating it would silently drop the conversation. Returns the
+   * attested session id, or null when nothing was attested.
    */
-  private async recoverForSend(): Promise<boolean> {
+  private async recoverForSend(): Promise<string | null> {
     const id =
       this.session === undefined ? null : String(this.session.sessionId);
     if (
@@ -540,7 +645,7 @@ export class QaSessionController {
       this.disposed ||
       this.config.session.policy === "fixed"
     ) {
-      return false;
+      return null;
     }
     const operation = ++this.generation;
     this.unbind();
@@ -552,72 +657,37 @@ export class QaSessionController {
       await this.waitForConnection();
       try {
         await this.bind(id);
-        if (this.disposed || operation !== this.generation) return false;
-        if (this.policyReady) return true;
+        if (this.disposed || operation !== this.generation) return null;
+        if (this.policyReady) return id;
       } catch (error) {
         if (!(error instanceof QaPolicyAttestationError)) throw error;
-        if (this.disposed || operation !== this.generation) return false;
+        if (this.disposed || operation !== this.generation) return null;
       }
       if (this.session !== undefined && !this.session.getSnapshot().blank) {
         this.fail(CONFIGURATION_ERROR, new QaPolicyAttestationError());
-        return false;
+        return null;
       }
       this.unbind();
       this.chats.clearActive();
-      const created = await this.createSession();
-      if (this.disposed || operation !== this.generation) return false;
+      const created = await createQaSession({
+        createSession: this.createSessionRemote,
+        token: this.accounts?.token() ?? "",
+      });
+      if (this.disposed || operation !== this.generation) return null;
       await this.bind(created);
-      if (this.disposed || operation !== this.generation) return false;
+      if (this.disposed || operation !== this.generation) return null;
       this.chats.saveActive(created);
-      return this.policyReady;
+      return this.policyReady ? created : null;
     } catch (error) {
+      if (this.disposed || operation !== this.generation) return null;
       this.fail(
         this.operationError === CONFIGURATION_ERROR
           ? this.operationError
           : "Не удалось открыть этот чат.",
         error,
       );
-      return false;
+      return null;
     }
-  }
-
-  private async createSession(): Promise<string> {
-    const created = await this.sessions.create({
-      ...(this.config.session.workspaceId !== null
-        ? { workspaceId: this.config.session.workspaceId as WorkspaceId }
-        : this.config.session.cwd !== null
-          ? { cwd: this.config.session.cwd }
-          : {}),
-    });
-    const id = String(created);
-    if (this.config.session.agentPreset !== null) {
-      const selectedPreset = await this.api.selectAgentPreset({
-        sessionId: id as SessionId,
-        agentPreset: this.config.session.agentPreset,
-      });
-      if (!selectedPreset.result.ok) {
-        throw new Error(selectedPreset.result.error.code);
-      }
-      this.sessions.noteAgentPreset(
-        id as SessionId,
-        this.config.session.agentPreset,
-      );
-    }
-    if (
-      this.config.session.provider !== null &&
-      this.config.session.model !== null
-    ) {
-      const selected = await this.api.selectModel({
-        sessionId: id as SessionId,
-        provider: this.config.session.provider,
-        model: this.config.session.model,
-        ...(this.config.session.reasoningEffort === null
-          ? {}
-          : { reasoningEffort: this.config.session.reasoningEffort }),
-      });
-      if (!selected.result.ok) throw new Error(selected.result.error.code);
-    }
-    return id;
   }
 
   private async bind(
@@ -639,12 +709,20 @@ export class QaSessionController {
       throw new Error("Session binding is unavailable.");
     this.unbind();
     this.session = binding.session;
+    this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
       this.operationError = null;
       this.publishSessionUpdate();
     });
+    // Subscribing the Chat target activates it, so the assembled transcript
+    // (nodes, partials, running calls) materializes for the projection.
+    this.unsubscribeChat = this.conversationBinding
+      .target("chat")
+      .subscribe(() => {
+        this.publishSessionUpdate();
+      });
     await waitFor(
       binding.session,
       (snapshot) =>
@@ -654,13 +732,15 @@ export class QaSessionController {
     if (binding.session.getSnapshot().openState !== "open") {
       throw new Error("Session binding could not be opened.");
     }
-    if (attest && !(await this.attestPolicy(report))) {
-      throw new QaPolicyAttestationError();
+    if (attest) {
+      const step = await this.attestPolicy(report);
+      if (step.kind !== "ok") throw new QaPolicyAttestationError();
     }
     if (track) {
       this.chatSessionId = String(this.session.sessionId);
       this.viewingSubagent = null;
       this.chats.addChat(String(this.session.sessionId));
+      this.accounts?.onSessionCreated(String(this.session.sessionId));
     }
     this.publish();
   }
@@ -669,7 +749,16 @@ export class QaSessionController {
     this.clearStreamFlush();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeChat?.();
+    this.unsubscribeChat = undefined;
+    this.conversationBinding = undefined;
+    if (this.session !== undefined) {
+      // Leaving the chat retires its attachment URLs; a later re-bind
+      // re-resolves them from the durable store.
+      this.assets.release(String(this.session.sessionId));
+    }
     this.session = undefined;
+    this.hostSources.reset();
     this.admissionPending = false;
     this.policyReady = false;
   }
@@ -745,40 +834,34 @@ export class QaSessionController {
       return;
     }
     const snapshot = this.session.getSnapshot();
-    const blocked = snapshot.pending.length > 0;
-    const error =
-      this.operationError ??
-      (blocked
-        ? "Для этого запроса нужно действие, недоступное в режиме помощника."
-        : snapshot.removed || snapshot.openState === "error"
-          ? "Этот чат больше недоступен."
-          : null);
-    const phase = !connected
-      ? "reconnecting"
-      : blocked
-        ? "blocked"
-        : snapshot.removed || snapshot.openState === "error"
-          ? "error"
-          : snapshot.openState !== "open"
-            ? "creating"
-            : snapshot.running || this.admissionPending
-              ? "running"
-              : "ready";
-    this.state = {
-      phase,
-      sessionId: String(this.session.sessionId),
-      messages: projectTranscript(snapshot, {
-        showToolActivity: this.config.ui.showToolActivity,
-        showReasoning: this.config.ui.showReasoning,
-      }),
-      error,
-      canSend: connected && phase === "ready" && this.policyReady,
-      canStop:
-        connected && snapshot.running && this.config.ui.showStop && !blocked,
+    const sessionId = String(this.session.sessionId);
+    const conversationSnapshot =
+      this.conversationBinding?.snapshot.getSnapshot();
+    const projectedSourceBundles = projectTurnSources(
+      conversationSnapshot,
+      sessionId,
+      this.config.session.cwd ?? undefined,
+    );
+    const sourceBundles = this.hostSources.merge(projectedSourceBundles);
+    if (!snapshot.running) {
+      void this.hostSources.refresh(sessionId, () => this.publish());
+    }
+    this.state = projectBoundSessionState({
+      connected,
+      sessionId,
+      sessionSnapshot: snapshot,
+      conversationSnapshot,
+      sourceBundles,
+      // Ownership is chat-level: every user message of a foreign chat
+      // carries its owner's name when an admin reads it.
+      author: this.accounts?.messageAuthorOf(sessionId),
+      operationError: this.operationError,
+      policyReady: this.policyReady,
+      admissionPending: this.admissionPending,
       chatsRevision: this.chatsRevision,
-      sources: projectSources(snapshot),
       viewingSubagent: this.viewingSubagent,
-    };
+      config: this.config,
+    });
     this.emit();
   }
 
@@ -799,61 +882,50 @@ export class QaSessionController {
     this.emit();
   }
 
-  private async attestPolicy(reportFailure = true): Promise<boolean> {
-    if (this.session === undefined) return false;
+  /**
+   * Attest the currently bound session. `ok` carries the session id the proof
+   * was issued for; `stale` means the binding changed while the request was
+   * in flight, so nothing was written — the newer binding manages its own
+   * attestation; `refused` is a genuine admission refusal of this binding.
+   */
+  private async attestPolicy(
+    reportFailure = true,
+  ): Promise<
+    { kind: "ok"; sessionId: string } | { kind: "refused" } | { kind: "stale" }
+  > {
+    const session = this.session;
+    if (session === undefined) return { kind: "refused" };
+    const sessionId = String(session.sessionId);
     if (!this.config.lockdown.enabled) {
       this.policyReady = true;
-      return true;
+      return { kind: "ok", sessionId };
     }
     this.policyReady = false;
     this.publish();
-    // One precise console diagnostic per refusal: the coarse Host reason code
-    // plus an operator hint. The QA-facing message stays generic by design.
-    const reject = (reason: string | null): false => {
-      if (reportFailure) {
-        console.error(
-          `dsh-qa-surface: policy attestation failed (reason: ${reason ?? "unknown"}). ${attestationHint(reason)}`,
-        );
-      }
-      this.policyReady = false;
-      this.operationError = CONFIGURATION_ERROR;
-      this.publish();
-      return false;
-    };
-    try {
-      const result = await this.secureSessionRemote(
-        String(this.session.sessionId),
-      );
-      if (!result.ok) {
-        return reject(
-          attestationReasonOf(result.error as { readonly message?: string }),
-        );
-      }
-      if (
-        !proofMatchesConfig(
-          result.value,
-          this.config.lockdown,
-          String(this.session.sessionId),
-        )
-      ) {
-        return reject("proof-mismatch");
-      }
+    const outcome = await attestQaPolicy({
+      secureSession: this.secureSessionRemote,
+      token: this.accounts?.token() ?? "",
+      sessionId,
+      lockdown: this.config.lockdown,
+      report: reportFailure,
+    });
+    if (this.session !== session) return { kind: "stale" };
+    if (outcome.ok) {
       this.policyReady = true;
       this.operationError = null;
       this.publish();
-      return true;
-    } catch (error) {
-      if (reportFailure) {
-        console.error(
-          "dsh-qa-surface: policy attestation request failed",
-          error,
-        );
-      }
-      this.policyReady = false;
-      this.operationError = CONFIGURATION_ERROR;
-      this.publish();
-      return false;
+      return { kind: "ok", sessionId };
     }
+    if (outcome.authRequired) {
+      // The identity expired or was rotated: back to the gate instead of
+      // the generic configuration error.
+      this.accounts?.onAuthRequired();
+      return { kind: "refused" };
+    }
+    this.policyReady = false;
+    this.operationError = CONFIGURATION_ERROR;
+    this.publish();
+    return { kind: "refused" };
   }
 
   private emit(): void {

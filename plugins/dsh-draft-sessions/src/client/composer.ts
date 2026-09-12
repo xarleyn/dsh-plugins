@@ -1,8 +1,6 @@
 import { Service, type Context } from "@deepseek-ai/cordis";
-import type {
-  ISessions,
-  SessionId,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { SessionId } from "@deepseek-ai/dsh-session/types";
 import type { IConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
   RemoteFailure,
@@ -187,7 +185,7 @@ export class DraftComposerBridge extends Service {
         active.pendingText = active.input.state.getSnapshot().draft;
         const message = cause instanceof Error ? cause.message : String(cause);
         const error = new DraftAutosaveError(
-          { code: "transport", message },
+          { code: "gateway/internal", message },
           active.draft,
           active.pendingText,
         );

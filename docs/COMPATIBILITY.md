@@ -1,7 +1,7 @@
 # Compatibility policy
 
 The monorepo keeps tested DeepSeek Harness ranges in pnpm named catalogs. The
-current baseline is Cordis 4.0.1 and the DSH `0.1.1-rc.2` package family.
+current baseline is Cordis 4.0.2 and the DSH `0.1.5-rc.2` package family.
 
 Every publishable plugin carries `compatibility.json`. Its `node` value must
 exactly match `package.json#engines.node`, and the repository package-hygiene
@@ -20,7 +20,7 @@ and release decision.
 `pnpm-workspace.yaml` defines two DSH catalogs:
 
 - `catalog:dsh` contains the compatible peer ranges shipped in public package
-  manifests (`^4.0.1` for Cordis and `>=0.1.1-rc.2 <0.2.0` for DSH packages).
+  manifests (`^4.0.2` for Cordis and `>=0.1.5-rc.2 <0.2.0` for DSH packages).
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
 Every imported DSH runtime is a `peerDependency`; the matching development copy
@@ -34,19 +34,20 @@ instance.
 | --- | --- |
 | `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
-| `@yadsh/dsh-draft-sessions` | Cordis, gateway, client runtime/connection/locale/UI, Typert protocol |
+| `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
+| `@yadsh/dsh-git-readonly` | tools, schemastery |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
-| `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/runtime/settings/slots, settings, Typert protocol, React |
-| `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client settings/runtime/slots, settings, system prompt, Typert protocol |
-| `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, permissions, session, settings, tools, workspace, webserver, client connection/runtime/layout/settings/slots/theme, Typert protocol, React |
+| `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/renderer/settings/settings-plugins/slots, settings, Typert protocol, React |
+| `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client renderer/settings/slots, settings, system prompt, Typert protocol |
+| `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, api-session-controller, api-workspace-controller, permissions, session, settings, tools, workspace, webserver, client connection/conversation/chat/renderer/layout/settings/slots/theme, Typert protocol, React |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
-| `@yadsh/dsh-sleev` | Cordis, client locale/runtime/settings/slots, LLM, settings |
+| `@yadsh/dsh-sleev` | Cordis, client locale/renderer/store/settings/slots, LLM, settings |
 | `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
-| `@yadsh/dsh-ui-repair` | Cordis |
+| `@yadsh/dsh-ui-repair` | Cordis, schemastery, client renderer/settings/settings-plugins/slots, settings |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
-| `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/runtime/settings/slots, Typert protocol, React |
+| `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
@@ -54,6 +55,21 @@ instance.
 
 `@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, and `@yadsh/dsh-test-kit` are
 private workspace packages and are not published.
+
+## DSH 0.1.5 migration notes
+
+The `0.1.5-rc.2` host dissolved `@deepseek-ai/dsh-client-runtime`: session
+state moved to `@deepseek-ai/dsh-api-session-controller`, workspace state to
+`@deepseek-ai/dsh-api-workspace-controller`, snapshot stores to
+`@deepseek-ai/dsh-client-store`, and the chat transcript to the
+`@deepseek-ai/dsh-client-ui-chat` `chat` view snapshot. `IApiClient`,
+`RpcError`, and `HostDescriptionSource` are gone — clients use the
+`ctx.remote: ClientRemote` Typert face and `RemoteError`/`RemoteFailure`.
+Server-side, `dsh-settings` replaced the `installSettingsSection` helper with
+`SettingsProvider.installSection`, the session log became format v3
+(`session.snapshotEvents()`/`session.surface` instead of `session.events`),
+and `dsh-tools` renamed the `code` presentation family to `ptc`. The plugins
+no longer run on `0.1.1-rc.2` hosts.
 
 ## Upgrade rules
 

@@ -1,3 +1,16 @@
+## 0.1.0 (2026-09-12)
+
+### 🚀 Features
+
+- Migrate to the 0.1.5 APIs: SettingsProvider.installSection, renderer-typed ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  ctx.slots, ToolCallId branding in the NeuralDeep smoke, and the
+  mutate-based SettingsScope contract. The supported host range moves to
+  >=0.1.5-rc.2 <0.2.0, dropping 0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.0.4 (2026-09-06)
 
 ### 🩹 Fixes

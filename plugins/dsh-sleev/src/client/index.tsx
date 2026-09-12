@@ -1,4 +1,4 @@
-import type { ClientContext } from "@deepseek-ai/dsh-client-runtime/client";
+import type { Context as ClientContext } from "@deepseek-ai/cordis";
 import type {
   InjectFace,
   PropsLocale,
@@ -7,6 +7,7 @@ import type {
 import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ChangeEvent, ReactNode } from "react";
 import {
   CardShell,
@@ -337,7 +338,7 @@ export function apply(ctx: ClientContext): void {
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
   );
   ctx.slots.inject("settings.plugin.item", () => {
-    const unregister = registerSettingsSlot(ctx, {
+    const unregister = registerSettingsSlot({ slots: ctx.slots }, {
       key: SETTINGS_NAMESPACE,
       locale: LOCALE_NAMESPACE,
       component: SleevSettingsCard,

@@ -1,6 +1,6 @@
 import { Context } from '@deepseek-ai/cordis'
 import type { AssembledSection, PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import {
   createHostLoggerSink,
@@ -42,7 +42,7 @@ declare module '@deepseek-ai/cordis' {
 /** Cordis plugin ID. */
 export const name = 'prompt-firewall'
 export const inject = ['systemPrompt']
-export const PROMPT_FIREWALL_SETTINGS_NAMESPACE = settingsNamespace('prompt-firewall')
+export const PROMPT_FIREWALL_SETTINGS_NAMESPACE = 'prompt-firewall'
 
 export type Config = PromptFirewallConfig
 export const Config = ConfigSchema
@@ -80,16 +80,12 @@ export class PromptFirewall extends TypertRemoteService implements PromptFirewal
       this.resolvedConfig.audit.highlightNewSections,
     )
 
-    installSettingsSection(
-      ctx,
-      PROMPT_FIREWALL_SETTINGS_NAMESPACE,
-      ConfigSchema,
-      this.entryConfig,
-      {
+    ctx.inject(['settings'], settingsCtx => {
+      settingsCtx.settings.installSection(ctx, PROMPT_FIREWALL_SETTINGS_NAMESPACE, ConfigSchema, this.entryConfig, {
         setSource: current => { this.configSource = current },
         onChange: () => { this.reloadRules() },
-      },
-    )
+      })
+    })
 
     // Cordis has registration order plus `prepend`, not numeric priorities.
     // Prepending makes this wrapper call downstream contributors first and

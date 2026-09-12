@@ -1,16 +1,23 @@
 import type {
   AssistantMessageNode,
+  ConversationNode,
   ConversationSnapshot,
   RunningToolCall,
-  ToolResultNode,
-} from "@deepseek-ai/dsh-client-runtime/client";
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
   QaImageMediaType,
   QaImageView,
   QaMessage,
-  QaSource,
   QaWorkItem,
 } from "../types.js";
+import { chatLegacyOf } from "./turn-sources.js";
+import { parseSettlement } from "./settlement.js";
+import {
+  flattenToolOutput,
+  toolStatus,
+  workTool,
+} from "./tool-presentation.js";
 
 /**
  * The hidden regeneration prompt. Regenerate sends this as an ordinary
@@ -66,34 +73,6 @@ interface OrderedMessage {
  * vocabulary is not installed client-side, so the shape is matched
  * structurally against the host contract ({type:"image", attachment:{...}}).
  */
-const SETTLED_HEAD =
-  /^Background subagent ([0-9a-f][0-9a-f-]*) (finished|was stopped|ran out of room|declined the task|failed)/u;
-const SETTLED_CLOSING = "Its closing message:";
-const SETTLED_TITLES: Readonly<Record<string, string>> = Object.freeze({
-  finished: "завершён",
-  "was stopped": "остановлен",
-  "ran out of room": "упёрся в лимит длины",
-  "declined the task": "отклонил задачу",
-  failed: "завершился ошибкой",
-});
-
-/** Fold the host settlement wording into a title plus the closing message. */
-function parseSettlement(
-  text: string,
-): { title: string; body: string } | undefined {
-  const head = SETTLED_HEAD.exec(text);
-  if (head === null) return undefined;
-  const id = (head[1] ?? "").slice(0, 8);
-  const title = `Субагент ${id} ${SETTLED_TITLES[head[2] ?? "finished"] ?? "завершён"}`;
-  const closeAt = text.indexOf(SETTLED_CLOSING);
-  const body =
-    closeAt === -1 ? "" : text.slice(closeAt + SETTLED_CLOSING.length).trim();
-  return {
-    title,
-    body: body.length <= 4_000 ? body : `${body.slice(0, 3_999)}…`,
-  };
-}
-
 function visibleContentImages(
   content: readonly unknown[],
 ): readonly QaImageView[] {
@@ -140,96 +119,6 @@ function visibleAssistantText(
     .join("");
 }
 
-function flattenToolOutput(node: ToolResultNode): string | null {
-  const parts = node.content.map((block) =>
-    block.type === "text" ? block.text : JSON.stringify(block, null, 2),
-  );
-  if (parts.length === 0 && node.error !== undefined) {
-    parts.push(`${node.error.name}: ${node.error.code}`);
-  }
-  return parts.join("\n") || null;
-}
-
-function formatToolInput(argsRaw: string): string | null {
-  if (argsRaw === "") return null;
-  try {
-    return JSON.stringify(JSON.parse(argsRaw), null, 2);
-  } catch {
-    return argsRaw;
-  }
-}
-
-function firstLine(value: string): string {
-  return value.split(/\r?\n/u, 1)[0]?.trim() ?? "";
-}
-
-function truncate(value: string, length = 140): string {
-  return value.length <= length ? value : `${value.slice(0, length - 3)}...`;
-}
-
-function toolSummary(name: string, argsRaw: string): string {
-  try {
-    const parsed = JSON.parse(argsRaw) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      const values = parsed as Record<string, unknown>;
-      for (const key of [
-        "description",
-        "path",
-        "file_path",
-        "query",
-        "pattern",
-        "url",
-        "command",
-      ]) {
-        const value = values[key];
-        if (typeof value === "string" && value.trim() !== "") {
-          return truncate(firstLine(value));
-        }
-      }
-      const fallback = Object.values(values).find(
-        (value): value is string =>
-          typeof value === "string" && value.trim() !== "",
-      );
-      if (fallback !== undefined) return truncate(firstLine(fallback));
-    }
-  } catch {
-    const raw = firstLine(argsRaw);
-    if (raw !== "") return truncate(raw);
-  }
-  return name;
-}
-
-const TOOL_LABELS: Readonly<Record<string, string>> = Object.freeze({
-  bash: "Bash",
-  pwsh: "PowerShell",
-  read: "Чтение",
-  web_fetch: "Загрузка",
-  web_search: "Поиск",
-  grep: "Поиск",
-  glob: "Поиск",
-  write: "Запись",
-  edit: "Правка",
-  str_replace_editor: "Правка",
-  run_code: "Код",
-  subagent: "Субагент",
-  subagent_fork: "Субагент (форк)",
-  send_message: "Сообщение агенту",
-  list_agents: "Список агентов",
-  interrupt_agent: "Остановка агента",
-});
-
-/** The durable id a continuable launch reports back ("started subagent <id>"). */
-const SUBAGENT_STARTED = /started subagent ([0-9a-f][0-9a-f-]*)/iu;
-
-function toolLabel(name: string): string {
-  return (TOOL_LABELS[name] ?? name.replaceAll("_", " ")) || "Инструмент";
-}
-
-function toolStatus(node: ToolResultNode): "ok" | "error" | "stopped" {
-  if (node.error?.code === "interrupted") return "stopped";
-  return node.isError ? "error" : "ok";
-}
-
 /**
  * Response timing for the message row, straight from the host-recorded step
  * boundaries. Tokens per second is an estimate — the client never sees a
@@ -256,35 +145,6 @@ function messageStats(
     tokensPerSecond = Math.round(text.length / 4 / ((end - first) / 1_000));
   }
   return { durationMs, ttftMs, tokensPerSecond };
-}
-
-function workTool(
-  callId: string,
-  name: string,
-  argsRaw: string,
-  status: "running" | "ok" | "error" | "stopped",
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-  output: string | null,
-): QaWorkItem {
-  const launched =
-    name === "subagent" || name === "subagent_fork"
-      ? (SUBAGENT_STARTED.exec(output ?? "")?.[1] ??
-        SUBAGENT_STARTED.exec(argsRaw)?.[1])
-      : undefined;
-  return {
-    id: `tool:${callId}`,
-    kind: "tool",
-    name,
-    label: toolLabel(name),
-    summary: toolSummary(name, argsRaw),
-    input: formatToolInput(argsRaw),
-    output,
-    status,
-    ...(launched === undefined ? {} : { subagentId: launched }),
-    ...(startedAt === undefined ? {} : { startedAt }),
-    ...(endedAt === undefined ? {} : { endedAt }),
-  };
 }
 
 function getTurn(turns: Map<number, TurnBuffer>, turn: number): TurnBuffer {
@@ -340,15 +200,18 @@ function collectAssistant(
 }
 
 function collectSettledTools(
-  snapshot: ConversationSnapshot,
+  nodes: readonly ConversationNode[],
   turns: Map<number, TurnBuffer>,
   toolHeads: Map<string, ToolHead>,
 ): Set<string> {
   const settled = new Set<string>();
   let nearestTurn: number | undefined;
-  for (const node of snapshot.nodes) {
+  for (const node of nodes) {
     if (node.kind === "assistant") nearestTurn = node.turn;
-    if (node.kind !== "tool-result" || node.isError) continue;
+    // Errored results render as failed rows (toolStatus maps them) so the
+    // work view does not silently drop activity; source collection keeps
+    // skipping them — a failed tool produced no evidence.
+    if (node.kind !== "tool-result") continue;
     const head = toolHeads.get(node.callId);
     const turnNumber = head?.turn ?? nearestTurn;
     if (turnNumber === undefined) continue;
@@ -392,13 +255,14 @@ function collectRunningTool(
 }
 
 function emitTurn(
-  snapshot: ConversationSnapshot,
+  legacy: LegacyConversationSlice,
+  running: boolean,
   turn: TurnBuffer,
   output: OrderedMessage[],
 ): void {
-  const timing = snapshot.turnTimings.get(turn.turn);
+  const timing = legacy.turnTimings.get(turn.turn);
   const completed =
-    timing?.endTime !== undefined || snapshot.turnEnds.has(turn.turn);
+    timing?.endTime !== undefined || legacy.turnEnds.has(turn.turn);
   const sortedText = [...turn.text].sort(
     (left, right) => left.order - right.order,
   );
@@ -407,7 +271,7 @@ function emitTurn(
     (message) => message.status === "committed",
   );
   const hasVisibleActiveWork =
-    snapshot.running &&
+    running &&
     !completed &&
     turn.work.some(({ item }) => item.status === "running");
   const finalText =
@@ -442,7 +306,7 @@ function emitTurn(
         id: `work:${turn.turn}`,
         role: "work",
         turn: turn.turn,
-        status: completed || !snapshot.running ? "complete" : "running",
+        status: completed || !running ? "complete" : "running",
         ...(timing?.startTime === undefined
           ? {}
           : { startedAt: timing.startTime }),
@@ -489,17 +353,21 @@ function emitTurn(
 
 /** Project end-user messages plus optional operator-approved work detail. */
 export function projectTranscript(
-  snapshot: ConversationSnapshot,
+  snapshot: ConversationSnapshot | undefined,
   options: {
+    /** Live turn lifecycle from the bound Session (drives running-row status). */
+    readonly running?: boolean;
     readonly showToolActivity?: boolean;
     readonly showReasoning?: boolean;
   } = {},
 ): readonly QaMessage[] {
+  const legacy = chatLegacyOf(snapshot);
+  const running = options.running === true;
   const output: OrderedMessage[] = [];
   const turns = new Map<number, TurnBuffer>();
   const toolHeads = new Map<string, ToolHead>();
 
-  for (const node of snapshot.nodes) {
+  for (const node of legacy.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
       const images = visibleContentImages(node.content);
@@ -567,26 +435,26 @@ export function projectTranscript(
   }
 
   if (options.showToolActivity === true) {
-    const settled = collectSettledTools(snapshot, turns, toolHeads);
-    for (const call of snapshot.runningCalls) {
+    const settled = collectSettledTools(legacy.nodes, turns, toolHeads);
+    for (const call of legacy.runningCalls) {
       if (!settled.has(call.callId)) {
         collectRunningTool(call, turns, toolHeads);
       }
     }
   }
 
-  if (snapshot.partial !== null) {
-    const partialTurn = getTurn(turns, snapshot.partial.turn);
-    const text = visibleAssistantText(snapshot.partial.blocks);
+  if (legacy.partial !== null) {
+    const partialTurn = getTurn(turns, legacy.partial.turn);
+    const text = visibleAssistantText(legacy.partial.blocks);
     if (text !== "") {
       partialTurn.text.push({
-        id: `assistant:partial:${snapshot.partial.turn}:${snapshot.partial.step}`,
+        id: `assistant:partial:${legacy.partial.turn}:${legacy.partial.step}`,
         order: Number.MAX_SAFE_INTEGER - 1,
         text,
         status: "streaming",
       });
     }
-    snapshot.partial.blocks.forEach((block, index) => {
+    legacy.partial.blocks.forEach((block, index) => {
       if (
         block.kind === "reasoning" &&
         options.showReasoning === true &&
@@ -595,7 +463,7 @@ export function projectTranscript(
         partialTurn.work.push({
           order: Number.MAX_SAFE_INTEGER - 10 + index / 1_000,
           item: {
-            id: `reasoning:partial:${snapshot.partial?.turn}:${snapshot.partial?.step}:${index}`,
+            id: `reasoning:partial:${legacy.partial?.turn}:${legacy.partial?.step}:${index}`,
             kind: "reasoning",
             text: block.text,
             status: "running",
@@ -605,7 +473,7 @@ export function projectTranscript(
         block.kind === "tool-call" &&
         options.showToolActivity === true &&
         block.callId !== "" &&
-        !snapshot.runningCalls.some((call) => call.callId === block.callId)
+        !legacy.runningCalls.some((call) => call.callId === block.callId)
       ) {
         partialTurn.work.push({
           order: Number.MAX_SAFE_INTEGER - 9 + index / 1_000,
@@ -623,121 +491,8 @@ export function projectTranscript(
     });
   }
 
-  for (const turn of turns.values()) emitTurn(snapshot, turn, output);
+  for (const turn of turns.values()) emitTurn(legacy, running, turn, output);
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);
-}
-
-const SOURCE_TOOLS: Readonly<Record<string, QaSource["kind"]>> = Object.freeze({
-  web_fetch: "web",
-  web_search: "search",
-  read: "file",
-  read_image: "file",
-});
-
-function sourceTitle(kind: QaSource["kind"], target: string): string {
-  if (kind === "web") {
-    try {
-      return new URL(target).hostname;
-    } catch {
-      return target;
-    }
-  }
-  if (kind === "file") {
-    const base = target.replaceAll("\\", "/").split("/").at(-1);
-    return base === undefined || base === "" ? target : base;
-  }
-  return target;
-}
-
-/** First meaningful line of a tool output, capped for the drawer. */
-function sourceSnippet(output: string | null): string {
-  const line =
-    output === null
-      ? ""
-      : (output.split(/\r?\n/u).find((part) => part.trim() !== "") ?? "");
-  const compact = line.trim().replace(/\s+/gu, " ");
-  return compact.length <= 200 ? compact : `${compact.slice(0, 199)}…`;
-}
-
-/** Models occasionally wrap arguments in tags ("<path>...</path>") - strip them. */
-function sourceTarget(value: string): string {
-  return value.replace(/<\/?[a-zA-Z][^>]*>/gu, "").trim();
-}
-
-/** Whole tool output for the detail pane, capped hard. */
-function sourceOutput(output: string | null): string {
-  const text = (output ?? "").trim();
-  return text.length <= 4_000 ? text : `${text.slice(0, 3_999)}…`;
-}
-
-function sourceFromCall(
-  id: string,
-  name: string,
-  argsRaw: string,
-  output: string | null,
-): QaSource | null {
-  const kind = SOURCE_TOOLS[name];
-  if (kind === undefined) return null;
-  let target: string | null = null;
-  try {
-    const args = JSON.parse(argsRaw) as Record<string, unknown>;
-    for (const key of ["url", "file_path", "path", "query", "pattern"]) {
-      const value = args[key];
-      if (typeof value === "string" && value.trim() !== "") {
-        target = sourceTarget(value);
-        break;
-      }
-    }
-  } catch {
-    // A non-JSON head leaves the target unresolved.
-  }
-  // Without a resolvable target the row is noise (a failed search, an
-  // unnamed call) - the drawer shows sources, not tool errors.
-  if (target === null || target === "") return null;
-  return {
-    id,
-    kind,
-    target,
-    // A search answers with a result list, so the query itself is the title.
-    title: kind === "search" ? target : sourceTitle(kind, target),
-    snippet: sourceSnippet(output),
-    output: sourceOutput(output),
-  };
-}
-
-/**
- * Collect the sources this chat has actually touched, in first-use order:
- * fetched pages, searches, and files read. This is the same tool activity the
- * work groups render, projected as a flat citation-style list, so it carries
- * no information beyond `ui.showToolActivity`.
- */
-export function projectSources(
-  snapshot: ConversationSnapshot,
-): readonly QaSource[] {
-  const sources: QaSource[] = [];
-  const seen = new Set<string>();
-  const add = (source: QaSource | null) => {
-    if (source === null) return;
-    const key = `${source.kind}:${source.target}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    sources.push(source);
-  };
-  for (const node of snapshot.nodes) {
-    if (node.kind !== "tool-result" || node.isError) continue;
-    add(
-      sourceFromCall(
-        `source:${node.callId}`,
-        node.call?.name ?? node.callId,
-        node.call?.argsRaw ?? "",
-        flattenToolOutput(node),
-      ),
-    );
-  }
-  for (const call of snapshot.runningCalls) {
-    add(sourceFromCall(`source:${call.callId}`, call.name, call.argsRaw, null));
-  }
-  return sources;
 }

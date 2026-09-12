@@ -5,10 +5,8 @@ import {
   createDraftWorkspaceContribution,
 } from "../src/client/workspace-contribution.js";
 import type { DraftSession } from "../src/shared/types.js";
-import type {
-  SessionListState,
-  WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { WorkspaceSnapshot } from "@deepseek-ai/dsh-api-workspace-controller/client";
 
 const draft = {
   version: 1,
@@ -36,7 +34,7 @@ function renderContribution(ctx: unknown, source: unknown) {
     useSessions: <Selected>(selector: (value: SessionListState) => Selected) =>
       selector({ current: "shell-a" } as never),
     useWorkspaces: <Selected>(
-      selector: (value: WorkspaceListState) => Selected,
+      selector: (value: WorkspaceSnapshot) => Selected,
     ) =>
       selector({
         items: [

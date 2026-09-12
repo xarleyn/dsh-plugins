@@ -10,7 +10,7 @@
 
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-credentials'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type {} from '@deepseek-ai/dsh-web'
 import { createHostLoggerSink, getPluginLogger, type PluginLogger } from '@yadsh/dsh-plugin-log'
@@ -49,7 +49,7 @@ declare module '@deepseek-ai/cordis' {
 /** Cordis plugin ID. */
 export const name = 'web-fetch-authenticated'
 export const inject = ['web']
-export const WEB_FETCH_AUTH_SETTINGS_NAMESPACE = settingsNamespace('web-fetch-authenticated')
+export const WEB_FETCH_AUTH_SETTINGS_NAMESPACE = 'web-fetch-authenticated'
 
 export type Config = WebFetchAuthConfig
 export const Config = ConfigSchema
@@ -92,13 +92,15 @@ export class WebFetchAuthenticated extends TypertRemoteService implements WebFet
       logger: this.logger,
     })
 
-    installSettingsSection(ctx, WEB_FETCH_AUTH_SETTINGS_NAMESPACE, ConfigSchema, this.entryConfig, {
-      setSource: current => {
-        this.configSource = current
-      },
-      onChange: () => {
-        this.logConfigIssues()
-      },
+    ctx.inject(['settings'], settingsCtx => {
+      settingsCtx.settings.installSection(ctx, WEB_FETCH_AUTH_SETTINGS_NAMESPACE, ConfigSchema, this.entryConfig, {
+        setSource: current => {
+          this.configSource = current
+        },
+        onChange: () => {
+          this.logConfigIssues()
+        },
+      })
     })
 
     ctx.web.registerFetchProvider(provider)

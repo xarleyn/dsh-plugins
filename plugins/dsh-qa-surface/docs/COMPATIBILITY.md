@@ -2,7 +2,7 @@
 
 | Plugin version | Tested DSH release | Required public contracts                                                                                                                                                              |
 | -------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0.1.x          | 0.1.1-rc.2         | `shell.overlay`, Typert remote, `agentPresets.composedPreset`, `permissionPresets`, agent-scoped `tools.restrict/guard`, `workspaceRegistry`, session/model APIs, `webServer.register` |
+| 0.1.x          | 0.1.5-rc.2         | `shell.overlay`, Typert remote, `agentPresets.composedPreset`, `permissionPresets`, agent-scoped `tools.restrict/guard`, `workspaceRegistry`, session/model APIs, `webServer.register` |
 
 DSH is developer-preview software. Compatibility-sensitive calls are isolated
 in `QaSessionController`, `QaTranscriptAdapter`, `QaConfigController` and

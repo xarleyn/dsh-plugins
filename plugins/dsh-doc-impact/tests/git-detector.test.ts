@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,6 +6,10 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createGitDetector } from '../src/changes/git-detector.js';
 import type { DetectorOptions } from '../src/changes/types.js';
+
+// Real git subprocesses under a 5s default budget trip when the workspace
+// test suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
 
 const run = promisify(execFile);
 

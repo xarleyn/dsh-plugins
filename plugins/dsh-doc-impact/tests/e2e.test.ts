@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +12,10 @@ import { createDocImpactCommand } from '../src/dsh/commands.js';
 import type { ImpactRule } from '../src/index.js';
 
 const run = promisify(execFile);
+
+// Real git subprocesses under a 5s default budget trip when the workspace
+// test suite runs in parallel.
+vi.setConfig({ testTimeout: 30_000 });
 
 const CONFIG_YAML = `version: 1
 
@@ -64,12 +68,13 @@ async function makeHarness(userDirtyDoc = false): Promise<Harness> {
   });
 
   const steerCalls: string[] = [];
+  const sessionEvents: { type: string; data: unknown }[] = [];
   const agent = {
     id: 'e2e-agent',
     session: {
       id: 'e2e-agent',
       header: { cwd },
-      events: [] as { type: string; data: unknown }[],
+      snapshotEvents: () => sessionEvents,
     },
     steer(message: unknown) {
       steerCalls.push(JSON.stringify(message));
@@ -90,7 +95,7 @@ async function makeHarness(userDirtyDoc = false): Promise<Harness> {
 
   // The session log starts with one open turn, as the loop appends turn/start
   // before any step work.
-  agent.session.events.push({ type: 'turn/start', data: { turn: 1 } });
+  sessionEvents.push({ type: 'turn/start', data: { turn: 1 } });
 
   return {
     cwd,

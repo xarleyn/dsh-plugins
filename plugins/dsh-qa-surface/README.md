@@ -16,8 +16,17 @@ Session and Agent Loop.
 - optionally shows a minimal per-browser chat-history sidebar
   (`ui.showSessionList`) whose switching re-runs policy attestation;
 - blocks unsupported approvals/questions instead of auto-approving them;
-- pins locked sessions to `read-only` + `approval=never` before Send is enabled;
+- pins locked sessions to the configured `read-only` or isolated
+  `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
+- optionally gates the surface behind email + password accounts
+  (`accounts.enabled`) with server-side session ownership, a first-login
+  migration of the browser's existing chats, a `qa-accounts` management CLI
+  (list/add/set-role/disable/revoke), and a coarse honest boundary:
+  accounts identify QA users, they do not fence the harness root;
+- optionally redirects non-loopback hostnames from the harness root into the
+  QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
+  harness UI untouched;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
@@ -43,8 +52,8 @@ Some DSH patch operations replace a row's complete `config` instead of deeply
 merging it. When editing an existing row, provide every value that deployment
 needs.
 
-DSH `0.1.1-rc.2` serves unknown frontend paths as 404 rather than falling back
-to `index.html`. The Host half therefore claims only the configured QA
+Tested DSH releases serve unknown frontend paths as 404 rather than falling
+back to `index.html`. The Host half therefore claims only the configured QA
 navigation path and redirects it through the canonical `/` document with a
 short-lived query marker. The browser restores the requested `/qa` URL with
 `history.replaceState` before mounting the overlay. No second server, duplicate
@@ -90,6 +99,12 @@ config:
     renderMarkdown: true
     maxContentWidth: 900
     showSessionList: false
+  accounts:
+    enabled: false
+    allowRegistration: true
+    sessionTtlDays: 30
+    showOtherUsersChats: false
+    perUserWorkspace: false
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
@@ -114,12 +129,82 @@ config:
     toolPolicy:
       mode: allow-list
       allow: []
+  sources:
+    enabled: true
+    collect:
+      parentAgent: true
+      subagents: true
+      persistTurnEvent: true
+    display:
+      sidebar: true
+      footer: true
+      groupByKind: true
+      showDiscovered: false
+      showOriginBadges: false
+      maxInitiallyVisiblePerGroup: 8
+    webSearch:
+      promoteSearchResultsWithoutFetch: true
+      maxPromotedPerSearch: 5
+    dedupe:
+      normalizeUrls: true
+      stripTrackingParams: true
+      mergeFileRanges: true
+    filePreview:
+      enabled: true
+      markdownRenderedByDefault: true
+      allowRawToggle: true
+      maxBytes: 2000000
+      maxMarkdownRenderBytes: 1000000
+    subagents:
+      inheritSources: true
+      enableReportToolFallback: true
+      markIncompleteOpaqueRuns: true
+    legacy:
+      parseAssistantSourcesBlock: false
 ```
 
 `workspaceId` is recommended for a deterministic assistant. Without it, DSH
 uses the Host's normal default working directory. Put the system prompt, tools,
 skills, knowledge connections and permission policy in `agentPreset`, not in
 this UI plugin.
+
+### Writable per-user research space
+
+Set `accounts.perUserWorkspace: true` only together with accounts, a registered
+`session.workspaceId`, `lockdown.enforceFixedWorkspace: true`, and a
+`workspace-write` + `never` permission preset:
+
+```yaml
+session:
+  workspaceId: "<registered-workspace-uuid>"
+accounts:
+  enabled: true
+  perUserWorkspace: true
+lockdown:
+  enabled: true
+  enforceFixedWorkspace: true
+  sandboxMode: workspace-write
+  approvalPolicy: never
+  permissionPreset: qa-workspace-write
+  toolPolicy:
+    mode: allow-list
+    allow: [read, read_image, glob, grep, write, edit, web_search, web_fetch]
+```
+
+The Host resolves that Workspace record's path and creates
+`<workspace>/.qa-users/<account UUID>` with private Unix directory mode. It
+passes the child as session `cwd` but deliberately does not register or attach
+it as another DSH Workspace. Chats therefore remain ordinary entries in the
+global DSH session list rather than creating one Workspace row per account.
+
+The boundary combines DSH `workspace-write` with a Host tool guard for both
+read and write paths, canonicalizes existing ancestors to reject symlink
+escapes, propagates the root to subagent sessions, rejects shell/process/LSP
+and `dsh_git_*` escape hatches, limits one model-controlled write to 10 MiB,
+and limits an account directory to 256 MiB. `web_fetch` plus `write` is the
+intended bounded research-download path; there is no unrestricted URL-to-disk
+or shell downloader. Account directories are persistent scratch space and are
+not deleted automatically.
 
 Model override is opt-in: `provider` and `model` must be set together. Slash
 commands are rejected as plain QA input. Reasoning and tool details remain
@@ -151,12 +236,25 @@ prompt and the answer arrives as a follow-up turn; the projection hides that
 instruction and the consecutive turns read as variants of one question,
 navigable with a `< 2/2 >` switcher (newest shown by default).
 
-Sources: with `ui.showToolActivity: true` a header button opens a right-hand
-drawer listing the pages fetched, searches run and files read in this chat,
-projected from the same tool activity the work groups render - no extra
-prompting or tooling is involved. Clicking a source opens its full tool
-output with every http(s) link clickable, and web sources carry an
-"Открыть" button straight to the page (a Jira issue, a wiki article).
+Sources are structured Host-owned provenance, independent of
+`ui.showToolActivity`. Successful reads/fetches, bounded web-search evidence,
+Jira/Confluence/knowledge results, and inherited subagent sources are
+normalized and deduplicated into one turn bundle. That exact bundle feeds the
+answer footer and grouped drawer and is persisted as `qa/sources`, so reload
+does not rerun tools. Search-only discovery stays hidden by default.
+
+Local file cards open a source-scoped, read-only preview after Host-side real
+path validation against the attested session root. Markdown opens rendered by
+default with an HTML-free renderer and offers `Rendered / Raw`; raw mode jumps
+to recorded line ranges. The endpoint cannot browse or write files and refuses
+paths that are not evidence in the canonical bundle.
+
+Observable local subagents are inherited recursively. The internal
+`qa_report_sources` tool covers opaque delegated providers and is admitted as
+a provenance-only capability even when it is not listed among ordinary QA
+tools. A provider that neither exposes events nor reports sources marks the
+turn provenance incomplete. The QA prompt tells models not to append a manual
+`Sources`/`Источники` bibliography.
 
 Images: the composer accepts PNG/JPEG/WebP/GIF via drag & drop onto the
 composer, paste, and the picker button, several at once (soft client caps:
@@ -175,18 +273,35 @@ live transcript (composer disabled, one click back to the chat) - viewing
 never attests or writes.
 
 `ui.showSessionList: true` renders a minimal chat-history sidebar beside the
-conversation. It lists only the chats this browser has actually used: the
+conversation. By default it lists only the current user's chats: the
 client keeps a per-browser id index under
 `<storageKey>:v1:<route>:chats` in localStorage (capped at 50, most recently
 used first) and intersects it with the Host session list, so users sharing the
-deployment never see each other's chats. Switching re-runs the full policy
+deployment never see each other's chats. An admin can explicitly enable
+`accounts.showOtherUsersChats: true` to add chats owned by other QA accounts,
+grouped by owner. Switching re-runs the full policy
 attestation; a chat the Host no longer lists is pruned from the index. Each
 row carries a two-click delete control that removes the chat from this
 browser's index; deleting the chat that is currently open continues in a
 fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
 exposes no session-deletion seam. The sidebar hides below 600px viewports.
 
-Locked mode requires a deployment permission preset named `qa-read-only`.
+The sidebar footer shows the deployed plugin version. Clicking it opens a
+changelog dialog with a curated per-version summary (features and fixes);
+Escape or a backdrop click closes it.
+
+On `/qa`, the plugin shadows DSH's stock `welcome-notice` onboarding entry and
+renders a route-owned Russian testing disclosure. Keeping the visible dialog
+in the QA overlay prevents DSH's blank-session onboarding lifecycle from
+dismissing it when a question is submitted. It explains the DeepSeek Harness
+preview foundation, QA review of questions and answers, the work-related
+scope, and local in-contour model processing. Explicit acknowledgement is
+stored as a versioned browser-local flag; changing the disclosure version
+shows it again. Other DSH routes retain the stock onboarding entry.
+
+The default locked mode requires a deployment permission preset named
+`qa-read-only`. Per-user writable mode uses a separate preset such as
+`qa-workspace-write`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
 its process-wide default:
 
@@ -209,9 +324,14 @@ its process-wide default:
         approval: never
         name: QA Read Only
         description: No filesystem mutations and no permission escalation.
+      qa-workspace-write:
+        sandbox: workspace-write
+        approval: never
+        name: QA User Workspace
+        description: Writes only inside the attested per-user workspace.
 ```
 
-The shipped tool allow-list is empty. Add only reviewed read-only tool names
+The shipped tool allow-list is empty. Add only reviewed tool names
 from the actual deployment. A name that is not registered fails closed. The
 Host restriction retains exact allow-listed tools from the agent preset's
 ancestor scope, and the additional execution guard also denies session-scoped
@@ -264,8 +384,10 @@ What a LAN deployment does not change:
   `/qa`. Scope the port's reachability (subnet-limited firewall rule, VPN or
   tailnet, authenticating reverse proxy) and use a dedicated process identity.
 - Loopback-only settings, directory picking and credential RPCs stay refused
-  for LAN clients; the first-load welcome notice re-appears on reload because
-  remote browsers have no settings persistence.
+  for LAN clients. On `/qa`, the plugin replaces DSH's non-persistent welcome
+  step with a QA-specific testing disclosure and remembers its exact copy
+  version in that browser's local storage. The stock DSH notice remains
+  unchanged on operator routes.
 
 See [Configuration](docs/CONFIGURATION.md) for the config-channel details.
 

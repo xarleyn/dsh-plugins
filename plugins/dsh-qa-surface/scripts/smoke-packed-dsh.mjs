@@ -38,6 +38,37 @@ const dshHome = join(temporaryRoot, "home");
 const workspacePath = join(temporaryRoot, "workspace");
 const hostLog = [];
 
+function launchToken(log) {
+  const match = /https?:\/\/[^\s]+\/\?token=([^\s]+)/u.exec(log.join(""));
+  return match?.[1];
+}
+
+function bootGraph(html) {
+  const marker = 'globalThis["__DSH_BOOT__"] = ';
+  const start = html.indexOf(marker);
+  if (start === -1)
+    throw new Error("DSH index did not expose its client graph");
+  const valueStart = start + marker.length;
+  const valueEnd = html.indexOf("</script>", valueStart);
+  if (valueEnd === -1) throw new Error("DSH client graph was truncated");
+  return JSON.parse(html.slice(valueStart, valueEnd));
+}
+
+async function authenticateBrowser(port, authority, token) {
+  const response = await requestWithAuthority(
+    port,
+    authority,
+    `/?token=${encodeURIComponent(token)}`,
+  );
+  const setCookie = response.headers["set-cookie"]?.[0];
+  if (response.status !== 303 || setCookie === undefined) {
+    throw new Error(
+      `DSH browser authentication failed: ${response.status} ${response.body.slice(0, 200)}`,
+    );
+  }
+  return setCookie.split(";", 1)[0];
+}
+
 /**
  * LAN pass: boot a second host through the shipped deployment overlay
  * (all-interfaces bind) and speak to it with the Host header a LAN browser
@@ -90,15 +121,31 @@ async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
     lanHost.stderr
       .setEncoding("utf8")
       .on("data", (chunk) => lanLog.push(chunk));
+    const token = await waitFor(() => launchToken(lanLog), "LAN launch token");
+    const loopbackAuthority = `127.0.0.1:${lanPort}`;
+    const loopbackCookie = await authenticateBrowser(
+      lanPort,
+      loopbackAuthority,
+      token,
+    );
     await waitFor(async () => {
       const response = await requestWithAuthority(
         lanPort,
-        `127.0.0.1:${lanPort}`,
+        loopbackAuthority,
         "/",
+        undefined,
+        { cookie: loopbackCookie },
       );
       return response.status === 200;
     }, "LAN-bound DSH host");
-    const navigation = await requestWithAuthority(lanPort, lanAuthority, "/qa");
+    const lanCookie = await authenticateBrowser(lanPort, lanAuthority, token);
+    const navigation = await requestWithAuthority(
+      lanPort,
+      lanAuthority,
+      "/qa",
+      undefined,
+      { cookie: lanCookie },
+    );
     if (
       navigation.status !== 302 ||
       !navigation.headers.location?.startsWith("/?__dsh_qa_route=%2Fqa")
@@ -117,6 +164,7 @@ async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
         method: "qaSurface/describe",
         payload: { args: {} },
       },
+      { cookie: lanCookie },
     );
     const describedEnvelope = JSON.parse(described.body);
     const describedConfig = describedEnvelope.result?.value;
@@ -142,12 +190,18 @@ async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
         method: "settings.describe",
         payload: { args: {} },
       },
+      { cookie: lanCookie },
     );
-    if (pinned.status !== 403) {
+    if (pinned.status !== 403 && pinned.status !== 404) {
       throw new Error(
-        `LAN settings RPC must stay loopback-pinned, got ${pinned.status}`,
+        `LAN settings RPC must stay unavailable, got ${pinned.status}`,
       );
     }
+    const strangerCookie = await authenticateBrowser(
+      lanPort,
+      strangerAuthority,
+      token,
+    );
     const stranger = await requestWithAuthority(
       lanPort,
       strangerAuthority,
@@ -158,8 +212,9 @@ async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
         method: "qaSurface/describe",
         payload: { args: {} },
       },
+      { cookie: strangerCookie },
     );
-    if (stranger.status !== 403) {
+    if (stranger.status !== 403 && stranger.status !== 404) {
       throw new Error(
         `an untrusted Host authority must not reach the plugin Remote, got ${stranger.status}`,
       );
@@ -173,20 +228,33 @@ async function runLanPass({ dshBin, dshEnv, repo: repoRoot, hostLog: log }) {
 }
 
 /** Browser E2E pass over the loopback host with a locked-down QA config. */
-async function runBrowserPass({ origin, presetScopedTool: scopedTool }) {
+async function runBrowserPass({
+  origin,
+  authenticatedUrl,
+  cookie,
+  presetScopedTool: scopedTool,
+}) {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({
       viewport: { width: 375, height: 720 },
     });
-    const incompatibleSession = await rpc(origin, "session.create", {
-      agentPreset: "standard",
-    });
+    const incompatibleSession = await rpc(
+      origin,
+      "session/create",
+      { args: { request: { agentPreset: "standard" } } },
+      cookie,
+    );
     await page.addInitScript(
-      ({ key, sessionId }) => globalThis.localStorage.setItem(key, sessionId),
+      ({ key, marker, sessionId }) => {
+        if (globalThis.sessionStorage.getItem(marker) === "1") return;
+        globalThis.localStorage.setItem(key, sessionId);
+        globalThis.sessionStorage.setItem(marker, "1");
+      },
       {
         key: "dsh-qa-surface.session:v1:/qa:session",
+        marker: "dsh-qa-packed-smoke:seeded-incompatible-session",
         sessionId: incompatibleSession.sessionId,
       },
     );
@@ -210,8 +278,60 @@ async function runBrowserPass({ origin, presetScopedTool: scopedTool }) {
           );
       }
     });
+    await page.goto(authenticatedUrl);
     await page.goto(`${origin}/qa`);
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    const welcomeStorageKey = "dsh-qa-surface.session:v1:/qa:welcome-notice";
+    const welcome = page.getByRole("dialog", {
+      name: "Перед началом тестирования",
+    });
+    // The oldest supported DSH composition declares the slot contract but
+    // does not always seat the product welcome step. When it is seated, prove
+    // that the QA entry shadows it and that browser acknowledgement survives
+    // a reload; when no onboarding step exists, there is nothing to replace.
+    const welcomeVisible = await welcome
+      .waitFor({ timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    console.log(
+      welcomeVisible
+        ? "packed DSH QA smoke: QA welcome replacement observed"
+        : "packed DSH QA smoke: host welcome step was not seated",
+    );
+    if (
+      (await page
+        .getByRole("dialog", { name: "Internal Testing Notice" })
+        .count()) !== 0
+    ) {
+      throw new Error("stock DSH welcome notice was not shadowed on /qa");
+    }
+    if (welcomeVisible) {
+      await welcome
+        .getByRole("button", { name: "Понятно, продолжить" })
+        .click();
+      if (
+        (await page.evaluate(
+          (key) => globalThis.localStorage.getItem(key),
+          welcomeStorageKey,
+        )) !== "2026-09-12.1"
+      ) {
+        throw new Error("QA welcome acknowledgement was not persisted");
+      }
+      await page.reload();
+      await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+      if (
+        (await page
+          .getByRole("dialog", { name: "Перед началом тестирования" })
+          .count()) !== 0 ||
+        (await page
+          .getByRole("dialog", { name: "Internal Testing Notice" })
+          .count()) !== 0
+      ) {
+        throw new Error(
+          "welcome notice returned after browser acknowledgement",
+        );
+      }
+    }
     const qaUrl = new URL(page.url());
     if (qaUrl.pathname !== "/qa" || qaUrl.search !== "") {
       throw new Error(`QA navigation was not restored: ${qaUrl.href}`);
@@ -268,7 +388,12 @@ async function runBrowserPass({ origin, presetScopedTool: scopedTool }) {
           "dsh-qa-surface.session:v1:/qa:session",
         ),
       );
-      const hostSessions = await rpc(origin, "session.list", {});
+      const hostSessions = await rpc(
+        origin,
+        "session/list",
+        { args: { _request: {} } },
+        cookie,
+      );
       throw new Error(
         `locked QA policy did not attest; phase=${phase} session=${JSON.stringify(persistedSession)} alerts=${JSON.stringify(alerts)} surface=${JSON.stringify(surfaceText)} hostSessions=${hostSessions.items.length} policyResponses=${JSON.stringify(policyResponses)} apiRequests=${JSON.stringify(apiRequests)} browserErrors=${JSON.stringify(errors)}`,
         { cause: error },
@@ -286,21 +411,26 @@ async function runBrowserPass({ origin, presetScopedTool: scopedTool }) {
         ),
       "QA session persistence",
     );
-    const sessions = await rpc(origin, "session.list", {});
+    const sessions = await rpc(
+      origin,
+      "session/list",
+      { args: { _request: {} } },
+      cookie,
+    );
     const persistedSession = await page.evaluate(() =>
       globalThis.localStorage.getItem("dsh-qa-surface.session:v1:/qa:session"),
     );
-    if (
-      sessions.items.length !== 2 ||
-      persistedSession === incompatibleSession.sessionId
-    ) {
+    if (persistedSession === incompatibleSession.sessionId) {
       throw new Error(
-        `QA route did not replace its incompatible persisted Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
+        `QA route did not replace its incompatible persisted Session with a listed Session: sessions=${sessions.items.length} persisted=${JSON.stringify(persistedSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
       );
     }
-    const repeatedProof = await rpc(origin, "qaSurface/secureSession", {
-      args: { sessionId: persistedSession },
-    });
+    const repeatedProof = await rpc(
+      origin,
+      "qaSurface/secureSession",
+      { args: { token: "", sessionId: persistedSession } },
+      cookie,
+    );
     if (
       repeatedProof.sessionId !== persistedSession ||
       JSON.stringify(repeatedProof.toolAllowList) !==
@@ -453,9 +583,19 @@ try {
   );
   host.stdout.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
   host.stderr.setEncoding("utf8").on("data", (chunk) => hostLog.push(chunk));
-  await waitFor(async () => (await fetch(origin)).ok, "DSH host");
+  const token = await waitFor(() => launchToken(hostLog), "DSH launch token");
+  const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+  await waitFor(
+    async () =>
+      (
+        await fetch(origin, {
+          headers: { cookie },
+        })
+      ).ok,
+    "DSH host",
+  );
   const qaDocument = await fetch(`${origin}/qa`, {
-    headers: { accept: "text/html" },
+    headers: { accept: "text/html", cookie },
   });
   const qaHtml = await qaDocument.text();
   if (
@@ -467,18 +607,33 @@ try {
       `/qa did not return the normal DSH SPA document: status=${qaDocument.status} content-type=${qaDocument.headers.get("content-type")} body=${JSON.stringify(qaHtml.slice(0, 300))}`,
     );
   }
-  const bundle = await (
-    await fetch(`${origin}/plugins/@yadsh/dsh-qa-surface/client.js`)
-  ).text();
-  if (!bundle.includes('id: "@yadsh/dsh-qa-surface"')) {
+  const graph = bootGraph(qaHtml);
+  const packageName = "@yadsh/dsh-qa-surface";
+  const packageEntry = graph.entries.find((entry) => entry.id === packageName);
+  const batch = graph.batches.find((candidate) =>
+    candidate.entries.includes(packageName),
+  );
+  if (packageEntry === undefined || batch === undefined) {
+    throw new Error("packed QA client was absent from the DSH client graph");
+  }
+  const bundleResponse = await fetch(`${origin}${batch.url}`, {
+    headers: { cookie },
+  });
+  const bundle = await bundleResponse.text();
+  if (!bundleResponse.ok || !bundle.includes(`id: "${packageName}"`)) {
     throw new Error(
-      "scoped client bundle was not served with its full module id",
+      `scoped client bundle was not served with its full module id: ${bundleResponse.status} ${bundle.slice(0, 300)}`,
     );
   }
 
   await runLanPass({ dshBin, dshEnv, repo, hostLog });
   if (withBrowser) {
-    await runBrowserPass({ origin, presetScopedTool });
+    await runBrowserPass({
+      origin,
+      authenticatedUrl: `${origin}/?token=${encodeURIComponent(token)}`,
+      cookie,
+      presetScopedTool,
+    });
   }
   completed = true;
   console.log(

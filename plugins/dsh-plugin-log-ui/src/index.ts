@@ -1,5 +1,5 @@
 import { Context } from "@deepseek-ai/cordis";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
@@ -21,7 +21,7 @@ import type {
 
 export const name = "plugin-log-ui";
 export const inject: readonly string[] = [];
-export const PLUGIN_LOG_SETTINGS_NAMESPACE = settingsNamespace("plugin-log");
+export const PLUGIN_LOG_SETTINGS_NAMESPACE = "plugin-log";
 export type Config = PluginLogUiConfig;
 export const Config = ConfigSchema;
 
@@ -52,11 +52,13 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
     const entry = resolveConfig(input);
     this.configSource = () => entry;
 
-    installSettingsSection(ctx, PLUGIN_LOG_SETTINGS_NAMESPACE, ConfigSchema, entry, {
-      setSource: (current) => {
-        this.configSource = current;
-      },
-      onChange: () => this.applyPolicy(),
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(ctx, PLUGIN_LOG_SETTINGS_NAMESPACE, ConfigSchema, entry, {
+        setSource: (current) => {
+          this.configSource = current;
+        },
+        onChange: () => this.applyPolicy(),
+      });
     });
 
     ctx.effect(

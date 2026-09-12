@@ -1,5 +1,7 @@
 # @yadsh/dsh-web-fetch-authenticated
 
+[Русский гайд: настройка Jira и Confluence](docs/JIRA-CONFLUENCE.ru.md)
+
 An authenticated, policy-gated [`WebFetchProvider`](../../docs/) for the
 DeepSeek Harness web capability seam (`ctx.web`). It lets the existing
 model-facing `web_fetch(url)` tool retrieve content from approved
@@ -24,6 +26,7 @@ web_fetch(url)
   -> request with DNS pinning
   -> per-hop redirect re-validation
   -> bounded body read
+  -> content adapter (optional: REST fetch + normalization, see below)
   -> WebFetchResult (existing dsh-tool-web HTML -> Markdown)
 ```
 
@@ -79,6 +82,11 @@ Secrets are stored through the DSH credential store (`$DSH_HOME` credential
 backend) under POSIX-style reference names (`JIRA_TOKEN`); configuration keeps
 only the reference. Use the UI (or `api.credentials.set`) to store the value.
 
+For an end-to-end corporate setup, including provider selection, credentials,
+private-network policy, Jira/Confluence Cloud and Server/Data Center examples,
+testing, and troubleshooting, see the
+[Russian Jira and Confluence guide](docs/JIRA-CONFLUENCE.ru.md).
+
 ### Security defaults
 
 | Policy | Default |
@@ -95,6 +103,42 @@ answers are resolved, all candidates are classified, one denied answer denies
 the whole set (DNS-rebinding defense), and the socket is pinned to the
 approved addresses.
 
+## Content adapters (Jira / Confluence)
+
+Raw HTML from enterprise apps converts to Markdown with all the application
+chrome attached. A rule can instead select a **content adapter**: recognized
+URLs are re-fetched from the product's REST API through the same authenticated
+transport (same network policy, credentials, redirect policy, and limits) and
+normalized into compact Markdown text — issue fields, description, and optional
+comments/links for Jira; page metadata and the storage-format body for
+Confluence. Unrecognized URLs fall back to raw HTTP/HTML.
+
+- **Jira** — `/browse/ISSUE-KEY` at any deployment depth and `/issues/KEY`.
+  `jiraFlavor: server` (default) uses REST v2 and converts wiki-markup bodies;
+  `jiraFlavor: cloud` uses REST v3 and converts Atlassian Document Format.
+  `includeComments` and `includeLinks` add comments and issue links (off by
+  default).
+- **Confluence** — `/pages/<id>/…` (Server and Cloud, including `/wiki/…`
+  paths) fetch directly; `/display/<SPACE>/<Title>` resolves via the title
+  lookup. Storage-format XHTML becomes Markdown: headings, lists, tables,
+  links, entities, code/noformat/panel/expand macros (unknown macros leave a
+  visible placeholder instead of vanishing).
+
+Configured in the rule editor ("Content adapter") or declaratively:
+
+```yaml
+adapter:
+  type: jira
+  jiraFlavor: server
+  includeComments: true
+```
+
+Non-2xx REST responses stay results (the seam never throws for status codes):
+the model sees a short `[Jira]`/`[Confluence]` HTTP-status note. Malformed or
+non-JSON REST bodies fail with `AUTH_FETCH_ADAPTER_FAILED`. The generated text
+is capped by the rule's `maxBodyChars`, and the connection tester runs the
+adapter too, so Test shows the exact normalized text the model will get.
+
 ## Error codes
 
 `AUTH_FETCH_NO_MATCHING_RULE`, `AUTH_FETCH_AMBIGUOUS_MATCH`,
@@ -102,7 +146,8 @@ approved addresses.
 `AUTH_FETCH_CREDENTIAL_INVALID`, `AUTH_FETCH_NETWORK_DENIED`,
 `AUTH_FETCH_DNS_POLICY_DENIED`, `AUTH_FETCH_REDIRECT_DENIED`,
 `AUTH_FETCH_RESPONSE_TOO_LARGE`, `AUTH_FETCH_UNSUPPORTED_CONTENT`,
-`AUTH_FETCH_TIMEOUT`, `AUTH_FETCH_INVALID_URL`, `AUTH_FETCH_PROVIDER_ERROR` —
+`AUTH_FETCH_TIMEOUT`, `AUTH_FETCH_INVALID_URL`, `AUTH_FETCH_PROVIDER_ERROR`,
+`AUTH_FETCH_ADAPTER_FAILED` —
 surfaced as `WebError` codes through the existing `web_fetch` error metadata.
 
 ## Development
@@ -115,8 +160,8 @@ pnpm --filter @yadsh/dsh-web-fetch-authenticated check   # lint + typecheck + te
 ```
 
 `INVESTIGATE.md` documents the exact DSH APIs and integration assumptions
-(SPEC phase 0). The v1 scope intentionally excludes cookies/OAuth/Jira-adapter
-features (see SPEC §29 phases 4–5).
+(SPEC phase 0). Cookies/OAuth and advanced auth remain excluded (SPEC §29
+phase 5); the Jira/Confluence content adapters (phase 4) are implemented.
 
 ## License
 

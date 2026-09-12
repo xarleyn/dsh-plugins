@@ -1,7 +1,91 @@
+import type { QaTurnSources } from "./provenance/types.js";
+
 export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
-export type QaSandboxMode = "read-only";
+export type QaSandboxMode = "read-only" | "workspace-write";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
+export type QaAccountRole = "user" | "admin";
+
+/** The account fields projected to browsers; never includes credentials. */
+export interface QaAccountUserPublic {
+  readonly id: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly role: QaAccountRole;
+  readonly createdAt: string;
+  readonly lastLoginAt: string | null;
+  readonly disabled: boolean;
+}
+
+/** One successful login/registration: the bearer token plus the user. */
+export interface QaAccountSession {
+  readonly token: string;
+  readonly user: QaAccountUserPublic;
+}
+
+export type QaWhoamiResult =
+  | { readonly authenticated: false }
+  | { readonly authenticated: true; readonly user: QaAccountUserPublic };
+
+/** Bulk ownership claim outcome for one browser's local chat index. */
+export interface QaClaimResult {
+  readonly claimed: number;
+  /** Ids already owned by a different user; the browser drops them. */
+  readonly conflicts: readonly string[];
+}
+
+/**
+ * One chat-ownership entry as the admin views see it: the session, its owner
+ * and the owner's display name resolved at read time (a disabled account
+ * still names its chats).
+ */
+export interface QaOwnershipEntry {
+  readonly sessionId: string;
+  readonly userId: string;
+  readonly displayName: string;
+  readonly claimedAt: string;
+}
+
+export interface QaSourcesConfig {
+  readonly enabled?: boolean;
+  readonly collect?: {
+    readonly parentAgent?: boolean;
+    readonly subagents?: boolean;
+    readonly persistTurnEvent?: boolean;
+  };
+  readonly display?: {
+    readonly sidebar?: boolean;
+    readonly footer?: boolean;
+    readonly groupByKind?: boolean;
+    readonly showDiscovered?: boolean;
+    readonly showOriginBadges?: boolean;
+    readonly maxInitiallyVisiblePerGroup?: number;
+  };
+  readonly webSearch?: {
+    readonly promoteSearchResultsWithoutFetch?: boolean;
+    readonly maxPromotedPerSearch?: number;
+  };
+  readonly dedupe?: {
+    readonly normalizeUrls?: boolean;
+    readonly stripTrackingParams?: boolean;
+    readonly mergeFileRanges?: boolean;
+  };
+  readonly filePreview?: {
+    readonly enabled?: boolean;
+    readonly markdownRenderedByDefault?: boolean;
+    readonly allowRawToggle?: boolean;
+    readonly maxBytes?: number;
+    readonly maxMarkdownRenderBytes?: number;
+  };
+  readonly subagents?: {
+    readonly inheritSources?: boolean;
+    readonly enableReportToolFallback?: boolean;
+    readonly markIncompleteOpaqueRuns?: boolean;
+  };
+  readonly legacy?: {
+    readonly parseAssistantSourcesBlock?: boolean;
+  };
+}
 
 export interface QaSurfaceConfig {
   readonly enabled?: boolean;
@@ -69,6 +153,26 @@ export interface QaSurfaceConfig {
   readonly embedding?: {
     readonly frameAncestors?: string | null;
   };
+  readonly accounts?: {
+    /** Opt-in; the QA gate stays off until the deployment turns this on. */
+    readonly enabled?: boolean;
+    readonly allowRegistration?: boolean;
+    readonly sessionTtlDays?: number;
+    /** Let admins see chats owned by other QA accounts. */
+    readonly showOtherUsersChats?: boolean;
+    /**
+     * Give every account a private cwd below the configured workspaceId.
+     * The child directory is not registered as a separate DSH workspace.
+     */
+    readonly perUserWorkspace?: boolean;
+  };
+  readonly entry?: {
+    /** Inject the root → /qa redirect for non-loopback hostnames. */
+    readonly redirectNonLoopback?: boolean;
+    /** Cookie-less /qa navigations go through the one-time ?token= exchange. */
+    readonly cookieBootstrap?: boolean;
+  };
+  readonly sources?: QaSourcesConfig;
 }
 
 export interface ResolvedQaSurfaceConfig {
@@ -135,6 +239,66 @@ export interface ResolvedQaSurfaceConfig {
   readonly embedding: {
     readonly frameAncestors: string | null;
   };
+  readonly accounts: {
+    readonly enabled: boolean;
+    readonly allowRegistration: boolean;
+    readonly sessionTtlDays: number;
+    readonly showOtherUsersChats: boolean;
+    readonly perUserWorkspace: boolean;
+  };
+  readonly entry: {
+    readonly redirectNonLoopback: boolean;
+    readonly cookieBootstrap: boolean;
+  };
+  readonly sources: {
+    readonly enabled: boolean;
+    readonly collect: {
+      readonly parentAgent: boolean;
+      readonly subagents: boolean;
+      readonly persistTurnEvent: boolean;
+    };
+    readonly display: {
+      readonly sidebar: boolean;
+      readonly footer: boolean;
+      readonly groupByKind: boolean;
+      readonly showDiscovered: boolean;
+      readonly showOriginBadges: boolean;
+      readonly maxInitiallyVisiblePerGroup: number;
+    };
+    readonly webSearch: {
+      readonly promoteSearchResultsWithoutFetch: boolean;
+      readonly maxPromotedPerSearch: number;
+    };
+    readonly dedupe: {
+      readonly normalizeUrls: boolean;
+      readonly stripTrackingParams: boolean;
+      readonly mergeFileRanges: boolean;
+    };
+    readonly filePreview: {
+      readonly enabled: boolean;
+      readonly markdownRenderedByDefault: boolean;
+      readonly allowRawToggle: boolean;
+      readonly maxBytes: number;
+      readonly maxMarkdownRenderBytes: number;
+    };
+    readonly subagents: {
+      readonly inheritSources: boolean;
+      readonly enableReportToolFallback: boolean;
+      readonly markIncompleteOpaqueRuns: boolean;
+    };
+    readonly legacy: {
+      readonly parseAssistantSourcesBlock: boolean;
+    };
+  };
+}
+
+export interface QaSourceFilePreview {
+  readonly path: string;
+  readonly content: string;
+  readonly size: number;
+  readonly truncated: boolean;
+  readonly markdown: boolean;
+  readonly renderableMarkdown: boolean;
 }
 
 /** Host-attested facts required before the QA composer may become writable. */
@@ -144,7 +308,7 @@ export interface QaLockdownProof {
   readonly agentPresetMatches: boolean;
   readonly workspaceMatches: boolean;
   readonly modelMatches: boolean;
-  readonly sandboxIsReadOnly: boolean;
+  readonly sandboxModeMatches: boolean;
   readonly approvalIsNever: boolean;
   readonly permissionPreset: string;
   readonly toolPolicyLoaded: boolean;
@@ -159,6 +323,11 @@ export type QaMessage =
       readonly status: "committed";
       readonly timestamp?: number;
       readonly images?: readonly QaImageView[];
+      /**
+       * Chat owner's display name, set only for an admin reading a foreign
+       * chat; the owner themself sees their messages unlabeled.
+       */
+      readonly author?: string;
     }
   | {
       readonly id: string;
@@ -168,6 +337,10 @@ export type QaMessage =
       readonly timestamp?: number;
       /** Host turn this answer belongs to; groups regenerations into variants. */
       readonly turn?: number;
+      /** Canonical evidence snapshot shared with this answer's source drawer. */
+      readonly sources?: readonly QaSource[];
+      readonly sourcesComplete?: boolean;
+      readonly incompleteSourceOrigins?: QaTurnSources["incompleteOrigins"];
       /** Host-recorded response timing, present on finalized messages only. */
       readonly stats?: {
         /** step start → final message. */
@@ -231,17 +404,17 @@ export type QaSessionPhase =
   | "blocked"
   | "error";
 
-/** One tool-derived source shown in the sources drawer. */
-export interface QaSource {
-  readonly id: string;
-  readonly kind: "web" | "search" | "file";
-  /** URL, filesystem path or search query as the model supplied it. */
-  readonly target: string;
-  readonly title: string;
-  readonly snippet: string;
-  /** The tool's full text output, capped for the detail pane. */
-  readonly output: string;
-}
+export type {
+  QaSourceEvidence,
+  QaSourceKind,
+  QaSourceLocation,
+  QaSourceOrigin,
+  QaSourceReference,
+  QaTurnSources,
+} from "./provenance/types.js";
+
+/** Transitional UI name; the drawer now consumes the canonical source object. */
+export type QaSource = import("./provenance/types.js").QaSourceReference;
 
 /** Raster formats the attachment path accepts (mirrors the host contract). */
 export type QaImageMediaType =
@@ -281,6 +454,8 @@ export interface QaSessionState {
   readonly chatsRevision: number;
   /** Tool-derived sources of the current chat (web targets and files read). */
   readonly sources: readonly QaSource[];
+  readonly sourcesComplete: boolean;
+  readonly incompleteSourceOrigins: QaTurnSources["incompleteOrigins"];
   /** Set while the bound session is a subagent watched from the panel. */
   readonly viewingSubagent: QaSubagentView | null;
 }

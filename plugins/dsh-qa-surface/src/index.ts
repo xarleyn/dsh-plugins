@@ -1,36 +1,60 @@
+import { randomUUID } from "node:crypto";
+import type {} from "@deepseek-ai/dsh-api-session-controller";
 import type {} from "@deepseek-ai/dsh-agent-presets";
 import type {} from "@deepseek-ai/dsh-permission-presets";
+import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
+import type {} from "@deepseek-ai/dsh-system-prompt";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import { SessionId } from "@deepseek-ai/dsh-session/types";
+import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { Context } from "@deepseek-ai/cordis";
-import {
-  installSettingsSection,
-  settingsNamespace,
-} from "@deepseek-ai/dsh-settings";
 import {
   createHostLoggerSink,
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
+import {
+  QaAccounts,
+  QaAccountsError,
+  defaultAccountsFilePath,
+} from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
+import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
+import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
+import { QaProvenanceHost } from "./provenance/host-store.js";
+import { readSourceFilePreview } from "./provenance/file-preview.js";
+import {
+  existingQaUserWorkspace,
+  prepareQaUserWorkspace,
+} from "./user-workspace.js";
+import type { QaTurnSources } from "./provenance/types.js";
 import type {
+  QaAccountSession,
+  QaClaimResult,
   QaLockdownProof,
+  QaOwnershipEntry,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaSourceFilePreview,
+  QaWhoamiResult,
 } from "./types.js";
 
 export const name = "qa-surface";
 export const inject = [
   "agents",
+  "sessions",
   "agentPresets",
   "permissionPresets",
   "tools",
+  "systemPrompt",
   "workspaceRegistry",
+  "sessionController",
 ];
-export const QA_SURFACE_SETTINGS_NAMESPACE = settingsNamespace("qa-surface");
+export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
 export const Config = ConfigSchema;
 
 declare module "@deepseek-ai/cordis" {
@@ -40,6 +64,11 @@ declare module "@deepseek-ai/cordis" {
 }
 
 const CONFIGURATION_ERROR = "Assistant configuration is unavailable.";
+const ACCOUNTS_DISABLED_ERROR =
+  "QA accounts are not enabled on this deployment.";
+
+/** The `(reason: <code>)` marker contract shared with the attestation path. */
+const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
 
 /** Host companion: validates config, owns the admission boundary and the route. */
 export class QaSurface extends TypertRemoteService {
@@ -49,6 +78,10 @@ export class QaSurface extends TypertRemoteService {
   private source: () => QaSurfaceConfig;
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
+  private readonly provenance: QaProvenanceHost;
+  private accounts: QaAccounts | undefined;
+  private accountsOptions: string | undefined;
+  private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
@@ -66,35 +99,70 @@ export class QaSurface extends TypertRemoteService {
       ctx,
       () => this.getConfig(),
       this.logger,
+      // Identity half of admission; no-ops while accounts stay disabled.
+      {
+        enforceSessionAccess: (token, sessionId) => {
+          return this.accountsFor(this.getConfig())?.ensureSessionAccess(
+            token,
+            sessionId,
+          );
+        },
+        userWorkspace: (userId, registeredWorkspacePath) =>
+          existingQaUserWorkspace(registeredWorkspacePath, userId),
+      },
+    );
+    this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
+    // The /qa route hands cookie-less browsers to the one-time host token
+    // exchange; the proxy in the deploy kit does the same and either alone
+    // suffices. Resolved lazily and once per process; unavailable bridges
+    // warn once and leave the old marker hand-off in place.
+    this.launchToken = makeLaunchTokenSource(
+      () =>
+        (ctx as unknown as { get(service: string): unknown }).get(
+          "connection",
+        ) as { authenticatedUrl?(baseUrl: string): string } | undefined,
+      (message) => this.logger.warn("entry.token-bridge", { message }),
     );
     ctx.effect(() => async () => this.logger.close(), "dsh-qa-surface.logger");
     ctx.effect(
       () => () => this.admission.dispose(),
       "dsh-qa-surface.lockdown-policies",
     );
-    installSettingsSection(
-      ctx,
-      QA_SURFACE_SETTINGS_NAMESPACE,
-      ConfigSchema,
-      entry,
-      {
-        setSource: (source) => {
-          this.source = source;
-        },
-        onChange: () => {
-          const config = this.getConfig();
-          this.refreshRoute();
-          this.logger.info("config.updated", {
-            enabled: config.enabled,
-            route: config.route.path,
-            sessionPolicy: config.session.policy,
-          });
-        },
-        validate: (value) => {
-          resolveConfig(value);
-        },
-      },
+    ctx.effect(
+      () => () => this.provenance.dispose(),
+      "dsh-qa-surface.provenance",
     );
+    // The root index gains one head script: non-loopback hostnames continue
+    // into /qa, the loopback operator keeps the full harness UI.
+    ctx.on("webserver/index-inject", (table) => {
+      const row = entryRedirectRow(this.getConfig());
+      if (row !== undefined) table.push(row);
+    });
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        QA_SURFACE_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        entry,
+        {
+          setSource: (source) => {
+            this.source = source;
+          },
+          onChange: () => {
+            const config = this.getConfig();
+            this.refreshRoute();
+            this.logger.info("config.updated", {
+              enabled: config.enabled,
+              route: config.route.path,
+              sessionPolicy: config.session.policy,
+            });
+          },
+          validate: (value) => {
+            resolveConfig(value);
+          },
+        },
+      );
+    });
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
@@ -120,6 +188,117 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /**
+   * The accounts store behind the runtime toggle. Rebuilt only when the
+   * account-affecting options change; the file is shared across rebuilds.
+   */
+  private accountsFor(config: ResolvedQaSurfaceConfig): QaAccounts | undefined {
+    if (!config.accounts.enabled) return undefined;
+    const options = JSON.stringify([
+      config.accounts.sessionTtlDays,
+      config.accounts.allowRegistration,
+    ]);
+    if (this.accounts === undefined || this.accountsOptions !== options) {
+      this.accounts = new QaAccounts(defaultAccountsFilePath(), {
+        sessionTtlDays: config.accounts.sessionTtlDays,
+        allowRegistration: config.accounts.allowRegistration,
+      });
+      this.accountsOptions = options;
+    }
+    return this.accounts;
+  }
+
+  /** The accounts store, or the disabled refusal the browser maps to copy. */
+  private requireAccounts(): QaAccounts {
+    const accounts = this.accountsFor(this.getConfig());
+    if (accounts === undefined) {
+      throw new Error(ACCOUNTS_DISABLED_ERROR);
+    }
+    return accounts;
+  }
+
+  /** Account failures ride the shared `(reason: <code>)` wire marker. */
+  private accountsRemote<T>(operation: () => T, sessionIdForLog?: string): T {
+    try {
+      return operation();
+    } catch (error) {
+      if (error instanceof QaAccountsError) {
+        this.logger.warn("accounts.rejected", {
+          reason: error.reason,
+          sessionId: sessionIdForLog,
+        });
+        throw new Error(
+          `QA accounts refused the request (reason: ${error.reason})`,
+          {
+            cause: error,
+          },
+        );
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Self-service signup; the first account ever created becomes admin. The
+   * display name derives from the email: the generated client enforces exact
+   * wire arity, so an optional name parameter would still be required.
+   */
+  @Remote("accountsRegister")
+  accountsRegister(email: string, password: string): QaAccountSession {
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => accounts.register(email, password));
+  }
+
+  @Remote("accountsLogin")
+  accountsLogin(email: string, password: string): QaAccountSession {
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => accounts.login(email, password));
+  }
+
+  /** Identity probe; safe to call with an empty or expired token. */
+  @Remote("accountsWhoami")
+  accountsWhoami(token: string): QaWhoamiResult {
+    if (!this.getConfig().accounts.enabled) return { authenticated: false };
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => accounts.whoami(token));
+  }
+
+  /** Migrate a browser's local chat index into server-side ownership. */
+  @Remote("accountsClaimSessions")
+  accountsClaimSessions(
+    token: string,
+    sessionIds: readonly string[],
+  ): QaClaimResult {
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => accounts.claimSessions(token, sessionIds));
+  }
+
+  /** The token user's owned session ids; the sidebar list authority. */
+  @Remote("accountsOwnedSessions")
+  accountsOwnedSessions(token: string): { readonly ids: readonly string[] } {
+    if (!this.getConfig().accounts.enabled) return { ids: [] };
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => ({
+      ids: accounts.ownedSessionIds(token),
+    }));
+  }
+
+  /**
+   * Every chat-ownership entry with owner display names; the cross-user view
+   * admin browsers group the sidebar by. Ordinary accounts are refused with
+   * the dedicated reason, anonymous ones with auth-required.
+   */
+  @Remote("accountsListOwnership")
+  accountsListOwnership(token: string): {
+    readonly entries: readonly QaOwnershipEntry[];
+  } {
+    if (!this.getConfig().accounts.enabled) return { entries: [] };
+    const accounts = this.requireAccounts();
+    return this.accountsRemote(() => ({
+      entries: accounts.listOwnership(token),
+    }));
+  }
+
+  /**
    * Serve the effective QA configuration to the browser. The DSH gateway pins
    * settings RPCs to loopback, so a browser served over the LAN always sees
    * the settings namespace as unavailable; this method is the config channel
@@ -131,11 +310,87 @@ export class QaSurface extends TypertRemoteService {
     return this.getConfig();
   }
 
+  /**
+   * Create a QA session from Host-owned inputs. With account workspaces on,
+   * cwd is `<configured workspace>/.qa-users/<account UUID>` and the child is
+   * intentionally not registered or attached as another DSH workspace.
+   */
+  @Remote("createSession")
+  async createSession(token: string): Promise<string> {
+    const config = this.getConfig();
+    if (config.session.policy === "fixed") {
+      throw new Error("Fixed QA sessions cannot be created.");
+    }
+    const id = SessionId(`session-${randomUUID()}`);
+    const accounts = this.accountsFor(config);
+    const owner =
+      accounts === undefined
+        ? undefined
+        : this.accountsRemote(() => accounts.reserveSession(token, String(id)));
+    let hostCreated = false;
+    try {
+      let userCwd: string | undefined;
+      if (config.accounts.perUserWorkspace) {
+        const workspaceId = config.session.workspaceId;
+        if (owner === undefined || workspaceId === null) {
+          throw new Error(
+            "Per-user QA workspace configuration is unavailable.",
+          );
+        }
+        const workspace = this.ctx.workspaceRegistry.get(
+          WorkspaceId(workspaceId),
+        );
+        if (workspace === undefined) {
+          throw new Error(
+            `Configured QA workspace ${workspaceId} is unavailable.`,
+          );
+        }
+        userCwd = prepareQaUserWorkspace(workspace.path, owner.id);
+      }
+
+      const created = await this.ctx.sessionController.create({
+        sessionId: id,
+        ...(userCwd !== undefined
+          ? { cwd: userCwd }
+          : config.session.workspaceId !== null
+            ? { workspaceId: WorkspaceId(config.session.workspaceId) }
+            : config.session.cwd !== null
+              ? { cwd: config.session.cwd }
+              : {}),
+        ...(config.session.agentPreset === null
+          ? {}
+          : { agentPreset: config.session.agentPreset }),
+      });
+      hostCreated = true;
+      if (config.session.provider !== null && config.session.model !== null) {
+        await this.ctx.sessionController.selectModel({
+          sessionId: created.sessionId,
+          provider: config.session.provider,
+          model: config.session.model,
+          ...(config.session.reasoningEffort === null
+            ? {}
+            : { reasoningEffort: config.session.reasoningEffort }),
+        });
+      }
+      this.admission.secureSession(token, String(created.sessionId));
+      return String(created.sessionId);
+    } catch (error) {
+      if (!hostCreated && owner !== undefined) {
+        accounts?.releaseSessionReservation(owner.id, String(id));
+      }
+      this.logger.error("session.create-rejected", {
+        sessionId: String(id),
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw new Error("Unable to create a QA session.", { cause: error });
+    }
+  }
+
   /** Pin and attest the effective policy. The browser supplies identity only. */
   @Remote("secureSession")
-  secureSession(sessionId: string): QaLockdownProof {
+  secureSession(token: string, sessionId: string): QaLockdownProof {
     try {
-      return this.admission.secureSession(sessionId);
+      return this.admission.secureSession(token, sessionId);
     } catch (error) {
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
@@ -143,7 +398,9 @@ export class QaSurface extends TypertRemoteService {
       const reason =
         error instanceof QaAttestationError
           ? error.reason
-          : "attestation-failed";
+          : (ACCOUNTS_REASON_MARKER.exec(
+              error instanceof Error ? error.message : "",
+            )?.at(1) ?? "attestation-failed");
       this.logger.error("lockdown.rejected", {
         sessionId,
         reason,
@@ -152,6 +409,45 @@ export class QaSurface extends TypertRemoteService {
       throw new Error(`${CONFIGURATION_ERROR} (reason: ${reason})`, {
         cause: error,
       });
+    }
+  }
+
+  /** Return canonical Host snapshots; replay is rebuilt from qa/sources events. */
+  @Remote("sources")
+  sources(token: string, sessionId: string): readonly QaTurnSources[] {
+    this.admission.secureSession(token, sessionId);
+    return this.provenance.bundles(sessionId);
+  }
+
+  /** Narrow read-only preview capability for files already present as sources. */
+  @Remote("readSourceFile")
+  async readSourceFile(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+  ): Promise<QaSourceFilePreview> {
+    this.admission.secureSession(token, sessionId);
+    const config = this.getConfig().sources.filePreview;
+    if (
+      !config.enabled ||
+      !this.provenance.sourceAllowed(sessionId, sourcePath)
+    ) {
+      throw new Error("Source preview is unavailable.");
+    }
+    const agent = this.ctx.agents.get(
+      (await import("@deepseek-ai/dsh-session/types")).SessionId(sessionId),
+    );
+    const root = agent?.session.header.cwd;
+    if (root === undefined) throw new Error("Source preview is unavailable.");
+    try {
+      return await readSourceFilePreview({
+        root,
+        sourcePath,
+        maxBytes: config.maxBytes,
+        maxMarkdownRenderBytes: config.maxMarkdownRenderBytes,
+      });
+    } catch {
+      throw new Error("Source preview is unavailable.");
     }
   }
 
@@ -165,7 +461,9 @@ export class QaSurface extends TypertRemoteService {
     this.disposeRoute = undefined;
     this.routeKey = undefined;
     if (key === undefined || this.webServer === undefined) return;
-    this.disposeRoute = registerQaNavigationRoute(this.webServer, config);
+    this.disposeRoute = registerQaNavigationRoute(this.webServer, config, {
+      launchToken: this.launchToken,
+    });
     this.routeKey = key;
   }
 }
@@ -178,8 +476,11 @@ export {
 } from "./config.js";
 export { QaAttestationError } from "./attestation.js";
 export type { QaAttestationReason } from "./attestation.js";
+export { QaAccounts, QaAccountsError } from "./accounts/store.js";
+export { entryRedirectRow, entryRedirectScript } from "./entry-redirect.js";
 export { registerQaNavigationRoute } from "./host-route.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export { QaPolicyAdmission } from "./secure-session.js";
+export * from "./provenance/index.js";
 export type * from "./types.js";
 export default QaSurface;

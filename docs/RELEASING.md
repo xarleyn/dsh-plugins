@@ -28,6 +28,10 @@ packages and repositories.
 4. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
 5. Open a PR. CI checks that touched publishable packages have a plan.
 
+A plan file must open with its `---` front-matter fence. Nx silently ignores a
+plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
+a file instead of letting the run release nothing.
+
 ## Maintainer flow
 
 1. Merge the PR into `main`.
@@ -46,6 +50,20 @@ and per-package tags without publishing. It then runs all validation and
 tarball installation gates, pushes the commit and tags, publishes only the
 versioned projects through npm OIDC, and creates one GitHub Release per package
 with its `.tgz` attached.
+
+## Test releases from a branch
+
+The workflow releases whatever ref it was dispatched on, so a branch can
+produce test versions without touching `main`. That release applies the
+branch's version plans and deletes them, exactly like a release on `main`:
+
+- The PR's version-plan check is skipped from then on, because release tags
+  exist that only the branch carries. That is the signal that the plans were
+  already applied and there is nothing left for the check to read.
+- Keep adding a plan for anything you change after that release. The exemption
+  covers the plans the release consumed, not the new work.
+- A later release from the same branch needs a fresh plan, since the workflow
+  requires at least one parseable plan before it will version anything.
 
 ## Failure recovery
 

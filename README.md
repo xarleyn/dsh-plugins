@@ -11,6 +11,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-cas-results` | `@yadsh/dsh-cas-results` | Content-addressed offload store for bulky tool results |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
+| `plugins/dsh-git-readonly` | `@yadsh/dsh-git-readonly` | Read-only git provenance tools |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
 | `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | Two-layer safety gate for prompts, streamed output, tools, and tool results |

@@ -1,21 +1,14 @@
 import { defineTool } from '@deepseek-ai/dsh-tools';
+import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
 import type { Impact } from '../impact/types.js';
 import type { ResolveImpactInput } from '../impact/types.js';
 
-interface SessionLike {
-  readonly id: string;
-  readonly header: { readonly cwd?: string } | undefined;
-  readonly events: readonly { readonly type: string; readonly data: unknown }[];
-}
+/** Execution context handed to tool bodies, derived from the host tool contract. */
+type ToolExec = Pick<ToolRunContext, 'agent'>;
 
-interface ToolAgent {
-  readonly id: string;
-  readonly session: SessionLike;
-}
+type ToolAgent = NonNullable<ToolExec['agent']>;
 
-interface ToolExec {
-  readonly agent?: ToolAgent | undefined;
-}
+type ToolSession = ToolAgent['session'];
 
 interface EngineFacade {
   resolve(
@@ -40,16 +33,16 @@ function requireAgent(exec: ToolExec): ToolAgent {
   if (agent === undefined) {
     throw new Error('doc_impact tools require a calling agent');
   }
-  const cwd = agent.session.header?.cwd;
+  const cwd = agent.session.header.cwd;
   if (typeof cwd !== 'string' || cwd === '') {
     throw new Error('this session has no working directory; doc-impact is not active');
   }
   return agent;
 }
 
-function currentTurn(events: SessionLike['events']): number {
+function currentTurn(session: ToolSession): number {
   let turn = 0;
-  for (const event of events) {
+  for (const event of session.snapshotEvents()) {
     if (event.type === 'turn/start') {
       const value = (event.data as { turn?: unknown }).turn;
       if (typeof value === 'number') turn = value;
@@ -133,8 +126,8 @@ export function createResolveTool({ engine }: ToolContext) {
         throw new Error('status "not-applicable" requires a non-empty reason');
       }
       const agent = requireAgent(exec);
-      const cwd = agent.session.header?.cwd as string;
-      const outcome = await engine.resolve(String(agent.id), cwd, currentTurn(agent.session.events), {
+      const cwd = agent.session.header.cwd as string;
+      const outcome = await engine.resolve(String(agent.id), cwd, currentTurn(agent.session), {
         ruleId: input.ruleId,
         status: input.status,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
@@ -178,8 +171,8 @@ export function createStatusTool({ engine }: ToolContext) {
     },
     async execute(_args: unknown, exec: ToolExec) {
       const agent = requireAgent(exec);
-      const cwd = agent.session.header?.cwd as string;
-      const turn = currentTurn(agent.session.events);
+      const cwd = agent.session.header.cwd as string;
+      const turn = currentTurn(agent.session);
       const status = await engine.status(String(agent.id), cwd, turn);
       const label = (impact: Impact): string => `${impact.ruleId} [${impact.status}] → ${impact.targetFiles.join(', ')}`;
       return {

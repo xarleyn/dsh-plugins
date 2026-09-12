@@ -1,4 +1,7 @@
 import { memo, Fragment, type ReactNode } from "react";
+import type { QaSource } from "../../types.js";
+import { SourceIcon } from "./QaSourcesDrawer.js";
+import { sourceFileName, type QaSourceRefs } from "./source-refs.js";
 
 const INLINE = /(\[[^\]]+\]\([^\s)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/gu;
 const TABLE_SEPARATOR = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/u;
@@ -9,7 +12,7 @@ const BLOCK_START =
 
 function safeHref(value: string): string | undefined {
   try {
-    const url = new URL(value, window.location.origin);
+    const url = new URL(value);
     return ["http:", "https:", "mailto:"].includes(url.protocol)
       ? value
       : undefined;
@@ -18,7 +21,81 @@ function safeHref(value: string): string | undefined {
   }
 }
 
-function inline(text: string, keyPrefix: string): ReactNode[] {
+/** Inline source awareness handed down from the owning assistant message. */
+export interface MarkdownSourceContext {
+  readonly refs?: QaSourceRefs;
+  /** Open a path-backed source in the sources drawer's detail view. */
+  readonly onSourceOpen?: (source: QaSource) => void;
+}
+
+/**
+ * One inline source footnote: a pill over the matched link or path with a
+ * hover/focus preview card (title, target, snippet). A URL-backed source is
+ * an anchor that opens right away; a path-backed one is a button whose click
+ * the owner routes to the sources drawer.
+ */
+function SourceChip({
+  source,
+  label,
+  href,
+  onOpen,
+}: {
+  readonly source: QaSource;
+  readonly label: string;
+  readonly href?: string;
+  readonly onOpen?: (source: QaSource) => void;
+}) {
+  const target = source.path ?? source.uri ?? source.title;
+  const face = (
+    <>
+      <span className="dsh-qa-srcref__icon" data-kind={source.kind}>
+        <SourceIcon kind={source.kind} />
+      </span>
+      <span className="dsh-qa-srcref__label">{label}</span>
+      <span className="dsh-qa-srcref__card" aria-hidden="true">
+        <span className="dsh-qa-srcref__card-title">
+          <span className="dsh-qa-srcref__icon" data-kind={source.kind}>
+            <SourceIcon kind={source.kind} />
+          </span>
+          {source.title || label}
+        </span>
+        <span className="dsh-qa-srcref__card-target">{target}</span>
+        {source.snippet === undefined ? null : (
+          <span className="dsh-qa-srcref__card-snippet">{source.snippet}</span>
+        )}
+      </span>
+    </>
+  );
+  if (href !== undefined) {
+    return (
+      <a
+        className="dsh-qa-srcref"
+        data-kind={source.kind}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        {face}
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="dsh-qa-srcref"
+      data-kind={source.kind}
+      onClick={onOpen === undefined ? undefined : () => onOpen(source)}
+    >
+      {face}
+    </button>
+  );
+}
+
+function inline(
+  text: string,
+  keyPrefix: string,
+  sources: MarkdownSourceContext = {},
+): ReactNode[] {
   const nodes: ReactNode[] = [];
   let offset = 0;
   for (const match of text.matchAll(INLINE)) {
@@ -29,17 +106,51 @@ function inline(text: string, keyPrefix: string): ReactNode[] {
     if (token.startsWith("[")) {
       const parts = /^\[([^\]]+)\]\(([^\s)]+)\)$/u.exec(token);
       const href = parts?.[2] === undefined ? undefined : safeHref(parts[2]);
-      nodes.push(
-        href === undefined ? (
-          token
-        ) : (
-          <a key={key} href={href} target="_blank" rel="noreferrer">
-            {parts?.[1]}
-          </a>
-        ),
-      );
+      if (href === undefined) {
+        nodes.push(token);
+      } else {
+        const source = sources.refs?.resolveUrl(href);
+        nodes.push(
+          source === undefined ? (
+            <a key={key} href={href} target="_blank" rel="noreferrer">
+              {parts?.[1]}
+            </a>
+          ) : (
+            <SourceChip
+              key={key}
+              source={source}
+              label={parts?.[1] || source.title}
+              href={href}
+            />
+          ),
+        );
+      }
     } else if (token.startsWith("`")) {
-      nodes.push(<code key={key}>{token.slice(1, -1)}</code>);
+      const value = token.slice(1, -1);
+      const source = sources.refs?.resolvePath(value);
+      if (source === undefined) {
+        nodes.push(<code key={key}>{value}</code>);
+      } else if (source.path === undefined) {
+        nodes.push(
+          <SourceChip
+            key={key}
+            source={source}
+            label={source.title || value}
+            href={safeHref(source.uri ?? "")}
+          />,
+        );
+      } else if (sources.onSourceOpen === undefined) {
+        nodes.push(<code key={key}>{value}</code>);
+      } else {
+        nodes.push(
+          <SourceChip
+            key={key}
+            source={source}
+            label={sourceFileName(source)}
+            onOpen={sources.onSourceOpen}
+          />,
+        );
+      }
     } else if (token.startsWith("**")) {
       nodes.push(<strong key={key}>{token.slice(2, -2)}</strong>);
     } else {
@@ -70,6 +181,7 @@ function isTableStart(lines: readonly string[], index: number): boolean {
 function renderTable(
   lines: readonly string[],
   index: number,
+  sources: MarkdownSourceContext,
 ): { node: ReactNode; next: number } {
   const header = splitTableRow(lines[index] ?? "");
   const aligns = splitTableRow(lines[index + 1] ?? "").map((cell) => {
@@ -100,7 +212,7 @@ function renderTable(
                   key={`h:${cellIndex}`}
                   style={{ textAlign: aligns[cellIndex] ?? "left" }}
                 >
-                  {inline(cell, `th:${index}:${cellIndex}`)}
+                  {inline(cell, `th:${index}:${cellIndex}`, sources)}
                 </th>
               ))}
             </tr>
@@ -116,6 +228,7 @@ function renderTable(
                     {inline(
                       row[cellIndex] ?? "",
                       `td:${rowIndex}:${cellIndex}`,
+                      sources,
                     )}
                   </td>
                 ))}
@@ -136,9 +249,20 @@ function renderTable(
  */
 export const Markdown = memo(function Markdown({
   text,
+  sourceRefs,
+  onSourceOpen,
 }: {
   readonly text: string;
+  readonly sourceRefs?: QaSourceRefs;
+  readonly onSourceOpen?: (source: QaSource) => void;
 }) {
+  const sources: MarkdownSourceContext =
+    sourceRefs === undefined
+      ? {}
+      : {
+          refs: sourceRefs,
+          ...(onSourceOpen === undefined ? {} : { onSourceOpen }),
+        };
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
   const blocks: ReactNode[] = [];
   for (let index = 0; index < lines.length;) {
@@ -160,7 +284,7 @@ export const Markdown = memo(function Markdown({
       continue;
     }
     if (isTableStart(lines, index)) {
-      const table = renderTable(lines, index);
+      const table = renderTable(lines, index, sources);
       blocks.push(table.node);
       index = table.next;
       continue;
@@ -172,7 +296,7 @@ export const Markdown = memo(function Markdown({
     }
     const heading = /^(#{1,3})\s+(.+)$/u.exec(line);
     if (heading !== null) {
-      const content = inline(heading[2] ?? "", `heading:${index}`);
+      const content = inline(heading[2] ?? "", `heading:${index}`, sources);
       const key = `heading:${index}`;
       blocks.push(
         heading[1]?.length === 1 ? (
@@ -191,7 +315,9 @@ export const Markdown = memo(function Markdown({
       while (index < lines.length && /^[-*]\s+/u.test(lines[index] ?? "")) {
         const content = (lines[index] ?? "").replace(/^[-*]\s+/u, "");
         items.push(
-          <li key={`item:${index}`}>{inline(content, `item:${index}`)}</li>,
+          <li key={`item:${index}`}>
+            {inline(content, `item:${index}`, sources)}
+          </li>,
         );
         index += 1;
       }
@@ -203,7 +329,9 @@ export const Markdown = memo(function Markdown({
       while (index < lines.length && ORDERED_LIST.test(lines[index] ?? "")) {
         const content = (lines[index] ?? "").replace(ORDERED_LIST, "");
         items.push(
-          <li key={`oitem:${index}`}>{inline(content, `oitem:${index}`)}</li>,
+          <li key={`oitem:${index}`}>
+            {inline(content, `oitem:${index}`, sources)}
+          </li>,
         );
         index += 1;
       }
@@ -213,7 +341,7 @@ export const Markdown = memo(function Markdown({
     if (line.startsWith("> ")) {
       blocks.push(
         <blockquote key={`quote:${index}`}>
-          {inline(line.slice(2), `quote:${index}`)}
+          {inline(line.slice(2), `quote:${index}`, sources)}
         </blockquote>,
       );
       index += 1;
@@ -239,7 +367,7 @@ export const Markdown = memo(function Markdown({
         {paragraph.map((part, partIndex) => (
           <Fragment key={`line:${partIndex}`}>
             {partIndex === 0 ? null : <br />}
-            {inline(part, `paragraph:${index}:${partIndex}`)}
+            {inline(part, `paragraph:${index}:${partIndex}`, sources)}
           </Fragment>
         ))}
       </p>,

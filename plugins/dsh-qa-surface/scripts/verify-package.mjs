@@ -44,10 +44,17 @@ assert.equal(
 );
 assert.equal(manifest.exports["./typert"].default, "./lib/typert.host.js");
 assert.equal(manifest.dsh.client.platform, "web");
+assert.equal(manifest.peerDependencies["react-dom"], "^18.2.0");
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-layout"),
 );
-assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
+assert(
+  manifest.dsh.client.inject.includes(
+    "@deepseek-ai/dsh-api-session-controller",
+  ),
+);
+assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
+assert(!manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
 assert.equal(
   `/plugins/${manifest.name}/client.js`,
   "/plugins/@yadsh/dsh-qa-surface/client.js",
@@ -87,12 +94,26 @@ assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
+const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 assert.match(
   client,
   /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-surface"/u,
 );
+assert.match(
+  client,
+  new RegExp(`const QA_VERSION = "${escapedVersion}"`, "u"),
+  "client bundle must embed the package version",
+);
+assert.doesNotMatch(client, /__DSH_QA_VERSION__/u);
 assert.match(client, /shell\.overlay/u);
 assert.match(client, /id:\s*"dsh-qa-surface"/u);
+assert.match(client, /settings\.onboarding/u);
+assert.match(client, /"welcome-notice"/u);
+assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
+assert.match(client, /Перед началом тестирования/u);
+assert.match(client, /2026-09-12\.1/u);
+assert.match(client, /dsh-qa-onboarding/u);
+assert.match(client, /require\("react-dom"\)/u);
 assert.match(client, /\.prompt\(/u);
 assert.match(client, /\.cancel\(/u);
 assert.match(client, /\.create\(/u);
@@ -100,6 +121,8 @@ assert.match(client, /secureSession/u);
 assert.match(client, /Настройки помощника недоступны\./u);
 assert.match(client, /dsh-qa-surface:v1|:v1:/u);
 assert.match(client, /dsh-qa-sidebar/u);
+assert.match(client, /dsh-qa-width-handle/u);
+assert.match(client, /:content-width/u);
 assert.match(client, /История чатов/u);
 assert.match(client, /policy attestation failed \(reason:/u);
 assert.match(client, /data-dsh-qa-surface|dshQaSurface/u);
