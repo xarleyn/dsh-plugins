@@ -94,10 +94,17 @@ assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
+const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 assert.match(
   client,
   /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-surface"/u,
 );
+assert.match(
+  client,
+  new RegExp(`const QA_VERSION = "${escapedVersion}"`, "u"),
+  "client bundle must embed the package version",
+);
+assert.doesNotMatch(client, /__DSH_QA_VERSION__/u);
 assert.match(client, /shell\.overlay/u);
 assert.match(client, /id:\s*"dsh-qa-surface"/u);
 assert.match(client, /settings\.onboarding/u);

@@ -3,10 +3,13 @@ import { useEffect, useRef } from "react";
 /**
  * The deployed plugin version and a curated end-user changelog. The module is
  * bundled into the self-contained client, so both are frozen at build time;
- * a unit test pins QA_VERSION to package.json and the top CHANGELOG.md entry
- * so a release cannot ship a stale surface.
+ * the build and test configs inject QA_VERSION from package.json. Curated
+ * entries may include the next planned version before Nx materializes it in
+ * CHANGELOG.md; after the release bump that entry becomes current without a
+ * source edit.
  */
-export const QA_VERSION = "0.2.0";
+declare const __DSH_QA_VERSION__: string;
+export const QA_VERSION = __DSH_QA_VERSION__;
 
 export interface QaChangelogEntry {
   readonly version: string;
@@ -18,6 +21,33 @@ export interface QaChangelogEntry {
 }
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
+  {
+    version: "0.3.0",
+    date: "2026-09-12",
+    sections: [
+      {
+        title: "Новое",
+        items: [
+          "Аккаунты QA: вход и регистрация, персональная история чатов, выход из аккаунта и управление пользователями через CLI.",
+          "Администратор видит только свои чаты по умолчанию. Общую историю пользователей можно явно включить настройкой accounts.showOtherUsersChats.",
+          "Предупреждение при входе в тестовый QA-интерфейс с пояснением о работе с данными.",
+          "Навигация по ответу стала нагляднее: шкала хода работы, сноски на источники и подробности выполненных инструментов.",
+          "История версий теперь доступна прямо из нижней части сайдбара.",
+        ],
+      },
+      {
+        title: "Исправления",
+        items: [
+          "Поиск по чатам учитывает владельца, получил кнопку очистки и больше не ломает ширину строк; роли администратора отображаются отдельно.",
+          "Убраны декоративные точки-разделители из списка чатов, сообщений и карточек источников.",
+          "Переключение между чатами больше не переносит вложения и другое состояние предыдущей сессии; устранены гонки асинхронной загрузки.",
+          "Изменения аккаунтов, сделанные через CLI, подхватываются без перезапуска, а запись хранилища стала безопаснее для параллельных процессов.",
+          "Ошибки создания сессии, остановленные и завершившиеся ошибкой инструменты теперь показываются пользователю корректно.",
+          "Клиент и упакованный плагин обновлены для интерфейсов DSH 0.1.5-rc.2.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.0",
     date: "2026-09-10",

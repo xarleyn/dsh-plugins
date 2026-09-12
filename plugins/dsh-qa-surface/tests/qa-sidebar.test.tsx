@@ -399,6 +399,12 @@ describe("sidebar version and changelog", () => {
       // git-cliff releases use "## X.Y.Z (date)", the legacy header " - ".
       ...changelog.matchAll(/^## (\d+\.\d+\.\d+)(?: \(| - )/gmu),
     ].map((match) => match[1] as string);
-    expect(QA_CHANGELOG.map((entry) => entry.version)).toEqual(released);
+    const currentIndex = QA_CHANGELOG.findIndex(
+      (entry) => entry.version === QA_VERSION,
+    );
+    expect(currentIndex).toBeGreaterThanOrEqual(0);
+    expect(
+      QA_CHANGELOG.slice(currentIndex).map((entry) => entry.version),
+    ).toEqual(released);
   });
 });
