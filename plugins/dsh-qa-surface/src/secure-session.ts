@@ -11,6 +11,7 @@ import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
+import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
 interface AppliedPolicy {
   readonly fingerprint: string;
@@ -25,7 +26,11 @@ interface AppliedPolicy {
  * pair or throw the coarse `QaAttestationError`; see {@link QaAccounts}.
  */
 export interface QaAccountsGate {
-  enforceSessionAccess(token: string, sessionId: string): void;
+  enforceSessionAccess(
+    token: string,
+    sessionId: string,
+  ): { readonly id: string } | undefined;
+  userWorkspace(userId: string, registeredWorkspacePath: string): string;
 }
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
@@ -57,6 +62,8 @@ function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
  */
 export class QaPolicyAdmission {
   private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
+  private readonly workspaceRoots = new Map<string, string>();
+  private readonly disposeWorkspaceGuard: () => void;
 
   constructor(
     private readonly ctx: Context,
@@ -64,8 +71,25 @@ export class QaPolicyAdmission {
     private readonly logger: PluginLogger,
     private readonly accounts?: QaAccountsGate,
   ) {
+    this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
+      const session = execution.agent?.session;
+      if (session === undefined) return undefined;
+      const root = this.workspaceRoots.get(String(session.id));
+      if (root === undefined) return undefined;
+      if (!cwdMatches(session.header.cwd, root)) {
+        return "QA workspace boundary: session cwd is outside this user's directory.";
+      }
+      return qaUserWorkspaceDenial(execution, root);
+    });
+    ctx.on("session/created", (session) => {
+      const parent = session.header.parentSession;
+      if (parent === undefined) return;
+      const root = this.workspaceRoots.get(String(parent));
+      if (root !== undefined) this.workspaceRoots.set(String(session.id), root);
+    });
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
+      this.workspaceRoots.delete(String(agent.session.id));
     });
   }
 
@@ -76,9 +100,10 @@ export class QaPolicyAdmission {
     // must not learn whether a session exists or how the deployment composes.
     // Independent of lockdown — a deployment may gate users without pinning
     // the policy, and the gate itself no-ops while accounts are disabled.
+    let sessionOwner: { readonly id: string } | undefined;
     if (this.accounts !== undefined) {
       try {
-        this.accounts.enforceSessionAccess(token, sessionId);
+        sessionOwner = this.accounts.enforceSessionAccess(token, sessionId);
       } catch (error) {
         if (error instanceof QaAccountsError) {
           throw new QaAttestationError(
@@ -102,7 +127,7 @@ export class QaPolicyAdmission {
         agentPresetMatches: true,
         workspaceMatches: true,
         modelMatches: true,
-        sandboxIsReadOnly: false,
+        sandboxModeMatches: false,
         approvalIsNever: false,
         permissionPreset: "",
         toolPolicyLoaded: false,
@@ -124,6 +149,26 @@ export class QaPolicyAdmission {
         `workspace ${expectedWorkspace} is not registered`,
       );
     }
+    let expectedUserRoot: string | undefined;
+    if (config.accounts.perUserWorkspace) {
+      if (sessionOwner === undefined || pinnedWorkspace === undefined) {
+        throw new QaAttestationError(
+          "workspace-unavailable",
+          "per-user workspace identity is unavailable",
+        );
+      }
+      try {
+        expectedUserRoot = this.accounts?.userWorkspace(
+          sessionOwner.id,
+          pinnedWorkspace.path,
+        );
+      } catch (error) {
+        throw new QaAttestationError(
+          "workspace-unavailable",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    }
 
     const expectedPreset = config.session.agentPreset;
     const agentPresetMatches =
@@ -134,7 +179,10 @@ export class QaPolicyAdmission {
     const workspaceMatches =
       !lockdown.enforceFixedWorkspace ||
       (expectedWorkspace === null && config.session.cwd === null) ||
-      (pinnedWorkspace !== undefined &&
+      (expectedUserRoot !== undefined &&
+        cwdMatches(agent.session.header.cwd, expectedUserRoot)) ||
+      (!config.accounts.perUserWorkspace &&
+        pinnedWorkspace !== undefined &&
         cwdMatches(agent.session.header.cwd, pinnedWorkspace.path)) ||
       (expectedWorkspace === null &&
         config.session.cwd !== null &&
@@ -167,7 +215,7 @@ export class QaPolicyAdmission {
     ) {
       throw new QaAttestationError(
         "permission-preset",
-        `permission preset ${lockdown.permissionPreset} does not resolve to read-only/never`,
+        `permission preset ${lockdown.permissionPreset} does not resolve to ${lockdown.sandboxMode}/never`,
       );
     }
 
@@ -242,17 +290,22 @@ export class QaPolicyAdmission {
     const effectivePermission = this.ctx.permissionPresets.current(
       agent.session,
     );
-    const sandboxIsReadOnly = permission.sandbox === "read-only";
+    const sandboxModeMatches = permission.sandbox === lockdown.sandboxMode;
     const approvalIsNever = permission.approval === "never";
     if (
       effectivePermission !== lockdown.permissionPreset ||
-      !sandboxIsReadOnly ||
+      !sandboxModeMatches ||
       !approvalIsNever
     ) {
       throw new QaAttestationError(
         "attestation-failed",
         "permission attestation failed",
       );
+    }
+    if (expectedUserRoot !== undefined) {
+      this.workspaceRoots.set(sessionId, expectedUserRoot);
+    } else {
+      this.workspaceRoots.delete(sessionId);
     }
 
     this.logger.debug("lockdown.attested", {
@@ -266,7 +319,7 @@ export class QaPolicyAdmission {
       agentPresetMatches,
       workspaceMatches,
       modelMatches,
-      sandboxIsReadOnly,
+      sandboxModeMatches,
       approvalIsNever,
       permissionPreset: lockdown.permissionPreset,
       toolPolicyLoaded: true,
@@ -284,5 +337,7 @@ export class QaPolicyAdmission {
       policy.disposeGuidance();
     }
     this.appliedPolicies.clear();
+    this.workspaceRoots.clear();
+    this.disposeWorkspaceGuard();
   }
 }

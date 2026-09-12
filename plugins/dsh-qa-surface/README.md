@@ -16,7 +16,8 @@ Session and Agent Loop.
 - optionally shows a minimal per-browser chat-history sidebar
   (`ui.showSessionList`) whose switching re-runs policy attestation;
 - blocks unsupported approvals/questions instead of auto-approving them;
-- pins locked sessions to `read-only` + `approval=never` before Send is enabled;
+- pins locked sessions to the configured `read-only` or isolated
+  `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
@@ -103,6 +104,7 @@ config:
     allowRegistration: true
     sessionTtlDays: 30
     showOtherUsersChats: false
+    perUserWorkspace: false
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
@@ -165,6 +167,44 @@ config:
 uses the Host's normal default working directory. Put the system prompt, tools,
 skills, knowledge connections and permission policy in `agentPreset`, not in
 this UI plugin.
+
+### Writable per-user research space
+
+Set `accounts.perUserWorkspace: true` only together with accounts, a registered
+`session.workspaceId`, `lockdown.enforceFixedWorkspace: true`, and a
+`workspace-write` + `never` permission preset:
+
+```yaml
+session:
+  workspaceId: "<registered-workspace-uuid>"
+accounts:
+  enabled: true
+  perUserWorkspace: true
+lockdown:
+  enabled: true
+  enforceFixedWorkspace: true
+  sandboxMode: workspace-write
+  approvalPolicy: never
+  permissionPreset: qa-workspace-write
+  toolPolicy:
+    mode: allow-list
+    allow: [read, read_image, glob, grep, write, edit, web_search, web_fetch]
+```
+
+The Host resolves that Workspace record's path and creates
+`<workspace>/.qa-users/<account UUID>` with private Unix directory mode. It
+passes the child as session `cwd` but deliberately does not register or attach
+it as another DSH Workspace. Chats therefore remain ordinary entries in the
+global DSH session list rather than creating one Workspace row per account.
+
+The boundary combines DSH `workspace-write` with a Host tool guard for both
+read and write paths, canonicalizes existing ancestors to reject symlink
+escapes, propagates the root to subagent sessions, rejects shell/process/LSP
+and `dsh_git_*` escape hatches, limits one model-controlled write to 10 MiB,
+and limits an account directory to 256 MiB. `web_fetch` plus `write` is the
+intended bounded research-download path; there is no unrestricted URL-to-disk
+or shell downloader. Account directories are persistent scratch space and are
+not deleted automatically.
 
 Model override is opt-in: `provider` and `model` must be set together. Slash
 commands are rejected as plain QA input. Reasoning and tool details remain
@@ -259,7 +299,9 @@ scope, and local in-contour model processing. Explicit acknowledgement is
 stored as a versioned browser-local flag; changing the disclosure version
 shows it again. Other DSH routes retain the stock onboarding entry.
 
-Locked mode requires a deployment permission preset named `qa-read-only`.
+The default locked mode requires a deployment permission preset named
+`qa-read-only`. Per-user writable mode uses a separate preset such as
+`qa-workspace-write`.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
 its process-wide default:
 
@@ -282,9 +324,14 @@ its process-wide default:
         approval: never
         name: QA Read Only
         description: No filesystem mutations and no permission escalation.
+      qa-workspace-write:
+        sandbox: workspace-write
+        approval: never
+        name: QA User Workspace
+        description: Writes only inside the attested per-user workspace.
 ```
 
-The shipped tool allow-list is empty. Add only reviewed read-only tool names
+The shipped tool allow-list is empty. Add only reviewed tool names
 from the actual deployment. A name that is not registered fails closed. The
 Host restriction retains exact allow-listed tools from the agent preset's
 ancestor scope, and the additional execution guard also denies session-scoped

@@ -81,7 +81,7 @@ const configSchema = z.object({
         .default(D.lockdown.enforceFixedWorkspace),
       enforceFixedModel: z.boolean().default(D.lockdown.enforceFixedModel),
       sandboxMode: z
-        .union(["read-only"] as const)
+        .union(["read-only", "workspace-write"] as const)
         .default(D.lockdown.sandboxMode),
       approvalPolicy: z
         .union(["never"] as const)
@@ -135,6 +135,7 @@ const configSchema = z.object({
         .max(365)
         .default(D.accounts.sessionTtlDays),
       showOtherUsersChats: z.boolean().default(D.accounts.showOtherUsersChats),
+      perUserWorkspace: z.boolean().default(D.accounts.perUserWorkspace),
     })
     .default({ ...D.accounts }),
   entry: z

@@ -19,7 +19,8 @@ rules are:
   from 1 through 365, and other users' chats stay hidden unless an admin view
   explicitly enables `accounts.showOtherUsersChats`;
 - lockdown defaults to enabled and requires a non-empty permission preset;
-- the preset must resolve on the Host to exactly `read-only` + `never`;
+- the preset must resolve on the Host to the configured sandbox
+  (`read-only`, or `workspace-write` for per-user space) + `never`;
 - permission, slash-command, settings, rename, delete and arbitrary-open
   capability flags cannot be enabled;
 - `showReset` requires the independent `allowSessionReset` opt-in;
@@ -48,6 +49,22 @@ deployment's own directory:
 With `lockdown.enforceFixedWorkspace: true` (the default) a chat created
 anywhere else refuses to attest, so the QA audience can never pull the
 assistant out of the pinned directory.
+
+`accounts.perUserWorkspace: true` changes the `workspaceId` behavior: the Host
+uses the registered Workspace path only as a trusted base, creates
+`.qa-users/<account UUID>` below it, and passes that child as the Session cwd.
+It does not register or attach the child as a Workspace, so the operator sees
+all chats in the normal global DSH session list. This mode requires accounts,
+`workspaceId`, fixed-workspace enforcement, lockdown, and `workspace-write`;
+`fixed` session policy and a bare `workspace-write` configuration are rejected.
+
+The per-user guard canonicalizes paths (including the deepest existing parent
+of a new file), blocks traversal and symlink escape for `read`, `read_image`,
+`glob`, `grep`, `write`, `edit`, and `str_replace_editor`, propagates the root
+to subagents, and rejects process/LSP/git tools that can discover an ancestor
+repository. A write payload is capped at 10 MiB and total scratch usage at
+256 MiB. Use reviewed `web_fetch` plus `write` for research downloads; no
+general shell or arbitrary URL-to-file capability is enabled.
 
 Browser persistence stores only the DSH session id under
 `<storageKey>:v1:<route>:session`, plus — when `ui.showSessionList` is
@@ -122,6 +139,9 @@ QA surface and turns on server-side session ownership:
   identity on every attestation.
 - `accounts.showOtherUsersChats` (default false) lets admins load and display
   chats owned by other QA accounts. It has no effect for ordinary users.
+- `accounts.perUserWorkspace` (default false) enables the bounded per-account
+  scratch directory described above. The account UUID, never email or display
+  name, is used as the directory component.
 - Session ownership is first come, first served: attesting or bulk-claiming
   an unowned session binds it to the caller's account (this is how existing
   per-browser chats migrate on the first login). Sessions owned by another

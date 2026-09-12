@@ -1,7 +1,7 @@
 import type { QaTurnSources } from "./provenance/types.js";
 
 export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
-export type QaSandboxMode = "read-only";
+export type QaSandboxMode = "read-only" | "workspace-write";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
 export type QaAccountRole = "user" | "admin";
@@ -160,6 +160,11 @@ export interface QaSurfaceConfig {
     readonly sessionTtlDays?: number;
     /** Let admins see chats owned by other QA accounts. */
     readonly showOtherUsersChats?: boolean;
+    /**
+     * Give every account a private cwd below the configured workspaceId.
+     * The child directory is not registered as a separate DSH workspace.
+     */
+    readonly perUserWorkspace?: boolean;
   };
   readonly entry?: {
     /** Inject the root → /qa redirect for non-loopback hostnames. */
@@ -239,6 +244,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly allowRegistration: boolean;
     readonly sessionTtlDays: number;
     readonly showOtherUsersChats: boolean;
+    readonly perUserWorkspace: boolean;
   };
   readonly entry: {
     readonly redirectNonLoopback: boolean;
@@ -302,7 +308,7 @@ export interface QaLockdownProof {
   readonly agentPresetMatches: boolean;
   readonly workspaceMatches: boolean;
   readonly modelMatches: boolean;
-  readonly sandboxIsReadOnly: boolean;
+  readonly sandboxModeMatches: boolean;
   readonly approvalIsNever: boolean;
   readonly permissionPreset: string;
   readonly toolPolicyLoaded: boolean;

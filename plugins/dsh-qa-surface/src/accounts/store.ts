@@ -472,7 +472,55 @@ export class QaAccounts {
         "this session belongs to another QA user",
       );
     }
+    const ownerUser = this.file.users.find(
+      (candidate) => candidate.id === owner.userId,
+    );
+    if (ownerUser === undefined) {
+      throw new QaAccountsError(
+        "session-owned-elsewhere",
+        "the session owner no longer exists",
+      );
+    }
+    return toPublic(ownerUser);
+  }
+
+  /**
+   * Atomically reserve a Host-generated session id for the token user before
+   * the Session exists. Browser callers therefore never get a race window in
+   * which they can claim another user's newly created chat.
+   */
+  reserveSession(token: string, sessionId: string): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    if (
+      sessionId.trim() === "" ||
+      sessionId.length > MAX_SESSION_ID_LENGTH ||
+      this.file.ownership[sessionId] !== undefined
+    ) {
+      throw new QaAccountsError(
+        "session-owned-elsewhere",
+        "the requested session id is unavailable",
+      );
+    }
+    this.file = {
+      ...this.file,
+      ownership: {
+        ...this.file.ownership,
+        [sessionId]: { userId: user.id, claimedAt: new Date().toISOString() },
+      },
+    };
+    this.save();
     return toPublic(user);
+  }
+
+  /** Roll back a reservation if Host creation failed before a chat existed. */
+  releaseSessionReservation(userId: string, sessionId: string): void {
+    this.reloadIfChanged();
+    if (this.file.ownership[sessionId]?.userId !== userId) return;
+    const ownership = { ...this.file.ownership };
+    delete ownership[sessionId];
+    this.file = { ...this.file, ownership };
+    this.save();
   }
 
   /** Bulk-claim a browser's local chat index; foreign ids come back as conflicts. */

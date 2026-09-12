@@ -70,6 +70,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       allowRegistration: true,
       sessionTtlDays: 30,
       showOtherUsersChats: false,
+      perUserWorkspace: false,
     }),
     entry: Object.freeze({
       redirectNonLoopback: true,
@@ -238,12 +239,12 @@ export function resolveConfig(
       `dsh-qa-surface: lockdown.${weakenedFlag[0]} cannot be enabled`,
     );
   }
-  if (
-    input.lockdown?.sandboxMode !== undefined &&
-    input.lockdown.sandboxMode !== "read-only"
-  ) {
+  const sandboxMode =
+    input.lockdown?.sandboxMode ??
+    DEFAULT_QA_SURFACE_CONFIG.lockdown.sandboxMode;
+  if (sandboxMode !== "read-only" && sandboxMode !== "workspace-write") {
     throw new TypeError(
-      "dsh-qa-surface: lockdown.sandboxMode must be read-only",
+      "dsh-qa-surface: lockdown.sandboxMode must be read-only or workspace-write",
     );
   }
   if (
@@ -333,6 +334,44 @@ export function resolveConfig(
       "dsh-qa-surface: accounts.sessionTtlDays must be an integer from 1 to 365",
     );
   }
+  const accountsEnabled =
+    input.accounts?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.accounts.enabled;
+  const perUserWorkspace =
+    input.accounts?.perUserWorkspace ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.perUserWorkspace;
+  const enforceFixedWorkspace =
+    input.lockdown?.enforceFixedWorkspace ??
+    DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedWorkspace;
+  if (perUserWorkspace && !accountsEnabled) {
+    throw new TypeError(
+      "dsh-qa-surface: accounts.perUserWorkspace requires accounts.enabled",
+    );
+  }
+  if (perUserWorkspace && workspaceId === null) {
+    throw new TypeError(
+      "dsh-qa-surface: accounts.perUserWorkspace requires session.workspaceId",
+    );
+  }
+  if (perUserWorkspace && policy === "fixed") {
+    throw new TypeError(
+      "dsh-qa-surface: accounts.perUserWorkspace does not support fixed sessions",
+    );
+  }
+  if (
+    perUserWorkspace &&
+    (!lockdownEnabled ||
+      !enforceFixedWorkspace ||
+      sandboxMode !== "workspace-write")
+  ) {
+    throw new TypeError(
+      "dsh-qa-surface: accounts.perUserWorkspace requires lockdown.enabled, enforceFixedWorkspace, and workspace-write",
+    );
+  }
+  if (sandboxMode === "workspace-write" && !perUserWorkspace) {
+    throw new TypeError(
+      "dsh-qa-surface: workspace-write is allowed only with accounts.perUserWorkspace",
+    );
+  }
 
   return Object.freeze({
     enabled: input.enabled ?? DEFAULT_QA_SURFACE_CONFIG.enabled,
@@ -403,13 +442,11 @@ export function resolveConfig(
       enforceFixedAgentPreset:
         input.lockdown?.enforceFixedAgentPreset ??
         DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedAgentPreset,
-      enforceFixedWorkspace:
-        input.lockdown?.enforceFixedWorkspace ??
-        DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedWorkspace,
+      enforceFixedWorkspace: enforceFixedWorkspace,
       enforceFixedModel:
         input.lockdown?.enforceFixedModel ??
         DEFAULT_QA_SURFACE_CONFIG.lockdown.enforceFixedModel,
-      sandboxMode: "read-only",
+      sandboxMode,
       approvalPolicy: "never",
       permissionPreset,
       allowPermissionChanges: false,
@@ -428,8 +465,7 @@ export function resolveConfig(
       frameAncestors: optionalText(input.embedding?.frameAncestors),
     }),
     accounts: Object.freeze({
-      enabled:
-        input.accounts?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.accounts.enabled,
+      enabled: accountsEnabled,
       allowRegistration:
         input.accounts?.allowRegistration ??
         DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,
@@ -437,6 +473,7 @@ export function resolveConfig(
       showOtherUsersChats:
         input.accounts?.showOtherUsersChats ??
         DEFAULT_QA_SURFACE_CONFIG.accounts.showOtherUsersChats,
+      perUserWorkspace,
     }),
     entry: Object.freeze({
       redirectNonLoopback:

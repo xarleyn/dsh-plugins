@@ -52,6 +52,10 @@ displayName, claimedAt }] }` — admin-only (`admin-required` refusal for
   accounts are enabled
 - `sources(token, sessionId)`, `readSourceFile(token, sessionId, path)` — same
 
+`createSession(token)` is the only QA creation path. It returns a session id;
+ownership reservation, Workspace resolution, cwd, preset, model, and first
+attestation are all Host-owned.
+
 The token is an HMAC-SHA256-signed `v1.<payload>.<sig>` string
 (payload `{ uid, exp }`) keyed by a secret generated once and persisted in
 the accounts file. The browser keeps it in `localStorage` under the
@@ -67,9 +71,9 @@ createdAt, lastLoginAt }], ownership: { [sessionId]: { userId, claimedAt } } }`.
   Written atomically (temp file + rename), all mutations synchronous.
 - Passwords: scrypt with per-user salt, timing-safe comparison.
 - Roles: `user` | `admin`. The first registered user becomes `admin`.
-  Admins bypass the ownership refusal (the surface is read-only anyway);
-  non-admins get a coarse `session-owned-elsewhere` attestation refusal for
-  sessions owned by someone else.
+  Admins bypass the ownership refusal; per-user workspace attestation still
+  resolves the chat owner's directory rather than the admin's. Non-admins get
+  a coarse `session-owned-elsewhere` refusal for another user's session.
 - Claim rule (first come, first served): attesting an _unowned_ session claims
   it for the requesting user (this is how pre-accounts sessions migrate when
   an old browser re-opens its `activeId` without a bulk claim). Bulk claims
@@ -78,6 +82,13 @@ createdAt, lastLoginAt }], ownership: { [sessionId]: { userId, claimedAt } } }`.
 - `QaPolicyAdmission.secureSession` gains an optional accounts gate: when
   `accounts.enabled`, an invalid/expired token refuses with
   `auth-required` before any policy work.
+
+With `accounts.perUserWorkspace`, the registered `session.workspaceId`
+resolves the base path and each account receives `.qa-users/<account UUID>`.
+These children are not registered DSH Workspaces. The effective
+`workspace-write` sandbox is supplemented with a canonical read/write path
+guard, subagent inheritance, process/git/LSP denial, and fixed 10 MiB
+per-write / 256 MiB total limits.
 
 ## Entry redirect (host-injected script)
 
@@ -150,6 +161,7 @@ accounts:
   allowRegistration: true # self-service signup in the gate
   sessionTtlDays: 30 # account token lifetime
   showOtherUsersChats: false # opt-in cross-user admin view
+  perUserWorkspace: false # private child cwd below session.workspaceId
 entry:
   redirectNonLoopback: true # the root → /qa script above
 ```

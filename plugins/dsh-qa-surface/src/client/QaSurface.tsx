@@ -29,6 +29,7 @@ import type {
 import { QaSessionController } from "./QaSessionController.js";
 import type {
   QaConversation,
+  QaCreateSession,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -77,6 +78,7 @@ export interface QaSurfaceFace {
   readonly api: QaSessionsApi;
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
+  readonly createSession: QaCreateSession;
   readonly sourceApi: QaSourceApi;
   /** Present when the deployment mounts the QA account gate. */
   readonly accounts?: QaAccountsController;
@@ -216,6 +218,7 @@ export function QaSurface(props: QaSurfaceProps) {
       conversation: props.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
+      createSession: props.createSession,
       sourceApi: props.sourceApi,
       config,
       storage: window.localStorage,
@@ -231,6 +234,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.api,
     props.conversation,
     props.connection,
+    props.createSession,
     props.secureSession,
     props.sourceApi,
     props.sessions,

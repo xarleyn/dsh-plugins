@@ -222,6 +222,7 @@ describe("qa surface config", () => {
       allowRegistration: true,
       sessionTtlDays: 30,
       showOtherUsersChats: false,
+      perUserWorkspace: false,
     });
     expect(resolveConfig().entry).toEqual({
       redirectNonLoopback: true,
@@ -242,7 +243,42 @@ describe("qa surface config", () => {
         allowRegistration: true,
         sessionTtlDays: 7,
         showOtherUsersChats: false,
+        perUserWorkspace: false,
       },
     );
+  });
+
+  it("requires the complete per-user writable workspace boundary", () => {
+    const valid = resolveConfig({
+      session: { workspaceId: "workspace-1" },
+      accounts: { enabled: true, perUserWorkspace: true },
+      lockdown: {
+        sandboxMode: "workspace-write",
+        permissionPreset: "qa-workspace-write",
+      },
+    });
+    expect(valid.accounts.perUserWorkspace).toBe(true);
+    expect(valid.lockdown.sandboxMode).toBe("workspace-write");
+
+    expect(() =>
+      resolveConfig({
+        accounts: { enabled: true, perUserWorkspace: true },
+        lockdown: { sandboxMode: "workspace-write" },
+      }),
+    ).toThrow(/workspaceId/u);
+    expect(() =>
+      resolveConfig({ lockdown: { sandboxMode: "workspace-write" } }),
+    ).toThrow(/perUserWorkspace/u);
+    expect(() =>
+      resolveConfig({
+        session: {
+          workspaceId: "workspace-1",
+          policy: "fixed",
+          fixedSessionId: "fixed",
+        },
+        accounts: { enabled: true, perUserWorkspace: true },
+        lockdown: { sandboxMode: "workspace-write" },
+      }),
+    ).toThrow(/fixed sessions/u);
   });
 });
