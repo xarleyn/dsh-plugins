@@ -135,7 +135,12 @@ bounded output, typed errors, mutation tests.
 The suite in `tests/mutation.test.ts` is normative for regressions:
 
 - snapshot (work tree + `.git` minus reflogs) before/after every tool call,
-  twice in sequence, must be byte-identical;
+  twice in sequence, must be byte-identical; snapshots compare file by file,
+  so a failure names the paths that changed, and the fixture pins the
+  throwaway repository against git's own background maintenance
+  (`maintenance.auto`, `gc.auto`) — without that, the detached daemon
+  `git commit` leaves behind races the snapshot and fails the suite over a
+  file no tool wrote;
 - a repository whose `.git/config` wires `diff.external`, a textconv driver
   and `core.fsmonitor` to a marker-writing helper must never produce the
   marker from any tool call, while still returning correct output;
