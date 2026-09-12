@@ -359,66 +359,71 @@ export function DomainExpertsPage({
       {loadError === "" ? null : <StatusLine tone="error">{loadError}</StatusLine>}
 
       <div className="dx-layout">
-        <ul className="dx-list">
-          {sorted.length === 0 ? (
-            <li className="dx-empty">
-              No domains yet. Create one to give a part of the product its own expert.
-            </li>
-          ) : (
-            sorted.map((domain) => (
-              <li key={domain.id}>
-                <button
-                  type="button"
-                  className="dx-list-item"
-                  aria-current={selected === domain.id}
-                  onClick={() => {
-                    void openDomain(domain.id);
-                  }}
+        <div className="dx-column">
+          <ul className="dx-list">
+            {sorted.length === 0 ? (
+              <li className="dx-empty">
+                No domains yet. Create one to give a part of the product its own expert.
+              </li>
+            ) : (
+              sorted.map((domain) => (
+                <li
+                  className="dx-list-card"
+                  data-selected={selected === domain.id}
+                  key={domain.id}
                 >
-                  <span className="dx-list-name">
-                    {domain.icon === "" ? null : <span aria-hidden="true">{domain.icon}</span>}
-                    {domain.name}
-                    <span className={domain.enabled ? "dx-chip" : "dx-chip dx-chip--advisory"}>
-                      {domain.enabled ? "enabled" : "disabled"}
-                    </span>
-                    {domain.degradations > 0 ? (
-                      <span className="dx-chip dx-chip--warning">
-                        {String(domain.degradations)} degraded
+                  {/*
+                   * Selecting and enabling are two different actions, so they
+                   * are two sibling controls: nesting a toggle inside the card
+                   * button would produce invalid interactive markup and a
+                   * keyboard trap.
+                   */}
+                  <button
+                    type="button"
+                    className="dx-list-item"
+                    aria-current={selected === domain.id}
+                    onClick={() => {
+                      void openDomain(domain.id);
+                    }}
+                  >
+                    <span className="dx-list-name">
+                      {domain.icon === "" ? null : <span aria-hidden="true">{domain.icon}</span>}
+                      {domain.name}
+                      <span className={domain.enabled ? "dx-chip" : "dx-chip dx-chip--advisory"}>
+                        {domain.enabled ? "enabled" : "disabled"}
                       </span>
-                    ) : null}
-                  </span>
-                  <span className="dx-list-desc">{domain.description || "No description."}</span>
-                  <span className="dx-list-meta">
-                    {String(domain.primaryPaths)} primary paths · {String(domain.sharedPaths)} shared
-                    · {String(domain.memoryNamespaces)} memory namespaces · {String(domain.tools)}{" "}
-                    tools
-                  </span>
-                  <span className="dx-actions">
-                    <span
-                      className="dx-button"
-                      role="switch"
-                      aria-checked={domain.enabled}
-                      tabIndex={0}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void toggleEnabled(domain.id, !domain.enabled);
-                      }}
-                      onClick={(event) => {
-                        event.stopPropagation();
+                      {domain.degradations > 0 ? (
+                        <span className="dx-chip dx-chip--warning">
+                          {String(domain.degradations)} degraded
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="dx-list-desc">{domain.description || "No description."}</span>
+                    <span className="dx-list-meta">
+                      {String(domain.primaryPaths)} primary paths · {String(domain.sharedPaths)}{" "}
+                      shared · {String(domain.memoryNamespaces)} memory namespaces ·{" "}
+                      {String(domain.tools)} tools
+                    </span>
+                  </button>
+                  <div className="dx-list-actions">
+                    <button
+                      type="button"
+                      className="dx-button dx-button--small"
+                      aria-pressed={!domain.enabled}
+                      onClick={() => {
                         void toggleEnabled(domain.id, !domain.enabled);
                       }}
                     >
                       {domain.enabled ? "Disable" : "Enable"}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))
-          )}
-        </ul>
+                    </button>
+                  </div>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
 
+        <div className="dx-column dx-column--detail">
         {draft === null ? (
           <div className="dx-panel">
             <p className="dx-empty">
@@ -462,6 +467,7 @@ export function DomainExpertsPage({
             }}
           />
         )}
+        </div>
       </div>
     </div>
   );
