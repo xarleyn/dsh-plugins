@@ -75,7 +75,6 @@ interface QaPolicyRemote {
   accountsRegister(
     email: string,
     password: string,
-    displayName?: string,
   ): Promise<RemoteResult<QaAccountSession>>;
   accountsClaimSessions(
     token: string,

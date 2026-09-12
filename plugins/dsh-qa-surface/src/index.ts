@@ -226,17 +226,15 @@ export class QaSurface extends TypertRemoteService {
     }
   }
 
-  /** Self-service signup; the first account ever created becomes admin. */
+  /**
+   * Self-service signup; the first account ever created becomes admin. The
+   * display name derives from the email: the generated client enforces exact
+   * wire arity, so an optional name parameter would still be required.
+   */
   @Remote("accountsRegister")
-  accountsRegister(
-    email: string,
-    password: string,
-    displayName?: string,
-  ): QaAccountSession {
+  accountsRegister(email: string, password: string): QaAccountSession {
     const accounts = this.requireAccounts();
-    return this.accountsRemote(() =>
-      accounts.register(email, password, displayName),
-    );
+    return this.accountsRemote(() => accounts.register(email, password));
   }
 
   @Remote("accountsLogin")
