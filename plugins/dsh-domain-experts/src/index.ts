@@ -472,7 +472,12 @@ export class DomainExpertsService extends TypertRemoteService {
           callerDomain: null,
           depth: 1,
         });
-        summaries.push(summarizeDomain(definition, profile.degradations.length));
+        // Report the tools the expert will actually see, not just the ones the
+        // user configured: an expert always keeps the plugin's own tools.
+        summaries.push({
+          ...summarizeDomain(definition, profile.degradations.length),
+          tools: profile.tools.filter((tool) => tool.available).length,
+        });
       }
       return { ok: true, code: "", message: "", domains: summaries };
     } catch (error) {

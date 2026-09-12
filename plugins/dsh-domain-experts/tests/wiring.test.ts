@@ -99,7 +99,13 @@ describe("wiring: remote contract", () => {
 
     const listed = await harness.service.listDomains();
     expect(listed.domains.map((summary) => summary.id)).toEqual(["payments"]);
-    expect(listed.domains[0]).toMatchObject({ primaryPaths: 1, enabled: true });
+    expect(listed.domains[0]).toMatchObject({
+      primaryPaths: 1,
+      enabled: true,
+      // The visible tools, not the configured ones: an expert always keeps the
+      // plugin's own tools, so a card reading "0 tools" would be wrong.
+      tools: 2,
+    });
 
     const fetched = await harness.service.getDomain("payments");
     expect(fetched.domain?.name).toBe("Payments");
