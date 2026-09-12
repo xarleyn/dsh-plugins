@@ -149,10 +149,12 @@ describe("QA message", () => {
         showTimestamp={false}
       />,
     );
+    expect(document.querySelector(".dsh-qa-message__byline")?.textContent).toBe(
+      "Аня",
+    );
     expect(
-      document.querySelector(".dsh-qa-message__byline")?.textContent,
-    ).toBe("Аня");
-    expect(screen.getByRole("article", { name: "Сообщение: Аня" })).toBeTruthy();
+      screen.getByRole("article", { name: "Сообщение: Аня" }),
+    ).toBeTruthy();
   });
 
   it("keeps the owner's own messages unlabeled", () => {

@@ -98,9 +98,9 @@ describe("render equality helpers", () => {
         images: [{ attachmentId: "att-2", mediaType: "image/png" as const }],
       }),
     ).toBe(false);
-    expect(
-      sameMessage(userMessage, { ...userMessage, author: "Аня" }),
-    ).toBe(false);
+    expect(sameMessage(userMessage, { ...userMessage, author: "Аня" })).toBe(
+      false,
+    );
     expect(
       sameMessage(systemMessage, {
         ...systemMessage,
