@@ -4,7 +4,11 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import domainExpertsRemote from "@yadsh/dsh-domain-experts/remote";
 import { DomainExpertsPage, type DomainExpertsApi } from "./DomainExpertsPage.js";
 import { DOMAIN_EXPERTS_STYLES } from "./styles.js";
-import { toOutcome, type DomainExpertsClientRemote } from "./remote.js";
+import {
+  toOutcome,
+  type DomainExpertsClientRemote,
+  type DomainExpertsRemote,
+} from "./remote.js";
 import { currentSessionId } from "./session-id.js";
 
 export const inject = ["slots", "remote", "sessions"];
@@ -22,12 +26,21 @@ const STYLE_MARKER = "dsh-domain-experts";
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = ctx.remote as DomainExpertsClientRemote;
   const disposeRemote = await remote.$mount(domainExpertsRemote);
-  const api = createApi(remote);
 
   const cleanups: (() => void)[] = [injectStyles()];
+  let disposeSlot: (() => void) | undefined;
   try {
-    cleanups.push(
-      ctx.slots.inject("settings.plugins.tab", () =>
+    /*
+     * The mounted namespace is a service of its own: `remote.domainExperts`
+     * only resolves on a context that declares it, so the page is registered
+     * from inside that scope rather than from the plugin's own context. The
+     * callback is re-entered if the namespace is withdrawn and re-provided, so
+     * each pass replaces the previous registration instead of stacking one.
+     */
+    await ctx.inject(["remote.domainExperts"], (remoteContext) => {
+      const namespace = (remoteContext.remote as DomainExpertsClientRemote).domainExperts;
+      disposeSlot?.();
+      disposeSlot = ctx.slots.inject("settings.plugins.tab", () =>
         ctx.slots.register(
           {
             name: "settings.plugins.tab",
@@ -35,29 +48,30 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             order: 20,
             label: () => "Domain Experts",
             inject: () => ({
-              api,
+              api: createApi(namespace),
               currentSessionId: (): string => currentSessionId(ctx),
             }),
           },
           DomainExpertsPage,
         ),
-      ),
-    );
+      );
+    });
   } catch (error) {
+    disposeSlot?.();
     for (const cleanup of cleanups) cleanup();
     await disposeRemote();
     throw error;
   }
 
   return async () => {
+    disposeSlot?.();
     for (const cleanup of cleanups) cleanup();
     await disposeRemote();
   };
 }
 
 /** Translate the Remote envelope pairs into the page's single outcome shape. */
-function createApi(remote: DomainExpertsClientRemote): DomainExpertsApi {
-  const namespace = remote.domainExperts;
+function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
   return {
     listDomains: async () => toOutcome(await namespace.listDomains()),
     getDomain: async (id) => toOutcome(await namespace.getDomain(id)),
