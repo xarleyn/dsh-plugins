@@ -278,6 +278,41 @@ describe("QA accounts store", () => {
     );
   });
 
+  it("lists chat ownership for admins with resolved display names", () => {
+    const accounts = store();
+    const admin = accounts.register("op@example.com", "password-1");
+    const user = accounts.register("user@example.com", "password-2");
+    accounts.ensureSessionAccess(admin.token, "s-1");
+    accounts.claimSessions(user.token, ["s-2"]);
+    // Disabled accounts still name their chats in the admin view.
+    accounts.setUserDisabled("user@example.com", true);
+    expect(accounts.listOwnership(admin.token)).toEqual([
+      {
+        sessionId: "s-1",
+        userId: admin.user.id,
+        displayName: "op",
+        claimedAt: expect.any(String),
+      },
+      {
+        sessionId: "s-2",
+        userId: user.user.id,
+        displayName: "user",
+        claimedAt: expect.any(String),
+      },
+    ]);
+  });
+
+  it("refuses the ownership listing to ordinary and anonymous callers", () => {
+    const accounts = store();
+    const admin = accounts.register("op@example.com", "password-1");
+    const user = accounts.register("user@example.com", "password-2");
+    expect(reasonOf(() => accounts.listOwnership(user.token))).toBe(
+      "admin-required",
+    );
+    expect(reasonOf(() => accounts.listOwnership(""))).toBe("auth-required");
+    expect(accounts.listOwnership(admin.token)).toEqual([]);
+  });
+
   it("disables accounts and revokes their live tokens", () => {
     const accounts = store();
     const session = accounts.register("a@b.co", "password-1");
