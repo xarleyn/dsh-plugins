@@ -28,6 +28,10 @@ packages and repositories.
 4. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
 5. Open a PR. CI checks that touched publishable packages have a plan.
 
+A plan file must open with its `---` front-matter fence. Nx silently ignores a
+plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
+a file instead of letting the run release nothing.
+
 ## Maintainer flow
 
 1. Merge the PR into `main`.

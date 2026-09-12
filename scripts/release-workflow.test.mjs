@@ -332,3 +332,55 @@ describe("Nx release commands", () => {
     assert.deepEqual(repositoryState(root), before);
   });
 });
+
+describe("version plan gate", () => {
+  const gate = path.join(
+    repositoryRoot,
+    "scripts",
+    "verify-package-hygiene.mjs",
+  );
+
+  function runGate(root) {
+    return run(process.execPath, [gate, "--version-plans-only"], root);
+  }
+
+  test("the release workflow requires a plan nx can parse", () => {
+    const workflow = readFileSync(
+      path.join(repositoryRoot, ".github", "workflows", "release.yml"),
+      "utf8",
+    );
+
+    assert.match(
+      workflow,
+      /- name: Require a valid version plan\s+if: inputs\.publish_only == false\s+run: node scripts\/verify-package-hygiene\.mjs --version-plans-only/u,
+    );
+    assert.doesNotMatch(workflow, /compgen -G/u);
+  });
+
+  test("the gate rejects a plan that lost its front-matter fence", () => {
+    const root = createFixture({ withVersionPlan: true });
+    const planFile = path.join(root, ".nx", "version-plans", "release-test.md");
+    const plan = readFileSync(planFile, "utf8");
+
+    assertSucceeded(runGate(root), "version plan gate");
+
+    writeFileSync(planFile, plan.replace(/^---\n/u, ""));
+    const rejected = runGate(root);
+
+    assert.notEqual(rejected.status, 0, "a damaged plan must fail the gate");
+    assert.match(
+      `${rejected.stdout}\n${rejected.stderr}`,
+      /must open with --- on the first line/u,
+    );
+  });
+
+  test("the gate requires at least one plan", () => {
+    const rejected = runGate(createFixture());
+
+    assert.notEqual(rejected.status, 0, "a planless release must fail the gate");
+    assert.match(
+      `${rejected.stdout}\n${rejected.stderr}`,
+      /at least one version plan file is required/u,
+    );
+  });
+});

@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { validatePublishablePlugin } from "./verify-package-hygiene.mjs";
+import { validatePublishablePlugin, validateVersionPlan } from "./verify-package-hygiene.mjs";
 
 function writeJson(file, value) {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
@@ -91,4 +91,70 @@ test("rejects missing canonical package metadata", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+const knownProjects = new Set(["@yadsh/dsh-doc-impact"]);
+const versionPlan = [
+  "---",
+  '"@yadsh/dsh-doc-impact": patch',
+  "---",
+  "",
+  "Fix the settings card.",
+  "",
+].join("\n");
+
+test("accepts a well-formed version plan", () => {
+  assert.deepEqual(
+    validateVersionPlan("plan.md", versionPlan, knownProjects),
+    [],
+  );
+});
+
+test("accepts a version plan written with CRLF line endings", () => {
+  assert.deepEqual(
+    validateVersionPlan(
+      "plan.md",
+      versionPlan.replaceAll("\n", "\r\n"),
+      knownProjects,
+    ),
+    [],
+  );
+});
+
+test("rejects a version plan without the opening front-matter fence", () => {
+  const errors = validateVersionPlan(
+    "plan.md",
+    versionPlan.replace(/^---\n/u, ""),
+    knownProjects,
+  );
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /must open with --- on the first line/u);
+});
+
+test("rejects a version plan nx cannot resolve", () => {
+  const errors = validateVersionPlan(
+    "plan.md",
+    [
+      "---",
+      '"@yadsh/dsh-unknown": patch',
+      '"@yadsh/dsh-doc-impact": soon',
+      "---",
+      "",
+    ].join("\n"),
+    knownProjects,
+  );
+
+  assert.ok(
+    errors.some((error) => error.includes("is not a workspace package")),
+    `expected an unknown-package error, got ${JSON.stringify(errors)}`,
+  );
+  assert.ok(
+    errors.some((error) => error.includes("is not a release type")),
+    `expected a release-type error, got ${JSON.stringify(errors)}`,
+  );
+  assert.ok(
+    errors.some((error) => error.includes("add a changelog message")),
+    `expected a changelog-message error, got ${JSON.stringify(errors)}`,
+  );
 });
