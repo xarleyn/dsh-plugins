@@ -110,6 +110,34 @@ switch (format) {
       ].join("\n") + "\n",
     );
     break;
+  case "github-matrix": {
+    if (!selected) {
+      throw new Error(
+        "DSH_PROJECTS_JSON is required for the github-matrix format.",
+      );
+    }
+
+    const publishableByName = new Map(
+      workspacePackages().map((item) => [item.name, item]),
+    );
+    const include = [...selected].sort().map((project) => {
+      const publishablePackage = publishableByName.get(project);
+      return publishablePackage
+        ? {
+            project,
+            publishable: true,
+            directory: publishablePackage.directory,
+          }
+        : { project, publishable: false, directory: "" };
+    });
+
+    process.stdout.write(
+      [`count=${include.length}`, `matrix=${JSON.stringify({ include })}`].join(
+        "\n",
+      ) + "\n",
+    );
+    break;
+  }
   case "json":
     process.stdout.write(JSON.stringify(packages));
     break;

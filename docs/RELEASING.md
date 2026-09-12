@@ -51,6 +51,20 @@ tarball installation gates, pushes the commit and tags, publishes only the
 versioned projects through npm OIDC, and creates one GitHub Release per package
 with its `.tgz` attached.
 
+## Test releases from a branch
+
+The workflow releases whatever ref it was dispatched on, so a branch can
+produce test versions without touching `main`. That release applies the
+branch's version plans and deletes them, exactly like a release on `main`:
+
+- The PR's version-plan check is skipped from then on, because release tags
+  exist that only the branch carries. That is the signal that the plans were
+  already applied and there is nothing left for the check to read.
+- Keep adding a plan for anything you change after that release. The exemption
+  covers the plans the release consumed, not the new work.
+- A later release from the same branch needs a fresh plan, since the workflow
+  requires at least one parseable plan before it will version anything.
+
 ## Failure recovery
 
 - Before the release commit is pushed, rerun the workflow after fixing the
