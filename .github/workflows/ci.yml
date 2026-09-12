@@ -10,10 +10,17 @@ permissions:
   actions: read
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
-    name: Verify affected projects
+  prepare:
+    name: Prepare affected projects
     runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.projects.outputs.count }}
+      matrix: ${{ steps.projects.outputs.matrix }}
 
     steps:
       - name: Checkout
@@ -44,26 +51,88 @@ jobs:
       - name: Lint repository tooling
         run: pnpm lint:workspace
 
-      - name: Verify affected projects
-        run: pnpm nx affected -t lint typecheck test build verify --base="$NX_BASE" --head="$NX_HEAD"
-
       - name: Verify plugin logging contract
         run: pnpm verify:logging
 
       - name: Verify publishable plugin package hygiene
         run: pnpm verify:packages
 
+      - name: Test repository tooling
+        run: pnpm test:release
+
       - name: Check version plans
         if: github.event_name == 'pull_request'
-        run: pnpm nx release plan:check --base="$NX_BASE" --head="$NX_HEAD"
+        shell: bash
+        run: |
+          # A release dispatched against this branch applies its version plans
+          # and deletes them, while the released projects stay touched relative
+          # to the base. Release tags that no commit reachable from the base
+          # carries prove the plans were already applied, so there is nothing
+          # left for the check to read.
+          branch_tags="$(git tag --merged "$NX_HEAD" --no-merged "$NX_BASE")"
+          if [[ -n "$branch_tags" ]]; then
+            printf 'Version plans already applied, the branch carries its own release tags:\n%s\n' "$branch_tags"
+            exit 0
+          fi
+          pnpm nx release plan:check --base="$NX_BASE" --head="$NX_HEAD"
 
-      - name: Select affected publishable packages
-        id: packages
+      - name: Select affected projects
+        id: projects
         shell: bash
         run: |
           affected_json="$(pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json)"
-          DSH_PROJECTS_JSON="$affected_json" node scripts/workspace-packages.mjs --format=github-output >> "$GITHUB_OUTPUT"
+          DSH_PROJECTS_JSON="$affected_json" node scripts/workspace-packages.mjs --format=github-matrix >> "$GITHUB_OUTPUT"
 
-      - name: Verify affected tarballs
-        if: steps.packages.outputs.count != '0'
-        run: pnpm tarball:verify:packages ${{ steps.packages.outputs.directories }}
+  projects:
+    name: Project / ${{ matrix.project }}
+    needs: prepare
+    if: needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.4.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify project
+        env:
+          NX_PROJECT: ${{ matrix.project }}
+        run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
+
+      - name: Verify project tarball
+        if: matrix.publishable
+        env:
+          PACKAGE_DIRECTORY: ${{ matrix.directory }}
+        run: pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"
+
+  verify:
+    name: Verify affected projects
+    if: always()
+    needs: [prepare, projects]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check matrix results
+        env:
+          PREPARE_RESULT: ${{ needs.prepare.result }}
+          PROJECTS_RESULT: ${{ needs.projects.result }}
+        run: |
+          test "$PREPARE_RESULT" = "success"
+          test "$PROJECTS_RESULT" = "success" || test "$PROJECTS_RESULT" = "skipped"
