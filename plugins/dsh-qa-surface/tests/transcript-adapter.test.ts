@@ -8,10 +8,10 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-chat/client";
 import { describe, expect, it } from "vitest";
 import {
-  projectSources,
   projectTranscript,
   QA_REGENERATE_MARKER,
 } from "../src/client/QaTranscriptAdapter.js";
+import { projectSources } from "../src/client/turn-sources.js";
 
 function legacy(
   overrides: Partial<LegacyConversationSlice> = {},
