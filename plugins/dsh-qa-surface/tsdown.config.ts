@@ -1,6 +1,12 @@
+import { readFileSync } from "node:fs";
 import type { UserConfig } from "tsdown";
 
 const PACKAGE_NAME = "@yadsh/dsh-qa-surface";
+const PACKAGE_VERSION = (
+  JSON.parse(
+    readFileSync(new URL("./package.json", import.meta.url), "utf8"),
+  ) as { version: string }
+).version;
 
 const client: UserConfig = {
   name: "dsh-qa-surface/client",
@@ -12,6 +18,9 @@ const client: UserConfig = {
   dts: false,
   sourcemap: true,
   clean: false,
+  define: {
+    __DSH_QA_VERSION__: JSON.stringify(PACKAGE_VERSION),
+  },
   deps: {
     neverBundle: (specifier) =>
       specifier === "react" ||

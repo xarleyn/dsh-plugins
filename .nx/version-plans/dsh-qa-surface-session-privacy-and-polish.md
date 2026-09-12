@@ -12,4 +12,7 @@ handling avoid stale async results and reset session-bound assets reliably.
 The QA client now presents a dedicated test-interface disclosure, improves
 chat search and owner matching, keeps row actions from disturbing result
 layout, distinguishes administrator roles, and removes decorative middle-dot
-separators from the sidebar, messages, and source details.
+separators from the sidebar, messages, and source details. Its curated 0.3.0
+history entry is prepared in advance, while the current-version marker is
+injected from package.json at build time so the release bump promotes it
+without another source edit.
