@@ -78,6 +78,19 @@ declare module "@deepseek-ai/cordis" {
   }
 }
 
+/**
+ * A memory table that resolves its backing store on first use, so the built-in
+ * provider can be registered before storage opens.
+ */
+function deferredMemoryTable(resolve: () => MemoryTable): MemoryTable {
+  return {
+    get: (key) => resolve().get(key),
+    entries: () => resolve().entries(),
+    put: (key, value) => resolve().put(key, value),
+    delete: (key) => resolve().delete(key),
+  };
+}
+
 interface StorageHandles {
   readonly storage: DomainExpertsStorage;
   readonly domains: DomainRegistry;
@@ -124,6 +137,7 @@ export class DomainExpertsService extends TypertRemoteService {
   private toolDisposers: (() => void)[] = [];
   private storagePromise: Promise<StorageHandles> | undefined;
   private storageHandles: StorageHandles | undefined;
+  private readonly memoryTable = deferredMemoryTable(() => this.requireMemoryTable());
   private toolAvailability = false;
 
   constructor(ctx: Context, entry: PluginConfig = {}) {
@@ -138,8 +152,14 @@ export class DomainExpertsService extends TypertRemoteService {
     this.audits = new AuditRing(resolved.auditLimit);
 
     // Built-in providers arrive with the plugin; a third party adds its own
-    // through the public registration methods below.
+    // through the public registration methods below. The memory provider is
+    // registered here rather than at open time so that its availability is a
+    // plugin-lifetime fact and the catalog cannot change under a running UI —
+    // only its backing table waits for storage.
     this.scopeProviders.register(createFilesystemProvider());
+    this.memoryProviders.register(
+      createBuiltinMemoryProvider(this.memoryTable, () => Date.now()),
+    );
 
     this.registerTools();
     this.applyEnabled();
@@ -199,9 +219,6 @@ export class DomainExpertsService extends TypertRemoteService {
         memory: memoryTableOf(storage),
       };
       this.storageHandles = handles;
-      this.memoryProviders.register(
-        createBuiltinMemoryProvider(handles.memory, () => Date.now()),
-      );
       this.logger.info("domain-experts/storage-open", { domains: handles.domains.list().length });
       return handles;
     } catch (error) {
@@ -229,6 +246,17 @@ export class DomainExpertsService extends TypertRemoteService {
   /** Storage plus the registries, or the STORAGE_UNAVAILABLE refusal. */
   private async opened(): Promise<StorageHandles> {
     return await this.storage();
+  }
+
+  private requireMemoryTable(): MemoryTable {
+    const handles = this.storageHandles;
+    if (handles === undefined) {
+      throw new DomainExpertsError(
+        "STORAGE_UNAVAILABLE",
+        "Domain storage is not open yet; retry once the plugin has finished starting.",
+      );
+    }
+    return handles.memory;
   }
 
   // ------------------------------------------------------------------- tools
