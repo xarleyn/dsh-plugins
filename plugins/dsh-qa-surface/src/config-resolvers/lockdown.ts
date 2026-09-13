@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 
@@ -14,6 +16,18 @@ function uniqueToolNames(values: readonly string[]): readonly string[] {
     );
   }
   return Object.freeze(names);
+}
+
+function uniqueAbsoluteRoots(values: readonly string[]): readonly string[] {
+  const roots = [
+    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ];
+  if (roots.some((value) => !path.isAbsolute(value))) {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.sharedReadOnlyRoots must contain only absolute paths",
+    );
+  }
+  return Object.freeze(roots);
 }
 
 /**
@@ -110,5 +124,8 @@ export function resolveLockdown(
       mode: "allow-list",
       allow: uniqueToolNames(input.lockdown?.toolPolicy?.allow ?? []),
     }),
+    sharedReadOnlyRoots: uniqueAbsoluteRoots(
+      input.lockdown?.sharedReadOnlyRoots ?? [],
+    ),
   });
 }

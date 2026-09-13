@@ -222,7 +222,24 @@ lockdown:
   permissionPreset: qa-workspace-write
   toolPolicy:
     mode: allow-list
-    allow: [read, read_image, glob, grep, write, edit, web_search, web_fetch]
+    allow:
+      [
+        read,
+        read_image,
+        glob,
+        grep,
+        write,
+        edit,
+        web_search,
+        web_fetch,
+        dsh_git_context,
+        dsh_git_history,
+        dsh_git_show,
+        dsh_git_blame,
+      ]
+  sharedReadOnlyRoots:
+    - E:/qa-assistant/workspaces/docs
+    - E:/qa-assistant/workspaces/code
 ```
 
 The Host resolves that Workspace record's path and creates
@@ -234,11 +251,18 @@ global DSH session list rather than creating one Workspace row per account.
 The boundary combines DSH `workspace-write` with a Host tool guard for both
 read and write paths, canonicalizes existing ancestors to reject symlink
 escapes, propagates the root to subagent sessions, rejects shell/process/LSP
-and `dsh_git_*` escape hatches, limits one model-controlled write to 10 MiB,
+escape hatches, permits filesystem reads in explicitly configured shared
+read-only roots, and leaves repository selection to the separately configured
+read-only Git plugin. Writes remain confined to the account directory. The
+guard limits one model-controlled write to 10 MiB,
 and limits an account directory to 256 MiB. `web_fetch` plus `write` is the
 intended bounded research-download path; there is no unrestricted URL-to-disk
 or shell downloader. Account directories are persistent scratch space and are
 not deleted automatically.
+
+For the layout above, configure `@yadsh/dsh-git-readonly` separately with
+`repositoryRoots: ["E:/qa-assistant/workspaces/code"]`. That plugin is the
+single repository-selection authority and exposes no mutating Git operation.
 
 Model override is opt-in: `provider` and `model` must be set together. Slash
 commands are rejected as plain QA input. Reasoning and tool details remain

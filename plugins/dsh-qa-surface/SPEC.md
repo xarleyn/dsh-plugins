@@ -755,8 +755,11 @@ References:
 `read-only` is **not equivalent to “no side effects.”** It governs file effects enforced by the DSH file sandbox; network and process visibility are outside that sandbox vocabulary. A shell command can still make network requests or trigger external side effects even when filesystem writes are denied.
 
 Therefore the default QA preset must use an explicit **allow-list of reviewed tools**.
-The writable per-user mode may add `write`/`edit`; process, LSP, ancestor-git,
-and unrestricted downloader tools remain denied.
+The writable per-user mode may add `write`/`edit`; process, LSP, and
+unrestricted downloader tools remain denied. Reviewed shared roots may be
+opened for filesystem reads. Repository selection for `dsh_git_*` belongs to
+the separately configured read-only Git plugin; writes remain fenced to the
+user's cwd.
 
 Conceptual policy:
 
@@ -1464,7 +1467,7 @@ Recommended deployment architecture:
 - use an allow-list of reviewed read-only tools;
 - grant no mutable external-service permissions to the QA agent.
 
-In locked-down mode, an approval request is treated as a policy/configuration failure or an unsupported operation, not as something the QA user may approve.
+In locked-down mode, the attested agent installs an outer `tools/pre-execute` listener. It converts a downstream `ask` decision into a deny result stating that approval interactions are unavailable in QA, before the approval service records or routes a request. The pinned `approval=never` policy remains the independent fail-closed backstop.
 
 If the Session enters an unsupported pending interaction state:
 
@@ -2374,9 +2377,10 @@ Mitigation:
 - dedicated read-only corpus/workspace;
 - minimal container mounts;
 - dedicated QA container for high-assurance deployments.
-- for writable per-user mode, canonicalize every model-controlled file path
-  and deny process/LSP/ancestor-git escape hatches in addition to
-  `workspace-write`.
+- for writable per-user mode, canonicalize every model-controlled file path,
+  permit only configured shared filesystem-read roots, delegate repository
+  selection to the read-only Git plugin, and deny process/LSP escape hatches
+  in addition to `workspace-write`.
 
 ---
 

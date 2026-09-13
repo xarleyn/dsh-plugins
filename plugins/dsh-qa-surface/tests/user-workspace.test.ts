@@ -49,7 +49,7 @@ describe("per-user QA workspace", () => {
     );
   });
 
-  it("contains file tools, follows symlink identity, and blocks process/git escape hatches", () => {
+  it("contains file tools, follows symlink identity, and blocks process escape hatches", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-workspace-guard-"));
     const outside = mkdtempSync(path.join(tmpdir(), "qa-outside-"));
     const root = prepareQaUserWorkspace(workspace, USER_ID);
@@ -83,12 +83,20 @@ describe("per-user QA workspace", () => {
       "job_create",
       "run_code",
       "lsp",
-      "dsh_git_history",
     ]) {
       expect(qaUserWorkspaceDenial({ name, arguments: {} }, root)).toMatch(
         /outside/u,
       );
     }
+    expect(
+      qaUserWorkspaceDenial({ name: "dsh_git_history", arguments: {} }, root),
+    ).toBeUndefined();
+    expect(
+      qaUserWorkspaceDenial(
+        { name: "dsh_git_context", arguments: { repository: outside } },
+        root,
+      ),
+    ).toBeUndefined();
     expect(
       qaUserWorkspaceDenial(
         {
@@ -114,6 +122,65 @@ describe("per-user QA workspace", () => {
           },
         },
         root,
+      ),
+    ).toMatch(/outside/u);
+  });
+
+  it("separates private writes and shared reads while delegating git paths", () => {
+    const base = mkdtempSync(path.join(tmpdir(), "qa-root-classes-"));
+    const work = path.join(base, "work");
+    const docs = path.join(base, "docs");
+    const code = path.join(base, "code");
+    const outside = path.join(base, "outside");
+    for (const directory of [work, docs, code, outside]) {
+      mkdirSync(directory);
+    }
+    const root = prepareQaUserWorkspace(work, USER_ID);
+    const readPolicy = {
+      sharedReadOnlyRoots: [docs, code],
+    };
+
+    for (const execution of [
+      { name: "read", arguments: { file_path: path.join(docs, "guide.md") } },
+      { name: "glob", arguments: { path: docs } },
+      { name: "grep", arguments: { path: code } },
+      { name: "dsh_git_context", arguments: { repository: outside } },
+    ]) {
+      expect(
+        qaUserWorkspaceDenial(execution, root, undefined, readPolicy),
+      ).toBeUndefined();
+    }
+
+    for (const execution of [
+      {
+        name: "write",
+        arguments: { file_path: path.join(docs, "generated.md"), content: "x" },
+      },
+      {
+        name: "edit",
+        arguments: { file_path: path.join(code, "main.ts"), new_string: "x" },
+      },
+      { name: "read", arguments: { file_path: path.join(outside, "secret") } },
+    ]) {
+      expect(
+        qaUserWorkspaceDenial(execution, root, undefined, readPolicy),
+      ).toMatch(/outside/u);
+    }
+
+    symlinkSync(
+      outside,
+      path.join(docs, "escape"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    expect(
+      qaUserWorkspaceDenial(
+        {
+          name: "read",
+          arguments: { file_path: path.join(docs, "escape", "secret") },
+        },
+        root,
+        undefined,
+        readPolicy,
       ),
     ).toMatch(/outside/u);
   });

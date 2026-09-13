@@ -124,6 +124,9 @@ const configSchema = z.object({
           mode: D.lockdown.toolPolicy.mode,
           allow: [...D.lockdown.toolPolicy.allow],
         }),
+      sharedReadOnlyRoots: z
+        .array(z.string())
+        .default([...D.lockdown.sharedReadOnlyRoots]),
     })
     .default({
       ...D.lockdown,
@@ -131,6 +134,7 @@ const configSchema = z.object({
         mode: D.lockdown.toolPolicy.mode,
         allow: [...D.lockdown.toolPolicy.allow],
       },
+      sharedReadOnlyRoots: [...D.lockdown.sharedReadOnlyRoots],
     }),
   embedding: z
     .object({

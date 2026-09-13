@@ -193,6 +193,8 @@ export interface QaSurfaceConfig {
       readonly mode?: QaToolPolicyMode;
       readonly allow?: readonly string[];
     };
+    /** Shared directories available to read-only filesystem tools. */
+    readonly sharedReadOnlyRoots?: readonly string[];
   };
   readonly embedding?: {
     readonly frameAncestors?: string | null;
@@ -314,6 +316,7 @@ export interface ResolvedQaSurfaceConfig {
       readonly mode: QaToolPolicyMode;
       readonly allow: readonly string[];
     };
+    readonly sharedReadOnlyRoots: readonly string[];
   };
   readonly embedding: {
     readonly frameAncestors: string | null;

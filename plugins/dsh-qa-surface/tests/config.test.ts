@@ -157,6 +157,21 @@ describe("qa surface config", () => {
     );
   });
 
+  it("normalizes shared read roots and rejects relative entries", () => {
+    const resolved = resolveConfig({
+      lockdown: {
+        sharedReadOnlyRoots: [" D:/qa/docs ", "D:/qa/code", "D:/qa/docs"],
+      },
+    });
+    expect(resolved.lockdown.sharedReadOnlyRoots).toEqual([
+      "D:/qa/docs",
+      "D:/qa/code",
+    ]);
+    expect(() =>
+      resolveConfig({ lockdown: { sharedReadOnlyRoots: ["../docs"] } }),
+    ).toThrow(/absolute/u);
+  });
+
   it("keeps workspaceId and cwd mutually exclusive", () => {
     expect(() =>
       resolveConfig({
