@@ -2604,7 +2604,7 @@ package.
 - `client/components/QaRightRail.tsx`: strip + active tab body.
 - `use-session-ui-state.ts`: `sourcesOpen` becomes `railOpen` + `railTab`;
   the pinned-sources / detail state is unchanged.
-- `styles.ts`: `.dsh-qa-rail*` rules; the mobile media query targets the rail
+- `styles.ts`: `.dsh-qa-panel*` rules (the `dsh-qa-rail` name belongs to the turn rail); the mobile media query targets the panel
   instead of `.dsh-qa-sources`/`.dsh-qa-agents` (agents keeps full-bleed).
 
 ### 46.5 Testing
