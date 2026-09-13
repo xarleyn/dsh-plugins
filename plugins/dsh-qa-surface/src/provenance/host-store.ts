@@ -404,20 +404,36 @@ export class QaProvenanceHost {
         const childId =
           exec.agent === undefined ? undefined : String(exec.agent.id);
         if (childId === undefined) return { accepted: 0 };
+        const sourceConfig = this.config().sources;
+        const validate = sourceConfig.subagents.validateReportedSources;
         const lineage = this.lineage.get(childId);
-        if (lineage === undefined) return { accepted: 0 };
         const child = this.ctx.sessions.get(SessionId(childId));
         const turn = child === undefined ? 0 : currentTurn(child);
-        const sourceConfig = this.config().sources;
+        // A report belongs to the delegated run it came from, and the turn that
+        // started the run inherits it. Outside a run the report is the model's
+        // own entry, which only a deployment that turned reported-source
+        // validation off accepts: it lands in the reporting session's current
+        // turn, exactly where a tool-derived source of that turn would.
+        const home =
+          lineage !== undefined
+            ? { sessionId: lineage.rootSessionId, turn: lineage.rootTurn }
+            : validate || child === undefined
+              ? undefined
+              : { sessionId: childId, turn };
+        if (home === undefined) return { accepted: 0 };
         const origin: QaSourceOrigin = {
           sessionId: childId,
           turn,
           toolCallId: String(exec.callId),
           toolName: QA_REPORT_SOURCES_TOOL,
           agentId: childId,
-          role: "subagent",
-          subagentRunId: lineage.runId,
-          subagentSessionId: childId,
+          role: lineage === undefined ? "parent" : "subagent",
+          ...(lineage === undefined
+            ? {}
+            : {
+                subagentRunId: lineage.runId,
+                subagentSessionId: childId,
+              }),
         };
         const normalized = (args.sources as unknown[]).flatMap((candidate) => {
           const raw = stringRecord(candidate) as QaReportedSource | undefined;
@@ -435,11 +451,12 @@ export class QaProvenanceHost {
               normalize: sourceConfig.dedupe.normalizeUrls,
               stripTrackingParams: sourceConfig.dedupe.stripTrackingParams,
             },
+            { validate },
           );
           return source === null ? [] : [source];
         });
-        this.collector(lineage.rootSessionId, lineage.rootTurn).add(normalized);
-        lineage.reported = normalized.length > 0;
+        this.collector(home.sessionId, home.turn).add(normalized);
+        if (lineage !== undefined) lineage.reported = normalized.length > 0;
         return { accepted: normalized.length };
       },
     });

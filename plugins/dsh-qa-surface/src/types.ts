@@ -114,6 +114,11 @@ export interface QaSourcesConfig {
     readonly inheritSources?: boolean;
     readonly enableReportToolFallback?: boolean;
     readonly markIncompleteOpaqueRuns?: boolean;
+    /**
+     * Whether a source the model writes into `qa_report_sources` must carry a
+     * usable path or URL. Off records the model's own type, title and snippet.
+     */
+    readonly validateReportedSources?: boolean;
   };
   readonly legacy?: {
     readonly parseAssistantSourcesBlock?: boolean;
@@ -365,6 +370,7 @@ export interface ResolvedQaSurfaceConfig {
       readonly inheritSources: boolean;
       readonly enableReportToolFallback: boolean;
       readonly markIncompleteOpaqueRuns: boolean;
+      readonly validateReportedSources: boolean;
     };
     readonly legacy: {
       readonly parseAssistantSourcesBlock: boolean;

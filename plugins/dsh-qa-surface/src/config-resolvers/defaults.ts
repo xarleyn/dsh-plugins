@@ -122,6 +122,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         inheritSources: true,
         enableReportToolFallback: true,
         markIncompleteOpaqueRuns: true,
+        validateReportedSources: true,
       }),
       legacy: Object.freeze({ parseAssistantSourcesBlock: false }),
     }),

@@ -274,4 +274,82 @@ describe("structured extractors", () => {
       locations: [{ path: "src/worker.ts", lineStart: 10, lineEnd: 20 }],
     });
   });
+
+  it("drops a report with no address while validation is on", () => {
+    const unaddressed = {
+      kind: "other" as const,
+      title: "Профиль текущего QA-пользователя",
+      snippet: "Предпочтение «эплочка»",
+    };
+    expect(
+      normalizeReportedSource(unaddressed, {
+        ...parentOrigin,
+        role: "subagent",
+      }),
+    ).toBeNull();
+    expect(
+      normalizeReportedSource(
+        { kind: "web", title: "Remote docs", uri: "not a url" },
+        { ...parentOrigin, role: "subagent" },
+      ),
+    ).toBeNull();
+  });
+
+  it("records an unaddressed report once validation is off", () => {
+    expect(
+      normalizeReportedSource(
+        {
+          kind: "other",
+          title: "Профиль текущего QA-пользователя",
+          snippet: "Предпочтение «эплочка»",
+          metadata: { note: "из системной информации" },
+        },
+        { ...parentOrigin, role: "subagent" },
+        undefined,
+        {},
+        { validate: false },
+      ),
+    ).toMatchObject({
+      id: "reported:other:Профиль текущего QA-пользователя",
+      kind: "other",
+      title: "Профиль текущего QA-пользователя",
+      snippet: "Предпочтение «эплочка»",
+      evidence: "reported",
+      score: 80,
+      locations: [],
+      metadata: { note: "из системной информации" },
+    });
+  });
+
+  it("keeps the model's own wording when the relaxed normalizer cannot parse it", () => {
+    const subagentOrigin = { ...parentOrigin, role: "subagent" as const };
+    expect(
+      normalizeReportedSource(
+        { kind: "web", title: "Remote docs", uri: "not a url" },
+        subagentOrigin,
+        undefined,
+        {},
+        { validate: false },
+      ),
+    ).toMatchObject({ id: "web:not a url", uri: "not a url" });
+    expect(
+      normalizeReportedSource(
+        { kind: "code", title: "", path: "D:/repo/src/worker.ts" },
+        subagentOrigin,
+        "D:/repo",
+        {},
+        { validate: false },
+      ),
+    ).toMatchObject({ id: "file:src/worker.ts", title: "worker.ts" });
+    // Nothing to show: no title, no address, no snippet identity.
+    expect(
+      normalizeReportedSource(
+        { kind: "other", title: "  " },
+        subagentOrigin,
+        undefined,
+        {},
+        { validate: false },
+      ),
+    ).toBeNull();
+  });
 });

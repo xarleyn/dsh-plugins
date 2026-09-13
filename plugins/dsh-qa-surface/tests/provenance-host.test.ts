@@ -300,6 +300,73 @@ describe("Host provenance lifecycle", () => {
     host.dispose();
   });
 
+  it("records an unaddressed report only when reported-source validation is off", async () => {
+    const report = {
+      sources: [
+        {
+          kind: "other",
+          title: "Профиль текущего QA-пользователя",
+          snippet: "Предпочтение «эплочка»",
+          metadata: { note: "из системной информации" },
+        },
+      ],
+    };
+    const collect = async (
+      validateReportedSources: boolean,
+      /** Call the tool from the QA agent itself instead of a delegated run. */
+      caller = "opaque-1",
+    ) => {
+      const root = fakeSession("root", [event("turn/start", { turn: 2 }, 0)]);
+      const world = harness([root.session]);
+      const host = new QaProvenanceHost(world.ctx, () =>
+        resolveConfig({ sources: { subagents: { validateReportedSources } } }),
+      );
+      if (caller !== "root") {
+        world.emit("subagent/start", {
+          runId: "run-opaque",
+          provider: "remote",
+          id: caller,
+          local: false,
+        });
+      }
+      const accepted = (
+        (await world.getTool()?.execute(report, {
+          agent: { id: caller },
+          callId: "report-unaddressed",
+        } as never)) as { accepted: number } | undefined
+      )?.accepted;
+      const sources = host.bundles("root")[0]?.sources ?? [];
+      host.dispose();
+      return { accepted, sources };
+    };
+
+    expect(await collect(true)).toEqual({ accepted: 0, sources: [] });
+    expect(await collect(false)).toMatchObject({
+      accepted: 1,
+      sources: [
+        {
+          id: "reported:other:Профиль текущего QA-пользователя",
+          kind: "other",
+          title: "Профиль текущего QA-пользователя",
+          evidence: "reported",
+          origins: [{ role: "subagent", subagentRunId: "run-opaque" }],
+        },
+      ],
+    });
+    // The QA agent itself reaching for the tool is the case a deployment
+    // testing facts-as-sources hits; without the flag the entry is refused.
+    expect(await collect(true, "root")).toEqual({ accepted: 0, sources: [] });
+    expect(await collect(false, "root")).toMatchObject({
+      accepted: 1,
+      sources: [
+        {
+          id: "reported:other:Профиль текущего QA-пользователя",
+          origins: [{ role: "parent", sessionId: "root", turn: 2 }],
+        },
+      ],
+    });
+  });
+
   it("serves materialized turns from the durable snapshot after the collector is dropped", () => {
     const root = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
     const world = harness([root.session]);

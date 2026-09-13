@@ -192,6 +192,7 @@ config:
       inheritSources: true
       enableReportToolFallback: true
       markIncompleteOpaqueRuns: true
+      validateReportedSources: true
     legacy:
       parseAssistantSourcesBlock: false
 ```

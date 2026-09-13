@@ -272,6 +272,9 @@ const configSchema = z.object({
           markIncompleteOpaqueRuns: z
             .boolean()
             .default(D.sources.subagents.markIncompleteOpaqueRuns),
+          validateReportedSources: z
+            .boolean()
+            .default(D.sources.subagents.validateReportedSources),
         })
         .default({ ...D.sources.subagents }),
       legacy: z

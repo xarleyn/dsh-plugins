@@ -166,6 +166,21 @@ opaque delegated provider must call `qa_report_sources`. The note travels as
 injected context on the conversation (see the profile notes below), so a QA
 preset cannot suppress it.
 
+A report is checked before it is recorded, in two places. The caller must be
+a delegated run — a report from anywhere else is refused, because provenance
+is collected rather than authored. And every entry must carry a path or a URL
+that survives normalization, so an entry describing a fact is dropped and the
+tool answers with a lower count.
+`sources.subagents.validateReportedSources` (default true) turns both checks
+off: a report from the QA agent itself is recorded into that session's current
+turn, and an entry with no address keeps its `kind`, title and snippet instead
+of being rejected. A URL the normalizer cannot parse is then kept verbatim,
+and a missing title falls back to the last path or URL segment; an entry with
+neither a title nor an address is still dropped, because there would be
+nothing to show. Use it while testing a provider whose sources are facts
+rather than documents; the prompt note that tells the QA agent to collect
+provenance rather than write a bibliography is unchanged either way.
+
 See [Structured sources migration](SOURCES-MIGRATION.md) before removing an
 older prompt-authored bibliography convention.
 
