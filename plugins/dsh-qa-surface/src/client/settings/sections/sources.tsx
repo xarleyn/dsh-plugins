@@ -305,6 +305,18 @@ export function SourcesSection(props: ConfigProps) {
               );
             }}
           />
+          <Toggle
+            checked={sources?.subagents?.validateReportedSources ?? true}
+            disabled={blocked}
+            label="Проверять источники из отчёта"
+            hint="С проверкой принимается только источник с путём или адресом из делегированного прогона. Без неё записывается и «факт» без адреса, и отчёт самого помощника."
+            onChange={(value) => {
+              props.write(
+                ["sources", "subagents", "validateReportedSources"],
+                value,
+              );
+            }}
+          />
         </div>
       </details>
       <details className="qa-card-advanced">
