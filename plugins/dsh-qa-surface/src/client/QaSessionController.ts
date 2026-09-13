@@ -17,13 +17,14 @@ import { QaPolicyAttestationError } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
+import { buildQaPromptContent, stageQaFiles } from "./prompt-content.js";
 import { attestQaPolicy } from "./session-admission.js";
 import { QaHostSourceBridge } from "./session-sources.js";
+import { StreamPublisher } from "./stream-publisher.js";
 import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
-  QaPromptContent,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -103,7 +104,8 @@ export class QaSessionController {
   /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
   private readonly assets = new SessionAssetRepository();
   private readonly timeoutMs: number;
-  private readonly streamIntervalMs: number;
+  /** Spacing for a running turn's stream frames; the policy lives there. */
+  private readonly streamPublisher: StreamPublisher;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
   private conversationBinding: ConversationBinding | undefined;
@@ -116,7 +118,6 @@ export class QaSessionController {
   private admissionPending = false;
   private policyReady = false;
   private drafting = false;
-  private streamFlushTimer: ReturnType<typeof setTimeout> | undefined;
   /** The chat session to return to when a subagent view closes. */
   private chatSessionId: string | null = null;
   private viewingSubagent: QaSubagentView | null = null;
@@ -154,7 +155,7 @@ export class QaSessionController {
       () => this.accounts?.token() ?? "",
     );
     this.timeoutMs = options.timeoutMs ?? 15_000;
-    this.streamIntervalMs = options.streamIntervalMs ?? 66;
+    this.streamPublisher = new StreamPublisher(options.streamIntervalMs ?? 66);
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
     this.unsubscribeConnection = this.connection.subscribe(() => {
       if (this.connection.getSnapshot() !== undefined)
@@ -230,7 +231,7 @@ export class QaSessionController {
     }
     let receipts = new Map<string, string>();
     if (files.length > 0) {
-      const outcome = await this.stageFiles(target, files);
+      const outcome = await stageQaFiles(this.fileUpload(), target, files);
       if (outcome.kind !== "ok") {
         if (this.session === target) {
           this.operationError =
@@ -246,26 +247,7 @@ export class QaSessionController {
     this.admissionPending = true;
     this.publish();
     try {
-      // The receipt is opaque and host-minted — the upload service answers with
-      // a plain string, and only the session wire brand knows it as an id.
-      const content = [
-        ...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]),
-        // The visitor's own order decides the prompt order, so images and
-        // files are assembled from one walk over the drafts.
-        ...attachments.map((attachment) =>
-          attachment.kind === "image"
-            ? {
-                type: "image" as const,
-                mediaType: attachment.mediaType,
-                data: attachment.data,
-                name: attachment.name,
-              }
-            : {
-                type: "file" as const,
-                receiptId: receipts.get(attachment.id) ?? "",
-              },
-        ),
-      ] as QaPromptContent;
+      const content = buildQaPromptContent(prompt, attachments, receipts);
       const result = await target.prompt(content, "queue");
       if (this.session !== target) return false;
       if (!result.ok) {
@@ -296,42 +278,6 @@ export class QaSessionController {
    */
   async regenerate(): Promise<boolean> {
     return this.send(QA_REGENERATE_MARKER);
-  }
-
-  /**
-   * Stage every pending file on the Host and collect the receipts the prompt
-   * cites. Sequential on purpose: a partial batch must be attributable to the
-   * exact file that failed, and the visitor's file counts are small.
-   */
-  private async stageFiles(
-    session: SessionFace,
-    files: readonly QaFileDraft[],
-  ): Promise<
-    | { readonly kind: "ok"; readonly receipts: Map<string, string> }
-    | { readonly kind: "unavailable" }
-    | { readonly kind: "failed" }
-  > {
-    const service = this.fileUpload();
-    if (service === undefined) return { kind: "unavailable" };
-    const receipts = new Map<string, string>();
-    for (const file of files) {
-      try {
-        const result = await service.upload(
-          session.sessionId,
-          file.blob,
-          file.name,
-        );
-        if (!result.ok) {
-          console.error("dsh-qa-surface: file upload refused", result.error);
-          return { kind: "failed" };
-        }
-        receipts.set(file.id, result.value.receiptId);
-      } catch (error) {
-        console.error("dsh-qa-surface: file upload failed", error);
-        return { kind: "failed" };
-      }
-    }
-    return { kind: "ok", receipts };
   }
 
   async stop(): Promise<void> {
@@ -606,7 +552,7 @@ export class QaSessionController {
     if (this.disposed) return;
     this.disposed = true;
     this.generation += 1;
-    this.clearStreamFlush();
+    this.streamPublisher.clear();
     this.unsubscribeConnection();
     this.unbind();
     this.assets.dispose();
@@ -817,7 +763,7 @@ export class QaSessionController {
   }
 
   private unbind(): void {
-    this.clearStreamFlush();
+    this.streamPublisher.clear();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
     this.unsubscribeChat?.();
@@ -842,35 +788,13 @@ export class QaSessionController {
     );
   }
 
-  /**
-   * Project one session notification. A running turn's frames arrive at
-   * animation-frame cadence, so re-projections are spaced at least
-   * {@link streamIntervalMs} apart: the first frame of a window projects at
-   * once and further frames are absorbed (the memoized render path replays
-   * nothing, so absorbing a frame only defers it). Everything outside a
-   * running turn - phase flips, errors, turn completion - projects
-   * immediately.
-   */
+  /** Project one session notification; the running-turn spacing policy
+   * (first frame at once, further frames absorbed) lives in the publisher. */
   private publishSessionUpdate(): void {
-    if (
-      this.streamIntervalMs <= 0 ||
-      this.session?.getSnapshot().running !== true
-    ) {
-      this.clearStreamFlush();
-      this.publish();
-      return;
-    }
-    if (this.streamFlushTimer !== undefined) return;
-    this.publish();
-    this.streamFlushTimer = setTimeout(() => {
-      this.streamFlushTimer = undefined;
-    }, this.streamIntervalMs);
-  }
-
-  private clearStreamFlush(): void {
-    if (this.streamFlushTimer === undefined) return;
-    clearTimeout(this.streamFlushTimer);
-    this.streamFlushTimer = undefined;
+    this.streamPublisher.publish(
+      this.session?.getSnapshot().running === true,
+      () => this.publish(),
+    );
   }
 
   private publish(): void {

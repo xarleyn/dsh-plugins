@@ -15,11 +15,8 @@ import {
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
-import {
-  QaAccounts,
-  QaAccountsError,
-  defaultAccountsFilePath,
-} from "./accounts/store.js";
+import { createQaAccountRemotes } from "./account-remotes.js";
+import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAttestationError } from "./attestation.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
@@ -71,8 +68,6 @@ declare module "@deepseek-ai/cordis" {
 }
 
 const CONFIGURATION_ERROR = "Assistant configuration is unavailable.";
-const ACCOUNTS_DISABLED_ERROR =
-  "QA accounts are not enabled on this deployment.";
 
 /** The `(reason: <code>)` marker contract shared with the attestation path. */
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
@@ -87,8 +82,8 @@ export class QaSurface extends TypertRemoteService {
   private readonly admission: QaPolicyAdmission;
   private readonly provenance: QaProvenanceHost;
   private readonly identity: QaUserIdentity;
-  private accounts: QaAccounts | undefined;
-  private accountsOptions: string | undefined;
+  /** Account-remote bodies; the wire signatures stay on this class. */
+  private readonly accountRemotes: QaAccountRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
@@ -103,6 +98,10 @@ export class QaSurface extends TypertRemoteService {
       pluginId: "dsh-qa-surface",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
+    this.accountRemotes = createQaAccountRemotes({
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+    });
     this.admission = new QaPolicyAdmission(
       ctx,
       () => this.getConfig(),
@@ -110,10 +109,9 @@ export class QaSurface extends TypertRemoteService {
       // Identity half of admission; no-ops while accounts stay disabled.
       {
         enforceSessionAccess: (token, sessionId) => {
-          return this.accountsFor(this.getConfig())?.ensureSessionAccess(
-            token,
-            sessionId,
-          );
+          return this.accountRemotes
+            .resolve(this.getConfig())
+            ?.ensureSessionAccess(token, sessionId);
         },
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
@@ -125,7 +123,7 @@ export class QaSurface extends TypertRemoteService {
     // a profile edit lands on the next turn.
     this.identity = new QaUserIdentity(ctx, {
       config: () => this.getConfig(),
-      accounts: () => this.accountsFor(this.getConfig()),
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
       logger: this.logger,
     });
     // The /qa route hands cookie-less browsers to the one-time host token
@@ -208,82 +206,24 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /**
-   * The accounts store behind the runtime toggle. Rebuilt only when the
-   * account-affecting options change; the file is shared across rebuilds.
-   */
-  private accountsFor(config: ResolvedQaSurfaceConfig): QaAccounts | undefined {
-    if (!config.accounts.enabled) return undefined;
-    const options = JSON.stringify([
-      config.accounts.sessionTtlDays,
-      config.accounts.allowRegistration,
-      config.accounts.profile.instructionsMaxLength,
-      config.accounts.profile.identities,
-    ]);
-    if (this.accounts === undefined || this.accountsOptions !== options) {
-      this.accounts = new QaAccounts(defaultAccountsFilePath(), {
-        sessionTtlDays: config.accounts.sessionTtlDays,
-        allowRegistration: config.accounts.allowRegistration,
-        instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
-        identityFields: config.accounts.profile.identities,
-      });
-      this.accountsOptions = options;
-    }
-    return this.accounts;
-  }
-
-  /** The accounts store, or the disabled refusal the browser maps to copy. */
-  private requireAccounts(): QaAccounts {
-    const accounts = this.accountsFor(this.getConfig());
-    if (accounts === undefined) {
-      throw new Error(ACCOUNTS_DISABLED_ERROR);
-    }
-    return accounts;
-  }
-
-  /** Account failures ride the shared `(reason: <code>)` wire marker. */
-  private accountsRemote<T>(operation: () => T, sessionIdForLog?: string): T {
-    try {
-      return operation();
-    } catch (error) {
-      if (error instanceof QaAccountsError) {
-        this.logger.warn("accounts.rejected", {
-          reason: error.reason,
-          sessionId: sessionIdForLog,
-        });
-        throw new Error(
-          `QA accounts refused the request (reason: ${error.reason})`,
-          {
-            cause: error,
-          },
-        );
-      }
-      throw error;
-    }
-  }
-
-  /**
    * Self-service signup; the first account ever created becomes admin. The
    * display name derives from the email: the generated client enforces exact
    * wire arity, so an optional name parameter would still be required.
    */
   @Remote("accountsRegister")
   accountsRegister(email: string, password: string): QaAccountSession {
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => accounts.register(email, password));
+    return this.accountRemotes.register(email, password);
   }
 
   @Remote("accountsLogin")
   accountsLogin(email: string, password: string): QaAccountSession {
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => accounts.login(email, password));
+    return this.accountRemotes.login(email, password);
   }
 
   /** Identity probe; safe to call with an empty or expired token. */
   @Remote("accountsWhoami")
   accountsWhoami(token: string): QaWhoamiResult {
-    if (!this.getConfig().accounts.enabled) return { authenticated: false };
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => accounts.whoami(token));
+    return this.accountRemotes.whoami(token);
   }
 
   /** Migrate a browser's local chat index into server-side ownership. */
@@ -292,18 +232,13 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionIds: readonly string[],
   ): QaClaimResult {
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => accounts.claimSessions(token, sessionIds));
+    return this.accountRemotes.claimSessions(token, sessionIds);
   }
 
   /** The token user's owned session ids; the sidebar list authority. */
   @Remote("accountsOwnedSessions")
   accountsOwnedSessions(token: string): { readonly ids: readonly string[] } {
-    if (!this.getConfig().accounts.enabled) return { ids: [] };
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => ({
-      ids: accounts.ownedSessionIds(token),
-    }));
+    return this.accountRemotes.ownedSessions(token);
   }
 
   /**
@@ -315,11 +250,7 @@ export class QaSurface extends TypertRemoteService {
   accountsListOwnership(token: string): {
     readonly entries: readonly QaOwnershipEntry[];
   } {
-    if (!this.getConfig().accounts.enabled) return { entries: [] };
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => ({
-      entries: accounts.listOwnership(token),
-    }));
+    return this.accountRemotes.listOwnership(token);
   }
 
   /**
@@ -333,17 +264,7 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     input: QaAccountProfileInput,
   ): QaAccountUserPublic {
-    const config = this.getConfig();
-    const accounts = this.requireAccounts();
-    return this.accountsRemote(() => {
-      if (!config.accounts.profile.enabled) {
-        throw new QaAccountsError(
-          "profile-disabled",
-          "self-service profiles are disabled on this deployment",
-        );
-      }
-      return accounts.updateOwnProfile(token, input);
-    });
+    return this.accountRemotes.updateProfile(token, input);
   }
 
   /**
@@ -370,11 +291,13 @@ export class QaSurface extends TypertRemoteService {
       throw new Error("Fixed QA sessions cannot be created.");
     }
     const id = SessionId(`session-${randomUUID()}`);
-    const accounts = this.accountsFor(config);
+    const accounts = this.accountRemotes.resolve(config);
     const owner =
       accounts === undefined
         ? undefined
-        : this.accountsRemote(() => accounts.reserveSession(token, String(id)));
+        : this.accountRemotes.run(() =>
+            accounts.reserveSession(token, String(id)),
+          );
     let hostCreated = false;
     try {
       let userCwd: string | undefined;
