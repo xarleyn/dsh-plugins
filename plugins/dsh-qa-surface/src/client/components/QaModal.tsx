@@ -11,8 +11,9 @@ export interface QaModalProps {
   /** Actions pinned under the body; omit for a body-only dialog. */
   readonly footer?: ReactNode;
   /**
-   * Wider panel, for a dialog whose prose must not wrap mid-sentence. The
-   * default width stays with the text-list dialogs it was sized for.
+   * Wider panel, for a dialog whose prose must not wrap mid-sentence: the
+   * profile form and the changelog both take it. The default width stays with
+   * the text-list dialogs it was sized for.
    */
   readonly wide?: boolean;
 }

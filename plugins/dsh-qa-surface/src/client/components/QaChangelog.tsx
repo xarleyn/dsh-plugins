@@ -39,6 +39,12 @@ export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
           "Режим perUserWorkspace выделяет каждому аккаунту отдельный каталог внутри рабочего пространства: файлы пользователей не пересекаются, а квоты ограничивают объём.",
         ],
       },
+      {
+        title: "Изменения",
+        items: [
+          "Диалог «История версий» открывается такой же ширины, как профиль пользователя: строки изменений больше не переносятся на вторую строку парой слов.",
+        ],
+      },
     ],
   },
   {
@@ -142,6 +148,9 @@ export function QaChangelogModal(props: QaChangelogModalProps) {
       title="История версий"
       closeLabel="Закрыть историю версий"
       onClose={props.onClose}
+      // The entries are full sentences; the shared panel width strands one or
+      // two words on every second line.
+      wide
     >
       {QA_CHANGELOG.map((entry) => (
         <section key={entry.version} className="dsh-qa-changelog__entry">
