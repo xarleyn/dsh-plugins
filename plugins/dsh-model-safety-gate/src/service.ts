@@ -66,9 +66,23 @@ export interface SafetyGateHostContext {
   inject(services: readonly string[], fn: (ctx: ToolHostContext) => void): void;
   effect(factory: () => () => void, name: string): void;
   logger: { info(message: string, ...values: unknown[]): void; warn(message: string, ...values: unknown[]): void };
-  llm?: DshLlmRuntime;
-  agents?: { get(id: unknown): CancellableAgent | undefined };
-  sessions?: { get(id: unknown): { append(type: string, data: unknown): unknown } | undefined };
+  /**
+   * Optional-service read. Every service this gate only *tolerates* is read
+   * through here: the property proxy resolves per fiber topology and throws on
+   * an undeclared name, so `ctx.get` is the only safe read for an optional
+   * dependency (harness authoring rule, `packages/AGENTS.md`).
+   */
+  get(name: string): unknown;
+}
+
+/** Structural face of the agent registry this gate resolves live agents from. */
+export interface AgentRegistryFace {
+  get(id: unknown): CancellableAgent | undefined;
+}
+
+/** Structural face of the session registry the audit supplement appends through. */
+export interface SessionRegistryFace {
+  get(id: unknown): { append(type: string, data: unknown): unknown } | undefined;
 }
 
 /** Structural view of the tool runtime sub-context. */
@@ -210,7 +224,8 @@ export class ModelSafetyGate extends TypertRemoteService {
   /** Test/diagnostics hook mirroring the cancellation path (SPEC §15). */
   cancelSession(sessionId: string, reason: string, host?: SafetyGateHostContext): boolean {
     const lookup = (id: string): CancellableAgent | undefined =>
-      (host !== undefined ? host.agents?.get(id) : undefined) ?? this.agentsBySession.get(id);
+      (host === undefined ? undefined : (host.get("agents") as AgentRegistryFace | undefined)?.get(id))
+      ?? this.agentsBySession.get(id);
     return cancelTurn(lookup, sessionId, reason);
   }
 
@@ -303,7 +318,7 @@ export class ModelSafetyGate extends TypertRemoteService {
   private buildTransport(): ClassifierTransport | null {
     const classifierConfig = this.resolved.classifier;
     if (classifierConfig.backend === "dsh") {
-      const llm = this.host.llm;
+      const llm = this.host.get("llm") as DshLlmRuntime | undefined;
       if (llm === undefined) {
         this.logger.warn("safety.classifier.no_llm", { backend: classifierConfig.backend });
         return null;
@@ -436,7 +451,8 @@ export class ModelSafetyGate extends TypertRemoteService {
     const sessionId = this.lastSessionId;
     if (sessionId === null) return;
     try {
-      host.sessions?.get(sessionId)?.append(type, event);
+      const sessions = host.get("sessions") as SessionRegistryFace | undefined;
+      sessions?.get(sessionId)?.append(type, event);
     } catch {
       // Session append failures are contained.
     }
@@ -444,8 +460,10 @@ export class ModelSafetyGate extends TypertRemoteService {
 
   private resolveAgentLookup(host: SafetyGateHostContext, deps: SafetyGateServiceDeps): (sessionId: string) => CancellableAgent | undefined {
     if (deps.agentLookup !== undefined) return deps.agentLookup;
+    // Read per call: the gate must survive a host that mounts the registry later.
     return (sessionId: string): CancellableAgent | undefined =>
-      host.agents?.get(sessionId) ?? this.agentsBySession.get(sessionId);
+      (host.get("agents") as AgentRegistryFace | undefined)?.get(sessionId)
+      ?? this.agentsBySession.get(sessionId);
   }
 
   private registerGuards(): void {

@@ -9,7 +9,7 @@ import { Context } from "@deepseek-ai/cordis";
 import { KNOWN_SESSION_EVENT_TYPES } from "@deepseek-ai/dsh-session";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
-import { ModelSafetyGate, type SafetyGateHostContext, type ToolHostContext } from "../../src/service.js";
+import { ModelSafetyGate, type AgentRegistryFace, type ToolHostContext } from "../../src/service.js";
 import { SafetyGateError } from "../../src/types.js";
 import { SAFETY_EVENT_TYPES } from "../../src/audit/events.js";
 import { runIsolated } from "../../src/classifier/isolation.js";
@@ -43,7 +43,7 @@ interface CapturedSettings {
 
 function wire(
   config?: Record<string, unknown>,
-  options?: { agents?: SafetyGateHostContext["agents"] },
+  options?: { agents?: AgentRegistryFace },
 ): { captured: CapturedHost; gate: ModelSafetyGate } {
   const ctx = new Context();
   const shadow = ctx as unknown as Record<string, unknown>;
@@ -117,14 +117,17 @@ function wire(
     captured.effects.push(factory());
     return undefined;
   };
-  shadow.sessions = {
-    get: (_id: unknown) => ({
-      append: (type: string, data: unknown) => {
-        captured.appended.push({ type, data });
-      },
-    }),
+  const services: Record<string, unknown> = {
+    sessions: {
+      get: (_id: unknown) => ({
+        append: (type: string, data: unknown) => {
+          captured.appended.push({ type, data });
+        },
+      }),
+    },
   };
-  if (options?.agents !== undefined) shadow.agents = options.agents;
+  if (options?.agents !== undefined) services.agents = options.agents;
+  shadow.get = (name: string) => services[name];
 
   const gate = new ModelSafetyGate(ctx as never, config as never, { logger: silentLogger });
   return { captured, gate };
@@ -206,7 +209,7 @@ describe("ModelSafetyGate service wiring", () => {
     expect(isolated.length).toBe(3); // internal marker → bypass (no recursion)
   });
 
-  it("wraps streams only for known live agents and blocks unsafe output", async () => {    const agents: SafetyGateHostContext["agents"] = {
+  it("wraps streams only for known live agents and blocks unsafe output", async () => {    const agents: AgentRegistryFace = {
       get: (id) => (id === "session-1" ? { id: "session-1", cancel: () => undefined } : undefined),
     };
     const { captured } = wire({ mode: "enforce" }, { agents });
