@@ -19,6 +19,7 @@ import { QaChatIndex } from "./chat-index.js";
 import { QaSurface } from "./QaSurface.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
+  QaFileUpload,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -314,6 +315,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                 policyRemote.createSession(token),
               sourceApi,
               accounts,
+              // The upload service is optional on the page: a deployment that
+              // does not serve it keeps images, and a staged file refuses the
+              // send with a message instead of losing the draft. Read through
+              // the untyped service lookup on purpose — the QA bundle does not
+              // link the upload package.
+              fileUpload: () =>
+                (
+                  ctx as unknown as {
+                    get(service: string): unknown;
+                  }
+                ).get("fileUpload") as QaFileUpload | undefined,
             }),
           },
           QaSurface,

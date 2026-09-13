@@ -53,6 +53,36 @@ export type QaSecureSession = (
 /** Host-authoritative creation: identity, cwd and policy never come from the browser. */
 export type QaCreateSession = (token: string) => Promise<RemoteResult<string>>;
 
+/**
+ * Browser file-upload service (`ctx.fileUpload`), described structurally on
+ * purpose: files do not ride the prompt inline the way images do, they are
+ * staged through the Host upload route and cited by receipt. The QA bundle
+ * must not link the upload package — a deployment may not serve it — so the
+ * service is read off the context at send time and this is the only shape the
+ * surface relies on.
+ */
+export interface QaFileUpload {
+  upload(
+    sessionId: string,
+    data: Blob | Uint8Array,
+    name?: string,
+    signal?: AbortSignal,
+  ): Promise<
+    | {
+        readonly ok: true;
+        readonly value: {
+          readonly receiptId: string;
+          readonly file: {
+            readonly attachmentId: string;
+            readonly name: string;
+            readonly bytes: number;
+          };
+        };
+      }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+}
+
 export interface QaSourceApi {
   sources(
     token: string,

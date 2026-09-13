@@ -242,6 +242,8 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - no model/workspace/permission/mode/settings switching from the QA surface;
 - safe handling of unsupported interactive states;
 - no leakage of tool calls/reasoning into the QA transcript by default;
+- image attachments inline and text-file attachments staged by receipt, with
+  the paste-to-file threshold;
 - same-origin use of the normal DSH connection/API stack;
 - desktop and mobile layout;
 - package build/install instructions;
@@ -249,7 +251,6 @@ No first-party DSH navigation or admin controls should be visible through the QA
 
 ### Post-MVP candidates
 
-- image/file attachments;
 - suggested-question chips;
 - source/citation cards;
 - compact tool-status indicators;
@@ -527,6 +528,17 @@ suggestedQuestions:
 thinkingPhrases:
   - "Шлифую мысли…"
   - "Сверяю с ГОСТом…"
+
+# Optional. What a QA visitor may attach. Images ride the prompt inline; a
+# text file is staged on the Host first and cited by receipt, so the model
+# receives the stored copy's path and `read` must stay in
+# lockdown.toolPolicy.allow.
+attachments:
+  textFiles: true
+  pastedTextLines: 200
+  maxFileBytes: 10485760
+  maxPending: 8
+  extensions: [md, txt, log, json, yaml, csv, sql]
 
 interaction:
   approvals: blocked
@@ -1384,6 +1396,33 @@ Requirements:
 - optionally allow another prompt only after current turn finishes in MVP;
 - restore draft on transport error when submission was not accepted;
 - clear draft only after Host accepts the prompt.
+
+### Attachments
+
+One picker, one drop zone and one paste path serve two kinds of attachment:
+
+- **image** — PNG/JPEG/WebP/GIF, sent inline as base64 and promoted by the
+  Host to a durable reference; rendered as a thumbnail on the message;
+- **file** — text files by extension (`attachments.extensions`, plus anything
+  the browser reports as `text/*`), staged through the browser upload service
+  and cited by receipt.
+
+The two are deliberately different on the wire. An image's bytes are small,
+bounded and validated by the Host's image admission; a file is stored verbatim
+and never reaches a provider natively — prompt assembly replaces it with handle
+text naming the file, its size and the read-only path of the stored copy. That
+projection is the reason `read` has to stay in the lockdown allow-list: without
+it the model is told a file exists and cannot open it.
+
+Pasted plain text longer than `attachments.pastedTextLines` (default 200,
+`0` disables) becomes a file attachment named after its line count, so a
+paste of a log or a stack trace does not fill the input field. Shorter pastes
+and every paste while `textFiles` is false stay ordinary field text.
+
+The client enforces `maxFileBytes` and `maxPending` (the two kinds together)
+before uploading, and refuses a rejected file with a message instead of
+losing the draft; a failed send keeps every attachment in the composer. The
+Host remains authoritative at admission.
 
 ### Accessibility
 
@@ -2349,7 +2388,7 @@ Potential roadmap:
 0.1  full-screen /qa overlay + one DSH session + hard lockdown
 0.2  settings + branding + suggested questions + capability inventory
 0.3  read-only sources/citations + optional supported questions UI
-0.4  attachments + feedback (without capability escalation)
+0.4  image and text-file attachments + feedback (without capability escalation)
 0.5  iframe/embed SDK + auth-role integration
 1.0  dedicated qa profile/bundle / isolated QA deployment option
 ```

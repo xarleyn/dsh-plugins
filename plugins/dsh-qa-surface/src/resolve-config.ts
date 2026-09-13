@@ -1,4 +1,14 @@
 import {
+  DEFAULT_QA_TEXT_EXTENSIONS,
+  QA_MAX_FILE_BYTES_MAX,
+  QA_MAX_FILE_BYTES_MIN,
+  QA_MAX_PENDING_MAX,
+  QA_MAX_PENDING_MIN,
+  QA_PASTED_TEXT_LINES_MAX,
+  QA_PASTED_TEXT_LINES_MIN,
+  normalizeTextExtensions,
+} from "./attachment-rules.js";
+import {
   QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
   QA_PROFILE_INSTRUCTIONS_MAX_MAX,
   QA_PROFILE_INSTRUCTIONS_MAX_MIN,
@@ -127,6 +137,13 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         markIncompleteOpaqueRuns: true,
       }),
       legacy: Object.freeze({ parseAssistantSourcesBlock: false }),
+    }),
+    attachments: Object.freeze({
+      textFiles: true,
+      pastedTextLines: 200,
+      maxFileBytes: 10_485_760,
+      maxPending: 8,
+      extensions: DEFAULT_QA_TEXT_EXTENSIONS,
     }),
   },
 );
@@ -353,6 +370,41 @@ export function resolveConfig(
     throw new TypeError(
       "dsh-qa-surface: sources.filePreview.maxMarkdownRenderBytes cannot exceed maxBytes",
     );
+  }
+  const pastedTextLines =
+    input.attachments?.pastedTextLines ??
+    DEFAULT_QA_SURFACE_CONFIG.attachments.pastedTextLines;
+  const maxFileBytes =
+    input.attachments?.maxFileBytes ??
+    DEFAULT_QA_SURFACE_CONFIG.attachments.maxFileBytes;
+  const maxPending =
+    input.attachments?.maxPending ??
+    DEFAULT_QA_SURFACE_CONFIG.attachments.maxPending;
+  for (const [name, value, min, max] of [
+    [
+      "attachments.pastedTextLines",
+      pastedTextLines,
+      QA_PASTED_TEXT_LINES_MIN,
+      QA_PASTED_TEXT_LINES_MAX,
+    ],
+    [
+      "attachments.maxFileBytes",
+      maxFileBytes,
+      QA_MAX_FILE_BYTES_MIN,
+      QA_MAX_FILE_BYTES_MAX,
+    ],
+    [
+      "attachments.maxPending",
+      maxPending,
+      QA_MAX_PENDING_MIN,
+      QA_MAX_PENDING_MAX,
+    ],
+  ] as const) {
+    if (!Number.isSafeInteger(value) || value < min || value > max) {
+      throw new TypeError(
+        `dsh-qa-surface: ${name} must be an integer from ${min} to ${max}`,
+      );
+    }
   }
   const sessionTtlDays =
     input.accounts?.sessionTtlDays ??
@@ -630,6 +682,21 @@ export function resolveConfig(
           input.sources?.legacy?.parseAssistantSourcesBlock ??
           DEFAULT_QA_SURFACE_CONFIG.sources.legacy.parseAssistantSourcesBlock,
       }),
+    }),
+    attachments: Object.freeze({
+      textFiles:
+        input.attachments?.textFiles ??
+        DEFAULT_QA_SURFACE_CONFIG.attachments.textFiles,
+      pastedTextLines,
+      maxFileBytes,
+      maxPending,
+      // An operator names extensions; anything the browser reports as
+      // `text/*` still passes the composer's own check, so an empty list is a
+      // narrowing, not a lockout.
+      extensions: normalizeTextExtensions(
+        input.attachments?.extensions ??
+          DEFAULT_QA_SURFACE_CONFIG.attachments.extensions,
+      ),
     }),
   });
 }

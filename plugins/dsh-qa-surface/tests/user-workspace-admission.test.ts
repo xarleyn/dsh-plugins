@@ -39,6 +39,12 @@ describe("per-user workspace admission", () => {
       agents: { get: () => agent },
       agentPresets: { composedPreset: () => undefined },
       workspaceRegistry: { get: () => ({ path: workspace }) },
+      // The mounted attachment store; the exemption semantics themselves are
+      // covered in user-workspace.test.ts.
+      get: (name: string) =>
+        name === "attachments"
+          ? { root: path.join(workspace, "attachments") }
+          : undefined,
       permissionPresets: {
         resolve: () => ({ sandbox: "workspace-write", approval: "never" }),
         current: () => "qa-workspace-write",

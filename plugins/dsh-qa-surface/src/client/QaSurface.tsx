@@ -16,7 +16,7 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
   QaAccountProfileInput,
-  QaImageDraft,
+  QaAttachmentDraft,
   QaSessionState,
   QaSource,
   QaTurnSources,
@@ -28,9 +28,11 @@ import type {
   QaAccountsSnapshot,
 } from "./QaAccountsController.js";
 import { QaSessionController } from "./QaSessionController.js";
+import { attachmentLimits } from "./attachments.js";
 import type {
   QaConversation,
   QaCreateSession,
+  QaFileUpload,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -82,6 +84,11 @@ export interface QaSurfaceFace {
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
   readonly sourceApi: QaSourceApi;
+  /**
+   * Browser file-upload service, when the page serves the upload plugin.
+   * Resolved per send so a page that loads it later still gets file support.
+   */
+  readonly fileUpload?: () => QaFileUpload | undefined;
   /** Present when the deployment mounts the QA account gate. */
   readonly accounts?: QaAccountsController;
 }
@@ -228,6 +235,9 @@ export function QaSurface(props: QaSurfaceProps) {
       config,
       storage: window.localStorage,
       accounts: facade,
+      ...(props.fileUpload === undefined
+        ? {}
+        : { fileUpload: props.fileUpload }),
     });
     setController(next);
     void next.ensureSession();
@@ -240,6 +250,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.conversation,
     props.connection,
     props.createSession,
+    props.fileUpload,
     props.secureSession,
     props.sourceApi,
     props.sessions,
@@ -281,8 +292,8 @@ export function QaSurface(props: QaSurfaceProps) {
     setActiveTurn,
     variantOffsets,
     setVariantOffsets,
-    pendingImages,
-    setPendingImages,
+    pendingAttachments,
+    setPendingAttachments,
     agentsOpen,
     setAgentsOpen,
     sourcesOpen,
@@ -323,6 +334,9 @@ export function QaSurface(props: QaSurfaceProps) {
         : (attachmentId: string) => controller.readImage(attachmentId),
     [controller],
   );
+  // One identity per configuration: the composer is memoized on shallow
+  // comparison, so a fresh limits object would re-render it every frame.
+  const limits = useMemo(() => attachmentLimits(config), [config]);
   const handleRegenerate = useCallback(() => {
     void controller?.regenerate();
   }, [controller]);
@@ -342,8 +356,8 @@ export function QaSurface(props: QaSurfaceProps) {
     [controller],
   );
   const handleSend = useCallback(
-    (text: string, images: readonly QaImageDraft[]) =>
-      controller?.send(text, images) ?? Promise.resolve(false),
+    (text: string, attachments: readonly QaAttachmentDraft[]) =>
+      controller?.send(text, attachments) ?? Promise.resolve(false),
     [controller],
   );
   const handleStop = useCallback(
@@ -856,8 +870,9 @@ export function QaSurface(props: QaSurfaceProps) {
                   running={state.phase === "running"}
                   showStop={config.ui.showStop}
                   status={status}
-                  images={pendingImages}
-                  onImagesChange={setPendingImages}
+                  attachments={pendingAttachments}
+                  limits={limits}
+                  onAttachmentsChange={setPendingAttachments}
                   onSend={handleSend}
                   onStop={handleStop}
                 />

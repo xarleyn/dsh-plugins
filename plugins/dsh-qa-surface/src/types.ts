@@ -224,6 +224,27 @@ export interface QaSurfaceConfig {
     readonly cookieBootstrap?: boolean;
   };
   readonly sources?: QaSourcesConfig;
+  readonly attachments?: QaAttachmentsConfig;
+}
+
+/** What a QA visitor may attach to one message. */
+export interface QaAttachmentsConfig {
+  /** Offer text files (md, txt, log, …) next to images; off = images only. */
+  readonly textFiles?: boolean;
+  /**
+   * Line count above which pasted plain text becomes an attached file instead
+   * of landing in the input field. Zero never converts.
+   */
+  readonly pastedTextLines?: number;
+  /** Byte ceiling for one attached file; the composer refuses anything larger. */
+  readonly maxFileBytes?: number;
+  /**
+   * Pending attachments (images plus text files) allowed on one message. The
+   * Host keeps its own authority over assembled image batches.
+   */
+  readonly maxPending?: number;
+  /** Accepted text-file extensions, lowercase and without the dot. */
+  readonly extensions?: readonly string[];
 }
 
 export interface ResolvedQaSurfaceConfig {
@@ -348,6 +369,13 @@ export interface ResolvedQaSurfaceConfig {
       readonly parseAssistantSourcesBlock: boolean;
     };
   };
+  readonly attachments: {
+    readonly textFiles: boolean;
+    readonly pastedTextLines: number;
+    readonly maxFileBytes: number;
+    readonly maxPending: number;
+    readonly extensions: readonly string[];
+  };
 }
 
 export interface QaSourceFilePreview {
@@ -381,6 +409,8 @@ export type QaMessage =
       readonly status: "committed";
       readonly timestamp?: number;
       readonly images?: readonly QaImageView[];
+      /** Durable files the user attached to this message, in prompt order. */
+      readonly files?: readonly QaFileView[];
       /**
        * Chat owner's display name, set only for an admin reading a foreign
        * chat; the owner themself sees their messages unlabeled.
@@ -480,6 +510,7 @@ export type QaImageMediaType =
 
 /** One image pending in the composer, browser-owned until the prompt lands. */
 export interface QaImageDraft {
+  readonly kind: "image";
   readonly id: string;
   readonly mediaType: QaImageMediaType;
   readonly name: string;
@@ -489,10 +520,38 @@ export interface QaImageDraft {
   readonly previewUrl: string;
 }
 
+/**
+ * One file pending in the composer. The bytes stay in the browser until the
+ * prompt is sent: an image can ride the prompt inline, but a file must be
+ * staged through the Host upload route first and then cited by its receipt.
+ */
+export interface QaFileDraft {
+  readonly kind: "file";
+  readonly id: string;
+  readonly name: string;
+  readonly bytes: number;
+  /** Verbatim payload; a pasted blob is a File built from the pasted text. */
+  readonly blob: Blob;
+}
+
+/** Anything the composer may hold before the prompt is sent. */
+export type QaAttachmentDraft = QaImageDraft | QaFileDraft;
+
 /** A durable image attached to a sent message. */
 export interface QaImageView {
   readonly attachmentId: string;
   readonly mediaType: QaImageMediaType;
+}
+
+/**
+ * A durable file attached to a sent message. The browser never reads these
+ * bytes back (the attachment route serves images); the row shows the handle
+ * the model resolves, and the Host keeps the verbatim copy.
+ */
+export interface QaFileView {
+  readonly attachmentId: string;
+  readonly name: string;
+  readonly bytes: number;
 }
 
 /** A subagent transcript opened read-only from the agents panel. */
