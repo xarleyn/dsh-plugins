@@ -70,7 +70,7 @@
     "README.md",
     "CHANGELOG.md",
     "docs/*.md",
-    "SPEC-dsh-qa-surface.md",
+    "SPEC.md",
     "LICENSE"
   ],
   "scripts": {
