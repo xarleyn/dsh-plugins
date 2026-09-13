@@ -55,6 +55,7 @@ All options are optional; defaults are shown.
 ```yaml
 enabled: true            # master switch for the whole gate
 mode: warn               # off | audit | warn | enforce — default decision profile
+                         # audit records findings but never enforces, including turn-risk escalation
 
 classifier:
   backend: none          # none | dsh | openai-compatible
