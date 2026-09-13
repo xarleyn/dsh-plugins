@@ -1,19 +1,9 @@
 import {
-  createHmac,
   randomBytes,
   randomUUID,
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import type { Stats } from "node:fs";
-import path from "node:path";
 import type {
   QaAccountIdentityField,
   QaAccountProfile,
@@ -30,76 +20,21 @@ import {
   normalizeProfile,
   validateProfileWrite,
 } from "../profile.js";
+import { validateCredentials } from "./credentials.js";
+import { QaAccountsError } from "./errors.js";
+import {
+  createFileStampRef,
+  defaultAccountsFilePath,
+  loadAccountsFile,
+  persistAccountsFile,
+  reloadAccountsFileIfChanged,
+} from "./file.js";
+import type { AccountsFile, StoredUser } from "./file.js";
+import { mintToken, verifyToken } from "./token.js";
 
-/**
- * Coarse, wire-safe account failure codes. They ride the `(reason: <code>)`
- * marker pattern the attestation path established; the browser maps them to
- * audience-safe copy and the precise cause stays in the Host logs.
- */
-export type QaAccountsErrorReason =
-  | "auth-required"
-  | "admin-required"
-  | "invalid-credentials"
-  | "account-disabled"
-  | "email-taken"
-  | "invalid-email"
-  | "invalid-display-name"
-  | "invalid-profile"
-  | "profile-disabled"
-  | "invalid-role"
-  | "weak-password"
-  | "registration-disabled"
-  | "rate-limited"
-  | "session-owned-elsewhere";
-
-export class QaAccountsError extends Error {
-  constructor(
-    readonly reason: QaAccountsErrorReason,
-    message: string,
-  ) {
-    super(message);
-    this.name = "QaAccountsError";
-  }
-}
-
-/** One account's self-declared profile as it rests in the accounts file. */
-interface StoredProfile {
-  fullName?: string;
-  identities?: Record<string, string>;
-  instructions?: string;
-  updatedAt?: string;
-}
-
-interface StoredUser {
-  readonly id: string;
-  readonly email: string;
-  readonly displayName: string;
-  readonly role: QaAccountRole;
-  /** scrypt material: hex salt + hex hash. */
-  readonly passwordHash: { readonly salt: string; readonly hash: string };
-  readonly createdAt: string;
-  lastLoginAt: string | null;
-  /** Disabled accounts are refused at login and lose their live tokens. */
-  disabled?: boolean;
-  /**
-   * Bumped to invalidate every token ever issued to the account: the value
-   * rides the token payload and must match at verification time.
-   */
-  tokenVersion?: number;
-  /** Absent until the owner fills the profile form for the first time. */
-  profile?: StoredProfile;
-}
-
-interface AccountsFile {
-  readonly version: 1;
-  /** HMAC key for account tokens; rotated on password change by rewriting it. */
-  readonly secret: string;
-  readonly users: StoredUser[];
-  readonly ownership: Record<
-    string,
-    { readonly userId: string; readonly claimedAt: string }
-  >;
-}
+export { QaAccountsError } from "./errors.js";
+export type { QaAccountsErrorReason } from "./errors.js";
+export { defaultAccountsFilePath } from "./file.js";
 
 export interface QaAccountsOptions {
   readonly sessionTtlDays: number;
@@ -116,21 +51,8 @@ export interface QaAccountsOptions {
 }
 
 const SCRYPT_KEY_LENGTH = 32;
-const SECRET_BYTES = 32;
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_DISPLAY_NAME_LENGTH = 100;
 const MAX_CLAIM_BATCH = 50;
 const MAX_SESSION_ID_LENGTH = 200;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
-
-/** The accounts file lives next to the DSH home the launcher exports. */
-export function defaultAccountsFilePath(): string {
-  const home = process.env.DSH_HOME?.trim();
-  return path.join(
-    home !== undefined && home !== "" ? home : process.cwd(),
-    "qa-accounts.json",
-  );
-}
 
 function toPublic(user: StoredUser): QaAccountUserPublic {
   return {
@@ -164,18 +86,15 @@ function passwordMatches(
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function base64Url(value: Buffer | string): string {
-  return Buffer.from(value).toString("base64url");
-}
-
-function stampOf(stat: Stats): { mtimeMs: number; size: number } {
-  return { mtimeMs: stat.mtimeMs, size: stat.size };
-}
-
 /**
  * Host authority for QA accounts: the file-backed user list, the session
  * ownership map and the HMAC account tokens. All mutations are synchronous
  * and persisted atomically (temp file + rename); LAN scale keeps this trivial.
+ *
+ * The class is the facade: token mechanics live in token.ts, the file format
+ * and its atomic persistence plus the external-change probe in file.ts, and
+ * the credential rules shared by registration and the operator CLI in
+ * credentials.ts.
  */
 export class QaAccounts {
   private file: AccountsFile;
@@ -189,7 +108,7 @@ export class QaAccounts {
   private readonly identityFields:
     readonly QaAccountIdentityField[] | undefined;
   /** mtime+size of the file as of the last load; the external-change probe. */
-  private lastLoadStamp = { mtimeMs: Number.NEGATIVE_INFINITY, size: -1 };
+  private readonly fileStamp = createFileStampRef();
 
   constructor(
     readonly filePath: string = defaultAccountsFilePath(),
@@ -201,88 +120,21 @@ export class QaAccounts {
     this.instructionsMaxLength =
       options.instructionsMaxLength ?? QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX;
     this.identityFields = options.identityFields;
-    this.file = this.load();
+    this.file = loadAccountsFile(this.filePath, this.fileStamp);
   }
 
   /**
-   * The qa-accounts CLI runs in its own process against the same file. Re-read
-   * it whenever it changed on disk, before every read or read-modify-write:
-   * without this a running Host would keep honoring tokens the CLI revoked
-   * and its next save would resurrect the CLI's change from a stale snapshot.
-   * One file, one writer at a time remains the deployment's discipline; LAN
-   * scale keeps the stat per operation trivial.
+   * Re-read the accounts file when it changed on disk, before every read or
+   * read-modify-write. The probe itself and its cross-process rationale live
+   * with the file layer (reloadAccountsFileIfChanged).
    */
   private reloadIfChanged(): void {
-    let stat: Stats;
-    try {
-      stat = statSync(this.filePath);
-    } catch {
-      // The file vanished between operations (never by our hand): keep
-      // serving the in-memory state instead of resetting every account.
-      return;
-    }
-    if (
-      stat.mtimeMs === this.lastLoadStamp.mtimeMs &&
-      stat.size === this.lastLoadStamp.size
-    ) {
-      return;
-    }
-    this.file = this.load();
-  }
-
-  private load(): AccountsFile {
-    let raw: string;
-    let stat: Stats | undefined;
-    try {
-      raw = readFileSync(this.filePath, "utf8");
-      stat = statSync(this.filePath);
-    } catch (error) {
-      // Only a missing file means "first run": anything else (permissions,
-      // a directory in the way, I/O failure) must surface, or the store
-      // would silently reset every account it cannot read.
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      const created: AccountsFile = {
-        version: 1,
-        secret: base64Url(randomBytes(SECRET_BYTES)),
-        users: [],
-        ownership: {},
-      };
-      this.persist(created);
-      return created;
-    }
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as AccountsFile).version !== 1 ||
-      typeof (parsed as AccountsFile).secret !== "string" ||
-      !Array.isArray((parsed as AccountsFile).users)
-    ) {
-      throw new Error(
-        `qa-accounts: ${this.filePath} is not a recognizable accounts file; refusing to overwrite it`,
-      );
-    }
-    const file = parsed as AccountsFile;
-    if (stat !== undefined) this.lastLoadStamp = stampOf(stat);
-    return {
-      version: 1,
-      secret: file.secret,
-      users: file.users,
-      ownership: file.ownership ?? {},
-    };
-  }
-
-  private persist(file: AccountsFile): void {
-    mkdirSync(path.dirname(this.filePath), { recursive: true });
-    // A per-process temp name: the Host and the CLI never race on one file.
-    const temp = `${this.filePath}.${process.pid}.tmp`;
-    writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, "utf8");
-    renameSync(temp, this.filePath);
-    this.lastLoadStamp = stampOf(statSync(this.filePath));
+    const loaded = reloadAccountsFileIfChanged(this.filePath, this.fileStamp);
+    if (loaded !== undefined) this.file = loaded;
   }
 
   private save(): void {
-    this.persist(this.file);
+    persistAccountsFile(this.filePath, this.file, this.fileStamp);
   }
 
   private pruneAuthAttempts(): void {
@@ -323,26 +175,11 @@ export class QaAccounts {
         "self-registration is disabled on this deployment",
       );
     }
-    const normalized = email.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(normalized) || normalized.length > 254) {
-      throw new QaAccountsError(
-        "invalid-email",
-        "email is not a usable address",
-      );
-    }
-    if (password.length < MIN_PASSWORD_LENGTH || password.length > 200) {
-      throw new QaAccountsError(
-        "weak-password",
-        `password must be ${MIN_PASSWORD_LENGTH} to 200 characters`,
-      );
-    }
-    const name = (displayName ?? "").trim();
-    if (name.length > MAX_DISPLAY_NAME_LENGTH) {
-      throw new QaAccountsError(
-        "invalid-display-name",
-        `display name must be at most ${MAX_DISPLAY_NAME_LENGTH} characters`,
-      );
-    }
+    const { email: normalized, displayName: name } = validateCredentials(
+      email,
+      password,
+      displayName,
+    );
     if (this.userByEmail(normalized) !== undefined) {
       throw new QaAccountsError(
         "email-taken",
@@ -409,61 +246,17 @@ export class QaAccounts {
 
   /** Resolve a token to its user, or null for absent/invalid/expired ones. */
   verifyToken(token: string): string | null {
-    if (typeof token !== "string") return null;
-    const parts = token.split(".");
-    if (parts.length !== 3 || parts[0] !== "v1") return null;
-    const payload = parts[1];
-    const signature = parts[2];
-    if (payload === undefined || signature === undefined) return null;
-    let expected: Buffer;
-    let decoded: { uid?: unknown; exp?: unknown; ver?: unknown };
-    try {
-      expected = createHmac("sha256", this.file.secret)
-        .update(payload)
-        .digest();
-      const expectedSignature = base64Url(expected);
-      if (
-        signature.length !== expectedSignature.length ||
-        !timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))
-      ) {
-        return null;
-      }
-      decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    } catch {
-      return null;
-    }
-    if (
-      typeof decoded.uid !== "string" ||
-      typeof decoded.exp !== "number" ||
-      decoded.exp < Date.now()
-    ) {
-      return null;
-    }
-    // The account's current token version must match the one burned into the
-    // token: bumping it (disable/revoke) invalidates every issued token.
-    const user = this.file.users.find(
-      (candidate) => candidate.id === decoded.uid,
-    );
-    const version = typeof decoded.ver === "number" ? decoded.ver : undefined;
-    if (user === undefined || version !== (user.tokenVersion ?? 0)) {
-      return null;
-    }
-    return decoded.uid;
+    // Signature, expiry and token-version mechanics live in token.ts.
+    return verifyToken(this.file.secret, token, this.file.users);
   }
 
   private mintToken(userId: string): string {
     const user = this.file.users.find((candidate) => candidate.id === userId);
-    const payload = base64Url(
-      JSON.stringify({
-        uid: userId,
-        exp: Date.now() + this.sessionTtlDays * 86_400_000,
-        ver: user?.tokenVersion ?? 0,
-      }),
-    );
-    const signature = base64Url(
-      createHmac("sha256", this.file.secret).update(payload).digest(),
-    );
-    return `v1.${payload}.${signature}`;
+    return mintToken(this.file.secret, {
+      uid: userId,
+      exp: Date.now() + this.sessionTtlDays * 86_400_000,
+      ver: user?.tokenVersion ?? 0,
+    });
   }
 
   /** The account behind a token, or an auth-required refusal. */
@@ -661,26 +454,11 @@ export class QaAccounts {
   ): QaAccountUserPublic {
     this.reloadIfChanged();
     this.assertAuthBudget();
-    const normalized = email.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(normalized) || normalized.length > 254) {
-      throw new QaAccountsError(
-        "invalid-email",
-        "email is not a usable address",
-      );
-    }
-    if (password.length < MIN_PASSWORD_LENGTH || password.length > 200) {
-      throw new QaAccountsError(
-        "weak-password",
-        `password must be ${MIN_PASSWORD_LENGTH} to 200 characters`,
-      );
-    }
-    const name = (options.displayName ?? "").trim();
-    if (name.length > MAX_DISPLAY_NAME_LENGTH) {
-      throw new QaAccountsError(
-        "invalid-display-name",
-        `display name must be at most ${MAX_DISPLAY_NAME_LENGTH} characters`,
-      );
-    }
+    const { email: normalized, displayName: name } = validateCredentials(
+      email,
+      password,
+      options.displayName,
+    );
     if (
       options.role !== undefined &&
       options.role !== "admin" &&
