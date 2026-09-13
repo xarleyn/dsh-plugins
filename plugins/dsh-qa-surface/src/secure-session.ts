@@ -4,7 +4,6 @@ import type { Context } from "@deepseek-ai/cordis";
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
-import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
@@ -15,7 +14,6 @@ import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
 interface AppliedPolicy {
   readonly fingerprint: string;
-  readonly disposeApprovalBlocker: () => void;
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
 }
@@ -40,18 +38,6 @@ export interface QaAccountsGate {
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
 const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = 120_000;
-
-async function blockApprovalInteraction(
-  execution: { readonly name: string },
-  next: () => Promise<PreToolDecision>,
-): Promise<PreToolDecision> {
-  const decision = await next();
-  if (decision.kind !== "ask") return decision;
-  return {
-    kind: "deny",
-    reason: `tool "${execution.name}" requires approval, but approval interactions are unavailable in QA`,
-  };
-}
 
 /**
  * Compare session cwds the way the host records them: separator- and
@@ -344,11 +330,6 @@ export class QaPolicyAdmission {
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
-      const disposeApprovalBlocker = agent.ctx.on(
-        "tools/pre-execute",
-        blockApprovalInteraction,
-        { prepend: true },
-      );
       const disposeGuard = agent.ctx.tools.guard((execution) =>
         qaToolDenial(allowed, execution.name),
       );
@@ -358,16 +339,13 @@ export class QaPolicyAdmission {
         });
         this.appliedPolicies.set(agent, {
           fingerprint,
-          disposeApprovalBlocker,
           disposeGuard,
           disposeRestriction,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
-        prior?.disposeApprovalBlocker();
       } catch (error) {
         disposeGuard();
-        disposeApprovalBlocker();
         throw error;
       }
     }
@@ -440,7 +418,6 @@ export class QaPolicyAdmission {
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeRestriction();
       policy.disposeGuard();
-      policy.disposeApprovalBlocker();
     }
     this.appliedPolicies.clear();
     this.attested.clear();

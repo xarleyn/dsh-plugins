@@ -14,7 +14,12 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaAccountProfileInput, QaAttachmentDraft } from "../types.js";
+import type {
+  QaAccountProfileInput,
+  QaApprovalDecision,
+  QaAttachmentDraft,
+  QaQuestionAnswerItem,
+} from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import type {
@@ -24,16 +29,20 @@ import type {
 import { QaSessionController } from "./QaSessionController.js";
 import { attachmentLimits } from "./attachments.js";
 import type {
+  QaApprovalApi,
   QaConversation,
   QaCreateSession,
   QaFileUpload,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaQuestionApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
+import { QaApproval } from "./components/QaApproval.js";
+import { QaQuestions } from "./components/QaQuestions.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaMessage } from "./components/QaMessage.js";
@@ -85,6 +94,13 @@ export interface QaSurfaceFace {
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
   readonly sourceApi: QaSourceApi;
+  /**
+   * Approval half of the plugin's namespace. Absent on a page whose Host build
+   * does not answer it; the surface then only blocks sends it cannot attest.
+   */
+  readonly approvalApi?: QaApprovalApi;
+  /** Question half of the plugin's namespace, when the Host answers it. */
+  readonly questionApi?: QaQuestionApi;
   /**
    * Browser file-upload service, when the page serves the upload plugin.
    * Resolved per send so a page that loads it later still gets file support.
@@ -200,6 +216,12 @@ export function QaSurface(props: QaSurfaceProps) {
       secureSession: props.secureSession,
       createSession: props.createSession,
       sourceApi: props.sourceApi,
+      ...(props.approvalApi === undefined
+        ? {}
+        : { approvalApi: props.approvalApi }),
+      ...(props.questionApi === undefined
+        ? {}
+        : { questionApi: props.questionApi }),
       config,
       storage: window.localStorage,
       accounts: facade,
@@ -219,6 +241,8 @@ export function QaSurface(props: QaSurfaceProps) {
     props.connection,
     props.createSession,
     props.fileUpload,
+    props.approvalApi,
+    props.questionApi,
     props.secureSession,
     props.sourceApi,
     props.sessions,
@@ -325,6 +349,21 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),
+    [controller],
+  );
+  const handleAnswerApproval = useCallback(
+    (requestId: string, decision: QaApprovalDecision) =>
+      controller?.answerApproval(requestId, decision) ?? Promise.resolve(),
+    [controller],
+  );
+  const handleAnswerQuestion = useCallback(
+    (requestId: string, answers: readonly QaQuestionAnswerItem[]) =>
+      controller?.answerQuestion(requestId, answers) ?? Promise.resolve(),
+    [controller],
+  );
+  const handleCancelQuestion = useCallback(
+    (requestId: string) =>
+      controller?.cancelQuestion(requestId) ?? Promise.resolve(),
     [controller],
   );
   const handleCloseSubagent = useCallback(() => {
@@ -765,6 +804,15 @@ export function QaSurface(props: QaSurfaceProps) {
 
             <footer className="dsh-qa-footer">
               <div className="dsh-qa-footer__inner">
+                <QaApproval
+                  approvals={state.approvals}
+                  onAnswer={handleAnswerApproval}
+                />
+                <QaQuestions
+                  questions={state.questions}
+                  onAnswer={handleAnswerQuestion}
+                  onCancel={handleCancelQuestion}
+                />
                 {/* Keyed by chat: the composer's draft text is chat-local, so a
                   switch remounts it empty instead of carrying text across. */}
                 <QaComposer

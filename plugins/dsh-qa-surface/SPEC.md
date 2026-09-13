@@ -238,6 +238,8 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - `read-only` by default, with an opt-in fenced per-account
   `workspace-write` mode;
 - forced `approval=never` / no permission escalation;
+- optional operator-answered approvals for tool calls a composed gate parks;
+- optional operator-answered `ask_user_question` requests;
 - allow-list based tool exposure for QA sessions;
 - no model/workspace/permission/mode/settings switching from the QA surface;
 - safe handling of unsupported interactive states;
@@ -254,8 +256,6 @@ No first-party DSH navigation or admin controls should be visible through the QA
 - suggested-question chips;
 - source/citation cards;
 - compact tool-status indicators;
-- explicit `ask_user_question` support;
-- explicit approval UI;
 - conversation rating/feedback;
 - custom branding/logo;
 - iframe embedding helper;
@@ -541,7 +541,11 @@ attachments:
   extensions: [md, txt, log, json, yaml, csv, sql]
 
 interaction:
+  # blocked: refuse a composed gate's `ask` with the QA reason.
+  # interactive: park it in the QA view for the operator to answer.
   approvals: blocked
+  # unsupported: refuse ask_user_question with a reason the model can act on.
+  # interactive: park the request in the QA view as an answerable form.
   questions: unsupported
 
 lockdown:
@@ -742,7 +746,22 @@ Workspaces.
 
 Important: DSH's shipped permission preset table normally contains `workspace-write` and `danger-full-access`; `qa-read-only` is an explicit custom table entry for this deployment. The underlying knobs are the authoritative enforcement facts.
 
-`approval=never` is required because it deterministically rejects operations that request approval instead of presenting an approval UI. The QA surface must never implement an auto-approve path.
+`approval=never` is required because it deterministically rejects operations that request approval instead of presenting the harness approval UI. The QA surface must never implement an auto-approve path.
+
+`approval=never` also decides what happens to a tool call a composed plugin gate
+answers with `ask` (a content classifier, a hook rule). Resolving that ask
+through the approval service would return `rejected` without a person ever
+seeing it, and the model would read it as a user refusal. The surface therefore
+answers `ask` itself, in one of two modes:
+
+- `interaction.approvals: blocked` (default) — the call is refused with the
+  surface's own reason ("approval interactions are unavailable in QA"). Nothing
+  is approved, and the pinned policy stays the fail-closed backstop for every
+  ask that reaches the service directly.
+- `interaction.approvals: interactive` — the call is parked and listed in the
+  QA view; the operator's answer becomes the decision. An unanswered request
+  keeps the turn waiting until it is answered or the turn is stopped; a stopped
+  turn cancels it. No path approves without a person.
 
 References:
 
@@ -1449,13 +1468,17 @@ DSH agents can enter states that require human interaction, for example:
 
 The QA surface must **not silently auto-approve** these states.
 
-### MVP policy
+### Approval policy
 
 Default config:
 
 ```yaml
 interaction:
+  # blocked: refuse a composed gate's `ask` with the QA reason.
+  # interactive: park it in the QA view for the operator to answer.
   approvals: blocked
+  # unsupported: refuse ask_user_question with a reason the model can act on.
+  # interactive: park the request in the QA view as an answerable form.
   questions: unsupported
 ```
 
@@ -1467,9 +1490,52 @@ Recommended deployment architecture:
 - use an allow-list of reviewed read-only tools;
 - grant no mutable external-service permissions to the QA agent.
 
-In locked-down mode, the attested agent installs an outer `tools/pre-execute` listener. It converts a downstream `ask` decision into a deny result stating that approval interactions are unavailable in QA, before the approval service records or routes a request. The pinned `approval=never` policy remains the independent fail-closed backstop.
+The attested policy installs an outer `tools/pre-execute` listener owned by the
+plugin context, so it wraps every composed gate — the session's own agent and
+each delegated child alike. It acts only on sessions this deployment attested;
+any other session's `ask` is handed back to the chain untouched.
 
-If the Session enters an unsupported pending interaction state:
+- `interaction.approvals: blocked` — a downstream `ask` becomes a deny result
+  stating that approval interactions are unavailable in QA, before the approval
+  service records or routes a request.
+- `interaction.approvals: interactive` — a downstream `ask` is parked until the
+  operator answers in the QA view: the same two outcomes stock DSH offers
+  (`rejected`, `allowed-once`), recorded under the chat the request belongs to,
+  a delegated child's call included. The pending request is Host state, so it
+  survives a page reload and is polled while a turn runs. An unanswered request
+  never resolves on its own; the turn's own cancellation settles it.
+
+Either way the pinned `approval=never` policy remains the independent
+fail-closed backstop for every ask that reaches the approval service directly.
+
+### Question policy
+
+The model asks the user through `ask_user_question`, which resolves against the
+harness answerer waterfall `user-questions/request`. That waterfall has no
+policy knob — only answerers — and the stock DSH web bundle mounts its own
+answerer in every page, unreachable behind the QA overlay. The attested policy
+therefore claims the request for QA chats, with `prepend`, before the generic
+browser bridge sees it:
+
+- `interaction.questions: unsupported` (default) — the request is refused with a
+  reason the model can act on ("ask the user in plain text instead"), instead of
+  leaving the turn waiting on a card no one can see.
+- `interaction.questions: interactive` — the request is parked and rendered in
+  the QA view as a form: one question at a time with a pager, single-select as
+  radio buttons, multi-select as checkboxes, a free-text answer beside them, and
+  explicit skip and cancel actions. Every question of the request is answered,
+  the skipped ones as skips; nothing is answered on the operator's behalf. The
+  parked form is Host state, so it survives a page reload and is polled while a
+  turn runs.
+
+Enabling this needs the tool, not just the toggle: the deployment's agent preset
+must mount `@deepseek-ai/dsh-tool-ask-user` and the tool allow-list must name
+`ask_user_question`, or the name fails attestation with `unknown-tools`.
+A delegated child can never ask: the harness itself refuses a request from an
+agent owned by another live agent (`DELEGATED_CALLER`).
+
+If the Session enters an unsupported pending interaction state (a plan review,
+or any future interaction):
 
 1. stop accepting new text prompts;
 2. display a generic message such as:
@@ -1480,15 +1546,14 @@ This request requires an interaction that is not available in this assistant vie
 
 3. provide Reset or Retry where sensible;
 4. keep the detailed interaction visible to an operator in normal DSH Web;
-5. never resolve the approval automatically.
+5. never resolve the interaction automatically.
 
 ### Post-MVP
 
 Add dedicated compact UI for:
 
-- questions/options;
-- explicit allow/deny approval;
-- plan review.
+- plan review (an `intent: plan-review` question currently renders as the
+  generic option list, which answers it correctly but less expressively).
 
 These should use the public DSH interaction APIs, not DOM automation against native dialogs.
 
@@ -2041,10 +2106,12 @@ Verify:
 12. every QA session runs in its configured, Host-attested sandbox; writable
     mode uses only the owning account's child cwd;
 13. approval policy is `never`;
-14. model/workspace selectors are absent;
-15. permission selectors/commands are absent;
-16. a denied write attempt cannot escalate;
-17. a newly installed global tool not present in the allow-list is not visible to the QA agent.
+14. a parked `ask` is either refused (`blocked`) or answered only by the
+    operator (`interactive`); no path approves without a person;
+15. model/workspace selectors are absent;
+16. permission selectors/commands are absent;
+17. a denied write attempt cannot escalate;
+18. a newly installed global tool not present in the allow-list is not visible to the QA agent.
 
 ### 37.4 Security / lockdown tests
 
@@ -2053,6 +2120,11 @@ Verify:
 - raw tool result not visible;
 - stack traces not visible;
 - unsupported approval not auto-approved;
+- a parked approval is refused while `interaction.approvals: blocked`, and waits
+  for the operator while `interactive`;
+- a user question is refused while `interaction.questions: unsupported`, and is
+  answered only from the operator's own form while `interactive` — a skipped
+  question is reported as skipped, never guessed;
 - `approval=never` rejects escalation deterministically;
 - sandbox effective mode exactly matches the configured QA permission preset;
 - QA user cannot invoke `/permission` or equivalent command dispatch;
@@ -2311,9 +2383,10 @@ Mitigation:
 Mitigation:
 
 - QA-specific permission preset;
-- explicit pending-interaction detection;
-- fail closed;
-- later implement real compact interaction UI.
+- explicit pending-request surface for `interaction.approvals: interactive`,
+  with the turn's own cancellation settling an unanswered request;
+- `blocked` mode refuses rather than waits;
+- fail closed.
 
 ### Risk: multi-user use with browser-persistent sessions
 

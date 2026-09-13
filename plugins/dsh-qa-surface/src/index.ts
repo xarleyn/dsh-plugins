@@ -17,7 +17,10 @@ import {
 import { ConfigSchema, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
+import { QaApprovalGate } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
+import { QaQuestionGate } from "./questions.js";
+import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
@@ -34,9 +37,13 @@ import type {
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountUserPublic,
+  QaApprovalDecision,
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPendingApproval,
+  QaPendingQuestion,
+  QaQuestionAnswerItem,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaSourceFilePreview,
@@ -80,6 +87,8 @@ export class QaSurface extends TypertRemoteService {
   private source: () => QaSurfaceConfig;
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
+  private readonly approvals: QaApprovalGate;
+  private readonly userQuestions: QaQuestionGate;
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
   /** Account-remote bodies; the wire signatures stay on this class. */
@@ -118,6 +127,27 @@ export class QaSurface extends TypertRemoteService {
       },
     );
     this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
+    // The one place a composed gate's `ask` becomes a decision for an attested
+    // chat: refused outright while approvals are blocked, parked for the
+    // operator's answer while they are interactive. The question seam shares
+    // the ownership map: one chat, one surface answering it.
+    const ownership = new QaSessionOwnership((sessionId) =>
+      this.admission.knowsSession(sessionId),
+    );
+    this.approvals = new QaApprovalGate(
+      ctx,
+      () => this.getConfig().interaction.approvals === "interactive",
+      ownership,
+      this.logger,
+    );
+    this.userQuestions = new QaQuestionGate(
+      ctx,
+      () => this.getConfig().interaction.questions === "interactive",
+      ownership,
+      this.logger,
+    );
+    this.approvals.install();
+    this.userQuestions.install();
     // The identity note and the provenance rule ride the conversation as
     // durable context messages, delegated experts included: the QA preset's
     // complete persona closes the system prompt to plugins, the conversation
@@ -143,6 +173,14 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () => () => this.admission.dispose(),
       "dsh-qa-surface.lockdown-policies",
+    );
+    ctx.effect(
+      () => () => this.approvals.dispose(),
+      "dsh-qa-surface.approvals",
+    );
+    ctx.effect(
+      () => () => this.userQuestions.dispose(),
+      "dsh-qa-surface.user-questions",
     );
     ctx.effect(
       () => () => this.provenance.dispose(),
@@ -393,6 +431,75 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<readonly QaTurnSources[]> {
     await this.admission.secureSession(token, sessionId);
     return this.provenance.bundles(sessionId);
+  }
+
+  /**
+   * The tool calls of one chat that wait for the operator. Read-only: a
+   * deployment with blocked approvals answers with an empty list.
+   */
+  @Remote("pendingApprovals")
+  async pendingApprovals(
+    token: string,
+    sessionId: string,
+  ): Promise<readonly QaPendingApproval[]> {
+    await this.admission.secureSession(token, sessionId);
+    return this.approvals.list(sessionId);
+  }
+
+  /**
+   * Apply the operator's answer to one parked call. The id must belong to a
+   * request of this chat; an answer that lost the race (the turn was stopped,
+   * the agent went away) is refused with `false`.
+   */
+  @Remote("answerApproval")
+  async answerApproval(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    decision: QaApprovalDecision,
+  ): Promise<boolean> {
+    await this.admission.secureSession(token, sessionId);
+    return this.approvals.answer(sessionId, requestId, decision);
+  }
+
+  /**
+   * The questions of one chat that wait for the operator. Read-only: a
+   * deployment with unsupported questions answers with an empty list.
+   */
+  @Remote("pendingQuestions")
+  async pendingQuestions(
+    token: string,
+    sessionId: string,
+  ): Promise<readonly QaPendingQuestion[]> {
+    await this.admission.secureSession(token, sessionId);
+    return this.userQuestions.list(sessionId);
+  }
+
+  /**
+   * Apply the operator's answers to one parked question request. Every question
+   * of the request must be present in `answers`; one the browser omits reads as
+   * a skip.
+   */
+  @Remote("answerQuestion")
+  async answerQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    answers: readonly QaQuestionAnswerItem[],
+  ): Promise<boolean> {
+    await this.admission.secureSession(token, sessionId);
+    return this.userQuestions.answer(sessionId, requestId, answers);
+  }
+
+  /** Close a parked question request without answering it. */
+  @Remote("cancelQuestion")
+  async cancelQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+  ): Promise<boolean> {
+    await this.admission.secureSession(token, sessionId);
+    return this.userQuestions.cancel(sessionId, requestId);
   }
 
   /** Narrow read-only preview capability for files already present as sources. */

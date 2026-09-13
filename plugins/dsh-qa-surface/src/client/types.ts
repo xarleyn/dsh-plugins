@@ -10,9 +10,13 @@ import type {
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountUserPublic,
+  QaApprovalDecision,
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPendingApproval,
+  QaPendingQuestion,
+  QaQuestionAnswerItem,
   QaSessionState,
   QaSourceFilePreview,
   QaTurnSources,
@@ -118,6 +122,60 @@ export type QaBoundSourceApi = {
   >;
 };
 
+/**
+ * Approval remotes of this plugin's namespace. Read-only listing plus the one
+ * write: the operator's answer to a parked tool call.
+ */
+export interface QaApprovalApi {
+  pendingApprovals(
+    token: string,
+    sessionId: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: readonly QaPendingApproval[] }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  answerApproval(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    decision: QaApprovalDecision,
+  ): Promise<
+    | { readonly ok: true; readonly value: boolean }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+}
+
+/**
+ * Question remotes of this plugin's namespace: the parked `ask_user_question`
+ * requests of one chat, the operator's answers, and closing one unanswered.
+ */
+export interface QaQuestionApi {
+  pendingQuestions(
+    token: string,
+    sessionId: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: readonly QaPendingQuestion[] }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  answerQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    answers: readonly QaQuestionAnswerItem[],
+  ): Promise<
+    | { readonly ok: true; readonly value: boolean }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  cancelQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: boolean }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+}
+
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
   accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
@@ -170,4 +228,6 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   sourcesComplete: true,
   incompleteSourceOrigins: undefined,
   viewingSubagent: null,
+  approvals: Object.freeze([]),
+  questions: Object.freeze([]),
 });

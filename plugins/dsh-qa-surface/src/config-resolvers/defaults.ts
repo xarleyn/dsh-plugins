@@ -46,6 +46,8 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     ]),
     thinkingPhrases: DEFAULT_THINKING_PHRASES,
     interaction: Object.freeze({
+      // Fail closed: a deployment that wants the operator to answer a composed
+      // tool gate's `ask` opts in with `interactive`.
       approvals: "blocked",
       questions: "unsupported",
     }),

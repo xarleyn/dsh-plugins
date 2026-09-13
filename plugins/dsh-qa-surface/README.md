@@ -15,7 +15,10 @@ Session and Agent Loop.
   a responsive first-party-style conversation layout;
 - optionally shows a minimal per-browser chat-history sidebar
   (`ui.showSessionList`) whose switching re-runs policy attestation;
-- blocks unsupported approvals/questions instead of auto-approving them;
+- blocks unsupported approvals/questions instead of auto-approving them, and can
+  park them for the operator to answer (`interaction.approvals: interactive`,
+  `interaction.questions: interactive`) instead of refusing or stalling on a
+  card the QA view cannot show;
 - pins locked sessions to the configured `read-only` or isolated
   `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
@@ -142,7 +145,11 @@ config:
     maxPending: 8
     extensions: [md, txt, log, json, yaml, csv, sql]
   interaction:
+    # blocked: refuse a composed gate's `ask` with the QA reason.
+    # interactive: park it over the composer for the operator to answer.
     approvals: blocked
+    # unsupported: refuse ask_user_question with an actionable reason.
+    # interactive: park the request over the composer as an answerable form.
     questions: unsupported
   lockdown:
     enabled: true

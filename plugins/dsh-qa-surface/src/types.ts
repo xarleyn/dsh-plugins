@@ -4,6 +4,25 @@ export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
 export type QaSandboxMode = "read-only" | "workspace-write";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
+/**
+ * How a tool policy `ask` resolves on an attested QA agent. `blocked` refuses
+ * the call with the surface's own reason; `interactive` parks it until the
+ * operator answers in the QA view.
+ */
+export type QaApprovalInteraction = "blocked" | "interactive";
+/**
+ * How a user-questions request resolves on an attested QA agent. `unsupported`
+ * refuses the ask outright; `interactive` answers it from the QA view.
+ */
+export type QaQuestionInteraction = "unsupported" | "interactive";
+/** The operator's answer to one parked tool call. */
+export type QaApprovalDecision = "allowed-once" | "rejected";
+/** One answered question; `custom` is free text, and may accompany `selected`. */
+export interface QaQuestionAnswerItem {
+  readonly id: string;
+  readonly selected: readonly string[];
+  readonly custom?: string;
+}
 export type QaAccountRole = "user" | "admin";
 
 /** The account fields projected to browsers; never includes credentials. */
@@ -171,8 +190,8 @@ export interface QaSurfaceConfig {
    */
   readonly thinkingPhrases?: readonly string[];
   readonly interaction?: {
-    readonly approvals?: "blocked";
-    readonly questions?: "unsupported";
+    readonly approvals?: QaApprovalInteraction;
+    readonly questions?: QaQuestionInteraction;
   };
   readonly lockdown?: {
     readonly enabled?: boolean;
@@ -294,8 +313,8 @@ export interface ResolvedQaSurfaceConfig {
   readonly suggestedQuestions: readonly string[];
   readonly thinkingPhrases: readonly string[];
   readonly interaction: {
-    readonly approvals: "blocked";
-    readonly questions: "unsupported";
+    readonly approvals: QaApprovalInteraction;
+    readonly questions: QaQuestionInteraction;
   };
   readonly lockdown: {
     readonly enabled: boolean;
@@ -571,6 +590,54 @@ export interface QaSubagentView {
   readonly title: string;
 }
 
+/**
+ * One tool call waiting for the operator. The browser lists these over its own
+ * remote and answers them one by one; nothing here is answered automatically.
+ */
+export interface QaPendingApproval {
+  readonly id: string;
+  /** The chat the request belongs to: a delegated child asks under its root. */
+  readonly sessionId: string;
+  readonly toolName: string;
+  /** The reason the composed gate gave for asking, when it gave one. */
+  readonly reason: string | null;
+  readonly createdAt: number;
+  /** True when a delegated child of the chat made the call. */
+  readonly delegated: boolean;
+}
+
+/**
+ * One question waiting for the operator, normalized for the form the QA view
+ * renders. The protocol fields are the harness user-questions contract; absent
+ * ones become explicit nulls so the browser never branches on undefined.
+ */
+export interface QaPendingQuestionItem {
+  readonly id: string;
+  readonly question: string;
+  readonly header: string | null;
+  readonly detail: string | null;
+  readonly options: readonly QaPendingQuestionOption[];
+  readonly multiSelect: boolean;
+}
+
+export interface QaPendingQuestionOption {
+  readonly label: string;
+  readonly description: string | null;
+}
+
+/**
+ * One user-questions request parked for the operator. A single request carries
+ * every question the model asked in one call, so the card is a form with a
+ * pager, not a list of independent prompts.
+ */
+export interface QaPendingQuestion {
+  readonly id: string;
+  /** The chat the request belongs to. */
+  readonly sessionId: string;
+  readonly questions: readonly QaPendingQuestionItem[];
+  readonly createdAt: number;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -586,4 +653,8 @@ export interface QaSessionState {
   readonly incompleteSourceOrigins: QaTurnSources["incompleteOrigins"];
   /** Set while the bound session is a subagent watched from the panel. */
   readonly viewingSubagent: QaSubagentView | null;
+  /** Tool calls parked for the operator's answer, oldest first. */
+  readonly approvals: readonly QaPendingApproval[];
+  /** Question requests parked for the operator's answer, oldest first. */
+  readonly questions: readonly QaPendingQuestion[];
 }

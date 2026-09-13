@@ -26,20 +26,10 @@ describe("per-user workspace admission", () => {
       surface: { nodes: [] },
       eventAt: () => undefined,
     };
-    let approvalBlocker:
-      | ((
-          execution: { readonly name: string },
-          next: () => Promise<{ readonly kind: "ask" | "allow" }>,
-        ) => Promise<{ readonly kind: string; readonly reason?: string }>)
-      | undefined;
     const agent = {
       session,
       options: {},
       ctx: {
-        on: (name: string, listener: typeof approvalBlocker) => {
-          if (name === "tools/pre-execute") approvalBlocker = listener;
-          return () => undefined;
-        },
         tools: {
           guard: () => () => undefined,
           restrict: () => () => undefined,
@@ -102,15 +92,6 @@ describe("per-user workspace admission", () => {
     ).resolves.toMatchObject({
       workspaceMatches: true,
       sandboxModeMatches: true,
-    });
-    await expect(
-      approvalBlocker?.({ name: "glob" }, async () => ({
-        kind: "ask" as const,
-      })),
-    ).resolves.toEqual({
-      kind: "deny",
-      reason:
-        'tool "glob" requires approval, but approval interactions are unavailable in QA',
     });
     expect(
       globalGuard?.({
