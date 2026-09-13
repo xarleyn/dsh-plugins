@@ -9,6 +9,8 @@
 export type GitToolErrorCode =
   | 'no-session-cwd'
   | 'not-a-git-repository'
+  | 'invalid-repository'
+  | 'repository-not-allowed'
   | 'invalid-oid'
   | 'invalid-path'
   | 'invalid-argument'

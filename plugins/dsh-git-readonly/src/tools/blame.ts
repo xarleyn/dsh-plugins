@@ -11,12 +11,16 @@ import { parsePorcelainBlame, type BlameLine } from '../git/format.js';
 import type { GitRunner } from '../git/repo.js';
 import {
   canonicalizeCommit,
-  requireSessionCwd,
-  resolveRepositoryRoot,
+  resolveToolRepository,
   type ToolExec,
 } from '../git/repo.js';
 import { clampLineRange, validateCommitOid, validateRepoRelativePath } from '../git/validate.js';
-import { createBoundRunner, expectGitOk, type GitToolDeps } from './shared.js';
+import {
+  createBoundRunner,
+  expectGitOk,
+  repositoryParameter,
+  type GitToolDeps,
+} from './shared.js';
 
 export interface GitBlameResult {
   readonly file: string;
@@ -34,13 +38,14 @@ export function createGitBlameTool(deps: GitToolDeps) {
   return defineTool({
     name: 'dsh_git_blame',
     description: [
-      'Read-only provenance tool: attribute lines of one repository-relative file to the commits that last changed them.',
+      'Read-only provenance tool: attribute lines of one file in a repository available to this session.',
       'Accepts an optional 1-based line window and an optional hexadecimal commit id to blame a historical revision.',
       'Returns per-line commit id, author, date, summary, and the line content; use dsh_git_show on the commit id for task context.',
       'Large files are capped per call — re-query with the next window when truncated is true.',
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(' '),
     parameters: {
+      repository: repositoryParameter(deps.config),
       file: {
         type: 'string',
         required: true,
@@ -100,10 +105,12 @@ export function createGitBlameTool(deps: GitToolDeps) {
     },
     async execute(args: Record<string, unknown>, exec: ToolExec) {
       const started = Date.now();
-      const sessionCwd = requireSessionCwd(exec);
       const config = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveRepositoryRoot(run, sessionCwd, { timeoutMs });
+      const repoRoot = await resolveToolRepository(run, exec, args['repository'], {
+        timeoutMs,
+        repositoryRoots: config.repositoryRoots,
+      });
 
       const file = validateRepoRelativePath(args['file'], 'file', { required: true });
       if (file === undefined) {

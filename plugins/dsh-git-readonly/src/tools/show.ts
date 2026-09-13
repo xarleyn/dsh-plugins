@@ -15,12 +15,16 @@ import { parseFormatRecord, parseNumstat, SHOW_META_FORMAT, type NumstatFile } f
 import type { GitRunner } from '../git/repo.js';
 import {
   canonicalizeCommit,
-  requireSessionCwd,
-  resolveRepositoryRoot,
+  resolveToolRepository,
   type ToolExec,
 } from '../git/repo.js';
 import { validateCommitOid, validateRepoRelativePath } from '../git/validate.js';
-import { createBoundRunner, expectGitOk, type GitToolDeps } from './shared.js';
+import {
+  createBoundRunner,
+  expectGitOk,
+  repositoryParameter,
+  type GitToolDeps,
+} from './shared.js';
 
 export interface GitShowResult {
   readonly oid: string;
@@ -47,13 +51,14 @@ export function createGitShowTool(deps: GitToolDeps) {
   return defineTool({
     name: 'dsh_git_show',
     description: [
-      'Read-only provenance tool: show one commit of the session repository.',
+      'Read-only provenance tool: show one commit of a repository available to this session.',
       'Accepts a hexadecimal commit id (as returned by dsh_git_history / dsh_git_blame) and returns author, date, subject, body, parents, changed files with line counts, and the bounded patch.',
       'Optionally restrict to one repository-relative path or return file stats without the patch.',
       'For merge commits the patch may be empty; inspect the parents instead.',
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(' '),
     parameters: {
+      repository: repositoryParameter(deps.config),
       oid: {
         type: 'string',
         required: true,
@@ -114,10 +119,12 @@ export function createGitShowTool(deps: GitToolDeps) {
     },
     async execute(args: Record<string, unknown>, exec: ToolExec) {
       const started = Date.now();
-      const sessionCwd = requireSessionCwd(exec);
       const config: ResolvedGitReadonlyConfig = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveRepositoryRoot(run, sessionCwd, { timeoutMs });
+      const repoRoot = await resolveToolRepository(run, exec, args['repository'], {
+        timeoutMs,
+        repositoryRoots: config.repositoryRoots,
+      });
 
       const oid = validateCommitOid(args['oid'], 'oid');
       const path = validateRepoRelativePath(args['path'], 'path');
