@@ -1,3 +1,22 @@
+## 0.3.1 (2026-09-13)
+
+### 🩹 Fixes
+
+- Fix the settings card never mounting in the web UI. The 0.1.5 client ([39d397b](https://github.com/xarleyn/dsh-plugins/commit/39d397b))
+  runtime exposes only the services a module declares in `inject`, and the
+  client bootstrap still read `settingsScope` and `locale` through the
+  0.1.1-era `ctx.get` indirection, saw them as absent, and silently skipped
+  the `settings.plugin.item` card registration. The services are now
+  declared and read as context properties like every other card.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-09-12)
 
 ### 🚀 Features

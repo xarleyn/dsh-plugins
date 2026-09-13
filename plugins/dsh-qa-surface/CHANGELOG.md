@@ -1,3 +1,200 @@
+## 0.4.0 (2026-09-13)
+
+### 🚀 Features
+
+- Flip the QA transcript width bound from a cap to a floor. The surface used to ([466b4f5](https://github.com/xarleyn/dsh-plugins/commit/466b4f5))
+  carry an operator-set `ui.maxContentWidth` that no drag could pass, so a QA
+  deployment with a wide screen left the transcript boxed in at 900px. The
+  setting is now `ui.minContentWidth` (default 650): the drag handles narrow the
+  transcript no further than that, and apart from it the page is the only
+  ceiling — the content keeps widening until its handles reach the edge budget,
+  which is how the DSH conversation column itself is bounded. A window too narrow
+  to hold the floor wins over the floor, because there is no other space to take
+  and the handles have to stay reachable.
+
+  The width a browser persists is still clamped before it is written, so a stored
+  preference from the capped era resolves against the new bounds instead of
+  surviving as an out-of-range value. Deployments that still carry
+  `maxContentWidth` keep working on the shipped default: the removed key is not
+  part of the schema and is ignored, and the settings card's field is relabelled
+  "Минимальная ширина содержимого, px".
+
+- Surface provider retries and failed turns in the transcript. The Host-side ([789b986](https://github.com/xarleyn/dsh-plugins/commit/789b986))
+  llm-retry already recovers transient provider failures, but the QA projection
+  rendered neither the scheduled retries nor the failure code: a dropping turn
+  read as a normal "Готово за N с".
+
+  Model-retry nodes now project as work-group rows: the scheduled wait counts
+  down live, while started and cancelled retries settle into history. Turn-error
+  rows render copy derived from the failure code only (a transport drop, a rate
+  limit, a quota or auth escalation) instead of one generic line, so raw provider
+  messages never reach QA-facing rows. A turn the Host ended with an error marks
+  its work group as failed, which the work group labels "Прервано за N с" and
+  styles accordingly.
+
+- The sources drawer becomes a collapsible right rail with tabs, mirroring the ([908efc6](https://github.com/xarleyn/dsh-plugins/commit/908efc6))
+  Harness right Sidebar's interaction pattern (a tab strip is the panel's whole
+  top edge). The rail hosts «Источники» — the same grouped list and safe
+  file-preview the drawer rendered, with a message footnote still opening it
+  pinned to that answer's subset and a new «Все источники» way back — and a new
+  «Файлы» tab: every attachment the visitor sent in this chat, grouped by
+  message and ordered newest first, with file cards (badge, name, size) and
+  image thumbnails resolved through the session's asset repository. Each group
+  jumps back to its message in the transcript. The header gains a «Файлы»
+  button with a live count; the agents drawer keeps its behavior and closes
+  when the rail opens. Below 600px the rail goes full-bleed like the drawers
+  did.
+
+  The Host mechanism for right-sidebar tabs was deliberately not used: the QA
+  page is a full-frame overlay painted over the Host shell, so the Host's own
+  right column stays invisible and unreachable behind it while `/qa` is active.
+
+- Add an operator settings card for the deployment. The `qa-surface` namespace ([cfd56a4](https://github.com/xarleyn/dsh-plugins/commit/cfd56a4))
+  was readable from the Host settings page but editable only by hand-editing the
+  profile; the browser half now registers a card into the shared
+  `settings.plugin.item` slot — Settings → Plugins → plugin configuration →
+  «Помощник QA» — with nine sections: the running state, the route, branding, the
+  session, the interface, the lockdown, accounts, sources, and embedding.
+
+  The card writes the user layer of the namespace through path-addressed
+  mutations, so every change stays revertible through the card's own reset, and it
+  reports what the running Host resolved next to the form, read through
+  `qaSurface/describe` while the card is visible. Values the resolver refuses in
+  isolation are written together in one mutation — a provider with its model,
+  `accounts.perUserWorkspace` with the `workspace-write` sandbox, which is also
+  refused alone — and a control the resolver would reject is disabled with the
+  reason stated instead of offered. The values that cannot be configured
+  (`approvalPolicy`, the white-list mode, the forbidden capability flags) stay
+  visible as facts.
+
+  Two transport details shaped the card. A write the Host refuses does not reject
+  the settings scope's promise: the scope reloads Host state and settles, so the
+  card confirms acceptance itself — the namespace revision advances on every
+  committed change, and a write that changed nothing is answered by the section —
+  and reports a refusal instead of leaving a control that silently does nothing.
+  That report also survives the status poll, which a shared error channel would
+  have wiped within one interval. The card renders only where the settings
+  namespace is readable, which the DSH gateway pins to loopback.
+
+- Make the running indicator's phrases configurable. The list a QA surface cycles ([f99d72f](https://github.com/xarleyn/dsh-plugins/commit/f99d72f))
+  through while a turn runs was compiled into the browser bundle; it is now the
+  `thinkingPhrases` config field, so a deployment can speak its own vocabulary
+  instead of the shipped workshop imagery.
+
+  The work block's label and the composer hint read the same entry and advance it
+  together every four seconds, off the same turn start, so the two can no longer
+  disagree about what the surface is doing. The canonical default list moves out
+  of the client component into the shared config module, which keeps the schema,
+  the resolver and the browser on one list.
+
+  Like `suggestedQuestions`, the field drops blank and duplicate entries and caps
+  a phrase at 120 characters. Unlike quick questions, an empty list cannot hide
+  the control: an empty or absent list restores the built-in phrases, because the
+  indicator always needs a label.
+
+  The settings card's "Фразы ожидания" field shows the list that is actually in
+  effect — the stored list when there is one, otherwise the list the running Host
+  resolved, and the built-in list before the Remote answers — instead of an empty
+  box for a setting that is doing something. Typing in any list control now
+  survives a parent render: the draft follows the stored text rather than the
+  array identity, so a caller that renders an unset list from a literal default
+  no longer wipes the field on the next render.
+
+- Give QA accounts a self-declared profile. `accounts.profile` collects a full ([7d50bc9](https://github.com/xarleyn/dsh-plugins/commit/7d50bc9))
+  name, one handle per external system the deployment declares, and free-form
+  instructions about how the account wants answers; the owner edits them from the
+  sidebar footer, and the deployment decides which handle fields exist and how
+  long the instruction text may be.
+
+  The Host injects both into the QA agent's system prompt: one section names the
+  user with their email and handles, a second carries the user's own wording
+  framed as preferences that cannot move tools, permissions, the sandbox, or any
+  rule the deployment set. Both are re-resolved on every prompt assembly, so a
+  profile edit lands on the next turn, delegated experts included.
+
+  The account token is the only identity on the wire, so a browser can write
+  nothing but its own profile, and the prompt says the values are self-declared
+  rather than verified directory attributes.
+
+- Add opt-in per-account writable research directories below the configured DSH ([b17aee2](https://github.com/xarleyn/dsh-plugins/commit/b17aee2))
+  Workspace path. Session creation and ownership move to the Host, child
+  directories stay out of the Workspace Registry, and canonical path guards,
+  subagent inheritance, process/git denial, and storage quotas keep model file
+  access inside the owning account's directory.
+
+- Let a QA visitor attach text files, not just images. A composer attachment is ([6f29bf0](https://github.com/xarleyn/dsh-plugins/commit/6f29bf0))
+  now one of two kinds: an image still rides the prompt inline as base64, while a
+  file is staged on the Host through the browser upload service first and the
+  prompt cites the returned receipt. The Host stores the file verbatim and its
+  prompt assembly hands the model the name, the size and the read-only path of
+  the stored copy, so a `.md`, `.txt` or `.log` reaches the model through the
+  same handle every other attachment does.
+
+  Pasted plain text over a line threshold becomes an attachment instead of a wall
+  of text in the input field. `attachments.pastedTextLines` (default 200) sets
+  that threshold and `0` turns the conversion off; the resulting file is named
+  after its line count, e.g. `Вставленный текст (312 строк).txt`. Everything
+  shorter pastes into the field as before.
+
+  The `attachments` config section carries the rest of the policy:
+  `textFiles` switches file intake off entirely (images remain), `maxFileBytes`
+  caps one file, `maxPending` caps images plus files on one message — replacing
+  the compiled-in limit of eight images — and `extensions` names the accepted
+  text extensions. A file whose extension is not listed is still accepted when
+  the browser reports its type as `text/*`, so an empty list narrows the intake
+  rather than closing it.
+
+  The settings card gains a "Вложения" section for all five fields, and the
+  transcript renders a sent file as an extension badge, its name and its size.
+  Files are never readable back through the attachment route (that route serves
+  images), so the sent row shows the same handle the model resolves.
+
+  In the per-user workspace mode the monotonic path guard now exempts read-only
+  access to a single file under the mounted attachment store's root. Uploaded
+  copies are immutable, content-addressed and live outside every workspace, so
+  without that exemption the model would be denied the exact file the prompt
+  points it at. Directory-wide tools stay confined, because the store is shared
+  by every account, and writes are never exempted.
+
+- Open the "История версий" dialog at the wide panel width the profile dialog ([35514a1](https://github.com/xarleyn/dsh-plugins/commit/35514a1))
+  already uses. Its entries are full sentences, so the shared 560px panel
+  stranded a word or two on every second line; the 720px panel leaves them on
+  one line and keeps the two dialogs the same size, which is what a reader
+  opening one after the other expects.
+
+  The panel width stays a property of the dialog and not a preference: neither
+  dialog is resizable, so there is no width for the browser or the deployment to
+  persist and no bounds to keep in sync with the viewport. Both keep the
+  `max-height` cap and scroll their body on a short window.
+
+
+### 🩹 Fixes
+
+- Reorganize the plugin sources without behavior changes. The settings card ([789b986](https://github.com/xarleyn/dsh-plugins/commit/789b986))
+  sections, the config resolver, the accounts store, and the QA surface split
+  into per-domain modules: one file per card section, one resolver per config
+  domain, the account token/file/credential layers beside the store facade, and
+  the header, right-rail hook, prompt staging, and stream publisher extracted
+  from the surface and the session controller. The repeated browser storage-key
+  derivation and the base64 helper moved into shared modules. Public exports,
+  wire contracts, storage keys, and timing semantics are unchanged.
+
+- Remove internal project identifiers from the shipped sources and fixtures. The ([e1a4981](https://github.com/xarleyn/dsh-plugins/commit/e1a4981))
+  provenance specification (`docs/*.md` ships in the tarball) and the provenance
+  test used a real Jira project key, a real task title and real product and
+  document names in its examples; they now read `PROJ-24929` with placeholder
+  titles, a generic product path and a generic knowledge-base page. Only the
+  example content changed — the provenance contract, the source-kind table and
+  the worked walkthroughs describe exactly the same behaviour.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-09-12)
 
 ### 🚀 Features
