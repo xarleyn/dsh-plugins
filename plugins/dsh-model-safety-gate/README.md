@@ -42,8 +42,10 @@ the permission system, or approval gates, and it never patches DSH core.
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-model-safety-gate
+dsh plugin --profile web add @yadsh/dsh-model-safety-gate
 ```
 
 ## Configuration

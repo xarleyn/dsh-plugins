@@ -42,14 +42,17 @@ falls back to normal inference. The model never knows this plugin exists.
 
 ## Installation
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-kv-persist
+dsh plugin --profile <profile> add @yadsh/dsh-kv-persist
 ```
 
-From sources:
+From sources, build the package and link the checkout:
 
 ```bash
 pnpm nx run @yadsh/dsh-kv-persist:build
+dsh plugin --profile <profile> add ./plugins/dsh-kv-persist
 ```
 
 ## Configuration

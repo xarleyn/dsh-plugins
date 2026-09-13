@@ -48,12 +48,18 @@ dsh_cas_retrieve(ref="sha256:ac7819…e029")
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-cas-results
+dsh plugin --profile <profile> add @yadsh/dsh-cas-results
 ```
 
-Or from a checkout of this monorepo, build the package and add it from the
-packed tarball.
+From a checkout of this monorepo, build the package and link the checkout:
+
+```bash
+pnpm nx run @yadsh/dsh-cas-results:build
+dsh plugin --profile <profile> add ./plugins/dsh-cas-results
+```
 
 ## Configuration
 

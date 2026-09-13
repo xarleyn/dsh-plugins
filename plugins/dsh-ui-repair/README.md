@@ -12,6 +12,22 @@ plugin's source or package files.
 [Full specification](<dsh-ui-repair — спецификация плагина.md>) ·
 [DSH integration investigation](INVESTIGATE.md)
 
+## Installation
+
+Install the published npm package by name:
+
+```bash
+dsh plugin --profile web add @yadsh/dsh-ui-repair
+```
+
+To remove the plugin:
+
+```bash
+dsh plugin --profile web remove @yadsh/dsh-ui-repair
+```
+
+Restart the DeepSeek Harness host if bundle hot reload does not pick up the newly installed plugin or browser client.
+
 ## Current proof of concept
 
 This first implementation slice includes:

@@ -37,8 +37,10 @@ agent picks tools.
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-tool-offload
+dsh plugin --profile <profile> add @yadsh/dsh-tool-offload
 ```
 
 Requires a DSH release in the `>=0.1.5-rc.2 <0.2.0` range with a subagent

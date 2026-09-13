@@ -48,8 +48,10 @@ Payments expert  ── domain_expert(domain="inventory", …) ──▶  Invent
 
 ## Установка
 
+Установите опубликованный npm-пакет по имени:
+
 ```bash
-dsh plugin add @yadsh/dsh-domain-experts
+dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
 Затем откройте `Settings → Plugins → Domain Experts`.
