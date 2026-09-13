@@ -110,7 +110,52 @@ export class QaPolicyAdmission {
     return typeof store?.root === "string" ? store.root : undefined;
   }
 
-  secureSession(token: string, sessionId: string): QaLockdownProof {
+  /**
+   * The live agent for one session, resuming a Session the Host has not
+   * materialized in this process.
+   *
+   * DSH builds an agent on demand: a session's journal opens straight from
+   * persistence (`session/page` reads the durable log), and only Agent-bound
+   * operations — a prompt, a model selection, renaming, an upload — resolve or
+   * resume one. So a chat from an earlier Host run has a readable transcript
+   * and no agent at all, and attestation, which pins the tool policy ON that
+   * agent, is the first thing here that needs one. Refusing instead would make
+   * every restored chat unopenable until something else in the Host happened
+   * to wake it.
+   *
+   * The resume composes the session's OWN recorded preset — the same
+   * composition a stock prompt would produce — so a session composed outside
+   * the QA preset still lands on the mismatch refusals below ("composition
+   * mismatch"), and the adoption and permission checks stay the gate.
+   */
+  private async liveAgent(sessionId: string): Promise<Agent> {
+    const live = this.ctx.agents.get(SessionId(sessionId));
+    if (live !== undefined) return live;
+    try {
+      const resolved = await this.ctx.sessionController.resolveAgent(
+        SessionId(sessionId),
+      );
+      if (!("error" in resolved)) return resolved.agent;
+      this.logger.error("session.agent-resolve-rejected", {
+        sessionId,
+        error: resolved.error.message,
+      });
+    } catch (error) {
+      // Either the composition itself failed (a preset that no longer mounts,
+      // a log the Host refuses to read) or the resolution threw before it
+      // could classify itself. Both are the same coarse fact for the browser.
+      this.logger.error("session.agent-resolve-rejected", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+  }
+
+  async secureSession(
+    token: string,
+    sessionId: string,
+  ): Promise<QaLockdownProof> {
     const config = this.config();
     const lockdown = config.lockdown;
     // Account identity is checked before any policy work: an invalid token
@@ -133,10 +178,7 @@ export class QaPolicyAdmission {
         throw error;
       }
     }
-    const agent = this.ctx.agents.get(SessionId(sessionId));
-    if (agent === undefined) {
-      throw new QaAttestationError("agent-unavailable", "agent is unavailable");
-    }
+    const agent = await this.liveAgent(sessionId);
     this.attested.add(sessionId);
     if (!lockdown.enabled) {
       return {

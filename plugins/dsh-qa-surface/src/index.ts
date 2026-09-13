@@ -342,7 +342,7 @@ export class QaSurface extends TypertRemoteService {
             : { reasoningEffort: config.session.reasoningEffort }),
         });
       }
-      this.admission.secureSession(token, String(created.sessionId));
+      await this.admission.secureSession(token, String(created.sessionId));
       return String(created.sessionId);
     } catch (error) {
       if (!hostCreated && owner !== undefined) {
@@ -358,9 +358,12 @@ export class QaSurface extends TypertRemoteService {
 
   /** Pin and attest the effective policy. The browser supplies identity only. */
   @Remote("secureSession")
-  secureSession(token: string, sessionId: string): QaLockdownProof {
+  async secureSession(
+    token: string,
+    sessionId: string,
+  ): Promise<QaLockdownProof> {
     try {
-      return this.admission.secureSession(token, sessionId);
+      return await this.admission.secureSession(token, sessionId);
     } catch (error) {
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
@@ -384,8 +387,11 @@ export class QaSurface extends TypertRemoteService {
 
   /** Return canonical Host snapshots; replay is rebuilt from qa/sources events. */
   @Remote("sources")
-  sources(token: string, sessionId: string): readonly QaTurnSources[] {
-    this.admission.secureSession(token, sessionId);
+  async sources(
+    token: string,
+    sessionId: string,
+  ): Promise<readonly QaTurnSources[]> {
+    await this.admission.secureSession(token, sessionId);
     return this.provenance.bundles(sessionId);
   }
 
@@ -396,7 +402,7 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     sourcePath: string,
   ): Promise<QaSourceFilePreview> {
-    this.admission.secureSession(token, sessionId);
+    await this.admission.secureSession(token, sessionId);
     const config = this.getConfig().sources.filePreview;
     if (
       !config.enabled ||

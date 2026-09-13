@@ -34,6 +34,9 @@ export function attestationReasonOf(
 }
 
 export function attestationHint(reason: string | null): string {
+  if (reason === "agent-unavailable") {
+    return "The Host could not put a live agent behind this chat: resuming the composition its session recorded failed (a preset that no longer mounts does this). The refusal detail is in the Host logs.";
+  }
   if (reason === "unknown-tools") {
     return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
   }

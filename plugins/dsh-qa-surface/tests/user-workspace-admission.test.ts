@@ -9,7 +9,7 @@ import { prepareQaUserWorkspace } from "../src/user-workspace.js";
 const USER_ID = "123e4567-e89b-42d3-a456-426614174000";
 
 describe("per-user workspace admission", () => {
-  it("attests the child cwd and propagates its path guard to local subagents", () => {
+  it("attests the child cwd and propagates its path guard to local subagents", async () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-admission-"));
     const userRoot = prepareQaUserWorkspace(workspace, USER_ID);
     const session = {
@@ -78,7 +78,9 @@ describe("per-user workspace admission", () => {
       },
     );
 
-    expect(admission.secureSession("token", "session-parent")).toMatchObject({
+    await expect(
+      admission.secureSession("token", "session-parent"),
+    ).resolves.toMatchObject({
       workspaceMatches: true,
       sandboxModeMatches: true,
     });

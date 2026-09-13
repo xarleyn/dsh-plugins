@@ -234,10 +234,16 @@ describe("QA accounts store", () => {
     };
     const admission = new QaPolicyAdmission(
       // The fake context cannot resolve agents on purpose: the account gate
-      // must refuse before the boundary reaches the agent lookup.
+      // must refuse before the boundary reaches the agent lookup, and a gate
+      // that lets a caller through lands on the unresolvable agent.
       {
         on: () => () => undefined,
         agents: { get: () => undefined },
+        sessionController: {
+          resolveAgent: async () => ({
+            error: new Error("no such session"),
+          }),
+        },
         tools: { guard: () => () => undefined },
       } as never,
       () => resolveConfig(),
@@ -252,11 +258,11 @@ describe("QA accounts store", () => {
     );
 
     // A bad token is refused with auth-required, not the later agent error.
-    expect(() => admission.secureSession("", "anything")).toThrow(
+    await expect(admission.secureSession("", "anything")).rejects.toThrow(
       QaAttestationError,
     );
     try {
-      admission.secureSession("", "anything");
+      await admission.secureSession("", "anything");
       expect.unreachable("anonymous calls must be refused");
     } catch (error) {
       expect((error as QaAttestationError).reason).toBe("auth-required");
@@ -265,7 +271,7 @@ describe("QA accounts store", () => {
     // Foreign sessions are refused with the dedicated reason before the
     // agent lookup would answer.
     try {
-      admission.secureSession(b.token, "s-owned");
+      await admission.secureSession(b.token, "s-owned");
       expect.unreachable("foreign sessions must be refused");
     } catch (error) {
       expect((error as QaAttestationError).reason).toBe(
@@ -273,9 +279,9 @@ describe("QA accounts store", () => {
       );
     }
     // The admin's own token passes the gate (and then hits the fake context's
-    // missing agent, proving the gate no longer blocks).
+    // unresolvable agent, proving the gate no longer blocks).
     try {
-      admission.secureSession(a.token, "s-owned");
+      await admission.secureSession(a.token, "s-owned");
       expect.unreachable("the fake context has no agents");
     } catch (error) {
       expect((error as QaAttestationError).reason).toBe("agent-unavailable");

@@ -89,8 +89,16 @@ disables Send with the generic message `Настройки помощника н
 Detailed mismatch facts are written only to Host logs; the
 browser console additionally prints one line with a stable coarse reason code
 (`reason: unknown-tools`, `workspace-unavailable`, `composition-mismatch`, `permission-preset`,
-`adoption-refused`, `proof-mismatch` or `attestation-failed`) plus an operator
+`adoption-refused`, `agent-unavailable`, `proof-mismatch` or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
+
+`agent-unavailable` means the Host could not put a live agent behind the chat:
+attestation resumes a session the Host has not materialized in this process —
+DSH builds an agent on demand, so a chat restored from an earlier Host run has a
+transcript but no agent — and the resume composes the composition that session
+recorded. The refusal therefore reports a session whose recorded preset no
+longer mounts (or whose log the Host refuses to read); the composition detail is
+in the Host logs under `session.agent-resolve-rejected`.
 
 The built-in branding, controls, status messages and accessibility labels are
 Russian. The default quick questions are rendered directly above the composer
