@@ -6,6 +6,10 @@
  *   `<$DSH_HOME>/logs/<pluginId>`;
  * - mirrors selected records to an injectable console sink (default level
  *   `warn`) so operators still see problems live;
+ * - republishes every recorded record on a process-wide bus
+ *   ({@link subscribePluginLogRecords}) for live consumers such as the log
+ *   panel in `@yadsh/dsh-plugin-log-ui`, which the file destination cannot
+ *   serve without parsing it back;
  * - never throws at runtime: file-system failures degrade to console-only
  *   logging (fail-open), and closed loggers silently drop records;
  * - disables file output when `DSH_LOG_DISABLED=1`, and under `NODE_ENV=test`
@@ -153,6 +157,101 @@ export interface RegisteredPluginLogger {
 export type PluginLoggerRegistryListener = (
   loggers: readonly RegisteredPluginLogger[],
 ) => void;
+
+/**
+ * One record a plugin logger emitted, as the record bus delivers it.
+ *
+ * A consumer that wants to draw or forward live output subscribes with
+ * {@link subscribePluginLogRecords} and keeps its own buffer: the bus holds no
+ * history, so a subscriber sees exactly what is emitted while it is attached.
+ * Records carry the caller's raw `fields`, because rendering is the consumer's
+ * decision; a transport that serializes them owns the sanitizing.
+ */
+export interface PluginLogRecord {
+  /** Process-wide monotonic sequence; a consumer resumes from it instead of from time. */
+  readonly seq: number;
+  /** Emission time in epoch ms, from the logger's own clock. */
+  readonly time: number;
+  /** Severity the logger recorded at. Never `silent`: that level emits nothing. */
+  readonly level: ConsoleLevel;
+  /** Owner of the emitting logger. */
+  readonly pluginId: string;
+  /** `child(module)` scope, or `undefined` for the root logger. */
+  readonly module: string | undefined;
+  /** The stable event code (pino's `msg`). */
+  readonly event: string;
+  /** The caller's fields, exactly as the logger received them. */
+  readonly fields: Readonly<Record<string, unknown>>;
+}
+
+/** Receives every record a plugin logger emits. Must not throw; the bus guards the call. */
+export type PluginLogRecordListener = (record: PluginLogRecord) => void;
+
+/** The record bus as it lives in the shared registry state, optional because an older copy of this package may have created that state. */
+interface RecordBusState {
+  recordListeners?: Set<PluginLogRecordListener>;
+  nextRecordSeq?: number;
+}
+
+/**
+ * The record bus, lazily completed on the shared registry symbol.
+ *
+ * Only a level threshold decides what reaches the bus: a record below its
+ * logger's level is not emitted at all, exactly as it is not written to the
+ * file, so a consumer never sees output the logger considered suppressed.
+ * Emission is fail-open — a throwing listener cannot affect the logger.
+ */
+function recordBus(): Required<RecordBusState> {
+  const state = registryState() as GlobalRegistryState & RecordBusState;
+  state.recordListeners ??= new Set<PluginLogRecordListener>();
+  state.nextRecordSeq ??= 1;
+  return state as Required<RecordBusState>;
+}
+
+/**
+ * Subscribe to every record the plugin loggers emit from now on.
+ *
+ * The listener runs synchronously inside the emitting `write`, so it must stay
+ * cheap and must not log through a plugin logger (that would recurse).
+ * @param listener - synchronous record callback.
+ * @returns idempotent unsubscribe.
+ */
+export function subscribePluginLogRecords(listener: PluginLogRecordListener): () => void {
+  const bus = recordBus();
+  bus.recordListeners.add(listener);
+  return () => {
+    bus.recordListeners.delete(listener);
+  };
+}
+
+/** Publish one record to the attached consumers. */
+function publishPluginLogRecord(
+  pluginId: string,
+  module: string | undefined,
+  level: ConsoleLevel,
+  time: number,
+  event: string,
+  fields: Record<string, unknown> | undefined,
+): void {
+  const bus = recordBus();
+  const record: PluginLogRecord = Object.freeze({
+    seq: bus.nextRecordSeq,
+    time,
+    level,
+    pluginId,
+    module,
+    event,
+    fields: Object.freeze(fields ?? {}),
+  });
+  bus.nextRecordSeq += 1;
+  for (const listener of bus.recordListeners) {
+    try {
+      listener(record);
+    } catch {
+      // Consumers must never affect logging or plugin execution.
+    }
+  }
+}
 
 /** Internal structural contract shared safely across duplicate package loads. */
 interface RegistryLoggerCore {
@@ -581,6 +680,7 @@ class LoggerCore {
       this.mirror(moduleField, level, event, fields);
       return;
     }
+    publishPluginLogRecord(this.pluginId, moduleField, level, this.clock(), event, fields);
     this.open();
     const target = this.targetFor(moduleField);
     if (target !== undefined) {
