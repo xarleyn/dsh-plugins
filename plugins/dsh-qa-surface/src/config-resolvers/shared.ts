@@ -7,6 +7,16 @@ export function optionalText(value: string | null | undefined): string | null {
 }
 
 /**
+ * Whether a configured directory is absolute. The rule reads a drive-letter
+ * path as absolute on every platform, like `session.cwd` does: a deployment
+ * profile is authored on one machine and may be read on another, so a
+ * Windows-style root is not a mistake to reject on a POSIX host.
+ */
+export function isAbsoluteDirectoryPath(value: string): boolean {
+  return /^([a-zA-Z]:[/\\]|\/)/u.test(value);
+}
+
+/**
  * Shared numeric guard for operator-tuned limits: the value has to be a safe
  * integer inside [min, max], and every rejection carries the same message.
  */
