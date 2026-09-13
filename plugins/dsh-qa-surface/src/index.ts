@@ -22,7 +22,7 @@ import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
-import { QaUserIdentity } from "./user-identity.js";
+import { QaPromptNotes } from "./prompt-notes.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { readSourceFilePreview } from "./provenance/file-preview.js";
 import {
@@ -81,7 +81,7 @@ export class QaSurface extends TypertRemoteService {
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
   private readonly provenance: QaProvenanceHost;
-  private readonly identity: QaUserIdentity;
+  private readonly notes: QaPromptNotes;
   /** Account-remote bodies; the wire signatures stay on this class. */
   private readonly accountRemotes: QaAccountRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
@@ -118,12 +118,14 @@ export class QaSurface extends TypertRemoteService {
       },
     );
     this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
-    // Who the assistant is talking to rides the system prompt of every agent
-    // serving a QA chat, delegated experts included; resolved per assembly so
-    // a profile edit lands on the next turn.
-    this.identity = new QaUserIdentity(ctx, {
+    // The identity note and the provenance rule ride the conversation as
+    // durable context messages, delegated experts included: the QA preset's
+    // complete persona closes the system prompt to plugins, the conversation
+    // stays open.
+    this.notes = new QaPromptNotes(ctx, {
       config: () => this.getConfig(),
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
+      isQaSession: (sessionId) => this.admission.knowsSession(sessionId),
       logger: this.logger,
     });
     // The /qa route hands cookie-less browsers to the one-time host token
@@ -146,10 +148,7 @@ export class QaSurface extends TypertRemoteService {
       () => () => this.provenance.dispose(),
       "dsh-qa-surface.provenance",
     );
-    ctx.effect(
-      () => () => this.identity.dispose(),
-      "dsh-qa-surface.user-identity",
-    );
+    ctx.effect(() => () => this.notes.dispose(), "dsh-qa-surface.prompt-notes");
     // The root index gains one head script: non-loopback hostnames continue
     // into /qa, the loopback operator keeps the full harness UI.
     ctx.on("webserver/index-inject", (table) => {
@@ -361,11 +360,7 @@ export class QaSurface extends TypertRemoteService {
   @Remote("secureSession")
   secureSession(token: string, sessionId: string): QaLockdownProof {
     try {
-      const proof = this.admission.secureSession(token, sessionId);
-      // Attestation is what proves whose chat this is; a session the browser
-      // adopted rather than created gets its identity sections here.
-      this.identity.ensure(sessionId);
-      return proof;
+      return this.admission.secureSession(token, sessionId);
     } catch (error) {
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
@@ -457,11 +452,11 @@ export { registerQaNavigationRoute } from "./host-route.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export { QaPolicyAdmission } from "./secure-session.js";
 export {
-  QaUserIdentity,
+  QaPromptNotes,
   renderUserIdentity,
-  QA_IDENTITY_SECTION,
-  QA_IDENTITY_INSTRUCTIONS_SECTION,
-} from "./user-identity.js";
+  QA_IDENTITY_NOTE,
+  QA_SOURCES_NOTE,
+} from "./prompt-notes.js";
 export * from "./provenance/index.js";
 export type * from "./types.js";
 export default QaSurface;
