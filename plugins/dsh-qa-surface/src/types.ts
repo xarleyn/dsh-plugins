@@ -455,7 +455,8 @@ export type QaMessage =
       readonly id: string;
       readonly role: "work";
       readonly turn: number;
-      readonly status: "running" | "complete";
+      /** "error" marks a turn the host ended with a provider failure. */
+      readonly status: "running" | "complete" | "error";
       readonly startedAt?: number;
       readonly endedAt?: number;
       readonly items: readonly QaWorkItem[];
