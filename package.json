@@ -30,7 +30,7 @@
   "scripts": {
     "build": "nx run-many -t build",
     "test": "pnpm test:release && nx run-many -t test",
-    "test:release": "node --test scripts/release-workflow.test.mjs scripts/ci-verification.test.mjs scripts/run-bash.test.mjs scripts/package-hygiene.test.mjs",
+    "test:release": "node --test scripts/release-workflow.test.mjs scripts/ci-verification.test.mjs scripts/run-bash.test.mjs scripts/package-hygiene.test.mjs scripts/check-release-plans.test.mjs",
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
     "lint:workspace": "eslint eslint.config.js scripts",
@@ -48,7 +48,7 @@
     "affected:lint": "nx affected -t lint",
     "affected:check": "nx affected -t lint typecheck test build verify",
     "release:plan": "nx release plan",
-    "release:check": "nx release plan:check",
+    "release:check": "node scripts/check-release-plans.mjs",
     "release:dry-run": "nx release --dry-run"
   },
   "devDependencies": {

@@ -54,7 +54,7 @@ pnpm typecheck
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
 | `pnpm affected:check` | Run lint/typecheck/test/build on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
-| `pnpm release:check` | Validate version plans exist |
+| `pnpm release:check` | Check that unreleased commit ranges have version plans |
 
 ### Affected Builds
 
@@ -218,7 +218,7 @@ docs: add CONTRIBUTING.md
    pnpm release:plan
    ```
 2. This creates a version plan in `.nx/version-plans/`
-3. CI will fail if you push to `main` without a version plan
+3. CI fails a PR that leaves a publishable change without a version plan
 
 ### For Maintainers
 

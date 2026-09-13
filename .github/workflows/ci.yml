@@ -62,19 +62,7 @@ jobs:
 
       - name: Check version plans
         if: github.event_name == 'pull_request'
-        shell: bash
-        run: |
-          # A release dispatched against this branch applies its version plans
-          # and deletes them, while the released projects stay touched relative
-          # to the base. Release tags that no commit reachable from the base
-          # carries prove the plans were already applied, so there is nothing
-          # left for the check to read.
-          branch_tags="$(git tag --merged "$NX_HEAD" --no-merged "$NX_BASE")"
-          if [[ -n "$branch_tags" ]]; then
-            printf 'Version plans already applied, the branch carries its own release tags:\n%s\n' "$branch_tags"
-            exit 0
-          fi
-          pnpm nx release plan:check --base="$NX_BASE" --head="$NX_HEAD"
+        run: pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
       - name: Select affected projects
         id: projects

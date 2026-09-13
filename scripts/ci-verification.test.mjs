@@ -55,16 +55,17 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   );
   assert.match(
     workflow,
-    /branch_tags="\$\(git tag --merged "\$NX_HEAD" --no-merged "\$NX_BASE"\)"/u,
-  );
-  assert.match(
-    workflow,
-    /pnpm nx release plan:check --base="\$NX_BASE" --head="\$NX_HEAD"/u,
+    /- name: Check version plans\s+if: github\.event_name == 'pull_request'\s+run: pnpm release:check --base="\$NX_BASE" --head="\$NX_HEAD"/u,
   );
   assert.ok(
-    workflow.indexOf('branch_tags="$(git tag') <
-      workflow.indexOf("pnpm nx release plan:check"),
-    "the released-branch guard must run before the version plan check",
+    workflow.indexOf("- name: Check version plans") <
+      workflow.indexOf("- name: Select affected projects"),
+    "the version plan check must run before the affected projects are selected",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /branch_tags=|pnpm nx release plan:check/u,
+    "the gate must read version plans through pnpm release:check",
   );
   assert.ok(
     workflow.indexOf("- name: Verify project") <

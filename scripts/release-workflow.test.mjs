@@ -192,18 +192,30 @@ describe("Nx release commands", () => {
     assert.deepEqual(repositoryState(root), before);
   });
 
-  test("release plan:check accepts the pending fixture plan", () => {
+  test("the version plan gate reads an unreleased change against the fixture plan", () => {
     const root = createFixture({ withVersionPlan: true });
+    writeFileSync(
+      path.join(root, "packages", "release-package", "index.js"),
+      "export const fixture = 2;\n",
+    );
+    assertSucceeded(run("git", ["add", "--all"], root), "git add");
+    assertSucceeded(
+      run("git", ["commit", "--quiet", "-m", "feat: change the fixture"], root),
+      "git commit",
+    );
     const before = repositoryState(root);
-    const result = runNx(
+    const base = run("git", ["rev-parse", "HEAD~1"], root).stdout.trim();
+    const result = run(
+      process.execPath,
+      [
+        path.join(repositoryRoot, "scripts", "check-release-plans.mjs"),
+        `--base=${base}`,
+      ],
       root,
-      "release",
-      "plan:check",
-      "--base=HEAD",
-      "--head=HEAD",
     );
 
-    assertSucceeded(result, "nx release plan:check");
+    assertSucceeded(result, "pnpm release:check");
+    assert.match(result.stdout, /all covered by a plan/u);
     assert.deepEqual(repositoryState(root), before);
   });
 
