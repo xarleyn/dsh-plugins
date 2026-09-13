@@ -9,7 +9,7 @@ interfaces. It measures rendered DOM, reports narrowly defined layout
 anomalies, and can apply reversible scoped CSS without editing another
 plugin's source or package files.
 
-[Full specification](<dsh-ui-repair — спецификация плагина.md>) ·
+[Full specification](SPEC.md) ·
 [DSH integration investigation](INVESTIGATE.md)
 
 ## Installation

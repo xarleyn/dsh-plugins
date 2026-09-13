@@ -269,7 +269,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `package.json` | ✔ | Манифест по §4.2 |
 | `cordis.patch.yml` | ✔ | Вставка в composition хоста |
 | `README.md` | ✔ | См. §8 |
-| `SPEC.md` | ✔ | Продуктовый контракт, см. §8.2 |
+| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/SPEC-<plugin>-<topic>.md`, см. §8.2 |
 | `LICENSE` | ✔ | Копия корневого MIT |
 | `compatibility.json` | ✔ (publishable) | Машиночитаемая совместимость, см. §7 |
 | `tsconfig.json` / `tsconfig.build.json` | ✔ | Расширяют `@yadsh/dsh-config` |
@@ -550,7 +550,12 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 1. Название + одно предложение «что это для пользователя DSH».
 2. Скриншот/демо (если есть UI) — `docs/images/`, попадает в tarball.
 3. **Features** — маркированный список реальных возможностей.
-4. **Install** — `dsh plugin add @yadsh/dsh-<name>` (+ вариант из исходников).
+4. **Install** — `dsh plugin --profile <profile> add @yadsh/dsh-<name>` для
+   host-плагина и `dsh plugin --profile web add @yadsh/dsh-<name>` для плагина с
+   клиентской частью (`dsh.client`), плюс вариант из исходников
+   (`pnpm nx run @yadsh/dsh-<name>:build` + `dsh plugin --profile … add
+   ./plugins/dsh-<name>`). `--profile` обязателен: `dsh plugin add <pkg>` CLI
+   отвергает.
 5. **Configuration** — таблица «опция / тип / default / описание» (зеркало
    Config-схемы).
 6. **Compatibility** — диапазон DSH, Node; ссылка на `compatibility.json`.
@@ -576,6 +581,15 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 
 SPEC.md обновляется вместе с изменением поведения; статус-таблица не должна
 врать. Это первый файл, который читает новый контрибьютор и рецензент.
+
+**В корне плагина ровно одна спека — `SPEC.md`.** Исходная спека реализации и
+есть этот файл (после первых итераций он становится продуктовым контрактом).
+Спеки доработок, дизайн-доки и рабочие заметки живут в `docs/` под именем
+`docs/SPEC-<plugin>-<topic>.md` — например
+`docs/SPEC-dsh-qa-surface-accounts.md` (аккаунты),
+`docs/SPEC-dsh-tool-offload-design.md` (исходный дизайн). Не заводить в корне
+`SPEC-<plugin>.md`, `dsh-<plugin>-SPEC.md` и файлы с неанглийскими именами:
+`SPEC.md` в корне — единственная точка входа, остальное ссылки из него.
 
 ### 8.3 Прочее
 
