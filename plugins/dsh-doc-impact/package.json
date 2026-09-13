@@ -56,6 +56,16 @@
     "check": "npm run typecheck && npm test && npm run build && npm run verify",
     "release:check": "npm run check && npm run verify:package"
   },
+  "nx": {
+    "targets": {
+      "verify": {
+        "dependsOn": [
+          "build",
+          "test"
+        ]
+      }
+    }
+  },
   "publishConfig": {
     "access": "public",
     "provenance": true,
