@@ -1,5 +1,26 @@
 # @yadsh DeepSeek Harness plugins
 
+A collection of installable DeepSeek Harness (DSH) plugins. They add session
+workspace scoping, documentation-impact tracking, prompt-injection and firewall
+controls, draft sessions, localization overrides, KV persistence, git
+provenance, QA surfaces, and developer tooling to a harness profile — each one
+published as its own npm package and installable on its own.
+
+DSH resolves plugins as npm packages, so install only what you need:
+
+```bash
+dsh plugin --profile <profile> add @yadsh/dsh-session-scope
+```
+
+Every published package is listed in the generated
+[`plugins.json`](plugins.json) catalog, which maps each npm name to its source
+directory here for marketplaces, indexes, and crawlers. Repositories and
+packages carry the [`dsh-plugin`](https://github.com/topics/dsh-plugin) GitHub
+topic and the same canonical keywords (`deepseek-harness`, `dsh`, `dsh-plugin`,
+`cordis`).
+
+## Repository layout
+
 `@yadsh` (Yet Another DSH) is a pnpm + Nx monorepo for independently versioned
 DeepSeek Harness plugins. Each directory under `plugins/` is its own public npm
 package; shared runtime libraries and workspace tooling live under `packages/`.
@@ -50,6 +71,14 @@ their outputs. The dependency check enforces workspace boundaries, while the
 tarball check packs every public package, validates its manifest and exported
 files, and installs it in a clean consumer project.
 
+`plugins.json` is generated from the workspace manifests. Regenerate it after
+changing a package description, keywords, or the package set — `pnpm
+verify:packages` fails while the catalog is stale:
+
+```bash
+pnpm plugins:manifest
+```
+
 ## Adding a plugin
 
 ```bash
@@ -61,7 +90,8 @@ Cordis patch, build configuration, tests, and public-package metadata. The
 scaffold is a starting point: before writing code, read the
 [plugin guidelines](docs/PLUGIN_GUIDELINES.md) — the canonical architecture,
 package-content, testing, documentation, and release rules every plugin must
-follow.
+follow. Run `pnpm plugins:manifest` afterwards so the new package enters the
+catalog.
 
 ## Documentation
 

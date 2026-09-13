@@ -2,7 +2,26 @@
   "name": "dsh-plugins",
   "private": true,
   "version": "0.0.0",
-  "description": "DeepSeek Harness Plugins Monorepo",
+  "description": "Installable DeepSeek Harness (DSH) plugins: session workspace scoping, documentation-impact tracking, prompt-injection and firewall controls, draft sessions, localization overrides, KV persistence, and developer tooling.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "plugins",
+    "monorepo",
+    "agent-harness",
+    "llm"
+  ],
+  "homepage": "https://github.com/xarleyn/dsh-plugins#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -18,6 +37,7 @@
     "verify": "pnpm verify:packages && pnpm verify:logging && nx run-many -t verify",
     "verify:packages": "node scripts/verify-package-hygiene.mjs",
     "verify:logging": "node scripts/verify-plugin-logging.mjs",
+    "plugins:manifest": "node scripts/generate-plugins-manifest.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify",
     "deps:check": "node scripts/run-bash.mjs scripts/check-dependencies.sh",
     "tarball:verify": "node scripts/run-bash.mjs scripts/tarball-verify.sh --all",
