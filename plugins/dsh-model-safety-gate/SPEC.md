@@ -113,13 +113,19 @@ guard to the classifier's own traffic.
   unless explicitly opted in.
 - Sanitized audit events (`safety/check|block|warn|classifier-error`), failure
   modes, monotonic merge, counters.
+- Settings page (`Settings → Plugins → Plugin configuration`) over the live
+  `model-safety-gate` settings namespace: gate, input, output, tools, results,
+  classifier, audit, and advanced sections, plus the running-gate status and
+  recent-verdict view served by the `safetyGate` Remote.
 
 ### Deferred
 
 - Per-session mode override (audit/warn/enforce/disabled shield) — needs the
   client bundle; `allowSessionOverride` is already part of the config surface.
-- Web settings page, chat moderation banners, session shield control (needs
-  the client bundle; planned for 0.2).
+- Chat moderation banners and the session shield control (design SPEC §25):
+  they need the conversation surface, not just the settings slot.
+- `ui.*` and `allowSessionOverride` are accepted keys with no effect until
+  those surfaces exist.
 - OpenTelemetry spans beyond counters (behind a telemetry-service probe).
 - Controlled retry after a safety block (`maxSafetyRetries`).
 - Persistent audit storage.
@@ -154,7 +160,8 @@ guard to the classifier's own traffic.
 | Output stream guard with quarantine (`llm/stream`) | Implemented |
 | Tool gate + tool-result risk state | Implemented |
 | Audit events + counters | Implemented |
-| Web UI (settings, banners, shield) | Planned (0.2) |
-| Per-session mode override | Planned (0.2, needs UI) |
+| Web settings page (live namespace + status Remote) | Implemented (0.2) |
+| Chat moderation banners, session shield control | Planned (0.2) |
+| Per-session mode override | Planned (0.2, needs the shield UI) |
 | OpenTelemetry spans | Planned |
 | Adversarial corpus evaluation harness | Partial (fixtures + unit metrics) |

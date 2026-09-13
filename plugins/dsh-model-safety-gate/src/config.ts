@@ -41,7 +41,12 @@ export interface ModelSafetyGateConfig {
     readonly model?: string;
     /** `backend: openai-compatible` — endpoint base URL. */
     readonly baseURL?: string;
-    /** `backend: openai-compatible` — bearer API key. */
+    /**
+     * `backend: openai-compatible` — bearer API key.
+     *
+     * Declared `role("secret")` so configuration surfaces receive only
+     * whether a key is configured; the literal never crosses a wire.
+     */
     readonly apiKey?: string;
     readonly timeoutMs?: number;
     readonly maxTokens?: number;
@@ -237,7 +242,10 @@ export const ModelSafetyGateConfigSchema = z.object({
       provider: z.string().default(SAFETY_GATE_DEFAULTS.provider),
       model: z.string().default(SAFETY_GATE_DEFAULTS.model),
       baseURL: z.string().default(SAFETY_GATE_DEFAULTS.baseURL),
-      apiKey: z.string().default(SAFETY_GATE_DEFAULTS.apiKey),
+      // A secret slot: configuration surfaces receive only whether a key is
+      // configured, never the literal. The classifier-object default below
+      // still supplies the empty value the resolver expects.
+      apiKey: z.string().role("secret"),
       timeoutMs: z.number().default(SAFETY_GATE_DEFAULTS.timeoutMs),
       maxTokens: z.number().default(SAFETY_GATE_DEFAULTS.maxTokens),
       temperature: z.number().default(SAFETY_GATE_DEFAULTS.temperature),

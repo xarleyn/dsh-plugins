@@ -81,7 +81,7 @@ export function mergeL0L1(
       .map((source) => source.summary)
       .filter((summary) => summary.length > 0)
       .join("; "),
-    policyRuleIds: ruleIds.length > 0 ? ruleIds : undefined,
+    ...(ruleIds.length > 0 ? { policyRuleIds: ruleIds } : {}),
     l0Decision: l0.decision,
   };
 }

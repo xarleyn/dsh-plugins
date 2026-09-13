@@ -112,9 +112,43 @@ allowSessionOverride: true # false forbids per-session downgrade of the global m
 ### Privacy
 
 If the classifier backend is `openai-compatible`, prompts, streamed output,
-and reasoning content are sent to that endpoint. The configuration surface
-reports this; set `classifier.requireLocal: true` to forbid remote endpoints
-entirely.
+and reasoning content are sent to that endpoint. The settings card states this
+in place, next to the endpoint it would use; set `classifier.requireLocal: true`
+to forbid remote endpoints entirely.
+
+`classifier.apiKey` is declared a secret slot: configuration surfaces receive
+only whether a key is configured, and the literal is never returned to a
+browser. The `safetyGate` Remote projection redacts it as well.
+
+## Settings card
+
+`Settings → Plugins → Plugin configuration → Model Safety Gate` edits this
+plugin's configuration through the `model-safety-gate` settings namespace. The
+namespace is installed as the gate's configuration source, so every change
+re-resolves the running gate on the spot: turning the gate off stops the next
+check, and switching the mode to `enforce` blocks the next matching prompt.
+Values the schema cannot express (a `dsh` backend without a provider, an
+uncompilable `customBlockPatterns` entry) are refused at write time instead of
+being stored and ignored.
+
+The card also reports what the running gate is doing through the `safetyGate`
+Typert Remote — effective mode, whether the classifier is actually wired, the
+process-lifetime counters, and the last 50 sanitized verdicts. That view never
+carries the classifier key, and it carries content only when raw logging is
+switched on.
+
+Chat moderation banners and a per-session shield control are not built yet
+(design SPEC Phase 6); `ui.*` and `allowSessionOverride` are accepted keys with
+no effect today.
+
+### Harness API
+
+```ts
+ctx.safetyGate.inspect();  // effective config, metrics, recent verdicts
+```
+
+The plugin registers one Cordis service (`safetyGate`) and publishes four
+log-only session event types (`safety-gate/check|block|warn|classifier-error`).
 
 ## Compatibility
 
