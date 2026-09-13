@@ -84,7 +84,10 @@ export class WebFetchAuthenticated extends TypertRemoteService implements WebFet
     )
     this.entryConfig = structuredClone(config)
     this.configSource = () => this.entryConfig
-    this.credentials = createCredentialResolver(ctx.get('credentials') ?? undefined)
+    // Read per operation, never captured: this bundle applies while the
+    // credentials provider's fiber is still loading, and cordis' strict
+    // `ctx.get` reports a not-yet-active service as absent.
+    this.credentials = createCredentialResolver(() => this.ctx.get('credentials') ?? undefined)
 
     const provider = new AuthenticatedFetchProvider({
       configSource: () => this.configSource(),
