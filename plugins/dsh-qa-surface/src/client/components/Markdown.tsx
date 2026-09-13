@@ -1,6 +1,6 @@
 import { memo, Fragment, type ReactNode } from "react";
 import type { QaSource } from "../../types.js";
-import { SourceIcon } from "./QaSourcesDrawer.js";
+import { SourceIcon } from "./QaSourcesPanel.js";
 import { sourceFileName, type QaSourceRefs } from "./source-refs.js";
 
 const INLINE = /(\[[^\]]+\]\([^\s)]+\)|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/gu;

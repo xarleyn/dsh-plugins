@@ -2518,3 +2518,103 @@ The core architectural principles are:
 > **Remove capabilities at the runtime/tool-policy layer; hiding buttons is only defense in depth.**
 
 `dsh-qa-surface` should be a thin QA/browser surface over the existing DSH runtime, with `/qa` acting as a dedicated end-user presentation while `/` remains the full operator/developer interface. In locked-down deployments, QA sessions must be bound to a fixed composition and a fail-closed read-only capability set.
+
+---
+
+## 46. Right rail panel (chat tabs)
+
+### 46.1 Motivation and rejected alternative
+
+The QA surface accumulates side information about a chat — session sources,
+sent attachments, and (future) per-user files and agents. Today each lives in
+its own drawer or rail, opened by ad-hoc header buttons. This section specs a
+single right rail with tabs, mirroring the Harness right Sidebar's UX (a tab
+strip is the panel's whole top edge; the strip closes the panel).
+
+The Harness mechanism itself (`sidebarRightTabs` + the keyed
+`sidebar.right.pane.tab` seat, as `dsh-plugin-log-ui` uses) was evaluated and
+rejected: the QA page is a full-frame overlay
+(`position:fixed;inset:0;z-index:2147483000`) painted over the Host shell, so
+the Host's right column exists only behind it, invisible and unreachable while
+`/qa` is active. Mounting a second `ui-sidebar-right` instance inside the
+overlay is not viable either: the package's controller is a root-scoped
+singleton, its stores are session-scope slot-runtime mints, and its chrome
+(frame geometry, expand button in the conversation header) belongs to the Host
+frame. The rail therefore reuses the Harness _interaction pattern_, not its
+package.
+
+### 46.2 UX contract
+
+- The rail is a column inside `.dsh-qa-surface`, a flex sibling after
+  `.dsh-qa-body`, 360px wide, with a left border — the same footprint the
+  sources drawer had.
+- The tab strip sits at the top: one chip per tab (`Источники`, `Файлы`) with
+  an item count, plus a close button. `role=tablist` / `role=tab` /
+  `role=tabpanel` semantics; the close control is «Закрыть панель».
+- Tabs are mutually exclusive with the agents drawer: opening one side closes
+  the other, exactly as the two drawers behaved.
+- Rail state is chat-local: switching or resetting a chat closes the rail and
+  clears the pinned sources (same `useSessionUiState` reset that governed the
+  drawers).
+- Sources tab:
+  - available when `sources.enabled`; the header «Источники» button is
+    additionally gated by `sources.display.sidebar`, unchanged;
+  - a message footnote opens the rail pinned to that message's source subset
+    (`drawerSources`), a detail click opens the source preview — the pinned
+    view offers «Все источники» to return to the whole-chat list;
+  - the list/preview content is the former drawer's, unchanged (groups,
+    badges, safe local-file preview).
+- Files tab: a new header «Файлы» button (count badge, disabled when the chat
+  has no attachments) opens a roster of everything the visitor attached in
+  this chat:
+  - grouped by sending message, newest message first, each group headed by
+    `formatDayTime` and a jump control that scrolls the transcript to that
+    user message via the existing `data-dsh-qa-turn-anchor` seam;
+  - files render as the sent `QaFileAttachment` cards (badge, name, size —
+    never a read-back: the attachment route serves images only);
+  - images render as thumbnails resolved through the controller's asset
+    repository (`resolveImage`), linking to the full-size object URL;
+  - pending composer drafts are not listed — they are already visible as
+    composer chips.
+- Below 600px the rail goes full-bleed absolute, as the drawers did.
+- No new configuration fields: sources gating reuses `sources.enabled` /
+  `sources.display.sidebar`; the files tab follows whatever the attachments
+  policy already admitted into the chat.
+
+### 46.3 Non-goals
+
+- No docking, splitting, floating or resize: the QA page needs one fixed
+  column, not the dockkit's pane model.
+- No persistence of the rail's open state across reloads; chat-local only.
+- No integration with the Host's right Sidebar (see 46.1).
+- Per-user workspace file browsing needs a new Host listing RPC; it is future
+  work, not part of this section's MVP.
+- The agents drawer migrates into a tab post-MVP; until then it stays a
+  drawer.
+
+### 46.4 Implementation shape
+
+- `client/chat-files.ts`: pure `collectChatFiles(messages)` → per-message
+  groups of `QaFileView`s and `QaImageView`s; memoized in `QaSurface`.
+- `client/components/QaSourcesPanel.tsx`: the former `QaSourcesDrawer` minus
+  the outer chrome (head row and close) — the rail chrome replaces it. Inner
+  class names (`dsh-qa-sources__*`, `dsh-qa-sourcedetail`) survive so the
+  bundle gates keep their assertions.
+- `client/components/QaFilesPanel.tsx`: the attachment roster.
+- `client/components/QaRightRail.tsx`: strip + active tab body.
+- `use-session-ui-state.ts`: `sourcesOpen` becomes `railOpen` + `railTab`;
+  the pinned-sources / detail state is unchanged.
+- `styles.ts`: `.dsh-qa-rail*` rules; the mobile media query targets the rail
+  instead of `.dsh-qa-sources`/`.dsh-qa-agents` (agents keeps full-bleed).
+
+### 46.5 Testing
+
+- `chat-files.test.ts`: collector grouping, ordering, mixed files/images,
+  attachment-free chats.
+- `qa-right-rail.test.tsx`: tab switching, close, mutual exclusion with the
+  agents drawer via header handlers, pinned sources round-trip, files roster
+  content and jump control, per-chat reset.
+- `qa-sources-drawer.test.tsx` → `qa-sources-panel.test.tsx` against the
+  chrome-less panel.
+- `verify-package.mjs` asserts the rail classes and tab labels in the built
+  bundle.

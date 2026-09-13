@@ -47,7 +47,11 @@ import {
   QaAgentsDrawer,
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
-import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
+import { collectChatFiles, countChatAttachments } from "./chat-files.js";
+import { QaFilesPanel } from "./components/QaFilesPanel.js";
+import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
+import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
+import type { QaRailTab } from "./use-session-ui-state.js";
 import {
   QA_TURN_ANCHOR_ATTRIBUTE,
   QaTurnRail,
@@ -296,8 +300,10 @@ export function QaSurface(props: QaSurfaceProps) {
     setPendingAttachments,
     agentsOpen,
     setAgentsOpen,
-    sourcesOpen,
-    setSourcesOpen,
+    railOpen,
+    setRailOpen,
+    railTab,
+    setRailTab,
     drawerSources,
     setDrawerSources,
     drawerCompleteness,
@@ -425,7 +431,8 @@ export function QaSurface(props: QaSurfaceProps) {
         ...(incompleteOrigins === undefined ? {} : { incompleteOrigins }),
       });
       setDrawerDetail(null);
-      setSourcesOpen(true);
+      setRailOpen(true);
+      setRailTab("sources");
       setAgentsOpen(false);
     },
     [],
@@ -434,8 +441,55 @@ export function QaSurface(props: QaSurfaceProps) {
     setDrawerSources(null);
     setDrawerCompleteness(null);
     setDrawerDetail(source);
-    setSourcesOpen(true);
+    setRailOpen(true);
+    setRailTab("sources");
     setAgentsOpen(false);
+  }, []);
+  /** Back to the whole-chat source list from a message-scoped subset. */
+  const handleShowAllSources = useCallback(() => {
+    setDrawerSources(null);
+    setDrawerCompleteness(null);
+    setDrawerDetail(null);
+  }, []);
+  /** Closing the rail also discards the pinned sources, as the drawer did. */
+  const handleRailClose = useCallback(() => {
+    setRailOpen(false);
+    setDrawerSources(null);
+    setDrawerCompleteness(null);
+    setDrawerDetail(null);
+  }, [setDrawerCompleteness, setDrawerDetail, setDrawerSources, setRailOpen]);
+  /**
+   * The header buttons: a second click on the active tab's button closes the
+   * rail; opening the sources tab shows the full list, dropping any pin.
+   */
+  const handleOpenRailTab = useCallback(
+    (tab: QaRailTab) => {
+      if (railOpen && railTab === tab) {
+        handleRailClose();
+        return;
+      }
+      setAgentsOpen(false);
+      setRailOpen(true);
+      setRailTab(tab);
+      if (tab === "sources") handleShowAllSources();
+    },
+    [handleRailClose, handleShowAllSources, railOpen, railTab],
+  );
+  /** The files tab's jump control: land the transcript on the sender. */
+  const handleJumpToMessage = useCallback((messageId: string) => {
+    const element = transcript.current;
+    if (element === null) return;
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(messageId)
+        : messageId;
+    const row = element.querySelector<HTMLElement>(
+      `[${QA_TURN_ANCHOR_ATTRIBUTE}="${escaped}"]`,
+    );
+    if (row === null) return;
+    element.scrollTop = turnScrollTarget(element, row);
+    nearBottom.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
   }, []);
 
   useLayoutEffect(() => {
@@ -476,6 +530,16 @@ export function QaSurface(props: QaSurfaceProps) {
   const agentRows = useMemo(
     () => collectSubagents(listState.byId, activeSessionId),
     [listState, activeSessionId],
+  );
+  // The files tab projects the chat's durable attachments; the header badge
+  // and the panel read the same memoized roster.
+  const fileGroups = useMemo(
+    () => collectChatFiles(state.messages),
+    [state.messages],
+  );
+  const attachmentCount = useMemo(
+    () => countChatAttachments(fileGroups),
+    [fileGroups],
   );
   // Admins group the sidebar by chat owner; everyone else sees the flat list.
   const ownerNames = useMemo(
@@ -533,6 +597,54 @@ export function QaSurface(props: QaSurfaceProps) {
       ? undefined
       : `${stateKey}:chat:${state.sessionId}`;
   if (!route.active) return null;
+
+  const showResetButton = config.ui.showReset && allowNewChat;
+  // Rebuilt per frame, but reconciliation keeps each panel mounted in place,
+  // so the sources detail and the files roster carry their state across.
+  const railTabs: readonly QaRailTabModel[] = [
+    ...(config.sources.enabled
+      ? [
+          {
+            id: "sources" as const,
+            title: "Источники",
+            count: (drawerSources ?? state.sources).length,
+            body: (
+              <QaSourcesPanel
+                // Remount on a new detail request: the panel is internal-state
+                // driven, so an already-mounted panel would ignore a changed
+                // initialDetail otherwise.
+                key={drawerDetail?.id ?? "list"}
+                sources={drawerSources ?? state.sources}
+                complete={drawerCompleteness?.complete ?? state.sourcesComplete}
+                incompleteOrigins={
+                  drawerCompleteness?.incompleteOrigins ??
+                  state.incompleteSourceOrigins
+                }
+                sessionId={state.sessionId}
+                sourceApi={boundSourceApi}
+                display={config.sources.display}
+                filePreview={config.sources.filePreview}
+                initialDetail={drawerDetail}
+                pinned={drawerSources !== null}
+                onShowAll={handleShowAllSources}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "files" as const,
+      title: "Файлы",
+      count: attachmentCount,
+      body: (
+        <QaFilesPanel
+          groups={fileGroups}
+          resolveImage={resolveImage}
+          onJumpToMessage={handleJumpToMessage}
+        />
+      ),
+    },
+  ];
 
   // DSH only seats onboarding while the active Session is blank. Keep the QA
   // disclosure in this route-owned overlay so sending a prompt cannot dismiss
@@ -663,16 +775,12 @@ export function QaSurface(props: QaSurfaceProps) {
                   )}
                   <button
                     type="button"
-                    className={
-                      config.sources.enabled && config.sources.display.sidebar
-                        ? "dsh-qa-header__agents"
-                        : "dsh-qa-header__agents dsh-qa-header__agents--end"
-                    }
+                    className="dsh-qa-header__agents"
                     disabled={agentRows.length === 0}
                     aria-expanded={agentsOpen}
                     onClick={() => {
                       setAgentsOpen((open) => !open);
-                      setSourcesOpen(false);
+                      setRailOpen(false);
                     }}
                   >
                     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -685,24 +793,12 @@ export function QaSurface(props: QaSurfaceProps) {
                   {config.sources.enabled && config.sources.display.sidebar ? (
                     <button
                       type="button"
-                      className={
-                        config.ui.showReset &&
-                        config.session.policy !== "fixed" &&
-                        (!config.lockdown.enabled ||
-                          config.lockdown.allowSessionReset)
-                          ? "dsh-qa-header__sources"
-                          : "dsh-qa-header__sources dsh-qa-header__sources--end"
-                      }
+                      className="dsh-qa-header__sources"
                       disabled={
                         state.sources.length === 0 && state.sourcesComplete
                       }
-                      aria-expanded={sourcesOpen}
-                      onClick={() => {
-                        setSourcesOpen((open) => !open);
-                        setDrawerSources(null);
-                        setDrawerCompleteness(null);
-                        setAgentsOpen(false);
-                      }}
+                      aria-expanded={railOpen && railTab === "sources"}
+                      onClick={() => handleOpenRailTab("sources")}
                     >
                       <svg viewBox="0 0 16 16" aria-hidden="true">
                         <circle cx="8" cy="8" r="5.75" />
@@ -714,10 +810,25 @@ export function QaSurface(props: QaSurfaceProps) {
                         : ` (${state.sources.length})`}
                     </button>
                   ) : null}
-                  {config.ui.showReset &&
-                  config.session.policy !== "fixed" &&
-                  (!config.lockdown.enabled ||
-                    config.lockdown.allowSessionReset) ? (
+                  <button
+                    type="button"
+                    className={
+                      showResetButton
+                        ? "dsh-qa-header__files"
+                        : "dsh-qa-header__files dsh-qa-header__files--end"
+                    }
+                    disabled={attachmentCount === 0}
+                    aria-expanded={railOpen && railTab === "files"}
+                    onClick={() => handleOpenRailTab("files")}
+                  >
+                    <svg viewBox="0 0 16 16" aria-hidden="true">
+                      <path d="M9.25 2.5H4.75A1.25 1.25 0 0 0 3.5 3.75v8.5a1.25 1.25 0 0 0 1.25 1.25h6.5a1.25 1.25 0 0 0 1.25-1.25V5.75L9.25 2.5Z" />
+                      <path d="M9.25 2.5v3.25h3.25M6 8.5h4M6 11h2.5" />
+                    </svg>
+                    Файлы
+                    {attachmentCount === 0 ? null : ` (${attachmentCount})`}
+                  </button>
+                  {showResetButton ? (
                     <button
                       type="button"
                       className="dsh-qa-header__reset"
@@ -902,27 +1013,12 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={() => setAgentsOpen(false)}
           />
         ) : null}
-        {sourcesOpen &&
-        ((drawerSources ?? state.sources).length > 0 ||
-          !(drawerCompleteness?.complete ?? state.sourcesComplete)) ? (
-          <QaSourcesDrawer
-            sources={drawerSources ?? state.sources}
-            complete={drawerCompleteness?.complete ?? state.sourcesComplete}
-            incompleteOrigins={
-              drawerCompleteness?.incompleteOrigins ??
-              state.incompleteSourceOrigins
-            }
-            sessionId={state.sessionId}
-            sourceApi={boundSourceApi}
-            display={config.sources.display}
-            filePreview={config.sources.filePreview}
-            initialDetail={drawerDetail}
-            onClose={() => {
-              setSourcesOpen(false);
-              setDrawerSources(null);
-              setDrawerCompleteness(null);
-              setDrawerDetail(null);
-            }}
+        {railOpen ? (
+          <QaRightRail
+            tabs={railTabs}
+            activeTab={railTab}
+            onTabSelect={setRailTab}
+            onClose={handleRailClose}
           />
         ) : null}
       </main>

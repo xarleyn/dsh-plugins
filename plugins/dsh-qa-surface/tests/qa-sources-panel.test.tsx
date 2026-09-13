@@ -3,10 +3,10 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { QaSource } from "../src/types.js";
-import { QaSourcesDrawer } from "../src/client/components/QaSourcesDrawer.js";
+import { QaSourcesPanel } from "../src/client/components/QaSourcesPanel.js";
 import { resolveConfig } from "../src/resolve-config.js";
 
-describe("sources drawer", () => {
+describe("sources panel", () => {
   const fileSource: QaSource = {
     id: "file:docs/guide.md",
     kind: "file",
@@ -28,7 +28,7 @@ describe("sources drawer", () => {
   it("groups unique sources and exposes incomplete provenance", () => {
     const config = resolveConfig().sources;
     render(
-      <QaSourcesDrawer
+      <QaSourcesPanel
         sources={[
           fileSource,
           {
@@ -53,7 +53,6 @@ describe("sources drawer", () => {
         }
         display={config.display}
         filePreview={config.filePreview}
-        onClose={vi.fn()}
       />,
     );
     expect(screen.getByText("Документы")).toBeTruthy();
@@ -78,14 +77,13 @@ describe("sources drawer", () => {
       },
     }));
     render(
-      <QaSourcesDrawer
+      <QaSourcesPanel
         sources={[fileSource]}
         complete
         sessionId="root"
         sourceApi={{ sources: vi.fn(), readSourceFile }}
         display={config.display}
         filePreview={config.filePreview}
-        onClose={vi.fn()}
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /guide\.md/u }));
@@ -103,5 +101,35 @@ describe("sources drawer", () => {
       document.querySelectorAll(".dsh-qa-preview__line--highlight"),
     ).toHaveLength(2);
     expect(readSourceFile).toHaveBeenCalledWith("root", "docs/guide.md");
+  });
+
+  it("offers the way back to the whole-chat list only while pinned", () => {
+    const config = resolveConfig().sources;
+    const onShowAll = vi.fn();
+    const { rerender } = render(
+      <QaSourcesPanel
+        sources={[fileSource]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+        pinned
+        onShowAll={onShowAll}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Все источники" }));
+    expect(onShowAll).toHaveBeenCalledOnce();
+    rerender(
+      <QaSourcesPanel
+        sources={[fileSource]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Все источники" })).toBeNull();
   });
 });
