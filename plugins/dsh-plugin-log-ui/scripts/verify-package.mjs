@@ -29,6 +29,25 @@ assert.equal(manifest.name, "@yadsh/dsh-plugin-log-ui");
 assert.equal(manifest.exports["./client"].default, "./lib/client.js");
 assert.equal(manifest.exports["./remote"].default, "./lib/typert.remote-client.js");
 assert.equal(manifest.dsh.client.platform, "web");
+// The panel lives in the right Sidebar, so that package is an activation
+// dependency of the client half and must be requested from the host.
+assert.ok(
+  manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-sidebar-right"),
+  "dsh.client.inject must request the right Sidebar package",
+);
+assert.equal(
+  manifest.peerDependencies["@deepseek-ai/dsh-client-ui-sidebar-right"],
+  "catalog:dsh",
+  "the right Sidebar package must be a peer dependency",
+);
+
+const compatibility = JSON.parse(await readFile(new URL("compatibility.json", root), "utf8"));
+for (const feature of ["sidebar.right.pane.tab", "sidebarRightTabs"]) {
+  assert.ok(
+    compatibility.deepseekHarness.requiredClientFeatures.includes(feature),
+    `compatibility.json must declare the ${feature} client feature`,
+  );
+}
 
 const patch = await readFile(new URL("cordis.patch.yml", root), "utf8");
 assert.match(patch, /id:\s*dsh-plugin-log-ui/u);
@@ -47,5 +66,44 @@ verifyPluginCardContract(client, {
   legacyPatterns: [/\.plu-card\{/u],
 });
 assert.doesNotMatch(client, /⌄/u);
+
+/*
+ * Right-Sidebar panel contract.
+ *
+ * A tab type is two registrations that must agree: the type in
+ * `sidebarRightTabs` and the body in the keyed seat under the type's own `id`.
+ * A bundle with one and not the other draws the column's "nothing can view
+ * this" notice, which no host-side test can see, so the pair is asserted here.
+ */
+const PANEL_ID = "@yadsh/dsh-plugin-log-ui/panel";
+assert.match(client, /sidebarRightTabs/u);
+assert.ok(client.includes(`const LOG_PANEL_ID = "${PANEL_ID}"`), "the bundle must carry the panel's id");
+assert.match(client, /id:\s*LOG_PANEL_ID/u);
+assert.match(client, /const LOG_PANEL_KIND = "plugin-log"/u);
+assert.match(client, /kind:\s*LOG_PANEL_KIND/u);
+assert.match(client, /priority:\s*"extension"/u);
+assert.match(client, /name:\s*"sidebar\.right\.pane\.tab"/u);
+assert.match(client, /key:\s*LOG_PANEL_ID/u);
+assert.match(client, /title:\s*\(\)\s*=>\s*"Plugin logs"/u);
+assert.match(client, /order:\s*20/u);
+// Nothing claims a resource address: the panel is a page, opened by kind.
+assert.doesNotMatch(client, /patterns:\s*\[/u);
+// The panel reads the stream through the Remote method that ships with it.
+assert.match(client, /remote\.tail\(cursor, limit\)/u);
+// Severity ink: the quiet levels ride the label ramp, warn and above take the
+// state tokens. Asserted so a stylesheet refactor cannot quietly drop the
+// colouring the panel exists for.
+for (const token of [
+  "--dsw-alias-label-dimmed",
+  "--dsw-alias-label-tertiary",
+  "--dsw-alias-label-secondary",
+  "--dsw-alias-state-warn-label",
+  "--dsw-alias-state-error-primary",
+]) {
+  assert.ok(client.includes(token), `panel styles must use ${token}`);
+}
+for (const level of ["trace", "debug", "info", "warn", "error", "fatal"]) {
+  assert.ok(client.includes(level), `the panel must offer the ${level} level`);
+}
 
 console.log("verify-package: all gates passed");

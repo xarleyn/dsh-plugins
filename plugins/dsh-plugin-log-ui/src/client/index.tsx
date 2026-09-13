@@ -4,12 +4,14 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type {} from "@deepseek-ai/dsh-client-ui-sidebar-right/client";
 import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
 import {
   CardShell,
   bindSettingsExternalStore,
+  injectCardStyles,
   registerSettingsCard,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
@@ -17,9 +19,14 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import type {
   ManagedPluginLogFormat,
   ManagedPluginLogLevel,
+  PluginLogTail,
   PluginLogUiConfig,
   PluginLogUiSnapshot,
 } from "../types.js";
+import { LogPanel } from "./panel/LogPanel.js";
+import { logPanelDefinition, LOG_PANEL_ID } from "./panel/definition.js";
+import { createLogTailReader } from "./panel/log-view.js";
+import { PANEL_STYLES } from "./panel/styles.js";
 import { styles } from "./styles.js";
 
 const SETTINGS_NAMESPACE = "plugin-log";
@@ -36,6 +43,7 @@ const LEVELS: readonly ManagedPluginLogLevel[] = [
 
 interface InspectorRemote {
   inspect(): Promise<RemoteResult<PluginLogUiSnapshot>>;
+  tail(cursor: number, limit: number): Promise<RemoteResult<PluginLogTail>>;
 }
 
 interface ClientRemote {
@@ -162,6 +170,7 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
           </label>
         </div>
         <p className="plu-hint">Changes apply live. A format switch affects new lines; an existing daily file can contain both formats until rotation.</p>
+        <p className="plu-hint">Live output is the <strong>Plugin logs</strong> tab of the right Sidebar: open it there and pick the panel from the guide page.</p>
       </section>
 
       <section className="plu-section">
@@ -194,25 +203,64 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   );
 }
 
-export const inject = ["slots", "settingsScope", "remote"];
+export const inject = ["slots", "settingsScope", "remote", "sidebarRightTabs"];
+
+/** The style tag's key: shared by the settings card and the log panel sheets. */
+const STYLE_KEY = "dsh-plugin-log-ui";
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  // The panel is a page tab on the host's right Sidebar. Its type registers
+  // through the public two-stage path, so the column dispatches the body below
+  // by this plugin's own id rather than by anything hard-coded there.
+  const removePanelStyles = injectCardStyles(STYLE_KEY, PANEL_STYLES);
+  ctx.effect(
+    () => ctx.sidebarRightTabs.register(logPanelDefinition()),
+    "dsh-plugin-log-ui: log panel type",
+  );
+
   const remote = ctx.remote as unknown as ClientRemote;
   const disposeRemote = await remote.$mount(pluginLogUiRemote);
-  await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
-    const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
-    const inspector = mountedRemote.pluginLogUi;
-    const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
-      namespace: SETTINGS_NAMESPACE,
+  let disposePanel: (() => void) | undefined;
+  try {
+    await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
+      const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
+      const inspector = mountedRemote.pluginLogUi;
+      const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
+        namespace: SETTINGS_NAMESPACE,
+      });
+      // The column may not have declared its seat yet when this plugin loads, so
+      // the body waits for the declaration instead of assuming boot order. The
+      // callback is re-entered if the namespace is withdrawn and re-provided, so
+      // each pass replaces the previous registration rather than stacking one.
+      disposePanel?.();
+      disposePanel = remoteCtx.slots.inject("sidebar.right.pane.tab", () =>
+        remoteCtx.slots.register(
+          {
+            name: "sidebar.right.pane.tab",
+            key: LOG_PANEL_ID,
+            inject: () => ({ read: createLogTailReader(inspector) }),
+          },
+          LogPanel,
+        ),
+      );
+      return registerSettingsCard(remoteCtx, {
+        key: SETTINGS_NAMESPACE,
+        pluginName: STYLE_KEY,
+        styles,
+        component: PluginLogSettingsCard,
+        inject: () => ({ scope, inspect: () => inspector.inspect() }),
+      });
     });
-    return registerSettingsCard(remoteCtx, {
-      key: SETTINGS_NAMESPACE,
-      pluginName: "dsh-plugin-log-ui",
-      styles,
-      component: PluginLogSettingsCard,
-      inject: () => ({ scope, inspect: () => inspector.inspect() }),
-    });
-  });
+  } catch (error) {
+    disposePanel?.();
+    removePanelStyles();
+    await disposeRemote();
+    throw error;
+  }
 
-  return disposeRemote;
+  return async () => {
+    disposePanel?.();
+    removePanelStyles();
+    return disposeRemote();
+  };
 }
