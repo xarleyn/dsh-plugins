@@ -515,7 +515,7 @@ ui:
   showToolActivity: false
   showReasoning: false
   renderMarkdown: true
-  maxContentWidth: 900
+  minContentWidth: 650
 
 suggestedQuestions:
   - "Что ты умеешь?"

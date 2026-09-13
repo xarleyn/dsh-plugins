@@ -168,6 +168,28 @@ describe("qa surface config", () => {
     ).toBe(true);
   });
 
+  it("resolves the transcript width floor and rejects values outside it", () => {
+    expect(resolveConfig().ui.minContentWidth).toBe(650);
+    expect(
+      resolveConfig({ ui: { minContentWidth: 1_200 } }).ui.minContentWidth,
+    ).toBe(1_200);
+    expect(() => resolveConfig({ ui: { minContentWidth: 100 } })).toThrow(
+      /ui\.minContentWidth/u,
+    );
+    expect(() => resolveConfig({ ui: { minContentWidth: 1_700 } })).toThrow(
+      /ui\.minContentWidth/u,
+    );
+  });
+
+  // The width bound flipped from a cap to a floor; a deployment that still
+  // carries the removed key keeps working on the shipped default.
+  it("ignores the removed maxContentWidth key", () => {
+    const config = resolveConfig(schemaParse({ ui: { maxContentWidth: 900 } }));
+    expect(config.ui.minContentWidth).toBe(
+      DEFAULT_QA_SURFACE_CONFIG.ui.minContentWidth,
+    );
+  });
+
   it("hides other users' chats by default and allows admins to opt in", () => {
     expect(resolveConfig().accounts.showOtherUsersChats).toBe(false);
     expect(

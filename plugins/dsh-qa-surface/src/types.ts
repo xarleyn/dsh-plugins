@@ -155,7 +155,8 @@ export interface QaSurfaceConfig {
     readonly showToolActivity?: boolean;
     readonly showReasoning?: boolean;
     readonly renderMarkdown?: boolean;
-    readonly maxContentWidth?: number;
+    /** Floor for the visitor-resizable transcript/composer width; the page caps it. */
+    readonly minContentWidth?: number;
     readonly showSessionList?: boolean;
   };
   readonly suggestedQuestions?: readonly string[];
@@ -280,7 +281,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly showToolActivity: boolean;
     readonly showReasoning: boolean;
     readonly renderMarkdown: boolean;
-    readonly maxContentWidth: number;
+    readonly minContentWidth: number;
     readonly showSessionList: boolean;
   };
   readonly suggestedQuestions: readonly string[];

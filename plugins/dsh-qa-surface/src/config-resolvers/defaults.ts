@@ -36,7 +36,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       showToolActivity: false,
       showReasoning: false,
       renderMarkdown: true,
-      maxContentWidth: 900,
+      minContentWidth: 650,
       showSessionList: false,
     }),
     suggestedQuestions: Object.freeze([

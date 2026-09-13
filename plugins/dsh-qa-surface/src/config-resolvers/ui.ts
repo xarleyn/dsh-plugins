@@ -4,11 +4,11 @@ import { assertIntInRange } from "./shared.js";
 
 type UiSlice = ResolvedQaSurfaceConfig["ui"];
 
-/** Resolve the UI domain: widget visibility and the content width bound. */
+/** Resolve the UI domain: widget visibility and the content width floor. */
 export function resolveUi(input: QaSurfaceConfig): UiSlice {
-  const maxContentWidth =
-    input.ui?.maxContentWidth ?? DEFAULT_QA_SURFACE_CONFIG.ui.maxContentWidth;
-  assertIntInRange("ui.maxContentWidth", maxContentWidth, 480, 1600);
+  const minContentWidth =
+    input.ui?.minContentWidth ?? DEFAULT_QA_SURFACE_CONFIG.ui.minContentWidth;
+  assertIntInRange("ui.minContentWidth", minContentWidth, 480, 1600);
   return Object.freeze({
     showHeader: input.ui?.showHeader ?? DEFAULT_QA_SURFACE_CONFIG.ui.showHeader,
     showReset: input.ui?.showReset ?? DEFAULT_QA_SURFACE_CONFIG.ui.showReset,
@@ -22,7 +22,7 @@ export function resolveUi(input: QaSurfaceConfig): UiSlice {
       input.ui?.showReasoning ?? DEFAULT_QA_SURFACE_CONFIG.ui.showReasoning,
     renderMarkdown:
       input.ui?.renderMarkdown ?? DEFAULT_QA_SURFACE_CONFIG.ui.renderMarkdown,
-    maxContentWidth,
+    minContentWidth,
     showSessionList:
       input.ui?.showSessionList ?? DEFAULT_QA_SURFACE_CONFIG.ui.showSessionList,
   });
