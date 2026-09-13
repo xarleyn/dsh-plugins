@@ -325,10 +325,13 @@ folded into this spec rather than shipped as a separate design:
    bridge; a token-less bridge or a disabled flag falls back to the marker
    hand-off.
 3. **`qa-accounts` management CLI** (`bin` entry). `list`, `add
---password-stdin`, `set-role`, `disable`, `enable`, `revoke` — so account
-   administration never requires hand-editing the JSON file.
+--password-stdin`, `set-password --password-stdin`, `set-role`, `disable`,
+   `enable`, `revoke` — so account administration never requires hand-editing
+   the JSON file. `set-password` rehashes in place and bumps the token version,
+   which resets a forgotten password without disturbing the account id — and
+   with it the profile and the chats the account owns.
 4. **Account state and token revocation.** Accounts gain a `disabled` flag
    (refused at login with `account-disabled`, invisible to `whoami`) and a
-   `tokenVersion` burned into every token: `disable` and `revoke` bump it,
-   invalidating all live tokens server-side — logout is no longer purely a
-   client-side act.
+   `tokenVersion` burned into every token: `disable`, `revoke` and
+   `set-password` bump it, invalidating all live tokens server-side — logout is
+   no longer purely a client-side act.

@@ -164,6 +164,63 @@ describe("qa-accounts CLI", () => {
     });
   });
 
+  it("resets a forgotten password without stranding the account's chats", () => {
+    const path = file();
+    const argv = ["--file", path];
+    const reloaded = () =>
+      new QaAccounts(path, { sessionTtlDays: 30, allowRegistration: false });
+    spawn(
+      [...argv, "add", "a@b.co", "--password-stdin", "--role", "user"],
+      "password-1",
+    );
+    // A weak replacement is refused by the same rule registration uses, and the
+    // account keeps signing in with what it already had.
+    const weak = io();
+    expect(
+      main(
+        [...argv, "set-password", "a@b.co", "--password-stdin"],
+        weak,
+        () => "short",
+      ),
+    ).toBe(1);
+    expect(weak.errors[0]).toContain("(reason: weak-password)");
+    expect(reloaded().login("a@b.co", "password-1").user.email).toBe("a@b.co");
+
+    const before = reloaded().login("a@b.co", "password-1");
+    reloaded().ensureSessionAccess(before.token, "s-1");
+    expect(
+      spawn(
+        [...argv, "set-password", "a@b.co", "--password-stdin"],
+        "password-2",
+      ).lines,
+    ).toEqual(["a@b.co password updated; live tokens revoked"]);
+    // The old password is gone, and so is every token minted under it.
+    expect(reloaded().whoami(before.token)).toEqual({ authenticated: false });
+    expect(() => reloaded().login("a@b.co", "password-1")).toThrowError(
+      /incorrect/u,
+    );
+    // The account keeps its id, so the chat it claimed is still its own.
+    const after = reloaded().login("a@b.co", "password-2");
+    expect(after.user.id).toBe(before.user.id);
+    expect(reloaded().ownerIdOf("s-1")).toBe(before.user.id);
+    expect(reloaded().ensureSessionAccess(after.token, "s-1").email).toBe(
+      "a@b.co",
+    );
+
+    // The password arrives on stdin behind a flag, exactly like `add`; without
+    // the flag the command refuses, and an unknown address is a normal failure.
+    expect(main([...argv, "set-password", "a@b.co"], io())).toBe(1);
+    const ghost = io();
+    expect(
+      main(
+        [...argv, "set-password", "ghost@b.co", "--password-stdin"],
+        ghost,
+        () => "password-2",
+      ),
+    ).toBe(1);
+    expect(ghost.errors[0]).toContain("no such account");
+  });
+
   it("reads agent instructions from a file and from stdin", () => {
     const path = file();
     const argv = ["--file", path];

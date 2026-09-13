@@ -22,6 +22,7 @@ const USAGE = `Usage:
   qa-accounts [--file <path>] list
   qa-accounts [--file <path>] show <email>
   qa-accounts [--file <path>] add <email> --password-stdin [--name <name>] [--role admin|user]
+  qa-accounts [--file <path>] set-password <email> --password-stdin
   qa-accounts [--file <path>] set-role <email> <admin|user>
   qa-accounts [--file <path>] disable <email>     # blocks logins and revokes live tokens
   qa-accounts [--file <path>] enable <email>
@@ -191,6 +192,15 @@ export function run(
         ...(role === undefined ? {} : { role: role as "admin" | "user" }),
       });
       io.out(`added ${user.email} (${user.role})`);
+      return 0;
+    }
+    case "set-password": {
+      requireArgs(1);
+      if (!options.has("password-stdin")) {
+        throw new Error("the set-password command requires --password-stdin");
+      }
+      const user = accounts.setPassword(first as string, readStdin());
+      io.out(`${user.email} password updated; live tokens revoked`);
       return 0;
     }
     case "set-role": {

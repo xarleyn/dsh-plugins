@@ -222,6 +222,7 @@ QA surface and turns on server-side session ownership:
   ```sh
   qa-accounts list
   qa-accounts add user@example.com --password-stdin --role user
+  qa-accounts set-password user@example.com --password-stdin
   qa-accounts set-role user@example.com admin
   qa-accounts disable user@example.com   # blocks logins, revokes live tokens
   qa-accounts revoke user@example.com    # invalidates every issued token
@@ -229,7 +230,11 @@ QA surface and turns on server-side session ownership:
 
   `disable` bumps the account's token version, so all outstanding tokens die
   server-side; `enable` requires a fresh sign-in. After a secret rotation
-  suspicion, `revoke` is the single-step response.
+  suspicion, `revoke` is the single-step response. `set-password` is the
+  forgotten-password path: the account keeps its id, its profile and its chats,
+  while the password it replaces and every token minted under it stop working,
+  so the QA user signs in again. Passwords are always read from stdin (one
+  line), which keeps them out of shell history.
 
 - Honest boundary: accounts identify QA users and gate the QA surface and
   its remotes. They do not fence the harness: every QA user also holds the

@@ -20,7 +20,7 @@ import {
   normalizeProfile,
   validateProfileWrite,
 } from "../profile.js";
-import { validateCredentials } from "./credentials.js";
+import { validateCredentials, validatePassword } from "./credentials.js";
 import { QaAccountsError } from "./errors.js";
 import {
   createFileStampRef,
@@ -511,6 +511,24 @@ export class QaAccounts {
   /** Grant or revoke the admin role. */
   setUserRole(email: string, role: QaAccountRole): QaAccountUserPublic {
     return toPublic(this.editUser(email, (user) => ({ ...user, role })));
+  }
+
+  /**
+   * Replace an account's password, which is what a forgotten one needs. The
+   * token version bumps with it, so every token minted under the old password
+   * dies server-side: a reset is also the response to a leaked credential.
+   * Ownership, profile and the account id survive, so the user's chats are
+   * still theirs after signing in again.
+   */
+  setPassword(email: string, password: string): QaAccountUserPublic {
+    validatePassword(password);
+    return toPublic(
+      this.editUser(email, (user) => ({
+        ...user,
+        passwordHash: hashPassword(password),
+        tokenVersion: (user.tokenVersion ?? 0) + 1,
+      })),
+    );
   }
 
   /**
