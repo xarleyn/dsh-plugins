@@ -19,7 +19,7 @@ const projectB = `${workspace}${sep}project-b`;
 function session(mode: "full" | "focused" | "isolated" = "focused"): ScopeSession {
   return {
     header: { cwd: workspace },
-    events: [{
+    snapshotEvents: () => [{
       type: "session-scope/set",
       data: { version: 1, mode, roots: mode === "full" ? [] : [projectA], workspaceRoot: workspace },
     }],
@@ -69,7 +69,7 @@ describe("monotonic path-aware tool guard", () => {
       symlinkSync(external, join(selected, "escape"), "junction");
       const aliasedSession: ScopeSession = {
         header: { cwd: alias },
-        events: [{
+        snapshotEvents: () => [{
           type: "session-scope/set",
           data: createSessionScopeEvent("focused", [selected], alias, "ui") as unknown as Record<string, unknown>,
         }],
@@ -189,7 +189,7 @@ describe("scoped search dispatcher", () => {
   function multiRootSession(): ScopeSession {
     return {
       header: { cwd: workspace },
-      events: [{
+      snapshotEvents: () => [{
         type: "session-scope/set",
         data: { version: 1, mode: "focused", roots: [projectA, projectB], workspaceRoot: workspace },
       }],

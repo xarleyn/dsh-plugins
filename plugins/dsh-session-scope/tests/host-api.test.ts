@@ -35,7 +35,7 @@ describe("host scope state", () => {
     const selected = join(workspace, "selected");
     mkdirSync(selected);
     const append = vi.fn();
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append };
+    const session: ScopeSession = { header: { cwd: workspace }, snapshotEvents: () => [], append };
 
     const event = setScope(session, { mode: "focused", roots: [selected], source: "ui" });
 
@@ -54,7 +54,7 @@ describe("host scope state", () => {
     mkdirSync(selected);
     const session: ScopeSession = {
       header: { cwd: workspace },
-      events: [{
+      snapshotEvents: () => [{
         type: "session-scope/set",
         data: { version: 1, mode: "focused", roots: [selected], workspaceRoot: workspace },
       }],
@@ -78,7 +78,7 @@ describe("host scope state", () => {
     };
     const session: ScopeSession = {
       header: { cwd: workspace },
-      events: [{ type: "session-scope/set", data: event }],
+      snapshotEvents: () => [{ type: "session-scope/set", data: event }],
       append,
     };
 
@@ -89,7 +89,7 @@ describe("host scope state", () => {
   test("does not materialize the implicit full default as an event", () => {
     const workspace = temporaryWorkspace();
     const append = vi.fn();
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append };
+    const session: ScopeSession = { header: { cwd: workspace }, snapshotEvents: () => [], append };
 
     expect(setScope(session, { mode: "full", source: "ui" })).toMatchObject({ mode: "full", roots: [] });
     expect(append).not.toHaveBeenCalled();
@@ -102,7 +102,7 @@ describe("host directory API", () => {
     const visible = join(workspace, "visible");
     const outside = temporaryWorkspace();
     mkdirSync(visible);
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append: vi.fn() };
+    const session: ScopeSession = { header: { cwd: workspace }, snapshotEvents: () => [], append: vi.fn() };
 
     await expect(listScopeDirectory(session, workspace)).resolves.toMatchObject({
       entries: [expect.objectContaining({ name: "visible", path: canonicalPath(visible) })],

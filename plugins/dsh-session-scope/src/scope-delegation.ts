@@ -19,7 +19,7 @@ export interface DelegatedSessionHeader extends SessionHeader {
 
 export interface DelegatedScopeSession {
   header: DelegatedSessionHeader;
-  events: readonly SessionEvent[];
+  snapshotEvents(): readonly SessionEvent[];
   append(type: typeof SESSION_SCOPE_EVENT, data: SessionScopeEventData): unknown;
 }
 
@@ -36,7 +36,7 @@ function hasInheritedScopeState(events: readonly SessionEvent[]): boolean {
 function inheritedSeedScope(session: DelegatedScopeSession): EffectiveSessionScope | undefined {
   const seedLength = session.header.seedLength ?? 0;
   if (seedLength <= 0) return undefined;
-  const inherited = session.events.slice(0, seedLength);
+  const inherited = session.snapshotEvents().slice(0, seedLength);
   return hasInheritedScopeState(inherited)
     ? effectiveSessionScope(inherited, session.header)
     : undefined;
@@ -44,7 +44,7 @@ function inheritedSeedScope(session: DelegatedScopeSession): EffectiveSessionSco
 
 function hasOwnScopeSnapshot(session: DelegatedScopeSession): boolean {
   const ownStart = session.header.seedLength ?? 0;
-  return hasScopeSnapshot(session.events.slice(ownStart));
+  return hasScopeSnapshot(session.snapshotEvents().slice(ownStart));
 }
 
 /**
@@ -70,7 +70,7 @@ export function initializeDelegatedSessionScope(
         "The parent session scope is unavailable.",
       );
     }
-    scope = effectiveSessionScope(parent.events, parent.header);
+    scope = effectiveSessionScope(parent.snapshotEvents(), parent.header);
   }
 
   const childWorkspace = child.header.cwd ?? "";

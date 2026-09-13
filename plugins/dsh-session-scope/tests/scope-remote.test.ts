@@ -30,7 +30,7 @@ describe("session scope read RPC", () => {
     const visible = join(workspace, "visible");
     const outside = temporaryWorkspace();
     mkdirSync(visible);
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append: vi.fn() };
+    const session: ScopeSession = { header: { cwd: workspace }, snapshotEvents: () => [], append: vi.fn() };
     const ctx = new Context();
     ctx.provide("sessions", { get: (id: string) => id === "session" ? session : undefined });
     const service = new SessionScopeReadService(ctx, workspace);

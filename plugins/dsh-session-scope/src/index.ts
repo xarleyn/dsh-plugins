@@ -138,7 +138,7 @@ function patchResolve(service: SandboxPolicyServiceLike): Disposer {
       if (session === void 0) {
         patched = { ...resolved, extraWritableRoots: [resolved.workspaceRoot] };
       } else {
-        const selection = selectionOf(session.events);
+        const selection = selectionOf(session.snapshotEvents());
         // The workspace is an ORDINARY member of the selection: it is writable
         // exactly when it is in the list. With no recorded selection the default
         // is workspace-writable.
@@ -412,7 +412,7 @@ async function handleWorkspaceScope(
   const verb = space === -1 ? raw : raw.slice(0, space);
   const rest = space === -1 ? "" : raw.slice(space + 1).trim();
   const workspaceRoot = workspaceRootOf(session, ctx.sandboxPolicy.workspaceRoot);
-  const selection = selectionOf(session.events);
+  const selection = selectionOf(session.snapshotEvents());
   const effectiveRoots = selection.workspace && !selection.roots.includes(workspaceRoot)
     ? [workspaceRoot, ...selection.roots]
     : selection.roots;

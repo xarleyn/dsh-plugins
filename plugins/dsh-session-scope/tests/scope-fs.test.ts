@@ -24,7 +24,7 @@ function target(path: string): ScopeFsTarget {
 function focusedSession(root: string): ScopeSession {
   return {
     header: { cwd: workspace },
-    events: [{
+    snapshotEvents: () => [{
       type: "session-scope/set",
       data: { version: 1, mode: "focused", roots: [root], workspaceRoot: workspace },
     }],
@@ -33,7 +33,7 @@ function focusedSession(root: string): ScopeSession {
 }
 
 function fullSession(): ScopeSession {
-  return { header: { cwd: workspace }, events: [], append: vi.fn() };
+  return { header: { cwd: workspace }, snapshotEvents: () => [], append: vi.fn() };
 }
 
 function fakeFileSystem(): ScopeAwareFileSystem {

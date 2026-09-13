@@ -1164,7 +1164,7 @@ isolatedBackend: bwrap / null
 При resume:
 
 ```text
-effectiveSessionScope(session.events)
+effectiveSessionScope(session.snapshotEvents())
 ```
 
 должен восстановить state без дополнительного external store.

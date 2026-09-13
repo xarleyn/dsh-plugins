@@ -15,7 +15,7 @@ import {
 
 export interface ScopeSession {
   header?: SessionHeader;
-  events: SessionEvent[];
+  snapshotEvents(): readonly SessionEvent[];
   append(type: typeof SESSION_SCOPE_EVENT, data: SessionScopeEventData): unknown;
 }
 
@@ -37,7 +37,7 @@ function sessionWorkspaceRoot(session: ScopeSession, fallbackWorkspaceRoot = "")
 }
 
 export function getScope(session: ScopeSession, fallbackWorkspaceRoot = ""): EffectiveSessionScope {
-  return effectiveSessionScope(session.events, {
+  return effectiveSessionScope(session.snapshotEvents(), {
     cwd: sessionWorkspaceRoot(session, fallbackWorkspaceRoot),
   });
 }
