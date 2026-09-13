@@ -71,8 +71,12 @@ export function resolveBasics(input: QaSurfaceConfig): BasicsSlice {
         DEFAULT_QA_SURFACE_CONFIG.entry.cookieBootstrap,
     }),
     interaction: Object.freeze({
-      approvals: "blocked",
-      questions: "unsupported",
+      approvals:
+        input.interaction?.approvals ??
+        DEFAULT_QA_SURFACE_CONFIG.interaction.approvals,
+      questions:
+        input.interaction?.questions ??
+        DEFAULT_QA_SURFACE_CONFIG.interaction.questions,
     }),
   };
 }

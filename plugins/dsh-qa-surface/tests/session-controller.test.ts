@@ -599,4 +599,127 @@ describe("QA session controller", () => {
     );
     controller.dispose();
   });
+
+  it("surfaces a parked approval of a running chat and answers it", async () => {
+    const world = harness();
+    const request = {
+      id: "request-1",
+      sessionId: "created-1",
+      toolName: "glob",
+      reason: "Safety gate requests approval",
+      createdAt: 1,
+      delegated: false,
+    };
+    const pendingApprovals = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [request] })
+      .mockResolvedValue({ ok: true as const, value: [] });
+    const answerApproval = vi.fn(async () => ({
+      ok: true as const,
+      value: true,
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { approvals: "interactive" } }),
+      approvalApi: { pendingApprovals, answerApproval },
+    });
+    await controller.ensureSession();
+    // Nothing is parked until a turn runs, so the poll follows the turn.
+    expect(pendingApprovals).not.toHaveBeenCalled();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().approvals).toEqual([request]);
+    });
+    expect(pendingApprovals).toHaveBeenCalledWith("", "created-1");
+
+    await controller.answerApproval("request-1", "allowed-once");
+    expect(answerApproval).toHaveBeenCalledWith(
+      "",
+      "created-1",
+      "request-1",
+      "allowed-once",
+    );
+    expect(controller.getSnapshot().approvals).toEqual([]);
+    controller.dispose();
+  });
+
+  it("surfaces a parked question of a running chat and answers it", async () => {
+    const world = harness();
+    const request = {
+      id: "question-1",
+      sessionId: "created-1",
+      createdAt: 1,
+      questions: [
+        {
+          id: "target",
+          question: "Куда писать отчёт?",
+          header: null,
+          detail: null,
+          multiSelect: false,
+          options: [{ label: "В чат", description: null }],
+        },
+      ],
+    };
+    const pendingQuestions = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [request] })
+      .mockResolvedValue({ ok: true as const, value: [] });
+    const answerQuestion = vi.fn(async () => ({
+      ok: true as const,
+      value: true,
+    }));
+    const cancelQuestion = vi.fn(async () => ({
+      ok: true as const,
+      value: true,
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { questions: "interactive" } }),
+      questionApi: { pendingQuestions, answerQuestion, cancelQuestion },
+    });
+    await controller.ensureSession();
+    expect(pendingQuestions).not.toHaveBeenCalled();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().questions).toEqual([request]);
+    });
+    expect(pendingQuestions).toHaveBeenCalledWith("", "created-1");
+
+    await controller.answerQuestion("question-1", [
+      { id: "target", selected: ["В чат"] },
+    ]);
+    expect(answerQuestion).toHaveBeenCalledWith("", "created-1", "question-1", [
+      { id: "target", selected: ["В чат"] },
+    ]);
+    expect(controller.getSnapshot().questions).toEqual([]);
+
+    await controller.cancelQuestion("question-1");
+    expect(cancelQuestion).toHaveBeenCalledWith("", "created-1", "question-1");
+    controller.dispose();
+  });
+
+  it("never polls approvals while the deployment blocks them", async () => {
+    const world = harness();
+    const pendingApprovals = vi.fn(async () => ({
+      ok: true as const,
+      value: [],
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      approvalApi: {
+        pendingApprovals,
+        answerApproval: vi.fn(async () => ({ ok: true as const, value: true })),
+      },
+    });
+    await controller.ensureSession();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await Promise.resolve();
+    expect(pendingApprovals).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().approvals).toEqual([]);
+    controller.dispose();
+  });
 });

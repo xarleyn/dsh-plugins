@@ -20,7 +20,9 @@ import { QaSurface } from "./QaSurface.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
   QaAccountsApi,
+  QaApprovalApi,
   QaFileUpload,
+  QaQuestionApi,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -29,6 +31,8 @@ import type {
 import { QA_SURFACE_STYLES } from "./styles.js";
 import type {
   QaAccountSession,
+  QaApprovalDecision,
+  QaQuestionAnswerItem,
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
@@ -75,6 +79,65 @@ interface QaPolicyRemote extends QaAccountsApi {
       token: string,
       sessionId: string,
       sourcePath: string,
+    ): infer Result;
+  }
+    ? Result
+    : never;
+  pendingApprovals(
+    token: string,
+    sessionId: string,
+  ): QaApprovalApi extends {
+    pendingApprovals(token: string, sessionId: string): infer Result;
+  }
+    ? Result
+    : never;
+  pendingQuestions(
+    token: string,
+    sessionId: string,
+  ): QaQuestionApi extends {
+    pendingQuestions(token: string, sessionId: string): infer Result;
+  }
+    ? Result
+    : never;
+  answerQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    answers: readonly QaQuestionAnswerItem[],
+  ): QaQuestionApi extends {
+    answerQuestion(
+      token: string,
+      sessionId: string,
+      requestId: string,
+      answers: readonly QaQuestionAnswerItem[],
+    ): infer Result;
+  }
+    ? Result
+    : never;
+  cancelQuestion(
+    token: string,
+    sessionId: string,
+    requestId: string,
+  ): QaQuestionApi extends {
+    cancelQuestion(
+      token: string,
+      sessionId: string,
+      requestId: string,
+    ): infer Result;
+  }
+    ? Result
+    : never;
+  answerApproval(
+    token: string,
+    sessionId: string,
+    requestId: string,
+    decision: QaApprovalDecision,
+  ): QaApprovalApi extends {
+    answerApproval(
+      token: string,
+      sessionId: string,
+      requestId: string,
+      decision: QaApprovalDecision,
     ): infer Result;
   }
     ? Result
@@ -148,6 +211,40 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             sourcePath,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
+      };
+      const questionApi: QaQuestionApi = {
+        pendingQuestions: (token, sessionId) =>
+          policyRemote.pendingQuestions(
+            token,
+            sessionId,
+          ) as unknown as ReturnType<QaQuestionApi["pendingQuestions"]>,
+        answerQuestion: (token, sessionId, requestId, answers) =>
+          policyRemote.answerQuestion(
+            token,
+            sessionId,
+            requestId,
+            answers,
+          ) as unknown as ReturnType<QaQuestionApi["answerQuestion"]>,
+        cancelQuestion: (token, sessionId, requestId) =>
+          policyRemote.cancelQuestion(
+            token,
+            sessionId,
+            requestId,
+          ) as unknown as ReturnType<QaQuestionApi["cancelQuestion"]>,
+      };
+      const approvalApi: QaApprovalApi = {
+        pendingApprovals: (token, sessionId) =>
+          policyRemote.pendingApprovals(
+            token,
+            sessionId,
+          ) as unknown as ReturnType<QaApprovalApi["pendingApprovals"]>,
+        answerApproval: (token, sessionId, requestId, decision) =>
+          policyRemote.answerApproval(
+            token,
+            sessionId,
+            requestId,
+            decision,
+          ) as unknown as ReturnType<QaApprovalApi["answerApproval"]>,
       };
       // The account gate rides its own remote; a stale token simply answers
       // "not authenticated" and the browser shows the login card.
@@ -320,6 +417,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               createSession: (token: string) =>
                 policyRemote.createSession(token),
               sourceApi,
+              approvalApi,
+              questionApi,
               accounts,
               // The upload service is optional on the page: a deployment that
               // does not serve it keeps images, and a staged file refuses the

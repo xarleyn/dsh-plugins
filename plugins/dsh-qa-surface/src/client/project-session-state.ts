@@ -1,6 +1,8 @@
 import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
+  QaPendingApproval,
+  QaPendingQuestion,
   QaSessionState,
   QaSubagentView,
   QaTurnSources,
@@ -16,6 +18,13 @@ export interface QaBoundProjectionInput {
   readonly conversationSnapshot: ConversationSnapshot | undefined;
   /** Turn bundles with the Host provenance already merged in (Host wins). */
   readonly sourceBundles: readonly QaTurnSources[];
+  /**
+   * Tool calls and questions the Host parked for the operator. They are
+   * host-side state, not part of the session snapshot, so the controller polls
+   * them separately.
+   */
+  readonly approvals: readonly QaPendingApproval[];
+  readonly questions: readonly QaPendingQuestion[];
   readonly operationError: string | null;
   readonly policyReady: boolean;
   readonly admissionPending: boolean;
@@ -38,9 +47,9 @@ export function projectBoundSessionState(
   input: QaBoundProjectionInput,
 ): QaSessionState {
   const { config, sessionSnapshot: snapshot } = input;
-  // A pending approval interaction is invisible to this snapshot in 0.1.5;
-  // the QA lockdown pins approval=never and strips escalation-requiring
-  // tools, so no interaction the surface cannot answer should ever arise.
+  // The session snapshot carries no interaction state in 0.1.5: the Host parks
+  // a composed gate's `ask` on its own side and the controller polls it, so an
+  // unanswered request is visible here without being part of the snapshot.
   const error =
     input.operationError ??
     (snapshot.removed || snapshot.openState === "error"
@@ -110,5 +119,7 @@ export function projectBoundSessionState(
     sourcesComplete: latest?.complete ?? true,
     incompleteSourceOrigins: latest?.incompleteOrigins,
     viewingSubagent: input.viewingSubagent,
+    approvals: input.approvals,
+    questions: input.questions,
   };
 }

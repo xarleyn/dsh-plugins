@@ -9,6 +9,14 @@
           matchChildren: true
         ui:
           showReset: false
+        # Fail closed: a composed tool gate's `ask` is refused, not answered.
+        # A deployment that wants the operator to answer it opts in with
+        # `interaction: { approvals: interactive }`.
+        interaction:
+          approvals: blocked
+          # Ask_user_question is refused, not answered (the tool is mounted per
+          # preset; opt in with `interaction: { questions: interactive }`).
+          questions: unsupported
         lockdown:
           enabled: true
           sandboxMode: read-only

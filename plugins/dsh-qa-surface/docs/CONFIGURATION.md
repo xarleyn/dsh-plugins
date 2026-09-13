@@ -14,7 +14,13 @@ rules are:
 - duplicate/blank suggested questions are removed;
 - duplicate/blank running phrases are removed, each phrase is at most 120
   characters, and an empty list restores the built-in phrases;
-- approval and question policies are fixed to safe blocking behavior;
+- approvals default to refusing a composed tool gate's `ask`;
+  `interaction.approvals: interactive` parks it for the operator instead, and no
+  mode approves anything without a person;
+- user questions default to refused (`unsupported`);
+  `interaction.questions: interactive` parks `ask_user_question` as an
+  answerable form, and needs the tool mounted by the deployment preset plus its
+  name in `lockdown.toolPolicy.allow`;
 - reasoning and tool details are opt-in through `ui.showReasoning` and
   `ui.showToolActivity`; enable them only where those contents are appropriate
   for the QA audience;
@@ -355,12 +361,31 @@ Host-side enforcement never depended on the browser's read path: `secureSession`
 attestation re-derives everything from the Host-owned configuration on every
 bind and every prompt.
 
-`interaction.approvals: blocked` is enforced on the attested agent before the
-approval service runs. If any composed policy asks for approval, the QA
-pre-execute listener returns a denial that says approval interactions are
-unavailable; no prompt is shown and no rejection is attributed to the user.
-The required `approvalPolicy: never` remains an independent fail-closed
-backstop.
+`interaction.approvals` decides what happens to a tool call a composed plugin
+gate (a safety classifier, a hook rule) answers with `ask`:
+
+- `blocked` (default) — enforced on the attested agent before the approval
+  service runs. If any composed policy asks for approval, the QA pre-execute
+  listener returns a denial that says approval interactions are unavailable; no
+  prompt is shown and no rejection is attributed to the user.
+- `interactive` — the call is parked instead: it appears as a request card over
+  the composer (the gate's own reason, the tool, Reject / Allow once) and the
+  operator's answer becomes the decision. A request is Host state, so it survives
+  a page reload and is polled while a turn runs; an unanswered request waits
+  until the turn is stopped, which settles it. A delegated child's call is listed
+  under the chat that made it.
+
+Neither mode approves anything on its own — a person answers, or the call is
+refused. The sibling `interaction.questions` knob works the same way for
+`ask_user_question`: `unsupported` refuses the request with a reason the model
+can act on, `interactive` parks it as a form the operator fills in (options,
+free text, explicit skip and cancel); a skipped question is reported as skipped,
+never guessed. The QA listener is owned by the plugin context, so it wraps every
+composed gate for attested chats (delegated children included) and leaves every
+other session's approval flow untouched. The required `approvalPolicy: never`
+remains an independent fail-closed backstop for asks that reach the approval
+service directly, and the tool allow-list, workspace fence and read-only sandbox
+still run on the resolved call.
 
 ## Skill catalog scope
 

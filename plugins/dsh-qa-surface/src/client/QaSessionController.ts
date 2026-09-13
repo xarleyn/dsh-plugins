@@ -20,18 +20,23 @@ import { createQaSession } from "./create-session.js";
 import { buildQaPromptContent, stageQaFiles } from "./prompt-content.js";
 import { attestQaPolicy } from "./session-admission.js";
 import { QaHostSourceBridge } from "./session-sources.js";
+import { QaHostApprovalBridge } from "./approvals.js";
+import { QaHostQuestionBridge } from "./questions.js";
 import { StreamPublisher } from "./stream-publisher.js";
 import type {
+  QaApprovalApi,
   QaConversation,
   QaCreateSession,
   QaFileUpload,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaQuestionApi,
   QaSourceApi,
   StorageLike,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
+import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { projectBoundSessionState } from "./project-session-state.js";
@@ -63,6 +68,17 @@ export interface QaSessionControllerOptions {
   readonly config: ResolvedQaSurfaceConfig;
   readonly secureSession: QaSecureSession;
   readonly sourceApi?: QaSourceApi;
+  /**
+   * The approval half of the Host namespace. Absent on a page built against a
+   * Host that does not answer approvals: the surface then never shows a
+   * request and keeps the composer as it is.
+   */
+  readonly approvalApi?: QaApprovalApi;
+  /**
+   * The question half of the Host namespace. Absent on a page whose Host build
+   * does not answer questions: the surface then only renders what it can.
+   */
+  readonly questionApi?: QaQuestionApi;
   readonly storage?: StorageLike;
   /**
    * Browser file-upload service, resolved lazily: the page may not serve the
@@ -82,6 +98,12 @@ export interface QaSessionControllerOptions {
 }
 
 const CONFIGURATION_ERROR = "Настройки помощника недоступны.";
+
+/**
+ * Spacing of the parked-request poll. A request is answered by a person, so a
+ * second of latency is invisible; the poll only runs while a turn runs.
+ */
+const PENDING_POLL_MS = 1_000;
 
 /**
  * The only module that couples QA behavior to DSH Session/client APIs. It owns
@@ -127,6 +149,12 @@ export class QaSessionController {
   private chatsRevision = 0;
   /** Host-side provenance of the bound chat, merged into the projection. */
   private readonly hostSources: QaHostSourceBridge;
+  /** Host-side approvals of the bound chat waiting for the operator. */
+  private readonly hostApprovals: QaHostApprovalBridge;
+  /** Host-side question requests of the bound chat waiting for the operator. */
+  private readonly hostQuestions: QaHostQuestionBridge;
+  /** Set while a running turn is polled for parked requests. */
+  private pendingTimer: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -154,6 +182,8 @@ export class QaSessionController {
       this.sourceApi,
       () => this.accounts?.token() ?? "",
     );
+    this.hostApprovals = new QaHostApprovalBridge(options.approvalApi);
+    this.hostQuestions = new QaHostQuestionBridge(options.questionApi);
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamPublisher = new StreamPublisher(options.streamIntervalMs ?? 66);
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -776,6 +806,9 @@ export class QaSessionController {
     }
     this.session = undefined;
     this.hostSources.reset();
+    this.hostApprovals.reset();
+    this.hostQuestions.reset();
+    this.stopPendingPolling();
     this.admissionPending = false;
     this.policyReady = false;
   }
@@ -841,12 +874,15 @@ export class QaSessionController {
     if (!snapshot.running) {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
+    this.syncPendingPolling(snapshot.running === true);
     this.state = projectBoundSessionState({
       connected,
       sessionId,
       sessionSnapshot: snapshot,
       conversationSnapshot,
       sourceBundles,
+      approvals: this.hostApprovals.list(),
+      questions: this.hostQuestions.list(),
       // Ownership is chat-level: every user message of a foreign chat
       // carries its owner's name when an admin reads it.
       author: this.accounts?.messageAuthorOf(sessionId),
@@ -925,5 +961,99 @@ export class QaSessionController {
 
   private emit(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  /**
+   * Answer a request the Host parked for this chat. The Host re-checks the
+   * request against the chat, so an answer that lost its race is a no-op; the
+   * refresh that follows is what the surface renders.
+   */
+  async answerApproval(
+    requestId: string,
+    decision: QaApprovalDecision,
+  ): Promise<void> {
+    if (this.session === undefined) return;
+    await this.hostApprovals.answer(
+      String(this.session.sessionId),
+      this.hostToken(),
+      requestId,
+      decision,
+    );
+    this.publish();
+  }
+
+  /** Send the operator's answers to one parked question request. */
+  async answerQuestion(
+    requestId: string,
+    answers: readonly QaQuestionAnswerItem[],
+  ): Promise<void> {
+    if (this.session === undefined) return;
+    await this.hostQuestions.answer(
+      String(this.session.sessionId),
+      this.hostToken(),
+      requestId,
+      answers,
+    );
+    this.publish();
+  }
+
+  /** Close a parked question request without answering it. */
+  async cancelQuestion(requestId: string): Promise<void> {
+    if (this.session === undefined) return;
+    await this.hostQuestions.cancel(
+      String(this.session.sessionId),
+      this.hostToken(),
+      requestId,
+    );
+    this.publish();
+  }
+
+  /**
+   * Poll the Host for parked requests while a turn runs. A request only exists
+   * inside an open turn, and it is Host state: polling is how the page learns
+   * about it, and how it reappears after a reload. One timer serves both seams,
+   * and each is polled only where the deployment answers it.
+   */
+  private syncPendingPolling(running: boolean): void {
+    const approvals = this.hostApprovals.available
+      ? this.config.interaction.approvals === "interactive"
+      : false;
+    const questions = this.hostQuestions.available
+      ? this.config.interaction.questions === "interactive"
+      : false;
+    const wanted =
+      running &&
+      (approvals || questions) &&
+      // A subagent watched from the panel is a read-only view of a session the
+      // chat owns: its own requests belong to the chat, not to this binding.
+      this.viewingSubagent === null &&
+      this.session !== undefined;
+    if (!wanted) {
+      this.stopPendingPolling();
+      return;
+    }
+    if (this.pendingTimer !== undefined || this.session === undefined) return;
+    const sessionId = String(this.session.sessionId);
+    const token = this.hostToken();
+    const tick = () => {
+      if (approvals) {
+        void this.hostApprovals.refresh(sessionId, token, () => this.publish());
+      }
+      if (questions) {
+        void this.hostQuestions.refresh(sessionId, token, () => this.publish());
+      }
+    };
+    this.pendingTimer = setInterval(tick, PENDING_POLL_MS);
+    tick();
+  }
+
+  private stopPendingPolling(): void {
+    if (this.pendingTimer === undefined) return;
+    clearInterval(this.pendingTimer);
+    this.pendingTimer = undefined;
+  }
+
+  private hostToken(): string {
+    return this.accounts?.token() ?? "";
   }
 }

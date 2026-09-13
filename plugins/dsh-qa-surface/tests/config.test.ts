@@ -317,6 +317,19 @@ describe("qa surface config", () => {
     ).toThrow(/permissionPreset/u);
   });
 
+  it("blocks interactions until the deployment opts into the QA view", () => {
+    expect(resolveConfig().interaction).toEqual({
+      approvals: "blocked",
+      questions: "unsupported",
+    });
+    expect(
+      resolveConfig({ interaction: { approvals: "interactive" } }).interaction,
+    ).toEqual({ approvals: "interactive", questions: "unsupported" });
+    expect(
+      resolveConfig({ interaction: { questions: "interactive" } }).interaction,
+    ).toEqual({ approvals: "blocked", questions: "interactive" });
+  });
+
   it("requires explicit reset authorization when the reset control is shown", () => {
     expect(() => resolveConfig({ ui: { showReset: true } })).toThrow(
       /allowSessionReset/u,
