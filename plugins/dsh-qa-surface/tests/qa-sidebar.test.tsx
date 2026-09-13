@@ -352,9 +352,9 @@ describe("sidebar version and changelog", () => {
     expect(document.querySelectorAll(".dsh-qa-changelog__current").length).toBe(
       1,
     );
-    // The changelog keeps the shared panel width; only the profile dialog asks
-    // for the wider one.
-    expect(document.querySelector(".dsh-qa-modal__panel--wide")).toBeNull();
+    // The changelog asks for the same wider panel the profile dialog uses;
+    // its entries are full sentences and strand words at the default width.
+    expect(document.querySelector(".dsh-qa-modal__panel--wide")).toBeTruthy();
     fireEvent.click(screen.getByLabelText("Закрыть историю версий"));
     expect(document.querySelector(".dsh-qa-modal")).toBeNull();
   });
