@@ -6,7 +6,9 @@
       "0.1.5-rc.2"
     ],
     "requiredClientFeatures": [
-      "settings.plugin.item"
+      "settings.plugin.item",
+      "sidebar.right.pane.tab",
+      "sidebarRightTabs"
     ]
   },
   "node": ">=22"

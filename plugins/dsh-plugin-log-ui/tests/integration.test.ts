@@ -96,8 +96,7 @@ describe("plugin log UI integration", () => {
     });
   });
 
-  it("applies configured overrides and updates them live", async () => {
-    const ctx = await configuredContext({
+  it("applies configured overrides and updates them live", async () => {    const ctx = await configuredContext({
       "plugin-log": {
         defaultLevel: "warn",
         format: "json",
@@ -122,5 +121,48 @@ describe("plugin log UI integration", () => {
       expect(regular.level).toBe("error");
       expect(getRegisteredPluginLoggers().every((entry) => entry.format === "text")).toBe(true);
     });
+  });
+
+  it("serves the live record stream the panel reads", async () => {
+    const ctx = await configuredContext({ "plugin-log": { defaultLevel: "trace" } });
+    const created = logger("dsh-stream");
+    // The stream carries every logger in the process, this plugin's own
+    // diagnostics included, so a reader narrows it by plugin.
+    const mine = (cursor: number) =>
+      ctx.pluginLogUi.tail(cursor, 10).records.filter((record) => record.pluginId === "dsh-stream");
+
+    created.info("stream.first", { attempt: 1 });
+    created.child("worker").warn("stream.second");
+
+    const read = ctx.pluginLogUi.tail(0, 10);
+    expect(mine(0).map((record) => [record.level, record.module, record.event])).toEqual([
+      ["info", "", "stream.first"],
+      ["warn", "worker", "stream.second"],
+    ]);
+    expect(mine(0)[0]?.fields).toEqual([{ key: "attempt", value: "1" }]);
+
+    // The cursor is what makes the panel's poll incremental.
+    expect(mine(read.cursor)).toEqual([]);
+    created.info("stream.third");
+    expect(mine(read.cursor).map((record) => record.event)).toEqual(["stream.third"]);
+  });
+
+  it("renders arbitrary field values instead of shipping them across the Remote", async () => {
+    const ctx = await configuredContext({ "plugin-log": { defaultLevel: "trace" } });
+    const created = logger("dsh-fields");
+    const cyclic: Record<string, unknown> = { name: "loop" };
+    cyclic["self"] = cyclic;
+
+    created.info("stream.fields", { cyclic, failure: new Error("boom"), list: [1, 2] });
+
+    const [record] = ctx.pluginLogUi.tail(0, 10).records
+      .filter((entry) => entry.pluginId === "dsh-fields");
+    expect(record?.fields).toEqual([
+      // A self-referencing object terminates at the depth limit instead of
+      // cycling: the panel draws a string, and the wire carries one.
+      { key: "cyclic", value: "{name: loop, self: {name: loop, self: {name: loop, self: {…}}}}" },
+      { key: "failure", value: "Error: boom" },
+      { key: "list", value: "[1, 2]" },
+    ]);
   });
 });
