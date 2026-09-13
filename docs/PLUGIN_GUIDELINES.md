@@ -330,7 +330,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
     "prepack": "pnpm run build"
   },
-  "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "…"],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "<feature-specific words>"
+  ],
   "license": "MIT",
   "engines": { "node": "^22.19.0 || >=24.0.0" },
   "peerDependencies": { "@deepseek-ai/cordis": "catalog:dsh" },
@@ -346,6 +353,20 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   совпадать с примером выше. Это требуется для npm Trusted Publishing и
   provenance и проверяется tarball-gate. Новый пакет начинает с `0.0.0`, а
   первая пользовательская версия получается из обязательного Nx Version Plan.
+- **`keywords` — это контракт обнаружения, а не вкусовщина.** Канонический
+  набор: `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` — DSH-
+  индексаторы, маркетплейсы и npm-поиск ищут именно по ним; дальше — слова про
+  возможности. Только lowercase, без повторов. Гейт `pnpm verify:packages`
+  жёстко требует identity-три (`deepseek-harness`, `dsh`, `dsh-plugin`) и
+  непустой `description` с упоминанием DeepSeek Harness или DSH, вместе с
+  `repository.directory` и `homepage`: индексатор, который не может связать
+  npm-пакет с его директорией в монорепе, показывает пакет как «без публичного
+  репозитория». Генератор нового плагина сразу ставит весь канонический набор.
+- **Каталог `plugins.json` в корне.** Он генерируется из манифестов
+  (`pnpm plugins:manifest`) и связывает npm-имя, директорию, описание, keywords,
+  команду установки и homepage; `pnpm verify:packages` падает, пока файл
+  устарел. После генератора, изменения описания/keywords или появления нового
+  пакета его нужно перегенерировать — руками не редактировать.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
   — внутреннее (проверяется гейтом §27.10). Каждый вход: `types` + `default`.
   Всегда включайте `./package.json`.

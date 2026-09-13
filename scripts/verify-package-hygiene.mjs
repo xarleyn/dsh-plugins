@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { findManifestDrift } from "./generate-plugins-manifest.mjs";
 
 const REQUIRED_FILES = [
   "compatibility.json",
@@ -13,6 +14,17 @@ const STANDARD_TYPES_LAYOUTS = new Set([
   "./lib/index.d.ts",
   "./lib/types/index.d.ts",
 ]);
+
+const CANONICAL_REPOSITORY_URL = "git+https://github.com/xarleyn/dsh-plugins.git";
+const CANONICAL_BUGS_URL = "https://github.com/xarleyn/dsh-plugins/issues";
+const HOMEPAGE_PREFIX = "https://github.com/xarleyn/dsh-plugins/tree/main";
+// Packages are discovered through these keywords by DSH indexes and npm
+// search; a package missing them is invisible to the ecosystem even though it
+// publishes correctly. The full canonical set a package should carry is
+// `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` (the plugin
+// generator emits it); the gate hard-requires the DSH identity trio so the
+// contract cannot drift unnoticed.
+const REQUIRED_KEYWORDS = ["deepseek-harness", "dsh", "dsh-plugin"];
 
 const VERSION_PLANS_DIRECTORY = path.join(".nx", "version-plans");
 const FRONT_MATTER_FENCE = "---";
@@ -100,21 +112,104 @@ export function validatePublishablePlugin(directory) {
   return errors;
 }
 
+function toPosixPath(relative) {
+  return relative.split(/[\\/]/u).join("/");
+}
+
+/**
+ * Published manifests carry the discoverability contract: npm shows them on the
+ * package page, and DSH indexes read keywords and the monorepo directory to
+ * attribute a package to its sources. A package without them looks unpublished
+ * or unmaintained even though the tarball installs fine.
+ */
+export function validateDiscoverability(directory, repoRoot = process.cwd()) {
+  const errors = [];
+  const manifestPath = path.join(directory, "package.json");
+  if (!existsSync(manifestPath)) return errors;
+  const manifest = readJson(manifestPath);
+
+  const relative = toPosixPath(path.relative(repoRoot, directory));
+  const repository = manifest.repository;
+  if (repository?.type !== "git" || repository?.url !== CANONICAL_REPOSITORY_URL) {
+    errors.push(
+      `repository must be { type: "git", url: "${CANONICAL_REPOSITORY_URL}", directory: "${relative}" }`,
+    );
+  } else if (repository.directory !== relative) {
+    errors.push(`repository.directory must be "${relative}"`);
+  }
+
+  const homepage = `${HOMEPAGE_PREFIX}/${relative}#readme`;
+  if (manifest.homepage !== homepage) {
+    errors.push(`homepage must be "${homepage}"`);
+  }
+
+  if (manifest.bugs?.url !== CANONICAL_BUGS_URL) {
+    errors.push(`bugs.url must be "${CANONICAL_BUGS_URL}"`);
+  }
+
+  if (
+    typeof manifest.description !== "string" ||
+    manifest.description.trim() === "" ||
+    !/(deepseek harness|dsh)/iu.test(manifest.description)
+  ) {
+    errors.push(
+      "description must name DeepSeek Harness (or DSH) so the package is searchable",
+    );
+  }
+
+  const keywords = manifest.keywords;
+  if (!Array.isArray(keywords) || keywords.length === 0) {
+    errors.push("keywords must be a non-empty array");
+  } else {
+    for (const keyword of REQUIRED_KEYWORDS) {
+      if (!keywords.includes(keyword)) {
+        errors.push(`keywords must include "${keyword}"`);
+      }
+    }
+    if (new Set(keywords).size !== keywords.length) {
+      errors.push("keywords must not repeat");
+    }
+    if (keywords.some((keyword) => keyword !== keyword.toLowerCase())) {
+      errors.push("keywords must be lowercase");
+    }
+  }
+
+  if (typeof manifest.name !== "string" || !manifest.name.startsWith("@yadsh/")) {
+    errors.push(
+      'name must stay inside the "@yadsh/" scope so the documented install command resolves',
+    );
+  }
+
+  return errors;
+}
+
 export function verifyPublishablePlugins(repoRoot = process.cwd()) {
-  const pluginsRoot = path.join(repoRoot, "plugins");
   const failures = [];
   let verified = 0;
 
-  for (const entry of readdirSync(pluginsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const directory = path.join(pluginsRoot, entry.name);
-    if (!existsSync(path.join(directory, "package.json"))) continue;
-    const manifest = readJson(path.join(directory, "package.json"));
-    if (manifest.private === true) continue;
-    verified += 1;
-    for (const error of validatePublishablePlugin(directory)) {
-      failures.push(`${manifest.name}: ${error}`);
+  for (const group of ["plugins", "packages"]) {
+    const groupRoot = path.join(repoRoot, group);
+    if (!existsSync(groupRoot)) continue;
+    for (const entry of readdirSync(groupRoot, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const directory = path.join(groupRoot, entry.name);
+      if (!existsSync(path.join(directory, "package.json"))) continue;
+      const manifest = readJson(path.join(directory, "package.json"));
+      if (manifest.private === true) continue;
+      verified += 1;
+      const errors = [
+        // Only plugin directories carry the Cordis patch and client contract.
+        ...(group === "plugins" ? validatePublishablePlugin(directory) : []),
+        ...validateDiscoverability(directory, repoRoot),
+      ];
+      for (const error of errors) {
+        failures.push(`${manifest.name}: ${error}`);
+      }
     }
+  }
+
+  for (const error of findManifestDrift(repoRoot)) {
+    failures.push(`catalog: ${error}`);
   }
 
   if (failures.length > 0) {
