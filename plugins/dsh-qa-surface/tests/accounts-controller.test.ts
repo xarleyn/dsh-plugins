@@ -38,6 +38,12 @@ function session(token: string): {
         createdAt: "2026-09-11T00:00:00.000Z",
         lastLoginAt: null,
         disabled: false,
+        profile: {
+          fullName: "",
+          identities: {},
+          instructions: "",
+          updatedAt: null,
+        },
       },
     },
   };
@@ -64,6 +70,13 @@ function remote(
     accountsListOwnership: vi.fn(async () => ({
       ok: true as const,
       value: { entries: [] },
+    })),
+    accountsUpdateProfile: vi.fn(async (_token, input) => ({
+      ok: true as const,
+      value: {
+        ...session("t-login").value.user,
+        profile: { ...input, updatedAt: "2026-09-13T00:00:00.000Z" },
+      },
     })),
     ...overrides,
   } as QaAccountsApi;
@@ -373,6 +386,65 @@ describe("QA accounts controller", () => {
     expect(accountsReasonOf(undefined)).toBeNull();
     expect(accountsErrorMessage("email-taken")).toContain("зарегистрирован");
     expect(accountsErrorMessage("admin-required")).toContain("администратору");
+    expect(accountsErrorMessage("invalid-profile")).toContain("профиля");
+    expect(accountsErrorMessage("profile-disabled")).toContain("отключён");
     expect(accountsErrorMessage(null)).toContain("Не удалось");
+  });
+
+  it("stores the signed-in user's profile and reports refusals inline", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    const refusal = await accounts.updateProfile({
+      fullName: "Иван Иванов",
+      identities: { jira: "i.ivanov" },
+      instructions: "Отвечай кратко.",
+    });
+    expect(refusal).toBeNull();
+    expect(api.accountsUpdateProfile).toHaveBeenCalledWith("t-login", {
+      fullName: "Иван Иванов",
+      identities: { jira: "i.ivanov" },
+      instructions: "Отвечай кратко.",
+    });
+    // The snapshot carries the stored profile, so the sidebar name updates.
+    expect(accounts.getSnapshot()).toMatchObject({
+      stage: "authed",
+      user: {
+        profile: { fullName: "Иван Иванов", identities: { jira: "i.ivanov" } },
+      },
+    });
+
+    const refused = controller(
+      remote({
+        accountsUpdateProfile: vi.fn(async () => ({
+          ok: false as const,
+          error: new Error("nope (reason: invalid-profile)"),
+        })),
+      }),
+    );
+    await refused.start();
+    await refused.login("a@b.co", "password-1");
+    expect(
+      await refused.updateProfile({
+        fullName: "",
+        identities: {},
+        instructions: "",
+      }),
+    ).toContain("профиля");
+  });
+
+  it("refuses a profile write while anonymous", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await expect(
+      accounts.updateProfile({
+        fullName: "x",
+        identities: {},
+        instructions: "",
+      }),
+    ).resolves.toContain("Не удалось");
+    expect(api.accountsUpdateProfile).not.toHaveBeenCalled();
   });
 });

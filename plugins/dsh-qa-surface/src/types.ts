@@ -15,6 +15,39 @@ export interface QaAccountUserPublic {
   readonly createdAt: string;
   readonly lastLoginAt: string | null;
   readonly disabled: boolean;
+  /** Self-declared identity the QA prompt renders; empty until edited. */
+  readonly profile: QaAccountProfile;
+}
+
+/** One external system the deployment collects a handle for. */
+export interface QaAccountIdentityField {
+  /** Stable lowercase key: the profile's storage key and the prompt's label. */
+  readonly key: string;
+  /** Operator copy shown in the profile form. */
+  readonly label: string;
+}
+
+/**
+ * What one account says about itself. Every value is the owner's own wording,
+ * which is why the prompt renders it as self-declared rather than as a
+ * verified directory attribute.
+ */
+export interface QaAccountProfile {
+  /** Full name as the user writes it; empty when unset. */
+  readonly fullName: string;
+  /** External-system handles, keyed by the declared field key. */
+  readonly identities: Readonly<Record<string, string>>;
+  /** Free-form guidance about how the user wants answers; empty when unset. */
+  readonly instructions: string;
+  /** ISO timestamp of the last edit; null while the profile is untouched. */
+  readonly updatedAt: string | null;
+}
+
+/** Full-replace profile write: an absent value clears the stored one. */
+export interface QaAccountProfileInput {
+  readonly fullName: string;
+  readonly identities: Readonly<Record<string, string>>;
+  readonly instructions: string;
 }
 
 /** One successful login/registration: the bearer token plus the user. */
@@ -170,6 +203,19 @@ export interface QaSurfaceConfig {
      * The child directory is not registered as a separate DSH workspace.
      */
     readonly perUserWorkspace?: boolean;
+    /** Self-declared profile: storage, the owner's form, and prompt injection. */
+    readonly profile?: {
+      readonly enabled?: boolean;
+      /** Render the profile into the QA agent's system prompt. */
+      readonly inject?: boolean;
+      /** External systems to collect a handle for; empty declares none. */
+      readonly identities?: readonly {
+        readonly key?: string;
+        readonly label?: string;
+      }[];
+      /** Character cap on the user's free-form agent guidance. */
+      readonly instructionsMaxLength?: number;
+    };
   };
   readonly entry?: {
     /** Inject the root → /qa redirect for non-loopback hostnames. */
@@ -251,6 +297,12 @@ export interface ResolvedQaSurfaceConfig {
     readonly sessionTtlDays: number;
     readonly showOtherUsersChats: boolean;
     readonly perUserWorkspace: boolean;
+    readonly profile: {
+      readonly enabled: boolean;
+      readonly inject: boolean;
+      readonly identities: readonly QaAccountIdentityField[];
+      readonly instructionsMaxLength: number;
+    };
   };
   readonly entry: {
     readonly redirectNonLoopback: boolean;

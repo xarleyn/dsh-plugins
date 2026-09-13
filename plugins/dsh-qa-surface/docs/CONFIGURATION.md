@@ -175,6 +175,60 @@ QA surface and turns on server-side session ownership:
   host launch-token cookie, with which the full root UI stays technically
   reachable. Keep the network scoping advice from the deployment kit.
 
+### User profile and prompt identity
+
+`accounts.profile` gives every account a self-declared profile and injects it
+into the QA agent's system prompt. The switch is on by default and stays inert
+while accounts are off:
+
+```yaml
+accounts:
+  enabled: true
+  profile:
+    enabled: true # the profile form in the sidebar footer
+    inject: true # the prompt sections described below
+    identities: # external systems to collect a handle for
+      - key: jira
+        label: Jira
+      - key: gitlab
+        label: GitLab
+    instructionsMaxLength: 2000
+```
+
+- Fields: full name, one handle per declared field, and free-form "general
+  instructions for the agent". The owner edits them by clicking the account
+  name in the sidebar footer. The Host accepts only declared keys and caps the
+  instruction text, and the account token is the only identity on the wire, so
+  a browser can never write another account's profile.
+- What the model receives: one section with the user's name, email and
+  handles, and a second one with the user's own instructions, framed as user
+  preferences that cannot change tools, permissions, the sandbox, or any rule
+  the deployment set. Both are re-resolved on every prompt assembly, so an
+  edit — or an account disabled mid-chat — lands on the next turn.
+- Delegated subagents receive the same sections. The injector registers them
+  on every agent it sees rather than on the chat's own agent alone, because an
+  agent's scope chain runs to its preset and never through its parent. A
+  subagent that runs outside this process (another model or SDK) never sees
+  the DSH prompt at all; a deployment that needs one to know the user has to
+  pass the identifiers in the delegation text.
+- The values are self-declared, not verified. The prompt therefore instructs
+  the model to name the identifier it searched by and to ask when results
+  contradict the request, so a mistyped handle surfaces as a question instead
+  of a confident answer about the wrong person.
+- Operator-side management:
+
+  ```sh
+  qa-accounts show user@example.com
+  qa-accounts profile user@example.com --full-name "Иван Иванов" \
+      --identity jira=i.ivanov --identity gitlab=@iivanov
+  qa-accounts profile user@example.com --instructions-file ./tone.md
+  qa-accounts profile user@example.com --clear-identity gitlab
+  ```
+
+  `--instructions-file -` reads that text from stdin. The CLI accepts any
+  shape-valid handle key; only keys declared in `accounts.profile.identities`
+  ever reach the prompt.
+
 ## Entry redirect
 
 `entry.redirectNonLoopback: true` (default) injects one script into the

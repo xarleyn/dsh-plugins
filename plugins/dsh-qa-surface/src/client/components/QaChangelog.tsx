@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { QaModal } from "./QaModal.js";
 
 /**
  * The deployed plugin version and a curated end-user changelog. The module is
@@ -21,6 +21,20 @@ export interface QaChangelogEntry {
 }
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
+  {
+    version: "0.4.0",
+    date: "2026-09-13",
+    sections: [
+      {
+        title: "Новое",
+        items: [
+          "Профиль пользователя: клик по адресу в нижней части сайдбара открывает форму с ФИО, логинами во внешних системах и общими инструкциями для агента.",
+          "Ассистент знает, кто с ним говорит: имя, почта и логины передаются в системный промпт, поэтому запрос «покажи мои задачи» ищется по нужной учётке, а не уточняется каждый раз. Субагенты-эксперты получают те же сведения.",
+          "Свои логины и инструкции можно также задать администратору через CLI: qa-accounts profile, qa-accounts show.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.3.0",
     date: "2026-09-12",
@@ -116,68 +130,36 @@ export interface QaChangelogModalProps {
  * a no-op while closed; Escape and a backdrop click close it.
  */
 export function QaChangelogModal(props: QaChangelogModalProps) {
-  const closeButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!props.open) return;
-    closeButton.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") props.onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [props.open, props.onClose]);
-  if (!props.open) return null;
   return (
-    <div
-      className="dsh-qa-changelog"
-      role="dialog"
-      aria-modal="true"
-      aria-label="История версий"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) props.onClose();
-      }}
+    <QaModal
+      open={props.open}
+      title="История версий"
+      closeLabel="Закрыть историю версий"
+      onClose={props.onClose}
     >
-      <div className="dsh-qa-changelog__panel">
-        <header className="dsh-qa-changelog__head">
-          <h2 className="dsh-qa-changelog__title">История версий</h2>
-          <button
-            ref={closeButton}
-            type="button"
-            className="dsh-qa-changelog__close"
-            aria-label="Закрыть историю версий"
-            onClick={props.onClose}
-          >
-            <svg viewBox="0 0 14 14" aria-hidden="true">
-              <path d="m3.5 3.5 7 7m0-7-7 7" />
-            </svg>
-          </button>
-        </header>
-        <div className="dsh-qa-changelog__body">
-          {QA_CHANGELOG.map((entry) => (
-            <section key={entry.version} className="dsh-qa-changelog__entry">
-              <h3 className="dsh-qa-changelog__version">
-                Версия {entry.version}
-                <span className="dsh-qa-changelog__date">{entry.date}</span>
-                {entry.version === QA_VERSION ? (
-                  <span className="dsh-qa-changelog__current">текущая</span>
-                ) : null}
-              </h3>
-              {entry.sections.map((section) => (
-                <div key={section.title} className="dsh-qa-changelog__section">
-                  <h4 className="dsh-qa-changelog__section-title">
-                    {section.title}
-                  </h4>
-                  <ul className="dsh-qa-changelog__list">
-                    {section.items.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </section>
+      {QA_CHANGELOG.map((entry) => (
+        <section key={entry.version} className="dsh-qa-changelog__entry">
+          <h3 className="dsh-qa-changelog__version">
+            Версия {entry.version}
+            <span className="dsh-qa-changelog__date">{entry.date}</span>
+            {entry.version === QA_VERSION ? (
+              <span className="dsh-qa-changelog__current">текущая</span>
+            ) : null}
+          </h3>
+          {entry.sections.map((section) => (
+            <div key={section.title} className="dsh-qa-changelog__section">
+              <h4 className="dsh-qa-changelog__section-title">
+                {section.title}
+              </h4>
+              <ul className="dsh-qa-changelog__list">
+                {section.items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </div>
-      </div>
-    </div>
+        </section>
+      ))}
+    </QaModal>
   );
 }

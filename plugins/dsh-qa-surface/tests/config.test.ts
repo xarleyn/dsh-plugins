@@ -256,10 +256,72 @@ describe("qa surface config", () => {
       sessionTtlDays: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
+      profile: {
+        enabled: true,
+        inject: true,
+        identities: [],
+        instructionsMaxLength: 2_000,
+      },
     });
     expect(resolveConfig().entry).toEqual({
       redirectNonLoopback: true,
       cookieBootstrap: true,
+    });
+  });
+
+  it("validates the declared identity fields and the instruction cap", () => {
+    const resolved = resolveConfig(
+      schemaParse({
+        accounts: {
+          profile: {
+            identities: [{ key: " JIRA ", label: " Jira " }],
+            instructionsMaxLength: 500,
+          },
+        },
+      }),
+    );
+    expect(resolved.accounts.profile).toEqual({
+      enabled: true,
+      inject: true,
+      identities: [{ key: "jira", label: "Jira" }],
+      instructionsMaxLength: 500,
+    });
+    // A field with no label still renders: the key is the fallback copy.
+    expect(
+      resolveConfig(
+        schemaParse({
+          accounts: { profile: { identities: [{ key: "gitlab" }] } },
+        }),
+      ).accounts.profile.identities,
+    ).toEqual([{ key: "gitlab", label: "gitlab" }]);
+    expect(() =>
+      resolveConfig({
+        accounts: { profile: { identities: [{ key: "bad key!" }] } },
+      }),
+    ).toThrow(/lowercase labels/u);
+    expect(() =>
+      resolveConfig({
+        accounts: {
+          profile: { identities: [{ key: "jira" }, { key: "JIRA" }] },
+        },
+      }),
+    ).toThrow(/twice/u);
+    expect(
+      ConfigSchema["~standard"].validate({
+        accounts: { profile: { identities: [{ label: "no key" }] } },
+      }),
+    ).toHaveProperty("issues");
+    for (const instructionsMaxLength of [0, 199, 20_001]) {
+      expect(() =>
+        resolveConfig({ accounts: { profile: { instructionsMaxLength } } }),
+      ).toThrow(/instructionsMaxLength/u);
+    }
+    const off = resolveConfig({
+      accounts: { profile: { enabled: false, inject: false } },
+    });
+    expect(off.accounts.profile).toMatchObject({
+      enabled: false,
+      inject: false,
     });
   });
 
@@ -277,6 +339,12 @@ describe("qa surface config", () => {
         sessionTtlDays: 7,
         showOtherUsersChats: false,
         perUserWorkspace: false,
+        profile: {
+          enabled: true,
+          inject: true,
+          identities: [],
+          instructionsMaxLength: 2_000,
+        },
       },
     );
   });

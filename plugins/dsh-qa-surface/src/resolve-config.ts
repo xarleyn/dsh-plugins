@@ -1,5 +1,11 @@
-import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "./types.js";
+import {
+  QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
+  QA_PROFILE_INSTRUCTIONS_MAX_MAX,
+  QA_PROFILE_INSTRUCTIONS_MAX_MIN,
+  validateIdentityFields,
+} from "./profile.js";
 import { DEFAULT_THINKING_PHRASES } from "./thinking-phrases.js";
+import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "./types.js";
 
 export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
   {
@@ -41,6 +47,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       "С чего начать?",
       "Помоги разобраться с ошибкой",
     ]),
+    thinkingPhrases: DEFAULT_THINKING_PHRASES,
     interaction: Object.freeze({
       approvals: "blocked",
       questions: "unsupported",
@@ -72,6 +79,12 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       sessionTtlDays: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
+      profile: Object.freeze({
+        enabled: true,
+        inject: true,
+        identities: Object.freeze([]),
+        instructionsMaxLength: QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
+      }),
     }),
     entry: Object.freeze({
       redirectNonLoopback: true,
@@ -154,6 +167,7 @@ function uniqueQuestions(values: readonly string[]): readonly string[] {
   }
   return Object.freeze(questions);
 }
+
 /**
  * Normalize the operator's phrase list. Unlike quick questions, an empty list
  * cannot mean "hide the control": the running indicator has to say something,
@@ -171,7 +185,6 @@ function uniquePhrases(values: readonly string[]): readonly string[] {
   }
   return Object.freeze(phrases);
 }
-
 
 function uniqueToolNames(values: readonly string[]): readonly string[] {
   const names = [
@@ -355,6 +368,26 @@ export function resolveConfig(
   }
   const accountsEnabled =
     input.accounts?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.accounts.enabled;
+  const instructionsMaxLength =
+    input.accounts?.profile?.instructionsMaxLength ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.profile.instructionsMaxLength;
+  if (
+    !Number.isSafeInteger(instructionsMaxLength) ||
+    instructionsMaxLength < QA_PROFILE_INSTRUCTIONS_MAX_MIN ||
+    instructionsMaxLength > QA_PROFILE_INSTRUCTIONS_MAX_MAX
+  ) {
+    throw new TypeError(
+      `dsh-qa-surface: accounts.profile.instructionsMaxLength must be an integer from ${QA_PROFILE_INSTRUCTIONS_MAX_MIN} to ${QA_PROFILE_INSTRUCTIONS_MAX_MAX}`,
+    );
+  }
+  const identityFields = validateIdentityFields(
+    input.accounts?.profile?.identities,
+  );
+  if (!identityFields.ok) {
+    throw new TypeError(
+      `dsh-qa-surface: accounts.profile.identities ${identityFields.message}`,
+    );
+  }
   const perUserWorkspace =
     input.accounts?.perUserWorkspace ??
     DEFAULT_QA_SURFACE_CONFIG.accounts.perUserWorkspace;
@@ -451,9 +484,9 @@ export function resolveConfig(
     }),
     suggestedQuestions: uniqueQuestions(
       input.suggestedQuestions ?? DEFAULT_QA_SURFACE_CONFIG.suggestedQuestions,
+    ),
     thinkingPhrases: uniquePhrases(
       input.thinkingPhrases ?? DEFAULT_QA_SURFACE_CONFIG.thinkingPhrases,
-    ),
     ),
     interaction: Object.freeze({
       approvals: "blocked",
@@ -496,6 +529,18 @@ export function resolveConfig(
         input.accounts?.showOtherUsersChats ??
         DEFAULT_QA_SURFACE_CONFIG.accounts.showOtherUsersChats,
       perUserWorkspace,
+      profile: Object.freeze({
+        enabled:
+          input.accounts?.profile?.enabled ??
+          DEFAULT_QA_SURFACE_CONFIG.accounts.profile.enabled,
+        inject:
+          input.accounts?.profile?.inject ??
+          DEFAULT_QA_SURFACE_CONFIG.accounts.profile.inject,
+        identities: Object.freeze(
+          identityFields.value.map((field) => Object.freeze({ ...field })),
+        ),
+        instructionsMaxLength,
+      }),
     }),
     entry: Object.freeze({
       redirectNonLoopback:

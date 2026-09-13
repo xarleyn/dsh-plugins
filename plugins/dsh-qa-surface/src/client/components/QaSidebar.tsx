@@ -1,7 +1,13 @@
 import { memo, useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
+import { QaProfileModal } from "./QaProfile.js";
 import { relativeTime } from "./format.js";
+import type {
+  QaAccountIdentityField,
+  QaAccountProfile,
+  QaAccountProfileInput,
+} from "../../types.js";
 
 /** One renderable row of the chat-history sidebar. */
 export interface QaChatRow {
@@ -107,6 +113,19 @@ export interface QaSidebarProps {
     readonly email: string;
     readonly role: string;
     readonly onLogout: () => void;
+    /**
+     * Self-service profile editing. Omitted when the deployment turns the
+     * feature off, which also leaves the footer name as plain text. Memoized
+     * by the caller: this object is compared by reference.
+     */
+    readonly profileDialog?: {
+      readonly profile: QaAccountProfile;
+      /** Handle fields the dialog renders, in the deployment's order. */
+      readonly fields: readonly QaAccountIdentityField[];
+      readonly instructionsMaxLength: number;
+      /** Persist edited fields; resolves to refusal copy, or null. */
+      readonly onSave: (input: QaAccountProfileInput) => Promise<string | null>;
+    };
   };
 }
 
@@ -212,6 +231,7 @@ export const QaSidebar = memo(
     const [query, setQuery] = useState("");
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
+    const [profileOpen, setProfileOpen] = useState(false);
     const toggleCollapsed = () => {
       const next = !collapsed;
       setCollapsed(next);
@@ -397,9 +417,23 @@ export const QaSidebar = memo(
               className="dsh-qa-sidebar__account"
               title={`${props.account.email} (${props.account.role})`}
             >
-              <span className="dsh-qa-sidebar__account-name">
-                {props.account.email}
-              </span>
+              {props.account.profileDialog === undefined ? (
+                <span className="dsh-qa-sidebar__account-name">
+                  {props.account.email}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="dsh-qa-sidebar__account-name"
+                  aria-haspopup="dialog"
+                  title="Открыть профиль"
+                  onClick={() => setProfileOpen(true)}
+                >
+                  {props.account.profileDialog.profile.fullName === ""
+                    ? props.account.email
+                    : props.account.profileDialog.profile.fullName}
+                </button>
+              )}
               {props.account.role === "admin" ? (
                 <span className="dsh-qa-sidebar__account-role">admin</span>
               ) : null}
@@ -426,6 +460,19 @@ export const QaSidebar = memo(
             Версия {QA_VERSION}
           </button>
         </div>
+        {props.account?.profileDialog === undefined ? null : (
+          <QaProfileModal
+            open={profileOpen}
+            email={props.account.email}
+            profile={props.account.profileDialog.profile}
+            identities={props.account.profileDialog.fields}
+            instructionsMaxLength={
+              props.account.profileDialog.instructionsMaxLength
+            }
+            onClose={() => setProfileOpen(false)}
+            onSave={props.account.profileDialog.onSave}
+          />
+        )}
         <QaChangelogModal
           open={changelogOpen}
           onClose={() => setChangelogOpen(false)}
@@ -446,5 +493,6 @@ export const QaSidebar = memo(
     prev.account?.email === next.account?.email &&
     prev.account?.role === next.account?.role &&
     prev.account?.onLogout === next.account?.onLogout &&
+    prev.account?.profileDialog === next.account?.profileDialog &&
     sameChatRows(prev.rows, next.rows),
 );
