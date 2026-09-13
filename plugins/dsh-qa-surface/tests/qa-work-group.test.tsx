@@ -95,6 +95,75 @@ describe("QA work group", () => {
     );
   });
 
+  it("labels a provider-failed turn as interrupted and starts collapsed", () => {
+    render(
+      <QaWorkGroup
+        status="error"
+        startedAt={1_000}
+        endedAt={5_000}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:1",
+            kind: "reasoning",
+            text: "Reading the tree.",
+            status: "complete",
+          },
+        ]}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Прервано за 4 с" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText("Reading the tree.")).toBeTruthy();
+  });
+
+  it("collapses automatically when a running turn fails", async () => {
+    const startedAt = Date.now() - 5_000;
+    const view = render(
+      <QaWorkGroup
+        status="running"
+        startedAt={startedAt}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:live",
+            kind: "reasoning",
+            text: "Still thinking",
+            status: "running",
+          },
+        ]}
+      />,
+    );
+
+    view.rerender(
+      <QaWorkGroup
+        status="error"
+        startedAt={startedAt}
+        endedAt={startedAt + 5_000}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:live",
+            kind: "reasoning",
+            text: "Still thinking",
+            status: "complete",
+          },
+        ]}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Прервано за 5 с" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false"),
+    );
+  });
+
   it("cycles the operator's phrases instead of the built-in ones", () => {
     render(
       <QaWorkGroup

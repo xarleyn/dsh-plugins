@@ -2,6 +2,7 @@ import type {
   AssistantMessageNode,
   ConversationNode,
   ConversationSnapshot,
+  ModelRetryNode,
   RunningToolCall,
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
@@ -14,6 +15,7 @@ import type {
 } from "../types.js";
 import { chatLegacyOf } from "./turn-sources.js";
 import { parseSettlement } from "./settlement.js";
+import { retryWorkCopy, turnErrorCopy } from "./failure-copy.js";
 import {
   flattenToolOutput,
   toolStatus,
@@ -283,11 +285,41 @@ function collectRunningTool(
   });
 }
 
+/**
+ * One host-scheduled model-request retry as a work-group row. The copy is
+ * code-driven only: the carried provider message can contain host internals.
+ */
+function collectModelRetry(
+  node: ModelRetryNode,
+  turns: Map<number, TurnBuffer>,
+): void {
+  getTurn(turns, node.turn).work.push({
+    order: node.seq,
+    item: {
+      id: `retry:${node.retryId}:${node.retry}`,
+      kind: "progress",
+      text: retryWorkCopy({
+        mode: node.mode,
+        retry: node.retry,
+        ...(node.mode === "normal" ? { maxRetries: node.maxRetries } : {}),
+        delayMs: node.delayMs,
+        retryState: node.retryState,
+        failureCode: node.failure.code,
+      }),
+      // Only a scheduled wait is live; "started" attempts are settled history
+      // because their outcome arrives as further steps, retries, or the turn
+      // end — the node itself never advances past "started".
+      status: node.retryState === "scheduled" ? "running" : "complete",
+    },
+  });
+}
+
 function emitTurn(
   legacy: LegacyConversationSlice,
   running: boolean,
   turn: TurnBuffer,
   output: OrderedMessage[],
+  erroredCode: string | undefined,
 ): void {
   const timing = legacy.turnTimings.get(turn.turn);
   const completed =
@@ -335,7 +367,12 @@ function emitTurn(
         id: `work:${turn.turn}`,
         role: "work",
         turn: turn.turn,
-        status: completed || !running ? "complete" : "running",
+        status:
+          erroredCode !== undefined
+            ? "error"
+            : completed || !running
+              ? "complete"
+              : "running",
         ...(timing?.startTime === undefined
           ? {}
           : { startedAt: timing.startTime }),
@@ -395,6 +432,7 @@ export function projectTranscript(
   const output: OrderedMessage[] = [];
   const turns = new Map<number, TurnBuffer>();
   const toolHeads = new Map<string, ToolHead>();
+  const erroredTurns = new Map<number, string | undefined>();
 
   for (const node of legacy.nodes) {
     if (node.kind === "user" || node.kind === "steering") {
@@ -441,16 +479,19 @@ export function projectTranscript(
         },
       });
     } else if (node.kind === "turn-error") {
+      erroredTurns.set(node.turn, node.code);
       output.push({
         order: node.seq,
         message: {
           id: `turn-error:${node.seq}`,
           role: "system",
-          text: "Помощнику не удалось завершить ответ.",
+          text: turnErrorCopy(node.code),
           status: "error",
           timestamp: node.time,
         },
       });
+    } else if (node.kind === "model-retry") {
+      collectModelRetry(node, turns);
     } else if (node.kind === "turn-max-tokens") {
       output.push({
         order: node.seq,
@@ -522,7 +563,9 @@ export function projectTranscript(
     });
   }
 
-  for (const turn of turns.values()) emitTurn(legacy, running, turn, output);
+  for (const turn of turns.values()) {
+    emitTurn(legacy, running, turn, output, erroredTurns.get(turn.turn));
+  }
   return output
     .sort((left, right) => left.order - right.order)
     .map(({ message }) => message);

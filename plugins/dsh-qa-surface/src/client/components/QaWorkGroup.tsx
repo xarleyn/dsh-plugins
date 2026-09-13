@@ -5,7 +5,8 @@ import { Markdown } from "./Markdown.js";
 import { thinkingPhrase } from "./thinking-phrases.js";
 
 export interface QaWorkGroupProps {
-  readonly status: "running" | "complete";
+  /** "error" marks a turn the host ended with a provider failure. */
+  readonly status: "running" | "complete" | "error";
   readonly startedAt?: number;
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
@@ -235,13 +236,16 @@ export const QaWorkGroup = memo(
     const previousStatus = useRef(status);
 
     useEffect(() => {
-      if (previousStatus.current === "running" && status === "complete") {
+      if (
+        previousStatus.current === "running" &&
+        (status === "complete" || status === "error")
+      ) {
         setOpen(false);
       } else if (
-        previousStatus.current === "complete" &&
-        status === "running"
+        previousStatus.current === "complete" ||
+        previousStatus.current === "error"
       ) {
-        setOpen(true);
+        if (status === "running") setOpen(true);
       }
       previousStatus.current = status;
     }, [status]);
@@ -259,9 +263,13 @@ export const QaWorkGroup = memo(
     const label =
       status === "running"
         ? `${thinkingPhrase(elapsed, thinkingPhrases)}${duration === null ? "" : ` (${duration})`}`
-        : duration === null
-          ? "Ход работы"
-          : `Готово за ${duration}`;
+        : status === "error"
+          ? duration === null
+            ? "Ход прерван"
+            : `Прервано за ${duration}`
+          : duration === null
+            ? "Ход работы"
+            : `Готово за ${duration}`;
 
     return (
       <section className="dsh-qa-work" data-state={status}>
