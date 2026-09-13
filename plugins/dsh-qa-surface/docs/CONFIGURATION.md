@@ -11,6 +11,8 @@ rules are:
   user-resizable transcript/composer width; each QA route persists its chosen
   width in browser storage;
 - duplicate/blank suggested questions are removed;
+- duplicate/blank running phrases are removed, each phrase is at most 120
+  characters, and an empty list restores the built-in phrases;
 - approval and question policies are fixed to safe blocking behavior;
 - reasoning and tool details are opt-in through `ui.showReasoning` and
   `ui.showToolActivity`; enable them only where those contents are appropriate
@@ -93,6 +95,13 @@ The built-in branding, controls, status messages and accessibility labels are
 Russian. The default quick questions are rendered directly above the composer
 only while the current chat is empty. Set `suggestedQuestions: []` to hide
 them, or provide a deployment-specific list to replace them.
+
+While a turn runs, both the work block and the composer hint show one of the
+`thinkingPhrases` and advance together every four seconds. Replace the list to
+match the deployment's vocabulary; the indicator always needs a label, so an
+empty list falls back to the built-in phrases rather than silencing it. The
+settings card's "Фразы ожидания" field starts from the list currently in effect,
+so an untouched deployment edits its running phrases rather than an empty box.
 
 When adding tools, update the deployment's reviewed capability inventory as
 part of the same change. The package's

@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { formatWorkDuration } from "../src/client/components/format.js";
 import { QaWorkGroup } from "../src/client/components/QaWorkGroup.js";
+import { DEFAULT_THINKING_PHRASES } from "../src/client/components/thinking-phrases.js";
 
 describe("QA work group", () => {
   it("starts collapsed for completed work and exposes all details together", () => {
@@ -63,7 +64,8 @@ describe("QA work group", () => {
       />,
     );
     const running = screen.getByRole("button", {
-      name: /Скребу по сусекам|Кумекаю|Навожу резкость|Собираю мысли|Раскладываю|Сверяю/u,
+      name: (name: string): boolean =>
+        DEFAULT_THINKING_PHRASES.some((phrase) => name.startsWith(phrase)),
     });
     expect(running.getAttribute("aria-expanded")).toBe("true");
 
@@ -91,6 +93,31 @@ describe("QA work group", () => {
           .getAttribute("aria-expanded"),
       ).toBe("false"),
     );
+  });
+
+  it("cycles the operator's phrases instead of the built-in ones", () => {
+    render(
+      <QaWorkGroup
+        status="running"
+        startedAt={Date.now() - 4_500}
+        renderMarkdown={false}
+        thinkingPhrases={["Точу", "Полирую"]}
+        items={[
+          {
+            id: "reasoning:live",
+            kind: "reasoning",
+            text: "Still thinking",
+            status: "running",
+          },
+        ]}
+      />,
+    );
+
+    expect(
+      screen
+        .getByRole("button", { name: /^Полирую/u })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("formats short and minute-scale durations", () => {

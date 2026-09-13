@@ -2,6 +2,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import type { QaWorkItem } from "../../types.js";
 import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
+import { thinkingPhrase } from "./thinking-phrases.js";
 
 export interface QaWorkGroupProps {
   readonly status: "running" | "complete";
@@ -9,16 +10,9 @@ export interface QaWorkGroupProps {
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
   readonly renderMarkdown: boolean;
+  /** Operator-configured running phrases; omitted reads the built-in list. */
+  readonly thinkingPhrases?: readonly string[];
 }
-
-export const THINKING_PHRASES = Object.freeze([
-  "Скребу по сусекам…",
-  "Кумекаю…",
-  "Навожу резкость…",
-  "Собираю мысли в кучку…",
-  "Раскладываю по полочкам…",
-  "Сверяю приметы…",
-]);
 
 function Chevron({ open }: { readonly open: boolean }) {
   return (
@@ -234,6 +228,7 @@ export const QaWorkGroup = memo(
     endedAt,
     items,
     renderMarkdown,
+    thinkingPhrases,
   }: QaWorkGroupProps) {
     const [open, setOpen] = useState(status === "running");
     const [now, setNow] = useState(() => Date.now());
@@ -258,19 +253,12 @@ export const QaWorkGroup = memo(
       return () => clearInterval(timer);
     }, [startedAt, status]);
 
+    const elapsed = (endedAt ?? now) - (startedAt ?? now);
     const duration =
-      startedAt === undefined
-        ? null
-        : formatWorkDuration((endedAt ?? now) - startedAt);
+      startedAt === undefined ? null : formatWorkDuration(elapsed);
     const label =
       status === "running"
-        ? `${
-            THINKING_PHRASES[
-              Math.floor(
-                Math.max(0, (endedAt ?? now) - (startedAt ?? now)) / 4_000,
-              ) % THINKING_PHRASES.length
-            ]
-          }${duration === null ? "" : ` (${duration})`}`
+        ? `${thinkingPhrase(elapsed, thinkingPhrases)}${duration === null ? "" : ` (${duration})`}`
         : duration === null
           ? "Ход работы"
           : `Готово за ${duration}`;
@@ -312,5 +300,6 @@ export const QaWorkGroup = memo(
     prev.startedAt === next.startedAt &&
     prev.endedAt === next.endedAt &&
     prev.renderMarkdown === next.renderMarkdown &&
+    prev.thinkingPhrases === next.thinkingPhrases &&
     sameWorkItems(prev.items, next.items),
 );

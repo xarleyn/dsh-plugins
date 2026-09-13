@@ -5,6 +5,7 @@ import {
   normalizeRoutePath,
   resolveConfig,
 } from "../src/resolve-config.js";
+import { DEFAULT_THINKING_PHRASES } from "../src/thinking-phrases.js";
 import type { QaSurfaceConfig } from "../src/types.js";
 
 /** Parse through the Host's config path: schema first, resolver second. */
@@ -26,6 +27,13 @@ describe("ConfigSchema defaults", () => {
         DEFAULT_QA_SURFACE_CONFIG,
       );
     }
+  });
+
+  it("carries operator phrases through the schema into the resolved config", () => {
+    expect(
+      resolveConfig(schemaParse({ thinkingPhrases: [" Точу ", "Точу"] }))
+        .thinkingPhrases,
+    ).toEqual(["Точу"]);
   });
 
   it("keeps ui.showReset off until lockdown authorizes it", () => {
@@ -53,6 +61,7 @@ describe("qa surface config", () => {
       "С чего начать?",
       "Помоги разобраться с ошибкой",
     ]);
+    expect(resolveConfig().thinkingPhrases).toEqual(DEFAULT_THINKING_PHRASES);
     expect(resolveConfig()).toMatchObject({
       ui: { showReset: false },
       lockdown: {
@@ -187,6 +196,30 @@ describe("qa surface config", () => {
     expect(
       resolveConfig({ suggestedQuestions: [] }).suggestedQuestions,
     ).toEqual([]);
+  });
+
+  it("normalizes the running phrases", () => {
+    const config = resolveConfig({
+      thinkingPhrases: [" Точу ", "Точу", "", "  "],
+    });
+    expect(config.thinkingPhrases).toEqual(["Точу"]);
+  });
+
+  it("restores the built-in running phrases for an empty list", () => {
+    // Unlike quick questions, an empty list cannot hide the indicator, so it
+    // degrades back to the shipped phrases instead of silencing the label.
+    expect(resolveConfig({ thinkingPhrases: [] }).thinkingPhrases).toEqual(
+      DEFAULT_THINKING_PHRASES,
+    );
+    expect(resolveConfig({ thinkingPhrases: ["  "] }).thinkingPhrases).toEqual(
+      DEFAULT_THINKING_PHRASES,
+    );
+  });
+
+  it("rejects a running phrase that cannot fit the indicator", () => {
+    expect(() => resolveConfig({ thinkingPhrases: ["я".repeat(121)] })).toThrow(
+      /thinking phrases/u,
+    );
   });
 
   it("requires a named permission preset while lockdown is enabled", () => {

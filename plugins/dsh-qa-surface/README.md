@@ -108,6 +108,11 @@ config:
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
+  # Phrases the running indicator cycles through (optional). An empty list
+  # restores the built-in ones.
+  thinkingPhrases:
+    - Уточняю по регламенту…
+    - Сверяюсь с инструкцией…
   interaction:
     approvals: blocked
     questions: unsupported
