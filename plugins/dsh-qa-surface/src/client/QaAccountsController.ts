@@ -5,6 +5,7 @@ import type {
   QaOwnershipEntry,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
+import { qaStorageNamespace } from "../shared/session-key.js";
 import type { QaAccountsApi, StorageLike } from "./types.js";
 
 /** The `(reason: <code>)` marker the Host folds into account wire failures. */
@@ -435,8 +436,7 @@ export class QaAccountsController {
   }
 
   private tokenKey(): string {
-    const config = this.options.config();
-    return `${config.session.storageKey}:v1:${config.route.path}:account-token`;
+    return `${qaStorageNamespace(this.options.config())}:account-token`;
   }
 
   private publish(snapshot: QaAccountsSnapshot): void {

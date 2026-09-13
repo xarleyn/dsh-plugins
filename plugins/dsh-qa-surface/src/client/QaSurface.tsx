@@ -68,6 +68,7 @@ import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
 import { useTranscriptView } from "./use-transcript-view.js";
 import { useSessionUiState } from "./use-session-ui-state.js";
+import { qaStorageNamespace } from "../shared/session-key.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -194,7 +195,7 @@ export function QaSurface(props: QaSurfaceProps) {
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
-  const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
+  const stateKey = qaStorageNamespace(config);
   const widthHandlers = useQaContentWidth({
     active: route.active,
     root: chat,

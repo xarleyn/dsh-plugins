@@ -13,6 +13,7 @@ import type {
   QaImageMediaType,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
+import { bytesToBase64 } from "./base64.js";
 import { pluralRu } from "./settings/format.js";
 
 /** Raster formats the host attachment path accepts. */
@@ -71,14 +72,6 @@ let attachmentSequence = 0;
 function nextDraftId(kind: "image" | "file"): string {
   attachmentSequence += 1;
   return `${kind}-${String(attachmentSequence)}`;
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
 }
 
 /** FileReader covers runtimes without File.arrayBuffer (jsdom). */
