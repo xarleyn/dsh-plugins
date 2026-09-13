@@ -125,7 +125,10 @@ function WebFetchAuthCard({ scope, status, testRule, diagnose, credentials }: Ca
   )
 }
 
-export const inject = ['slots', 'settingsScope', 'remote']
+// `remote.credentials` is its own service key (owned by dsh-api-settings-controller),
+// not a plain field of `remote`: reading it without this entry throws and the whole
+// browser-side plugin fails to apply.
+export const inject = ['slots', 'settingsScope', 'remote', 'remote.credentials']
 
 /** Mount the generated Remote contribution and register the native Settings card. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {

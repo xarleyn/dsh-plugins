@@ -30,6 +30,13 @@ assert.match(patch, /name:\s*"@yadsh\/dsh-web-fetch-authenticated"/u)
 const client = await readFile(new URL('lib/client.js', root), 'utf8')
 // Browser bundle identity: the ModuleLoader registration id is the FULL package name.
 assert.match(client, /window\.__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-web-fetch-authenticated"/u)
+// `remote.credentials` is its own Cordis service key, not a field of `remote`:
+// reading it without declaring it in the client `inject` list throws
+// "cannot get property ... without inject", which fails the whole browser-side
+// plugin and leaves the Plugins page without this card.
+const clientInject = /const inject = \[([^\]]*)\]/u.exec(client)
+assert.notEqual(clientInject, null, 'client bundle must export an inject list')
+assert.match(clientInject[1], /"remote\.credentials"/u, 'the client must declare the remote.credentials service')
 // The credentials control must stay write-only: no component state may hold a
 // fetched credential value, and the secret input never echoes stored values.
 assert.doesNotMatch(client, /credentials\.value/u)
