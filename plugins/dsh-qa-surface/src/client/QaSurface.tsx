@@ -14,13 +14,7 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type {
-  QaAccountProfileInput,
-  QaAttachmentDraft,
-  QaSessionState,
-  QaSource,
-  QaTurnSources,
-} from "../types.js";
+import type { QaAccountProfileInput, QaAttachmentDraft } from "../types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import type {
@@ -41,6 +35,7 @@ import type {
 import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaComposer } from "./components/QaComposer.js";
+import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 import {
@@ -51,12 +46,11 @@ import { collectChatFiles, countChatAttachments } from "./chat-files.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
-import type { QaRailTab } from "./use-session-ui-state.js";
 import {
-  QA_TURN_ANCHOR_ATTRIBUTE,
+  QA_TURN_FOLLOW_PX,
   QaTurnRail,
   computeActiveTurn,
-  turnScrollTarget,
+  scrollToTranscriptAnchor,
   type QaTurnRailItem,
 } from "./components/QaTurnRail.js";
 import {
@@ -65,9 +59,11 @@ import {
 } from "./components/QaWidthHandle.js";
 import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
+import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
 import { useTranscriptView } from "./use-transcript-view.js";
 import { useSessionUiState } from "./use-session-ui-state.js";
+import { useRightRail } from "./use-right-rail.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 
 const noopSubscribe = () => () => undefined;
@@ -128,44 +124,11 @@ function trapKeys(event: KeyboardEvent<HTMLElement>): void {
   }
 }
 
-function statusText(
-  state: QaSessionState,
-  runningPhrase: string | null,
-): string | null {
-  if (state.phase === "creating") return "Подключаюсь…";
-  if (state.phase === "reconnecting")
-    return "Связь потерялась. Подключаюсь снова…";
-  if (state.phase === "running") return runningPhrase;
-  return null;
-}
-
-function titleFromMessages(state: QaSessionState): string | null {
-  const firstUser = state.messages.find((message) => message.role === "user");
-  if (firstUser === undefined) return null;
-  const title = firstUser.text.replace(/\s+/gu, " ").trim();
-  if (title === "") return null;
-  if (title.length <= 52) return title;
-  return `${title.slice(0, 51).trimEnd()}…`;
-}
-
-function modeLabel(agentPreset: string | null): string {
-  if (agentPreset === null) return "Режим вопросов";
-  const name = agentPreset
-    .replace(/[-_]+/gu, " ")
-    .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
-  return `Режим «${name}»`;
-}
-
-function RobotBadge() {
+/** Same follow threshold the rail uses: this close to the floor is "at bottom". */
+function isNearBottom(element: HTMLElement): boolean {
   return (
-    <svg
-      className="dsh-qa-agentview__icon"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
-      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
-    </svg>
+    element.scrollHeight - element.scrollTop - element.clientHeight <
+    QA_TURN_FOLLOW_PX
   );
 }
 
@@ -291,27 +254,20 @@ export function QaSurface(props: QaSurfaceProps) {
     props.sessions.list.getSnapshot,
   );
   // Draft text, attachments, variant offsets and drawers are chat-local; the
-  // hook clears them whenever the bound session changes.
+  // hook clears them whenever the bound session changes. The rail controller
+  // takes the drawer slice; the surface keeps the composer and marks state.
+  const ui = useSessionUiState(state.sessionId);
+  const rail = useRightRail(ui);
   const {
     activeTurn,
     setActiveTurn,
     variantOffsets,
     setVariantOffsets,
-    pendingAttachments,
-    setPendingAttachments,
     agentsOpen,
     setAgentsOpen,
-    railOpen,
-    setRailOpen,
-    railTab,
-    setRailTab,
-    drawerSources,
-    setDrawerSources,
-    drawerCompleteness,
-    setDrawerCompleteness,
-    drawerDetail,
-    setDrawerDetail,
-  } = useSessionUiState(state.sessionId);
+    pendingAttachments,
+    setPendingAttachments,
+  } = ui;
 
   useEffect(() => {
     if (!route.active) return;
@@ -371,6 +327,9 @@ export function QaSurface(props: QaSurfaceProps) {
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
+  const handleCloseSubagent = useCallback(() => {
+    void controller?.closeSubagent();
+  }, [controller]);
   /** Turn the transcript's reading line currently owns; rAF-throttled. */
   const syncActiveTurn = useCallback(() => {
     const element = transcript.current;
@@ -406,92 +365,27 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   const handleTurnNavigate = useCallback((item: QaTurnRailItem) => {
     const element = transcript.current;
-    if (element === null) return;
-    const escaped =
-      typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(item.id)
-        : item.id;
-    const row = element.querySelector<HTMLElement>(
-      `[${QA_TURN_ANCHOR_ATTRIBUTE}="${escaped}"]`,
-    );
-    if (row === null) return;
-    element.scrollTop = turnScrollTarget(element, row);
-    nearBottom.current =
-      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+    if (element === null || !scrollToTranscriptAnchor(element, item.id)) return;
+    nearBottom.current = isNearBottom(element);
     setActiveTurn(item.turn);
   }, []);
-  const handleOpenSources = useCallback(
-    (
-      sources: readonly QaSource[],
-      complete: boolean,
-      incompleteOrigins: QaTurnSources["incompleteOrigins"],
-    ) => {
-      setDrawerSources(sources);
-      setDrawerCompleteness({
-        complete,
-        ...(incompleteOrigins === undefined ? {} : { incompleteOrigins }),
-      });
-      setDrawerDetail(null);
-      setRailOpen(true);
-      setRailTab("sources");
-      setAgentsOpen(false);
-    },
-    [],
-  );
-  const handleSourceDetail = useCallback((source: QaSource) => {
-    setDrawerSources(null);
-    setDrawerCompleteness(null);
-    setDrawerDetail(source);
-    setRailOpen(true);
-    setRailTab("sources");
-    setAgentsOpen(false);
-  }, []);
-  /** Back to the whole-chat source list from a message-scoped subset. */
-  const handleShowAllSources = useCallback(() => {
-    setDrawerSources(null);
-    setDrawerCompleteness(null);
-    setDrawerDetail(null);
-  }, []);
-  /** Closing the rail also discards the pinned sources, as the drawer did. */
-  const handleRailClose = useCallback(() => {
-    setRailOpen(false);
-    setDrawerSources(null);
-    setDrawerCompleteness(null);
-    setDrawerDetail(null);
-  }, [setDrawerCompleteness, setDrawerDetail, setDrawerSources, setRailOpen]);
-  /**
-   * The header buttons: a second click on the active tab's button closes the
-   * rail; opening the sources tab shows the full list, dropping any pin.
-   */
-  const handleOpenRailTab = useCallback(
-    (tab: QaRailTab) => {
-      if (railOpen && railTab === tab) {
-        handleRailClose();
-        return;
-      }
-      setAgentsOpen(false);
-      setRailOpen(true);
-      setRailTab(tab);
-      if (tab === "sources") handleShowAllSources();
-    },
-    [handleRailClose, handleShowAllSources, railOpen, railTab],
-  );
   /** The files tab's jump control: land the transcript on the sender. */
   const handleJumpToMessage = useCallback((messageId: string) => {
     const element = transcript.current;
-    if (element === null) return;
-    const escaped =
-      typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(messageId)
-        : messageId;
-    const row = element.querySelector<HTMLElement>(
-      `[${QA_TURN_ANCHOR_ATTRIBUTE}="${escaped}"]`,
-    );
-    if (row === null) return;
-    element.scrollTop = turnScrollTarget(element, row);
-    nearBottom.current =
-      element.scrollHeight - element.scrollTop - element.clientHeight < 96;
+    if (element === null || !scrollToTranscriptAnchor(element, messageId)) {
+      return;
+    }
+    nearBottom.current = isNearBottom(element);
   }, []);
+
+  const view = useTranscriptView(state.messages, variantOffsets);
+  const railItems = view.railItems;
+  // Publish the visible turn marks before the follow/reading-line effects
+  // read them: layout effects flush in declaration order, and the sync below
+  // reads exactly this ref.
+  useLayoutEffect(() => {
+    railItemsRef.current = railItems;
+  }, [railItems]);
 
   useLayoutEffect(() => {
     const element = transcript.current;
@@ -525,7 +419,6 @@ export function QaSurface(props: QaSurfaceProps) {
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
-  const view = useTranscriptView(state.messages, variantOffsets);
   const visibleMessages = view.visibleMessages;
   const activeSessionId = controller?.activeSessionId() ?? null;
   const agentRows = useMemo(
@@ -568,8 +461,6 @@ export function QaSurface(props: QaSurfaceProps) {
       onSave: (input: QaAccountProfileInput) => accounts.updateProfile(input),
     };
   }, [config, accounts, accountsSnapshot]);
-  const railItems = view.railItems;
-  railItemsRef.current = railItems;
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
   const chatRows = useMemo(
@@ -608,26 +499,28 @@ export function QaSurface(props: QaSurfaceProps) {
           {
             id: "sources" as const,
             title: "Источники",
-            count: (drawerSources ?? state.sources).length,
+            count: (rail.drawerSources ?? state.sources).length,
             body: (
               <QaSourcesPanel
                 // Remount on a new detail request: the panel is internal-state
                 // driven, so an already-mounted panel would ignore a changed
                 // initialDetail otherwise.
-                key={drawerDetail?.id ?? "list"}
-                sources={drawerSources ?? state.sources}
-                complete={drawerCompleteness?.complete ?? state.sourcesComplete}
+                key={rail.drawerDetail?.id ?? "list"}
+                sources={rail.drawerSources ?? state.sources}
+                complete={
+                  rail.drawerCompleteness?.complete ?? state.sourcesComplete
+                }
                 incompleteOrigins={
-                  drawerCompleteness?.incompleteOrigins ??
+                  rail.drawerCompleteness?.incompleteOrigins ??
                   state.incompleteSourceOrigins
                 }
                 sessionId={state.sessionId}
                 sourceApi={boundSourceApi}
                 display={config.sources.display}
                 filePreview={config.sources.filePreview}
-                initialDetail={drawerDetail}
-                pinned={drawerSources !== null}
-                onShowAll={handleShowAllSources}
+                initialDetail={rail.drawerDetail}
+                pinned={rail.drawerSources !== null}
+                onShowAll={rail.showAllSources}
               />
             ),
           },
@@ -726,127 +619,34 @@ export function QaSurface(props: QaSurfaceProps) {
         ) : null}
         <div className="dsh-qa-body">
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
-            <div className="dsh-qa-agentview" role="status">
-              <RobotBadge />
-              <span>Просмотр субагента</span>
-              <button
-                type="button"
-                onClick={() => void controller?.closeSubagent()}
-              >
-                ← В чат
-              </button>
-            </div>
+            <QaSubagentBanner onClose={handleCloseSubagent} />
           ) : null}
           {config.ui.showHeader ? (
-            <header className="dsh-qa-header">
-              <div className="dsh-qa-header__inner">
-                <div className="dsh-qa-header__title-row">
-                  {config.branding.logoUrl === null ? null : (
-                    <img
-                      className="dsh-qa-header__logo"
-                      src={config.branding.logoUrl}
-                      alt=""
-                    />
-                  )}
-                  {conversationTitle === null ? null : (
-                    <h1 title={conversationTitle}>{conversationTitle}</h1>
-                  )}
-                  {state.viewingSubagent !== null ? (
-                    <span className="dsh-qa-header__viewing">
-                      <RobotBadge />
-                      Просмотр субагента
-                      <button
-                        type="button"
-                        className="dsh-qa-header__back"
-                        onClick={() => void controller?.closeSubagent()}
-                      >
-                        ← В чат
-                      </button>
-                    </span>
-                  ) : (
-                    <span className="dsh-qa-header__mode">
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        <circle cx="8" cy="3.25" r="1.5" />
-                        <circle cx="4" cy="11.75" r="1.5" />
-                        <circle cx="12" cy="11.75" r="1.5" />
-                        <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-                      </svg>
-                      {modeLabel(config.session.agentPreset)}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className="dsh-qa-header__agents"
-                    disabled={agentRows.length === 0}
-                    aria-expanded={agentsOpen}
-                    onClick={() => {
-                      setAgentsOpen((open) => !open);
-                      setRailOpen(false);
-                    }}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
-                      <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
-                    </svg>
-                    Агенты
-                    {agentRows.length === 0 ? null : ` (${agentRows.length})`}
-                  </button>
-                  {config.sources.enabled && config.sources.display.sidebar ? (
-                    <button
-                      type="button"
-                      className="dsh-qa-header__sources"
-                      disabled={
-                        state.sources.length === 0 && state.sourcesComplete
-                      }
-                      aria-expanded={railOpen && railTab === "sources"}
-                      onClick={() => handleOpenRailTab("sources")}
-                    >
-                      <svg viewBox="0 0 16 16" aria-hidden="true">
-                        <circle cx="8" cy="8" r="5.75" />
-                        <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
-                      </svg>
-                      Источники
-                      {state.sources.length === 0 && state.sourcesComplete
-                        ? null
-                        : ` (${state.sources.length})`}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={
-                      showResetButton
-                        ? "dsh-qa-header__files"
-                        : "dsh-qa-header__files dsh-qa-header__files--end"
-                    }
-                    disabled={attachmentCount === 0}
-                    aria-expanded={railOpen && railTab === "files"}
-                    onClick={() => handleOpenRailTab("files")}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <path d="M9.25 2.5H4.75A1.25 1.25 0 0 0 3.5 3.75v8.5a1.25 1.25 0 0 0 1.25 1.25h6.5a1.25 1.25 0 0 0 1.25-1.25V5.75L9.25 2.5Z" />
-                      <path d="M9.25 2.5v3.25h3.25M6 8.5h4M6 11h2.5" />
-                    </svg>
-                    Файлы
-                    {attachmentCount === 0 ? null : ` (${attachmentCount})`}
-                  </button>
-                  {showResetButton ? (
-                    <button
-                      type="button"
-                      className="dsh-qa-header__reset"
-                      disabled={
-                        controller === undefined || state.phase === "creating"
-                      }
-                      onClick={() => void controller?.startDraft()}
-                    >
-                      Новый чат
-                    </button>
-                  ) : null}
-                </div>
-                <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
-                  <span aria-current="page">Чат</span>
-                </div>
-              </div>
-            </header>
+            <QaHeader
+              logoUrl={config.branding.logoUrl}
+              title={conversationTitle}
+              viewingSubagent={state.viewingSubagent !== null}
+              onCloseSubagent={handleCloseSubagent}
+              agentPreset={config.session.agentPreset}
+              agentCount={agentRows.length}
+              agentsOpen={agentsOpen}
+              onToggleAgents={rail.toggleAgents}
+              sourcesVisible={
+                config.sources.enabled && config.sources.display.sidebar
+              }
+              sourcesCount={state.sources.length}
+              sourcesComplete={state.sourcesComplete}
+              sourcesOpen={rail.railOpen && rail.railTab === "sources"}
+              onOpenSources={() => rail.openTab("sources")}
+              fileCount={attachmentCount}
+              filesOpen={rail.railOpen && rail.railTab === "files"}
+              onOpenFiles={() => rail.openTab("files")}
+              showReset={showResetButton}
+              resetDisabled={
+                controller === undefined || state.phase === "creating"
+              }
+              onReset={handleNewChat}
+            />
           ) : null}
 
           <div
@@ -863,11 +663,7 @@ export function QaSurface(props: QaSurfaceProps) {
               className="dsh-qa-transcript"
               onScroll={(event) => {
                 const element = event.currentTarget;
-                nearBottom.current =
-                  element.scrollHeight -
-                    element.scrollTop -
-                    element.clientHeight <
-                  96;
+                nearBottom.current = isNearBottom(element);
                 scheduleActiveTurnSync();
               }}
             >
@@ -926,12 +722,12 @@ export function QaSurface(props: QaSurfaceProps) {
                           onOpenSources={
                             config.sources.enabled &&
                             config.sources.display.footer
-                              ? handleOpenSources
+                              ? rail.openSources
                               : undefined
                           }
                           onSourceDetail={
                             config.sources.enabled
-                              ? handleSourceDetail
+                              ? rail.openSourceDetail
                               : undefined
                           }
                         />
@@ -1014,12 +810,12 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={() => setAgentsOpen(false)}
           />
         ) : null}
-        {railOpen ? (
+        {rail.railOpen ? (
           <QaRightRail
             tabs={railTabs}
-            activeTab={railTab}
-            onTabSelect={setRailTab}
-            onClose={handleRailClose}
+            activeTab={rail.railTab}
+            onTabSelect={rail.selectTab}
+            onClose={rail.close}
           />
         ) : null}
       </main>

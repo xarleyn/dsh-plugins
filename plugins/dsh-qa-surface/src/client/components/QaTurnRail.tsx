@@ -447,3 +447,24 @@ export function turnScrollTarget(
   const max = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
   return Math.min(max, Math.max(0, top - QA_TURN_LAND_PX));
 }
+
+/**
+ * Find the message slot carrying `anchorId` and land the transcript on it,
+ * harness-style. Returns whether the anchor row exists; callers tie their
+ * near-bottom bookkeeping and rail-mark updates to that outcome.
+ */
+export function scrollToTranscriptAnchor(
+  scroller: HTMLElement,
+  anchorId: string,
+): boolean {
+  const escaped =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(anchorId)
+      : anchorId;
+  const row = scroller.querySelector<HTMLElement>(
+    `[${QA_TURN_ANCHOR_ATTRIBUTE}="${escaped}"]`,
+  );
+  if (row === null) return false;
+  scroller.scrollTop = turnScrollTarget(scroller, row);
+  return true;
+}
