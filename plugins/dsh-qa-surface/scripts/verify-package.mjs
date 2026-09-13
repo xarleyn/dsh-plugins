@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
 import QaSurface, { name, resolveConfig } from "../lib/index.js";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const root = new URL("../", import.meta.url);
 const required = [
@@ -52,6 +53,12 @@ assert(
   manifest.dsh.client.inject.includes(
     "@deepseek-ai/dsh-api-session-controller",
   ),
+);
+assert(
+  manifest.dsh.client.inject.includes(
+    "@deepseek-ai/dsh-client-ui-settings-plugins",
+  ),
+  "the settings card needs the plugin-cards tab in the client inject manifest",
 );
 assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
 assert(!manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
@@ -162,6 +169,22 @@ assert.doesNotMatch(client, /toolResult\.content/u);
 assert.doesNotMatch(client, /\.command\(/u);
 assert.doesNotMatch(client, /\.rename\(/u);
 assert.doesNotMatch(client, /sessions\.delete|deleteSession/u);
+
+// The settings card (AGENTS.md shell contract): the canonical shell rules and
+// chevron path, the keyed `settings.plugin.item` registration under the
+// namespace the Host serves, and the plugin's own body classes.
+verifyPluginCardContract(client, {
+  legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
+});
+assert.match(client, /settings\.plugin\.item/u);
+assert.match(client, /Помощник QA/u);
+// The toggle's accessible label is assembled from the open state and the card
+// name, so the bundle carries the two halves rather than one sentence.
+assert.match(client, /Скрыть/u);
+assert.match(client, /настройки: Помощник QA/u);
+assert.match(client, /qa-card-body/u);
+assert.match(client, /qa-card-notice/u);
+assert.match(client, /registerSettingsCard|slots\.register/u);
 
 const capabilityPolicy = JSON.parse(
   await readFile(new URL("capability-policy.json", root), "utf8"),
