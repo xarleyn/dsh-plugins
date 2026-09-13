@@ -12,9 +12,10 @@ import {
   resolveDshHome,
   setPluginLogFormat,
   setPluginLogLevel,
+  subscribePluginLogRecords,
   subscribePluginLoggerRegistry,
 } from "../src/index.js";
-import type { PluginLogger, PluginLogLevel } from "../src/index.js";
+import type { PluginLogger, PluginLogLevel, PluginLogRecord } from "../src/index.js";
 
 
 describe("resolveDshHome", () => {
@@ -453,6 +454,93 @@ describe("plugin logger registry", () => {
       throw new Error("observer failed");
     });
     expect(() => create("dsh-registry-fail-open")).not.toThrow();
+    unsubscribe();
+  });
+});
+
+describe("plugin log record bus", () => {
+  const loggers: PluginLogger[] = [];
+
+  afterEach(async () => {
+    const pending = loggers.splice(0);
+    await Promise.all(pending.map((logger) => logger.close()));
+  });
+
+  function create(pluginId: string, level: PluginLogLevel = "info"): PluginLogger {
+    const logger = createPluginLogger({
+      pluginId,
+      level,
+      file: false,
+      console: "silent",
+    });
+    loggers.push(logger);
+    return logger;
+  }
+
+  it("delivers every recorded record with its module, fields and a rising sequence", () => {
+    const logger = create("dsh-records-basic");
+    const seen: PluginLogRecord[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-records-basic") seen.push(record);
+    });
+
+    logger.info("record.info", { attempt: 2 });
+    logger.child("worker").warn("record.warn");
+    unsubscribe();
+
+    expect(seen.map((record) => [record.level, record.module, record.event])).toEqual([
+      ["info", undefined, "record.info"],
+      ["warn", "worker", "record.warn"],
+    ]);
+    expect(seen[0]?.fields).toEqual({ attempt: 2 });
+    expect(seen[1]?.fields).toEqual({});
+    expect(seen[0]?.seq).toBeGreaterThan(0);
+    expect(seen[1]!.seq).toBe(seen[0]!.seq + 1);
+    expect(typeof seen[0]?.time).toBe("number");
+  });
+
+  it("delivers nothing below the logger's own level", () => {
+    const logger = create("dsh-records-level", "warn");
+    const events: string[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-records-level") events.push(record.event);
+    });
+
+    logger.debug("record.suppressed");
+    logger.info("record.suppressed");
+    logger.warn("record.kept");
+    unsubscribe();
+
+    expect(events).toEqual(["record.kept"]);
+  });
+
+  it("delivers nothing after the logger is closed, and stops on unsubscribe", async () => {
+    const logger = create("dsh-records-closed");
+    const events: string[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-records-closed") events.push(record.event);
+    });
+
+    logger.info("record.before");
+    unsubscribe();
+    logger.info("record.after-unsubscribe");
+    const second = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-records-closed") events.push(record.event);
+    });
+    await logger.close();
+    logger.warn("record.after-close");
+    second();
+
+    expect(events).toEqual(["record.before"]);
+  });
+
+  it("isolates logging from record listener failures", () => {
+    const logger = create("dsh-records-fail-open");
+    const unsubscribe = subscribePluginLogRecords(() => {
+      throw new Error("consumer failed");
+    });
+
+    expect(() => logger.error("record.throws")).not.toThrow();
     unsubscribe();
   });
 });
