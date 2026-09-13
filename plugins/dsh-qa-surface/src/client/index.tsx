@@ -19,6 +19,7 @@ import { QaChatIndex } from "./chat-index.js";
 import { QaSurface } from "./QaSurface.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
+  QaAccountsApi,
   QaFileUpload,
   QaSecureSession,
   QaSessions,
@@ -46,7 +47,11 @@ declare module "@deepseek-ai/cordis" {
   }
 }
 
-interface QaPolicyRemote {
+// The namespace the Host registers under `qaSurface`: the session policy
+// remotes this file calls directly, plus the account remotes the account
+// controller drives. It mirrors what the typert declaration generates, so the
+// client also type-checks from a checkout whose `lib/` has not been built yet.
+interface QaPolicyRemote extends QaAccountsApi {
   createSession(token: string): Promise<RemoteResult<string>>;
   secureSession(
     token: string,
