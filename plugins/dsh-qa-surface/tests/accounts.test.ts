@@ -220,7 +220,7 @@ describe("QA accounts store", () => {
     expect(accounts.ownedSessionIds(b.token)).toEqual(["s-3"]);
   });
 
-  it("enforces ownership before the admission boundary resolves agents", () => {
+  it("enforces ownership before the admission boundary resolves agents", async () => {
     const accounts = store();
     const a = accounts.register("a@b.co", "password-1");
     const b = accounts.register("b@b.co", "password-2");
@@ -401,6 +401,35 @@ describe("QA accounts store", () => {
     expect(reasonOf(() => accounts.revokeTokens("ghost@b.co"))).toBe(
       "invalid-credentials",
     );
+  });
+
+  it("replaces a password and burns the tokens the old one minted", () => {
+    const accounts = store();
+    const first = accounts.register("a@b.co", "password-1");
+    const second = accounts.login("a@b.co", "password-1");
+    const updated = accounts.setPassword("a@b.co", "password-2");
+    // Both live tokens die with the old password; the account itself stays put,
+    // so the chats it owns are still reachable after signing in again.
+    expect(accounts.whoami(first.token)).toEqual({ authenticated: false });
+    expect(accounts.whoami(second.token)).toEqual({ authenticated: false });
+    expect(updated.id).toBe(first.user.id);
+    expect(updated.role).toBe(first.user.role);
+    expect(reasonOf(() => accounts.login("a@b.co", "password-1"))).toBe(
+      "invalid-credentials",
+    );
+    expect(accounts.login("a@b.co", "password-2").user.email).toBe("a@b.co");
+  });
+
+  it("refuses a weak replacement password and leaves the stored one alone", () => {
+    const accounts = store();
+    accounts.register("a@b.co", "password-1");
+    expect(reasonOf(() => accounts.setPassword("a@b.co", "short"))).toBe(
+      "weak-password",
+    );
+    expect(
+      reasonOf(() => accounts.setPassword("ghost@b.co", "password-2")),
+    ).toBe("invalid-credentials");
+    expect(accounts.login("a@b.co", "password-1").user.email).toBe("a@b.co");
   });
 });
 

@@ -13,6 +13,23 @@ export interface ValidatedCredentials {
 }
 
 /**
+ * The length gate every path that sets a password goes through — registration,
+ * the operator's addUser, and a reset — so a password good enough to register is
+ * exactly the one an operator can put back.
+ */
+export function validatePassword(password: string): void {
+  if (
+    password.length < MIN_PASSWORD_LENGTH ||
+    password.length > MAX_PASSWORD_LENGTH
+  ) {
+    throw new QaAccountsError(
+      "weak-password",
+      `password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters`,
+    );
+  }
+}
+
+/**
  * The email/password/display-name gate shared by self-registration and the
  * operator's addUser, so both paths reject unusable input with the same
  * errors and messages, in the same order. Returns the normalized address and
@@ -27,15 +44,7 @@ export function validateCredentials(
   if (!EMAIL_PATTERN.test(normalized) || normalized.length > 254) {
     throw new QaAccountsError("invalid-email", "email is not a usable address");
   }
-  if (
-    password.length < MIN_PASSWORD_LENGTH ||
-    password.length > MAX_PASSWORD_LENGTH
-  ) {
-    throw new QaAccountsError(
-      "weak-password",
-      `password must be ${MIN_PASSWORD_LENGTH} to ${MAX_PASSWORD_LENGTH} characters`,
-    );
-  }
+  validatePassword(password);
   const name = (displayName ?? "").trim();
   if (name.length > MAX_DISPLAY_NAME_LENGTH) {
     throw new QaAccountsError(
