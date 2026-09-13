@@ -4,6 +4,7 @@ import type { Context } from "@deepseek-ai/cordis";
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
+import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
@@ -14,8 +15,14 @@ import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
 interface AppliedPolicy {
   readonly fingerprint: string;
+  readonly disposeApprovalBlocker: () => void;
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
+}
+
+interface UserWorkspaceAccess {
+  root: string;
+  sharedReadOnlyRoots: readonly string[];
 }
 
 /**
@@ -33,6 +40,18 @@ export interface QaAccountsGate {
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
 const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = 120_000;
+
+async function blockApprovalInteraction(
+  execution: { readonly name: string },
+  next: () => Promise<PreToolDecision>,
+): Promise<PreToolDecision> {
+  const decision = await next();
+  if (decision.kind !== "ask") return decision;
+  return {
+    kind: "deny",
+    reason: `tool "${execution.name}" requires approval, but approval interactions are unavailable in QA`,
+  };
+}
 
 /**
  * Compare session cwds the way the host records them: separator- and
@@ -66,7 +85,7 @@ export class QaPolicyAdmission {
    * one set answers for the whole chat.
    */
   private readonly attested = new Set<string>();
-  private readonly workspaceRoots = new Map<string, string>();
+  private readonly workspaceAccess = new Map<string, UserWorkspaceAccess>();
   private readonly disposeWorkspaceGuard: () => void;
 
   constructor(
@@ -78,22 +97,29 @@ export class QaPolicyAdmission {
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
       if (session === undefined) return undefined;
-      const root = this.workspaceRoots.get(String(session.id));
-      if (root === undefined) return undefined;
-      if (!cwdMatches(session.header.cwd, root)) {
+      const access = this.workspaceAccess.get(String(session.id));
+      if (access === undefined) return undefined;
+      if (!cwdMatches(session.header.cwd, access.root)) {
         return "QA workspace boundary: session cwd is outside this user's directory.";
       }
-      return qaUserWorkspaceDenial(execution, root, this.attachmentRoot());
+      return qaUserWorkspaceDenial(
+        execution,
+        access.root,
+        this.attachmentRoot(),
+        access,
+      );
     });
     ctx.on("session/created", (session) => {
       const parent = session.header.parentSession;
       if (parent === undefined) return;
-      const root = this.workspaceRoots.get(String(parent));
-      if (root !== undefined) this.workspaceRoots.set(String(session.id), root);
+      const access = this.workspaceAccess.get(String(parent));
+      if (access !== undefined) {
+        this.workspaceAccess.set(String(session.id), access);
+      }
     });
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
-      this.workspaceRoots.delete(String(agent.session.id));
+      this.workspaceAccess.delete(String(agent.session.id));
     });
   }
 
@@ -318,6 +344,11 @@ export class QaPolicyAdmission {
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
+      const disposeApprovalBlocker = agent.ctx.on(
+        "tools/pre-execute",
+        blockApprovalInteraction,
+        { prepend: true },
+      );
       const disposeGuard = agent.ctx.tools.guard((execution) =>
         qaToolDenial(allowed, execution.name),
       );
@@ -327,13 +358,16 @@ export class QaPolicyAdmission {
         });
         this.appliedPolicies.set(agent, {
           fingerprint,
+          disposeApprovalBlocker,
           disposeGuard,
           disposeRestriction,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
+        prior?.disposeApprovalBlocker();
       } catch (error) {
         disposeGuard();
+        disposeApprovalBlocker();
         throw error;
       }
     }
@@ -355,9 +389,20 @@ export class QaPolicyAdmission {
       );
     }
     if (expectedUserRoot !== undefined) {
-      this.workspaceRoots.set(sessionId, expectedUserRoot);
+      const currentAccess = this.workspaceAccess.get(sessionId);
+      if (currentAccess === undefined) {
+        this.workspaceAccess.set(sessionId, {
+          root: expectedUserRoot,
+          sharedReadOnlyRoots: lockdown.sharedReadOnlyRoots,
+        });
+      } else {
+        // Children share this object, so a re-attestation also revokes stale
+        // roots from already-running subagent sessions.
+        currentAccess.root = expectedUserRoot;
+        currentAccess.sharedReadOnlyRoots = lockdown.sharedReadOnlyRoots;
+      }
     } else {
-      this.workspaceRoots.delete(sessionId);
+      this.workspaceAccess.delete(sessionId);
     }
 
     this.logger.debug("lockdown.attested", {
@@ -395,10 +440,11 @@ export class QaPolicyAdmission {
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeRestriction();
       policy.disposeGuard();
+      policy.disposeApprovalBlocker();
     }
     this.appliedPolicies.clear();
     this.attested.clear();
-    this.workspaceRoots.clear();
+    this.workspaceAccess.clear();
     this.disposeWorkspaceGuard();
   }
 }

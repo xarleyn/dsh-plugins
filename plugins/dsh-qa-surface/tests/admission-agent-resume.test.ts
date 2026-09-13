@@ -25,6 +25,7 @@ function world(options: { live?: boolean; fail?: string } = {}) {
     session,
     options: {},
     ctx: {
+      on: () => () => undefined,
       tools: {
         guard: () => () => undefined,
         restrict: (request: { allow: string[] }) => {

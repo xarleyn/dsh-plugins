@@ -68,6 +68,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         mode: "allow-list",
         allow: Object.freeze([]),
       }),
+      sharedReadOnlyRoots: Object.freeze([]),
     }),
     embedding: Object.freeze({ frameAncestors: null }),
     accounts: Object.freeze({

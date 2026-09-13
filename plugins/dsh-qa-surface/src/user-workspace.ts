@@ -26,6 +26,11 @@ export interface QaToolExecutionLike {
   readonly arguments: unknown;
 }
 
+export interface QaUserWorkspaceReadPolicy {
+  /** Shared directories exposed only to read-only filesystem tools. */
+  readonly sharedReadOnlyRoots?: readonly string[];
+}
+
 function samePath(left: string, right: string): boolean {
   return process.platform === "win32"
     ? left.toLowerCase() === right.toLowerCase()
@@ -165,7 +170,22 @@ function requestedPaths(execution: QaToolExecutionLike): readonly string[] {
  * for reads: the attachment store is shared by every account, and only the
  * exact file an upload produced is meant to be reachable.
  */
-function isReadOnlyPathTool(execution: QaToolExecutionLike): boolean {
+function readsSharedRoot(execution: QaToolExecutionLike): boolean {
+  if (
+    execution.name === "read" ||
+    execution.name === "read_image" ||
+    execution.name === "glob" ||
+    execution.name === "grep"
+  ) {
+    return true;
+  }
+  return (
+    execution.name === "str_replace_editor" &&
+    record(execution.arguments)?.command === "view"
+  );
+}
+
+function readsSingleFile(execution: QaToolExecutionLike): boolean {
   if (execution.name === "read" || execution.name === "read_image") return true;
   return (
     execution.name === "str_replace_editor" &&
@@ -216,6 +236,7 @@ export function qaUserWorkspaceDenial(
   execution: QaToolExecutionLike,
   root: string,
   attachmentRoot?: string,
+  readPolicy: QaUserWorkspaceReadPolicy = {},
 ): string | undefined {
   const args = record(execution.arguments);
   if (
@@ -232,23 +253,34 @@ export function qaUserWorkspaceDenial(
     execution.name.startsWith("job_") ||
     execution.name === "run_code" ||
     execution.name === "lsp" ||
-    execution.name === "apply_patch" ||
-    execution.name.startsWith("dsh_git_")
+    execution.name === "apply_patch"
   ) {
     return PATH_DENIAL;
   }
-  const readsOnly = isReadOnlyPathTool(execution);
+  const readsShared = readsSharedRoot(execution);
+  const readsOneFile = readsSingleFile(execution);
   try {
+    const sharedReadOnlyRoots = (readPolicy.sharedReadOnlyRoots ?? []).map(
+      canonicalCandidate,
+    );
     for (const requested of requestedPaths(execution)) {
       const absolute = path.isAbsolute(requested)
         ? requested
         : path.resolve(root, requested);
       const canonical = canonicalCandidate(absolute);
       if (pathIsInside(canonical, root)) continue;
+      if (
+        readsShared &&
+        sharedReadOnlyRoots.some((readRoot) =>
+          pathIsInside(canonical, readRoot),
+        )
+      ) {
+        continue;
+      }
       // Resolved only for a path the fence would otherwise refuse, so the
       // common case pays no extra filesystem walk.
       if (
-        readsOnly &&
+        readsOneFile &&
         attachmentRoot !== undefined &&
         pathIsInside(canonical, canonicalCandidate(attachmentRoot))
       ) {

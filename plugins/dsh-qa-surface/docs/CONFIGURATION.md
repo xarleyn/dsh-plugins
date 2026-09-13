@@ -33,6 +33,9 @@ rules are:
   them out of the allow list on hosts that cannot reach the server. Tools
   mounted by an agent preset live in that preset's ancestor scope; the Host
   validates and restricts the complete agent-scoped view, not just globals.
+- `lockdown.sharedReadOnlyRoots` contains only absolute paths. It widens the
+  per-user path guard for reviewed filesystem read tools, but does not grant a
+  tool that is absent from the allow-list.
 
 ## Pinning chats to a directory
 
@@ -64,10 +67,29 @@ all chats in the normal global DSH session list. This mode requires accounts,
 The per-user guard canonicalizes paths (including the deepest existing parent
 of a new file), blocks traversal and symlink escape for `read`, `read_image`,
 `glob`, `grep`, `write`, `edit`, and `str_replace_editor`, propagates the root
-to subagents, and rejects process/LSP/git tools that can discover an ancestor
-repository. A write payload is capped at 10 MiB and total scratch usage at
+to subagents, and rejects process and LSP tools that can escape it. Paths in
+`sharedReadOnlyRoots` are available
+only to `read`, `read_image`, `glob`, `grep`, and the `view` operation of
+`str_replace_editor`; writes stay inside the user's cwd. The guard does not
+reinterpret `dsh_git_*` paths: the separately configured read-only Git plugin
+owns that boundary. A write payload is capped at 10 MiB and total scratch usage at
 256 MiB. Use reviewed `web_fetch` plus `write` for research downloads; no
 general shell or arbitrary URL-to-file capability is enabled.
+
+For the common three-directory deployment, use:
+
+```yaml
+lockdown:
+  sharedReadOnlyRoots:
+    - E:/qa-assistant/workspaces/docs
+    - E:/qa-assistant/workspaces/code
+```
+
+Here `work/.qa-users/<account UUID>` is private writable scratch, `docs` and
+`code` are shared read-only, and only `code` is Git-readable. Also configure
+the independent `@yadsh/dsh-git-readonly` plugin with
+`repositoryRoots: ["E:/qa-assistant/workspaces/code"]`. It is the single
+repository-selection authority and has no mutation-capable tool surface.
 
 Browser persistence stores only the DSH session id under
 `<storageKey>:v1:<route>:session`, plus — when `ui.showSessionList` is
@@ -332,6 +354,13 @@ delivering live changes.
 Host-side enforcement never depended on the browser's read path: `secureSession`
 attestation re-derives everything from the Host-owned configuration on every
 bind and every prompt.
+
+`interaction.approvals: blocked` is enforced on the attested agent before the
+approval service runs. If any composed policy asks for approval, the QA
+pre-execute listener returns a denial that says approval interactions are
+unavailable; no prompt is shown and no rejection is attributed to the user.
+The required `approvalPolicy: never` remains an independent fail-closed
+backstop.
 
 ## Skill catalog scope
 
