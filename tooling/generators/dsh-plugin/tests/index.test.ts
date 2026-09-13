@@ -40,6 +40,14 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.bugs).toEqual({
       url: "https://github.com/xarleyn/dsh-plugins/issues",
     });
+    expect(packageJson.keywords).toEqual([
+      "deepseek",
+      "deepseek-harness",
+      "dsh",
+      "dsh-plugin",
+      "cordis",
+      "dsh-example-plugin",
+    ]);
     expect(packageJson.publishConfig).toEqual({
       access: "public",
       registry: "https://registry.npmjs.org/",

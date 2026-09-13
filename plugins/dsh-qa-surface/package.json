@@ -93,9 +93,12 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "qa",
     "chat",
-    "web-ui"
+    "web-ui",
+    "testing",
+    "quality-assurance"
   ],
   "license": "MIT",
   "engines": {

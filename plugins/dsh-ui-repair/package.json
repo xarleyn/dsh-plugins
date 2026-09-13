@@ -69,8 +69,11 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "ui-repair",
-    "accessibility"
+    "accessibility",
+    "dom",
+    "diagnostics"
   ],
   "license": "MIT",
   "engines": {

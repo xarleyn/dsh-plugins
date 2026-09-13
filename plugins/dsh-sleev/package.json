@@ -78,7 +78,10 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "sleev",
+    "routing",
+    "observability",
     "context-optimization"
   ],
   "license": "MIT",

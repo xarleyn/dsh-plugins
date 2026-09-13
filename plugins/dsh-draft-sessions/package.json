@@ -82,9 +82,11 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "draft",
     "sessions",
-    "web-ui"
+    "web-ui",
+    "autosave"
   ],
   "license": "MIT",
   "engines": {

@@ -11,6 +11,7 @@
     "url": "git+https://github.com/xarleyn/dsh-plugins.git",
     "directory": "packages/plugin-log"
   },
+  "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "cordis", "logging", "logs", "structured-logging", "observability"],
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",

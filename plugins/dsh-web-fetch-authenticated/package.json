@@ -74,12 +74,16 @@
     "verify": "node scripts/verify-package.mjs"
   },
   "keywords": [
+    "deepseek",
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
+    "cordis",
     "web-fetch",
     "ssrf",
     "credentials",
-    "cordis"
+    "security",
+    "fetch"
   ],
   "license": "MIT",
   "peerDependencies": {

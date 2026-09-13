@@ -13,6 +13,16 @@ type ExportTarget = { types: string; default: string } | string;
 
 const DEFAULT_SCOPE = "@yadsh";
 
+// DSH indexes and npm search find packages through these keywords, so the
+// package-hygiene gate rejects a published manifest without them.
+const CANONICAL_KEYWORDS = [
+  "deepseek",
+  "deepseek-harness",
+  "dsh",
+  "dsh-plugin",
+  "cordis",
+];
+
 export default async function generatePlugin(
   tree: Tree,
   options: Schema,
@@ -152,6 +162,7 @@ export default async function generatePlugin(
           registry: "https://registry.npmjs.org/",
         },
         engines: { node: "^22.19.0 || >=24.0.0" },
+        keywords: [...CANONICAL_KEYWORDS, `dsh-${pluginName}`],
         scripts,
       },
       null,
