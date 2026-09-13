@@ -27,6 +27,10 @@ Session and Agent Loop.
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;
+- ships an operator settings card (Settings → Plugins → plugin configuration →
+  «Помощник QA») that edits the `qa-surface` namespace in place — route,
+  branding, session, interface, lockdown, accounts, sources, embedding — and
+  reports the configuration the running Host resolved;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
@@ -64,6 +68,17 @@ HTML document, permissive route, or unauthenticated config endpoint is added.
 Configuration is registered under the Host settings namespace `qa-surface`.
 Composition values form the base layer; normal DSH user settings can override
 them when the deployment provides writable settings.
+
+The browser half carries a settings card for that namespace: **Settings →
+Plugins → plugin configuration → «Помощник QA»**. It writes the user layer of
+`qa-surface` — so every change is revertible through the card's own reset — and
+shows the configuration the running Host resolved next to it. Combinations the
+Host refuses are either written together in one mutation (a provider with its
+model, per-user workspaces with the `workspace-write` sandbox) or disabled with
+the reason stated. The card renders only where the settings namespace is
+readable, which the DSH gateway pins to loopback; a browser served over the LAN
+reads the same configuration read-only through `qaSurface/describe` on the QA
+page itself.
 
 ```yaml
 config:

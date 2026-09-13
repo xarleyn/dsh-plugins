@@ -950,6 +950,41 @@ The entry remains mounted but returns `null` whenever the route is not active.
 
 Do not register into `root`, `sidebar`, or `conversation` as the default implementation.
 
+### 12.3 Settings card
+
+The same namespace the page reads is editable in place from the Host settings
+page. Register one card into the shared keyed slot:
+
+```text
+settings.plugin.item    (key = the `qa-surface` settings namespace)
+```
+
+The card uses the canonical plugin-card shell of `@yadsh/dsh-plugin-kit/client`
+(the AGENTS.md contract: a direct `<li>` child of the host list, a full-width
+header button with `aria-expanded`, the title/description stack, an optional
+status badge, and the 14×14 SVG chevron), and renders nothing when the
+namespace is unavailable — a deployment that does not compose the plugin shows
+no trace of it.
+
+Responsibilities:
+
+- write the user layer of the namespace through path-addressed mutations, so
+  every field stays revertible;
+- report the configuration the running Host resolved, read through
+  `qaSurface/describe` while the card is visible, and say so when the Host has
+  not answered;
+- respect the Host's own cross-checks: fields the resolver refuses in
+  isolation are written together in one mutation (a provider with its model;
+  `accounts.perUserWorkspace` with the `workspace-write` sandbox, which is also
+  refused alone), and controls the resolver would reject are disabled with the
+  reason stated rather than offered;
+- state the security-relevant consequences of a choice (lockdown off, hidden
+  data-usage notice, visible reasoning/tool activity, iframe embedding,
+  cross-user chat visibility) next to the control that causes them;
+- keep the values that cannot be configured (`approvalPolicy`, the white-list
+  mode, the forbidden capability flags) visible as facts, so an operator does
+  not go looking for them.
+
 ---
 
 ## 13. Route handling

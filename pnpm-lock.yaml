@@ -999,6 +999,9 @@ importers:
       '@deepseek-ai/dsh-client-ui-settings':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings-plugins':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-client-ui-slots':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
@@ -1050,6 +1053,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts

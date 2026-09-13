@@ -57,7 +57,11 @@ export const inject = [
   "workspaceRegistry",
   "sessionController",
 ];
-export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
+// One home for the namespace: the browser card binds to the same constant
+// through `src/shared/settings.ts`, which avoids importing this module (and
+// schemastery with it) into the page.
+import { QA_SURFACE_SETTINGS_NAMESPACE } from "./shared/settings.js";
+export { QA_SURFACE_SETTINGS_NAMESPACE };
 export const Config = ConfigSchema;
 
 declare module "@deepseek-ai/cordis" {

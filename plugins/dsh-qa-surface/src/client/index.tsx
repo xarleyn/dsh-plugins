@@ -10,6 +10,8 @@ import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
@@ -32,8 +34,9 @@ import type {
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
 } from "../types.js";
-
-const SETTINGS_NAMESPACE = "qa-surface";
+import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
+import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
+import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -167,24 +170,41 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         },
       });
       const route = new QaRouteController();
-      const config = new QaConfigController(
-        (ctx.settingsScope as SettingsScopeBinder).bind<QaSurfaceConfig>({
-          namespace: SETTINGS_NAMESPACE,
-        }),
-        async () => {
-          // Settings RPCs are loopback-pinned by the gateway, so a browser the
-          // Host serves over the LAN reads the effective configuration here.
-          const described = await policyRemote.describe();
-          if (!described.ok) {
-            throw new Error(
-              `qaSurface/describe failed: ${described.error.code}`,
-            );
-          }
-          // The generated self-remote resolves through the previous build's
-          // declarations during an incremental source typecheck.
-          return described.value as unknown as ResolvedQaSurfaceConfig;
-        },
-      );
+      // One binding for both readers: the surface projects it into the page's
+      // configuration, the settings card edits the same namespace through it.
+      const settingsScope = (
+        ctx.settingsScope as SettingsScopeBinder
+      ).bind<QaSurfaceConfig>({
+        namespace: QA_SURFACE_SETTINGS_NAMESPACE,
+      });
+      const config = new QaConfigController(settingsScope, async () => {
+        // Settings RPCs are loopback-pinned by the gateway, so a browser the
+        // Host serves over the LAN reads the effective configuration here.
+        const described = await policyRemote.describe();
+        if (!described.ok) {
+          throw new Error(`qaSurface/describe failed: ${described.error.code}`);
+        }
+        // The generated self-remote resolves through the previous build's
+        // declarations during an incremental source typecheck.
+        return described.value as unknown as ResolvedQaSurfaceConfig;
+      });
+      // The operator edits this deployment through the shared plugin-cards
+      // tab: the same namespace the page reads, plus the Host's own answer
+      // about what it resolved. Its stylesheet is the card shell, not the QA
+      // page's palette.
+      ctx.effect(() => {
+        const cardFace: QaSettingsCardFace = {
+          scope: settingsScope,
+          describe: () => policyRemote.describe(),
+        };
+        return registerSettingsCard(remoteContext, {
+          key: QA_SURFACE_SETTINGS_NAMESPACE,
+          pluginName: "@yadsh/dsh-qa-surface",
+          styles: QA_SETTINGS_STYLES,
+          component: QaSettingsCard,
+          inject: () => cardFace,
+        });
+      }, "dsh-qa-surface: settings-card");
       const syncRoute = () => {
         const snapshot = config.getSnapshot();
         route.configure(
