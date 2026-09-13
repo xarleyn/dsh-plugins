@@ -20,11 +20,11 @@ const CANONICAL_BUGS_URL = "https://github.com/xarleyn/dsh-plugins/issues";
 const HOMEPAGE_PREFIX = "https://github.com/xarleyn/dsh-plugins/tree/main";
 // Packages are discovered through these keywords by DSH indexes and npm
 // search; a package missing them is invisible to the ecosystem even though it
-// publishes correctly. The full canonical set a package should carry is
-// `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` (the plugin
-// generator emits it); the gate hard-requires the DSH identity trio so the
-// contract cannot drift unnoticed.
-const REQUIRED_KEYWORDS = ["deepseek-harness", "dsh", "dsh-plugin"];
+// publishes correctly. The canonical set a package should carry is
+// `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` — the plugin
+// generator emits all five — and the gate hard-requires the four DSH indexes
+// match on, so the contract cannot drift unnoticed.
+const REQUIRED_KEYWORDS = ["deepseek-harness", "dsh", "dsh-plugin", "cordis"];
 
 const VERSION_PLANS_DIRECTORY = path.join(".nx", "version-plans");
 const FRONT_MATTER_FENCE = "---";
