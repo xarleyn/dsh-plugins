@@ -18,6 +18,7 @@ const STANDARD_TYPES_LAYOUTS = new Set([
 const CANONICAL_REPOSITORY_URL = "git+https://github.com/xarleyn/dsh-plugins.git";
 const CANONICAL_BUGS_URL = "https://github.com/xarleyn/dsh-plugins/issues";
 const HOMEPAGE_PREFIX = "https://github.com/xarleyn/dsh-plugins/tree/main";
+const BLOB_PREFIX = "https://github.com/xarleyn/dsh-plugins/blob/main";
 // Packages are discovered through these keywords by DSH indexes and npm
 // search; a package missing them is invisible to the ecosystem even though it
 // publishes correctly. The canonical set a package should carry is
@@ -116,6 +117,133 @@ function toPosixPath(relative) {
   return relative.split(/[\\/]/u).join("/");
 }
 
+// npm renders the README on the package page, so a manifest may publish it, its
+// legal notices, and the images the README embeds — nothing else. Specs,
+// changelogs, roadmaps, design docs, and README translations stay in the
+// repository where a reader can still find them.
+const PUBLISHED_MARKDOWN = new Set([
+  "README.md",
+  "NOTICE.md",
+  "THIRD_PARTY_NOTICES.md",
+]);
+// npm always ships these regardless of the `files` list. A translated README
+// (`README.ru.md`) is not one of them.
+const ALWAYS_SHIPPED = [
+  "package.json",
+  /^readme(\.(md|markdown|txt))?$/iu,
+  /^licen[cs]e(\.(md|txt))?$/iu,
+];
+
+function globToRegExp(pattern) {
+  const source = pattern
+    .replace(/[.+^${}()|[\]\\]/gu, "\\$&")
+    // `**/` also matches no directory at all, so `lib/**/*.js` covers `lib/a.js`.
+    .replace(/\*\*\//gu, "(?:.*/)?")
+    .replace(/\*\*/gu, ".*")
+    .replace(/\*/gu, "[^/]*");
+  return new RegExp(`^${source}$`, "u");
+}
+
+/** True when a `files` entry (or its glob) covers the given relative path. */
+export function matchesFilesEntry(entry, target) {
+  if (entry === target) return true;
+  if (entry.includes("*")) return globToRegExp(entry).test(target);
+  // A bare directory entry publishes everything below it.
+  return target.startsWith(`${entry}/`);
+}
+
+/** True when the published tarball carries the given relative path. */
+export function isPublishedFile(files, target) {
+  if (ALWAYS_SHIPPED.some((rule) =>
+    typeof rule === "string" ? rule === target : rule.test(target),
+  )) {
+    return true;
+  }
+  return files.some((entry) => matchesFilesEntry(entry, target));
+}
+
+/** Extracts every relative link target from a markdown document. */
+function relativeLinkTargets(text) {
+  const targets = [];
+  const patterns = [
+    /\[[^\]]*\]\((?<target>[^)\s]+)(?:\s+"[^"]*")?\)/gu,
+    /(?:src|href)="(?<target>[^"]+)"/gu,
+  ];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const raw = match.groups.target;
+      if (/^([a-z][a-z0-9+.-]*:|#|\/)/iu.test(raw)) continue;
+      const target = decodeURIComponent(raw.split("#")[0].split("?")[0]);
+      if (target === "" || target.endsWith("/")) continue;
+      targets.push(target);
+    }
+  }
+  return targets;
+}
+
+/** Package-relative form of a link target, with `./` dropped and `..` resolved. */
+export function normalizeLinkTarget(target) {
+  return path.posix.normalize(toPosixPath(target));
+}
+
+/** Repository URL for a document that stays out of the published tarball. */
+export function repositoryBlobUrl(packageRelative, target) {
+  return `${BLOB_PREFIX}/${path.posix.normalize(
+    path.posix.join(packageRelative, normalizeLinkTarget(target)),
+  )}`;
+}
+
+/**
+ * A published tarball carries the runtime, the bundle patch, compatibility
+ * data, legal notices, and the README — not the repository's documentation.
+ * Shipping docs inflates every install, and it is not what the registry is for;
+ * the same rule keeps the README honest, because a relative link to a file the
+ * tarball omits renders as a dead link on the package page.
+ */
+export function validatePublishedContent(directory, repoRoot = process.cwd()) {
+  const errors = [];
+  const manifestPath = path.join(directory, "package.json");
+  if (!existsSync(manifestPath)) return errors;
+  const manifest = readJson(manifestPath);
+  const files = Array.isArray(manifest.files) ? manifest.files : [];
+  const packageRelative = toPosixPath(path.relative(repoRoot, directory));
+
+  for (const entry of files) {
+    const normalized = toPosixPath(entry);
+    if (normalized.endsWith(".md") && !PUBLISHED_MARKDOWN.has(normalized)) {
+      errors.push(
+        `files must not publish documentation: "${normalized}" stays in the repository`,
+      );
+      continue;
+    }
+    if (
+      normalized.startsWith("docs/") &&
+      !normalized.startsWith("docs/images/")
+    ) {
+      errors.push(
+        `files must not publish documentation: "${normalized}" stays in the repository`,
+      );
+    }
+  }
+
+  const readmePath = path.join(directory, "README.md");
+  if (!existsSync(readmePath)) return errors;
+  const reported = new Set();
+  for (const target of relativeLinkTargets(readFileSync(readmePath, "utf8"))) {
+    const normalized = normalizeLinkTarget(target);
+    if (!normalized.startsWith("../") && isPublishedFile(files, normalized)) {
+      continue;
+    }
+    if (reported.has(normalized)) continue;
+    reported.add(normalized);
+    errors.push(
+      `README links to "${normalized}", which the tarball does not ship; link to "${repositoryBlobUrl(packageRelative, normalized)}" instead`,
+    );
+  }
+
+  return errors;
+}
+
 /**
  * Published manifests carry the discoverability contract: npm shows them on the
  * package page, and DSH indexes read keywords and the monorepo directory to
@@ -201,6 +329,7 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
         // Only plugin directories carry the Cordis patch and client contract.
         ...(group === "plugins" ? validatePublishablePlugin(directory) : []),
         ...validateDiscoverability(directory, repoRoot),
+        ...validatePublishedContent(directory, repoRoot),
       ];
       for (const error of errors) {
         failures.push(`${manifest.name}: ${error}`);

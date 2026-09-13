@@ -23,3 +23,9 @@ Packages that ship no keywords at all were invisible to those indexes. The
 repository root also gains a generated `plugins.json` catalog that maps every
 npm name to its directory, install command, and homepage, and the package
 hygiene gate now rejects a manifest whose metadata is missing or stale.
+
+The published tarball also stops carrying repository documentation — specs,
+changelogs, roadmaps, design docs, integration notes, and README translations
+stay in the repository, so an install pulls the runtime and the bundle patch
+instead of prose. Relative links in a published README now point at GitHub
+where the tarball no longer holds the target.

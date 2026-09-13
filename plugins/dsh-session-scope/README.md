@@ -14,7 +14,7 @@ Per-session workspace visibility scopes for [DeepSeek Harness](https://github.co
 Permission != Scope
 ```
 
-[Specification](SPEC.md) · [Compatibility matrix](compatibility.json)
+[Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-session-scope/SPEC.md) · [Compatibility matrix](compatibility.json)
 
 ## Installation
 
@@ -96,7 +96,7 @@ pnpm --filter @yadsh/dsh-session-scope smoke:packed
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Prior art and attribution
 
@@ -104,7 +104,7 @@ The initial directory picker, path canonicalization, filesystem fencing, and san
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package check before submitting a change.
+Issues and focused pull requests are welcome. Read the monorepo [contribution guide](https://github.com/xarleyn/dsh-plugins/blob/main/CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 

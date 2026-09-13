@@ -20,7 +20,6 @@ assert.deepEqual(packageJson.dsh?.client?.inject, [
 for (const publishedFile of [
   "cordis.patch.yml",
   "README.md",
-  "ROADMAP.md",
   "LICENSE",
 ]) {
   assert.ok(

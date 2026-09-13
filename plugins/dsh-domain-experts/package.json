@@ -59,7 +59,6 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "SPEC.md",
     "LICENSE"
   ],
   "scripts": {

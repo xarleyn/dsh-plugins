@@ -10,7 +10,7 @@ Sleev routing observability for [DeepSeek Harness](https://github.com/deepseek-a
 
 `dsh-sleev` observes provider routes that pass through the external Sleev context-optimization gateway. The current observer does not rewrite prompts, implement compaction, or route traffic itself: routing remains a normal `@deepseek-ai/dsh-llm-pi-ai` provider configuration.
 
-[简体中文](README.zh-CN.md) · [Specification](SPEC.md) · [Development guide](docs/development.md) · [Compatibility notes](docs/compatibility.md)
+[简体中文](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/README.zh-CN.md) · [Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/SPEC.md) · [Development guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/docs/development.md) · [Compatibility notes](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/docs/compatibility.md)
 
 ## Installation
 
@@ -73,7 +73,7 @@ llm-pi-ai:
           name: GPT OSS 20B via Sleev
 ```
 
-Use `sleev-provider` instead of `sleev-base-url` for a provider known to Sleev; do not combine the two headers on one route. The [sample settings](docs/sample-settings.yml) show both forms.
+Use `sleev-provider` instead of `sleev-base-url` for a provider known to Sleev; do not combine the two headers on one route. The [sample settings](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/docs/sample-settings.yml) show both forms.
 
 Sleev does not currently document a native DeepSeek Harness identifier. The sample's `sleev-harness: pi` is an explicit experimental compatibility choice, not a promise of first-party support.
 
@@ -81,7 +81,7 @@ Sleev does not currently document a native DeepSeek Harness identifier. The samp
 
 The complete DSH → llm-pi-ai → Sleev → NeuralDeep streaming path has passed ordinary completion, usage, tool-call, and tool-result checks with DeepSeek Harness `0.1.5-rc.2`, Sleev `1.7.7`, and NeuralDeep `gpt-oss-20b`.
 
-This establishes transport compatibility, not token savings. The small validation prompt exposed Sleev's fixed instruction overhead; a long, tool-heavy session is still required for a meaningful compression benchmark. See the [compatibility notes](docs/compatibility.md) for the exact evidence.
+This establishes transport compatibility, not token savings. The small validation prompt exposed Sleev's fixed instruction overhead; a long, tool-heavy session is still required for a meaningful compression benchmark. See the [compatibility notes](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-sleev/docs/compatibility.md) for the exact evidence.
 
 ## Requirements
 
@@ -118,11 +118,11 @@ The live provider smoke is intentionally excluded from required CI because it de
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package check before submitting a change.
+Issues and focused pull requests are welcome. Read the monorepo [contribution guide](https://github.com/xarleyn/dsh-plugins/blob/main/CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 

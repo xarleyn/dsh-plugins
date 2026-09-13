@@ -86,7 +86,6 @@ for (const required of [
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
-  "SPEC.md",
   "LICENSE",
 ]) {
   assert.ok(manifest.files.includes(required), `files is missing: ${required}`);

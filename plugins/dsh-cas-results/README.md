@@ -114,7 +114,7 @@ pnpm nx run dsh-cas-results:verify
 ```
 
 The plugin contract and its verifiable guarantees live in
-[SPEC.md](./SPEC.md).
+[SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-cas-results/SPEC.md).
 
 ## Credits
 

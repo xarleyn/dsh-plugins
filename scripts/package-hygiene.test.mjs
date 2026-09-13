@@ -11,6 +11,7 @@ import {
 } from "./generate-plugins-manifest.mjs";
 import {
   validateDiscoverability,
+  validatePublishedContent,
   validatePublishablePlugin,
   validateVersionPlan,
 } from "./verify-package-hygiene.mjs";
@@ -215,6 +216,15 @@ async function workspaceFixture({ plugins = {}, packages = {} } = {}) {
   return root;
 }
 
+/** Builds a `root/plugins/dsh-fixture` with a README the gate can scan. */
+async function readmeFixture({ files, readme = "", name = "dsh-fixture" }) {
+  const root = await workspaceFixture({
+    plugins: { [name]: packageManifest(name, { files }) },
+  });
+  writeFileSync(path.join(root, "plugins", name, "README.md"), readme);
+  return { root, directory: path.join(root, "plugins", name) };
+}
+
 function packageManifest(name, overrides = {}) {
   return {
     name: `@yadsh/${name}`,
@@ -413,6 +423,109 @@ test("fails on a catalog entry for a package that no longer exists", async () =>
     assert.ok(
       findManifestDrift(root).some((error) => error.includes("out of date")),
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("publishes the runtime, the notices, and the README — not the docs", async () => {
+  const { root, directory } = await readmeFixture({
+    files: [
+      "lib/**/*.js",
+      "cordis.patch.yml",
+      "compatibility.json",
+      "capability-policy.json",
+      "docs/images/*.png",
+      "README.md",
+      "NOTICE.md",
+      "THIRD_PARTY_NOTICES.md",
+      "LICENSE",
+    ],
+    readme: [
+      "![card](docs/images/card.png)",
+      "[compatibility](./compatibility.json)",
+      "[MIT](LICENSE)",
+    ].join("\n"),
+  });
+  try {
+    assert.deepEqual(validatePublishedContent(directory, root), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects documentation in the published file list", async () => {
+  const { root, directory } = await readmeFixture({
+    files: [
+      "lib",
+      "cordis.patch.yml",
+      "compatibility.json",
+      "README.md",
+      "SPEC.md",
+      "CHANGELOG.md",
+      "ROADMAP.md",
+      "docs/CONFIGURATION.md",
+      "docs/sample-settings.yml",
+      "LICENSE",
+    ],
+  });
+  try {
+    const errors = validatePublishedContent(directory, root);
+    for (const entry of [
+      "SPEC.md",
+      "CHANGELOG.md",
+      "ROADMAP.md",
+      "docs/CONFIGURATION.md",
+      "docs/sample-settings.yml",
+    ]) {
+      assert.ok(
+        errors.some((error) => error.includes(`"${entry}"`)),
+        `expected ${entry} to be rejected, got ${JSON.stringify(errors)}`,
+      );
+    }
+    assert.equal(errors.length, 5);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects a README link the package page cannot resolve", async () => {
+  const { root, directory } = await readmeFixture({
+    files: [
+      "lib",
+      "cordis.patch.yml",
+      "compatibility.json",
+      "README.md",
+      "LICENSE",
+    ],
+    readme: [
+      "[spec](./SPEC.md)",
+      "[postmortem](../../docs/POSTMORTEM.md)",
+      "[docs](docs/)",
+      "[anchor](#install)",
+      "[upstream](https://example.com/spec)",
+    ].join("\n"),
+  });
+  try {
+    const errors = validatePublishedContent(directory, root);
+    assert.ok(
+      errors.some((error) =>
+        error.includes(
+          'link to "https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-fixture/SPEC.md"',
+        ),
+      ),
+      `expected an absolute SPEC.md suggestion, got ${JSON.stringify(errors)}`,
+    );
+    assert.ok(
+      errors.some((error) =>
+        error.includes(
+          'link to "https://github.com/xarleyn/dsh-plugins/blob/main/docs/POSTMORTEM.md"',
+        ),
+      ),
+      `expected an absolute repository-level suggestion, got ${JSON.stringify(errors)}`,
+    );
+    // Anchors, directory links, and absolute URLs are not the gate's business.
+    assert.equal(errors.length, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

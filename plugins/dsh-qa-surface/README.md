@@ -389,11 +389,11 @@ What a LAN deployment does not change:
   version in that browser's local storage. The stock DSH notice remains
   unchanged on operator routes.
 
-See [Configuration](docs/CONFIGURATION.md) for the config-channel details.
+See [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md) for the config-channel details.
 
-See [Architecture](docs/ARCHITECTURE.md),
-[Configuration](docs/CONFIGURATION.md), and
-[Compatibility](docs/COMPATIBILITY.md).
+See [Architecture](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/ARCHITECTURE.md),
+[Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md), and
+[Compatibility](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/COMPATIBILITY.md).
 
 ## Develop
 

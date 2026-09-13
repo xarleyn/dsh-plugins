@@ -68,9 +68,6 @@
     "compatibility.json",
     "capability-policy.json",
     "README.md",
-    "CHANGELOG.md",
-    "docs/*.md",
-    "SPEC.md",
     "LICENSE"
   ],
   "scripts": {

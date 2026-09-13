@@ -1,6 +1,6 @@
 # @yadsh/dsh-web-fetch-authenticated
 
-[Русский гайд: настройка Jira и Confluence](docs/JIRA-CONFLUENCE.ru.md)
+[Русский гайд: настройка Jira и Confluence](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-web-fetch-authenticated/docs/JIRA-CONFLUENCE.ru.md)
 
 An authenticated, policy-gated [`WebFetchProvider`](../../docs/) for the
 DeepSeek Harness web capability seam (`ctx.web`). It lets the existing
@@ -103,7 +103,7 @@ only the reference. Use the UI (or `api.credentials.set`) to store the value.
 For an end-to-end corporate setup, including provider selection, credentials,
 private-network policy, Jira/Confluence Cloud and Server/Data Center examples,
 testing, and troubleshooting, see the
-[Russian Jira and Confluence guide](docs/JIRA-CONFLUENCE.ru.md).
+[Russian Jira and Confluence guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-web-fetch-authenticated/docs/JIRA-CONFLUENCE.ru.md).
 
 ### Security defaults
 

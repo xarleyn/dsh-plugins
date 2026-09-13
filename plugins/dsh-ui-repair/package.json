@@ -49,8 +49,6 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "CHANGELOG.md",
-    "docs/INVESTIGATE.md",
     "LICENSE"
   ],
   "scripts": {

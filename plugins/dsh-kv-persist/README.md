@@ -35,7 +35,7 @@ falls back to normal inference. The model never knows this plugin exists.
 
 - DeepSeek Harness >= 0.1.5-rc.2 < 0.2.0
 - A llama.cpp `llama-server` started with `--slots --slot-save-path <dir>`
-  and `--parallel 1` for the single-slot mode (see the [design doc](./docs/dsh-kv-persist.md) §6).
+  and `--parallel 1` for the single-slot mode (see the [design doc](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/dsh-kv-persist.md) §6).
   The server flag does not replace the plugin's local lease, which also
   serializes save, restore, erase, and terminal stream bookkeeping.
 - Node.js >= 22
@@ -84,7 +84,7 @@ providers listed under `providers` are ever coordinated.
 | `metadata.path` | string | `<DSH home>/cache/dsh-kv-persist` | Manifest storage directory. DSH home is non-blank `$DSH_HOME`, otherwise `~/.dsh`. |
 | `logging.level` | `"debug" \| "info" \| "off"` | `"info"` | Structured `kv.*` event verbosity. |
 
-Full configuration rationale: [design doc §35](./docs/dsh-kv-persist.md).
+Full configuration rationale: [design doc §35](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/dsh-kv-persist.md).
 
 ## Compatibility
 
@@ -108,7 +108,7 @@ Optional end-to-end check against a live server (no GPU in CI):
 DSH_KV_TEST_LLAMA_URL=http://127.0.0.1:8080 pnpm --filter @yadsh/dsh-kv-persist test:llama
 ```
 
-See [SPEC.md](./SPEC.md) for the product contract and implementation status.
+See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/SPEC.md) for the product contract and implementation status.
 
 ## License
 

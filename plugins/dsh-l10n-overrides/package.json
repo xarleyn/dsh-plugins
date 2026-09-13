@@ -45,7 +45,6 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "ROADMAP.md",
     "LICENSE"
   ],
   "scripts": {
