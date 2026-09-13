@@ -20,12 +20,13 @@ What it offers:
 
 - live output from **every** plugin logger, this plugin's own diagnostics
   included, newest last;
-- level filters (`trace` … `fatal`) and a text filter over the whole line —
-  clock, level, scope, event, and fields — applied in the browser, so switching
-  them is instant;
+- a source filter listing every registered plugin logger — a plugin that has
+  gone quiet stays selectable — plus level filters (`trace` … `fatal`) and a
+  text filter over the whole line — clock, level, scope, event, and fields —
+  all applied in the browser, so switching them is instant;
 - severity colouring: `trace`/`debug`/`info` ride the label ramp so a quiet
   stream stays quiet, `warn`/`error` take the warn and error inks, and `fatal`
-  inverts;
+  inverts in the line while its chip stays a pill on the soft error surface;
 - pause, resume, clear, and a follow toggle that keeps the newest line in view
   until you scroll up;
 - an explicit line when the host buffer dropped records the panel never read,

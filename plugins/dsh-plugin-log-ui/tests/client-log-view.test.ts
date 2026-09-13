@@ -9,9 +9,16 @@ import {
   formatScope,
   formatTime,
   matchesFilter,
+  mergeSources,
+  type LogFilter,
 } from "../src/client/panel/log-view.js";
 
 const ALL_LEVELS = new Set<PluginLogRecordLevel>(LOG_PANEL_LEVELS);
+
+/** The panel's filters with only the named fields changed. */
+function filter(overrides: Partial<LogFilter> = {}): LogFilter {
+  return { levels: ALL_LEVELS, query: "", source: "", ...overrides };
+}
 
 /** One record as the panel receives it: fields already rendered by the host. */
 function view(
@@ -51,8 +58,8 @@ describe("line formatting", () => {
 
 describe("filtering", () => {
   it("keeps the records whose level is enabled", () => {
-    expect(matchesFilter(view(1, { level: "debug" }), new Set(["info"]), "")).toBe(false);
-    expect(matchesFilter(view(1, { level: "info" }), new Set(["info"]), "")).toBe(true);
+    expect(matchesFilter(view(1, { level: "debug" }), filter({ levels: new Set(["info"]) }))).toBe(false);
+    expect(matchesFilter(view(1, { level: "info" }), filter({ levels: new Set(["info"]) }))).toBe(true);
   });
 
   it("matches the rendered line case-insensitively, fields included", () => {
@@ -61,16 +68,52 @@ describe("filtering", () => {
       event: "kv.session.cold",
       fields: [{ key: "sessionId", value: "a1b2c3" }],
     });
-    expect(matchesFilter(record, ALL_LEVELS, "KV.SESSION")).toBe(true);
-    expect(matchesFilter(record, ALL_LEVELS, "a1b2c3")).toBe(true);
-    expect(matchesFilter(record, ALL_LEVELS, "nothing-like-this")).toBe(false);
+    expect(matchesFilter(record, filter({ query: "KV.SESSION" }))).toBe(true);
+    expect(matchesFilter(record, filter({ query: "a1b2c3" }))).toBe(true);
+    expect(matchesFilter(record, filter({ query: "nothing-like-this" }))).toBe(false);
+  });
+
+  it("keeps one source exactly, and every source by default", () => {
+    const mine = view(1, { pluginId: "dsh-sleev" });
+    const other = view(2, { pluginId: "dsh-tool-offload" });
+
+    expect(matchesFilter(mine, filter({ source: "" }))).toBe(true);
+    expect(matchesFilter(other, filter({ source: "" }))).toBe(true);
+    expect(matchesFilter(mine, filter({ source: "dsh-sleev" }))).toBe(true);
+    // A source is an identifier, not prose: a prefix does not select it.
+    expect(matchesFilter(other, filter({ source: "dsh-sleev" }))).toBe(false);
+    expect(matchesFilter(mine, filter({ source: "dsh-slee" }))).toBe(false);
+  });
+
+  it("combines the three filters", () => {
+    const record = view(1, { level: "warn", pluginId: "dsh-sleev", event: "sleev.gap" });
+    expect(matchesFilter(record, { levels: new Set(["warn"]), query: "gap", source: "dsh-sleev" })).toBe(true);
+    expect(matchesFilter(record, { levels: new Set(["info"]), query: "gap", source: "dsh-sleev" })).toBe(false);
+    expect(matchesFilter(record, { levels: new Set(["warn"]), query: "gap", source: "dsh-other" })).toBe(false);
   });
 
   it("returns the window untouched when no filter is set, and trims the query", () => {
     const records = [view(1), view(2)];
-    expect(filterRecords(records, ALL_LEVELS, "")).toBe(records);
-    expect(filterRecords(records, ALL_LEVELS, "  ")).toBe(records);
-    expect(filterRecords(records, new Set(["warn"]), "")).toEqual([]);
+    expect(filterRecords(records, filter())).toBe(records);
+    expect(filterRecords(records, filter({ query: "  " }))).toBe(records);
+    expect(filterRecords(records, filter({ levels: new Set(["warn"]) }))).toEqual([]);
+  });
+});
+
+describe("mergeSources", () => {
+  it("lists the window's plugins, the registered ones, and the selection, sorted", () => {
+    const records = [view(1, { pluginId: "dsh-sleev" }), view(2, { pluginId: "dsh-tool-offload" })];
+    expect(mergeSources(records, ["dsh-cas-results"], "")).toEqual([
+      "dsh-cas-results",
+      "dsh-sleev",
+      "dsh-tool-offload",
+    ]);
+  });
+
+  it("keeps a selected source an option after its lines scroll away", () => {
+    expect(mergeSources([], ["dsh-sleev"], "dsh-gone")).toEqual(["dsh-gone", "dsh-sleev"]);
+    // The "every source" value is not a plugin id and never becomes an option.
+    expect(mergeSources([], [], "")).toEqual([]);
   });
 });
 
