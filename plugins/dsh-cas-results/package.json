@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-cas-results",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Content-addressed offload store for bulky DeepSeek Harness tool results",
   "repository": {
     "type": "git",
