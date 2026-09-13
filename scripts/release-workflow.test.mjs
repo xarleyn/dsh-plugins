@@ -13,6 +13,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
+import {
+  findUnpublishedPackages,
+  isPackagePublished,
+  parsePackageSpec,
+  readReleaseRows,
+  unpublishedPackagesMessage,
+} from "./verify-package-publication.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -330,6 +337,137 @@ describe("Nx release commands", () => {
     assertSucceeded(publish, "npm publish <tarball> --dry-run");
     assert.match(`${publish.stdout}\n${publish.stderr}`, /dry.?run/iu);
     assert.deepEqual(repositoryState(root), before);
+  });
+
+  test("the workflow publishes before it pushes the release commit", () => {
+    const workflow = readFileSync(
+      path.join(repositoryRoot, ".github", "workflows", "release.yml"),
+      "utf8",
+    );
+    const step = (name) => {
+      const index = workflow.indexOf(`- name: ${name}`);
+      assert.notEqual(index, -1, `the workflow has no "${name}" step`);
+      return index;
+    };
+
+    const preflight = step("Verify packages exist on npm");
+    const artifacts = step("Upload release artifacts");
+    const publish = step("Publish to npm with OIDC");
+    const push = step("Push release commit and tags");
+    const githubReleases = step("Create per-package GitHub Releases");
+
+    assert.ok(
+      preflight < publish,
+      "the registry check must run before the publish loop",
+    );
+    assert.ok(
+      artifacts < publish,
+      "the tarballs must be uploaded even when publishing fails",
+    );
+    assert.ok(
+      publish < push,
+      "npm publication must finish before the release commit is pushed",
+    );
+    assert.ok(push < githubReleases, "GitHub Releases are built from pushed tags");
+    assert.match(workflow, /if ! npm publish "\$\{args\[@\]\}"; then/u);
+    assert.match(workflow, /Failed to publish %d package\(s\)/u);
+  });
+});
+
+describe("package publication gate", () => {
+  test("a package the registry does not know is reported with its bootstrap", async () => {
+    const packages = [
+      {
+        name: "@yadsh/dsh-known",
+        version: "1.0.0",
+        tarball: "yadsh-dsh-known-1.0.0.tgz",
+      },
+      {
+        name: "@yadsh/dsh-new",
+        version: "0.1.0",
+        tarball: "yadsh-dsh-new-0.1.0.tgz",
+      },
+    ];
+    const unpublished = await findUnpublishedPackages(packages, {
+      lookup: async (name) => name !== "@yadsh/dsh-new",
+    });
+
+    assert.deepEqual(
+      unpublished.map((item) => item.name),
+      ["@yadsh/dsh-new"],
+    );
+    const message = unpublishedPackagesMessage(unpublished);
+    assert.match(message, /@yadsh\/dsh-new@0\.1\.0\s+\(yadsh-dsh-new-0\.1\.0\.tgz\)/u);
+    assert.match(message, /npm publish \.\/<tarball>\.tgz --access public/u);
+    assert.match(message, /Trusted Publisher/u);
+    assert.match(message, /version plans are still intact/u);
+  });
+
+  test("a registry failure is not mistaken for an unpublished package", async () => {
+    const respond = (status, ok) => async () => ({ status, ok });
+
+    assert.equal(
+      await isPackagePublished("@yadsh/dsh-any", { fetchImpl: respond(404, false) }),
+      false,
+    );
+    assert.equal(
+      await isPackagePublished("@yadsh/dsh-any", { fetchImpl: respond(200, true) }),
+      true,
+    );
+    await assert.rejects(
+      isPackagePublished("@yadsh/dsh-any", { fetchImpl: respond(500, false) }),
+      /answered 500 for @yadsh\/dsh-any/u,
+    );
+  });
+
+  test("a bootstrapped package is not blocked by the cached packument", async () => {
+    const seen = [];
+    const fetchImpl = async (url) => {
+      seen.push(url);
+      return url.endsWith("/latest")
+        ? { status: 200, ok: true }
+        : { status: 404, ok: false };
+    };
+
+    assert.equal(await isPackagePublished("@yadsh/dsh-new", { fetchImpl }), true);
+    assert.equal(seen.length, 2, "the version document must settle a 404");
+    assert.match(seen[1], /\/latest$/u);
+
+    const allGone = async () => ({ status: 404, ok: false });
+    assert.equal(
+      await isPackagePublished("@yadsh/dsh-new", { fetchImpl: allGone }),
+      false,
+    );
+  });
+
+  test("the release selection rows are read back verbatim", () => {
+    const directory = mkdtempSync(path.join(tmpdir(), "dsh-publication-"));
+    fixtures.push(directory);
+    const tsv = path.join(directory, "release-packages.tsv");
+    writeFileSync(
+      tsv,
+      "@yadsh/dsh-a\t1.0.0\tplugins/dsh-a\tyadsh-dsh-a-1.0.0.tgz\n",
+    );
+
+    assert.deepEqual(readReleaseRows(tsv), [
+      {
+        name: "@yadsh/dsh-a",
+        version: "1.0.0",
+        directory: "plugins/dsh-a",
+        tarball: "yadsh-dsh-a-1.0.0.tgz",
+      },
+    ]);
+  });
+
+  test("scoped package specs survive command-line parsing", () => {
+    assert.deepEqual(parsePackageSpec("@yadsh/dsh-a"), {
+      name: "@yadsh/dsh-a",
+      version: "",
+    });
+    assert.deepEqual(parsePackageSpec("@yadsh/dsh-a@1.2.3"), {
+      name: "@yadsh/dsh-a",
+      version: "1.2.3",
+    });
   });
 });
 
