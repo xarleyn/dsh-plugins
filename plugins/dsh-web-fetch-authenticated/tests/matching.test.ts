@@ -18,7 +18,7 @@ describe('path globs', () => {
     expect(pathMatches('/browse/**', '/browse/a/b/c')).toBe(true)
     expect(pathMatches('/browse/*', '/browse/a/b')).toBe(false)
     expect(pathMatches('/browse/*', '/browse/a')).toBe(true)
-    expect(pathMatches('/rest/api/**', '/rest/api/2/issue/MDC-1')).toBe(true)
+    expect(pathMatches('/rest/api/**', '/rest/api/2/issue/PROJ-1')).toBe(true)
     expect(pathMatches('/browse/**', '/browser')).toBe(false)
   })
 
@@ -45,9 +45,9 @@ describe('rule matching order', () => {
         denyPaths: ['/browse/admin/**'],
       },
     })
-    expect(ruleMatchesUrl(rule, url('https://jira.example.corp:8443/browse/MDC-1'))).toBe(true)
-    expect(ruleMatchesUrl(rule, url('http://jira.example.corp:8443/browse/MDC-1'))).toBe(false)
-    expect(ruleMatchesUrl(rule, url('https://jira.example.corp/browse/MDC-1'))).toBe(false)
+    expect(ruleMatchesUrl(rule, url('https://jira.example.corp:8443/browse/PROJ-1'))).toBe(true)
+    expect(ruleMatchesUrl(rule, url('http://jira.example.corp:8443/browse/PROJ-1'))).toBe(false)
+    expect(ruleMatchesUrl(rule, url('https://jira.example.corp/browse/PROJ-1'))).toBe(false)
     expect(ruleMatchesUrl(rule, url('https://jira.example.corp:8443/browse/admin/x'))).toBe(false)
     expect(ruleMatchesUrl(rule, url('https://jira.example.corp:8443/other'))).toBe(false)
   })

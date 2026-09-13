@@ -52,7 +52,7 @@ describe('lookalike and userinfo URLs', () => {
       id: 'corp',
       match: { schemes: ['https'], hosts: ['jira.example.corp'], allowPaths: ['/browse/**'] },
     })])).rules[0]!
-    const url = validateFetchUrl('https://jira.example.corp.attacker.com/browse/MDC-1', 2048)
+    const url = validateFetchUrl('https://jira.example.corp.attacker.com/browse/PROJ-1', 2048)
     expect(matchRules([rule], url)).toHaveLength(0)
   })
 

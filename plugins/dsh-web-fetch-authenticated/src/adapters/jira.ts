@@ -25,7 +25,7 @@ export interface AdapterRequestContext {
   readonly signal?: AbortSignal
 }
 
-/** Jira issue keys: two-plus letters, then digits (`MDC-123`, `ABC1-4`). */
+/** Jira issue keys: two-plus letters, then digits (`PROJ-123`, `ABC1-4`). */
 const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9]*-\d+$/u
 
 /**

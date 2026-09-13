@@ -470,7 +470,7 @@ Support explicit Jira extractors for actual Jira/MCP tool names used in the depl
 Canonical identity:
 
 ```text
-jira:MDC-24929
+jira:PROJ-24929
 ```
 
 Data:
@@ -478,9 +478,9 @@ Data:
 ```ts
 {
   kind: 'jira',
-  title: 'MDC-24929 — Вибродоктор. Добавить метод GET /history',
+  title: 'PROJ-24929 — Демо-продукт. Добавить метод GET /history',
   uri: '<actual issue URL>',
-  locations: [{ jiraKey: 'MDC-24929' }],
+  locations: [{ jiraKey: 'PROJ-24929' }],
   evidence: 'queried'
 }
 ```
@@ -813,16 +813,16 @@ Suggested layout:
 │ Documentation · 4                        │
 │                                          │
 │  [MD] technicalDiagnosis.md              │
-│       EAM / technicalDiagnosis           │
+│       Product / technicalDiagnosis       │
 │       lines 197–218        Used by agent │
 │                                          │
-│  [MD] products_eam.md                    │
-│       AIS_Dispatcher / products          │
+│  [MD] products_platform.md               │
+│       Dispatcher / products              │
 │                                          │
 │ Jira · 3                                 │
 │                                          │
-│  [J] MDC-24929                           │
-│      Вибродоктор. GET /history           │
+│  [J] PROJ-24929                          │
+│      Демо-продукт. GET /history          │
 │                                          │
 │ Confluence · 2                           │
 │ ...                                      │
@@ -900,10 +900,10 @@ Sources
 
 Documentation
 • technicalDiagnosis.md · 197–218
-• products_eam.md
+• products_platform.md
 
 Jira
-• MDC-24929 — Вибродоктор. GET /history
+• PROJ-24929 — Демо-продукт. GET /history
 ...
 ```
 
@@ -931,7 +931,7 @@ Clicking a local file source opens a source preview surface (existing drawer/mod
 Header example:
 
 ```text
-Library / docs / User_Guide / EAM / ... / technicalDiagnosis.md
+Library / docs / User_Guide / Product / ... / technicalDiagnosis.md
                                               Raw/Rendered   Download   ✕
 ```
 
@@ -1094,7 +1094,7 @@ Possible model guidance:
 ```text
 When useful, cite collected sources by stable id:
 [[source:file:docs/foo.md]]
-[[source:jira:MDC-24929]]
+[[source:jira:PROJ-24929]]
 ```
 
 UI converts them into compact citation chips such as `[1]`.
@@ -1276,8 +1276,8 @@ Suggested source labels/icons:
 | ------------ | -------------------- | ---------------------------- |
 | `file`       | Documentation / File | `technicalDiagnosis.md`      |
 | `code`       | Code                 | `ActivitySectionTypeEnum.cs` |
-| `jira`       | Jira                 | `MDC-24929`                  |
-| `confluence` | Confluence           | `Вибродиагностика MM3`       |
+| `jira`       | Jira                 | `PROJ-24929`                 |
+| `confluence` | Confluence           | `Product Handbook`           |
 | `knowledge`  | Knowledge            | KB document                  |
 | `web`        | Web                  | GitHub / docs site           |
 | `other`      | Other                | connector-specific source    |
@@ -1399,7 +1399,7 @@ Scenario:
 parent
 → starts child A
   → reads docs/a.md
-  → reads Jira MDC-1
+  → reads Jira PROJ-1
 → child ends
 → parent reads docs/a.md
 → parent ends
@@ -1652,10 +1652,10 @@ Internally:
 
 ```text
 parent
-├─ read docs/User_Guide/EAM/.../technicalDiagnosis.md:197-218
+├─ read docs/User_Guide/Product/.../technicalDiagnosis.md:197-218
 ├─ subagent "Jira research"
-│  ├─ Jira MDC-24929
-│  ├─ Jira MDC-23617
+│  ├─ Jira PROJ-24929
+│  ├─ Jira PROJ-23617
 │  └─ Confluence page 12345
 ├─ web_search -> 10 candidates
 └─ web_fetch -> 2 actual pages

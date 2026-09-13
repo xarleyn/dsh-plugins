@@ -13,3 +13,8 @@ took the entire plugin list down with it. The client now declares
 `remote.credentials` beside `remote` and `settingsScope`, matching the
 first-party settings plugins, and the package contract asserts the
 declaration in the built bundle so the omission cannot come back.
+
+The release also removes an internal project key from every example in the
+package: the Diagnostics and rule-tester placeholders in the shipped client
+bundle, the Jira adapter's key-format comment, the SPEC and the test fixtures
+now use the neutral `PROJ-123` shape.

@@ -219,11 +219,11 @@ describe("structured extractors", () => {
       {
         toolName: "jira_get_issue",
         result: {
-          key: "mdc-12",
+          key: "proj-12",
           fields: { summary: "Fix history" },
-          url: "https://jira.example/browse/MDC-12",
+          url: "https://jira.example/browse/PROJ-12",
         },
-        id: "jira:MDC-12",
+        id: "jira:PROJ-12",
       },
       {
         toolName: "confluence_get_page",

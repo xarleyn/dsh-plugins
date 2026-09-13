@@ -119,7 +119,7 @@ The agent sees only the normal DSH tool:
 
 ```text
 web_fetch({
-  url: "https://jira.example.corp/browse/MDC-123"
+  url: "https://jira.example.corp/browse/PROJ-123"
 })
 ```
 
@@ -153,7 +153,7 @@ URL
 1. `web_search` returns:
 
 ```text
-https://jira.example.corp/browse/MDC-123
+https://jira.example.corp/browse/PROJ-123
 ```
 
 2. Agent calls `web_fetch`.
@@ -335,7 +335,7 @@ Never display:
 Provide an optional admin/debug view:
 
 ```text
-URL: https://jira.example.corp/browse/MDC-123
+URL: https://jira.example.corp/browse/PROJ-123
 Matched rule: Corporate Jira
 Credential: jira-prod-token (configured)
 Resolved addresses: 10.20.14.18
@@ -752,7 +752,7 @@ Jira should work as a normal authenticated HTTP endpoint.
 Example:
 
 ```text
-https://jira.example.corp/browse/MDC-123
+https://jira.example.corp/browse/PROJ-123
 ```
 
 The provider authenticates and returns HTML, while `dsh-tool-web` converts it to Markdown.

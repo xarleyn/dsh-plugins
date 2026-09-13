@@ -49,7 +49,7 @@ function context(adapter: ResolvedAdapter, overrides: Partial<AdapterRequestCont
 
 describe('jira URL and REST URL construction', () => {
   test('extracts issue keys from browse and issues paths at any depth', () => {
-    expect(extractIssueKey('/browse/MDC-123')).toBe('MDC-123')
+    expect(extractIssueKey('/browse/PROJ-123')).toBe('PROJ-123')
     expect(extractIssueKey('/jira/browse/abc-9')).toBe('ABC-9')
     expect(extractIssueKey('/issues/EX-42/')).toBe('EX-42')
     expect(extractIssueKey('/display/DEV/Home')).toBeUndefined()
@@ -57,12 +57,12 @@ describe('jira URL and REST URL construction', () => {
   })
 
   test('builds REST v2 URLs for server flavor with the field list', () => {
-    const url = issueApiUrl('https://jira.corp', 'MDC-123', adapterSettings())
-    expect(url.toString()).toBe('https://jira.corp/rest/api/2/issue/MDC-123?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated')
+    const url = issueApiUrl('https://jira.corp', 'PROJ-123', adapterSettings())
+    expect(url.toString()).toBe('https://jira.corp/rest/api/2/issue/PROJ-123?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated')
   })
 
   test('adds comment and link fields when enabled', () => {
-    const url = issueApiUrl('https://jira.corp', 'MDC-123', adapterSettings({ includeComments: true, includeLinks: true }))
+    const url = issueApiUrl('https://jira.corp', 'PROJ-123', adapterSettings({ includeComments: true, includeLinks: true }))
     expect(url.searchParams.get('fields')).toContain('comment')
     expect(url.searchParams.get('fields')).toContain('issuelinks')
   })
@@ -131,7 +131,7 @@ describe('jira ADF → markdown (Cloud bodies)', () => {
 
 describe('jira issue normalization', () => {
   const issuePayload = {
-    key: 'MDC-123',
+    key: 'PROJ-123',
     fields: {
       summary: 'Fix the thing',
       status: { name: 'In Progress' },
@@ -148,12 +148,12 @@ describe('jira issue normalization', () => {
 
   test('renders the field block and converted description', async () => {
     const { statusCode, markdown } = await fetchIssueMarkdown(
-      new URL('https://jira.corp/browse/MDC-123'),
+      new URL('https://jira.corp/browse/PROJ-123'),
       adapterSettings(),
       async () => ({ statusCode: 200, data: issuePayload }),
     )
     expect(statusCode).toBe(200)
-    expect(markdown).toContain('# MDC-123: Fix the thing')
+    expect(markdown).toContain('# PROJ-123: Fix the thing')
     expect(markdown).toContain('- Status: In Progress')
     expect(markdown).toContain('- Assignee: Ada')
     expect(markdown).toContain('- Updated: 2026-02-03')
@@ -169,20 +169,20 @@ describe('jira issue normalization', () => {
       fields: {
         ...issuePayload.fields,
         comment: { comments: [{ author: { displayName: 'Bob' }, created: '2026-02-04T00:00:00.000+0000', body: 'looks good' }] },
-        issuelinks: [{ type: { name: 'Blocks', outward: 'blocks', inward: 'is blocked by' }, outwardIssue: { key: 'MDC-9' } }],
+        issuelinks: [{ type: { name: 'Blocks', outward: 'blocks', inward: 'is blocked by' }, outwardIssue: { key: 'PROJ-9' } }],
       },
     }
-    const enabled = await fetchIssueMarkdown(new URL('https://jira.corp/browse/MDC-123'), adapterSettings({ includeComments: true, includeLinks: true }), async () => ({ statusCode: 200, data: payload }))
+    const enabled = await fetchIssueMarkdown(new URL('https://jira.corp/browse/PROJ-123'), adapterSettings({ includeComments: true, includeLinks: true }), async () => ({ statusCode: 200, data: payload }))
     expect(enabled.markdown).toContain('## Comments')
     expect(enabled.markdown).toContain('### Bob — 2026-02-04')
-    expect(enabled.markdown).toContain('blocks [MDC-9]')
-    const disabled = await fetchIssueMarkdown(new URL('https://jira.corp/browse/MDC-123'), adapterSettings(), async () => ({ statusCode: 200, data: payload }))
+    expect(enabled.markdown).toContain('blocks [PROJ-9]')
+    const disabled = await fetchIssueMarkdown(new URL('https://jira.corp/browse/PROJ-123'), adapterSettings(), async () => ({ statusCode: 200, data: payload }))
     expect(disabled.markdown).not.toContain('## Comments')
-    expect(disabled.markdown).not.toContain('MDC-9')
+    expect(disabled.markdown).not.toContain('PROJ-9')
   })
 
   test('non-2xx REST responses stay results with a short note', async () => {
-    const { statusCode, markdown } = await fetchIssueMarkdown(new URL('https://jira.corp/browse/MDC-123'), adapterSettings(), async () => ({ statusCode: 404, data: {} }))
+    const { statusCode, markdown } = await fetchIssueMarkdown(new URL('https://jira.corp/browse/PROJ-123'), adapterSettings(), async () => ({ statusCode: 404, data: {} }))
     expect(statusCode).toBe(404)
     expect(markdown).toContain('HTTP 404')
   })
@@ -289,7 +289,7 @@ describe('confluence page normalization', () => {
 
 describe('adapter seam', () => {
   test('falls through for none adapters and unrecognized URLs', async () => {
-    const none = await applyAdapter(new URL('https://jira.corp/browse/MDC-1'), context(adapterSettings({ type: 'none' })))
+    const none = await applyAdapter(new URL('https://jira.corp/browse/PROJ-1'), context(adapterSettings({ type: 'none' })))
     expect(none).toBeUndefined()
     const unmapped = await applyAdapter(new URL('https://jira.corp/status'), context(adapterSettings()))
     expect(unmapped).toBeUndefined()
@@ -297,7 +297,7 @@ describe('adapter seam', () => {
 
   test('rejects non-JSON REST bodies with a structured error', async () => {
     const promise = applyAdapter(
-      new URL('https://jira.corp/browse/MDC-1'),
+      new URL('https://jira.corp/browse/PROJ-1'),
       context(adapterSettings()),
       async () => ({ url: 'u', statusCode: 200, body: { kind: 'html', content: '<p>x</p>' }, truncated: false }),
     )
@@ -306,7 +306,7 @@ describe('adapter seam', () => {
 
   test('rejects malformed JSON with a structured error', async () => {
     const promise = applyAdapter(
-      new URL('https://jira.corp/browse/MDC-1'),
+      new URL('https://jira.corp/browse/PROJ-1'),
       context(adapterSettings()),
       async () => ({ url: 'u', statusCode: 200, body: { kind: 'text', content: 'not-json' }, truncated: false }),
     )
@@ -316,7 +316,7 @@ describe('adapter seam', () => {
   test('caps the generated text by maxBodyChars', async () => {
     const rule = { adapter: adapterSettings(), source: { id: 'r' }, limits: { maxBodyChars: 10 } } as unknown as ResolvedRule
     const result = await applyAdapter(
-      new URL('https://jira.corp/browse/MDC-1'),
+      new URL('https://jira.corp/browse/PROJ-1'),
       { rule, rules: [rule], globals: { maxUrlLength: 2048, userAgent: 't' }, resolveSecrets: async () => ({}) },
       async () => ({ url: 'u', statusCode: 200, body: { kind: 'text', content: JSON.stringify(issuePayloadOf(100)) }, truncated: false }),
     )
@@ -325,7 +325,7 @@ describe('adapter seam', () => {
   })
 
   function issuePayloadOf(summaryLength: number): unknown {
-    return { key: 'MDC-1', fields: { summary: 'x'.repeat(summaryLength) } }
+    return { key: 'PROJ-1', fields: { summary: 'x'.repeat(summaryLength) } }
   }
 })
 
@@ -340,7 +340,7 @@ describe('provider end-to-end with a Jira adapter over a fixture', () => {
   test('a browse URL is served from the REST fixture as normalized text', async () => {
     server = await startFixture({}, {
       body: JSON.stringify({
-        key: 'MDC-1',
+        key: 'PROJ-1',
         fields: { summary: 'Fixture issue', status: { name: 'Open' }, description: 'plain body' },
       }),
     })
@@ -354,12 +354,12 @@ describe('provider end-to-end with a Jira adapter over a fixture', () => {
       credentials,
       logger: silentLogger(),
     })
-    const result = await provider.fetch({ url: `${server.origin}/browse/MDC-1` })
+    const result = await provider.fetch({ url: `${server.origin}/browse/PROJ-1` })
     expect(result.statusCode).toBe(200)
     expect(result.body.kind).toBe('text')
-    expect(result.body.content).toContain('# MDC-1: Fixture issue')
+    expect(result.body.content).toContain('# PROJ-1: Fixture issue')
     expect(result.body.content).toContain('plain body')
-    expect(server.requests.map(request => request.url)).toEqual(['/rest/api/2/issue/MDC-1?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated'])
+    expect(server.requests.map(request => request.url)).toEqual(['/rest/api/2/issue/PROJ-1?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated'])
   })
 
   test('an adapter URL the adapter cannot map falls through to raw transport', async () => {

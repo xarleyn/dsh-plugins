@@ -821,7 +821,7 @@ function RuleTester({ ruleId, defaultUrl, testRule }: {
           className="wfa-control"
           style={{ flex: 1 }}
           value={url}
-          placeholder="https://jira.example.corp/browse/MDC-123"
+          placeholder="https://jira.example.corp/browse/PROJ-123"
           onChange={event => { setUrl(event.target.value) }}
         />
         <button
@@ -898,7 +898,7 @@ export function DiagnosticsSection({ diagnose }: { diagnose: CardFace['diagnose'
           className="wfa-control"
           style={{ flex: 1 }}
           value={url}
-          placeholder="https://jira.example.corp/browse/MDC-123"
+          placeholder="https://jira.example.corp/browse/PROJ-123"
           onChange={event => { setUrl(event.target.value) }}
         />
         <button
