@@ -151,7 +151,7 @@ assert.match(client, /dsh-qa-variants/u);
 assert.match(client, /Перегенерируй/u);
 assert.match(client, /dsh-qa-sources/u);
 assert.match(client, /Источники/u);
-assert.match(client, /dsh-qa-rail__tab/u);
+assert.match(client, /dsh-qa-panel__tab/u);
 assert.match(client, /dsh-qa-sourcespanel/u);
 assert.match(client, /Все источники/u);
 assert.match(client, /dsh-qa-files__items/u);

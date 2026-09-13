@@ -79,4 +79,20 @@ describe("right rail", () => {
     );
     expect(screen.getByRole("tabpanel", { name: "Файлы" })).toBeTruthy();
   });
+
+  it("stays out of the turn rail's dsh-qa-rail class namespace", () => {
+    // `.dsh-qa-rail*` belongs to the transcript's turn ladder; one shared
+    // class made the panel height:0 + pointer-events:none and dragged the
+    // ladder around. The rename guard keeps the two apart.
+    const { container } = render(
+      <QaRightRail
+        tabs={tabs}
+        activeTab="sources"
+        onTabSelect={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const panel = container.querySelector("aside");
+    expect(panel?.className).toBe("dsh-qa-panel");
+  });
 });
