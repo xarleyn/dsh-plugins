@@ -117,5 +117,16 @@ for (const level of ["trace", "debug", "info", "warn", "error", "fatal"]) {
 // every-source option its value space is written against.
 assert.ok(client.includes("plu-log-source"), "the panel must offer the source filter");
 assert.ok(client.includes("All sources"), "the source filter needs its every-source option");
+// Two sheets, two style keys. `injectCardStyles` is idempotent per key, so one
+// key for both sheets leaves the second injected nowhere — the card rendered
+// unstyled and nothing failed. The pair is asserted, and the runtime half (both
+// tags really reaching the document) is a test in tests/client-panel.test.ts.
+assert.ok(client.includes('const CARD_STYLE_KEY = "dsh-plugin-log-ui"'), "the card sheet key");
+assert.ok(
+  client.includes("const PANEL_STYLE_KEY = `${CARD_STYLE_KEY}/panel`"),
+  "the panel sheet must have its own key",
+);
+assert.ok(client.includes(".plu-grid{"), "the card sheet must ship");
+assert.ok(client.includes(".plu-log{"), "the panel sheet must ship");
 
 console.log("verify-package: all gates passed");

@@ -205,14 +205,23 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
 
 export const inject = ["slots", "settingsScope", "remote", "sidebarRightTabs"];
 
-/** The style tag's key: shared by the settings card and the log panel sheets. */
-const STYLE_KEY = "dsh-plugin-log-ui";
+/**
+ * The settings card's stylesheet key.
+ *
+ * One key owns one `<style>` tag: `injectCardStyles` treats a key it has already
+ * seen as "this sheet is injected" and returns a no-op. Two sheets under one key
+ * therefore lose the second one silently, styled by nobody.
+ */
+const CARD_STYLE_KEY = "dsh-plugin-log-ui";
+
+/** The log panel's key: its own tag, for the reason above. */
+const PANEL_STYLE_KEY = `${CARD_STYLE_KEY}/panel`;
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // The panel is a page tab on the host's right Sidebar. Its type registers
   // through the public two-stage path, so the column dispatches the body below
   // by this plugin's own id rather than by anything hard-coded there.
-  const removePanelStyles = injectCardStyles(STYLE_KEY, PANEL_STYLES);
+  const removePanelStyles = injectCardStyles(PANEL_STYLE_KEY, PANEL_STYLES);
   ctx.effect(
     () => ctx.sidebarRightTabs.register(logPanelDefinition()),
     "dsh-plugin-log-ui: log panel type",
@@ -255,7 +264,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       );
       return registerSettingsCard(remoteCtx, {
         key: SETTINGS_NAMESPACE,
-        pluginName: STYLE_KEY,
+        pluginName: CARD_STYLE_KEY,
         styles,
         component: PluginLogSettingsCard,
         inject: () => ({ scope, inspect: () => inspector.inspect() }),

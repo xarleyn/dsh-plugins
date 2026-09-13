@@ -1,5 +1,5 @@
 import { Context } from "@deepseek-ai/cordis";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { PluginLogTail } from "../src/types.js";
 import * as clientModule from "../src/client/index.js";
 import { logPanelDefinition, LOG_PANEL_ID, LOG_PANEL_KIND } from "../src/client/panel/definition.js";
@@ -16,6 +16,46 @@ const { apply } = clientModule;
  * and the tab draws the "nothing can view this" notice — so this drives the
  * real `apply()` against a bare cordis context and checks the pair.
  */
+
+/** One injected `<style>` tag, as `injectCardStyles` creates it. */
+interface StyleTag {
+  readonly dataset: Record<string, string>;
+  textContent: string;
+  remove(): void;
+}
+
+/**
+ * The least DOM `injectCardStyles` needs, so a test can see which sheets a
+ * plugin actually injects. Without it the helper is a no-op and a plugin that
+ * loses a whole stylesheet to a key collision still passes every test.
+ */
+function installDom(): { readonly tags: StyleTag[] } {
+  const tags: StyleTag[] = [];
+  const scope = globalThis as unknown as { document?: unknown };
+  scope.document = {
+    querySelector: (selector: string) => {
+      const plugin = /^style\[data-plugin="(.*)"\]$/u.exec(selector)?.[1];
+      return tags.find((tag) => tag.dataset["plugin"] === plugin) ?? null;
+    },
+    createElement: (): StyleTag => {
+      const tag: StyleTag = {
+        dataset: {},
+        textContent: "",
+        remove: () => {
+          const index = tags.indexOf(tag);
+          if (index >= 0) tags.splice(index, 1);
+        },
+      };
+      return tag;
+    },
+    head: { appendChild: (tag: StyleTag) => { tags.push(tag); } },
+  };
+  return { tags };
+}
+
+afterEach(() => {
+  delete (globalThis as unknown as { document?: unknown }).document;
+});
 
 const EMPTY_TAIL: PluginLogTail = {
   records: [],
@@ -178,6 +218,23 @@ describe("client apply()", () => {
     );
     const sources = body?.props["sources"] as () => Promise<readonly string[]>;
     expect(await sources()).toEqual(["dsh-sample"]);
+  });
+
+  it("injects the card sheet and the panel sheet, each under its own key", async () => {
+    const dom = installDom();
+    const harness = harnessOf();
+    await apply(harness.ctx);
+
+    // `injectCardStyles` is idempotent per key, so one key for two sheets means
+    // the second is treated as already injected and never reaches the document —
+    // which is exactly how the settings card lost its own rules to the panel's.
+    expect(dom.tags.map((tag) => tag.dataset["plugin"])).toEqual([
+      "dsh-plugin-log-ui/panel",
+      "dsh-plugin-log-ui",
+    ]);
+    const [panel, card] = dom.tags;
+    expect(panel?.textContent).toContain(".plu-log{");
+    expect(card?.textContent).toContain(".plu-grid{");
   });
 });
 
