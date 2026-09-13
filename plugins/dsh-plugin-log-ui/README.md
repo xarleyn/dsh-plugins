@@ -10,6 +10,22 @@ in two places:
 - a **Plugin logs** panel in the host's right Sidebar, streaming the records the
   host is writing right now.
 
+## Installation
+
+Install the published npm package by name:
+
+```bash
+dsh plugin --profile web add @yadsh/dsh-plugin-log-ui
+```
+
+To remove the plugin:
+
+```bash
+dsh plugin --profile web remove @yadsh/dsh-plugin-log-ui
+```
+
+Restart the DeepSeek Harness host if bundle hot reload does not pick up the newly installed plugin or browser client.
+
 ## The log panel
 
 The panel is a page tab of the right Sidebar: open the column, pick the

@@ -44,8 +44,10 @@ per restriction, whether it is **enforced** by code or merely **advisory**.
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-domain-experts
+dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
 Then open `Settings → Plugins → Domain Experts`.

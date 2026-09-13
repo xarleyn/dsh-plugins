@@ -13,6 +13,24 @@ prompts, or the browser UI**.
 > which credential may be used for it, how authentication is attached, and
 > whether redirects are safe. The model never supplies or receives secrets.
 
+## Installation
+
+Install the published npm package by name:
+
+```bash
+dsh plugin --profile web add @yadsh/dsh-web-fetch-authenticated
+```
+
+To remove the plugin:
+
+```bash
+dsh plugin --profile web remove @yadsh/dsh-web-fetch-authenticated
+```
+
+Then pin the provider in the profile patch (`fetchProvider: authenticated`) so
+the model-facing `web_fetch` tool routes through this plugin; without the pin
+the plugin stays inert.
+
 ## How it works
 
 ```text

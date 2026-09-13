@@ -2,6 +2,22 @@
 
 Server-side DeepSeek Harness plugin that scans persisted and live session logs for explicit user corrections. The current Phase 1 implementation produces provenance-preserving correction evidence; it does not generate, approve, or apply durable rules.
 
+## Installation
+
+Install the published npm package by name:
+
+```bash
+dsh plugin --profile <profile> add @yadsh/dsh-user-correction-miner
+```
+
+To remove the plugin:
+
+```bash
+dsh plugin --profile <profile> remove @yadsh/dsh-user-correction-miner
+```
+
+Restart the DeepSeek Harness host to pick up the plugin.
+
 ## Design principles
 
 - Corrections are evidence, not durable instructions.

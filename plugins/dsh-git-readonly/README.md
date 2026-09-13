@@ -43,8 +43,10 @@ branch → history → blame → commit — without ever receiving a command lin
 
 ## Installation
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-git-readonly
+dsh plugin --profile <profile> add @yadsh/dsh-git-readonly
 ```
 
 The plugin has no web-client surface; a host restart (or bundle reload)
