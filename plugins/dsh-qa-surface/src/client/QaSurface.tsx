@@ -58,6 +58,7 @@ import {
 } from "./components/QaWidthHandle.js";
 import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
+import { useThinkingPhrase } from "./components/thinking-phrases.js";
 import { useTranscriptView } from "./use-transcript-view.js";
 import { useSessionUiState } from "./use-session-ui-state.js";
 
@@ -114,11 +115,14 @@ function trapKeys(event: KeyboardEvent<HTMLElement>): void {
   }
 }
 
-function statusText(state: QaSessionState): string | null {
+function statusText(
+  state: QaSessionState,
+  runningPhrase: string | null,
+): string | null {
   if (state.phase === "creating") return "Подключаюсь…";
   if (state.phase === "reconnecting")
     return "Связь потерялась. Подключаюсь снова…";
-  if (state.phase === "running") return "Скребу по сусекам…";
+  if (state.phase === "running") return runningPhrase;
   return null;
 }
 
@@ -427,7 +431,24 @@ export function QaSurface(props: QaSurfaceProps) {
     scheduleActiveTurnSync();
   }, [state.messages, scheduleActiveTurnSync]);
 
-  const status = statusText(state);
+  // The composer hint repeats the work list's phrase, so both advance in step
+  // off the same turn start.
+  const runningStartedAt = useMemo(() => {
+    if (state.phase !== "running") return undefined;
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index];
+      if (message?.role === "work" && message.status === "running") {
+        return message.startedAt;
+      }
+    }
+    return undefined;
+  }, [state.messages, state.phase]);
+  const runningPhrase = useThinkingPhrase(
+    state.phase === "running",
+    runningStartedAt,
+    config.thinkingPhrases,
+  );
+  const status = statusText(state, runningPhrase);
   const empty = state.messages.length === 0;
   const conversationTitle = titleFromMessages(state);
   const showSidebar = config.ui.showSessionList && controller !== undefined;
@@ -750,6 +771,7 @@ export function QaSurface(props: QaSurfaceProps) {
                           renderMarkdown={config.ui.renderMarkdown}
                           showTimestamp={config.ui.showTimestamps}
                           stateKey={messageStateKey}
+                          thinkingPhrases={config.thinkingPhrases}
                           resolveImage={resolveImage}
                           onRegenerate={
                             isLast &&

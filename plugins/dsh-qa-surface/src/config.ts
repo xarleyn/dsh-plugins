@@ -62,6 +62,7 @@ const configSchema = z.object({
     })
     .default({ ...D.ui }),
   suggestedQuestions: z.array(z.string()).default([...D.suggestedQuestions]),
+  thinkingPhrases: z.array(z.string()).default([...D.thinkingPhrases]),
   interaction: z
     .object({
       approvals: z.union(["blocked"] as const).default(D.interaction.approvals),

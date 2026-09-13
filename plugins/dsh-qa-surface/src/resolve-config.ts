@@ -1,4 +1,5 @@
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "./types.js";
+import { DEFAULT_THINKING_PHRASES } from "./thinking-phrases.js";
 
 export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
   {
@@ -153,6 +154,24 @@ function uniqueQuestions(values: readonly string[]): readonly string[] {
   }
   return Object.freeze(questions);
 }
+/**
+ * Normalize the operator's phrase list. Unlike quick questions, an empty list
+ * cannot mean "hide the control": the running indicator has to say something,
+ * so emptiness restores the built-in phrases.
+ */
+function uniquePhrases(values: readonly string[]): readonly string[] {
+  const phrases = [
+    ...new Set(values.map((value) => value.trim()).filter(Boolean)),
+  ];
+  if (phrases.length === 0) return DEFAULT_THINKING_PHRASES;
+  if (phrases.some((value) => value.length > 120)) {
+    throw new TypeError(
+      "dsh-qa-surface: thinking phrases must be at most 120 characters",
+    );
+  }
+  return Object.freeze(phrases);
+}
+
 
 function uniqueToolNames(values: readonly string[]): readonly string[] {
   const names = [
@@ -432,6 +451,9 @@ export function resolveConfig(
     }),
     suggestedQuestions: uniqueQuestions(
       input.suggestedQuestions ?? DEFAULT_QA_SURFACE_CONFIG.suggestedQuestions,
+    thinkingPhrases: uniquePhrases(
+      input.thinkingPhrases ?? DEFAULT_QA_SURFACE_CONFIG.thinkingPhrases,
+    ),
     ),
     interaction: Object.freeze({
       approvals: "blocked",

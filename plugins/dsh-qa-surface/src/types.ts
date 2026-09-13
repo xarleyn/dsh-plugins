@@ -126,6 +126,11 @@ export interface QaSurfaceConfig {
     readonly showSessionList?: boolean;
   };
   readonly suggestedQuestions?: readonly string[];
+  /**
+   * Phrases the running indicator cycles through. An empty list restores the
+   * built-in phrases: the indicator always carries a label.
+   */
+  readonly thinkingPhrases?: readonly string[];
   readonly interaction?: {
     readonly approvals?: "blocked";
     readonly questions?: "unsupported";
@@ -212,6 +217,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly showSessionList: boolean;
   };
   readonly suggestedQuestions: readonly string[];
+  readonly thinkingPhrases: readonly string[];
   readonly interaction: {
     readonly approvals: "blocked";
     readonly questions: "unsupported";

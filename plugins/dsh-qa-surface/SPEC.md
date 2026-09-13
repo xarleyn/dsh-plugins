@@ -521,6 +521,13 @@ suggestedQuestions:
   - "С чего начать?"
   - "Помоги разобраться с ошибкой"
 
+# Optional. Defaults to the built-in phrase list (src/thinking-phrases.ts);
+# blank and duplicate entries are dropped, and an empty list restores the
+# built-in phrases because the running indicator always needs a label.
+thinkingPhrases:
+  - "Шлифую мысли…"
+  - "Сверяю с ГОСТом…"
+
 interaction:
   approvals: blocked
   questions: unsupported
@@ -1299,7 +1306,9 @@ ui:
 ```
 
 projects one work disclosure for each DSH turn. While the turn is running the
-disclosure is expanded and streams available reasoning/tool state. Once the
+disclosure is expanded and streams available reasoning/tool state; its label
+and the composer hint show the same `thinkingPhrases` entry and advance it
+together every four seconds, so a long turn never looks stalled. Once the
 turn completes it collapses before the final answer to a duration summary such
 as:
 

@@ -73,6 +73,8 @@ export interface QaMessageProps {
   ) => void;
   /** Open one path-backed source's detail (an inline footnote click). */
   readonly onSourceDetail?: (source: QaSource) => void;
+  /** Operator-configured running phrases; omitted reads the built-in list. */
+  readonly thinkingPhrases?: readonly string[];
 }
 
 type Rating = "up" | "down";
@@ -210,6 +212,7 @@ export const QaMessage = memo(
     resolveImage,
     onOpenSources,
     onSourceDetail,
+    thinkingPhrases,
   }: QaMessageProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
@@ -289,6 +292,7 @@ export const QaMessage = memo(
             endedAt={message.endedAt}
             items={message.items}
             renderMarkdown={renderMarkdown}
+            thinkingPhrases={thinkingPhrases}
           />
         </article>
       );
@@ -466,5 +470,6 @@ export const QaMessage = memo(
     prev.resolveImage === next.resolveImage &&
     prev.onOpenSources === next.onOpenSources &&
     prev.onSourceDetail === next.onSourceDetail &&
+    prev.thinkingPhrases === next.thinkingPhrases &&
     sameMessage(prev.message, next.message),
 );
