@@ -8,6 +8,8 @@
  * limits. Every field is documented — this is the deployment contract.
  */
 
+import path from 'node:path';
+
 import z from '@deepseek-ai/schemastery';
 
 /** Raw user-facing configuration. */
@@ -19,6 +21,11 @@ export interface GitReadonlyConfig {
    * Test seam: stub programs are wired through the runner options, not here.
    */
   readonly gitPath?: string;
+  /**
+   * Absolute directories that the model may select with the `repository`
+   * tool argument, in addition to the calling session directory.
+   */
+  readonly repositoryRoots?: string[];
   /** Wall-clock budget per git invocation, clamped to [1_000, 30_000] ms. */
   readonly timeoutMs?: number;
   readonly history?: {
@@ -39,6 +46,7 @@ export interface GitReadonlyConfig {
 export interface ResolvedGitReadonlyConfig {
   readonly enabled: boolean;
   readonly gitPath: string;
+  readonly repositoryRoots: readonly string[];
   readonly timeoutMs: number;
   readonly historyDefaultLimit: number;
   readonly historyMaxLimit: number;
@@ -49,6 +57,7 @@ export interface ResolvedGitReadonlyConfig {
 export const GIT_READONLY_DEFAULTS: ResolvedGitReadonlyConfig = {
   enabled: true,
   gitPath: 'git',
+  repositoryRoots: [],
   timeoutMs: 15_000,
   historyDefaultLimit: 20,
   historyMaxLimit: 100,
@@ -68,6 +77,12 @@ export const GitReadonlyConfigSchema: z<GitReadonlyConfig> = z
       .string()
       .default('git')
       .description('Git executable used for the read-only inspections.'),
+    repositoryRoots: z
+      .array(z.string())
+      .default([])
+      .description(
+        'Absolute directory roots that tools may select with the repository argument.',
+      ),
     timeoutMs: z
       .number()
       .default(GIT_READONLY_DEFAULTS.timeoutMs)
@@ -102,12 +117,23 @@ export const GitReadonlyConfigSchema: z<GitReadonlyConfig> = z
 /** Normalize and clamp raw configuration into the resolved shape. */
 export function resolveGitReadonlyConfig(raw?: GitReadonlyConfig | unknown): ResolvedGitReadonlyConfig {
   const config = (raw ?? {}) as GitReadonlyConfig;
+  const repositoryRoots = [
+    ...new Set(
+      (config.repositoryRoots ?? [])
+        .map((value) => value.trim())
+        .filter((value) => value !== ''),
+    ),
+  ];
+  if (repositoryRoots.some((value) => !path.isAbsolute(value))) {
+    throw new TypeError('dsh-git-readonly: repositoryRoots must contain only absolute paths');
+  }
   return {
     enabled: config.enabled ?? GIT_READONLY_DEFAULTS.enabled,
     gitPath:
       typeof config.gitPath === 'string' && config.gitPath.trim() !== ''
         ? config.gitPath.trim()
         : GIT_READONLY_DEFAULTS.gitPath,
+    repositoryRoots,
     timeoutMs: clampInteger(config.timeoutMs, 1_000, 30_000, GIT_READONLY_DEFAULTS.timeoutMs),
     historyDefaultLimit: clampInteger(
       config.history?.defaultLimit,

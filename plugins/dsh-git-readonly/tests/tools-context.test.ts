@@ -1,5 +1,9 @@
 /** Integration tests for `dsh_git_context` against real repositories (SPEC §3). */
 
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { GIT_READONLY_DEFAULTS } from '../src/config.js';
@@ -7,9 +11,11 @@ import { createGitContextTool } from '../src/tools/context.js';
 import type { GitContextResult } from '../src/tools/context.js';
 import { silentPluginLogger } from '../src/logging.js';
 import { createTempRepo, makeExec, normalizePath, type TempRepo } from './fixtures/git.js';
+import { repositoryParameter } from '../src/tools/shared.js';
 
 let repo: TempRepo;
 let emptyRepo: TempRepo;
+let externalSessionDir: string;
 const exec = () => makeExec(repo.dir);
 
 beforeAll(async () => {
@@ -17,11 +23,13 @@ beforeAll(async () => {
   await repo.commit('hello.txt', 'hello\n', 'init: hello');
   await repo.run(['tag', 'v0.1.0']);
   emptyRepo = await createTempRepo();
+  externalSessionDir = await mkdtemp(join(tmpdir(), 'dsh-git-readonly-session-'));
 });
 
 afterAll(async () => {
   await repo.dispose();
   await emptyRepo.dispose();
+  await rm(externalSessionDir, { recursive: true, force: true });
 });
 
 function makeTool(overrides: Record<string, unknown> = {}) {
@@ -71,5 +79,26 @@ describe('dsh_git_context', () => {
     const tool = makeTool({ timeoutMs: 5_000 });
     const context = (await tool.execute({}, exec())) as GitContextResult;
     expect(context.branch).toBe('main');
+  });
+
+  it('orients from a non-repository session into an operator-approved repository', async () => {
+    const tool = makeTool({ repositoryRoots: [repo.dir] });
+    const context = (await tool.execute(
+      { repository: repo.dir },
+      makeExec(externalSessionDir),
+    )) as GitContextResult;
+    expect(normalizePath(context.root)).toBe(normalizePath(repo.dir));
+  });
+
+  it('orients an empty call into the only configured repository root', async () => {
+    const tool = makeTool({ repositoryRoots: [repo.dir] });
+    const context = (await tool.execute(
+      {},
+      makeExec(externalSessionDir),
+    )) as GitContextResult;
+    expect(normalizePath(context.root)).toBe(normalizePath(repo.dir));
+    expect(
+      repositoryParameter({ ...GIT_READONLY_DEFAULTS, repositoryRoots: [repo.dir] }).description,
+    ).toContain(repo.dir);
   });
 });

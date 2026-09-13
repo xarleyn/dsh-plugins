@@ -1,6 +1,6 @@
 /** Fail-closed session/repository resolution (SPEC §5). */
 
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +11,7 @@ import {
   canonicalizeCommit,
   requireSessionCwd,
   resolveRepositoryRoot,
+  resolveToolRepository,
 } from '../src/git/repo.js';
 import { runGit } from '../src/git/runner.js';
 import { createTempRepo, makeExec, normalizePath, type TempRepo } from './fixtures/git.js';
@@ -57,6 +58,68 @@ describe('resolveRepositoryRoot', () => {
     await expect(
       resolveRepositoryRoot(runGit, plainDir, { timeoutMs: 10_000 }),
     ).rejects.toThrowError(GitToolError);
+  });
+});
+
+describe('resolveToolRepository', () => {
+  it('falls back to the only configured root when the session is not a repository', async () => {
+    const root = await resolveToolRepository(runGit, makeExec(plainDir), undefined, {
+      timeoutMs: 10_000,
+      repositoryRoots: [repo.dir],
+    });
+    expect(normalizePath(root)).toBe(normalizePath(repo.dir));
+  });
+
+  it('requires an explicit choice when multiple roots are configured', async () => {
+    await expect(
+      resolveToolRepository(runGit, makeExec(plainDir), undefined, {
+        timeoutMs: 10_000,
+        repositoryRoots: [repo.dir, plainDir],
+      }),
+    ).rejects.toThrow(/select one configured repository root/u);
+  });
+
+  it('selects an operator-approved repository outside the session directory', async () => {
+    const root = await resolveToolRepository(runGit, makeExec(plainDir), repo.dir, {
+      timeoutMs: 10_000,
+      repositoryRoots: [repo.dir],
+    });
+    expect(normalizePath(root)).toBe(normalizePath(repo.dir));
+  });
+
+  it('rejects an explicit repository outside every allowed root', async () => {
+    await expect(
+      resolveToolRepository(runGit, makeExec(plainDir), repo.dir, {
+        timeoutMs: 10_000,
+        repositoryRoots: [],
+      }),
+    ).rejects.toMatchObject({ code: 'repository-not-allowed' });
+  });
+
+  it('rejects a nested selector when git resolves above its allowed root', async () => {
+    const nested = join(repo.dir, 'nested');
+    await mkdir(nested);
+    await expect(
+      resolveToolRepository(runGit, makeExec(plainDir), nested, {
+        timeoutMs: 10_000,
+        repositoryRoots: [nested],
+      }),
+    ).rejects.toMatchObject({ code: 'repository-not-allowed' });
+  });
+
+  it('rejects empty and missing repository directories with typed errors', async () => {
+    await expect(
+      resolveToolRepository(runGit, makeExec(plainDir), ' ', {
+        timeoutMs: 10_000,
+        repositoryRoots: [],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-repository' });
+    await expect(
+      resolveToolRepository(runGit, makeExec(plainDir), join(plainDir, 'missing'), {
+        timeoutMs: 10_000,
+        repositoryRoots: [],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-repository' });
   });
 });
 

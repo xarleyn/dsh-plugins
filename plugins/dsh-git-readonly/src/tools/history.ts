@@ -11,13 +11,18 @@ import type { ResolvedGitReadonlyConfig } from '../config.js';
 import { GitToolError } from '../errors.js';
 import { HISTORY_FORMAT, parseDecorations, parseFormatRecord } from '../git/format.js';
 import type { GitRunner } from '../git/repo.js';
-import { requireSessionCwd, resolveRepositoryRoot, type ToolExec } from '../git/repo.js';
+import { resolveToolRepository, type ToolExec } from '../git/repo.js';
 import {
   escapeRegExpLiteral,
   validateRepoRelativePath,
   validateSearchLiteral,
 } from '../git/validate.js';
-import { createBoundRunner, expectGitOk, type GitToolDeps } from './shared.js';
+import {
+  createBoundRunner,
+  expectGitOk,
+  repositoryParameter,
+  type GitToolDeps,
+} from './shared.js';
 
 export interface GitHistoryCommit {
   readonly oid: string;
@@ -62,13 +67,14 @@ export function createGitHistoryTool(deps: GitToolDeps) {
   return defineTool({
     name: 'dsh_git_history',
     description: [
-      'Read-only provenance tool: search commit history of the session repository.',
+      'Read-only provenance tool: search commit history of a repository available to this session.',
       'Filter by repository-relative path, by literal commit-message substring (case-insensitive), or by a literal content string introduced or removed by a commit (pickaxe).',
       'Optionally match author and include all refs, not just HEAD.',
       'Returns a bounded page of commits (oid, author, date, subject, refs); narrow the filters when truncated is true.',
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(' '),
     parameters: {
+      repository: repositoryParameter(deps.config),
       path: {
         type: 'string',
         description: 'Repository-relative file or directory to restrict history to.',
@@ -141,10 +147,12 @@ export function createGitHistoryTool(deps: GitToolDeps) {
     },
     async execute(args: Record<string, unknown>, exec: ToolExec) {
       const started = Date.now();
-      const sessionCwd = requireSessionCwd(exec);
       const config = deps.config;
       const timeoutMs = config.timeoutMs;
-      const repoRoot = await resolveRepositoryRoot(run, sessionCwd, { timeoutMs });
+      const repoRoot = await resolveToolRepository(run, exec, args['repository'], {
+        timeoutMs,
+        repositoryRoots: config.repositoryRoots,
+      });
 
       const limit = clampLimit(args['limit'], config);
       const offset = clampOffset(args['offset']);

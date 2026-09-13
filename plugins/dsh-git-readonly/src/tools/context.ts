@@ -11,8 +11,13 @@ import { defineTool } from '@deepseek-ai/dsh-tools';
 
 import { HISTORY_FORMAT, parseDecorations, parseFormatRecord } from '../git/format.js';
 import type { GitRunner } from '../git/repo.js';
-import { requireSessionCwd, resolveRepositoryRoot, type ToolExec } from '../git/repo.js';
-import { createBoundRunner, expectGitOk, type GitToolDeps } from './shared.js';
+import { resolveToolRepository, type ToolExec } from '../git/repo.js';
+import {
+  createBoundRunner,
+  expectGitOk,
+  repositoryParameter,
+  type GitToolDeps,
+} from './shared.js';
 
 export interface GitContextResult {
   readonly root: string;
@@ -35,12 +40,14 @@ export function createGitContextTool(deps: GitToolDeps) {
   return defineTool({
     name: 'dsh_git_context',
     description: [
-      'Read-only provenance tool: report the git repository around the session working directory.',
+      'Read-only provenance tool: report a git repository available to this session.',
       'Returns the work-tree root, current branch (or detached state), upstream, HEAD commit id, last commit author/date/subject, and decorated refs.',
       'Use it first to orient before dsh_git_history / dsh_git_show / dsh_git_blame.',
       `Nothing is written and no network command is run. ${UNTRUSTED_NOTE}`,
     ].join(' '),
-    parameters: {},
+    parameters: {
+      repository: repositoryParameter(deps.config),
+    },
     output: {
       schema: {
         type: 'object',
@@ -77,11 +84,13 @@ export function createGitContextTool(deps: GitToolDeps) {
         },
       ],
     },
-    async execute(_args: unknown, exec: ToolExec) {
+    async execute(args: Record<string, unknown>, exec: ToolExec) {
       const started = Date.now();
-      const sessionCwd = requireSessionCwd(exec);
       const timeoutMs = deps.config.timeoutMs;
-      const repoRoot = await resolveRepositoryRoot(run, sessionCwd, { timeoutMs });
+      const repoRoot = await resolveToolRepository(run, exec, args['repository'], {
+        timeoutMs,
+        repositoryRoots: deps.config.repositoryRoots,
+      });
 
       const branchResult = await run(['branch', '--show-current'], {
         cwd: repoRoot,

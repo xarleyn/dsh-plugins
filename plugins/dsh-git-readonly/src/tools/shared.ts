@@ -19,6 +19,22 @@ export interface GitToolDeps {
   readonly programPrefixArgs?: readonly string[];
 }
 
+/** Model-facing repository selector, including the roots this deployment exposes. */
+export function repositoryParameter(config: ResolvedGitReadonlyConfig) {
+  const configuredRoots =
+    config.repositoryRoots.length === 0
+      ? 'No additional repository roots are configured.'
+      : `Configured repository roots: ${config.repositoryRoots.join(', ')}.`;
+  return {
+    type: 'string' as const,
+    description:
+      'Repository directory. Relative paths start at the session directory and must remain ' +
+      'inside it or a configured repository root. When omitted, the session repository is used; ' +
+      'if the session directory is not a repository and exactly one repository root is configured, ' +
+      `that root is used automatically. ${configuredRoots}`,
+  };
+}
+
 /** Bind a hardened runner to the resolved configuration. */
 export function createBoundRunner(deps: GitToolDeps): GitRunner {
   return async (argv, options) => {

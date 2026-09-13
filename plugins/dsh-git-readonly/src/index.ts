@@ -44,6 +44,7 @@ export {
   canonicalizeCommit,
   requireSessionCwd,
   resolveRepositoryRoot,
+  resolveToolRepository,
   type ToolExec,
 } from './git/repo.js';
 export {

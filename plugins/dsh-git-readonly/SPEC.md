@@ -5,7 +5,7 @@ Read-only git provenance tools for DeepSeek Harness agents.
 ## 1. Product contract
 
 1. An agent whose session has a working directory can learn, in one tool
-   call, which repository it is in (`dsh_git_context`): work-tree root,
+   call, which allowed repository it selected (`dsh_git_context`): work-tree root,
    branch or detached state, upstream, HEAD id, last commit author/date and
    subject, and decorated refs.
 2. An agent can find the commit that introduced or removed a literal string
@@ -17,7 +17,7 @@ Read-only git provenance tools for DeepSeek Harness agents.
    historical revision, and then inspect that commit (`dsh_git_show`):
    metadata, parents, per-file line counts, and a bounded patch.
 4. The model never supplies a command line, a git option, or a git
-   subcommand. Every argument is one of: a hexadecimal commit id
+   subcommand. Every argument is one of: an allowed repository directory, a hexadecimal commit id
    (`/^[0-9a-fA-F]{7,64}$/`), a repository-relative path without `..`
    segments, a bounded literal search string, or a numeric limit.
 5. The commit passed to `dsh_git_show` / `dsh_git_blame` is canonicalized
@@ -32,9 +32,10 @@ Read-only git provenance tools for DeepSeek Harness agents.
    `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, `GIT_EXTERNAL_DIFF`,
    `GIT_CONFIG_*`, askpass/ssh keys) cannot redirect a read; those keys are
    removed per invocation and deterministic values are forced.
-9. Without a session working directory, or outside a git work tree, every
-   tool fails closed with a typed error; there is no fallback to the host
-   process cwd.
+9. Without a session working directory, outside a git work tree, or when an
+   explicit repository and its resolved work-tree root escape the session
+   directory and configured `repositoryRoots`, every tool fails closed with a
+   typed error; there is no fallback to the host process cwd.
 10. One call is bounded: timeouts (default 15 s, hard clamp 1–30 s), byte
     caps for patches (default 200 KiB) and stdout, page sizes for history
     (default 20, max 100) and blame lines (default 300). Exceeding a cap
@@ -44,21 +45,27 @@ Read-only git provenance tools for DeepSeek Harness agents.
 
 | Tool | Parameters (model-facing) | Result |
 | --- | --- | --- |
-| `dsh_git_context` | — | root, branch?, detached, upstream?, head?, shortOid?, author?, authoredAt?, subject?, refs[] |
-| `dsh_git_history` | path?, query?, search?, author?, limit?, offset?, all? | commits[] {oid, shortOid, author, authoredAt, subject, refs[]}, count, truncated |
-| `dsh_git_show` | oid (required), path?, statOnly? | oid, shortOid, author, authoredAt, subject, body, parents[], files[] {path, additions?, deletions?}, patch, patchTruncated |
-| `dsh_git_blame` | file (required), fromLine?, toLine?, oid? | file, fromLine, toLine, lines[] {line, oid, author, authoredAt, summary, content}, truncated |
+| `dsh_git_context` | repository? | root, branch?, detached, upstream?, head?, shortOid?, author?, authoredAt?, subject?, refs[] |
+| `dsh_git_history` | repository?, path?, query?, search?, author?, limit?, offset?, all? | commits[] {oid, shortOid, author, authoredAt, subject, refs[]}, count, truncated |
+| `dsh_git_show` | repository?, oid (required), path?, statOnly? | oid, shortOid, author, authoredAt, subject, body, parents[], files[] {path, additions?, deletions?}, patch, patchTruncated |
+| `dsh_git_blame` | repository?, file (required), fromLine?, toLine?, oid? | file, fromLine, toLine, lines[] {line, oid, author, authoredAt, summary, content}, truncated |
 
 Errors carry stable codes: `no-session-cwd`, `not-a-git-repository`,
-`invalid-oid`, `invalid-path`, `invalid-argument`, `git-timeout`,
+`invalid-repository`, `repository-not-allowed`, `invalid-oid`, `invalid-path`, `invalid-argument`, `git-timeout`,
 `git-failed`.
+
+When `repository` is omitted, the session cwd remains the first choice. If it
+is not a work tree and exactly one `repositoryRoots` entry is configured, that
+root is selected automatically. Multiple configured roots require an explicit
+selection and are listed in the model-facing parameter description and error.
 
 ## 3. Data flow
 
 ```
 model → tools.execute(args, exec)
           │ validateCommitOid / validateRepoRelativePath / validateSearchLiteral
-          │ requireSessionCwd(exec.agent.session.header.cwd)   ← fail-closed
+          │ resolveToolRepository(session cwd, repository, configured roots)
+          │ canonical selection + git root containment checks   ← fail-closed
           │ resolveRepositoryRoot: git rev-parse --show-toplevel
           ▼
         runGit(argv, {cwd, timeoutMs, maxBytes})

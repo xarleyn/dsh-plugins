@@ -1,5 +1,7 @@
 /** Unit tests for config resolution and clamping (SPEC §10). */
 
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -38,9 +40,11 @@ describe('resolveGitReadonlyConfig', () => {
   });
 
   it('honours in-range configuration', () => {
+    const repositoryRoot = path.resolve('configured-repository');
     const resolved = resolveGitReadonlyConfig({
       enabled: false,
       gitPath: 'C:/Program Files/Git/bin/git.exe',
+      repositoryRoots: [`  ${repositoryRoot}  `, repositoryRoot, ''],
       timeoutMs: 20_000,
       history: { defaultLimit: 10, maxLimit: 50 },
       blame: { maxLines: 50 },
@@ -48,10 +52,17 @@ describe('resolveGitReadonlyConfig', () => {
     });
     expect(resolved.enabled).toBe(false);
     expect(resolved.gitPath).toBe('C:/Program Files/Git/bin/git.exe');
+    expect(resolved.repositoryRoots).toEqual([repositoryRoot]);
     expect(resolved.historyDefaultLimit).toBe(10);
     expect(resolved.historyMaxLimit).toBe(50);
     expect(resolved.blameMaxLines).toBe(50);
     expect(resolved.patchBytes).toBe(65_536);
+  });
+
+  it('rejects relative repository roots', () => {
+    expect(() => resolveGitReadonlyConfig({ repositoryRoots: ['../code'] })).toThrow(
+      /absolute/u,
+    );
   });
 });
 

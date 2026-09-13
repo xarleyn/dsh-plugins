@@ -28,11 +28,12 @@ branch → history → blame → commit — without ever receiving a command lin
   `GIT_TERMINAL_PROMPT=0`, `GIT_CONFIG_NOSYSTEM=1` and `LC_ALL=C` are
   forced. The byte-capped, time-boxed process is killed at the limit and
   the truncation is reported in the result.
-- **Fail-closed boundaries.** The tools operate on the session working
-  directory only; a session without a cwd, or a cwd outside a git work
-  tree, produces a typed error instead of silently reading the host's
-  repository. Nothing writes to the repository, and no network git command
-  exists in the tool surface.
+- **Fail-closed repository selection.** With no `repository` argument the
+  tools use the session working directory. An explicit directory must remain
+  inside that directory or an operator-configured `repositoryRoots` entry,
+  both before and after Git resolves the work-tree root. Canonical-path checks
+  reject traversal and symlink escapes. Nothing writes to the repository, and
+  no network git command exists in the tool surface.
 - **Bounded, structured output.** Commits, files, blame lines and patches
   come back as structured fields with explicit `truncated` flags, sized so
   one call cannot flood the model context.
@@ -85,11 +86,20 @@ Configure the plugin under the `git-readonly` key in the DSH profile.
 | --- | --- | --- | --- |
 | `enabled` | boolean | `true` | When `false`, the tools are not registered at all. |
 | `gitPath` | string | `"git"` | Git executable used for the inspections. |
+| `repositoryRoots` | string[] | `[]` | Absolute directory roots that tools may select with `repository`, in addition to the session directory. |
 | `timeoutMs` | number | `15000` | Wall-clock budget per git invocation, clamped to 1000–30000 ms. |
 | `history.defaultLimit` | number | `20` | History page size when the model omits `limit` (1–50). |
 | `history.maxLimit` | number | `100` | Hard upper bound for one history page (1–200). |
 | `blame.maxLines` | number | `300` | Maximum lines attributed by one `dsh_git_blame` call (1–1000). |
 | `patchBytes` | number | `200000` | Maximum patch bytes returned by `dsh_git_show` (4096–1048576). |
+
+For a QA session rooted at `E:/qa-assistant/workspaces/work` that must inspect
+the sibling checkout, configure the plugin with
+`repositoryRoots: ["E:/qa-assistant/workspaces/code"]`. Because this is the
+only configured root, `dsh_git_context {}` automatically uses it when the
+session cwd is not itself a repository. The model can also pass the absolute
+path explicitly. With multiple configured roots the model must select one;
+the tool parameter and the typed error both list the available roots.
 
 ## Security model
 
@@ -97,8 +107,8 @@ The tools are read-only by construction, not by policy: the git subcommands
 are fixed, every model-supplied string is validated before it reaches the
 process, and the execution environment strips every redirection the parent
 shell or the repository could inject. What remains is *provenance reading* —
-log, show, diff output, blame — of the one repository the session is pinned
-to. This is a deliberately narrower authority than a shell with a git
+log, show, diff output, blame — of the session repository or an explicitly
+configured directory root. This is a deliberately narrower authority than a shell with a git
 allow-list and narrower than general git access: there is no fetch, push,
 clone, checkout, config, worktree or hook surface, and no OS-level sandbox
 is required or assumed (SPEC §8).
