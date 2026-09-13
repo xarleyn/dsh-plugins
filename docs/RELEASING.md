@@ -45,11 +45,23 @@ through OIDC.
 2. Run `pnpm release:plan` and select the affected public packages.
 3. Commit the generated Markdown plan with the implementation.
 4. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
-5. Open a PR. CI checks that touched publishable packages have a plan.
+5. Open a PR. CI checks that every publishable package whose commits no release
+   tag covers yet is named by a plan.
 
 A plan file must open with its `---` front-matter fence. Nx silently ignores a
 plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
 a file instead of letting the run release nothing.
+
+`pnpm release:check` is the same command locally and in CI
+(`scripts/check-release-plans.mjs`). The check reads each publishable release project against its own last release
+tag and asks for a plan only when commits no tag covers have landed since.
+Comparing every project against the default branch instead would report an
+already-published release as unreleased and demand plans the release has
+consumed. A project that never shipped has no tag, so its whole change against
+the base counts. Uncommitted work is reported as pending rather than judged,
+because the release reads commits too. The check ignores the files Nx ignores
+for this decision, so a release commit that only rewrites versions and
+changelogs needs no further plan.
 
 ## Maintainer flow
 
@@ -84,11 +96,11 @@ produce test versions without touching `main`. That release consumes the
 branch's version plans, exactly like a release on `main` — plans and tags move
 only once npm has every version:
 
-- The PR's version-plan check is skipped from then on, because release tags
-  exist that only the branch carries. That is the signal that the plans were
-  already applied and there is nothing left for the check to read.
-- Keep adding a plan for anything you change after that release. The exemption
-  covers the plans the release consumed, not the new work.
+- The released projects stop needing a plan, because the check reads each
+  project against its own last release tag: the tag now covers the commits the
+  plan was written for.
+- Keep adding a plan for anything you change after that release. What the tag
+  covers is the work it released, not the work that follows it.
 - A later release from the same branch needs a fresh plan, since the workflow
   requires at least one parseable plan before it will version anything.
 

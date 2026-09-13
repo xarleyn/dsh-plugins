@@ -517,7 +517,7 @@ pnpm tarball:verify plugins/<name>           # тарбол + чистая ус�
 ```
 
 CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
-`release plan:check` и tarball-verify затронутых пакетов. Всё это должно
+`pnpm release:check` и tarball-verify затронутых пакетов. Всё это должно
 проходить локально до PR.
 
 ---
@@ -718,7 +718,7 @@ docs: add plugin guidelines
 | §27.9 | Нет кросс-пакетных относительных/абсолютных импортов | `pnpm deps:check` |
 | §27.10 | Workspace-пакеты потребляются через `exports` | `pnpm deps:check` |
 | Tarball 1–7 | lib есть; манифест корректен; патч объявлен и упакован; exports существуют; нет `workspace:`/`catalog:` утечек; чистая установка + smoke-импорт | `scripts/tarball-verify.sh` |
-| Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `nx release plan:check`, `release.yml` |
+| Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `pnpm release:check`, `release.yml` |
 
 ## Приложение B: известные расхождения
 

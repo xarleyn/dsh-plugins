@@ -134,7 +134,7 @@ const ALWAYS_SHIPPED = [
   /^licen[cs]e(\.(md|txt))?$/iu,
 ];
 
-function globToRegExp(pattern) {
+export function globToRegExp(pattern) {
   const source = pattern
     .replace(/[.+^${}()|[\]\\]/gu, "\\$&")
     // `**/` also matches no directory at all, so `lib/**/*.js` covers `lib/a.js`.
