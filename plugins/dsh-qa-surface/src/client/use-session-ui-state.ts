@@ -15,6 +15,9 @@ export interface QaDrawerCompleteness {
   readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
 }
 
+/** The rail tab ids; the agents drawer has not become a tab yet. */
+export type QaRailTab = "sources" | "files";
+
 export interface QaSessionUiState {
   /** Per group: how many answers back from the newest is shown (0 = newest). */
   readonly variantOffsets: Record<string, number>;
@@ -24,8 +27,12 @@ export interface QaSessionUiState {
   readonly setActiveTurn: Dispatch<SetStateAction<number | null>>;
   readonly agentsOpen: boolean;
   readonly setAgentsOpen: Dispatch<SetStateAction<boolean>>;
-  readonly sourcesOpen: boolean;
-  readonly setSourcesOpen: Dispatch<SetStateAction<boolean>>;
+  /** Whether the right rail column is shown. */
+  readonly railOpen: boolean;
+  readonly setRailOpen: Dispatch<SetStateAction<boolean>>;
+  /** Which rail tab is active; meaningful only while the rail is open. */
+  readonly railTab: QaRailTab;
+  readonly setRailTab: Dispatch<SetStateAction<QaRailTab>>;
   readonly drawerSources: readonly QaSource[] | null;
   readonly setDrawerSources: Dispatch<
     SetStateAction<readonly QaSource[] | null>
@@ -53,7 +60,8 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
   );
   const [activeTurn, setActiveTurn] = useState<number | null>(null);
   const [agentsOpen, setAgentsOpen] = useState(false);
-  const [sourcesOpen, setSourcesOpen] = useState(false);
+  const [railOpen, setRailOpen] = useState(false);
+  const [railTab, setRailTab] = useState<QaRailTab>("sources");
   const [drawerSources, setDrawerSources] = useState<
     readonly QaSource[] | null
   >(null);
@@ -88,7 +96,8 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
     setVariantOffsets({});
     setActiveTurn(null);
     setAgentsOpen(false);
-    setSourcesOpen(false);
+    setRailOpen(false);
+    setRailTab("sources");
     setDrawerSources(null);
     setDrawerCompleteness(null);
     setDrawerDetail(null);
@@ -112,8 +121,10 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
     setActiveTurn,
     agentsOpen,
     setAgentsOpen,
-    sourcesOpen,
-    setSourcesOpen,
+    railOpen,
+    setRailOpen,
+    railTab,
+    setRailTab,
     drawerSources,
     setDrawerSources,
     drawerCompleteness,

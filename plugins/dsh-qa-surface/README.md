@@ -305,8 +305,9 @@ Sources are structured Host-owned provenance, independent of
 `ui.showToolActivity`. Successful reads/fetches, bounded web-search evidence,
 Jira/Confluence/knowledge results, and inherited subagent sources are
 normalized and deduplicated into one turn bundle. That exact bundle feeds the
-answer footer and grouped drawer and is persisted as `qa/sources`, so reload
-does not rerun tools. Search-only discovery stays hidden by default.
+answer footer and the right rail's sources tab and is persisted as
+`qa/sources`, so reload does not rerun tools. Search-only discovery stays
+hidden by default.
 
 Local file cards open a source-scoped, read-only preview after Host-side real
 path validation against the attested session root. Markdown opens rendered by
@@ -340,6 +341,17 @@ reaches the model as the path of that stored copy rather than as content, so
 `attachments.textFiles: false` restricts the composer to images again, while
 `maxFileBytes` and `maxPending` cap one file and the combined number of images
 plus files per message.
+
+The right rail is the chat's side panel, mirroring the Harness right Sidebar's
+pattern: a tab strip is the panel's whole top edge, and the strip's close
+control collapses the column. The sources tab carries the grouped list and
+preview the sources drawer used to render — a message footnote opens it pinned
+to that answer's subset, and «Все источники» returns to the whole chat. The
+«Файлы» tab (header button with a live count) lists every attachment this chat
+sent, grouped per message newest first, with the same file handles the
+transcript shows and image thumbnails resolved from the session's asset
+repository; each group jumps back to its message. Below 600px the rail goes
+full-bleed. The agents drawer keeps its own header drawer for now.
 
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the

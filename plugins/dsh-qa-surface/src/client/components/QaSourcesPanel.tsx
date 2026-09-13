@@ -314,7 +314,7 @@ function QaSourceDetail({
   );
 }
 
-export interface QaSourcesDrawerProps {
+export interface QaSourcesPanelProps {
   readonly sources: readonly QaSource[];
   readonly complete: boolean;
   readonly incompleteOrigins?: QaTurnSources["incompleteOrigins"];
@@ -324,11 +324,14 @@ export interface QaSourcesDrawerProps {
   readonly filePreview: ResolvedQaSurfaceConfig["sources"]["filePreview"];
   /** Open straight onto this source's detail (an inline footnote click). */
   readonly initialDetail?: QaSource | null;
-  readonly onClose: () => void;
+  /** The list is a message-scoped subset rather than the whole chat. */
+  readonly pinned?: boolean;
+  /** Dismiss the pinned subset and show the whole chat's sources. */
+  readonly onShowAll?: () => void;
 }
 
 /** Canonical grouped source panel and safe local-file preview. */
-export function QaSourcesDrawer({
+export function QaSourcesPanel({
   sources,
   complete,
   incompleteOrigins,
@@ -337,8 +340,9 @@ export function QaSourcesDrawer({
   display,
   filePreview,
   initialDetail = null,
-  onClose,
-}: QaSourcesDrawerProps) {
+  pinned = false,
+  onShowAll,
+}: QaSourcesPanelProps) {
   const [detailId, setDetailId] = useState<string | null>(
     initialDetail?.id ?? null,
   );
@@ -363,22 +367,16 @@ export function QaSourcesDrawer({
     }));
   }, [display.groupByKind, sources]);
   return (
-    <aside className="dsh-qa-sources" aria-label="Источники">
-      <div className="dsh-qa-sources__head">
-        <span>
-          {detail === undefined ? `Источники (${sources.length})` : "Источник"}
-        </span>
+    <div className="dsh-qa-sourcespanel">
+      {detail === undefined && pinned && onShowAll !== undefined ? (
         <button
           type="button"
-          aria-label="Закрыть источники"
-          title="Закрыть"
-          onClick={onClose}
+          className="dsh-qa-sourcespanel__all"
+          onClick={onShowAll}
         >
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path d="m4 4 8 8m0-8-8 8" />
-          </svg>
+          Все источники
         </button>
-      </div>
+      ) : null}
       {detail === undefined ? (
         <div className="dsh-qa-sources__list">
           {!complete ? (
@@ -430,6 +428,6 @@ export function QaSourcesDrawer({
           onBack={() => setDetailId(null)}
         />
       )}
-    </aside>
+    </div>
   );
 }

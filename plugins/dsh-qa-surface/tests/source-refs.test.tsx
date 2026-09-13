@@ -3,7 +3,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Markdown } from "../src/client/components/Markdown.js";
-import { QaSourcesDrawer } from "../src/client/components/QaSourcesDrawer.js";
+import { QaSourcesPanel } from "../src/client/components/QaSourcesPanel.js";
 import {
   buildSourceRefs,
   sourceFileName,
@@ -160,7 +160,7 @@ describe("QA inline source chips", () => {
   });
 });
 
-describe("QA sources drawer direct detail", () => {
+describe("QA sources panel direct detail", () => {
   it("opens straight onto the requested source", () => {
     const display = {
       sidebar: true,
@@ -178,7 +178,7 @@ describe("QA sources drawer direct detail", () => {
       maxMarkdownRenderBytes: 0,
     } as ResolvedQaSurfaceConfig["sources"]["filePreview"];
     render(
-      <QaSourcesDrawer
+      <QaSourcesPanel
         sources={[webSource(), fileSource()]}
         complete
         sessionId={null}
@@ -186,7 +186,6 @@ describe("QA sources drawer direct detail", () => {
         display={display}
         filePreview={filePreview}
         initialDetail={fileSource()}
-        onClose={vi.fn()}
       />,
     );
     expect(screen.queryByText(/Web/)).toBeNull();
