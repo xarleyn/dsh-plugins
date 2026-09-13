@@ -87,7 +87,7 @@ export class SessionScopeRuntime {
     const scope = getScope(session, fallbackWorkspaceRoot);
     const key = JSON.stringify([scope.mode, scope.workspaceRoot, scope.roots, scope.navigationRoots]);
     const cached = this.cache.get(session);
-    if (cached?.eventCount === session.events.length && cached.key === key) return cached;
+    if (cached?.eventCount === session.snapshotEvents().length && cached.key === key) return cached;
     const resolveOne = (path: string) => fs.resolve(path, { cwd: scope.workspaceRoot });
     const value: CachedScope = {
       scope,
@@ -97,7 +97,7 @@ export class SessionScopeRuntime {
       navigation: await Promise.all(
         [...new Set([scope.workspaceRoot, ...scope.navigationRoots])].map(resolveOne),
       ),
-      eventCount: session.events.length,
+      eventCount: session.snapshotEvents().length,
       key,
     };
     this.cache.set(session, value);

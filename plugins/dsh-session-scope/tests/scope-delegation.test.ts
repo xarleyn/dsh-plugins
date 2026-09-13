@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { canonicalPath } from "../src/core.js";
+import { canonicalPath, type SessionEvent } from "../src/core.js";
 import {
   initializeDelegatedSessionScope,
   type DelegatedScopeSession,
@@ -28,16 +28,16 @@ function temporaryWorkspace(): string {
 
 function session(
   header: DelegatedScopeSession["header"],
-  events: DelegatedScopeSession["events"] = [],
+  events: readonly SessionEvent[] = [],
 ): DelegatedScopeSession {
-  const target: DelegatedScopeSession = {
+  const log = events.map((event) => event as { type: string; data: Record<string, unknown> });
+  return {
     header,
-    events: [...events],
+    snapshotEvents: () => log,
     append(type, data) {
-      (target.events as Array<{ type: string; data: Record<string, unknown> }>).push({ type, data: asEvent(data) });
+      log.push({ type, data: asEvent(data) });
     },
   };
-  return target;
 }
 
 afterEach(() => {
@@ -66,7 +66,7 @@ describe("delegated session scope", () => {
       roots: [canonicalPath(selected)],
       source: "delegation",
     });
-    expect(effectiveSessionScope(child.events, child.header)).toMatchObject({
+    expect(effectiveSessionScope(child.snapshotEvents(), child.header)).toMatchObject({
       mode: "focused",
       roots: [canonicalPath(selected)],
     });
@@ -95,7 +95,7 @@ describe("delegated session scope", () => {
       mode: "focused",
       roots: [canonicalPath(selected)],
     });
-    expect(child.events.at(-1)?.data).toMatchObject({ source: "delegation" });
+    expect(child.snapshotEvents().at(-1)?.data).toMatchObject({ source: "delegation" });
   });
 
   test("resumed children keep their durable child-owned snapshot", () => {
@@ -115,7 +115,7 @@ describe("delegated session scope", () => {
 
     expect(initializeDelegatedSessionScope(child, resolveParent)).toBeUndefined();
     expect(resolveParent).not.toHaveBeenCalled();
-    expect(child.events).toHaveLength(1);
+    expect(child.snapshotEvents()).toHaveLength(1);
   });
 
   test("missing parent fails closed before a fresh child can run", () => {
@@ -130,7 +130,7 @@ describe("delegated session scope", () => {
     expect(() => initializeDelegatedSessionScope(child, () => undefined)).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.PARENT_UNAVAILABLE }),
     );
-    expect(child.events).toHaveLength(0);
+    expect(child.snapshotEvents()).toHaveLength(0);
   });
 
   test("nested subagents inherit the delegated scope transitively", () => {
@@ -154,7 +154,7 @@ describe("delegated session scope", () => {
     });
 
     initializeDelegatedSessionScope(child, () => parent);
-    expect(effectiveSessionScope(child.events, child.header).roots).toEqual([canonicalPath(selected)]);
+    expect(effectiveSessionScope(child.snapshotEvents(), child.header).roots).toEqual([canonicalPath(selected)]);
   });
 
   test("ordinary session forks retain scope through their copied event prefix", () => {
@@ -171,6 +171,6 @@ describe("delegated session scope", () => {
       data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     }]);
 
     expect(initializeDelegatedSessionScope(fork, () => undefined)).toBeUndefined();
-    expect(effectiveSessionScope(fork.events, fork.header).roots).toEqual([canonicalPath(selected)]);
+    expect(effectiveSessionScope(fork.snapshotEvents(), fork.header).roots).toEqual([canonicalPath(selected)]);
   });
 });
