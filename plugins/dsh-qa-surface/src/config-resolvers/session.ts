@@ -1,6 +1,6 @@
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
-import { optionalText } from "./shared.js";
+import { isAbsoluteDirectoryPath, optionalText } from "./shared.js";
 
 type SessionSlice = ResolvedQaSurfaceConfig["session"];
 
@@ -17,7 +17,7 @@ export function resolveSession(input: QaSurfaceConfig): SessionSlice {
   // The cwd pin is the no-registry alternative to workspaceId; both pin the
   // session to one directory, so together they are a configuration error.
   const cwd = optionalText(input.session?.cwd);
-  if (cwd !== null && !/^([a-zA-Z]:[/\\]|\/)/u.test(cwd)) {
+  if (cwd !== null && !isAbsoluteDirectoryPath(cwd)) {
     throw new TypeError(
       "dsh-qa-surface: session.cwd must be an absolute directory path",
     );
