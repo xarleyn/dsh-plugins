@@ -1,21 +1,88 @@
 // @vitest-environment jsdom
 
+import { useRef } from "react";
 import { fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   QaWidthHandle,
   readQaContentWidth,
   resolveQaContentWidth,
+  useQaContentWidth,
   writeQaContentWidth,
+  type UseQaContentWidthResult,
 } from "../src/client/components/QaWidthHandle.js";
+
+/** In-memory stand-in for the browser storage the hook persists into. */
+function memoryStorage(initial?: string) {
+  const entries = new Map<string, string>();
+  if (initial !== undefined) entries.set("qa:content-width", initial);
+  return {
+    getItem: (key: string): string | null => entries.get(key) ?? null,
+    setItem: (key: string, value: string): void => {
+      entries.set(key, value);
+    },
+  };
+}
+
+type StorageStub = ReturnType<typeof memoryStorage>;
+
+/** Renders the hook against a fixed-width column and exposes its handlers. */
+function WidthHarness(props: {
+  readonly column: number;
+  readonly min: number;
+  readonly storage: StorageStub;
+  readonly handlers: { current: UseQaContentWidthResult | null };
+}) {
+  const root = useRef<HTMLDivElement | null>(null);
+  const published = useQaContentWidth({
+    active: true,
+    root,
+    storage: props.storage,
+    storageKey: "qa:content-width",
+    minContentWidth: props.min,
+  });
+  props.handlers.current = published;
+  return (
+    <div
+      ref={(node) => {
+        root.current = node;
+        // jsdom has no layout: the column width is the fixture.
+        if (node !== null) {
+          Object.defineProperty(node, "offsetWidth", {
+            value: props.column,
+            configurable: true,
+          });
+        }
+      }}
+    />
+  );
+}
 
 describe("QA content width", () => {
   it("uses the DSH adaptive width and clamps persisted preferences", () => {
-    expect(resolveQaContentWidth(1_000, null, 900)).toBe(680);
-    expect(resolveQaContentWidth(1_440, null, 900)).toBe(900);
-    expect(resolveQaContentWidth(1_000, 400, 900)).toBe(640);
+    expect(resolveQaContentWidth(1_000, null, 650)).toBe(680);
+    expect(resolveQaContentWidth(1_440, null, 650)).toBe(920);
+    expect(resolveQaContentWidth(1_000, 400, 650)).toBe(650);
     expect(resolveQaContentWidth(1_000, 400, 600)).toBe(600);
-    expect(resolveQaContentWidth(1_000, 1_200, 900)).toBe(824);
+    expect(resolveQaContentWidth(1_000, 1_200, 650)).toBe(824);
+  });
+
+  // The floor is the only operator bound: upward travel stops at the column,
+  // not at a configured cap, so a wide page lets the transcript fill it.
+  it("lets a dragged width grow to the column edge budget", () => {
+    expect(resolveQaContentWidth(1_440, 1_800, 650)).toBe(1_264);
+    expect(resolveQaContentWidth(2_400, 2_400, 650)).toBe(2_224);
+  });
+
+  // A column that cannot hold the floor wins over the floor: there is no
+  // other space to take, and the handles must stay reachable.
+  it("yields to a column narrower than the floor", () => {
+    expect(resolveQaContentWidth(700, null, 650)).toBe(524);
+    expect(resolveQaContentWidth(700, 900, 650)).toBe(524);
+  });
+
+  it("starts at the floor when the operator raises it past the adaptive width", () => {
+    expect(resolveQaContentWidth(1_440, null, 1_100)).toBe(1_100);
   });
 
   it("tolerates unavailable or corrupt durable storage", () => {
@@ -43,6 +110,73 @@ describe("QA content width", () => {
         720,
       ),
     ).not.toThrow();
+  });
+
+  describe("applied to the surface", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("publishes the configured floor and grows past the old cap on a drag", () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe(): void {}
+          disconnect(): void {}
+        },
+      );
+      const handlers: { current: UseQaContentWidthResult | null } = {
+        current: null,
+      };
+      const storage = memoryStorage();
+      const { container } = render(
+        <WidthHarness
+          column={1_440}
+          min={650}
+          storage={storage}
+          handlers={handlers}
+        />,
+      );
+      const root = container.firstElementChild as HTMLElement;
+      // Adaptive default for a wide column, as DSH resolves it.
+      expect(root.style.getPropertyValue("--dsh-qa-content-width")).toBe(
+        "920px",
+      );
+
+      // 1_600px exceeds the removed 900px cap and stops at the column budget.
+      handlers.current?.onDrag(1_600);
+      expect(root.style.getPropertyValue("--dsh-qa-content-width")).toBe(
+        "1264px",
+      );
+      handlers.current?.onCommit(1_600);
+      expect(storage.getItem("qa:content-width")).toBe("1264");
+    });
+
+    it("raises a persisted narrow width back to the floor", () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe(): void {}
+          disconnect(): void {}
+        },
+      );
+      const handlers: { current: UseQaContentWidthResult | null } = {
+        current: null,
+      };
+      const { container } = render(
+        <WidthHarness
+          column={1_000}
+          min={650}
+          storage={memoryStorage("400")}
+          handlers={handlers}
+        />,
+      );
+      const root = container.firstElementChild as HTMLElement;
+      expect(root.style.getPropertyValue("--dsh-qa-content-width")).toBe(
+        "650px",
+      );
+      expect(handlers.current?.onStart()).toBe(650);
+    });
   });
 
   it("renders the same two-sided resize affordance as DSH", () => {

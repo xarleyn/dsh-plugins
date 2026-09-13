@@ -112,7 +112,7 @@ config:
     showToolActivity: false
     showReasoning: false
     renderMarkdown: true
-    maxContentWidth: 900
+    minContentWidth: 650
     showSessionList: false
   accounts:
     enabled: false

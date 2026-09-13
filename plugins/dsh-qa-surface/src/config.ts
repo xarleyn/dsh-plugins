@@ -64,12 +64,12 @@ const configSchema = z.object({
       showToolActivity: z.boolean().default(D.ui.showToolActivity),
       showReasoning: z.boolean().default(D.ui.showReasoning),
       renderMarkdown: z.boolean().default(D.ui.renderMarkdown),
-      maxContentWidth: z
+      minContentWidth: z
         .number()
         .step(1)
         .min(480)
         .max(1600)
-        .default(D.ui.maxContentWidth),
+        .default(D.ui.minContentWidth),
       showSessionList: z.boolean().default(D.ui.showSessionList),
     })
     .default({ ...D.ui }),

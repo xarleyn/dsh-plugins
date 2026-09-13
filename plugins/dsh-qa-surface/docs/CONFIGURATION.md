@@ -7,9 +7,10 @@ rules are:
   `/`, `/api` or `/plugins`;
 - `fixed` requires `fixedSessionId`;
 - `provider` and `model` are either both absent or both present;
-- `maxContentWidth` is an integer from 480 through 1600 and caps the
-  user-resizable transcript/composer width; each QA route persists its chosen
-  width in browser storage;
+- `minContentWidth` is an integer from 480 through 1600 and floors the
+  user-resizable transcript/composer width; the page is the only ceiling (the
+  content grows until its drag handles reach the edge budget), and each QA
+  route persists its chosen width in browser storage;
 - duplicate/blank suggested questions are removed;
 - duplicate/blank running phrases are removed, each phrase is at most 120
   characters, and an empty list restores the built-in phrases;

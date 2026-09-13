@@ -8,12 +8,11 @@ import {
   type RefObject,
 } from "react";
 
-/** DSH's dragged content-width floor; a lower operator cap still wins. */
-export const QA_CONTENT_MIN_WIDTH = 640;
-
 /**
  * Space kept outside the content: 88px per side leaves room for the handle,
- * its inset, and a safe zone that remains draggable in both directions.
+ * its inset, and a safe zone that remains draggable in both directions. It is
+ * the whole ceiling too: like DSH, the page bounds the width, so a wide column
+ * lets the transcript fill it.
  */
 export const QA_CONTENT_EDGE_BUDGET = 176;
 
@@ -46,24 +45,26 @@ export function writeQaContentWidth(
   }
 }
 
-/** Resolve the centered content width for the currently available column. */
+/**
+ * Resolve the centered content width for the currently available column. The
+ * operator sets only the floor; the column is the ceiling, so the content may
+ * grow until its handles reach the edge budget and a wider window keeps
+ * widening it. A column too narrow even for the floor wins over the floor —
+ * there is nothing else to give up.
+ */
 export function resolveQaContentWidth(
   columnWidth: number,
   preference: number | null,
-  maxContentWidth: number,
+  minContentWidth: number,
 ): number {
   const available = Math.max(0, columnWidth - QA_CONTENT_EDGE_BUDGET);
-  const maximum = Math.min(maxContentWidth, available);
-  const minimum = Math.min(QA_CONTENT_MIN_WIDTH, maximum);
-  const adaptive = Math.min(
-    maxContentWidth,
-    Math.max(
-      QA_ADAPTIVE_MIN_WIDTH,
-      Math.min(columnWidth * 0.64, QA_ADAPTIVE_MAX_WIDTH),
-    ),
+  const minimum = Math.min(minContentWidth, available);
+  const adaptive = Math.max(
+    QA_ADAPTIVE_MIN_WIDTH,
+    Math.min(columnWidth * 0.64, QA_ADAPTIVE_MAX_WIDTH),
   );
-  const requested = preference ?? adaptive;
-  return Math.min(Math.max(requested, minimum), maximum);
+  const requested = preference ?? Math.max(adaptive, minimum);
+  return Math.min(Math.max(requested, minimum), available);
 }
 
 interface QaWidthHandleProps {
@@ -162,7 +163,7 @@ interface UseQaContentWidthOptions {
   readonly root: RefObject<HTMLDivElement | null>;
   readonly storage: Pick<Storage, "getItem" | "setItem">;
   readonly storageKey: string;
-  readonly maxContentWidth: number;
+  readonly minContentWidth: number;
 }
 
 export function useQaContentWidth({
@@ -170,7 +171,7 @@ export function useQaContentWidth({
   root,
   storage,
   storageKey,
-  maxContentWidth,
+  minContentWidth,
 }: UseQaContentWidthOptions) {
   const publish = useCallback(() => {
     const element = root.current;
@@ -179,10 +180,10 @@ export function useQaContentWidth({
     const width = resolveQaContentWidth(
       element.offsetWidth,
       preference,
-      maxContentWidth,
+      minContentWidth,
     );
     element.style.setProperty("--dsh-qa-content-width", `${width}px`);
-  }, [maxContentWidth, root, storage, storageKey]);
+  }, [minContentWidth, root, storage, storageKey]);
 
   useLayoutEffect(() => {
     if (!active) return;
@@ -196,13 +197,13 @@ export function useQaContentWidth({
 
   const onStart = useCallback(() => {
     const element = root.current;
-    if (element === null) return maxContentWidth;
+    if (element === null) return minContentWidth;
     return resolveQaContentWidth(
       element.offsetWidth,
       readQaContentWidth(storage, storageKey),
-      maxContentWidth,
+      minContentWidth,
     );
-  }, [maxContentWidth, root, storage, storageKey]);
+  }, [minContentWidth, root, storage, storageKey]);
 
   const onDrag = useCallback(
     (requestedWidth: number) => {
@@ -211,11 +212,11 @@ export function useQaContentWidth({
       const width = resolveQaContentWidth(
         element.offsetWidth,
         requestedWidth,
-        maxContentWidth,
+        minContentWidth,
       );
       element.style.setProperty("--dsh-qa-content-width", `${width}px`);
     },
-    [maxContentWidth, root],
+    [minContentWidth, root],
   );
 
   const onCommit = useCallback(
@@ -225,12 +226,14 @@ export function useQaContentWidth({
       const width = resolveQaContentWidth(
         element.offsetWidth,
         requestedWidth,
-        maxContentWidth,
+        minContentWidth,
       );
       writeQaContentWidth(storage, storageKey, width);
     },
-    [maxContentWidth, root, storage, storageKey],
+    [minContentWidth, root, storage, storageKey],
   );
 
   return { onStart, onDrag, onCommit, onEnd: publish } as const;
 }
+
+export type UseQaContentWidthResult = ReturnType<typeof useQaContentWidth>;

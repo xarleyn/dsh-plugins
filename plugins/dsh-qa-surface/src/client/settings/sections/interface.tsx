@@ -122,14 +122,14 @@ export function InterfaceSection(props: ConfigProps) {
           }}
         />
         <NumberField
-          label="Ширина содержимого, px"
-          value={config?.ui?.maxContentWidth ?? 900}
+          label="Минимальная ширина содержимого, px"
+          value={config?.ui?.minContentWidth ?? 650}
           min={480}
           max={1600}
           disabled={disabled}
-          hint="Предел ширины переписки; посетитель может сузить её в пределах этого значения."
+          hint="Нижняя граница ширины переписки; шире посетитель расширяет её сам — до краёв страницы."
           onChange={(value) => {
-            props.write(["ui", "maxContentWidth"], value);
+            props.write(["ui", "minContentWidth"], value);
           }}
         />
       </div>

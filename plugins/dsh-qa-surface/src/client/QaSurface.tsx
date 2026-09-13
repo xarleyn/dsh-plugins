@@ -164,7 +164,7 @@ export function QaSurface(props: QaSurfaceProps) {
     root: chat,
     storage: window.localStorage,
     storageKey: `${stateKey}:content-width`,
-    maxContentWidth: config.ui.maxContentWidth,
+    minContentWidth: config.ui.minContentWidth,
   });
 
   useEffect(() => {
@@ -654,7 +654,7 @@ export function QaSurface(props: QaSurfaceProps) {
             className="dsh-qa-chat"
             style={
               {
-                "--dsh-qa-content-width": `${config.ui.maxContentWidth}px`,
+                "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
               } as CSSProperties
             }
           >
