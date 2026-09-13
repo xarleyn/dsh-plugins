@@ -9,7 +9,9 @@
 
 import { ModelSafetyGate } from "./service.js";
 
-export { ModelSafetyGate, AuditRing, type SafetyGateServiceDeps, type SafetyGateInspect } from "./service.js";
+export { ModelSafetyGate, AuditRing, type SafetyGateServiceDeps } from "./service.js";
+export type { SafetyGateAuditRow, SafetyGateClassifierState, SafetyGateInspect } from "./types.js";
+export { SAFETY_GATE_SETTINGS_NAMESPACE } from "./shared/settings.js";
 export {
   SAFETY_GATE_DEFAULTS,
   ModelSafetyGateConfigSchema,

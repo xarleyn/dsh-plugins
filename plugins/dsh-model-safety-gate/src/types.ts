@@ -7,6 +7,12 @@
  * isolation.
  */
 
+// Type-only, so the public contract module keeps no runtime dependency on the
+// configuration surface; it is also the module the browser card imports its
+// wire types from.
+import type { ClassifierBackend, GateMode, ResolvedSafetyGateConfig } from "./config.js";
+import type { SafetyMetricsSnapshot } from "./audit/metrics.js";
+
 /** Verdict schema version. Bumped on incompatible changes to `SafetyVerdict`. */
 export const VERDICT_VERSION = 1 as const;
 
@@ -123,6 +129,26 @@ export type SafetyErrorCode =
   | "SAFETY_CLASSIFIER_UNAVAILABLE"
   | "SAFETY_BUFFER_OVERFLOW";
 
+const SAFETY_ERROR_CODES: ReadonlySet<string> = new Set<string>([
+  "SAFETY_INVALID_ARGUMENT",
+  "SAFETY_INPUT_BLOCKED",
+  "SAFETY_OUTPUT_BLOCKED",
+  "SAFETY_REASONING_BLOCKED",
+  "SAFETY_TOOL_BLOCKED",
+  "SAFETY_CLASSIFIER_TIMEOUT",
+  "SAFETY_CLASSIFIER_INVALID_RESPONSE",
+  "SAFETY_CLASSIFIER_UNAVAILABLE",
+  "SAFETY_BUFFER_OVERFLOW",
+]);
+
+/**
+ * Narrow a raw code to the stable union. Classifier failures arrive as plain
+ * strings from a transport, and audit records may only carry a declared code.
+ */
+export function isSafetyErrorCode(code: string | undefined): code is SafetyErrorCode {
+  return code !== undefined && SAFETY_ERROR_CODES.has(code);
+}
+
 /** Typed plugin error carrying a stable `code` (guidelines §5.2). */
 export class SafetyGateError extends Error {
   readonly code: SafetyErrorCode;
@@ -133,3 +159,78 @@ export class SafetyGateError extends Error {
     this.code = code;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Browser wire contract
+//
+// The `safetyGate` Remote returns exactly this projection, and a Typert
+// boundary type must be reachable from a public non-root subpath — which is
+// this module (`./types`). Everything the projection names is therefore
+// re-exported here as well, so the generator can resolve the whole graph.
+// ---------------------------------------------------------------------------
+
+export type {
+  ClassifierBackend,
+  FailureMode,
+  GateMode,
+  ModelSafetyGateConfig,
+  ResolvedSafetyGateConfig,
+  StreamMode,
+} from "./config.js";
+export type { SafetyMetricsSnapshot } from "./audit/metrics.js";
+
+/** How the classifier is wired right now, as opposed to what is configured. */
+export interface SafetyGateClassifierState {
+  readonly backend: ClassifierBackend;
+  /** True when checked content leaves this process for a classifier endpoint. */
+  readonly remote: boolean;
+  /** Endpoint label for the operator; never carries credentials. */
+  readonly endpoint: string;
+  /** True when a transport is attached and checks can reach a classifier. */
+  readonly active: boolean;
+  /** Why the configured classifier cannot be called; null while it is active or off. */
+  readonly reason: string | null;
+  /** Whether the settings document holds a classifier key. */
+  readonly apiKeyConfigured: boolean;
+}
+
+/**
+ * One recent verdict as the operator card renders it. Spelled out rather than
+ * reusing the internal audit record: every field is required on the wire, and
+ * the optional raw preview becomes an explicit null.
+ */
+export interface SafetyGateAuditRow {
+  readonly turn: number | null;
+  readonly step: number | null;
+  readonly direction: CheckDirection;
+  readonly channel: ContentChannel;
+  readonly toolName: string | null;
+  readonly decision: SafetyDecision;
+  readonly categories: readonly string[];
+  readonly summary: string;
+  readonly confidence: number;
+  readonly classifierProvider: string;
+  readonly classifierModel: string;
+  readonly classifierRan: boolean;
+  readonly latencyMs: number;
+  readonly contentSha256: string;
+  readonly contentChars: number;
+  readonly errorCode: SafetyErrorCode | null;
+  readonly rawContent: string | null;
+  readonly policyVersion: string;
+}
+
+/** Everything the operator surfaces read from the running gate. */
+export interface SafetyGateInspect {
+  readonly enabled: boolean;
+  readonly mode: GateMode;
+  /** Effective running configuration; `classifier.apiKey` is always empty here. */
+  readonly config: ResolvedSafetyGateConfig;
+  readonly classifier: SafetyGateClassifierState;
+  readonly metrics: SafetyMetricsSnapshot;
+  /** Recent sanitized verdicts, newest first. */
+  readonly audit: readonly SafetyGateAuditRow[];
+  /** Epoch milliseconds the gate was constructed at. */
+  readonly startedAt: number;
+}
+

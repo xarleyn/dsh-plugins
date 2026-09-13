@@ -1,9 +1,14 @@
 {
-  "extends": "@yadsh/dsh-config/tsconfig/node",
+  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["node"],
     "rootDir": "src",
-    "outDir": "lib"
+    "outDir": "lib",
+    "noEmit": false,
+    "declaration": true,
+    "declarationDir": "lib/types",
+    "sourceMap": true,
+    "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["tests/**/*.ts"]
 }

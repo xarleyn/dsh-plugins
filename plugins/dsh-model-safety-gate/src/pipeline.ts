@@ -13,7 +13,8 @@ import type { SafetyScanner } from "./rules/scanner.js";
 import { mergeL0L1 } from "./rules/policy.js";
 import { SafetyMetrics } from "./audit/metrics.js";
 import { SAFETY_EVENT_TYPES, buildAuditEvent, type SafetyAuditEvent, type SafetyEventType } from "./audit/events.js";
-import type { CheckDirection, ContentChannel, SafetyDecision, SafetyErrorCode, SafetyVerdict, ScanResult } from "./types.js";
+import { isSafetyErrorCode } from "./types.js";
+import type { CheckDirection, ContentChannel, SafetyDecision, SafetyVerdict, ScanResult } from "./types.js";
 
 /** When the L1 classifier should run for a check. */
 export type ClassifierTrigger = "always" | "suspicious" | "never";
@@ -157,7 +158,6 @@ export class CheckPipeline {
       confidence: 0,
       categories: [],
       summary: message.slice(0, 200),
-      policyRuleIds: undefined,
     };
     const event = buildAuditEvent({
       turn: input.turn ?? null,
@@ -176,7 +176,7 @@ export class CheckPipeline {
       },
       latencyMs,
       includeRawContent: false,
-      errorCode: code as never,
+      ...(isSafetyErrorCode(code) ? { errorCode: code } : {}),
     });
     this.emit(SAFETY_EVENT_TYPES.classifierError, event);
   }
@@ -212,7 +212,7 @@ export class CheckPipeline {
       },
       latencyMs: meta.latencyMs,
       includeRawContent: this.config.audit.includeRawContent,
-      errorCode: meta.failure?.code as SafetyErrorCode | undefined,
+      ...(isSafetyErrorCode(meta.failure?.code) ? { errorCode: meta.failure.code } : {}),
     });
     this.emit(eventType, event);
   }

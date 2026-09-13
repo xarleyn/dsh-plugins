@@ -713,6 +713,9 @@ importers:
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
@@ -720,27 +723,81 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(37aa794a809feebc452533f73e631ba7)
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-connection':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings-plugins':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-llm':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-session':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))
+      '@deepseek-ai/dsh-settings':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-brand@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))(@deepseek-ai/dsh-session@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2))))(@deepseek-ai/schemastery@3.18.2)
       '@deepseek-ai/dsh-tools':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(da56d6dad84e0a320812a081b315229c)
+      '@deepseek-ai/dsh-typert-generator':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.2
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: catalog:tooling
         version: 26.4.0
+      '@types/react':
+        specifier: catalog:frontend-dev
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: catalog:frontend-dev
+        version: 18.3.7(@types/react@18.3.28)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
+      jsdom:
+        specifier: catalog:tooling
+        version: 26.1.0
+      react:
+        specifier: catalog:frontend-dev
+        version: 18.3.1
+      react-dom:
+        specifier: catalog:frontend-dev
+        version: 18.3.1(react@18.3.1)
+      tsdown:
+        specifier: catalog:tooling
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.22.4)(typescript@7.0.2)
       typescript:
         specifier: catalog:plugin-tooling
         version: 7.0.2
