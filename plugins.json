@@ -173,6 +173,7 @@
         "deepseek-harness",
         "dsh",
         "dsh-plugin",
+        "cordis",
         "safety",
         "prompt-injection",
         "jailbreak-detection",

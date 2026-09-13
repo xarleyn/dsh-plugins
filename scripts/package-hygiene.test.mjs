@@ -270,6 +270,10 @@ test("rejects a package no index can attribute to its sources", async () => {
       `expected a missing dsh-plugin keyword, got ${JSON.stringify(errors)}`,
     );
     assert.ok(
+      errors.some((error) => error.includes('"cordis"')),
+      `expected a missing cordis keyword, got ${JSON.stringify(errors)}`,
+    );
+    assert.ok(
       errors.some((error) => error.includes("keywords must not repeat")),
       `expected a duplicate-keyword error, got ${JSON.stringify(errors)}`,
     );

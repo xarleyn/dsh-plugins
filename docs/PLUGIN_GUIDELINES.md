@@ -357,8 +357,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   набор: `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` — DSH-
   индексаторы, маркетплейсы и npm-поиск ищут именно по ним; дальше — слова про
   возможности. Только lowercase, без повторов. Гейт `pnpm verify:packages`
-  жёстко требует identity-три (`deepseek-harness`, `dsh`, `dsh-plugin`) и
-  непустой `description` с упоминанием DeepSeek Harness или DSH, вместе с
+  жёстко требует `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` и непустой
+  `description` с упоминанием DeepSeek Harness или DSH, вместе с
   `repository.directory` и `homepage`: индексатор, который не может связать
   npm-пакет с его директорией в монорепе, показывает пакет как «без публичного
   репозитория». Генератор нового плагина сразу ставит весь канонический набор.
