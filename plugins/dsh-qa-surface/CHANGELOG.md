@@ -167,7 +167,6 @@
   persist and no bounds to keep in sync with the viewport. Both keep the
   `max-height` cap and scroll their body on a short window.
 
-
 ### 🩹 Fixes
 
 - Reorganize the plugin sources without behavior changes. The settings card ([789b986](https://github.com/xarleyn/dsh-plugins/commit/789b986))
