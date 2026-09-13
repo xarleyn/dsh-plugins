@@ -7,7 +7,9 @@ import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
 import type {} from "@deepseek-ai/dsh-agent-presets/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
+  QaAccountProfileInput,
   QaAccountSession,
+  QaAccountUserPublic,
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
@@ -107,6 +109,11 @@ export interface QaAccountsApi {
   accountsListOwnership(
     token: string,
   ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;
+  /** Replace the caller's own self-declared profile; the token is the identity. */
+  accountsUpdateProfile(
+    token: string,
+    input: QaAccountProfileInput,
+  ): Promise<RemoteResult<QaAccountUserPublic>>;
 }
 
 type RemoteResult<Value> =

@@ -15,6 +15,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
+  QaAccountProfileInput,
   QaImageDraft,
   QaSessionState,
   QaSource,
@@ -474,6 +475,20 @@ export function QaSurface(props: QaSurfaceProps) {
         : undefined,
     [config, accounts, accountsSnapshot],
   );
+  // The sidebar compares this by reference, so every piece of it is stable
+  // until the profile, the config, or the signed-in user actually changes.
+  const profileDialog = useMemo(() => {
+    if (!config.accounts.profile.enabled || accounts === undefined) {
+      return undefined;
+    }
+    if (accountsSnapshot.stage !== "authed") return undefined;
+    return {
+      profile: accountsSnapshot.user.profile,
+      fields: config.accounts.profile.identities,
+      instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
+      onSave: (input: QaAccountProfileInput) => accounts.updateProfile(input),
+    };
+  }, [config, accounts, accountsSnapshot]);
   const railItems = view.railItems;
   railItemsRef.current = railItems;
   const busyTurn =
@@ -576,6 +591,7 @@ export function QaSurface(props: QaSurfaceProps) {
                     email: accountsSnapshot.user.email,
                     role: accountsSnapshot.user.role,
                     onLogout: handleLogout,
+                    ...(profileDialog === undefined ? {} : { profileDialog }),
                   }
                 : undefined
             }

@@ -6,6 +6,7 @@ import {
   QaAccountsError,
   defaultAccountsFilePath,
 } from "./accounts/store.js";
+import type { QaAccountUserPublic } from "./types.js";
 
 export interface CliIo {
   out(line: string): void;
@@ -19,14 +20,20 @@ const defaultIo: CliIo = {
 
 const USAGE = `Usage:
   qa-accounts [--file <path>] list
+  qa-accounts [--file <path>] show <email>
   qa-accounts [--file <path>] add <email> --password-stdin [--name <name>] [--role admin|user]
   qa-accounts [--file <path>] set-role <email> <admin|user>
   qa-accounts [--file <path>] disable <email>     # blocks logins and revokes live tokens
   qa-accounts [--file <path>] enable <email>
   qa-accounts [--file <path>] revoke <email>      # invalidates every issued token
+  qa-accounts [--file <path>] profile <email> [--full-name <name>]
+      [--identity <key>=<value>]... [--clear-identity <key>]...
+      [--instructions-file <path|->] [--clear-full-name] [--clear-instructions]
 
 The accounts file defaults to \\$DSH_HOME/qa-accounts.json. Passwords are read
-from stdin (one line) so they never land in shell history.`;
+from stdin (one line) so they never land in shell history; --instructions-file -
+reads that text from stdin too. Profile identity keys are free-form here: the
+deployment's accounts.profile.identities decides which of them reach the prompt.`;
 
 function readPasswordStdin(): string {
   let password: string;
@@ -41,26 +48,96 @@ function readPasswordStdin(): string {
   return password.replace(/\r?\n$/u, "");
 }
 
+/** Read the instructions text from a file, or from stdin when the path is "-". */
+function readInstructions(path: string, readStdin: () => string): string {
+  if (path === "-") return readStdin();
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    throw new Error(
+      `could not read the instructions from ${path}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+}
+
+/** Print one account's self-declared profile under its `show` header. */
+function printProfile(io: CliIo, user: QaAccountUserPublic): void {
+  const profile = user.profile;
+  io.out(
+    `  full name: ${profile.fullName === "" ? "(unset)" : profile.fullName}`,
+  );
+  const keys = Object.keys(profile.identities);
+  if (keys.length === 0) io.out("  identities: (none)");
+  for (const key of keys) io.out(`  ${key}: ${profile.identities[key] ?? ""}`);
+  if (profile.instructions === "") {
+    io.out("  instructions: (none)");
+  } else {
+    io.out(`  instructions (${profile.instructions.length} characters):`);
+    for (const line of profile.instructions.split("\n")) io.out(`    ${line}`);
+  }
+  io.out(`  updated: ${profile.updatedAt ?? "(never)"}`);
+}
+
+/** One `--identity key=value` pair as the command line spelled it. */
+interface IdentityFlag {
+  readonly key: string;
+  readonly value: string;
+}
+
+/** Options that consume the following argument. */
+const VALUE_OPTIONS = new Set([
+  "--file",
+  "--name",
+  "--role",
+  "--full-name",
+  "--identity",
+  "--clear-identity",
+  "--instructions-file",
+]);
+
+/** Options that stand alone. */
+const FLAG_OPTIONS = new Set([
+  "--password-stdin",
+  "--clear-full-name",
+  "--clear-instructions",
+]);
+
+/** Parse one `--identity` argument; the key is normalized like the config's. */
+function identityFlag(raw: string): IdentityFlag {
+  const separator = raw.indexOf("=");
+  const key = separator < 0 ? "" : raw.slice(0, separator).trim().toLowerCase();
+  if (key === "") {
+    throw new Error("--identity expects <key>=<value>");
+  }
+  return { key, value: raw.slice(separator + 1) };
+}
+
 /** Execute one management command; returns the process exit code. */
 export function run(
   argv: readonly string[],
   io: CliIo,
-  readPassword: () => string = readPasswordStdin,
+  readStdin: () => string = readPasswordStdin,
 ): number {
   const positional: string[] = [];
   const options = new Map<string, string>();
+  const identities: IdentityFlag[] = [];
+  const clearedIdentities: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] as string;
-    if (arg === "--password-stdin") {
-      options.set("password-stdin", "true");
+    if (FLAG_OPTIONS.has(arg)) {
+      options.set(arg.slice(2), "true");
       continue;
     }
-    if (arg === "--file" || arg === "--name" || arg === "--role") {
+    if (VALUE_OPTIONS.has(arg)) {
       const value = argv[index + 1];
       if (value === undefined || value.startsWith("--")) {
         throw new Error(`${arg} requires a value`);
       }
-      options.set(arg.slice(2), value);
+      if (arg === "--identity") identities.push(identityFlag(value));
+      else if (arg === "--clear-identity")
+        clearedIdentities.push(value.trim().toLowerCase());
+      else options.set(arg.slice(2), value);
       index += 1;
       continue;
     }
@@ -109,7 +186,7 @@ export function run(
         throw new Error("--role must be admin or user");
       }
       const name = options.get("name");
-      const user = accounts.addUser(first as string, readPassword(), {
+      const user = accounts.addUser(first as string, readStdin(), {
         ...(name === undefined ? {} : { displayName: name }),
         ...(role === undefined ? {} : { role: role as "admin" | "user" }),
       });
@@ -143,6 +220,52 @@ export function run(
       io.out(`${user.email} tokens revoked`);
       return 0;
     }
+    case "show": {
+      requireArgs(1);
+      const user = accounts.findUser(first as string);
+      if (user === undefined) {
+        throw new Error(`no account for ${first}`);
+      }
+      io.out(
+        `${user.email}\t${user.displayName}\t${user.role}` +
+          `${user.disabled ? "\tdisabled" : ""}`,
+      );
+      printProfile(io, user);
+      return 0;
+    }
+    case "profile": {
+      requireArgs(1);
+      const email = first as string;
+      const current = accounts.findUser(email);
+      if (current === undefined) {
+        throw new Error(`no account for ${email}`);
+      }
+      // Field-level flags merge into the stored profile; anything the command
+      // line does not mention keeps its stored value.
+      const mergedIdentities: Record<string, string> = {
+        ...current.profile.identities,
+      };
+      for (const key of clearedIdentities) delete mergedIdentities[key];
+      for (const identity of identities) {
+        mergedIdentities[identity.key] = identity.value;
+      }
+      const instructionsFile = options.get("instructions-file");
+      const instructions = options.has("clear-instructions")
+        ? ""
+        : instructionsFile === undefined
+          ? current.profile.instructions
+          : readInstructions(instructionsFile, readStdin);
+      const user = accounts.setProfile(email, {
+        fullName: options.has("clear-full-name")
+          ? ""
+          : (options.get("full-name") ?? current.profile.fullName),
+        identities: mergedIdentities,
+        instructions,
+      });
+      io.out(`profile updated for ${user.email}`);
+      printProfile(io, user);
+      return 0;
+    }
     default:
       throw new Error(`unknown command ${JSON.stringify(command)}`);
   }
@@ -151,10 +274,10 @@ export function run(
 export function main(
   argv: readonly string[],
   io: CliIo = defaultIo,
-  readPassword: () => string = readPasswordStdin,
+  readStdin: () => string = readPasswordStdin,
 ): number {
   try {
-    return run(argv, io, readPassword);
+    return run(argv, io, readStdin);
   } catch (error) {
     io.err(
       `qa-accounts: ${error instanceof QaAccountsError ? `${error.message} (reason: ${error.reason})` : error instanceof Error ? error.message : String(error)}`,

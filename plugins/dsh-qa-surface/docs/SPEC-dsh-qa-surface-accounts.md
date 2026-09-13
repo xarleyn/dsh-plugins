@@ -153,6 +153,84 @@ are therefore labeled with the chat owner, not with their own name; the
 per-message identity channel (the client-minted `requestId` on
 `session/prompt`) is a possible future refinement.
 
+## Self-declared profiles and prompt identity
+
+A QA user's chats should not have to open with "I am Ivanov, my tracker login
+is …". Every account therefore carries a profile the Host injects into the
+agent's system prompt: full name, one handle per declared external system, and
+the user's own free-form guidance about how they want answers.
+
+### Data
+
+`StoredUser.profile` gains optional `fullName`, `identities`
+(`Record<key, value>`), `instructions`, and `updatedAt`. The file stays at
+`version: 1`: the fields are optional, so an older store loads unchanged and a
+store written by this version stays readable by the older one.
+
+Limits live in `src/profile.ts`, a module deliberately free of Node built-ins
+so the config resolver, the accounts store, and the browser form share one
+source of truth: 200 characters for the full name, 200 per handle value, 16
+handles, lowercase `[a-z][a-z0-9_-]{0,31}` keys, and an
+`accounts.profile.instructionsMaxLength` between 200 and 20000 (default 2000).
+Reads normalize and truncate; writes refuse with a message, so a user pasting
+an essay learns why nothing was stored instead of silently losing text.
+
+### Wire
+
+`accountsUpdateProfile(token, input)` is a full replace carrying
+`{ fullName, identities, instructions }` as one object. The token is the only
+identity on the wire — a browser can never name a profile but its own — and
+the store rejects undeclared handle keys for that path. The operator CLI calls
+`setProfile(email, input)` instead, where the field list is not known and only
+the key shape is checked. `QaAccountUserPublic` carries the normalized
+`profile`, so login/whoami already deliver it and no extra read RPC exists.
+
+Two refusals reach the browser through the established `(reason: <code>)`
+marker: `invalid-profile` for any field violation, and `profile-disabled` when
+the deployment turned the feature off after the page loaded.
+
+### Injection
+
+`src/user-identity.ts` owns two prompt sections registered on each QA agent's
+own scope: `dsh-qa-surface:user-identity` (order 860) and
+`dsh-qa-surface:user-instructions` (order 870). The placement sits after the
+deployment persona and policy sections and before the file-reference and tool
+sections; the plugin's provenance guidance at 950 stays later on purpose,
+because provenance rules outrank a user's stylistic preferences.
+
+Three facts decide the shape:
+
+- **Per-agent, not per-plugin.** A section's `text` may be a provider, so the
+  identity is resolved at assembly time: a profile edit, a CLI change, or an
+  account disabled mid-chat is reflected on the next turn, and a disabled
+  account stops being addressed by name together with losing its access.
+- **Reaching subagents.** An agent's scope chain runs to its preset's standing
+  mount and never through its parent agent, so a section registered only on
+  the parent's scope is invisible to the experts the QA agent delegates to.
+  The injector therefore listens for `agent/created` untagged (which sees
+  every agent) and walks `session.header.parentSession` up to the chat's root
+  session, where the ownership map answers who owns this turn.
+- **No new trust in the model.** The profile is user-authored text inside the
+  system prompt, so the section states what it is: self-declared values that
+  cannot change tools, permissions, the sandbox, or any rule above. The
+  lockdown stays host-enforced (allow-list, guards, permission preset) and
+  does not depend on the model's compliance. The model is also told to name
+  the identifier it searched by and to ask when results contradict the
+  request, because a mistyped handle that the model trusts silently produces a
+  confident answer about the wrong person.
+
+Out-of-process subagents (another model or SDK) never see DSH prompt sections;
+a deployment that needs one to know the user must pass the identifiers in the
+delegation text.
+
+### UI
+
+The sidebar footer's account name becomes a button that opens `QaProfileModal`
+(one input per declared field, an instructions textarea with a counter, and
+inline refusal copy). The dialog shell is shared with the changelog through
+`QaModal`. `accounts.profile.enabled: false` leaves the name as plain text and
+removes the client-side entry point; the Host refuses writes regardless.
+
 ## Config surface
 
 ```yaml
@@ -162,6 +240,11 @@ accounts:
   sessionTtlDays: 30 # account token lifetime
   showOtherUsersChats: false # opt-in cross-user admin view
   perUserWorkspace: false # private child cwd below session.workspaceId
+  profile: # self-declared identity, injected into the QA prompt
+    enabled: true
+    inject: true
+    identities: [] # [{ key: jira, label: Jira }] declares handle fields
+    instructionsMaxLength: 2000
 entry:
   redirectNonLoopback: true # the root → /qa script above
 ```

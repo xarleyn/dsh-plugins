@@ -15,6 +15,9 @@ import {
 import type { Stats } from "node:fs";
 import path from "node:path";
 import type {
+  QaAccountIdentityField,
+  QaAccountProfile,
+  QaAccountProfileInput,
   QaAccountRole,
   QaAccountSession,
   QaAccountUserPublic,
@@ -22,6 +25,11 @@ import type {
   QaOwnershipEntry,
   QaWhoamiResult,
 } from "../types.js";
+import {
+  QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
+  normalizeProfile,
+  validateProfileWrite,
+} from "../profile.js";
 
 /**
  * Coarse, wire-safe account failure codes. They ride the `(reason: <code>)`
@@ -36,6 +44,8 @@ export type QaAccountsErrorReason =
   | "email-taken"
   | "invalid-email"
   | "invalid-display-name"
+  | "invalid-profile"
+  | "profile-disabled"
   | "invalid-role"
   | "weak-password"
   | "registration-disabled"
@@ -50,6 +60,14 @@ export class QaAccountsError extends Error {
     super(message);
     this.name = "QaAccountsError";
   }
+}
+
+/** One account's self-declared profile as it rests in the accounts file. */
+interface StoredProfile {
+  fullName?: string;
+  identities?: Record<string, string>;
+  instructions?: string;
+  updatedAt?: string;
 }
 
 interface StoredUser {
@@ -68,6 +86,8 @@ interface StoredUser {
    * rides the token payload and must match at verification time.
    */
   tokenVersion?: number;
+  /** Absent until the owner fills the profile form for the first time. */
+  profile?: StoredProfile;
 }
 
 interface AccountsFile {
@@ -86,6 +106,13 @@ export interface QaAccountsOptions {
   readonly allowRegistration: boolean;
   /** Login/registration attempts accepted per rolling minute, store-wide. */
   readonly maxAuthAttemptsPerMinute?: number;
+  /** Character cap on a stored profile's agent guidance. */
+  readonly instructionsMaxLength?: number;
+  /**
+   * Fields the deployment declares. Self-service writes may name only these;
+   * omitting the list (the operator CLI) checks the key shape alone.
+   */
+  readonly identityFields?: readonly QaAccountIdentityField[];
 }
 
 const SCRYPT_KEY_LENGTH = 32;
@@ -114,6 +141,7 @@ function toPublic(user: StoredUser): QaAccountUserPublic {
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt,
     disabled: user.disabled === true,
+    profile: normalizeProfile(user.profile),
   };
 }
 
@@ -155,6 +183,11 @@ export class QaAccounts {
   private readonly maxAuthAttemptsPerMinute: number;
   private readonly sessionTtlDays: number;
   private readonly allowRegistration: boolean;
+  /** Character cap on a stored profile's agent guidance. */
+  private readonly instructionsMaxLength: number;
+  /** Declared handle fields; undefined lets an operator write any shape-valid key. */
+  private readonly identityFields:
+    readonly QaAccountIdentityField[] | undefined;
   /** mtime+size of the file as of the last load; the external-change probe. */
   private lastLoadStamp = { mtimeMs: Number.NEGATIVE_INFINITY, size: -1 };
 
@@ -165,6 +198,9 @@ export class QaAccounts {
     this.sessionTtlDays = options.sessionTtlDays;
     this.allowRegistration = options.allowRegistration;
     this.maxAuthAttemptsPerMinute = options.maxAuthAttemptsPerMinute ?? 30;
+    this.instructionsMaxLength =
+      options.instructionsMaxLength ?? QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX;
+    this.identityFields = options.identityFields;
     this.file = this.load();
   }
 
@@ -727,5 +763,93 @@ export class QaAccounts {
         tokenVersion: (user.tokenVersion ?? 0) + 1,
       })),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Self-declared profiles: what the QA prompt says about the current user.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The account that owns one session, or undefined while nobody claimed it.
+   * The prompt renderer resolves a chat's owner through this map, so a session
+   * that predates accounts simply carries no identity.
+   */
+  ownerIdOf(sessionId: string): string | undefined {
+    this.reloadIfChanged();
+    return this.file.ownership[sessionId]?.userId;
+  }
+
+  /**
+   * Email plus profile of one account, for the prompt renderer. A disabled
+   * account resolves to nothing: its identity leaves the prompt together with
+   * its access, so a revoked user is no longer addressed by name.
+   */
+  identityOf(
+    userId: string,
+  ):
+    { readonly email: string; readonly profile: QaAccountProfile } | undefined {
+    this.reloadIfChanged();
+    const user = this.file.users.find((candidate) => candidate.id === userId);
+    if (user === undefined || user.disabled === true) return undefined;
+    return { email: user.email, profile: normalizeProfile(user.profile) };
+  }
+
+  /** One account in its public shape; undefined when the address is unknown. */
+  findUser(email: string): QaAccountUserPublic | undefined {
+    this.reloadIfChanged();
+    const user = this.userByEmail(email.trim().toLowerCase());
+    return user === undefined ? undefined : toPublic(user);
+  }
+
+  /**
+   * Operator write: replace one account's profile, addressed by email. The
+   * CLI merges field-level flags into a full profile before calling this.
+   */
+  setProfile(email: string, input: QaAccountProfileInput): QaAccountUserPublic {
+    return toPublic(
+      this.editUser(email, (user) => this.stampedProfile(user, input)),
+    );
+  }
+
+  /**
+   * Self-service write for the token's own account. The token is verified
+   * first, so a browser can only ever edit the profile it is signed in as.
+   */
+  updateOwnProfile(
+    token: string,
+    input: QaAccountProfileInput,
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    return this.setProfile(user.email, input);
+  }
+
+  /**
+   * Validate one profile write and stamp it onto the account. Throws before
+   * anything is mutated, so a rejected write leaves the stored profile, and
+   * the address it is keyed to, exactly as they were.
+   */
+  private stampedProfile(
+    user: StoredUser,
+    input: QaAccountProfileInput,
+  ): StoredUser {
+    const result = validateProfileWrite(input, {
+      instructionsMaxLength: this.instructionsMaxLength,
+      ...(this.identityFields === undefined
+        ? {}
+        : { identities: this.identityFields }),
+    });
+    if (!result.ok) {
+      throw new QaAccountsError("invalid-profile", result.message);
+    }
+    return {
+      ...user,
+      profile: {
+        fullName: result.value.fullName,
+        identities: { ...result.value.identities },
+        instructions: result.value.instructions,
+        updatedAt: new Date().toISOString(),
+      },
+    };
   }
 }

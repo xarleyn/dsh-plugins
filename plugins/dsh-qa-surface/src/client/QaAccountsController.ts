@@ -1,4 +1,5 @@
 import type {
+  QaAccountProfileInput,
   QaAccountSession,
   QaAccountUserPublic,
   QaOwnershipEntry,
@@ -65,6 +66,10 @@ export function accountsErrorMessage(code: string | null): string {
       return "Пароль должен быть не короче 8 символов.";
     case "invalid-display-name":
       return "Слишком длинное имя.";
+    case "invalid-profile":
+      return "Проверьте поля профиля: значение слишком длинное или недопустимое.";
+    case "profile-disabled":
+      return "Профиль отключён на этом сервере.";
     case "registration-disabled":
       return "Регистрация на этом сервере отключена.";
     case "rate-limited":
@@ -197,6 +202,34 @@ export class QaAccountsController {
       ]);
     } catch (error) {
       console.warn("dsh-qa-surface: session claim failed", error);
+    }
+  }
+
+  /**
+   * Replace the signed-in user's own profile. Resolves to audience-safe
+   * refusal copy when the Host rejected the write, and to null once the
+   * snapshot carries the stored profile — the form reports the outcome inline
+   * rather than through the gate's state machine.
+   */
+  async updateProfile(input: QaAccountProfileInput): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsUpdateProfile(
+        token,
+        input,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.publish({ ...this.snapshot, user: result.value });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: profile update failed", error);
+      return accountsErrorMessage(null);
     }
   }
 

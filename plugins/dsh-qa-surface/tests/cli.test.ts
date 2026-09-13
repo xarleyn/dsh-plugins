@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -110,5 +110,104 @@ describe("qa-accounts CLI", () => {
     );
     expect(code).toBe(1);
     expect(capture.errors[0]).toContain("(reason:");
+  });
+
+  it("shows and edits an account profile field by field", () => {
+    const path = file();
+    const argv = ["--file", path];
+    const reloaded = () =>
+      new QaAccounts(path, { sessionTtlDays: 30, allowRegistration: false });
+    spawn([...argv, "add", "a@b.co", "--password-stdin"], "password-1");
+    // A fresh account carries no profile, and `show` says so.
+    expect(spawn([...argv, "show", "a@b.co"]).lines).toMatchObject([
+      expect.stringContaining("a@b.co\ta\tadmin"),
+      "  full name: (unset)",
+      "  identities: (none)",
+      "  instructions: (none)",
+      "  updated: (never)",
+    ]);
+    expect(
+      spawn([
+        ...argv,
+        "profile",
+        "a@b.co",
+        "--full-name",
+        "Иван Иванов",
+        "--identity",
+        "jira=i.ivanov",
+        "--identity",
+        "gitlab=@iivanov",
+      ]).lines[0],
+    ).toBe("profile updated for a@b.co");
+    expect(reloaded().findUser("a@b.co")?.profile).toMatchObject({
+      fullName: "Иван Иванов",
+      identities: { jira: "i.ivanov", gitlab: "@iivanov" },
+    });
+    // A later field-level edit keeps what the command line does not mention.
+    spawn([...argv, "profile", "a@b.co", "--clear-identity", "gitlab"]);
+    expect(reloaded().findUser("a@b.co")?.profile).toMatchObject({
+      fullName: "Иван Иванов",
+      identities: { jira: "i.ivanov" },
+    });
+    // Clearing the two text fields leaves the handles alone.
+    spawn([
+      ...argv,
+      "profile",
+      "a@b.co",
+      "--clear-full-name",
+      "--clear-instructions",
+    ]);
+    expect(reloaded().findUser("a@b.co")?.profile).toMatchObject({
+      fullName: "",
+      identities: { jira: "i.ivanov" },
+      instructions: "",
+    });
+  });
+
+  it("reads agent instructions from a file and from stdin", () => {
+    const path = file();
+    const argv = ["--file", path];
+    spawn([...argv, "add", "a@b.co", "--password-stdin"], "password-1");
+    const instructions = path.replace(/qa-accounts\.json$/u, "instructions.md");
+    writeFileSync(instructions, "Отвечай кратко.\nВсегда давай ссылки.\n");
+    spawn([...argv, "profile", "a@b.co", "--instructions-file", instructions]);
+    expect(
+      new QaAccounts(path, {
+        sessionTtlDays: 30,
+        allowRegistration: false,
+      }).findUser("a@b.co")?.profile.instructions,
+    ).toBe("Отвечай кратко.\nВсегда давай ссылки.");
+
+    // "-" takes the same text from stdin, so a pipe works without a temp file.
+    spawn(
+      [...argv, "profile", "a@b.co", "--instructions-file", "-"],
+      "Из stdin",
+    );
+    expect(
+      new QaAccounts(path, {
+        sessionTtlDays: 30,
+        allowRegistration: false,
+      }).findUser("a@b.co")?.profile.instructions,
+    ).toBe("Из stdin");
+  });
+
+  it("refuses malformed profile flags and unknown accounts", () => {
+    const path = file();
+    const argv = ["--file", path];
+    spawn([...argv, "add", "a@b.co", "--password-stdin"], "password-1");
+    expect(main([...argv, "profile"], io())).toBe(1);
+    const missingValue = io();
+    expect(
+      main([...argv, "profile", "a@b.co", "--identity"], missingValue),
+    ).toBe(1);
+    expect(missingValue.errors[0]).toMatch(/requires a value/u);
+    const noKey = io();
+    expect(
+      main([...argv, "profile", "a@b.co", "--identity", "ivanov"], noKey),
+    ).toBe(1);
+    expect(noKey.errors[0]).toMatch(/key>=<value/u);
+    const ghost = io();
+    expect(main([...argv, "show", "ghost@b.co"], ghost)).toBe(1);
+    expect(ghost.errors[0]).toContain("no account for ghost@b.co");
   });
 });

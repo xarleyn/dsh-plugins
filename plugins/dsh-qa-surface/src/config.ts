@@ -1,5 +1,9 @@
 import z from "@deepseek-ai/schemastery";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./resolve-config.js";
+import {
+  QA_PROFILE_INSTRUCTIONS_MAX_MAX,
+  QA_PROFILE_INSTRUCTIONS_MAX_MIN,
+} from "./profile.js";
 import type { QaSurfaceConfig } from "./types.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
@@ -137,8 +141,37 @@ const configSchema = z.object({
         .default(D.accounts.sessionTtlDays),
       showOtherUsersChats: z.boolean().default(D.accounts.showOtherUsersChats),
       perUserWorkspace: z.boolean().default(D.accounts.perUserWorkspace),
+      profile: z
+        .object({
+          enabled: z.boolean().default(D.accounts.profile.enabled),
+          inject: z.boolean().default(D.accounts.profile.inject),
+          identities: z
+            .array(
+              z.object({
+                key: z.string().required(),
+                label: z.string(),
+              }),
+            )
+            .default([]),
+          instructionsMaxLength: z
+            .number()
+            .step(1)
+            .min(QA_PROFILE_INSTRUCTIONS_MAX_MIN)
+            .max(QA_PROFILE_INSTRUCTIONS_MAX_MAX)
+            .default(D.accounts.profile.instructionsMaxLength),
+        })
+        .default({
+          ...D.accounts.profile,
+          identities: [...D.accounts.profile.identities],
+        }),
     })
-    .default({ ...D.accounts }),
+    .default({
+      ...D.accounts,
+      profile: {
+        ...D.accounts.profile,
+        identities: [...D.accounts.profile.identities],
+      },
+    }),
   entry: z
     .object({
       redirectNonLoopback: z.boolean().default(D.entry.redirectNonLoopback),

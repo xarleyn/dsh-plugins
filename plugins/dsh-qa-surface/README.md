@@ -105,6 +105,11 @@ config:
     sessionTtlDays: 30
     showOtherUsersChats: false
     perUserWorkspace: false
+    profile:
+      enabled: true
+      inject: true
+      identities: [] # e.g. [{ key: jira, label: Jira }]
+      instructionsMaxLength: 2000
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
@@ -218,6 +223,38 @@ turn-scoped work disclosure: it stays open while the assistant is working,
 then collapses to `Worked for ...` before the final answer. Tool capability is
 still controlled exclusively by `lockdown.toolPolicy.allow`; the display flags
 do not grant tools.
+
+### User profile
+
+Clicking the account name in the sidebar footer opens the signed-in user's
+profile: full name, one handle per external system the deployment declares,
+and free-form instructions about how they want answers. The Host injects both
+into the QA agent's system prompt, so "покажи мои задачи" resolves to a
+tracker lookup with the right login instead of a question. Values are
+self-declared and the prompt says so: the agent names the identifier it
+searched by and asks when the results contradict the request. Subagents of the
+chat receive the same sections. The feature needs no switch beyond accounts,
+though `accounts.profile.enabled` and `inject` exist for deployments that want
+the form without the prompt, or neither:
+
+```yaml
+accounts:
+  enabled: true
+  profile:
+    identities:
+      - key: jira
+        label: Jira
+      - key: gitlab
+        label: GitLab
+    instructionsMaxLength: 2000
+```
+
+`qa-accounts profile <email>` fills the same fields from an operator shell
+(`--identity jira=i.ivanov`, `--instructions-file`, `--clear-identity`), which
+is how a fresh deployment gets everyone's handles in place before users log
+in. See
+[Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md)
+for the limits and the prompt's exact wording.
 
 Session policies:
 

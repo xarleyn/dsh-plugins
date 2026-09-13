@@ -338,11 +338,11 @@ describe("sidebar version and changelog", () => {
         onNewChat={vi.fn()}
       />,
     );
-    expect(container.querySelector(".dsh-qa-changelog")).toBeNull();
+    expect(container.querySelector(".dsh-qa-modal")).toBeNull();
     const version = screen.getByRole("button", { name: /Версия / });
     expect(version.textContent).toBe(`Версия ${QA_VERSION}`);
     fireEvent.click(version);
-    const dialog = document.querySelector(".dsh-qa-changelog") as HTMLElement;
+    const dialog = document.querySelector(".dsh-qa-modal") as HTMLElement;
     expect(dialog.getAttribute("role")).toBe("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(screen.getByText("История версий")).toBeTruthy();
@@ -352,8 +352,11 @@ describe("sidebar version and changelog", () => {
     expect(document.querySelectorAll(".dsh-qa-changelog__current").length).toBe(
       1,
     );
+    // The changelog keeps the shared panel width; only the profile dialog asks
+    // for the wider one.
+    expect(document.querySelector(".dsh-qa-modal__panel--wide")).toBeNull();
     fireEvent.click(screen.getByLabelText("Закрыть историю версий"));
-    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
   });
 
   it("closes the changelog dialog on Escape and backdrop clicks", () => {
@@ -371,16 +374,16 @@ describe("sidebar version and changelog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
-    fireEvent.click(document.querySelector(".dsh-qa-changelog") as HTMLElement);
-    expect(document.querySelector(".dsh-qa-changelog")).toBeNull();
+    fireEvent.click(document.querySelector(".dsh-qa-modal") as HTMLElement);
+    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
     // A click inside the panel does not close the dialog.
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
     fireEvent.click(
-      document.querySelector(".dsh-qa-changelog__panel") as HTMLElement,
+      document.querySelector(".dsh-qa-modal__panel") as HTMLElement,
     );
-    expect(document.querySelector(".dsh-qa-changelog")).toBeTruthy();
+    expect(document.querySelector(".dsh-qa-modal")).toBeTruthy();
   });
 
   it("keeps the bundled version in sync with the package and changelog", async () => {

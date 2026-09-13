@@ -647,8 +647,6 @@ If both are configured, apply the model selection to the QA session through the 
 
 In locked-down mode, never render a model picker and do not expose a controller action for model switching. If provider/model are left `null`, operator deployment defaults may still determine the model for newly created sessions; that is an operator-side policy change, not a QA-user choice.
 
-
-
 ### 11.6 Locked-down execution policy
 
 `/qa` must default to a **capability-reduced execution profile**, not merely a visually simplified UI.
@@ -772,20 +770,20 @@ References:
 
 Default deny category examples:
 
-| Capability | Default QA policy | Reason |
-|---|---|---|
-| generic shell / bash / terminal | deny | can create non-filesystem side effects and broad host visibility |
-| generic code runtime | deny | same reason unless a separately constrained pure-compute runtime exists |
-| fs write/edit | deny by default; allow only in fenced per-user mode | direct mutation |
-| git commit/push/checkout/reset | deny | repository mutation / remote side effects |
-| Jira create/update/comment/transition | deny | external mutation |
-| Confluence create/update/delete | deny | external mutation |
-| Slack/email send | deny | external mutation |
-| browser/computer-use click/type/submit | deny | arbitrary external side effects |
-| settings/plugin management | deny | can expand capabilities |
-| permission/preset management | deny | can expand capabilities |
-| agent-preset management | deny | can change composition |
-| read-only KB/search/fetch tools | allow only after review | intended QA capability |
+| Capability                             | Default QA policy                                   | Reason                                                                  |
+| -------------------------------------- | --------------------------------------------------- | ----------------------------------------------------------------------- |
+| generic shell / bash / terminal        | deny                                                | can create non-filesystem side effects and broad host visibility        |
+| generic code runtime                   | deny                                                | same reason unless a separately constrained pure-compute runtime exists |
+| fs write/edit                          | deny by default; allow only in fenced per-user mode | direct mutation                                                         |
+| git commit/push/checkout/reset         | deny                                                | repository mutation / remote side effects                               |
+| Jira create/update/comment/transition  | deny                                                | external mutation                                                       |
+| Confluence create/update/delete        | deny                                                | external mutation                                                       |
+| Slack/email send                       | deny                                                | external mutation                                                       |
+| browser/computer-use click/type/submit | deny                                                | arbitrary external side effects                                         |
+| settings/plugin management             | deny                                                | can expand capabilities                                                 |
+| permission/preset management           | deny                                                | can expand capabilities                                                 |
+| agent-preset management                | deny                                                | can change composition                                                  |
+| read-only KB/search/fetch tools        | allow only after review                             | intended QA capability                                                  |
 
 For MCP, allow-list at the **tool level**, not merely at the server name. A server may expose both read and write actions.
 
@@ -822,12 +820,12 @@ Conceptual check:
 
 ```ts
 interface QaLockdownInvariant {
-  agentPresetMatches: boolean
-  workspaceMatches: boolean
-  modelMatches: boolean
-  sandboxModeMatches: boolean
-  approvalIsNever: boolean
-  toolPolicyLoaded: boolean
+  agentPresetMatches: boolean;
+  workspaceMatches: boolean;
+  modelMatches: boolean;
+  sandboxModeMatches: boolean;
+  approvalIsNever: boolean;
+  toolPolicyLoaded: boolean;
 }
 ```
 
@@ -916,12 +914,12 @@ Conceptual Cordis inject list:
 
 ```ts
 export const inject = [
-  'slots',
-  'sessions',
-  'connection',
-  'theme',
+  "slots",
+  "sessions",
+  "connection",
+  "theme",
   // settings service used for qa-surface config
-]
+];
 ```
 
 Exact service names must be resolved against the target DSH release.
@@ -937,15 +935,15 @@ shell.overlay
 Conceptually:
 
 ```ts
-ctx.slots.inject('shell.overlay', () =>
+ctx.slots.inject("shell.overlay", () =>
   ctx.slots.register(
     {
-      name: 'shell.overlay',
-      key: 'dsh-qa-surface'
+      name: "shell.overlay",
+      key: "dsh-qa-surface",
     },
     QaSurfaceEntry,
   ),
-)
+);
 ```
 
 The entry remains mounted but returns `null` whenever the route is not active.
@@ -1040,27 +1038,27 @@ UI components consume a plugin-owned interface such as:
 ```ts
 interface QaSessionState {
   phase:
-    | 'idle'
-    | 'creating'
-    | 'ready'
-    | 'running'
-    | 'reconnecting'
-    | 'blocked'
-    | 'error'
+    | "idle"
+    | "creating"
+    | "ready"
+    | "running"
+    | "reconnecting"
+    | "blocked"
+    | "error";
 
-  sessionId: string | null
-  messages: readonly QaMessage[]
-  error: string | null
-  canSend: boolean
-  canStop: boolean
+  sessionId: string | null;
+  messages: readonly QaMessage[];
+  error: string | null;
+  canSend: boolean;
+  canStop: boolean;
 }
 
 interface QaSessionActions {
-  ensureSession(): Promise<void>
-  send(text: string): Promise<void>
-  stop(): Promise<void>
-  reset(): Promise<void>
-  retryConnection(): void
+  ensureSession(): Promise<void>;
+  send(text: string): Promise<void>;
+  stop(): Promise<void>;
+  reset(): Promise<void>;
+  retryConnection(): void;
 }
 ```
 
@@ -1250,23 +1248,23 @@ Output:
 ```ts
 type QaMessage =
   | {
-      id: string
-      role: 'user'
-      text: string
-      status: 'committed'
+      id: string;
+      role: "user";
+      text: string;
+      status: "committed";
     }
   | {
-      id: string
-      role: 'assistant'
-      text: string
-      status: 'streaming' | 'committed' | 'failed'
+      id: string;
+      role: "assistant";
+      text: string;
+      status: "streaming" | "committed" | "failed";
     }
   | {
-      id: string
-      role: 'system'
-      text: string
-      status: 'info' | 'error'
-    }
+      id: string;
+      role: "system";
+      text: string;
+      status: "info" | "error";
+    };
 ```
 
 ### 18.1 Visible by default
@@ -1461,14 +1459,14 @@ Map internal failures to QA-safe UI errors.
 
 Examples:
 
-| Internal class | QA message |
-|---|---|
-| session creation rejected | "Unable to start a chat." |
-| prompt rejected | "Your message could not be sent." |
-| model route unavailable | "The assistant is temporarily unavailable." |
-| connection lost | "Connection lost. Reconnecting…" |
-| unsupported approval | "This request requires operator interaction." |
-| malformed persisted session id | silently clear and create a new session |
+| Internal class                 | QA message                                    |
+| ------------------------------ | --------------------------------------------- |
+| session creation rejected      | "Unable to start a chat."                     |
+| prompt rejected                | "Your message could not be sent."             |
+| model route unavailable        | "The assistant is temporarily unavailable."   |
+| connection lost                | "Connection lost. Reconnecting…"              |
+| unsupported approval           | "This request requires operator interaction." |
+| malformed persisted session id | silently clear and create a new session       |
 
 Never render:
 
@@ -2385,7 +2383,6 @@ Key references:
 
 - Current read-isolation limitation discussion  
   https://github.com/deepseek-ai/deepseek-harness/discussions/492
-
 
 - Web client slots  
   https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/slots
