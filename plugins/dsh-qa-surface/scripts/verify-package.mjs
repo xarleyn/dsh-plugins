@@ -201,6 +201,9 @@ assert.match(client, /Скрыть/u);
 assert.match(client, /настройки: Помощник QA/u);
 assert.match(client, /qa-card-body/u);
 assert.match(client, /qa-card-notice/u);
+// The sources section carries the reported-source validation switch, so a
+// deployment can test a provider that reports facts instead of documents.
+assert.match(client, /Проверять источники из отчёта/u);
 assert.match(client, /registerSettingsCard|slots\.register/u);
 
 const capabilityPolicy = JSON.parse(
