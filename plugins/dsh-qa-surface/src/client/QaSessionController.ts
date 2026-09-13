@@ -4,14 +4,8 @@ import type {
 } from "@deepseek-ai/dsh-client-connection/client";
 import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
+import { bytesToBase64 } from "./base64.js";
+import { qaStorageNamespace } from "../shared/session-key.js";
 import type {
   QaAttachmentDraft,
   QaFileDraft,
@@ -151,7 +145,7 @@ export class QaSessionController {
       } satisfies QaSourceApi);
     this.chats = new QaChatIndex(
       options.storage,
-      `${options.config.session.storageKey}:v1:${options.config.route.path}`,
+      qaStorageNamespace(options.config),
     );
     this.accounts = options.accounts;
     this.fileUpload = options.fileUpload ?? (() => undefined);

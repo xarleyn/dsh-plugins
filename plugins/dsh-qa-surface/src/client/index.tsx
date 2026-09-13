@@ -36,6 +36,7 @@ import type {
   QaWhoamiResult,
 } from "../types.js";
 import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
+import { qaStorageNamespace } from "../shared/session-key.js";
 import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 
@@ -100,7 +101,7 @@ type QaClientRemote = ClientRemote & { readonly qaSurface: QaPolicyRemote };
 const QA_WELCOME_SLOT_ID = "welcome-notice";
 
 function qaWelcomeStorageKey(config: ResolvedQaSurfaceConfig): string {
-  return `${config.session.storageKey}:v1:${config.route.path}:welcome-notice`;
+  return `${qaStorageNamespace(config)}:welcome-notice`;
 }
 
 export const inject = [
@@ -155,7 +156,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           const snapshot = config.getSnapshot().config;
           const index = new QaChatIndex(
             window.localStorage,
-            `${snapshot.session.storageKey}:v1:${snapshot.route.path}`,
+            qaStorageNamespace(snapshot),
           );
           const ids = [...index.chatIds()];
           const active = index.activeId();
@@ -166,7 +167,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           const snapshot = config.getSnapshot().config;
           new QaChatIndex(
             window.localStorage,
-            `${snapshot.session.storageKey}:v1:${snapshot.route.path}`,
+            qaStorageNamespace(snapshot),
           ).forgetChat(sessionId);
         },
       });

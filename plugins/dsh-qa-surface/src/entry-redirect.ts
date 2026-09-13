@@ -1,4 +1,5 @@
 import { QA_NAVIGATION_MARKER } from "./navigation-marker.js";
+import { qaStorageNamespace } from "./shared/session-key.js";
 import type { ResolvedQaSurfaceConfig } from "./types.js";
 
 /**
@@ -11,9 +12,7 @@ import type { ResolvedQaSurfaceConfig } from "./types.js";
 export function entryRedirectScript(config: ResolvedQaSurfaceConfig): string {
   const routePath = JSON.stringify(config.route.path);
   const marker = JSON.stringify(QA_NAVIGATION_MARKER);
-  const flagKey = JSON.stringify(
-    `${config.session.storageKey}:v1:${config.route.path}:entry-ui`,
-  );
+  const flagKey = JSON.stringify(`${qaStorageNamespace(config)}:entry-ui`);
   return [
     "(function(){try{",
     "var s=new URLSearchParams(location.search);",
