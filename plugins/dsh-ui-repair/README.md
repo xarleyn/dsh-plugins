@@ -10,7 +10,7 @@ anomalies, and can apply reversible scoped CSS without editing another
 plugin's source or package files.
 
 [Full specification](SPEC.md) ·
-[DSH integration investigation](INVESTIGATE.md)
+[DSH integration investigation](docs/INVESTIGATE.md)
 
 ## Installation
 

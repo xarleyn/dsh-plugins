@@ -50,7 +50,7 @@
     "compatibility.json",
     "README.md",
     "CHANGELOG.md",
-    "INVESTIGATE.md",
+    "docs/INVESTIGATE.md",
     "LICENSE"
   ],
   "scripts": {

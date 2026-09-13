@@ -19,7 +19,7 @@ for (const file of [
   "compatibility.json",
   "README.md",
   "CHANGELOG.md",
-  "INVESTIGATE.md",
+  "docs/INVESTIGATE.md",
   "LICENSE",
 ]) {
   assert.ok(manifest.files.includes(file), `${file} is not published`);
