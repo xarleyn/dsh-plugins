@@ -58,7 +58,14 @@ function harnessOf(): Harness {
   const disposed = { remote: 0, tabs: 0, slots: 0 };
 
   const namespace = {
-    inspect: () => Promise.resolve({ ok: true as const, value: { consumers: [] } }),
+    inspect: () => Promise.resolve({
+      ok: true as const,
+      value: {
+        consumers: [
+          { pluginId: "dsh-sample", level: "info" as const, format: "text" as const, instances: 1 },
+        ],
+      },
+    }),
     tail: () => Promise.resolve({ ok: true as const, value: EMPTY_TAIL }),
   };
 
@@ -143,6 +150,7 @@ describe("client apply()", () => {
     // registration must not ask the renderer for a dictionary it never installed.
     expect(body?.locale).toBeUndefined();
     expect(typeof body?.props["read"]).toBe("function");
+    expect(typeof body?.props["sources"]).toBe("function");
 
     // The settings card still mounts beside the panel.
     expect(harness.registrations.some((registration) => registration.name === "settings.plugin.item"))
@@ -160,6 +168,16 @@ describe("client apply()", () => {
     );
     const read = body?.props["read"] as (cursor: number, limit: number) => Promise<unknown>;
     expect(await read(0, 10)).toEqual({ ok: true, value: EMPTY_TAIL });
+  });
+
+  it("names the registered consumers for the source filter", async () => {
+    const harness = harnessOf();
+    await apply(harness.ctx);
+    const body = harness.registrations.find(
+      (registration) => registration.key === LOG_PANEL_ID,
+    );
+    const sources = body?.props["sources"] as () => Promise<readonly string[]>;
+    expect(await sources()).toEqual(["dsh-sample"]);
   });
 });
 

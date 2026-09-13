@@ -88,22 +88,34 @@ assert.match(client, /title:\s*\(\)\s*=>\s*"Plugin logs"/u);
 assert.match(client, /order:\s*20/u);
 // Nothing claims a resource address: the panel is a page, opened by kind.
 assert.doesNotMatch(client, /patterns:\s*\[/u);
-// The panel reads the stream through the Remote method that ships with it.
+// The panel reads the stream through the Remote method that ships with it, and
+// asks the registry for the sources its filter offers.
 assert.match(client, /remote\.tail\(cursor, limit\)/u);
+assert.match(client, /sources: async \(\) =>/u);
+assert.match(client, /consumers\.map\(\(consumer\) => consumer\.pluginId\)/u);
 // Severity ink: the quiet levels ride the label ramp, warn and above take the
 // state tokens. Asserted so a stylesheet refactor cannot quietly drop the
-// colouring the panel exists for.
+// colouring the panel exists for, or sink the clock back into the faintest ink.
 for (const token of [
   "--dsw-alias-label-dimmed",
   "--dsw-alias-label-tertiary",
   "--dsw-alias-label-secondary",
   "--dsw-alias-state-warn-label",
   "--dsw-alias-state-error-primary",
+  "--dsw-alias-bg-error",
 ]) {
   assert.ok(client.includes(token), `panel styles must use ${token}`);
 }
+assert.ok(
+  client.includes(".plu-log-time{color:var(--dsw-alias-label-secondary)"),
+  "the clock must stay above the dimmed ink it started on",
+);
 for (const level of ["trace", "debug", "info", "warn", "error", "fatal"]) {
   assert.ok(client.includes(level), `the panel must offer the ${level} level`);
 }
+// The source filter: a select over the registered consumers, with the
+// every-source option its value space is written against.
+assert.ok(client.includes("plu-log-source"), "the panel must offer the source filter");
+assert.ok(client.includes("All sources"), "the source filter needs its every-source option");
 
 console.log("verify-package: all gates passed");

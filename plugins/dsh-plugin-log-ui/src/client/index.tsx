@@ -238,7 +238,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           {
             name: "sidebar.right.pane.tab",
             key: LOG_PANEL_ID,
-            inject: () => ({ read: createLogTailReader(inspector) }),
+            inject: () => ({
+              read: createLogTailReader(inspector),
+              // The source filter's list, from the registry rather than from the
+              // window: a plugin that has gone quiet is still a source a reader
+              // may want to isolate.
+              sources: async () => {
+                const snapshot = await inspector.inspect();
+                if (!snapshot.ok) return [];
+                return snapshot.value.consumers.map((consumer) => consumer.pluginId);
+              },
+            }),
           },
           LogPanel,
         ),

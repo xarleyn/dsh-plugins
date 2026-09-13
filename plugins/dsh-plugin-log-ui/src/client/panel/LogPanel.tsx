@@ -19,6 +19,7 @@ import type { ReactNode } from "react";
 import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type { PluginLogRecordLevel, PluginLogRecordView } from "../../types.js";
 import {
+  ALL_SOURCES,
   LOG_PANEL_CAPACITY,
   LOG_PANEL_LEVELS,
   LOG_PANEL_POLL_MS,
@@ -27,12 +28,15 @@ import {
   filterRecords,
   formatScope,
   formatTime,
+  mergeSources,
   type ReadLogTail,
 } from "./log-view.js";
 
-/** The panel's injected face: how it asks the host for the next batch. */
+/** The panel's injected face: how it asks the host for the next batch, and who writes. */
 export interface LogPanelInjected {
   readonly read: ReadLogTail;
+  /** Plugin ids the host reports as registered consumers, for the source filter. */
+  readonly sources: () => Promise<readonly string[]>;
 }
 
 /** The panel's composed props: the tab it draws and its read face. */
@@ -48,13 +52,15 @@ function messageOf(record: PluginLogRecordView): string {
 }
 
 /** The panel's body. */
-export function LogPanel({ read, useTabInfo }: LogPanelProps): ReactNode {
+export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNode {
   const { tab } = useTabInfo();
   const [records, setRecords] = useState<readonly PluginLogRecordView[]>([]);
   const [levels, setLevels] = useState<ReadonlySet<PluginLogRecordLevel>>(
     () => new Set(LOG_PANEL_LEVELS),
   );
   const [query, setQuery] = useState("");
+  const [source, setSource] = useState(ALL_SOURCES);
+  const [registered, setRegistered] = useState<readonly string[]>([]);
   const [paused, setPaused] = useState(false);
   const [follow, setFollow] = useState(true);
   const [dropped, setDropped] = useState(0);
@@ -97,7 +103,28 @@ export function LogPanel({ read, useTabInfo }: LogPanelProps): ReactNode {
     return () => { clearInterval(timer); };
   }, [poll, paused, tab.visible]);
 
-  const visible = useMemo(() => filterRecords(records, levels, query), [levels, query, records]);
+  // The registered consumers are asked for once per visible stint, not per poll:
+  // the list changes when a plugin loads or unloads, which is not a per-second
+  // event, and a quiet plugin still belongs in the source list.
+  useEffect(() => {
+    if (!tab.visible) return undefined;
+    let cancelled = false;
+    void sources()
+      .then((ids) => {
+        if (!cancelled) setRegistered(ids);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [sources, tab.visible]);
+
+  const filter = useMemo(() => ({ levels, query, source }), [levels, query, source]);
+  const visible = useMemo(() => filterRecords(records, filter), [filter, records]);
+  const sourceOptions = useMemo(
+    () => mergeSources(records, registered, source),
+    [records, registered, source],
+  );
 
   useEffect(() => {
     const element = body.current;
@@ -165,6 +192,18 @@ export function LogPanel({ read, useTabInfo }: LogPanelProps): ReactNode {
       </div>
 
       <div className="plu-log-filters">
+        <select
+          className="plu-log-source"
+          value={source}
+          aria-label="Filter by source plugin"
+          title="Show one plugin's lines"
+          onChange={(event) => { setSource(event.currentTarget.value); }}
+        >
+          <option value={ALL_SOURCES}>All sources</option>
+          {sourceOptions.map((pluginId) => (
+            <option value={pluginId} key={pluginId}>{pluginId}</option>
+          ))}
+        </select>
         <input
           className="plu-log-search"
           type="search"

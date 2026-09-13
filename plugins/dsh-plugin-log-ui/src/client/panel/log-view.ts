@@ -65,22 +65,38 @@ export function formatRecord(record: PluginLogRecordView): string {
   return fields === "" ? head : `${head} ${fields}`;
 }
 
+/** The source filter's "every plugin" value; the select offers it as its first option. */
+export const ALL_SOURCES = "";
+
+/** What the panel is currently narrowed to. */
+export interface LogFilter {
+  /** Levels the reader kept enabled. */
+  readonly levels: ReadonlySet<PluginLogRecordLevel>;
+  /** Text filter, raw: it is trimmed on use. */
+  readonly query: string;
+  /** The one plugin to show, or {@link ALL_SOURCES}. */
+  readonly source: string;
+}
+
+/** Every level enabled, no text, every source: the state the panel opens in. */
+export function allLevelsFilter(): LogFilter {
+  return { levels: new Set(LOG_PANEL_LEVELS), query: "", source: ALL_SOURCES };
+}
+
 /**
  * Whether one record passes the filters.
  *
  * The text filter is a case-insensitive substring of the whole line, so what a
- * reader types matches what they see; an empty query keeps everything.
+ * reader types matches what they see; an empty query keeps everything. The
+ * source filter is exact, because a plugin id is an identifier and not prose.
  * @param record - the record to test.
- * @param levels - levels the reader kept enabled.
- * @param query - the text filter, already trimmed.
+ * @param filter - the current filters.
  * @returns whether the record is visible.
  */
-export function matchesFilter(
-  record: PluginLogRecordView,
-  levels: ReadonlySet<PluginLogRecordLevel>,
-  query: string,
-): boolean {
-  if (!levels.has(record.level)) return false;
+export function matchesFilter(record: PluginLogRecordView, filter: LogFilter): boolean {
+  if (!filter.levels.has(record.level)) return false;
+  if (filter.source !== ALL_SOURCES && record.pluginId !== filter.source) return false;
+  const query = filter.query.trim();
   if (query === "") return true;
   return formatRecord(record).toLowerCase().includes(query.toLowerCase());
 }
@@ -88,18 +104,42 @@ export function matchesFilter(
 /**
  * Apply the filters to a window of records.
  * @param records - the window, oldest first.
- * @param levels - levels the reader kept enabled.
- * @param query - the raw text filter.
+ * @param filter - the current filters.
  * @returns the visible records, oldest first.
  */
 export function filterRecords(
   records: readonly PluginLogRecordView[],
-  levels: ReadonlySet<PluginLogRecordLevel>,
-  query: string,
+  filter: LogFilter,
 ): readonly PluginLogRecordView[] {
-  const trimmed = query.trim();
-  if (trimmed === "" && levels.size === LOG_PANEL_LEVELS.length) return records;
-  return records.filter((record) => matchesFilter(record, levels, trimmed));
+  const untouched =
+    filter.levels.size === LOG_PANEL_LEVELS.length &&
+    filter.source === ALL_SOURCES &&
+    filter.query.trim() === "";
+  if (untouched) return records;
+  return records.filter((record) => matchesFilter(record, filter));
+}
+
+/**
+ * The sources the source filter offers: every plugin the window mentions, plus
+ * whatever the host reported and the one currently selected.
+ *
+ * The host's registered consumers are in the list even while silent, and the
+ * selected source stays an option after its last line scrolls away — a filter
+ * whose value disappears from its own list silently changes meaning.
+ * @param records - the window, oldest first.
+ * @param registered - plugin ids the host reports as registered consumers.
+ * @param selected - the source currently selected.
+ * @returns sorted, unique plugin ids.
+ */
+export function mergeSources(
+  records: readonly PluginLogRecordView[],
+  registered: readonly string[],
+  selected: string,
+): readonly string[] {
+  const sources = new Set(registered);
+  for (const record of records) sources.add(record.pluginId);
+  if (selected !== ALL_SOURCES) sources.add(selected);
+  return [...sources].sort((left, right) => left.localeCompare(right));
 }
 
 /**
