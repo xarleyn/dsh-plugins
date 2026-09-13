@@ -1,6 +1,5 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type {} from "@deepseek-ai/dsh-system-prompt";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -17,7 +16,6 @@ interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
-  readonly disposeGuidance: () => void;
 }
 
 /**
@@ -62,6 +60,12 @@ function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
  */
 export class QaPolicyAdmission {
   private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
+  /**
+   * Sessions the QA surface has attested. The provenance note is written for
+   * exactly these, and a delegated child resolves through its root session, so
+   * one set answers for the whole chat.
+   */
+  private readonly attested = new Set<string>();
   private readonly workspaceRoots = new Map<string, string>();
   private readonly disposeWorkspaceGuard: () => void;
 
@@ -133,6 +137,7 @@ export class QaPolicyAdmission {
     if (agent === undefined) {
       throw new QaAttestationError("agent-unavailable", "agent is unavailable");
     }
+    this.attested.add(sessionId);
     if (!lockdown.enabled) {
       return {
         sessionId,
@@ -274,11 +279,6 @@ export class QaPolicyAdmission {
       const disposeGuard = agent.ctx.tools.guard((execution) =>
         qaToolDenial(allowed, execution.name),
       );
-      const disposeGuidance = agent.ctx.systemPrompt.section({
-        name: "dsh-qa-surface:structured-sources",
-        order: 950,
-        text: "Source provenance is collected automatically from tools. Do not append a manual Sources/Источники bibliography to the answer. Delegated providers that cannot expose tool events should call qa_report_sources before finishing.",
-      });
       try {
         const disposeRestriction = agent.ctx.tools.restrict({
           allow: policy.allow,
@@ -287,14 +287,11 @@ export class QaPolicyAdmission {
           fingerprint,
           disposeGuard,
           disposeRestriction,
-          disposeGuidance,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
-        prior?.disposeGuidance();
       } catch (error) {
         disposeGuard();
-        disposeGuidance();
         throw error;
       }
     }
@@ -342,14 +339,23 @@ export class QaPolicyAdmission {
     };
   }
 
+  /**
+   * Whether one session went through this boundary. The provenance note is
+   * written only for attested sessions, which is what keeps a deployment's
+   * source rules out of unrelated chats served by the same process.
+   */
+  knowsSession(sessionId: string): boolean {
+    return this.attested.has(sessionId);
+  }
+
   /** Detach every pinned tool policy; wired as a disposal effect by the entry. */
   dispose(): void {
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeRestriction();
       policy.disposeGuard();
-      policy.disposeGuidance();
     }
     this.appliedPolicies.clear();
+    this.attested.clear();
     this.workspaceRoots.clear();
     this.disposeWorkspaceGuard();
   }
