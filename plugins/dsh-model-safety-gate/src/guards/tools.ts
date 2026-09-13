@@ -70,6 +70,10 @@ export function createPreExecuteGuard(deps: PreExecuteGuardDeps): PreExecuteList
       step: null,
     });
 
+    // Audit mode still runs the full pipeline so findings are recorded, but
+    // no finding or accumulated turn risk may affect tool execution.
+    if (deps.config.mode === "audit") return next();
+
     const decision: SafetyDecision = applyGateMode(result.decision, deps.config.mode);
     const riskLevel = sessionId !== null ? deps.risk.get(sessionId)?.riskLevel : undefined;
     const surface = deps.risk.escalate(decision, riskLevel);
