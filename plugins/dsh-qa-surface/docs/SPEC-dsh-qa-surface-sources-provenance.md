@@ -813,16 +813,16 @@ Suggested layout:
 │ Documentation · 4                        │
 │                                          │
 │  [MD] serviceDiagnosis.md              │
-│       Product / serviceDiagnosis           │
+│       Product / serviceDiagnosis       │
 │       lines 197–218        Used by agent │
 │                                          │
-│  [MD] products_platform.md                    │
-│       Dispatcher / products          │
+│  [MD] products_platform.md               │
+│       Dispatcher / products              │
 │                                          │
 │ Jira · 3                                 │
 │                                          │
-│  [J] PROJ-123                           │
-│      Демо-продукт. GET /history           │
+│  [J] PROJ-123                          │
+│      Демо-продукт. GET /history          │
 │                                          │
 │ Confluence · 2                           │
 │ ...                                      │
@@ -1276,8 +1276,8 @@ Suggested source labels/icons:
 | ------------ | -------------------- | ---------------------------- |
 | `file`       | Documentation / File | `serviceDiagnosis.md`      |
 | `code`       | Code                 | `ActivitySectionTypeEnum.cs` |
-| `jira`       | Jira                 | `PROJ-123`                  |
-| `confluence` | Confluence           | `Вибродиагностика MM3`       |
+| `jira`       | Jira                 | `PROJ-123`                 |
+| `confluence` | Confluence           | `Product Handbook`           |
 | `knowledge`  | Knowledge            | KB document                  |
 | `web`        | Web                  | GitHub / docs site           |
 | `other`      | Other                | connector-specific source    |
