@@ -189,29 +189,44 @@ Two refusals reach the browser through the established `(reason: <code>)`
 marker: `invalid-profile` for any field violation, and `profile-disabled` when
 the deployment turned the feature off after the page loaded.
 
-### Injection
+### Notes on the conversation
 
-`src/user-identity.ts` owns two prompt sections registered on each QA agent's
-own scope: `dsh-qa-surface:user-identity` (order 860) and
-`dsh-qa-surface:user-instructions` (order 870). The placement sits after the
-deployment persona and policy sections and before the file-reference and tool
-sections; the plugin's provenance guidance at 950 stays later on purpose,
-because provenance rules outrank a user's stylistic preferences.
+`src/prompt-notes.ts` delivers two ambient notes as **durable context
+messages** on the conversation, not as prompt text: `QaUserIdentity`'s
+identity note (this section's feature) and the source-provenance rule that
+used to be a prompt section in `secureSession` (`dsh-qa-surface:structured-sources`,
+order 950). Both now share one `agent/pre-step` listener, because both were
+erased by the same thing.
 
-Three facts decide the shape:
-
-- **Per-agent, not per-plugin.** A section's `text` may be a provider, so the
-  identity is resolved at assembly time: a profile edit, a CLI change, or an
-  account disabled mid-chat is reflected on the next turn, and a disabled
-  account stops being addressed by name together with losing its access.
+- **Why not a prompt section.** The QA deployment's own preset closes that
+  door. `qa-research` registers its persona with `complete: true` — the
+  persona IS the whole system prompt, so every other section is discarded
+  during assembly — and with `includeRuntimeContext: false`, which drops every
+  `systemPrompt.context()` contribution as well. The preset says so outright:
+  "no runtime context snapshots, no later assembly listeners adding prompt
+  text." A section (or a context) is silently erased on exactly the
+  deployments this plugin ships to, which is how the provenance rule went
+  missing before this change.
+- **What stays open.** The conversation. A plugin-sourced `user/message` is
+  admitted to the request as injected context, survives both preset switches,
+  and is already treated as plumbing by the projections: the chat node for a
+  non-user source is a `context` node, and `QaTranscriptAdapter` renders only
+  the `subagent`-labelled ones as status rows, leaving every other context note
+  hidden from the QA audience.
+- **One note per text, not per step.** The hook appends a note only when the
+  session does not already carry that exact text. The session's own surface is
+  the state, so a resumed session or a reloaded plugin never appends a second
+  copy; a profile edit injects the new text once, and the later note supersedes
+  the earlier one by position.
 - **Reaching subagents.** An agent's scope chain runs to its preset's standing
-  mount and never through its parent agent, so a section registered only on
-  the parent's scope is invisible to the experts the QA agent delegates to.
-  The injector therefore listens for `agent/created` untagged (which sees
-  every agent) and walks `session.header.parentSession` up to the chat's root
-  session, where the ownership map answers who owns this turn.
-- **No new trust in the model.** The profile is user-authored text inside the
-  system prompt, so the section states what it is: self-declared values that
+  mount and never through its parent agent, so both notes are resolved through
+  `session.header.parentSession` walking up to the chat's root session. The
+  identity note asks the ownership map who owns that session; the provenance
+  note asks the admission whether it attested it (`knowsSession`), which keeps
+  a deployment's source rules out of unrelated chats in the same process. A
+  delegated child gets its own copy of both.
+- **No new trust in the model.** The profile is user-authored text in the
+  conversation, so the note states what it is: self-declared values that
   cannot change tools, permissions, the sandbox, or any rule above. The
   lockdown stays host-enforced (allow-list, guards, permission preset) and
   does not depend on the model's compliance. The model is also told to name
@@ -219,9 +234,14 @@ Three facts decide the shape:
   request, because a mistyped handle that the model trusts silently produces a
   confident answer about the wrong person.
 
-Out-of-process subagents (another model or SDK) never see DSH prompt sections;
-a deployment that needs one to know the user must pass the identifiers in the
-delegation text.
+A subagent that runs outside this process (another model or SDK) never sees
+the conversation either; a deployment that needs one to know the user must
+pass the identifiers in the delegation text.
+
+Each message declares the note it carries in its `sections`
+(`dsh-qa-surface:user-identity` and `dsh-qa-surface:structured-sources`), which
+is what the operator's request inspector attributes it to and what makes a note
+findable again after a cold start.
 
 ### UI
 

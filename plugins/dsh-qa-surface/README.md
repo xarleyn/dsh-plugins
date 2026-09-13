@@ -251,14 +251,18 @@ do not grant tools.
 
 Clicking the account name in the sidebar footer opens the signed-in user's
 profile: full name, one handle per external system the deployment declares,
-and free-form instructions about how they want answers. The Host injects both
-into the QA agent's system prompt, so "покажи мои задачи" resolves to a
-tracker lookup with the right login instead of a question. Values are
-self-declared and the prompt says so: the agent names the identifier it
-searched by and asks when the results contradict the request. Subagents of the
-chat receive the same sections. The feature needs no switch beyond accounts,
-though `accounts.profile.enabled` and `inject` exist for deployments that want
-the form without the prompt, or neither:
+and free-form instructions about how they want answers. The Host hands both
+to the QA agent as a note in the conversation, so "покажи мои задачи" resolves
+to a tracker lookup with the right login instead of a question. Because a QA
+preset can declare its persona the complete system prompt (the shipped
+`qa-research` one does, which discards every plugin prompt section), the note
+travels as injected context on the conversation instead of as prompt text. It
+is written once per profile, and subagents of the chat get their own copy.
+Values are self-declared and the note says so: the agent names the identifier
+it searched by and asks when the results contradict the request. The feature
+needs no switch beyond accounts, though `accounts.profile.enabled` and
+`inject` exist for deployments that want the form without the note, or
+neither:
 
 ```yaml
 accounts:
@@ -319,8 +323,8 @@ Observable local subagents are inherited recursively. The internal
 `qa_report_sources` tool covers opaque delegated providers and is admitted as
 a provenance-only capability even when it is not listed among ordinary QA
 tools. A provider that neither exposes events nor reports sources marks the
-turn provenance incomplete. The QA prompt tells models not to append a manual
-`Sources`/`Источники` bibliography.
+turn provenance incomplete. A note in the conversation tells the model not to
+append a manual `Sources`/`Источники` bibliography.
 
 Images: the composer accepts PNG/JPEG/WebP/GIF via drag & drop onto the
 composer, paste, and the picker button, several at once (soft client caps:
