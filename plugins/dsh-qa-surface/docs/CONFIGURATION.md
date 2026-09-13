@@ -159,7 +159,12 @@ Set `sources.display.showOriginBadges: true` while auditing inheritance. Local
 subagent sources carry run/session origins automatically. An opaque provider
 can call the internal `qa_report_sources` tool; if it does not, and
 `markIncompleteOpaqueRuns` remains enabled, the bundle is explicitly marked
-incomplete.
+incomplete. Every attested QA session receives one note that says so — that
+the surface collects provenance itself, that a manual bibliography is not
+wanted, and, when `sources.subagents.enableReportToolFallback` is on, that an
+opaque delegated provider must call `qa_report_sources`. The note travels as
+injected context on the conversation (see the profile notes below), so a QA
+preset cannot suppress it.
 
 See [Structured sources migration](SOURCES-MIGRATION.md) before removing an
 older prompt-authored bibliography convention.
@@ -210,16 +215,16 @@ QA surface and turns on server-side session ownership:
 
 ### User profile and prompt identity
 
-`accounts.profile` gives every account a self-declared profile and injects it
-into the QA agent's system prompt. The switch is on by default and stays inert
-while accounts are off:
+`accounts.profile` gives every account a self-declared profile and hands it to
+the QA agent as a note in the conversation. The switch is on by default and
+stays inert while accounts are off:
 
 ```yaml
 accounts:
   enabled: true
   profile:
     enabled: true # the profile form in the sidebar footer
-    inject: true # the prompt sections described below
+    inject: true # the conversation note described below
     identities: # external systems to collect a handle for
       - key: jira
         label: Jira
@@ -233,19 +238,23 @@ accounts:
   name in the sidebar footer. The Host accepts only declared keys and caps the
   instruction text, and the account token is the only identity on the wire, so
   a browser can never write another account's profile.
-- What the model receives: one section with the user's name, email and
-  handles, and a second one with the user's own instructions, framed as user
-  preferences that cannot change tools, permissions, the sandbox, or any rule
-  the deployment set. Both are re-resolved on every prompt assembly, so an
-  edit — or an account disabled mid-chat — lands on the next turn.
-- Delegated subagents receive the same sections. The injector registers them
-  on every agent it sees rather than on the chat's own agent alone, because an
+- What the model receives: a note with the user's name, email and handles,
+  plus their own instructions framed as preferences that cannot change tools,
+  permissions, the sandbox, or any rule the deployment set. It arrives as an
+  injected context message on the conversation rather than as prompt text,
+  because a QA preset may (and the shipped `qa-research` one does) declare its
+  persona the complete system prompt, which discards every section and runtime
+  context a plugin contributes. The note is written once per profile — again
+  only after an edit — so it never repeats per step and never grows with the
+  conversation.
+- Delegated subagents receive their own copy. The note is resolved by walking
+  `session.header.parentSession` up to the chat's root session, because an
   agent's scope chain runs to its preset and never through its parent. A
   subagent that runs outside this process (another model or SDK) never sees
-  the DSH prompt at all; a deployment that needs one to know the user has to
-  pass the identifiers in the delegation text.
-- The values are self-declared, not verified. The prompt therefore instructs
-  the model to name the identifier it searched by and to ask when results
+  the DSH conversation at all; a deployment that needs one to know the user
+  has to pass the identifiers in the delegation text.
+- The values are self-declared, not verified. The note therefore instructs the
+  model to name the identifier it searched by and to ask when results
   contradict the request, so a mistyped handle surfaces as a question instead
   of a confident answer about the wrong person.
 - Operator-side management:

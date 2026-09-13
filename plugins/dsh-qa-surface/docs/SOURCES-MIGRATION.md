@@ -11,8 +11,8 @@ and the default `sources.legacy.parseAssistantSourcesBlock` remains `false`.
 2. Leave `sources.collect.persistTurnEvent: true` so completed turns append a
    replayable `qa/sources` snapshot.
 3. Remove prompt instructions that ask the assistant to manually write a
-   bibliography. The plugin contributes its own scoped guidance after QA
-   attestation.
+   bibliography. After QA attestation the plugin contributes its own note,
+   which rides the conversation rather than the system prompt.
 4. For an opaque subagent provider, expose the inherited
    `qa_report_sources` tool and ask the provider to call it before completion.
    Local DSH subagents require no reporting prompt.
