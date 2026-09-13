@@ -26,7 +26,14 @@ export async function tempRoot(prefix = "dsh-cas-results-test-"): Promise<string
 export async function cleanupTempRoots(): Promise<void> {
   while (roots.length > 0) {
     const root = roots.pop();
-    if (root !== undefined) await rm(root, { recursive: true, force: true });
+    if (root !== undefined) {
+      // `read` resolves before the hit-counting `touch` it starts has
+      // committed, and that write recreates `tmp/` under the root being
+      // removed, so the walk can lose the directory it is deleting. Node
+      // retries the ENOTEMPTY, EPERM and EBUSY this produces only when the
+      // retry budget is set.
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
+    }
   }
 }
 
