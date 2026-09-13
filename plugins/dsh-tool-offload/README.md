@@ -117,8 +117,8 @@ pnpm nx run dsh-tool-offload:verify   # package gate
 ```
 
 The full design document (routing policy, safety model, phased plan) lives in
-[`docs/SPEC-dsh-tool-offload-design.md`](./docs/SPEC-dsh-tool-offload-design.md);
-the behavioral contract is [`SPEC.md`](./SPEC.md).
+[`docs/SPEC-dsh-tool-offload-design.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/docs/SPEC-dsh-tool-offload-design.md);
+the behavioral contract is [`SPEC.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/SPEC.md).
 
 ## Credits
 

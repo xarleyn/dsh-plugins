@@ -35,7 +35,6 @@ for (const required of [
   "lib",
   "cordis.patch.yml",
   "compatibility.json",
-  "docs/dsh-kv-persist.md",
   "README.md",
   "LICENSE",
 ]) {

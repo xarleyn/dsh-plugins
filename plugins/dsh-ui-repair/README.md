@@ -9,8 +9,8 @@ interfaces. It measures rendered DOM, reports narrowly defined layout
 anomalies, and can apply reversible scoped CSS without editing another
 plugin's source or package files.
 
-[Full specification](SPEC.md) ·
-[DSH integration investigation](docs/INVESTIGATE.md)
+[Full specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-ui-repair/SPEC.md) ·
+[DSH integration investigation](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-ui-repair/docs/INVESTIGATE.md)
 
 ## Installation
 
@@ -140,5 +140,5 @@ scoping, and rollback seams they will use.
 
 ## License
 
-[MIT](../../LICENSE). This is an independent community project and is not
+[MIT](https://github.com/xarleyn/dsh-plugins/blob/main/LICENSE). This is an independent community project and is not
 affiliated with or endorsed by DeepSeek.

@@ -269,7 +269,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `package.json` | ✔ | Манифест по §4.2 |
 | `cordis.patch.yml` | ✔ | Вставка в composition хоста |
 | `README.md` | ✔ | См. §8 |
-| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/SPEC-<plugin>-<topic>.md`, см. §8.2 |
+| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/SPEC-<plugin>-<topic>.md`, см. §8.2. В tarball не публикуется (§4.2) |
 | `LICENSE` | ✔ | Копия корневого MIT |
 | `compatibility.json` | ✔ (publishable) | Машиночитаемая совместимость, см. §7 |
 | `tsconfig.json` / `tsconfig.build.json` | ✔ | Расширяют `@yadsh/dsh-config` |
@@ -370,9 +370,22 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
   — внутреннее (проверяется гейтом §27.10). Каждый вход: `types` + `default`.
   Всегда включайте `./package.json`.
-- **`files` — белый список.** В tarball не должно попадать ничего лишнего:
-  только `lib/`, патч, `compatibility.json`, README, LICENSE (и
-  `docs/images/*` при наличии скриншотов).
+- **`files` — белый список того, что нужно установленному пакету.** Публикуются
+  только: собранный рантайм (`lib/**`), `cordis.patch.yml`, `compatibility.json`
+  (и другие рантайм-данные вроде `capability-policy.json`), юридические
+  уведомления (`LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`), `README.md`
+  как его рендерит npm и картинки, на которые он ссылается (`docs/images/*`).
+  **Документация не публикуется**: `SPEC.md`, `CHANGELOG.md`, `ROADMAP.md`,
+  `docs/**` (кроме `docs/images/`), `INVESTIGATE.md`, переводы README —
+  всё это остаётся в репозитории. Так установка не тянет лишние килобайты,
+  а реестр не превращается в файлопомойку. Правило проверяет
+  `pnpm verify:packages`.
+- **Ссылки в README — либо внутрь пакета, либо абсолютные.** README попадает в
+  tarball, поэтому относительная ссылка на непубликуемый документ на странице
+  npm рендерится мёртвой. Ссылайтесь как
+  `https://github.com/xarleyn/dsh-plugins/blob/main/<path-from-repo-root>`;
+  гейт `pnpm verify:packages` отвергает относительную ссылку, которую тарбол не
+  покрывает.
 - **`dsh.client.inject`** перечисляет ровно те DSH-клиентские пакеты, чьи
   поверхности импортирует client-часть.
 - **Скрипты:** `check` — полный локальный конвейер; `verify` — package-гейты;
@@ -548,7 +561,9 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 Эталон: `plugins/dsh-draft-sessions/README.md`. Обязательные секции, в порядке:
 
 1. Название + одно предложение «что это для пользователя DSH».
-2. Скриншот/демо (если есть UI) — `docs/images/`, попадает в tarball.
+2. Скриншот/демо (если есть UI) — `docs/images/`, попадает в tarball; остальные
+   ссылки на документы репозитория (`SPEC.md`, `docs/**`, `ROADMAP.md`,
+   `CHANGELOG.md`, переводы README) — абсолютными URL на GitHub (§4.2).
 3. **Features** — маркированный список реальных возможностей.
 4. **Install** — `dsh plugin --profile <profile> add @yadsh/dsh-<name>` для
    host-плагина и `dsh plugin --profile web add @yadsh/dsh-<name>` для плагина с

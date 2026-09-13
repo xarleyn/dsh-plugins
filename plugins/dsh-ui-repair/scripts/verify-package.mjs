@@ -18,8 +18,6 @@ for (const file of [
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
-  "CHANGELOG.md",
-  "docs/INVESTIGATE.md",
   "LICENSE",
 ]) {
   assert.ok(manifest.files.includes(file), `${file} is not published`);

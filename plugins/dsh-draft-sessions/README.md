@@ -10,7 +10,7 @@ Persistent, unsent future conversations for [DeepSeek Harness](https://github.co
 
 `dsh-draft-sessions` is building the Cursor-like workflow where you can prepare several independent tasks, leave them unsent, and return to each task later without starting an agent.
 
-[Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [Specification](SPEC.md) · [Architecture](docs/architecture.md) · [Roadmap](ROADMAP.md)
+[Русский](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/README.ru.md) · [简体中文](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/README.zh-CN.md) · [Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/SPEC.md) · [Architecture](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/docs/architecture.md) · [Roadmap](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/ROADMAP.md)
 
 ## See it in action
 
@@ -140,7 +140,7 @@ dsh --profile web --dump-config
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Configuration
 
@@ -196,11 +196,11 @@ The lifecycle service owns blank Session creation and recovery. The lower-level 
 - Draft rows compose beside the single workspace-browser occupant; the plugin never disables or embeds `ui-workspace`.
 - Backing blank Sessions are excluded only from the workspace-browser slot, so the standard composer still receives the real current Session.
 
-See [SPEC.md](SPEC.md) for acceptance criteria and [docs/architecture.md](docs/architecture.md) for the lifecycle.
+See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/SPEC.md) for acceptance criteria and [docs/architecture.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/docs/architecture.md) for the lifecycle.
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) and run the package check before submitting a change.
+Issues and focused pull requests are welcome. Read [CONTRIBUTING.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-draft-sessions/CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 

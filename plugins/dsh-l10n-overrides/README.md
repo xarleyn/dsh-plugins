@@ -10,7 +10,7 @@ Runtime localization overrides for [DeepSeek Harness](https://github.com/deepsee
 
 `dsh-l10n-overrides` overlays missing or incorrect locale entries without replacing the host locale service. Translation packs can also provide narrowly scoped DOM fallbacks for text and selected accessibility attributes.
 
-[Specification](SPEC.md) · [Roadmap](ROADMAP.md)
+[Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-l10n-overrides/SPEC.md) · [Roadmap](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-l10n-overrides/ROADMAP.md)
 
 ## Installation
 
@@ -44,7 +44,7 @@ Restart the DeepSeek Harness host if bundle hot reload does not pick up the newl
 - scoped fallbacks for `placeholder`, `title`, `aria-label`, and `alt` attributes;
 - package and browser-bundle verification.
 
-The implementation is tested, but it is not considered ready for a public release until it has real translation packs and integration coverage in a live DSH browser session. See the [roadmap](ROADMAP.md).
+The implementation is tested, but it is not considered ready for a public release until it has real translation packs and integration coverage in a live DSH browser session. See the [roadmap](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-l10n-overrides/ROADMAP.md).
 
 ## Translation packs
 
@@ -72,11 +72,11 @@ The package check runs formatting, type checking, tests, production builds, and 
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Contributing
 
-Issues, translation packs, and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package check before submitting a change.
+Issues, translation packs, and focused pull requests are welcome. Read the monorepo [contribution guide](https://github.com/xarleyn/dsh-plugins/blob/main/CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 

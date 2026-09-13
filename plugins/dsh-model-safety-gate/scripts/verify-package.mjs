@@ -49,7 +49,6 @@ for (const required of [
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
-  "SPEC.md",
   "NOTICE.md",
   "THIRD_PARTY_NOTICES.md",
   "LICENSE",

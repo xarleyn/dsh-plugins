@@ -61,7 +61,6 @@
     "lib/client.js",
     "cordis.patch.yml",
     "compatibility.json",
-    "docs/**/*.md",
     "README.md",
     "LICENSE"
   ],

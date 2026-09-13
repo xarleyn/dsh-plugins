@@ -10,7 +10,7 @@ Deterministic documentation-impact enforcement for [DeepSeek Harness](https://gi
 
 `dsh-doc-impact` links code and documentation through a declarative impact graph. When an agent changes files, the plugin compares the workspace with the turn baseline and steers the agent to review or update every affected document before the turn closes.
 
-[Specification](SPEC.md)
+[Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-doc-impact/SPEC.md)
 
 ## Installation
 
@@ -163,11 +163,11 @@ never `lib/` directly.
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package check before submitting a change.
+Issues and focused pull requests are welcome. Read the monorepo [contribution guide](https://github.com/xarleyn/dsh-plugins/blob/main/CONTRIBUTING.md) and run the package check before submitting a change.
 
 ## License
 
