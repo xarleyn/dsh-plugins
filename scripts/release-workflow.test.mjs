@@ -44,19 +44,25 @@ const npmCli = path.join(
 const pnpmCli = process.env.npm_execpath;
 
 function run(command, args, cwd, options = {}) {
+  const env = {
+    ...process.env,
+    CI: "true",
+    NX_DAEMON: "false",
+    NX_TASKS_RUNNER_DYNAMIC_OUTPUT: "false",
+  };
+  // `nrwl/nx-set-shas` exports the shas the job compares against, and they
+  // describe the repository the job checked out, not the fixture a test just
+  // built: whoever inherits them reads refs the fixture cannot resolve.
+  delete env.NX_BASE;
+  delete env.NX_HEAD;
+
   return spawnSync(command, args, {
     cwd,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
     timeout: 120_000,
     shell: options.shell ?? false,
-    env: {
-      ...process.env,
-      CI: "true",
-      NX_DAEMON: "false",
-      NX_TASKS_RUNNER_DYNAMIC_OUTPUT: "false",
-      ...options.env,
-    },
+    env: { ...env, ...options.env },
   });
 }
 
