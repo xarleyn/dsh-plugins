@@ -375,7 +375,11 @@ used first) and intersects it with the Host session list, so users sharing the
 deployment never see each other's chats. An admin can explicitly enable
 `accounts.showOtherUsersChats: true` to add chats owned by other QA accounts,
 grouped by owner. Switching re-runs the full policy
-attestation; a chat the Host no longer lists is pruned from the index. Each
+attestation, and that attestation materializes the chat's agent when the Host
+does not hold one: DSH builds an agent on demand, so a chat restored after a
+Host restart still opens (its composition is resumed from what the session
+recorded) instead of failing as unavailable. A chat the Host no longer lists is
+pruned from the index. Each
 row carries a two-click delete control that removes the chat from this
 browser's index; deleting the chat that is currently open continues in a
 fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
