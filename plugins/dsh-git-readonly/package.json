@@ -75,6 +75,7 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "git",
     "read-only",
     "provenance",

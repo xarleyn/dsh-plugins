@@ -51,6 +51,7 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "subagent",
     "tool",
     "offload",

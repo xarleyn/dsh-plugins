@@ -78,10 +78,12 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "domain",
     "expert",
     "subagent",
-    "scoping"
+    "scoping",
+    "agent-teams"
   ],
   "engines": {
     "node": "^22.19.0 || >=24.0.0"

@@ -11,6 +11,7 @@
   "bugs": {
     "url": "https://github.com/xarleyn/dsh-plugins/issues"
   },
+  "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "cordis", "project-rules", "memory", "corrections", "knowledge-extraction"],
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",

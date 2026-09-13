@@ -73,11 +73,17 @@
     "verify": "node scripts/verify-package.mjs"
   },
   "keywords": [
+    "deepseek",
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
+    "cordis",
     "prompt",
     "firewall",
-    "cordis"
+    "prompt-injection",
+    "policy",
+    "observability",
+    "middleware"
   ],
   "license": "MIT",
   "peerDependencies": {

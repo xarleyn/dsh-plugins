@@ -67,7 +67,9 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "localization",
+    "i18n",
     "web-ui"
   ],
   "license": "MIT",
