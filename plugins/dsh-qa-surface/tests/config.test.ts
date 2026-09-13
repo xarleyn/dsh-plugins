@@ -37,6 +37,19 @@ describe("ConfigSchema defaults", () => {
     ).toEqual(["Точу"]);
   });
 
+  it("keeps reported-source validation on until the deployment turns it off", () => {
+    expect(resolveConfig().sources.subagents.validateReportedSources).toBe(
+      true,
+    );
+    expect(
+      resolveConfig(
+        schemaParse({
+          sources: { subagents: { validateReportedSources: false } },
+        }),
+      ).sources.subagents.validateReportedSources,
+    ).toBe(false);
+  });
+
   it("keeps ui.showReset off until lockdown authorizes it", () => {
     expect(resolveConfig(schemaParse(undefined)).ui.showReset).toBe(false);
     expect(() => resolveConfig({ ui: { showReset: true } })).toThrow(

@@ -115,6 +115,9 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
       markIncompleteOpaqueRuns:
         input.sources?.subagents?.markIncompleteOpaqueRuns ??
         DEFAULT_QA_SURFACE_CONFIG.sources.subagents.markIncompleteOpaqueRuns,
+      validateReportedSources:
+        input.sources?.subagents?.validateReportedSources ??
+        DEFAULT_QA_SURFACE_CONFIG.sources.subagents.validateReportedSources,
     }),
     legacy: Object.freeze({
       parseAssistantSourcesBlock:
