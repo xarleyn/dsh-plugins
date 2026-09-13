@@ -53,6 +53,7 @@
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-agent-presets",
         "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-file-upload",
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins",

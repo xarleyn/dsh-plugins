@@ -233,6 +233,7 @@ describe("QA Surface card", () => {
       "Блокировка",
       "Аккаунты",
       "Источники",
+      "Вложения",
       "Встраивание",
     ]) {
       expect(section(title)).toBeTruthy();
@@ -544,6 +545,49 @@ describe("QA Surface card", () => {
           { key: "jira", label: "Jira" },
           { key: "confluence", label: "confluence" },
         ],
+      },
+    ]);
+  });
+
+  it("writes the attachment policy field by field", async () => {
+    const { mutate } = await renderCard();
+    openCard();
+
+    const attachments = section("Вложения");
+    fireEvent.click(within(attachments).getByLabelText(/Текстовые файлы/u));
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["attachments", "textFiles"], value: false },
+    ]);
+
+    mutate.mockClear();
+    const threshold = within(attachments).getByLabelText(/Переносить вставку/u);
+    fireEvent.change(threshold, { target: { value: "80" } });
+    fireEvent.blur(threshold);
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["attachments", "pastedTextLines"], value: 80 },
+    ]);
+  });
+
+  it("shows the extension list in effect and stores the parsed one", async () => {
+    const { mutate } = await renderCard();
+    openCard();
+
+    const field = within(section("Вложения")).getByLabelText(
+      /Расширения текстовых файлов/u,
+    ) as HTMLTextAreaElement;
+    // What matters is that the field shows the resolved list, not an empty
+    // box for a setting that is doing something.
+    expect(field.value.split("\n").length).toBeGreaterThan(5);
+    fireEvent.change(field, { target: { value: "md, txt , log" } });
+    fireEvent.blur(field);
+    await settle();
+    expect(mutate).toHaveBeenCalledWith([
+      {
+        op: "set",
+        path: ["attachments", "extensions"],
+        value: ["md", "txt", "log"],
       },
     ]);
   });

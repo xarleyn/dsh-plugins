@@ -13,7 +13,8 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 import type {
-  QaImageDraft,
+  QaAttachmentDraft,
+  QaFileDraft,
   QaSessionState,
   QaSubagentView,
   ResolvedQaSurfaceConfig,
@@ -27,6 +28,7 @@ import { QaHostSourceBridge } from "./session-sources.js";
 import type {
   QaConversation,
   QaCreateSession,
+  QaFileUpload,
   QaPromptContent,
   QaSecureSession,
   QaSessions,
@@ -67,6 +69,11 @@ export interface QaSessionControllerOptions {
   readonly secureSession: QaSecureSession;
   readonly sourceApi?: QaSourceApi;
   readonly storage?: StorageLike;
+  /**
+   * Browser file-upload service, resolved lazily: the page may not serve the
+   * upload plugin, and a deployment without it keeps images and text only.
+   */
+  readonly fileUpload?: () => QaFileUpload | undefined;
   /** Present while the deployment gates QA users with accounts. */
   readonly accounts?: QaAccountsFacade;
   readonly timeoutMs?: number;
@@ -97,6 +104,8 @@ export class QaSessionController {
   private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
   private readonly accounts: QaAccountsFacade | undefined;
+  /** Resolved per send: a page without the upload plugin has no receipts. */
+  private readonly fileUpload: () => QaFileUpload | undefined;
   /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
   private readonly assets = new SessionAssetRepository();
   private readonly timeoutMs: number;
@@ -145,6 +154,7 @@ export class QaSessionController {
       `${options.config.session.storageKey}:v1:${options.config.route.path}`,
     );
     this.accounts = options.accounts;
+    this.fileUpload = options.fileUpload ?? (() => undefined);
     this.hostSources = new QaHostSourceBridge(
       this.sourceApi,
       () => this.accounts?.token() ?? "",
@@ -177,10 +187,15 @@ export class QaSessionController {
 
   async send(
     text: string,
-    images: readonly QaImageDraft[] = [],
+    attachments: readonly QaAttachmentDraft[] = [],
   ): Promise<boolean> {
     const prompt = text.trim();
-    if ((prompt === "" && images.length === 0) || !this.state.canSend) {
+    // Images ride the prompt inline; files must be staged first, because the
+    // wire carries a receipt rather than bytes.
+    const files = attachments.filter(
+      (attachment): attachment is QaFileDraft => attachment.kind === "file",
+    );
+    if ((prompt === "" && attachments.length === 0) || !this.state.canSend) {
       return false;
     }
     if (prompt.startsWith("/")) {
@@ -219,18 +234,44 @@ export class QaSessionController {
     ) {
       return false;
     }
+    let receipts = new Map<string, string>();
+    if (files.length > 0) {
+      const outcome = await this.stageFiles(target, files);
+      if (outcome.kind !== "ok") {
+        if (this.session === target) {
+          this.operationError =
+            outcome.kind === "unavailable"
+              ? "Вложения недоступны на этом сервере."
+              : "Не удалось приложить файл.";
+          this.publish();
+        }
+        return false;
+      }
+      receipts = outcome.receipts;
+    }
     this.admissionPending = true;
     this.publish();
     try {
-      const content: QaPromptContent = [
+      // The receipt is opaque and host-minted — the upload service answers with
+      // a plain string, and only the session wire brand knows it as an id.
+      const content = [
         ...(prompt === "" ? [] : [{ type: "text" as const, text: prompt }]),
-        ...images.map((image) => ({
-          type: "image" as const,
-          mediaType: image.mediaType,
-          data: image.data,
-          name: image.name,
-        })),
-      ];
+        // The visitor's own order decides the prompt order, so images and
+        // files are assembled from one walk over the drafts.
+        ...attachments.map((attachment) =>
+          attachment.kind === "image"
+            ? {
+                type: "image" as const,
+                mediaType: attachment.mediaType,
+                data: attachment.data,
+                name: attachment.name,
+              }
+            : {
+                type: "file" as const,
+                receiptId: receipts.get(attachment.id) ?? "",
+              },
+        ),
+      ] as QaPromptContent;
       const result = await target.prompt(content, "queue");
       if (this.session !== target) return false;
       if (!result.ok) {
@@ -261,6 +302,42 @@ export class QaSessionController {
    */
   async regenerate(): Promise<boolean> {
     return this.send(QA_REGENERATE_MARKER);
+  }
+
+  /**
+   * Stage every pending file on the Host and collect the receipts the prompt
+   * cites. Sequential on purpose: a partial batch must be attributable to the
+   * exact file that failed, and the visitor's file counts are small.
+   */
+  private async stageFiles(
+    session: SessionFace,
+    files: readonly QaFileDraft[],
+  ): Promise<
+    | { readonly kind: "ok"; readonly receipts: Map<string, string> }
+    | { readonly kind: "unavailable" }
+    | { readonly kind: "failed" }
+  > {
+    const service = this.fileUpload();
+    if (service === undefined) return { kind: "unavailable" };
+    const receipts = new Map<string, string>();
+    for (const file of files) {
+      try {
+        const result = await service.upload(
+          session.sessionId,
+          file.blob,
+          file.name,
+        );
+        if (!result.ok) {
+          console.error("dsh-qa-surface: file upload refused", result.error);
+          return { kind: "failed" };
+        }
+        receipts.set(file.id, result.value.receiptId);
+      } catch (error) {
+        console.error("dsh-qa-surface: file upload failed", error);
+        return { kind: "failed" };
+      }
+    }
+    return { kind: "ok", receipts };
   }
 
   async stop(): Promise<void> {

@@ -133,6 +133,14 @@ config:
   thinkingPhrases:
     - Уточняю по регламенту…
     - Сверяюсь с инструкцией…
+  # What a visitor may attach (optional). Files are staged on the Host and
+  # read from the stored copy, so keep `read` in lockdown.toolPolicy.allow.
+  attachments:
+    textFiles: true
+    pastedTextLines: 200
+    maxFileBytes: 10485760
+    maxPending: 8
+    extensions: [md, txt, log, json, yaml, csv, sql]
   interaction:
     approvals: blocked
     questions: unsupported
@@ -319,6 +327,19 @@ composer, paste, and the picker button, several at once (soft client caps:
 promotes to durable attachments, so they survive reloads; sent images
 render as clickable thumbnails on the message. Whether the model can see
 them depends on the deployment's model (vision).
+
+Attachments: the same picker, drop zone and paste path also take text files
+(`md`, `txt`, `log`, and the other extensions in `attachments.extensions`), and
+pasted text longer than `attachments.pastedTextLines` (default 200) becomes an
+attachment named after its line count instead of filling the input field. A
+file is staged on the Host through the browser upload service and the prompt
+cites the returned receipt, so the durable copy survives reloads; the transcript
+shows it as an extension badge, its name and its size. Unlike an image, a file
+reaches the model as the path of that stored copy rather than as content, so
+`lockdown.toolPolicy.allow` has to keep `read` for an attachment to be usable.
+`attachments.textFiles: false` restricts the composer to images again, while
+`maxFileBytes` and `maxPending` cap one file and the combined number of images
+plus files per message.
 
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the

@@ -118,6 +118,49 @@ describe("per-user QA workspace", () => {
     ).toMatch(/outside/u);
   });
 
+  it("allows reading one stored attachment copy and nothing more of the store", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "qa-workspace-att-"));
+    const store = mkdtempSync(path.join(tmpdir(), "qa-attachments-"));
+    const root = prepareQaUserWorkspace(workspace, USER_ID);
+    const stored = path.join(store, "files", "ab", "sha256", "run.log");
+    mkdirSync(path.dirname(stored), { recursive: true });
+    writeFileSync(stored, "log");
+
+    // The model reaches an attachment exactly through the path the prompt
+    // names, and that copy lives outside every workspace.
+    for (const execution of [
+      { name: "read", arguments: { file_path: stored } },
+      { name: "read_image", arguments: { file_path: stored } },
+      {
+        name: "str_replace_editor",
+        arguments: { command: "view", path: stored },
+      },
+    ]) {
+      expect(qaUserWorkspaceDenial(execution, root, store)).toBeUndefined();
+    }
+
+    // Without the store root the fence stays closed, and it never opens for
+    // the shared store's directory-wide tools or for writes.
+    expect(
+      qaUserWorkspaceDenial(
+        { name: "read", arguments: { file_path: stored } },
+        root,
+      ),
+    ).toMatch(/outside/u);
+    for (const execution of [
+      { name: "glob", arguments: { path: store } },
+      { name: "grep", arguments: { path: store } },
+      {
+        name: "str_replace_editor",
+        arguments: { command: "str_replace", path: stored, new_str: "x" },
+      },
+      { name: "write", arguments: { file_path: stored, content: "x" } },
+      { name: "edit", arguments: { file_path: stored, new_string: "x" } },
+    ]) {
+      expect(qaUserWorkspaceDenial(execution, root, store)).toMatch(/outside/u);
+    }
+  });
+
   it("caps one model-controlled write", () => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-workspace-quota-"));
     const root = prepareQaUserWorkspace(workspace, USER_ID);

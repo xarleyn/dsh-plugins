@@ -402,6 +402,99 @@ async function runBrowserPass({
     if (await page.getByRole("button", { name: "Новый чат" }).count()) {
       throw new Error("locked QA surface exposed session reset");
     }
+    // Attachments in the real composer: a long paste becomes a file card
+    // instead of filling the field, the picker takes a text file, and a card
+    // can be removed again. The send itself is deliberately not exercised —
+    // this rig has no model — so the prompt wire path stays covered by the
+    // unit tests and the Host's own admission.
+    const pastedLines = 300;
+    await page.evaluate((lines) => {
+      const box = globalThis.document.querySelector("#dsh-qa-prompt");
+      if (!(box instanceof globalThis.HTMLTextAreaElement)) {
+        throw new Error("composer textarea is missing");
+      }
+      const data = new globalThis.DataTransfer();
+      data.setData(
+        "text/plain",
+        Array.from({ length: lines }, (_, index) => `line ${index}`).join("\n"),
+      );
+      // React reads `clipboardData` off the native event, and the plain Event
+      // constructor is the portable way to hand it a DataTransfer.
+      const event = new globalThis.Event("paste", {
+        bubbles: true,
+        cancelable: true,
+      });
+      Object.defineProperty(event, "clipboardData", { value: data });
+      box.dispatchEvent(event);
+    }, pastedLines);
+    const fileNames = page.locator(
+      ".dsh-qa-composer__files .dsh-qa-file__name",
+    );
+    await fileNames.first().waitFor({ timeout: 10_000 });
+    const pastedName = await fileNames.first().textContent();
+    if (pastedName !== `Вставленный текст (${String(pastedLines)} строк).txt`) {
+      throw new Error(`pasted text was not converted: ${String(pastedName)}`);
+    }
+    if ((await prompt.inputValue()) !== "") {
+      throw new Error("a converted paste leaked into the input field");
+    }
+    await page.setInputFiles("main.dsh-qa-surface input[type='file']", {
+      name: "spec.md",
+      mimeType: "text/markdown",
+      buffer: Buffer.from("# Спека\n\nТребования.\n"),
+    });
+    const pickerOutcome = await fileNames
+      .nth(1)
+      .waitFor({ timeout: 10_000 })
+      .then(() => "attached")
+      .catch(async () => {
+        const composer = await page
+          .locator(".dsh-qa-composer")
+          .innerHTML()
+          .catch(() => "<missing>");
+        const inputs = await page
+          .locator("main.dsh-qa-surface input[type='file']")
+          .count();
+        const alerts = await page.getByRole("alert").allTextContents();
+        throw new Error(
+          `the picker did not attach a text file: inputs=${String(inputs)} alerts=${JSON.stringify(alerts)} composer=${composer}`,
+        );
+      });
+    if (pickerOutcome !== "attached") {
+      throw new Error("the picker did not attach a text file");
+    }
+    if ((await fileNames.nth(1).textContent()) !== "spec.md") {
+      throw new Error("the picker did not attach a text file");
+    }
+    // This rig configures no model, so DSH's blocking "Add an API key" step
+    // owns the page: it marks #root inert and portals its own modal above the
+    // QA overlay, which no click inside the surface can reach. That host-level
+    // block is orthogonal to the QA surface (a real deployment pins a model),
+    // so the scenario lifts it before driving the composer.
+    await page.evaluate(() => {
+      globalThis.document.getElementById("root")?.removeAttribute("inert");
+      const dialog = globalThis.document.querySelector(
+        '[role="dialog"][aria-modal="true"]',
+      );
+      const overlay = dialog?.parentElement;
+      if (overlay instanceof globalThis.HTMLElement) {
+        overlay.style.display = "none";
+      }
+    });
+    await page.getByRole("button", { name: "Убрать spec.md" }).click();
+    await waitFor(
+      async () => (await fileNames.count()) === 1,
+      "attachment removal",
+      10_000,
+    );
+    await page
+      .getByRole("button", { name: /Убрать Вставленный текст/u })
+      .click();
+    await waitFor(
+      async () => (await fileNames.count()) === 0,
+      "attachment removal",
+      10_000,
+    );
     await waitFor(
       () =>
         page.evaluate(() =>
@@ -623,6 +716,15 @@ try {
   if (!bundleResponse.ok || !bundle.includes(`id: "${packageName}"`)) {
     throw new Error(
       `scoped client bundle was not served with its full module id: ${bundleResponse.status} ${bundle.slice(0, 300)}`,
+    );
+  }
+  // The composer stages attached files through this deployment's upload
+  // service; a profile without the package would silently leave attachments
+  // unroutable, so the roster fact is asserted with the graph in hand.
+  const uploadPackage = "@deepseek-ai/dsh-client-file-upload";
+  if (!graph.entries.some((entry) => entry.id === uploadPackage)) {
+    throw new Error(
+      `the deployment does not serve ${uploadPackage}, so file attachments cannot stage`,
     );
   }
 

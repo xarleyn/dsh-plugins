@@ -1,5 +1,12 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { QaImageDraft, QaImageMediaType } from "../../types.js";
+import type { QaAttachmentDraft } from "../../types.js";
+import {
+  attachmentAccept,
+  draftFromFile,
+  draftFromPaste,
+  type QaAttachmentLimits,
+} from "../attachments.js";
+import { QaFileAttachment } from "./QaFileAttachment.js";
 
 export interface QaComposerProps {
   readonly placeholder: string;
@@ -9,71 +16,23 @@ export interface QaComposerProps {
   readonly running: boolean;
   readonly showStop: boolean;
   readonly status: string | null;
-  readonly images: readonly QaImageDraft[];
-  readonly onImagesChange: (images: readonly QaImageDraft[]) => void;
+  readonly attachments: readonly QaAttachmentDraft[];
+  /** Deployment policy: accepted kinds, ceilings and the paste threshold. */
+  readonly limits: QaAttachmentLimits;
+  readonly onAttachmentsChange: (
+    attachments: readonly QaAttachmentDraft[],
+  ) => void;
   readonly onSend: (
     text: string,
-    images: readonly QaImageDraft[],
+    attachments: readonly QaAttachmentDraft[],
   ) => Promise<boolean>;
   readonly onStop: () => Promise<void>;
 }
 
-/** Raster formats the host attachment path accepts. */
-const IMAGE_MEDIA_TYPES: readonly QaImageMediaType[] = [
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-  "image/gif",
-];
-/** Soft client-side caps; the Host stays authoritative at admission. */
-const MAX_IMAGES = 8;
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
-
-let imageDraftSequence = 0;
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
-  }
-  return btoa(binary);
-}
-
-/** FileReader covers runtimes without File.arrayBuffer (jsdom). */
-function readAsArrayBuffer(file: File): Promise<ArrayBuffer> {
-  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as ArrayBuffer);
-    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-async function fileToImageDraft(file: File): Promise<QaImageDraft | string> {
-  if (!IMAGE_MEDIA_TYPES.includes(file.type as QaImageMediaType)) {
-    return "Поддерживаются изображения PNG, JPEG, WebP и GIF.";
-  }
-  if (file.size > MAX_FILE_BYTES) {
-    return "Изображение слишком большое (лимит 15 МБ).";
-  }
-  const data = bytesToBase64(new Uint8Array(await readAsArrayBuffer(file)));
-  imageDraftSequence += 1;
-  return {
-    id: `image-${imageDraftSequence}`,
-    mediaType: file.type as QaImageMediaType,
-    name: file.name === "" ? "изображение" : file.name,
-    data,
-    previewUrl: URL.createObjectURL(file),
-  };
-}
-
-function ImagePickerIcon() {
+function AttachIcon() {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
-      <rect x="2.5" y="3.5" width="13" height="11" rx="2" />
-      <circle cx="6.4" cy="7.4" r="1.3" />
-      <path d="m4 13 3.6-3.6 2 2L12.4 8l2.6 2.6" />
+      <path d="M16.08 8.29 9.19 15.18a4.5 4.5 0 0 1-6.37-6.37l6.89-6.89a3 3 0 0 1 4.25 4.25l-6.9 6.89a1.5 1.5 0 0 1-2.12-2.12l6.37-6.36" />
     </svg>
   );
 }
@@ -82,6 +41,7 @@ function ImagePickerIcon() {
  * Memoized with the default shallow compare: every prop is a scalar, a
  * stable array or a stable callback, so a stream of transcript frames never
  * re-renders the composer and typing stays responsive while an answer runs.
+ * The caller owns the draft array identity: `limits` must be stable too.
  */
 export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [draft, setDraft] = useState("");
@@ -90,17 +50,24 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const images = props.images;
+  const attachments = props.attachments;
+  const limits = props.limits;
+  const images = attachments.filter((item) => item.kind === "image");
+  const files = attachments.filter((item) => item.kind === "file");
+  const remove = (id: string) => {
+    props.onAttachmentsChange(
+      attachments.filter((candidate) => candidate.id !== id),
+    );
+  };
   const send = async (textOverride?: string) => {
     const text = textOverride ?? draft;
     if (submitting || !props.canSend) return;
-    if (text.trim() === "" && images.length === 0) return;
+    if (text.trim() === "" && attachments.length === 0) return;
     setSubmitting(true);
     try {
-      if (await props.onSend(text, images)) {
-        if (textOverride === undefined) setDraft("");
-        else setDraft("");
-        props.onImagesChange([]);
+      if (await props.onSend(text, attachments)) {
+        setDraft("");
+        props.onAttachmentsChange([]);
       }
     } finally {
       setSubmitting(false);
@@ -108,26 +75,28 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     }
   };
 
-  const addFiles = async (files: Iterable<File>) => {
-    const incoming = [...files];
+  const addFiles = async (incoming: ReadonlyArray<File>) => {
     if (incoming.length === 0) return;
     setAttachmentError(null);
-    const room = MAX_IMAGES - images.length;
+    const room = limits.maxPending - attachments.length;
     if (room <= 0) {
-      setAttachmentError(`Не больше ${MAX_IMAGES} изображений на сообщение.`);
+      setAttachmentError(
+        `Не больше ${String(limits.maxPending)} вложений на сообщение.`,
+      );
       return;
     }
-    const drafts: QaImageDraft[] = [];
+    const drafts: QaAttachmentDraft[] = [];
     let error: string | null =
       incoming.length > room
-        ? `Не больше ${MAX_IMAGES} изображений на сообщение.`
+        ? `Не больше ${String(limits.maxPending)} вложений на сообщение.`
         : null;
-    for (const file of incoming.slice(0, Math.max(0, room))) {
-      const draft = await fileToImageDraft(file);
+    for (const file of incoming.slice(0, room)) {
+      const draft = await draftFromFile(file, limits);
       if (typeof draft === "string") error = draft;
       else drafts.push(draft);
     }
-    if (drafts.length > 0) props.onImagesChange([...images, ...drafts]);
+    if (drafts.length > 0)
+      props.onAttachmentsChange([...attachments, ...drafts]);
     setAttachmentError(error);
   };
 
@@ -139,10 +108,14 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     const element = textarea.current;
     if (element === null) return;
     element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, 168)}px`;
+    element.style.height = `${String(Math.min(element.scrollHeight, 168))}px`;
   }, [draft]);
 
-  const hasContent = draft.trim() !== "" || images.length > 0;
+  const hasContent = draft.trim() !== "" || attachments.length > 0;
+  const hint =
+    submitting && files.length > 0
+      ? "Отправляю вложения…"
+      : (props.status ?? "Enter: отправить, Shift+Enter: новая строка");
   return (
     <div
       className={
@@ -158,7 +131,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       onDrop={(event) => {
         event.preventDefault();
         setDragOver(false);
-        void addFiles(event.dataTransfer.files);
+        void addFiles([...event.dataTransfer.files]);
       }}
     >
       {(props.quickQuestions?.length ?? 0) > 0 ? (
@@ -176,6 +149,24 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
         </div>
       ) : null}
       <div className="dsh-qa-composer">
+        {files.length === 0 ? null : (
+          <div
+            className="dsh-qa-composer__files"
+            aria-label="Прикреплённые файлы"
+          >
+            {files.map((file) => (
+              <QaFileAttachment
+                key={file.id}
+                name={file.name}
+                bytes={file.bytes}
+                tone="draft"
+                onRemove={() => {
+                  remove(file.id);
+                }}
+              />
+            ))}
+          </div>
+        )}
         {images.length === 0 ? null : (
           <div
             className="dsh-qa-composer__images"
@@ -188,11 +179,9 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
                   type="button"
                   aria-label={`Убрать ${image.name}`}
                   title="Убрать"
-                  onClick={() =>
-                    props.onImagesChange(
-                      images.filter((candidate) => candidate.id !== image.id),
-                    )
-                  }
+                  onClick={() => {
+                    remove(image.id);
+                  }}
                 >
                   <svg viewBox="0 0 16 16" aria-hidden="true">
                     <path d="m4 4 8 8m0-8-8 8" />
@@ -219,11 +208,28 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           disabled={!props.canSend && !props.running}
           onChange={(event) => setDraft(event.currentTarget.value)}
           onPaste={(event) => {
-            const files = event.clipboardData?.files;
-            if (files !== undefined && files.length > 0) {
+            const pasted = [...(event.clipboardData?.files ?? [])];
+            if (pasted.length > 0) {
               event.preventDefault();
-              void addFiles(files);
+              void addFiles(pasted);
+              return;
             }
+            // A long paste becomes an attachment instead of a wall of text in
+            // the field; everything shorter pastes normally.
+            const text = event.clipboardData?.getData("text/plain") ?? "";
+            const attachment = draftFromPaste(text, limits);
+            if (attachment === null) return;
+            if (attachments.length >= limits.maxPending) {
+              // Nothing is swallowed: the text still lands in the field. The
+              // room refusal rides the same alert line as a rejected file.
+              setAttachmentError(
+                `Не больше ${String(limits.maxPending)} вложений на сообщение.`,
+              );
+              return;
+            }
+            event.preventDefault();
+            setAttachmentError(null);
+            props.onAttachmentsChange([...attachments, attachment]);
           }}
           onKeyDown={(event) => {
             if (
@@ -240,28 +246,28 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           <input
             ref={fileInput}
             type="file"
-            accept={IMAGE_MEDIA_TYPES.join(",")}
+            accept={attachmentAccept(limits)}
             multiple
             className="dsh-qa-sr-only"
             tabIndex={-1}
             aria-hidden="true"
             onChange={(event) => {
-              void addFiles(event.target.files ?? []);
+              void addFiles([...(event.target.files ?? [])]);
               event.target.value = "";
             }}
           />
           <button
             type="button"
             className="dsh-qa-composer__attach"
-            aria-label="Прикрепить изображения"
-            title="Прикрепить изображения"
-            disabled={!props.canSend || images.length >= MAX_IMAGES}
+            aria-label="Прикрепить файл"
+            title="Прикрепить файл или изображение"
+            disabled={!props.canSend || attachments.length >= limits.maxPending}
             onClick={() => fileInput.current?.click()}
           >
-            <ImagePickerIcon />
+            <AttachIcon />
           </button>
           <span className="dsh-qa-composer__hint" aria-live="polite">
-            {props.status ?? "Enter: отправить, Shift+Enter: новая строка"}
+            {hint}
           </span>
           {props.running && props.showStop ? (
             <button

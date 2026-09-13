@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigSchema } from "../src/config.js";
+import { DEFAULT_QA_TEXT_EXTENSIONS } from "../src/attachment-rules.js";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   normalizeRoutePath,
@@ -203,6 +204,44 @@ describe("qa surface config", () => {
       thinkingPhrases: [" Точу ", "Точу", "", "  "],
     });
     expect(config.thinkingPhrases).toEqual(["Точу"]);
+  });
+
+  it("defaults attachment intake to text files with a 200-line paste rule", () => {
+    expect(resolveConfig().attachments).toEqual({
+      textFiles: true,
+      pastedTextLines: 200,
+      maxFileBytes: 10_485_760,
+      maxPending: 8,
+      extensions: DEFAULT_QA_TEXT_EXTENSIONS,
+    });
+  });
+
+  it("normalizes the configured extension list", () => {
+    const config = resolveConfig({
+      attachments: { extensions: [".MD", "TXT", "md", "a b", ""] },
+    });
+    expect(config.attachments.extensions).toEqual(["md", "txt"]);
+  });
+
+  it("bounds the attachment numbers and pins the paste rule to integers", () => {
+    expect(() =>
+      resolveConfig({ attachments: { pastedTextLines: -1 } }),
+    ).toThrow(/attachments\.pastedTextLines/u);
+    expect(() =>
+      resolveConfig({ attachments: { pastedTextLines: 1.5 } }),
+    ).toThrow(/attachments\.pastedTextLines/u);
+    expect(() => resolveConfig({ attachments: { maxFileBytes: 512 } })).toThrow(
+      /attachments\.maxFileBytes/u,
+    );
+    expect(() => resolveConfig({ attachments: { maxPending: 0 } })).toThrow(
+      /attachments\.maxPending/u,
+    );
+    // Zero is meaningful: it turns the paste conversion off without
+    // disabling text files.
+    expect(
+      resolveConfig({ attachments: { pastedTextLines: 0 } }).attachments
+        .pastedTextLines,
+    ).toBe(0);
   });
 
   it("restores the built-in running phrases for an empty list", () => {

@@ -160,6 +160,19 @@ function requestedPaths(execution: QaToolExecutionLike): readonly string[] {
   }
 }
 
+/**
+ * Whether the named path is only read. Directory-wide tools stay confined even
+ * for reads: the attachment store is shared by every account, and only the
+ * exact file an upload produced is meant to be reachable.
+ */
+function isReadOnlyPathTool(execution: QaToolExecutionLike): boolean {
+  if (execution.name === "read" || execution.name === "read_image") return true;
+  return (
+    execution.name === "str_replace_editor" &&
+    record(execution.arguments)?.command === "view"
+  );
+}
+
 function directoryBytes(root: string, stopAfter: number): number {
   let total = 0;
   const pending = [root];
@@ -191,10 +204,18 @@ function requestedWriteBytes(execution: QaToolExecutionLike): number {
  * Monotonic guard used in addition to DSH's workspace-write sandbox. It
  * fences model-controlled file paths for both reads and writes, rejects tools
  * whose implementation can walk above cwd, and enforces bounded scratch use.
+ *
+ * `attachmentRoot` is the one deliberate read exemption: an uploaded file is
+ * an immutable content-addressed copy the deployment stores outside every
+ * workspace, and the model reaches it exactly as the harness intends (the
+ * prompt carries the stored path). Reads of a single such file are allowed;
+ * directory-wide tools stay confined because the store is shared by every
+ * account, and writes are never exempted.
  */
 export function qaUserWorkspaceDenial(
   execution: QaToolExecutionLike,
   root: string,
+  attachmentRoot?: string,
 ): string | undefined {
   const args = record(execution.arguments);
   if (
@@ -216,12 +237,24 @@ export function qaUserWorkspaceDenial(
   ) {
     return PATH_DENIAL;
   }
+  const readsOnly = isReadOnlyPathTool(execution);
   try {
     for (const requested of requestedPaths(execution)) {
       const absolute = path.isAbsolute(requested)
         ? requested
         : path.resolve(root, requested);
-      if (!pathIsInside(canonicalCandidate(absolute), root)) return PATH_DENIAL;
+      const canonical = canonicalCandidate(absolute);
+      if (pathIsInside(canonical, root)) continue;
+      // Resolved only for a path the fence would otherwise refuse, so the
+      // common case pays no extra filesystem walk.
+      if (
+        readsOnly &&
+        attachmentRoot !== undefined &&
+        pathIsInside(canonical, canonicalCandidate(attachmentRoot))
+      ) {
+        continue;
+      }
+      return PATH_DENIAL;
     }
     if (
       execution.name === "write" ||

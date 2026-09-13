@@ -61,6 +61,10 @@ assert(
   "the settings card needs the plugin-cards tab in the client inject manifest",
 );
 assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
+assert(
+  manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-file-upload"),
+  "attached files stage through the upload service, so its bundle must arrive first",
+);
 assert(!manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-runtime"));
 assert.equal(
   `/plugins/${manifest.name}/client.js`,
@@ -149,6 +153,13 @@ assert.match(client, /dsh-qa-sources/u);
 assert.match(client, /Источники/u);
 assert.match(client, /dsh-qa-composer__images/u);
 assert.match(client, /dsh-qa-message__images/u);
+assert.match(client, /dsh-qa-composer__files/u);
+assert.match(client, /dsh-qa-message__files/u);
+assert.match(client, /dsh-qa-file__badge/u);
+assert.match(client, /Прикрепить файл/u);
+assert.match(client, /Вставленный текст/u);
+assert.match(client, /Вложения недоступны на этом сервере\./u);
+assert.match(client, /"fileUpload"|fileUpload/u);
 assert.match(client, /mediaType/u);
 assert.match(client, /dsh-qa-sourcedetail/u);
 assert.match(client, /Открыть/u);

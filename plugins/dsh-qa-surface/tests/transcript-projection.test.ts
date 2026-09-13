@@ -454,6 +454,58 @@ describe("transcript projection", () => {
     });
   });
 
+  it("projects durable file attachments on user messages", () => {
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "user",
+              seq: 1,
+              time: 1_000,
+              source: {},
+              content: [
+                { type: "text", text: "Разбери лог" },
+                {
+                  type: "file",
+                  attachment: {
+                    attachmentId: "sha256:abc",
+                    name: "run.log",
+                    bytes: 2_048,
+                  },
+                },
+              ],
+            },
+            {
+              kind: "user",
+              seq: 2,
+              time: 2_000,
+              source: {},
+              content: [
+                {
+                  type: "file",
+                  attachment: { attachmentId: "sha256:def", bytes: 3 },
+                },
+              ],
+            },
+          ] as ConversationNode[],
+        }),
+      ),
+    );
+    expect(messages[0]).toMatchObject({
+      role: "user",
+      text: "Разбери лог",
+      files: [{ attachmentId: "sha256:abc", name: "run.log", bytes: 2_048 }],
+    });
+    // A malformed reference still projects a row: the prompt carried a file,
+    // and hiding it would silently drop what the visitor attached.
+    expect(messages[1]).toMatchObject({
+      role: "user",
+      text: "",
+      files: [{ attachmentId: "sha256:def", name: "файл", bytes: 3 }],
+    });
+  });
+
   it("hides the regeneration marker and labels answers with their turn", () => {
     const messages = projectTranscript(
       snapshot(

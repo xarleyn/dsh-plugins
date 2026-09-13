@@ -108,6 +108,38 @@ part of the same change. The package's
 [default inventory](../capability-policy.json) is intentionally empty, matching
 the default `toolPolicy.allow`.
 
+## Attachments
+
+A visitor can attach images and, with `attachments.textFiles` (default true),
+text files. Images ride the prompt inline; a file is uploaded to the Host
+first and the prompt cites the receipt, so the durable copy is stored verbatim
+under the Host's attachment root. Prompt assembly then hands the model that
+copy's path instead of its contents. **`read` therefore has to stay in
+`lockdown.toolPolicy.allow`** for an attached file to be usable — without it
+the model learns the file exists but cannot open it. The composer hint and the
+transcript show the same handle: extension badge, name, size. A file is never
+readable back through the browser (that route serves images).
+
+| Field                         | Default                                               | Meaning                                                                       |
+| ----------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `attachments.textFiles`       | `true`                                                | Accept text files next to images. `false` restricts the composer to images.   |
+| `attachments.pastedTextLines` | `200`                                                 | Pasted plain text longer than this becomes an attachment; `0` never converts. |
+| `attachments.maxFileBytes`    | `10485760`                                            | Byte ceiling for one file (integer from 1024 through 52428800).               |
+| `attachments.maxPending`      | `8`                                                   | Images plus files on one message (integer from 1 through 40).                 |
+| `attachments.extensions`      | see [attachment-rules.ts](../src/attachment-rules.ts) | Accepted text extensions, lowercase, without the dot.                         |
+
+Pasted text has no name of its own, so the attachment is named after its line
+count, for example `Вставленный текст (312 строк).txt`. Shortening the list of
+extensions narrows the picker but never blocks a file the browser reports as
+`text/*`; set `attachments.textFiles: false` to stop file intake entirely.
+The composer enforces these ceilings before the upload, and the Host stays
+authoritative at admission.
+
+In [`accounts.perUserWorkspace`](#accounts-and-the-qa-gate) mode the monotonic
+path guard allows reading one file under the mounted attachment store's root,
+because that copy lives outside every workspace. Directory-wide tools stay
+confined to the user's directory, and writes are never exempted.
+
 ## Structured sources
 
 The `sources` block controls provenance independently from Activity rendering.

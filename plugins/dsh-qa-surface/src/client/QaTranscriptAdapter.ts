@@ -6,6 +6,7 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
+  QaFileView,
   QaImageMediaType,
   QaImageView,
   QaMessage,
@@ -93,6 +94,34 @@ function visibleContentImages(
     });
   }
   return images;
+}
+
+/**
+ * Durable file references carried by user content. Files reach the model as
+ * handle text (name, size, stored path), so the row shows the same handle;
+ * matched structurally for the same reason as the images above.
+ */
+function visibleContentFiles(
+  content: readonly unknown[],
+): readonly QaFileView[] {
+  const files: QaFileView[] = [];
+  for (const block of content) {
+    if (typeof block !== "object" || block === null) continue;
+    const record = block as Record<string, unknown>;
+    if (record.type !== "file") continue;
+    const attachment = record.attachment as Record<string, unknown> | undefined;
+    const attachmentId = attachment?.attachmentId;
+    if (typeof attachmentId !== "string" || attachmentId === "") continue;
+    files.push({
+      attachmentId,
+      name:
+        typeof attachment?.name === "string" && attachment.name !== ""
+          ? attachment.name
+          : "файл",
+      bytes: typeof attachment?.bytes === "number" ? attachment.bytes : 0,
+    });
+  }
+  return files;
 }
 
 function visibleContentText(content: readonly unknown[]): string {
@@ -371,8 +400,9 @@ export function projectTranscript(
     if (node.kind === "user" || node.kind === "steering") {
       const text = visibleContentText(node.content);
       const images = visibleContentImages(node.content);
+      const files = visibleContentFiles(node.content);
       if (text === QA_REGENERATE_MARKER) continue;
-      if (text === "" && images.length === 0) continue;
+      if (text === "" && images.length === 0 && files.length === 0) continue;
       output.push({
         order: node.seq,
         message: {
@@ -382,6 +412,7 @@ export function projectTranscript(
           status: "committed",
           timestamp: node.time,
           ...(images.length === 0 ? {} : { images }),
+          ...(files.length === 0 ? {} : { files }),
         },
       });
     } else if (node.kind === "assistant") {

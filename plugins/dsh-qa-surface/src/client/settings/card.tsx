@@ -43,6 +43,7 @@ import {
 } from "./format.js";
 import {
   AccessSection,
+  AttachmentsSection,
   AccountsSection,
   BrandingSection,
   EmbeddingSection,
@@ -273,6 +274,7 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
           <LockdownSection {...sectionProps} />
           <AccountsSection {...sectionProps} />
           <SourcesSection {...sectionProps} />
+          <AttachmentsSection {...sectionProps} />
           <EmbeddingSection {...sectionProps} />
           <div className="qa-card-footer">
             <p className="qa-card-footer-note">

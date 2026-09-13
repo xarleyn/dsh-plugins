@@ -6,7 +6,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { QaImageDraft, QaSource, QaTurnSources } from "../types.js";
+import type { QaAttachmentDraft, QaSource, QaTurnSources } from "../types.js";
 import { revokeObjectUrlIfBlob } from "./session-assets.js";
 
 /** Snapshot completeness captured when a drawer was opened from a message. */
@@ -36,15 +36,15 @@ export interface QaSessionUiState {
   >;
   readonly drawerDetail: QaSource | null;
   readonly setDrawerDetail: Dispatch<SetStateAction<QaSource | null>>;
-  readonly pendingImages: readonly QaImageDraft[];
-  readonly setPendingImages: (next: readonly QaImageDraft[]) => void;
+  readonly pendingAttachments: readonly QaAttachmentDraft[];
+  readonly setPendingAttachments: (next: readonly QaAttachmentDraft[]) => void;
 }
 
 /**
  * Per-chat UI state: composer attachments, variant offsets, the rail mark and
  * the drawers. Everything here describes the chat it was made in, so a
- * session change clears it instead of leaking a draft, an image or a drawer
- * from one conversation into the next.
+ * session change clears it instead of leaking a draft, an attachment or a
+ * drawer from one conversation into the next.
  */
 export function useSessionUiState(sessionId: string | null): QaSessionUiState {
   /** Per group: how many answers back from the newest is shown (0 = newest). */
@@ -60,24 +60,29 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
   const [drawerCompleteness, setDrawerCompleteness] =
     useState<QaDrawerCompleteness | null>(null);
   const [drawerDetail, setDrawerDetail] = useState<QaSource | null>(null);
-  const [pendingImages, setPendingImagesState] = useState<
-    readonly QaImageDraft[]
+  const [pendingAttachments, setPendingAttachmentsState] = useState<
+    readonly QaAttachmentDraft[]
   >([]);
   /** Mirror of the live drafts: blob URLs to revoke when they leave state. */
-  const pendingImagesRef = useRef<readonly QaImageDraft[]>([]);
+  const pendingAttachmentsRef = useRef<readonly QaAttachmentDraft[]>([]);
 
   /**
    * The single entry point that changes the draft set: every image that
    * leaves state has its preview blob URL revoked here, whether it was
    * removed by the composer, cleared by a send or dropped on a chat switch.
    */
-  const setPendingImages = useCallback((next: readonly QaImageDraft[]) => {
-    for (const draft of pendingImagesRef.current) {
-      if (!next.includes(draft)) revokeObjectUrlIfBlob(draft.previewUrl);
-    }
-    pendingImagesRef.current = next;
-    setPendingImagesState(next);
-  }, []);
+  const setPendingAttachments = useCallback(
+    (next: readonly QaAttachmentDraft[]) => {
+      for (const draft of pendingAttachmentsRef.current) {
+        if (draft.kind === "image" && !next.includes(draft)) {
+          revokeObjectUrlIfBlob(draft.previewUrl);
+        }
+      }
+      pendingAttachmentsRef.current = next;
+      setPendingAttachmentsState(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     setVariantOffsets({});
@@ -87,14 +92,15 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
     setDrawerSources(null);
     setDrawerCompleteness(null);
     setDrawerDetail(null);
-    setPendingImages([]);
-  }, [sessionId, setPendingImages]);
+    setPendingAttachments([]);
+  }, [sessionId, setPendingAttachments]);
 
   // Whatever is still attached dies with the surface, and its URLs with it.
   useEffect(
     () => () => {
-      for (const draft of pendingImagesRef.current)
-        revokeObjectUrlIfBlob(draft.previewUrl);
+      for (const draft of pendingAttachmentsRef.current) {
+        if (draft.kind === "image") revokeObjectUrlIfBlob(draft.previewUrl);
+      }
     },
     [],
   );
@@ -114,7 +120,7 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
     setDrawerCompleteness,
     drawerDetail,
     setDrawerDetail,
-    pendingImages,
-    setPendingImages,
+    pendingAttachments,
+    setPendingAttachments,
   };
 }

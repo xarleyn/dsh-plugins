@@ -1,11 +1,13 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
+  QaFileView,
   QaMessage as QaMessageModel,
   QaImageView,
   QaSource,
   QaTurnSources,
 } from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
+import { QaFileAttachment } from "./QaFileAttachment.js";
 import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
 
 function QaAttachedImage({
@@ -111,7 +113,11 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
     );
   }
   if (a.role === "user" && b.role === "user") {
-    return a.author === b.author && sameImages(a.images, b.images);
+    return (
+      a.author === b.author &&
+      sameImages(a.images, b.images) &&
+      sameFiles(a.files, b.files)
+    );
   }
   if (a.role === "system" && b.role === "system") {
     return (
@@ -155,6 +161,20 @@ function sameImages(
     (image, index) =>
       image.attachmentId === (b[index] as QaImageView).attachmentId &&
       image.mediaType === (b[index] as QaImageView).mediaType,
+  );
+}
+
+function sameFiles(
+  a: readonly QaFileView[] | undefined,
+  b: readonly QaFileView[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (file, index) =>
+      file.attachmentId === (b[index] as QaFileView).attachmentId &&
+      file.name === (b[index] as QaFileView).name &&
+      file.bytes === (b[index] as QaFileView).bytes,
   );
 }
 
@@ -348,6 +368,21 @@ export const QaMessage = memo(
         <div className="dsh-qa-message__content">
           {message.role === "user" && message.author !== undefined ? (
             <span className="dsh-qa-message__byline">{message.author}</span>
+          ) : null}
+          {message.role === "user" && message.files !== undefined ? (
+            <div
+              className="dsh-qa-message__files"
+              aria-label="Прикреплённые файлы"
+            >
+              {message.files.map((file) => (
+                <QaFileAttachment
+                  key={file.attachmentId}
+                  name={file.name}
+                  bytes={file.bytes}
+                  tone="sent"
+                />
+              ))}
+            </div>
           ) : null}
           {message.role === "user" && message.images !== undefined ? (
             <div className="dsh-qa-message__images">

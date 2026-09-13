@@ -1,4 +1,12 @@
 import z from "@deepseek-ai/schemastery";
+import {
+  QA_MAX_FILE_BYTES_MAX,
+  QA_MAX_FILE_BYTES_MIN,
+  QA_MAX_PENDING_MAX,
+  QA_MAX_PENDING_MIN,
+  QA_PASTED_TEXT_LINES_MAX,
+  QA_PASTED_TEXT_LINES_MIN,
+} from "./attachment-rules.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./resolve-config.js";
 import {
   QA_PROFILE_INSTRUCTIONS_MAX_MAX,
@@ -283,6 +291,36 @@ const configSchema = z.object({
       filePreview: { ...D.sources.filePreview },
       subagents: { ...D.sources.subagents },
       legacy: { ...D.sources.legacy },
+    }),
+  attachments: z
+    .object({
+      textFiles: z.boolean().default(D.attachments.textFiles),
+      pastedTextLines: z
+        .number()
+        .step(1)
+        .min(QA_PASTED_TEXT_LINES_MIN)
+        .max(QA_PASTED_TEXT_LINES_MAX)
+        .default(D.attachments.pastedTextLines),
+      maxFileBytes: z
+        .number()
+        .step(1)
+        .min(QA_MAX_FILE_BYTES_MIN)
+        .max(QA_MAX_FILE_BYTES_MAX)
+        .default(D.attachments.maxFileBytes),
+      maxPending: z
+        .number()
+        .step(1)
+        .min(QA_MAX_PENDING_MIN)
+        .max(QA_MAX_PENDING_MAX)
+        .default(D.attachments.maxPending),
+      // Free-form here: the resolver normalizes (lowercase, leading dots
+      // stripped) and drops malformed entries, so a schema-level union would
+      // only duplicate that rule.
+      extensions: z.array(z.string()).default([...D.attachments.extensions]),
+    })
+    .default({
+      ...D.attachments,
+      extensions: [...D.attachments.extensions],
     }),
 });
 

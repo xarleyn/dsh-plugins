@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/resolve-config.js";
 import { QaSessionController } from "../src/client/QaSessionController.js";
 import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
+import type { QaFileDraft, QaImageDraft } from "../src/types.js";
 import {
   harness,
   sessionFace,
@@ -221,6 +222,111 @@ describe("QA session controller", () => {
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     await controller.stop();
     expect(saved?.cancel).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("stages attached files and cites their receipts in the prompt", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const fileUpload = {
+      upload: vi.fn(async (_sessionId: string, _data: Blob, name?: string) => ({
+        ok: true as const,
+        value: {
+          receiptId: `receipt-${name ?? "file"}`,
+          file: {
+            attachmentId: `sha256:${name ?? "file"}`,
+            name: name ?? "file",
+            bytes: 5,
+          },
+        },
+      })),
+    };
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => fileUpload,
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    const image: QaImageDraft = {
+      kind: "image",
+      id: "image-1",
+      mediaType: "image/png",
+      name: "shot.png",
+      data: "AAAA",
+      previewUrl: "blob:preview",
+    };
+    expect(await controller.send("See attachments", [note, image])).toBe(true);
+    expect(fileUpload.upload).toHaveBeenCalledWith(
+      "saved",
+      note.blob,
+      "note.txt",
+    );
+    // The visitor's own order decides the prompt order, not the kind.
+    expect(world.faces.get("saved")?.prompt).toHaveBeenCalledWith(
+      [
+        { type: "text", text: "See attachments" },
+        { type: "file", receiptId: "receipt-note.txt" },
+        {
+          type: "image",
+          mediaType: "image/png",
+          data: "AAAA",
+          name: "shot.png",
+        },
+      ],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("keeps the draft when a file cannot be staged", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => ({
+        upload: vi.fn(async () => ({ ok: false as const, error: "refused" })),
+      }),
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    expect(await controller.send("hello", [note])).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().error).toMatch(/Не удалось приложить/u);
+    controller.dispose();
+  });
+
+  it("refuses a file when the page serves no upload service", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    expect(await controller.send("hello", [note])).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().error).toMatch(/недоступны/u);
     controller.dispose();
   });
 

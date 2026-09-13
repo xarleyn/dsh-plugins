@@ -79,7 +79,7 @@ export class QaPolicyAdmission {
       if (!cwdMatches(session.header.cwd, root)) {
         return "QA workspace boundary: session cwd is outside this user's directory.";
       }
-      return qaUserWorkspaceDenial(execution, root);
+      return qaUserWorkspaceDenial(execution, root, this.attachmentRoot());
     });
     ctx.on("session/created", (session) => {
       const parent = session.header.parentSession;
@@ -91,6 +91,19 @@ export class QaPolicyAdmission {
       this.appliedPolicies.delete(agent);
       this.workspaceRoots.delete(String(agent.session.id));
     });
+  }
+
+  /**
+   * The mounted attachment store's verbatim root, when the backend exposes
+   * one. It sits outside every workspace, so the per-user fence would
+   * otherwise deny the model the exact file an upload produced and the prompt
+   * points it at. A backend without a resolvable root simply keeps the fence
+   * closed — attachments then only work where reads are not fenced per user.
+   */
+  private attachmentRoot(): string | undefined {
+    const store = this.ctx.get("attachments") as
+      { readonly root?: unknown } | undefined;
+    return typeof store?.root === "string" ? store.root : undefined;
   }
 
   secureSession(token: string, sessionId: string): QaLockdownProof {
