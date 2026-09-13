@@ -20,6 +20,25 @@ Never add an npm automation token to this workflow. Trusted Publishing uses
 GitHub OIDC, and npm generates provenance automatically for supported public
 packages and repositories.
 
+### A new package needs one manual first publish
+
+Trusted Publishing cannot create a package name. A Trusted Publisher is
+registered on a package that already exists, so the registry rejects a
+workflow's very first publish of an unknown name with a misleading `404`. The
+release workflow stops on that before it versions anything, and prints the
+recovery. Publish the first version once, from a maintainer's machine:
+
+```bash
+npm login                                             # or a granular access token
+npm publish ./yadsh-dsh-<name>-<version>.tgz --access public
+```
+
+The `.tgz` is the `npm-tarballs` artifact of that run, or `pnpm --dir
+plugins/dsh-<name> pack`. Then add this repository and workflow as the
+package's Trusted Publisher, and rerun the release workflow: it publishes
+nothing for the version you just uploaded and handles every later version
+through OIDC.
+
 ## Contributor flow
 
 1. Make the package change.
@@ -47,15 +66,23 @@ per-package GitHub Release.
 
 The live workflow asks Nx to create the release commit, project changelogs,
 and per-package tags without publishing. It then runs all validation and
-tarball installation gates, pushes the commit and tags, publishes only the
-versioned projects through npm OIDC, and creates one GitHub Release per package
-with its `.tgz` attached.
+tarball installation gates, checks that every selected package already exists
+on npm, and publishes the versioned projects through npm OIDC. Only once npm
+has every version does it push the release commit and tags and create one
+GitHub Release per package with its `.tgz` attached.
+
+The order is the point: the branch never advances to a state the registry does
+not already reflect. A release that fails at any step before the push leaves
+the branch exactly as it was, version plans included, so it is fixed by
+rerunning the workflow rather than by hand-publishing versions and repairing
+tags afterwards.
 
 ## Test releases from a branch
 
 The workflow releases whatever ref it was dispatched on, so a branch can
-produce test versions without touching `main`. That release applies the
-branch's version plans and deletes them, exactly like a release on `main`:
+produce test versions without touching `main`. That release consumes the
+branch's version plans, exactly like a release on `main` — plans and tags move
+only once npm has every version:
 
 - The PR's version-plan check is skipped from then on, because release tags
   exist that only the branch carries. That is the signal that the plans were
@@ -67,20 +94,38 @@ branch's version plans and deletes them, exactly like a release on `main`:
 
 ## Failure recovery
 
-- Before the release commit is pushed, rerun the workflow after fixing the
-  failing gate; the runner's local changes disappear automatically.
-- If the commit and tags were pushed but npm publication failed, do not create
-  another Version Plan. Correct the publishing problem, then run the **Release**
-  workflow with `publish_only=true`. Use `dry_run=true` first to verify the
-  tagged packages and tarballs, then rerun with `dry_run=false`. Recovery mode
-  skips versioning, publishes only versions with matching package tags, and is
-  safe to rerun after a partial publication.
-- If only GitHub Release creation failed, use `gh release create` for the
-  existing package tag and attach the corresponding workflow artifact.
-- To create omitted GitHub Releases later, run the workflow with
-  `publish_only=true`, `dry_run=false`, and `create_github_releases=true`.
-  Already published npm versions are skipped, while missing GitHub Releases
-  are created from their existing tags and freshly verified tarballs.
+Everything before publication is rerunnable, because nothing has left the
+runner yet:
+
+- If versioning, the registry check, the validation gates, or the tarball
+  checks fail, fix the cause and rerun the workflow. The version plans are
+  still in the branch; the failed run's local release commit is discarded with
+  its runner.
+- If the **Publish to npm with OIDC** step fails, it reports every package npm
+  rejected, and nothing was pushed. A package the registry does not know yet
+  means it has no first publish: follow *A new package needs one manual first
+  publish* above. Then rerun the workflow — it resolves the same versions,
+  skips what npm already has, and publishes the rest.
+
+Publication succeeded but the branch did not move, which is the one state that
+needs an explicit decision:
+
+- If the **Push release commit and tags** step failed, rerun the workflow
+  without changing the branch. The versions are already on npm and skipped; the
+  release commit and tags are recreated identically and pushed. Changing the
+  branch first would let a package whose version npm already has keep a fixed
+  source unpublished, because the skip assumes the tarball matches what was
+  published.
+- If **Create per-package GitHub Releases** failed, rerun with
+  `publish_only=true` and `create_github_releases=true`: already published npm
+  versions are skipped, while missing GitHub Releases are created from their
+  existing tags and freshly verified tarballs. A single missing release can
+  also be fixed with `gh release create` on the package tag and the
+  corresponding workflow artifact.
+- `publish_only=true` publishes tagged versions and nothing else: it packs the
+  branch it runs on, so run it while the branch still carries the release
+  commit of those tags, not after further work has been merged. `git diff` the
+  tag against the branch first when in doubt.
 
 Publication is not ready until npm Trusted Publishers have been configured
 externally for the `@yadsh` packages.

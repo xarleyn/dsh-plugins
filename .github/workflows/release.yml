@@ -112,6 +112,15 @@ jobs:
             done < "$RUNNER_TEMP/release-packages.tsv"
           fi
 
+      # npm cannot claim a package name through Trusted Publishing: a Trusted
+      # Publisher is configured on a package that already exists, and the
+      # registry answers a workflow's first publish with a misleading 404. A
+      # package nobody bootstrapped by hand would otherwise be discovered inside
+      # the publish loop, after the release commit is ready to be pushed.
+      - name: Verify packages exist on npm
+        if: inputs.dry_run == false || inputs.publish_only
+        run: node scripts/verify-package-publication.mjs --tsv="$RUNNER_TEMP/release-packages.tsv"
+
       - name: Run release gates
         if: inputs.dry_run == false || inputs.publish_only
         run: |
@@ -140,18 +149,21 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Push release commit and tags
-        if: inputs.dry_run == false && inputs.publish_only == false
-        run: git push origin HEAD:${{ github.ref_name }} --follow-tags
-
       - name: Upgrade npm for trusted publishing
         if: inputs.dry_run == false || inputs.publish_only
         run: npm install --global npm@^11.15.0
 
+      # Publication is the only step that changes state outside this repository,
+      # so it runs before the release commit is pushed. A publish that fails
+      # then leaves the branch untouched, version plans included, and a rerun
+      # resolves the same versions and retries only what npm is missing.
+      # Publishing first is also what makes a pushed tag mean something: every
+      # tag in the repository names a version the registry already has.
       - name: Publish to npm with OIDC
         if: inputs.dry_run == false || inputs.publish_only
         shell: bash
         run: |
+          failed=()
           while IFS=$'\t' read -r name version _directory tarball; do
             if npm view "${name}@${version}" version --json > /dev/null 2>&1; then
               echo "Skipping ${name}@${version}: already published"
@@ -168,8 +180,24 @@ jobs:
             if [[ "${{ inputs.dry_run }}" == "true" ]]; then
               args+=(--dry-run)
             fi
-            npm publish "${args[@]}"
+
+            # A rejected package must not hide the ones behind it: collect the
+            # failures, then report them together.
+            if ! npm publish "${args[@]}"; then
+              failed+=("${name}@${version}")
+            fi
           done < "$RUNNER_TEMP/release-packages.tsv"
+
+          if (( ${#failed[@]} > 0 )); then
+            printf 'Failed to publish %d package(s):\n' "${#failed[@]}" >&2
+            printf '  %s\n' "${failed[@]}" >&2
+            echo "Nothing was pushed; fix the failures and rerun the release." >&2
+            exit 1
+          fi
+
+      - name: Push release commit and tags
+        if: inputs.dry_run == false && inputs.publish_only == false
+        run: git push origin HEAD:${{ github.ref_name }} --follow-tags --atomic
 
       - name: Create per-package GitHub Releases
         if: inputs.dry_run == false && inputs.create_github_releases
