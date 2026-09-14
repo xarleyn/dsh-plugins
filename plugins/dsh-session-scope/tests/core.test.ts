@@ -200,14 +200,14 @@ test("isPathUnder falls back to filesystem identity", async () => {
 test("workspaceWritableRoots contains the workspace and the temp areas", () => {
   const roots = workspaceWritableRoots("/ws");
   assert.ok(roots.includes(canonicalPath("/ws")));
-  assert.ok(roots.includes("/tmp"));
+  assert.ok(roots.includes(canonicalPath("/tmp")));
   assert.ok(roots.includes(canonicalPath(tmpdir())));
   assert.equal(new Set(roots).size, roots.length);
 });
 
 test("tempWritableRoots excludes the workspace", () => {
   const roots = tempWritableRoots();
-  assert.ok(roots.includes("/tmp"));
+  assert.ok(roots.includes(canonicalPath("/tmp")));
   assert.ok(roots.includes(canonicalPath(tmpdir())));
   assert.ok(!roots.includes(canonicalPath("/ws")));
   assert.equal(new Set(roots).size, roots.length);
