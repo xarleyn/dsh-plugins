@@ -16,6 +16,7 @@ export interface QaGeneralSettingsPageProps {
 export function QaGeneralSettingsPage(props: QaGeneralSettingsPageProps) {
   return (
     <div className="dsh-qa-settings__page">
+      <h3 className="dsh-qa-settings__page-title">Общие</h3>
       <p className="dsh-qa-settings__lead">
         Ваши личные настройки. Настройки самого стенда — состав инструментов,
         модель и правила доступа — задаёт администратор.

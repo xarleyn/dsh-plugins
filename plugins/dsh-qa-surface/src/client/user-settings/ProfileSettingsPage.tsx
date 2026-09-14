@@ -79,6 +79,7 @@ export function QaProfileSettingsPage(props: QaProfileSettingsPageProps) {
   };
   return (
     <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
+      <h3 className="dsh-qa-settings__page-title">Профиль</h3>
       <p className="dsh-qa-settings__lead">
         Эти данные видит ассистент в ваших чатах: по указанным логинам он ищет
         ваши задачи, заявки и MR.
