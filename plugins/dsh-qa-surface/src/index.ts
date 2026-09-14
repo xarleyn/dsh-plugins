@@ -19,6 +19,11 @@ import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaApprovalGate } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
+import { applyDocumentsEnvOverrides } from "./documents/config.js";
+import {
+  installDocumentSubsystem,
+  type DocumentSubsystem,
+} from "./documents/index.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -99,6 +104,13 @@ export class QaSurface extends TypertRemoteService {
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
+  /**
+   * The document subsystem: its own runtime and the four tool registrations.
+   * Rebuilt when the document configuration changes and torn down while the
+   * subsystem or the whole surface is disabled.
+   */
+  private documents: DocumentSubsystem | undefined;
+  private documentsKey: string | undefined;
 
   constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
@@ -196,6 +208,17 @@ export class QaSurface extends TypertRemoteService {
       "dsh-qa-surface.provenance",
     );
     ctx.effect(() => () => this.notes.dispose(), "dsh-qa-surface.prompt-notes");
+    ctx.effect(
+      () => () => {
+        this.documents?.dispose();
+        this.documents = undefined;
+        this.documentsKey = undefined;
+      },
+      "dsh-qa-surface.documents",
+    );
+    // Registered here rather than from the settings callback alone, so a
+    // deployment that never opens the settings page still gets the tools.
+    this.refreshDocuments();
     // The root index gains one head script: non-loopback hostnames continue
     // into /qa, the loopback operator keeps the full harness UI.
     ctx.on("webserver/index-inject", (table) => {
@@ -215,10 +238,12 @@ export class QaSurface extends TypertRemoteService {
           onChange: () => {
             const config = this.getConfig();
             this.refreshRoute();
+            this.refreshDocuments();
             this.logger.info("config.updated", {
               enabled: config.enabled,
               route: config.route.path,
               sessionPolicy: config.session.policy,
+              documents: config.documents.enabled,
             });
           },
           validate: (value) => {
@@ -558,6 +583,32 @@ export class QaSurface extends TypertRemoteService {
     });
     this.routeKey = key;
   }
+
+  /**
+   * Install, rebuild or tear down the document subsystem. The raw entry is
+   * resolved with the documented environment overrides applied, so a
+   * deployment can point `QA_DOCLING_BASE_URL` at its own service without
+   * touching the settings namespace; the settings layer stays authoritative
+   * for everything it declares.
+   */
+  private refreshDocuments(): void {
+    const config = this.getConfig();
+    const enabled = config.enabled && config.documents.enabled;
+    const key = enabled ? JSON.stringify(config.documents) : undefined;
+    if (key === this.documentsKey) return;
+    this.documents?.dispose();
+    this.documents = undefined;
+    this.documentsKey = key;
+    if (key === undefined) return;
+    this.documents = installDocumentSubsystem(this.ctx, {
+      config: applyDocumentsEnvOverrides(
+        this.source().documents ?? {},
+        process.env,
+      ),
+      logger: this.logger,
+      register: (definition) => this.ctx.tools.register(definition),
+    });
+  }
 }
 
 export {
@@ -572,6 +623,7 @@ export { QaAccounts, QaAccountsError } from "./accounts/store.js";
 export { entryRedirectRow, entryRedirectScript } from "./entry-redirect.js";
 export { registerQaNavigationRoute } from "./host-route.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";
 export {
   QaPromptNotes,
