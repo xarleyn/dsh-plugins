@@ -39,12 +39,13 @@ tooling tests and lint, `verify:logging`, and `verify:packages` run once before
 the matrix. Local `pnpm check` is the superset you should run before pushing;
 `pnpm affected:check` mirrors the per-project CI targets locally.
 
-The PR-only version-plan check compares each publishable release project against
-its own last release tag rather than against the base alone. A release
-dispatched against a branch applies that branch's plans, deletes them, and
-leaves the released projects differing from the base, so a base-relative check
-would report an applied release as missing. Changes made after such a release
-still need a plan: the tag covers the work it released, not what follows it.
+The PR-only version-plan check compares each publishable release project
+against the newest release tag its history can reach — one `release/<date>` tag
+per release run — rather than against the base alone. A release dispatched
+against a branch applies that branch's plans, deletes them, and leaves the
+released projects differing from the base, so a base-relative check would
+report an applied release as missing. Changes made after such a release still
+need a plan: the tag covers the work it released, not what follows it.
 
 ## Release flow
 
