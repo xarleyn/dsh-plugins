@@ -499,4 +499,37 @@ describe("qa surface config", () => {
       }),
     ).toThrow(/fixed sessions/u);
   });
+
+  it("resolves the QA tool delivery defaults and rejects an impossible policy", () => {
+    expect(resolveConfig().tools).toEqual({
+      dynamicActivation: true,
+      activationSkill: "qa-surface",
+      activationMode: "all",
+      activationPresets: [],
+    });
+    expect(
+      resolveConfig(
+        schemaParse({
+          tools: {
+            dynamicActivation: false,
+            activationSkill: "qa-research",
+            activationPresets: ["qa-research"],
+          },
+        }),
+      ).tools,
+    ).toEqual({
+      dynamicActivation: false,
+      activationSkill: "qa-research",
+      activationMode: "all",
+      activationPresets: ["qa-research"],
+    });
+    // A typo in the trigger must fail the boot, not silently disable the
+    // feature for the whole deployment.
+    expect(() =>
+      resolveConfig({ tools: { activationSkill: "QA Surface" } }),
+    ).toThrow(/kebab-case/u);
+    expect(() => resolveConfig({ tools: { activationPresets: [""] } })).toThrow(
+      /empty names/u,
+    );
+  });
 });

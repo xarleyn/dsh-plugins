@@ -9,6 +9,12 @@ export type QaSandboxMode = "read-only" | "workspace-write";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
 /**
+ * How the QA tool catalog is attached. `all` attaches the whole catalog once
+ * the activation skill loads; the field is reserved so a future grouped or
+ * searched mode needs no config redesign.
+ */
+export type QaToolActivationMode = "all";
+/**
  * How a tool policy `ask` resolves on an attested QA agent. `blocked` refuses
  * the call with the surface's own reason; `interactive` parks it until the
  * operator answers in the QA view.
@@ -314,6 +320,27 @@ export interface QaSurfaceConfig {
     readonly approvals?: QaApprovalInteraction;
     readonly questions?: QaQuestionInteraction;
   };
+  /**
+   * QA tool delivery. Dynamic activation keeps the QA tool schemas out of the
+   * model request until the activation skill has actually been loaded.
+   */
+  readonly tools?: {
+    /**
+     * `true` attaches the QA tools only after the activation skill loads;
+     * `false` attaches them to every managed agent at creation.
+     */
+    readonly dynamicActivation?: boolean;
+    /** The skill name whose successful load attaches the QA tools. */
+    readonly activationSkill?: string;
+    /** Accepted activation policy; only `all` is implemented. */
+    readonly activationMode?: QaToolActivationMode;
+    /**
+     * Agent presets whose sessions participate. An empty list leaves the gate
+     * open, which is only safe when this plugin serves one agent composition —
+     * name the QA preset in any deployment that composes more than one.
+     */
+    readonly activationPresets?: readonly string[];
+  };
   readonly lockdown?: {
     readonly enabled?: boolean;
     readonly enforceFixedAgentPreset?: boolean;
@@ -505,6 +532,12 @@ export interface ResolvedQaSurfaceConfig {
   readonly entry: {
     readonly redirectNonLoopback: boolean;
     readonly cookieBootstrap: boolean;
+  };
+  readonly tools: {
+    readonly dynamicActivation: boolean;
+    readonly activationSkill: string;
+    readonly activationMode: QaToolActivationMode;
+    readonly activationPresets: readonly string[];
   };
   readonly sources: {
     readonly enabled: boolean;
