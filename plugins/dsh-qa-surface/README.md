@@ -32,8 +32,15 @@ Session and Agent Loop.
   harness UI untouched;
 - ships an operator settings card (Settings → Plugins → plugin configuration →
   «Помощник QA») that edits the `qa-surface` namespace in place — route,
-  branding, session, interface, lockdown, accounts, sources, embedding — and
-  reports the configuration the running Host resolved;
+  branding, session, interface, lockdown, accounts, sources, attachments,
+  documents, embedding — and reports the configuration the running Host
+  resolved;
+- registers four document tools (`document_create`, `document_to_markdown`,
+  `document_convert`, `document_inspect`) behind `documents.enabled`: the agent
+  writes Markdown and receives DOCX/PDF, or hands over a DOCX/PDF and receives
+  Markdown, while the pipeline owns every backend command line, keeps source,
+  assets, outputs and a manifest in one artifact bundle, and is visible to a QA
+  chat only through the tool allow-list;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
