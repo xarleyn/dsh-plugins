@@ -42,6 +42,14 @@ uses. Saving is atomic and carries the revision the editor read, so an edit
 made in another tab or by hand is refused instead of overwritten, and a delete
 moves the whole directory to `.dsh/skills-trash/`.
 
+The editor asks the Host for the file a draft would write and for the
+authoritative diagnostics (`skillsValidate`, which also carries the operator's
+own size limit), because a YAML library's Node build carries `require` calls
+the DSH client module loader cannot answer: bundling it stopped the packed
+surface from mounting at all. The shared rules that need no YAML live in one
+browser-safe module, and the package gate now rejects any Node builtin in the
+client bundle.
+
 Deployments that cannot host the feature — accounts off, or
 `accounts.perUserWorkspace` off, since there is no shared fallback to store a
 personal skill in — resolve `accounts.skills.enabled` to false and simply see
