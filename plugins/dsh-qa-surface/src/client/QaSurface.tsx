@@ -124,7 +124,8 @@ export interface QaSurfaceFace {
   readonly accounts?: QaAccountsController;
 }
 
-type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
+export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
+  InjectFace<QaSurfaceFace>;
 
 function focusable(root: HTMLElement): HTMLElement[] {
   return [
@@ -340,20 +341,13 @@ export function QaSurface(props: QaSurfaceProps) {
 
   useEffect(() => {
     if (!route.active) return;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.dataset.dshQaSurface = "active";
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    // Body ownership (the shell-mask attribute, scroll locking) lives in the
+    // guard above this surface: it must survive a crash that unmounts this
+    // subtree.
     const frame = requestAnimationFrame(() => {
       document.querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")?.focus();
     });
-    return () => {
-      cancelAnimationFrame(frame);
-      delete document.body.dataset.dshQaSurface;
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
+    return () => cancelAnimationFrame(frame);
   }, [route.active]);
 
   // Stable identities for the memoized render path: message rows, the sidebar
