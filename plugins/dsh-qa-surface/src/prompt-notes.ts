@@ -20,6 +20,8 @@ export const QA_NOTES_PLUGIN = "qa-surface";
 export const QA_IDENTITY_NOTE = "dsh-qa-surface:user-identity";
 /** Note name carrying the deployment's rule about source provenance. */
 export const QA_SOURCES_NOTE = "dsh-qa-surface:structured-sources";
+/** Note name asking the model to name its delegations. */
+export const QA_DELEGATION_NOTE = "dsh-qa-surface:delegation-naming";
 
 /** Bound on the durable delegation chain walked to find a chat's root session. */
 const QA_NOTES_MAX_DEPTH = 64;
@@ -167,6 +169,7 @@ export class QaPromptNotes {
     const pending = [
       ...this.identityNotes(root, config),
       ...this.sourcesNotes(root, config),
+      ...this.delegationNotes(root),
     ].filter((note) => this.carriedText(agent, note.name) !== note.text);
     if (pending.length === 0) return decision;
     return {
@@ -225,6 +228,22 @@ export class QaPromptNotes {
       );
     }
     return [{ name: QA_SOURCES_NOTE, text: lines.join("\n") }];
+  }
+
+  /**
+   * How the model should label its delegations: the host keeps the
+   * delegation's `description` as the child's durable creation label, and the
+   * surface shows it as the subagent's display name. A named delegation is
+   * the difference between a panel of hashes and a panel of tasks.
+   */
+  private delegationNotes(rootSessionId: string): readonly QaPromptNote[] {
+    if (!this.options.isQaSession(rootSessionId)) return [];
+    return [
+      {
+        name: QA_DELEGATION_NOTE,
+        text: "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.",
+      },
+    ];
   }
 
   private carriedKey(agent: Agent, noteName: string): string {

@@ -121,6 +121,15 @@ export function InterfaceSection(props: ConfigProps) {
             props.write(["ui", "showToolActivity"], value);
           }}
         />
+        <Toggle
+          checked={config?.ui?.subagentCodenames ?? true}
+          disabled={disabled}
+          label="Позывные субагентов"
+          hint="Завершение субагента подписывается устойчивым позывным («Дотошный Барсук») вместо короткого идентификатора; настоящая задача остаётся в списке субагентов и в раскрытой плашке."
+          onChange={(value) => {
+            props.write(["ui", "subagentCodenames"], value);
+          }}
+        />
         <NumberField
           label="Минимальная ширина содержимого, px"
           value={config?.ui?.minContentWidth ?? 650}

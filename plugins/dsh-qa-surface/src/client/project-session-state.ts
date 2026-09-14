@@ -32,6 +32,11 @@ export interface QaBoundProjectionInput {
   readonly viewingSubagent: QaSubagentView | null;
   readonly config: ResolvedQaSurfaceConfig;
   /**
+   * The chat's subagent display names keyed by session id, read from the
+   * host list snapshot; settlement notices prefer them over the raw ids.
+   */
+  readonly subagentNames?: Readonly<Record<string, string>>;
+  /**
    * The chat owner's display name for author labels; present only when an
    * admin reads a foreign chat (chat-level, not per-message).
    */
@@ -71,6 +76,8 @@ export function projectBoundSessionState(
     running: snapshot.running,
     showToolActivity: config.ui.showToolActivity,
     showReasoning: config.ui.showReasoning,
+    subagentNames: input.subagentNames,
+    subagentCodenames: config.ui.subagentCodenames,
   }).map((message) => {
     if (message.role === "user" && input.author !== undefined) {
       return { ...message, author: input.author };

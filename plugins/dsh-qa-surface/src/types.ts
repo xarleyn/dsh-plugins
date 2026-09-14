@@ -334,6 +334,11 @@ export interface QaSurfaceConfig {
     /** Floor for the visitor-resizable transcript/composer width; the page caps it. */
     readonly minContentWidth?: number;
     readonly showSessionList?: boolean;
+    /**
+     * Sign subagent completion notices with deterministic codenames
+     * («Дотошный Барсук») instead of the child's readable name or raw id.
+     */
+    readonly subagentCodenames?: boolean;
   };
   readonly suggestedQuestions?: readonly string[];
   /**
@@ -502,6 +507,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly renderMarkdown: boolean;
     readonly minContentWidth: number;
     readonly showSessionList: boolean;
+    readonly subagentCodenames: boolean;
   };
   readonly suggestedQuestions: readonly string[];
   readonly thinkingPhrases: readonly string[];
@@ -702,6 +708,8 @@ export type QaMessage =
       readonly notice?: {
         readonly title: string;
         readonly body: string;
+        /** Muted correlation line above the body (task name, session id). */
+        readonly meta?: string;
       };
     }
   | {

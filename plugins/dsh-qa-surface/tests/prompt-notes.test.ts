@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { QaAccounts } from "../src/accounts/store.js";
 import { QA_REPORT_SOURCES_TOOL } from "../src/provenance/host-store.js";
 import {
+  QA_DELEGATION_NOTE,
   QA_IDENTITY_NOTE,
   QA_NOTES_PLUGIN,
   QA_SOURCES_NOTE,
@@ -361,7 +362,7 @@ describe("source provenance note", () => {
     });
     const session = createSession("session-root");
     const appended = await step(session);
-    expect(appended.length).toBe(1);
+    expect(appended.length).toBe(2);
     expect(noteNames(appended[0])).toEqual([QA_SOURCES_NOTE]);
     expect(noteText(appended[0])).toMatch(/manual Sources\/Источники/u);
     expect(noteText(appended[0])).toContain(QA_REPORT_SOURCES_TOOL);
@@ -378,9 +379,12 @@ describe("source provenance note", () => {
       config: resolveConfig({ sources: { enabled: false } }),
       qaSessions: ["session-root"],
     });
-    expect(
-      await noSources.step(noSources.createSession("session-root")),
-    ).toEqual([]);
+    const silenced = await noSources.step(
+      noSources.createSession("session-root"),
+    );
+    // Sources fall silent with the switch; the delegation note does not
+    // depend on them and still reaches an attested chat.
+    expect(silenced.map(noteNames)).toEqual([[QA_DELEGATION_NOTE]]);
 
     const noFallback = harness({
       config: resolveConfig({
@@ -415,8 +419,27 @@ describe("source provenance note", () => {
     const session = createSession("session-root");
     const appended = await step(session);
     expect([...appended.flatMap(noteNames)].sort()).toEqual(
-      [QA_SOURCES_NOTE, QA_IDENTITY_NOTE].sort(),
+      [QA_SOURCES_NOTE, QA_IDENTITY_NOTE, QA_DELEGATION_NOTE].sort(),
     );
     expect(await step(session)).toEqual([]);
+  });
+});
+
+describe("delegation naming note", () => {
+  it("asks the model to name its delegations in an attested chat", async () => {
+    const { createSession, step } = harness({
+      config: config(),
+      qaSessions: ["session-root"],
+    });
+    const session = createSession("session-root");
+    const appended = await step(session);
+    expect(noteNames(appended[1])).toEqual([QA_DELEGATION_NOTE]);
+    expect(noteText(appended[1])).toMatch(/description field/u);
+    expect(await step(session)).toEqual([]);
+  });
+
+  it("stays out of chats the QA surface never attested", async () => {
+    const { createSession, step } = harness({ config: config() });
+    expect(await step(createSession("session-operator"))).toEqual([]);
   });
 });

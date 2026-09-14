@@ -25,5 +25,8 @@ export function resolveUi(input: QaSurfaceConfig): UiSlice {
     minContentWidth,
     showSessionList:
       input.ui?.showSessionList ?? DEFAULT_QA_SURFACE_CONFIG.ui.showSessionList,
+    subagentCodenames:
+      input.ui?.subagentCodenames ??
+      DEFAULT_QA_SURFACE_CONFIG.ui.subagentCodenames,
   });
 }
