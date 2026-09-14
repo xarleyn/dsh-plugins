@@ -166,13 +166,17 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
           Больше {String(QA_STARTERS_MAX_ITEMS)} подсказок не поместится.
         </p>
       ) : (
-        <QaSettingsButton
-          label="Добавить подсказку"
-          onClick={() => {
-            setRows((current) => [...current, { label: "", prompt: "" }]);
-            setSaved(false);
-          }}
-        />
+        // The page is a column flex, so a bare button child would stretch to
+        // its full width; the wrapper keeps the control at its natural size.
+        <div>
+          <QaSettingsButton
+            label="Добавить подсказку"
+            onClick={() => {
+              setRows((current) => [...current, { label: "", prompt: "" }]);
+              setSaved(false);
+            }}
+          />
+        </div>
       )}
       {incomplete ? (
         <QaSettingsNotice tone="warn">
