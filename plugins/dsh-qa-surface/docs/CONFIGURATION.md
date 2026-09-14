@@ -476,6 +476,67 @@ documented variables — `QA_DOCUMENTS_ENABLED`, `QA_DOCUMENTS_STORAGE_ROOT`,
 `QA_DOCUMENTS_MAX_INPUT_BYTES`. Everything else stays in the settings
 namespace, where the card's «Документы» section edits it.
 
+## Personal skills
+
+Every account can own skills, and they are ordinary Agent Skills: one
+directory per skill below the account's own workspace, with a `SKILL.md` the
+harness itself can read.
+
+```text
+<registered workspace>/.qa-users/<account UUID>/.dsh/skills/<name>/SKILL.md
+```
+
+```yaml
+accounts:
+  enabled: true
+  perUserWorkspace: true
+  skills:
+    enabled: true # on by default wherever it can work
+    relativeRoot: .dsh/skills # below the personal root; relative only
+    watch: true # follow hand edits and refresh the catalog
+    maxSkillBytes: 262144
+    allowResourceEditing: false # reserved; v1 edits SKILL.md only
+```
+
+- The section is off unless the deployment has accounts _and_
+  `perUserWorkspace`: the personal root is the account's own directory, so
+  there is no shared fallback to fall back to. The resolver reports the
+  effective value, and the settings dialog simply has no Навыки section when
+  it is off.
+- Two deployment facts decide whether the model ever sees a personal skill.
+  The preset must mount the skill tool package (`dsh-tool-skill`), and
+  `lockdown.toolPolicy.allow` must list `skill`: the harness publishes the
+  model-facing catalog only while that tool is visible in the agent's scope.
+  Invoking a skill as `/name` does not depend on the tool being allowed, so a
+  deployment that skips that entry sees the command work and the catalog stay
+  empty — the half-working state this paragraph exists to prevent.
+- The user edits skills in the same Настройки dialog as the profile: a
+  catalog with search, an editor with name, description, "when to use",
+  invocation flags, declared tools and a Markdown body, a tool picker over the
+  deployment's registry, and a preview of the exact file a save writes.
+- Skills reach the model through a provider this plugin registers
+  (`qa-user-skills`) rather than through the filesystem provider, whose
+  project root is the nearest `.git` and would climb above an account inside a
+  larger checkout. Discovery reads exactly `<cwd>/.dsh/skills` for a cwd that
+  matches the `.qa-users/<uuid>` layout, so no account can see another's
+  skills and an arbitrary cwd names nothing.
+- `allowed-tools` is stored as declared and never granted. A tool the QA scope
+  excludes is shown as unavailable and stays in the file; the effective set is
+  the intersection of what the session allows with what the skill declares.
+  Nothing in this plugin widens the session's own restriction.
+- `relativeRoot` may only be a relative path below the personal root; an
+  absolute one, a `..` segment or a drive letter is refused at configuration
+  time, and a symlinked skills directory is refused at use.
+- Saving is atomic (temporary file plus rename) and carries the revision the
+  editor read, so an edit made in another tab or by hand is never overwritten
+  in silence: the save is refused and the editor offers to reload. A manual
+  edit outside the editor is picked up by the watcher, and a deletion moves
+  the whole directory to `<personal root>/.dsh/skills-trash/`, keeping the
+  skill's resources with it.
+- The account id is hashed in the audit lines (`skill.create`,
+  `skill.update`, `skill.delete`, `skill.validation-failed`,
+  `skill.provider.invalidate-failed`); skill bodies never reach the log.
+
 ## Skill catalog scope
 
 The deployment's agent preset controls which skills the QA assistant sees.
@@ -484,7 +545,8 @@ The shipped `qa-research` preset mounts the skill filesystem with
 checkout's own `.dsh/skills`) and user-home skills stay out of the catalog,
 and skills enter only through plugin providers or an explicit
 `customSkillDirs` list in the preset. Keep the QA catalog to exactly the
-skills the audience is meant to use.
+skills the audience is meant to use. For a deployment with accounts, the
+personal skills above are the provider such a preset relies on.
 
 ## Deleting chats
 

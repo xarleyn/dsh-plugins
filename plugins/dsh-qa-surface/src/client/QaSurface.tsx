@@ -30,6 +30,7 @@ import { QaSessionController } from "./QaSessionController.js";
 import { attachmentLimits } from "./attachments.js";
 import type {
   QaApprovalApi,
+  QaBoundSkillApi,
   QaConversation,
   QaCreateSession,
   QaFileUpload,
@@ -37,6 +38,7 @@ import type {
   QaSessions,
   QaSessionsApi,
   QaQuestionApi,
+  QaSkillApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
@@ -70,6 +72,10 @@ import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
+import {
+  QaUserSettingsDialog,
+  type QaSettingsSectionId,
+} from "./user-settings/UserSettingsDialog.js";
 import { useTranscriptView } from "./use-transcript-view.js";
 import { useSessionUiState } from "./use-session-ui-state.js";
 import { useRightRail } from "./use-right-rail.js";
@@ -94,6 +100,11 @@ export interface QaSurfaceFace {
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
   readonly sourceApi: QaSourceApi;
+  /**
+   * Personal-skill half of the plugin's namespace. Absent on a page whose Host
+   * build does not answer it; the settings dialog then has no skills section.
+   */
+  readonly skillApi?: QaSkillApi;
   /**
    * Approval half of the plugin's namespace. Absent on a page whose Host build
    * does not answer it; the surface then only blocks sends it cannot attest.
@@ -250,6 +261,33 @@ export function QaSurface(props: QaSurfaceProps) {
   ]);
 
   // The drawer receives a token-bound view; its props keep the simple shape.
+  // The settings dialog speaks to the skills namespace with the account token
+  // already bound, so its pages never see an identity.
+  const boundSkillApi = useMemo((): QaBoundSkillApi | undefined => {
+    if (props.skillApi === undefined) return undefined;
+    const skillApi = props.skillApi;
+    const token = () => accounts?.token() ?? "";
+    return {
+      list: async () => {
+        const result = await skillApi.skillsList(token());
+        return result.ok
+          ? { ok: true, value: result.value.skills }
+          : { ok: false, error: result.error };
+      },
+      get: (name) => skillApi.skillsGet(token(), name),
+      create: (input) => skillApi.skillsCreate(token(), input),
+      update: (name, input) => skillApi.skillsUpdate(token(), name, input),
+      remove: (name, revision) =>
+        skillApi.skillsRemove(token(), name, revision),
+      tools: async () => {
+        const result = await skillApi.skillsTools(token());
+        return result.ok
+          ? { ok: true, value: result.value.tools }
+          : { ok: false, error: result.error };
+      },
+      validate: (name, input) => skillApi.skillsValidate(token(), name, input),
+    };
+  }, [props.skillApi, accounts]);
   const boundSourceApi = useMemo(
     () => ({
       sources: (sessionId: string) =>
@@ -266,6 +304,10 @@ export function QaSurface(props: QaSurfaceProps) {
   const handleLogout = useCallback(() => {
     accounts?.signOut();
   }, [accounts]);
+  // The settings dialog is owned here, not by the sidebar: its pages read the
+  // deployment config, the account and the skill namespace, while the sidebar
+  // only offers the button that opens it.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
@@ -486,20 +528,44 @@ export function QaSurface(props: QaSurfaceProps) {
         : undefined,
     [config, accounts, accountsSnapshot],
   );
-  // The sidebar compares this by reference, so every piece of it is stable
-  // until the profile, the config, or the signed-in user actually changes.
-  const profileDialog = useMemo(() => {
-    if (!config.accounts.profile.enabled || accounts === undefined) {
+  // The sidebar compares this by reference, so the entry point is stable
+  // until the label or the callback identity actually changes.
+  const settingsEntry = useMemo(
+    () =>
+      accountsSnapshot.stage === "authed"
+        ? {
+            label:
+              accountsSnapshot.user.profile.fullName === ""
+                ? accountsSnapshot.user.email
+                : accountsSnapshot.user.profile.fullName,
+            onOpen: () => setSettingsOpen(true),
+          }
+        : undefined,
+    [accountsSnapshot],
+  );
+  // Everything the dialog needs, assembled once per change. Each face is
+  // absent where the deployment withheld the feature, and the dialog simply
+  // renders the sections it was given.
+  const settingsDialog = useMemo(() => {
+    if (accounts === undefined || accountsSnapshot.stage !== "authed") {
       return undefined;
     }
-    if (accountsSnapshot.stage !== "authed") return undefined;
-    return {
-      profile: accountsSnapshot.user.profile,
-      fields: config.accounts.profile.identities,
-      instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
-      onSave: (input: QaAccountProfileInput) => accounts.updateProfile(input),
-    };
-  }, [config, accounts, accountsSnapshot]);
+    const profile = config.accounts.profile.enabled
+      ? {
+          profile: accountsSnapshot.user.profile,
+          fields: config.accounts.profile.identities,
+          instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
+          onSave: (input: QaAccountProfileInput) =>
+            accounts.updateProfile(input),
+        }
+      : undefined;
+    const skills =
+      config.accounts.skills.enabled && boundSkillApi !== undefined
+        ? boundSkillApi
+        : undefined;
+    if (profile === undefined && skills === undefined) return undefined;
+    return { profile, skills };
+  }, [accounts, accountsSnapshot, config, boundSkillApi]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
   const chatRows = useMemo(
@@ -623,6 +689,34 @@ export function QaSurface(props: QaSurfaceProps) {
   return (
     <>
       {welcomeNotice}
+      {settingsDialog === undefined ? null : (
+        <QaUserSettingsDialog
+          open={settingsOpen}
+          initialSection={
+            (config.accounts.profile.enabled
+              ? "profile"
+              : "general") satisfies QaSettingsSectionId
+          }
+          email={
+            accountsSnapshot.stage === "authed"
+              ? accountsSnapshot.user.email
+              : ""
+          }
+          role={
+            accountsSnapshot.stage === "authed"
+              ? accountsSnapshot.user.role
+              : ""
+          }
+          chatCount={controller?.chatIds().length ?? 0}
+          onClose={() => setSettingsOpen(false)}
+          {...(settingsDialog.profile === undefined
+            ? {}
+            : { profile: settingsDialog.profile })}
+          {...(settingsDialog.skills === undefined
+            ? {}
+            : { skills: settingsDialog.skills })}
+        />
+      )}
       <main
         className="dsh-qa-surface"
         data-phase={state.phase}
@@ -650,7 +744,9 @@ export function QaSurface(props: QaSurfaceProps) {
                     email: accountsSnapshot.user.email,
                     role: accountsSnapshot.user.role,
                     onLogout: handleLogout,
-                    ...(profileDialog === undefined ? {} : { profileDialog }),
+                    ...(settingsEntry === undefined
+                      ? {}
+                      : { settings: settingsEntry }),
                   }
                 : undefined
             }
