@@ -34,6 +34,8 @@
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
     "lint:workspace": "eslint eslint.config.js scripts",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
     "verify": "pnpm verify:packages && pnpm verify:logging && nx run-many -t verify",
     "verify:packages": "node scripts/verify-package-hygiene.mjs",
     "verify:logging": "node scripts/verify-plugin-logging.mjs",
@@ -61,6 +63,7 @@
     "eslint": "catalog:tooling",
     "eslint-plugin-react-hooks": "catalog:tooling",
     "nx": "catalog:tooling",
+    "prettier": "catalog:tooling",
     "typescript": "catalog:tooling",
     "typescript-eslint": "catalog:tooling",
     "vitest": "catalog:tooling"

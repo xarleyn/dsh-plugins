@@ -60,8 +60,6 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint src tests scripts",
-    "format": "prettier --check . --end-of-line auto",
-    "format:write": "prettier --write . --end-of-line auto",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -133,7 +131,6 @@
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
     "playwright": "catalog:tooling",
-    "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
