@@ -2734,9 +2734,24 @@ rest of the plugin: reuse the native mechanism and add no second runtime.
 
 ### 47.3 Format and preservation
 
-The parser and serializer are one browser-safe module
-(`src/personal-skills/skill-file.ts`) shared by the Host service and the
-editor, so the preview cannot drift from what a save writes.
+The format lives in two modules, split by what the browser can carry:
+
+- `src/personal-skills/skill-format.ts` — the rules that need no YAML: the
+  name grammar, the declared-tool list, the draft limits, the relative-root
+  rules. This is what the browser imports.
+- `src/personal-skills/skill-file.ts` — the parser and the serializer, which
+  the Host alone loads. A YAML library ships a Node build beside its browser
+  one, and that build's `require("process")` is not something the DSH client
+  module loader can answer: bundling it into the page stops the whole surface
+  from mounting. `verify-package.mjs` now rejects any Node builtin require in
+  the client bundle so the split cannot quietly regress.
+
+The consequence for the editor is one round trip: `skillsValidate` returns the
+file a save would write and the authoritative diagnostics, both produced by
+the serializer the save uses. The editor still checks the rules it can check
+alone on every keystroke, and the preview panel shows the Host's answer byte
+for byte — frontmatter preserved verbatim, which is the same source the write
+merges from.
 
 - Fields the editor owns: `name`, `description`, `whenToUse`, `user-invocable`,
   `disable-model-invocation`, `allowed-tools`.
@@ -2772,7 +2787,7 @@ enforce anything.
 
 - `src/personal-skills/service.ts` — `QaPersonalSkills`: list, get, create,
   update (rename included, resources moved with the directory), remove (into
-  the trash), tools, and the discovery reads. Revision is
+  the trash), tools, validate, and the discovery reads. Revision is
   `sha256(file bytes)`; an update compares the revision the editor read and
   refuses a stale one.
 - `src/personal-skills/provider.ts` — the `qa-user-skills` provider
@@ -2788,9 +2803,9 @@ enforce anything.
   renamed skill needs an invalidation, which a save through the service always
   performs.
 - Remotes on the `qaSurface` namespace: `skillsList`, `skillsGet`,
-  `skillsCreate`, `skillsUpdate`, `skillsRemove`, `skillsTools`. Each takes
-  the account token as its first argument and answers with the shared
-  `(reason: <code>)` marker on refusal.
+  `skillsCreate`, `skillsUpdate`, `skillsRemove`, `skillsTools`,
+  `skillsValidate`. Each takes the account token as its first argument and
+  answers with the shared `(reason: <code>)` marker on refusal.
 - Audit lines: `skill.create`, `skill.update`, `skill.delete`,
   `skill.validation-failed`, `skill.provider.invalidate-failed`. The account
   id is hashed and skill bodies never reach the log; a storage success whose
@@ -2820,6 +2835,10 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   sections and profile migration, the catalog (empty, search, warnings,
   failures), the editor (seeding, blocking validation, save payload, preview,
   exit guard, delete confirmation, conflict reload) and the tool picker.
+- The packed-DSH browser pass mounts the built bundle in a real browser; it is
+  what caught the YAML bundling above, and it reports the page console when the
+  surface never appears. It runs the default read-only composition, so accounts
+  — and with them the settings dialog — are not exercised live yet.
 - `tests/qa-styles.test.ts`: every `--dsh-qa-*` reference is declared, the
   dialog rules use themed aliases with no hard-coded colors, and the legacy
   profile classes are gone.
