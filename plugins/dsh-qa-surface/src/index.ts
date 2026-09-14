@@ -36,6 +36,7 @@ import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { QaTools } from "./qa-tools/index.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { FileQaProvenanceSnapshotStore } from "./provenance/snapshot-store.js";
 import { readSourceFilePreview } from "./provenance/file-preview.js";
@@ -108,6 +109,8 @@ export class QaSurface extends TypertRemoteService {
   private readonly userQuestions: QaQuestionGate;
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
+  /** Assigned after the admission gate; that gate only reads it per execution. */
+  private readonly tools!: QaTools;
   /** Account-remote bodies; the wire signatures stay on this class. */
   private readonly accountRemotes: QaAccountRemotes;
   /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
@@ -164,6 +167,9 @@ export class QaSurface extends TypertRemoteService {
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
       },
+      // Dynamically attached QA tools are not operator-configured allow-list
+      // entries, so the execution guard reads them per call instead.
+      (agent) => this.tools?.activeToolNames(agent) ?? [],
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -249,6 +255,16 @@ export class QaSurface extends TypertRemoteService {
     // Registered here rather than from the settings callback alone, so a
     // deployment that never opens the settings page still gets the tools.
     this.refreshDocuments();
+    // The QA tool catalog is attached per agent, never at boot: nothing here
+    // reaches the model until a managed agent loads the activation skill.
+    this.tools = new QaTools(ctx, {
+      logger: this.logger,
+      dynamicActivation: this.getConfig().tools.dynamicActivation,
+      activationSkill: this.getConfig().tools.activationSkill,
+      activationMode: this.getConfig().tools.activationMode,
+      activationPresets: this.getConfig().tools.activationPresets,
+    });
+    ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue
     // into /qa, the loopback operator keeps the full harness UI.
     ctx.on("webserver/index-inject", (table) => {

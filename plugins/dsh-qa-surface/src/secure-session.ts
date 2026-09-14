@@ -79,6 +79,14 @@ export class QaPolicyAdmission {
     private readonly config: () => ResolvedQaSurfaceConfig,
     private readonly logger: PluginLogger,
     private readonly accounts?: QaAccountsGate,
+    /**
+     * Names the QA tool catalog attached to one agent after its activation
+     * skill loaded. Read per execution, so a tool becomes callable exactly when
+     * it is registered and stops being callable once the agent is disposed.
+     */
+    private readonly dynamicToolNames: (
+      agent: Agent,
+    ) => readonly string[] = () => [],
   ) {
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
@@ -330,9 +338,14 @@ export class QaPolicyAdmission {
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
-      const disposeGuard = agent.ctx.tools.guard((execution) =>
-        qaToolDenial(allowed, execution.name),
-      );
+      const disposeGuard = agent.ctx.tools.guard((execution) => {
+        const agent = execution.agent;
+        return qaToolDenial(
+          allowed,
+          execution.name,
+          agent === undefined ? [] : this.dynamicToolNames(agent),
+        );
+      });
       try {
         const disposeRestriction = agent.ctx.tools.restrict({
           allow: policy.allow,

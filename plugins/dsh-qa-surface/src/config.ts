@@ -219,6 +219,16 @@ const configSchema = z.object({
       redirectNonLoopback: z.boolean().default(D.entry.redirectNonLoopback),
     })
     .default({ ...D.entry }),
+  tools: z
+    .object({
+      dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
+      activationSkill: z.string().default(D.tools.activationSkill),
+      activationMode: z.union(["all"] as const).default(D.tools.activationMode),
+      activationPresets: z
+        .array(z.string())
+        .default([...D.tools.activationPresets]),
+    })
+    .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] }),
   sources: z
     .object({
       enabled: z.boolean().default(D.sources.enabled),
