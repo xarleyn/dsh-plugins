@@ -15,6 +15,7 @@
       "typert.remote",
       "agentPresets.composedPreset",
       "permissionPresets.set",
+      "tools.schemas",
       "tools.restrict",
       "tools.guard",
       "tools.register",
@@ -22,7 +23,9 @@
       "agent.turn-stopping",
       "agent.currentInitiator",
       "systemPrompt.section",
-      "workspaceRegistry.get"
+      "workspaceRegistry.get",
+      "skills.registerProvider",
+      "skills.change"
     ]
   },
   "node": "^22.19.0 || >=24.0.0"
