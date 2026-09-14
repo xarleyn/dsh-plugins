@@ -50,7 +50,7 @@ describe("QA surface stylesheet", () => {
     );
     expect(coloured).toEqual([]);
     expect(QA_SURFACE_STYLES).toContain(
-      ".dsh-qa-modal__panel--settings{width:min(920px,100%);height:min(680px,100%)}",
+      ".dsh-qa-modal__panel--settings{width:min(840px,100%);height:min(640px,calc(100vh - 48px))}",
     );
     expect(dialogRules.join("")).toContain("var(--dsw-alias-border-l2)");
   });

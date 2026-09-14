@@ -74,6 +74,7 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
   };
   return (
     <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
+      <h3 className="dsh-qa-settings__page-title">Быстрые сообщения</h3>
       <p className="dsh-qa-settings__lead">
         Быстрые сообщения — кнопки над строкой ввода в пустом чате. Нажатие
         сразу отправляет промпт, не заполняя поле.
