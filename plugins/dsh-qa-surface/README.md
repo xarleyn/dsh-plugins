@@ -22,18 +22,36 @@ Session and Agent Loop.
 - pins locked sessions to the configured `read-only` or isolated
   `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
+- attaches its own QA tool catalog per agent only after the activation skill
+  loads (`tools.dynamicActivation`), keeping every QA schema out of the initial
+  request and restoring the catalog on resume from the session's own journal;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
   migration of the browser's existing chats, a `qa-accounts` management CLI
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
+- gives each account a `Настройки` dialog — profile, general, and **personal
+  skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  directory (`accounts.skills`), edited with a catalog, an invocation-flag
+  form, a Markdown body, a tool picker over the deployment's registry, and a
+  preview of the exact file a save writes. Skills reach the model through a
+  provider this plugin registers instead of the filesystem one, so no account
+  can see another's, and `allowed-tools` is stored as declared but never
+  grants anything the session does not already allow;
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;
 - ships an operator settings card (Settings → Plugins → plugin configuration →
   «Помощник QA») that edits the `qa-surface` namespace in place — route,
-  branding, session, interface, lockdown, accounts, sources, embedding — and
-  reports the configuration the running Host resolved;
+  branding, session, interface, lockdown, accounts, sources, attachments,
+  documents, embedding — and reports the configuration the running Host
+  resolved;
+- registers four document tools (`document_create`, `document_to_markdown`,
+  `document_convert`, `document_inspect`) behind `documents.enabled`: the agent
+  writes Markdown and receives DOCX/PDF, or hands over a DOCX/PDF and receives
+  Markdown, while the pipeline owns every backend command line, keeps source,
+  assets, outputs and a manifest in one artifact bundle, and is visible to a QA
+  chat only through the tool allow-list;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
@@ -202,12 +220,61 @@ config:
       validateReportedSources: true
     legacy:
       parseAssistantSourcesBlock: false
+  # QA tool delivery (optional). The plugin's own tool catalog stays out of the
+  # model request until the activation skill has actually been loaded.
+  tools:
+    dynamicActivation: true
+    activationSkill: qa-surface
+    activationMode: all
+    # Presets whose sessions may unlock the catalog. Empty leaves the gate open:
+    # only do that when this Host serves one agent composition.
+    activationPresets: []
 ```
 
 `workspaceId` is recommended for a deterministic assistant. Without it, DSH
 uses the Host's normal default working directory. Put the system prompt, tools,
 skills, knowledge connections and permission policy in `agentPreset`, not in
 this UI plugin.
+
+### Dynamic QA tools
+
+A QA deployment tends to grow a large toolset, and attaching all of it at boot
+puts every schema into every request — including the first small talk of a chat
+that will never use them. `tools.dynamicActivation` (the default) inverts that:
+the plugin's catalog is registered into the agent's own scope only after the
+model successfully loads `tools.activationSkill`, and `qa_tools_selfcheck`
+reports the resulting state.
+
+The trigger is the authoritative result of the built-in `skill` tool, not the
+model's attempt, not a keyword in the transcript, and not a coincidentally
+matching skill description. A failed or refused load activates nothing, loading
+an unrelated skill activates nothing, and loading the same skill again is a
+no-op. If one tool fails to register, the whole attempt is unwound and the agent
+stays inactive — a half-attached surface would leave the model with a tool it
+cannot rely on. Registrations live exactly as long as the agent that owns them,
+so disposal and plugin unload leave no scoped tool behind.
+
+A resumed chat is restored from its own journal: the successful `skill` load is
+already recorded there as a standard `tool/call`/`tool/result` pair, so the
+current catalog is re-attached before the first model step. The plugin appends
+no session event of its own — an unknown event type without an `ignorable`
+marker makes the whole log unreadable to a harness that does not mount this
+plugin.
+
+Set `tools.activationPresets` to the preset your QA surface pins (`qa-research`
+in the deploy kit) in any Host that composes more than one agent type. With an
+empty list the catalog is reachable by any agent that loads a skill of the same
+name. `tools.dynamicActivation: false` restores the always-on behaviour and
+attaches the catalog to every managed agent at creation — useful for a
+deployment that would rather debug the tool surface than the trigger.
+
+These tools are not `lockdown.toolPolicy.allow` entries, and cannot be: that
+list is validated against the mounted catalog at attestation time, and a tool
+that only appears later would fail the check. The QA execution guard authorizes
+exactly the names the activation manager reports for the calling agent, so a
+dynamically attached tool gets the same scrutiny as an allow-listed one. Tool
+visibility is not an authorization boundary — a QA tool that writes must still
+enforce its own permissions.
 
 ### Writable per-user research space
 

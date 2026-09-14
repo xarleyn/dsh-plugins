@@ -401,6 +401,149 @@ remains an independent fail-closed backstop for asks that reach the approval
 service directly, and the tool allow-list, workspace fence and read-only sandbox
 still run on the resolved call.
 
+## Documents
+
+`documents` configures the document pipeline that backs the four agent tools
+`document_create`, `document_to_markdown`, `document_convert` and
+`document_inspect`. Markdown is the canonical source: the agent writes
+Markdown, the pipeline renders DOCX and/or PDF from it and can read either
+format back out as Markdown. The full design is in
+[`qa-surface-document-pipeline-spec.md`](./qa-surface-document-pipeline-spec.md).
+
+The tools are registered by the plugin, not by a preset, so they exist in the
+Host as soon as `documents.enabled` is true (the default). They become visible
+to a QA chat only when the deployment opts in:
+
+```yaml
+# profile settings of the QA deployment
+lockdown:
+  toolPolicy:
+    allow:
+      - document_create
+      - document_to_markdown
+      - document_convert
+      - document_inspect
+```
+
+One consequence is worth stating plainly: the pipeline writes its bundle with
+its own file-system calls, so `lockdown.sandboxMode: read-only` does not stop a
+document from being created. The allow-list is the switch that decides whether
+a chat can write documents at all, and the artifact root decides where they
+land.
+
+What the defaults assume:
+
+- `pandoc` and a headless `libreoffice` exist in the deployment image (or in
+  the container the plugin runs in). Missing executables are reported as
+  `BACKEND_UNAVAILABLE`, never worked around;
+- `docling` is reachable at `http://docling:5001` — the default of the
+  `docling-serve` container in `deploy/`, and the only backend that reads PDFs
+  and DOCX into Markdown. `documents.docling.enabled: false` turns extraction
+  off; a deployment that also enables `documents.markitdown` keeps a fast
+  fallback for text documents;
+- `typst` and `markitdown` are disabled. Requesting `pdfMode: typst` without
+  `documents.typst.enabled` is refused instead of silently rendering another
+  layout.
+
+Layout and storage:
+
+- artifacts are bundles under `<session workspace>/.qa/artifacts/documents/<id>`
+  and carry `manifest.json`, the Markdown source, the assets and the produced
+  files. With `accounts.perUserWorkspace` on, that directory is already inside
+  the user's own workspace, so one account cannot read another's documents;
+- `documents.storage.root` pins one absolute root instead (a mounted volume).
+  Retention cleanup only runs in that layout: with per-session directories the
+  plugin knows nothing about other workspaces and must not guess;
+- `documents.templates.root` points at a directory with a `manifest.yml`
+  listing reference DOCX files and Typst directories. A requested template that
+  is not registered fails the call — there is no silent fallback to another
+  layout.
+
+Security posture:
+
+- the agent chooses intent only. No tool parameter reaches a backend's command
+  line: the orchestrator builds every argv itself, so options such as
+  `--lua-filter`, an arbitrary `--resource-path` or `--pdf-engine-opt` are not
+  reachable at all;
+- inputs and assets are read only from the session workspace, the artifact root
+  and `documents.storage.allowedInputRoots`, after resolution and containment
+  checks (traversal, symlink escapes and `file://` references are refused);
+- remote image references are rejected rather than fetched, so a document
+  cannot make the renderer perform a network request;
+- macro-enabled documents (`.docm`, macro content types) and encrypted PDFs
+  are refused with their own codes;
+- the backends run with a filtered environment: ambient secrets and proxy
+  variables are not passed to them.
+
+Environment overrides apply on the way into the plugin and touch only the
+documented variables — `QA_DOCUMENTS_ENABLED`, `QA_DOCUMENTS_STORAGE_ROOT`,
+`QA_DOCUMENTS_TEMPLATES_ROOT`, `QA_DOCLING_BASE_URL`, `QA_DOCLING_TIMEOUT_MS`,
+`QA_PANDOC_EXECUTABLE`, `QA_LIBREOFFICE_EXECUTABLE`,
+`QA_MARKITDOWN_EXECUTABLE`, `QA_DOCUMENTS_OCR_LANGUAGES` and
+`QA_DOCUMENTS_MAX_INPUT_BYTES`. Everything else stays in the settings
+namespace, where the card's «Документы» section edits it.
+
+## Personal skills
+
+Every account can own skills, and they are ordinary Agent Skills: one
+directory per skill below the account's own workspace, with a `SKILL.md` the
+harness itself can read.
+
+```text
+<registered workspace>/.qa-users/<account UUID>/.dsh/skills/<name>/SKILL.md
+```
+
+```yaml
+accounts:
+  enabled: true
+  perUserWorkspace: true
+  skills:
+    enabled: true # on by default wherever it can work
+    relativeRoot: .dsh/skills # below the personal root; relative only
+    watch: true # follow hand edits and refresh the catalog
+    maxSkillBytes: 262144
+    allowResourceEditing: false # reserved; v1 edits SKILL.md only
+```
+
+- The section is off unless the deployment has accounts _and_
+  `perUserWorkspace`: the personal root is the account's own directory, so
+  there is no shared fallback to fall back to. The resolver reports the
+  effective value, and the settings dialog simply has no Навыки section when
+  it is off.
+- Two deployment facts decide whether the model ever sees a personal skill.
+  The preset must mount the skill tool package (`dsh-tool-skill`), and
+  `lockdown.toolPolicy.allow` must list `skill`: the harness publishes the
+  model-facing catalog only while that tool is visible in the agent's scope.
+  Invoking a skill as `/name` does not depend on the tool being allowed, so a
+  deployment that skips that entry sees the command work and the catalog stay
+  empty — the half-working state this paragraph exists to prevent.
+- The user edits skills in the same Настройки dialog as the profile: a
+  catalog with search, an editor with name, description, "when to use",
+  invocation flags, declared tools and a Markdown body, a tool picker over the
+  deployment's registry, and a preview of the exact file a save writes.
+- Skills reach the model through a provider this plugin registers
+  (`qa-user-skills`) rather than through the filesystem provider, whose
+  project root is the nearest `.git` and would climb above an account inside a
+  larger checkout. Discovery reads exactly `<cwd>/.dsh/skills` for a cwd that
+  matches the `.qa-users/<uuid>` layout, so no account can see another's
+  skills and an arbitrary cwd names nothing.
+- `allowed-tools` is stored as declared and never granted. A tool the QA scope
+  excludes is shown as unavailable and stays in the file; the effective set is
+  the intersection of what the session allows with what the skill declares.
+  Nothing in this plugin widens the session's own restriction.
+- `relativeRoot` may only be a relative path below the personal root; an
+  absolute one, a `..` segment or a drive letter is refused at configuration
+  time, and a symlinked skills directory is refused at use.
+- Saving is atomic (temporary file plus rename) and carries the revision the
+  editor read, so an edit made in another tab or by hand is never overwritten
+  in silence: the save is refused and the editor offers to reload. A manual
+  edit outside the editor is picked up by the watcher, and a deletion moves
+  the whole directory to `<personal root>/.dsh/skills-trash/`, keeping the
+  skill's resources with it.
+- The account id is hashed in the audit lines (`skill.create`,
+  `skill.update`, `skill.delete`, `skill.validation-failed`,
+  `skill.provider.invalidate-failed`); skill bodies never reach the log.
+
 ## Skill catalog scope
 
 The deployment's agent preset controls which skills the QA assistant sees.
@@ -409,7 +552,8 @@ The shipped `qa-research` preset mounts the skill filesystem with
 checkout's own `.dsh/skills`) and user-home skills stay out of the catalog,
 and skills enter only through plugin providers or an explicit
 `customSkillDirs` list in the preset. Keep the QA catalog to exactly the
-skills the audience is meant to use.
+skills the audience is meant to use. For a deployment with accounts, the
+personal skills above are the provider such a preset relies on.
 
 ## Deleting chats
 

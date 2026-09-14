@@ -1,5 +1,10 @@
 import { DEFAULT_QA_TEXT_EXTENSIONS } from "../attachment-rules.js";
+import { DEFAULT_QA_DOCUMENTS_CONFIG } from "../documents/defaults.js";
 import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
+import {
+  QA_SKILL_DEFAULT_RELATIVE_ROOT,
+  QA_SKILL_FILE_MAX_BYTES,
+} from "../personal-skills/skill-format.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 
@@ -85,10 +90,26 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         identities: Object.freeze([]),
         instructionsMaxLength: QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
       }),
+      skills: Object.freeze({
+        // Off, not because of an operator choice but because the canonical
+        // default deployment has no accounts and no per-account directory:
+        // `resolveAccounts` turns the intent back on wherever one exists.
+        enabled: false,
+        relativeRoot: QA_SKILL_DEFAULT_RELATIVE_ROOT,
+        watch: true,
+        maxSkillBytes: QA_SKILL_FILE_MAX_BYTES,
+        allowResourceEditing: false,
+      }),
     }),
     entry: Object.freeze({
       redirectNonLoopback: true,
       cookieBootstrap: true,
+    }),
+    tools: Object.freeze({
+      dynamicActivation: true,
+      activationSkill: "qa-surface",
+      activationMode: "all" as const,
+      activationPresets: Object.freeze([]),
     }),
     sources: Object.freeze({
       enabled: true,
@@ -136,5 +157,6 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxPending: 8,
       extensions: DEFAULT_QA_TEXT_EXTENSIONS,
     }),
+    documents: DEFAULT_QA_DOCUMENTS_CONFIG,
   },
 );

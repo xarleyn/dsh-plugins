@@ -1,9 +1,19 @@
+import type {
+  QaDocumentsConfig,
+  ResolvedQaDocumentsConfig,
+} from "./documents/config.js";
 import type { QaTurnSources } from "./provenance/types.js";
 
 export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
 export type QaSandboxMode = "read-only" | "workspace-write";
 export type QaApprovalPolicy = "never";
 export type QaToolPolicyMode = "allow-list";
+/**
+ * How the QA tool catalog is attached. `all` attaches the whole catalog once
+ * the activation skill loads; the field is reserved so a future grouped or
+ * searched mode needs no config redesign.
+ */
+export type QaToolActivationMode = "all";
 /**
  * How a tool policy `ask` resolves on an attested QA agent. `blocked` refuses
  * the call with the surface's own reason; `interactive` parks it until the
@@ -96,6 +106,123 @@ export interface QaOwnershipEntry {
   readonly userId: string;
   readonly displayName: string;
   readonly claimedAt: string;
+}
+
+/**
+ * Why one skill draft cannot be saved, or why it saves with a caveat. Codes
+ * stay stable on the wire; the browser owns the Russian copy.
+ */
+export type QaSkillDiagnosticCode =
+  | "name-required"
+  | "name-invalid"
+  | "name-mismatch"
+  | "description-required"
+  | "description-too-long"
+  | "when-to-use-too-long"
+  | "field-type-invalid"
+  | "invocation-never"
+  | "invocation-invalid"
+  | "invocation-legacy-key"
+  | "allowed-tools-invalid"
+  | "tool-name-invalid"
+  | "tool-unavailable"
+  | "tools-too-many"
+  | "file-too-large"
+  | "frontmatter-missing"
+  | "skill-file-missing"
+  | "frontmatter-invalid"
+  | "unknown-field"
+  | "resource-unsupported";
+
+/** One finding about a skill file or an editor draft. */
+export interface QaSkillDiagnostic {
+  readonly code: QaSkillDiagnosticCode;
+  readonly severity: "error" | "warning";
+  /** The editor field the message belongs to, or null for a file-wide one. */
+  readonly field: string | null;
+  /** The offending value: a tool name, a frontmatter key, a limit. */
+  readonly detail: string | null;
+}
+
+/**
+ * A JSON-representable frontmatter value. The editor receives the preserved
+ * foreign fields verbatim over the Host bridge, which carries JSON only, so
+ * the parser drops anything a YAML document can hold but JSON cannot.
+ */
+export type QaSkillJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly QaSkillJsonValue[]
+  | { readonly [key: string]: QaSkillJsonValue };
+
+/** One personal skill as the catalog list renders it. */
+export interface QaSkillSummary {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse: string | null;
+  readonly modelInvocable: boolean;
+  readonly userInvocable: boolean;
+  /** Declared tools, in canonical order; unknown ones included. */
+  readonly allowedTools: readonly string[];
+  /** Declared tools the current QA scope cannot use; still stored as declared. */
+  readonly unavailableTools: readonly string[];
+  /** Entries in the skill directory besides SKILL.md (references, assets, …). */
+  readonly resourceCount: number;
+  readonly valid: boolean;
+  readonly diagnostics: readonly QaSkillDiagnostic[];
+  readonly updatedAt: string | null;
+  /** sha256 of the stored bytes; an update must echo the revision it read. */
+  readonly revision: string;
+}
+
+/** One personal skill with everything the editor needs. */
+export interface QaSkillDocument extends QaSkillSummary {
+  readonly body: string;
+  /** Frontmatter the editor preserves but does not own. */
+  readonly extraFrontmatter: Readonly<Record<string, QaSkillJsonValue>>;
+  /** Absolute SKILL.md path; rendered read-only for advanced users. */
+  readonly sourcePath: string;
+  /** The canonical file the serializer writes, built from the parsed content. */
+  readonly preview: string;
+}
+
+/** One tool the picker can offer, with this deployment's availability. */
+export interface QaSkillToolDescriptor {
+  readonly name: string;
+  readonly description: string;
+  /** False when the QA session's own scope cannot use the tool. */
+  readonly available: boolean;
+}
+
+/** The editor's save payload. */
+export interface QaSkillDraftInput {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse: string | null;
+  readonly modelInvocable: boolean;
+  readonly userInvocable: boolean;
+  readonly allowedTools: readonly string[];
+  readonly body: string;
+  /** Echo of the revision the editor read; a stale one is refused. */
+  readonly expectedRevision: string | null;
+}
+
+/**
+ * The Host's answer about one unsaved draft: the file a save would write and
+ * the diagnostics it found. The editor shows its own subset immediately and
+ * this authoritative set as soon as it arrives.
+ */
+export interface QaSkillValidation {
+  readonly preview: string;
+  readonly diagnostics: readonly QaSkillDiagnostic[];
+}
+
+/** What one delete did: v1 keeps the directory recoverable. */
+export interface QaSkillRemoval {
+  readonly name: string;
+  readonly trashed: boolean;
 }
 
 export interface QaSourcesConfig {
@@ -193,6 +320,27 @@ export interface QaSurfaceConfig {
     readonly approvals?: QaApprovalInteraction;
     readonly questions?: QaQuestionInteraction;
   };
+  /**
+   * QA tool delivery. Dynamic activation keeps the QA tool schemas out of the
+   * model request until the activation skill has actually been loaded.
+   */
+  readonly tools?: {
+    /**
+     * `true` attaches the QA tools only after the activation skill loads;
+     * `false` attaches them to every managed agent at creation.
+     */
+    readonly dynamicActivation?: boolean;
+    /** The skill name whose successful load attaches the QA tools. */
+    readonly activationSkill?: string;
+    /** Accepted activation policy; only `all` is implemented. */
+    readonly activationMode?: QaToolActivationMode;
+    /**
+     * Agent presets whose sessions participate. An empty list leaves the gate
+     * open, which is only safe when this plugin serves one agent composition —
+     * name the QA preset in any deployment that composes more than one.
+     */
+    readonly activationPresets?: readonly string[];
+  };
   readonly lockdown?: {
     readonly enabled?: boolean;
     readonly enforceFixedAgentPreset?: boolean;
@@ -230,6 +378,20 @@ export interface QaSurfaceConfig {
      * The child directory is not registered as a separate DSH workspace.
      */
     readonly perUserWorkspace?: boolean;
+    /**
+     * Personal Skills: the user's own `.dsh/skills` below their QA workspace,
+     * surfaced through a skill provider this plugin owns.
+     */
+    readonly skills?: {
+      readonly enabled?: boolean;
+      /** Directory below the personal root; relative, never escaping it. */
+      readonly relativeRoot?: string;
+      /** Follow manual file edits and refresh the DSH catalog. */
+      readonly watch?: boolean;
+      readonly maxSkillBytes?: number;
+      /** Reserved for the resource editor; v1 edits SKILL.md only. */
+      readonly allowResourceEditing?: boolean;
+    };
     /** Self-declared profile: storage, the owner's form, and prompt injection. */
     readonly profile?: {
       readonly enabled?: boolean;
@@ -252,6 +414,8 @@ export interface QaSurfaceConfig {
   };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
+  /** Document pipeline: creation, conversion and extraction (see documents/). */
+  readonly documents?: QaDocumentsConfig;
 }
 
 /** What a QA visitor may attach to one message. */
@@ -352,10 +516,28 @@ export interface ResolvedQaSurfaceConfig {
       readonly identities: readonly QaAccountIdentityField[];
       readonly instructionsMaxLength: number;
     };
+    /**
+     * Personal Skills. Resolution turns the flag off on any deployment that
+     * cannot give every account its own directory: the storage root is the
+     * account's own workspace, so there is no safe shared fallback.
+     */
+    skills: {
+      readonly enabled: boolean;
+      readonly relativeRoot: string;
+      readonly watch: boolean;
+      readonly maxSkillBytes: number;
+      readonly allowResourceEditing: boolean;
+    };
   };
   readonly entry: {
     readonly redirectNonLoopback: boolean;
     readonly cookieBootstrap: boolean;
+  };
+  readonly tools: {
+    readonly dynamicActivation: boolean;
+    readonly activationSkill: string;
+    readonly activationMode: QaToolActivationMode;
+    readonly activationPresets: readonly string[];
   };
   readonly sources: {
     readonly enabled: boolean;
@@ -405,6 +587,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly maxPending: number;
     readonly extensions: readonly string[];
   };
+  readonly documents: ResolvedQaDocumentsConfig;
 }
 
 export interface QaSourceFilePreview {

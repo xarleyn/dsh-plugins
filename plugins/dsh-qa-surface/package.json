@@ -125,6 +125,7 @@
     "@deepseek-ai/dsh-permission-presets": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-skill": "catalog:dsh",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh",
     "@deepseek-ai/dsh-tools": "catalog:dsh",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
@@ -134,6 +135,7 @@
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -156,8 +158,10 @@
     "@deepseek-ai/dsh-host-webserver": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-permission-presets": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-scope": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-skill": "catalog:dsh-dev",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh-dev",
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",

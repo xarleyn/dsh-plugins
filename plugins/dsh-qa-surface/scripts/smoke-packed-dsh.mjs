@@ -280,7 +280,19 @@ async function runBrowserPass({
     });
     await page.goto(authenticatedUrl);
     await page.goto(`${origin}/qa`);
-    await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    try {
+      await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    } catch (error) {
+      // The surface never mounted: the browser console is the only place the
+      // reason exists, so it travels with the failure instead of behind it.
+      throw new Error(
+        [
+          `the QA surface did not mount: ${String(error)}`,
+          `console: ${errors.join(" | ") || "(nothing)"}`,
+        ].join("\n"),
+        { cause: error },
+      );
+    }
     const welcomeStorageKey = "dsh-qa-surface.session:v1:/qa:welcome-notice";
     const welcome = page.getByRole("dialog", {
       name: "Перед началом тестирования",
