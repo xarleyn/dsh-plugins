@@ -18,6 +18,7 @@ const required = [
   "lib/personal-skills/service.js",
   "lib/personal-skills/provider.js",
   "lib/personal-skills/skill-file.js",
+  "lib/personal-skills/skill-format.js",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
   "scripts/repair-session-events.mjs",
@@ -133,6 +134,7 @@ for (const method of [
   "skillsUpdate",
   "skillsRemove",
   "skillsTools",
+  "skillsValidate",
 ]) {
   assert.match(remote, new RegExp(`qaSurface/${method}`, "u"));
 }
@@ -259,6 +261,18 @@ assert.doesNotMatch(client, /toolResult\.content/u);
 assert.doesNotMatch(client, /\.command\(/u);
 assert.doesNotMatch(client, /\.rename\(/u);
 assert.doesNotMatch(client, /sessions\.delete|deleteSession/u);
+// The DSH module loader has no Node builtins and no YAML: the browser half of
+// the skill format must stay free of both, or the whole surface fails to
+// mount the moment a dependency reaches for `process`.
+for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
+  for (const quote of ['"', "'"]) {
+    assert(
+      !client.includes(`require(${quote}${builtin}${quote})`),
+      `client bundle must not require ${builtin}`,
+    );
+  }
+}
+assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
 // The settings card (AGENTS.md shell contract): the canonical shell rules and
 // chevron path, the keyed `settings.plugin.item` registration under the

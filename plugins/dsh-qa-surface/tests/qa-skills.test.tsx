@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { QaSkillCatalog } from "../src/client/user-settings/SkillCatalog.js";
 import { QaSkillEditor } from "../src/client/user-settings/SkillEditor.js";
 import { QaSkillToolPicker } from "../src/client/user-settings/SkillToolPicker.js";
+import type { QaSkillValidationState } from "../src/client/user-settings/SkillEditor.js";
 import { QaSkillsSettingsPage } from "../src/client/user-settings/SkillsSettingsPage.js";
 import {
   diagnosticMessage,
@@ -30,6 +31,26 @@ const TOOLS: readonly QaSkillToolDescriptor[] = [
   { name: "write", description: "Write a file", available: false },
   { name: "jira_transition", description: "", available: false },
 ];
+
+/** What the Host answers about the draft; tests set the interesting parts. */
+function validation(
+  overrides: Partial<QaSkillValidationState> = {},
+): QaSkillValidationState {
+  return {
+    preview: `---
+name: api-testing
+description: Тестирование.
+---
+
+1. Шаг
+`,
+    diagnostics: [],
+    pending: false,
+    ...overrides,
+  };
+}
+
+const onDraftChange = vi.fn();
 
 function summary(overrides: Partial<QaSkillSummary> = {}): QaSkillSummary {
   return {
@@ -74,10 +95,12 @@ function api(
   readonly created: unknown[];
   readonly updated: unknown[];
   readonly removed: unknown[];
+  readonly validated: unknown[];
 } {
   const created: unknown[] = [];
   const updated: unknown[] = [];
   const removed: unknown[] = [];
+  const validated: unknown[] = [];
   // The catalog follows the writes, the way the Host's does.
   const state = { skills: [...(options.skills ?? [])] };
   const documents = options.documents ?? {};
@@ -85,6 +108,7 @@ function api(
     created,
     updated,
     removed,
+    validated,
     api: {
       list: async () =>
         options.listFails === undefined
@@ -109,6 +133,19 @@ function api(
         return { ok: true, value: { name, trashed: true } };
       },
       tools: async () => ({ ok: true, value: options.tools ?? TOOLS }),
+      validate: async (_name, input) => {
+        validated.push(input);
+        return {
+          ok: true,
+          value: {
+            preview: `---
+name: ${input.name}
+---
+`,
+            diagnostics: [],
+          },
+        };
+      },
     },
   };
 }
@@ -155,7 +192,7 @@ describe("skill catalog copy", () => {
 describe("skill draft projection", () => {
   it("validates a draft without a Host round trip", () => {
     const draft = { ...draftFromDocument(skillDocument()), name: "Bad Name" };
-    const codes = draftDiagnostics(draft, {}, { availableTools: ["read"] }).map(
+    const codes = draftDiagnostics(draft, { availableTools: ["read"] }).map(
       (entry) => entry.code,
     );
     expect(codes).toContain("name-invalid");
@@ -166,13 +203,9 @@ describe("skill draft projection", () => {
       ...draftFromDocument(skillDocument()),
       allowedTools: ["read", "bash"],
     };
-    const codes = draftDiagnostics(
-      draft,
-      {},
-      {
-        availableTools: ["read"],
-      },
-    ).map((entry) => entry.code);
+    const codes = draftDiagnostics(draft, {
+      availableTools: ["read"],
+    }).map((entry) => entry.code);
     expect(codes).toContain("tool-unavailable");
   });
 
@@ -355,6 +388,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument({ allowedTools: ["read", "write"] })}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -387,6 +422,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="create"
         document={null}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -423,6 +460,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument()}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -452,6 +491,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument()}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -464,14 +505,15 @@ describe("skill editor", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Показать" }));
-    const preview = screen.getByText((_, element) =>
-      element?.tagName === "PRE" &&
-      element.textContent?.includes("license: MIT")
-        ? true
-        : false,
+    // The panel renders what the Host serialized, byte for byte; the stored
+    // foreign frontmatter is shown beside it as preserved.
+    expect(screen.getByText(/license/u).textContent).toContain("MIT");
+    const preview = screen.getByText(
+      (_, element) =>
+        element?.tagName === "PRE" &&
+        (element.textContent?.includes("description: Тестирование.") ?? false),
     );
     expect(preview.textContent).toContain("name: api-testing");
-    expect(preview.textContent).toContain("user-invocable: true");
     expect(
       screen.getByText("/workspace/.dsh/skills/api-testing/SKILL.md"),
     ).toBeTruthy();
@@ -483,6 +525,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument()}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -513,6 +557,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument()}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}
@@ -539,6 +585,8 @@ describe("skill editor", () => {
       <QaSkillEditor
         mode="edit"
         document={skillDocument()}
+        validation={validation()}
+        onDraftChange={onDraftChange}
         tools={TOOLS}
         toolsError={null}
         saving={false}

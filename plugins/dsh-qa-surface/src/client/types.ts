@@ -23,6 +23,7 @@ import type {
   QaSkillRemoval,
   QaSkillSummary,
   QaSkillToolDescriptor,
+  QaSkillValidation,
   QaSourceFilePreview,
   QaTurnSources,
   QaWhoamiResult,
@@ -213,6 +214,11 @@ export interface QaSkillApi {
   ): Promise<
     RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
   >;
+  skillsValidate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
 }
 
 /** The skill API with the account token already bound at the call site. */
@@ -229,6 +235,10 @@ export interface QaBoundSkillApi {
     expectedRevision: string | null,
   ): Promise<RemoteResult<QaSkillRemoval>>;
   tools(): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
+  validate(
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
 }
 
 /** Account remotes exposed by the plugin's own typert namespace. */

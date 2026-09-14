@@ -17,7 +17,7 @@ import {
   QA_SKILL_ENABLED_BY_DEFAULT,
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
-} from "./personal-skills/skill-file.js";
+} from "./personal-skills/skill-format.js";
 import type { QaSurfaceConfig } from "./types.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host

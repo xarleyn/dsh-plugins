@@ -8,7 +8,7 @@ import {
 import path from "node:path";
 import { canonicalCandidate, pathIsInside } from "../user-workspace.js";
 import { QaPersonalSkillError } from "./errors.js";
-import { skillNameProblem, skillRelativeRootSegments } from "./skill-file.js";
+import { skillNameProblem, skillRelativeRootSegments } from "./skill-format.js";
 
 /**
  * Filesystem boundary of the personal-skills feature.

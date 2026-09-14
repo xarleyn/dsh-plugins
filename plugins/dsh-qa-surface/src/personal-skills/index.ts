@@ -14,14 +14,20 @@ export {
   parseSkillFile,
   serializeSkillFile,
   skillFileBody,
-  skillFileBytes,
   skillNameProblem,
-  skillRelativeRootProblem,
   toJsonValue,
+  type QaSkillFileContents,
+  type QaSkillFileDraft,
+  type QaSkillFileParse,
+} from "./skill-file.js";
+export {
+  skillFileBytes,
+  skillRelativeRootProblem,
   skillRelativeRootSegments,
   validateSkillDraft,
   QA_SKILL_DEFAULT_RELATIVE_ROOT,
   QA_SKILL_DESCRIPTION_MAX,
+  QA_SKILL_ENABLED_BY_DEFAULT,
   QA_SKILL_FILE_MAX_BYTES,
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
@@ -29,11 +35,8 @@ export {
   QA_SKILL_NAME_MAX,
   QA_SKILL_NAME_PATTERN,
   QA_SKILL_WHEN_TO_USE_MAX,
-  type QaSkillFileContents,
-  type QaSkillFileDraft,
-  type QaSkillFileParse,
   type QaSkillValidationInput,
-} from "./skill-file.js";
+} from "./skill-format.js";
 export {
   QA_USER_SKILLS_PROVIDER,
   QA_USER_SKILLS_RANK,

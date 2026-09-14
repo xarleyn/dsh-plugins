@@ -24,9 +24,11 @@ import type {
   QaSkillDiagnostic,
   QaSkillDocument,
   QaSkillDraftInput,
+  QaSkillJsonValue,
   QaSkillRemoval,
   QaSkillSummary,
   QaSkillToolDescriptor,
+  QaSkillValidation,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { QaPersonalSkillError } from "./errors.js";
@@ -191,6 +193,36 @@ export class QaPersonalSkills {
     return this.document(stored, this.availableTools());
   }
 
+  /**
+   * Check one unsaved draft without touching storage: the serializer is the
+   * one a Save uses and the preserved frontmatter is the stored file's, so the
+   * preview the editor shows is byte-for-byte the file that save would write,
+   * and the diagnostics carry the operator's own limit (which the browser
+   * cannot know). `name` is the stored skill being edited, or null to create.
+   */
+  validate(
+    context: QaPersonalSkillContext,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): QaSkillValidation {
+    const config = this.options.getConfig();
+    const prepared = this.prepareWrite(input, config, false);
+    const extraFrontmatter =
+      name === null ? {} : this.storedFrontmatter(this.rootsFor(context), name);
+    const text = serializeSkillFile({ ...prepared.draft, extraFrontmatter });
+    return {
+      preview: text,
+      diagnostics: validateSkillDraft({
+        ...prepared.draft,
+        sizeBytes: skillFileBytes(text),
+        maxBytes: config.accounts.skills.maxSkillBytes,
+        availableTools: [...this.availableTools()],
+        rejectedTools: prepared.rejectedTools,
+        extraFieldNames: Object.keys(extraFrontmatter),
+      }),
+    };
+  }
+
   /** Whether one account stores a skill under this name. */
   has(context: QaPersonalSkillContext, name: string): boolean {
     try {
@@ -207,7 +239,7 @@ export class QaPersonalSkills {
     input: QaSkillDraftInput,
   ): QaSkillDocument {
     const roots = this.rootsFor(context);
-    const prepared = this.prepareWrite(input, this.options.getConfig());
+    const prepared = this.prepareWrite(input, this.options.getConfig(), true);
     ensureSkillRoots(roots);
     const directory = skillDirectory(roots, prepared.name);
     if (directoryExists(directory)) {
@@ -237,7 +269,7 @@ export class QaPersonalSkills {
     input: QaSkillDraftInput,
   ): QaSkillDocument {
     const roots = this.rootsFor(context);
-    const prepared = this.prepareWrite(input, this.options.getConfig());
+    const prepared = this.prepareWrite(input, this.options.getConfig(), true);
     const current = this.load(roots, name);
     if (!current.exists) {
       throw new QaPersonalSkillError(
@@ -378,6 +410,14 @@ export class QaPersonalSkills {
     return [...names];
   }
 
+  /** The foreign frontmatter a save must keep, read from the stored file. */
+  private storedFrontmatter(
+    roots: QaSkillRoots,
+    name: string,
+  ): Readonly<Record<string, QaSkillJsonValue>> {
+    return this.load(roots, name).contents?.extraFrontmatter ?? {};
+  }
+
   /** Read one skill directory, tolerating every failure the editor must see. */
   private load(roots: QaSkillRoots, directoryName: string): QaStoredSkill {
     const absent: QaStoredSkill = {
@@ -499,43 +539,29 @@ export class QaPersonalSkills {
     return { count: entries.length, diagnostics };
   }
 
-  /** Validate and normalize one editor draft into the text to write. */
+  /**
+   * Normalize one editor draft into the file to write. `strict` is the
+   * difference between a save and a check: a save refuses a draft the Host
+   * will not store, while a check hands the same problems back as diagnostics,
+   * because that is what the editor asked for.
+   */
   private prepareWrite(
     input: QaSkillDraftInput,
     config: ResolvedQaSurfaceConfig,
+    strict: boolean,
   ): {
     readonly name: string;
     readonly text: string;
     readonly draft: QaSkillFileDraft;
+    readonly rejectedTools: readonly string[];
   } {
     const name = typeof input.name === "string" ? input.name.trim() : "";
-    if (skillNameProblem(name) !== null) {
-      throw new QaPersonalSkillError(
-        "skill-name-invalid",
-        "the skill name must be lowercase kebab-case",
-      );
-    }
     const description =
       typeof input.description === "string" ? input.description.trim() : "";
-    if (description === "") {
-      throw new QaPersonalSkillError(
-        "skill-invalid",
-        "the skill description must not be empty",
-      );
-    }
-    const normalized = normalizeAllowedTools(input.allowedTools);
-    if (normalized === undefined || normalized.rejected.length > 0) {
-      throw new QaPersonalSkillError(
-        "skill-invalid",
-        `unusable tool name(s): ${normalized?.rejected.join(", ") ?? "unknown"}`,
-      );
-    }
-    if (normalized.tools.length > QA_SKILL_MAX_TOOLS) {
-      throw new QaPersonalSkillError(
-        "skill-invalid",
-        `at most ${QA_SKILL_MAX_TOOLS} tools may be declared`,
-      );
-    }
+    const normalized = normalizeAllowedTools(input.allowedTools) ?? {
+      tools: [],
+      rejected: [],
+    };
     const whenToUse =
       typeof input.whenToUse === "string" && input.whenToUse.trim() !== ""
         ? input.whenToUse.trim()
@@ -551,6 +577,34 @@ export class QaPersonalSkills {
       body: typeof input.body === "string" ? input.body : "",
     };
     const text = serializeSkillFile(draft);
+    if (!strict) {
+      return { name, text, draft, rejectedTools: normalized.rejected };
+    }
+
+    if (skillNameProblem(name) !== null) {
+      throw new QaPersonalSkillError(
+        "skill-name-invalid",
+        "the skill name must be lowercase kebab-case",
+      );
+    }
+    if (description === "") {
+      throw new QaPersonalSkillError(
+        "skill-invalid",
+        "the skill description must not be empty",
+      );
+    }
+    if (normalized.rejected.length > 0) {
+      throw new QaPersonalSkillError(
+        "skill-invalid",
+        `unusable tool name(s): ${normalized.rejected.join(", ")}`,
+      );
+    }
+    if (normalized.tools.length > QA_SKILL_MAX_TOOLS) {
+      throw new QaPersonalSkillError(
+        "skill-invalid",
+        `at most ${QA_SKILL_MAX_TOOLS} tools may be declared`,
+      );
+    }
     const blocking = validateSkillDraft({
       ...draft,
       sizeBytes: skillFileBytes(text),
@@ -579,7 +633,7 @@ export class QaPersonalSkills {
         name,
       });
     }
-    return { name, text, draft };
+    return { name, text, draft, rejectedTools: [] };
   }
 
   /** Move a renamed skill's whole directory, resources included. */

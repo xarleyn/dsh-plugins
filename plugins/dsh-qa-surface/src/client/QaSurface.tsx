@@ -285,6 +285,7 @@ export function QaSurface(props: QaSurfaceProps) {
           ? { ok: true, value: result.value.tools }
           : { ok: false, error: result.error };
       },
+      validate: (name, input) => skillApi.skillsValidate(token(), name, input),
     };
   }, [props.skillApi, accounts]);
   const boundSourceApi = useMemo(

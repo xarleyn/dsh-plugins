@@ -203,6 +203,16 @@ export interface QaSkillDraftInput {
   readonly expectedRevision: string | null;
 }
 
+/**
+ * The Host's answer about one unsaved draft: the file a save would write and
+ * the diagnostics it found. The editor shows its own subset immediately and
+ * this authoritative set as soon as it arrives.
+ */
+export interface QaSkillValidation {
+  readonly preview: string;
+  readonly diagnostics: readonly QaSkillDiagnostic[];
+}
+
 /** What one delete did: v1 keeps the directory recoverable. */
 export interface QaSkillRemoval {
   readonly name: string;

@@ -824,6 +824,79 @@ describe("personal skill service", () => {
     expect(names.indexOf("read")).toBeLessThan(names.indexOf("write"));
   });
 
+  it("checks a draft without writing, with the stored frontmatter and limit", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "qa-skills-validate-"));
+    const { service, context } = serviceFor({ workspace, maxSkillBytes: 4096 });
+    expect(service.list(context)).toHaveLength(0);
+    // A check creates nothing: the account directory stays empty.
+    const preview = service.validate(context, null, {
+      name: "checked-only",
+      description: "Checked but never saved.",
+      whenToUse: null,
+      modelInvocable: true,
+      userInvocable: true,
+      allowedTools: ["read"],
+      body: "Body.",
+      expectedRevision: null,
+    });
+    expect(preview.preview).toContain("name: checked-only");
+    expect(preview.preview).toContain("allowed-tools: read");
+    expect(preview.preview).toContain("Body.");
+    expect(service.list(context)).toHaveLength(0);
+
+    // An edited skill keeps the fields the editor does not own, exactly as a
+    // save would, and the operator's own ceiling is what the size rule uses.
+    service.create(context, {
+      name: "existing",
+      description: "Existing.",
+      whenToUse: null,
+      modelInvocable: true,
+      userInvocable: true,
+      allowedTools: [],
+      body: "Body.",
+      expectedRevision: null,
+    });
+    const file = service.get(context, "existing").sourcePath;
+    writeFileSync(
+      file,
+      skillText(["name: existing", "description: Existing.", "license: MIT"]),
+    );
+    const checked = service.validate(context, "existing", {
+      name: "existing",
+      description: "Renamed description.",
+      whenToUse: null,
+      modelInvocable: true,
+      userInvocable: true,
+      allowedTools: [],
+      body: "y".repeat(5000),
+      expectedRevision: null,
+    });
+    expect(checked.preview).toContain("license: MIT");
+    expect(checked.diagnostics.map((entry) => entry.code)).toContain(
+      "file-too-large",
+    );
+    expect(checked.preview).toContain("description: Renamed description.");
+
+    // The draft's own problems come back as diagnostics, not as an exception.
+    const invalid = service.validate(context, null, {
+      name: "Not Valid",
+      description: "",
+      whenToUse: null,
+      modelInvocable: true,
+      userInvocable: true,
+      allowedTools: ["read ..\escape"],
+      body: "",
+      expectedRevision: null,
+    });
+    expect(invalid.diagnostics.map((entry) => entry.code)).toEqual(
+      expect.arrayContaining([
+        "name-invalid",
+        "description-required",
+        "tool-name-invalid",
+      ]),
+    );
+  });
+
   it("refuses an invalid relative root at configuration time", () => {
     expect(() =>
       resolveConfig({
