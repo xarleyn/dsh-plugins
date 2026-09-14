@@ -1,3 +1,105 @@
+## 0.5.0 (2026-09-14)
+
+### 🚀 Features
+
+- Answer a composed tool gate's `ask` in the QA view. `interaction.approvals` ([570d010](https://github.com/xarleyn/dsh-plugins/commit/570d010))
+  now takes `blocked` (default) or `interactive`: an interactive deployment parks
+  the call on the Host, lists it over the composer with the gate's own reason and
+  the two stock outcomes (Reject / Allow once), and applies the operator's answer.
+  A request is Host state, so it survives a page reload, and the turn's own
+  cancellation settles it when it is never answered. The QA listener is owned by
+  the plugin context, so it also wraps delegated children, acts only on attested
+  chats, and never approves anything without a person — the pinned
+  `approval=never` policy stays the fail-closed backstop.
+
+  `interaction.questions` does the same for `ask_user_question`: `unsupported`
+  (default) refuses the request with a reason the model can act on, because the
+  stock DSH browser answerer sits behind the QA overlay where nobody can reach it,
+  while `interactive` parks the request as a form over the composer — one question
+  at a time with a pager, radio/checkbox options, free text, and explicit skip and
+  cancel. A skipped question is reported as skipped, never guessed. The tool
+  itself still has to be mounted by the deployment preset and named in the tool
+  allow-list.
+
+  The same listener keeps refusing a parked `ask` with the QA reason while
+  approvals are blocked, so a headless `approval=never` decision is no longer
+  misreported as a user rejection. The per-user path guard supports absolute
+  `sharedReadOnlyRoots` for reviewed filesystem read tools while keeping every
+  write inside the account directory, and no longer rejects read-only `dsh_git_*`
+  tools by name; repository selection remains the responsibility of the
+  separately configured Git plugin.
+
+- Let a deployment record sources the model reports as facts. A source reaches a ([b7621a8](https://github.com/xarleyn/dsh-plugins/commit/b7621a8))
+  turn either from a tool call the surface observed or from the `qa_report_sources`
+  tool, and the second channel refused more than it looked like it did. Only a
+  delegated run could report at all, so the QA agent reaching for the tool itself
+  was answered with `Recorded 0 source(s)`; and every entry needed a path or a URL
+  that survived normalization, so a source describing a fact — the kind `other`,
+  a title, a snippet, a note that it came from the user's profile rather than from
+  a search — was dropped even inside a run.
+
+  The new `sources.subagents.validateReportedSources` flag (default true, so the
+  shipped behaviour does not change) turns both checks off. A report from the QA
+  agent lands in that session's current turn, exactly where a tool-derived source
+  of the same turn would, and an unaddressed entry keeps the type, title and
+  snippet the model wrote under the identity `reported:<kind>:<title>`. A URL the
+  normalizer cannot parse is kept verbatim instead of discarded, and a missing
+  title falls back to the last path or URL segment. An entry with neither a title
+  nor an address is still dropped: there would be nothing to render in the source
+  panel, and the file-preview capability still follows a path alone.
+
+  The switch ships as a toggle in the settings card's «Источники» section, under
+  «Субагенты», beside the report channel it governs.
+
+- Give the accounts CLI a way to reset a password. The store keeps only scrypt ([16f6448](https://github.com/xarleyn/dsh-plugins/commit/16f6448))
+  hashes, so the `qa-accounts` command set could create an account and change its
+  role, but nothing could put a password back: a QA user who forgot theirs was
+  answered by an operator hand-editing `qa-accounts.json`, and dropping the entry
+  to re-add it would have minted a new account id and stranded every chat that
+  account owned in the ownership map.
+
+  `qa-accounts set-password <email> --password-stdin` rehashes in place. The
+  account keeps its id, so its profile and its claimed chats stay its own, while
+  the password it replaces and every token minted under it stop working: the token
+  version bumps, exactly as it does on `disable` and `revoke`, so a reset doubles
+  as the single-step answer to a leaked credential. The address is validated like
+  `add` — a weak password is refused with `weak-password` and leaves the stored
+  one untouched — and the password is read from stdin, one line, so it never lands
+  in shell history.
+
+  The length rule now lives in one shared `validatePassword`, used by
+  registration, `addUser` and the reset, so a password good enough to register is
+  exactly the one an operator can put back. `docs/CONFIGURATION.md` and the
+  accounts spec list the new command alongside the rest of the operator set.
+
+
+### 🩹 Fixes
+
+- Keep a QA chat openable after the Host restarts. DSH materializes an agent on ([7909005](https://github.com/xarleyn/dsh-plugins/commit/7909005))
+  demand — a session's journal opens straight from persistence, and only
+  Agent-bound work (a prompt, a model selection, an upload) resolves or resumes
+  one — so a chat from an earlier Host run had a readable transcript and no agent.
+  Attestation, the first thing in this surface that needs an agent, refused it
+  with `agent-unavailable`, and every restored chat was unopenable until something
+  else in the Host happened to wake it: the sidebar answered «Не удалось открыть
+  этот чат.», and the startup restore abandoned the previous chat and bootstrapped
+  a fresh session instead.
+
+  Attestation now resumes it. `secureSession` resolves the session through the
+  Host's session controller before the policy checks, composing the preset that
+  session recorded — the same composition a stock prompt would produce, so a chat
+  composed outside the QA preset still lands on the existing mismatch refusals.
+  The policy is pinned on the resumed agent, and a resume that cannot produce an
+  agent (a recorded preset that no longer mounts, a log the Host refuses to read)
+  still refuses, now with the composition detail logged Host-side under
+  `session.agent-resolve-rejected`. The browser console gained an operator hint
+  for `agent-unavailable` instead of the generic "facts are in the Host logs"
+  fallback.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.4.0 (2026-09-13)
 
 ### 🚀 Features
