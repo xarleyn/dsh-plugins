@@ -22,7 +22,10 @@ export interface ScopeConfinedArgv {
 }
 
 export interface ScopeSandboxProvider {
-  confine(argv: readonly string[], policy: ScopeSandboxPolicy): ScopeConfinedArgv;
+  confine(
+    argv: readonly string[],
+    policy: ScopeSandboxPolicy,
+  ): ScopeConfinedArgv;
 }
 
 export type BwrapProbeExecutor = (argv: readonly string[]) => boolean;
@@ -32,9 +35,13 @@ export const SESSION_SCOPE_POLICY = Symbol.for("dsh-session-scope/policy");
 
 const BWRAP_READ_ONLY_PROFILE = [
   "bwrap",
-  "--ro-bind", "/", "/",
-  "--dev", "/dev",
-  "--proc", "/proc",
+  "--ro-bind",
+  "/",
+  "/",
+  "--dev",
+  "/dev",
+  "--proc",
+  "/proc",
   "--die-with-parent",
 ] as const;
 const BWRAP_STAGING_ROOT = "/dev/.dsh-session-scope";
@@ -47,12 +54,16 @@ function unavailable(detail: string): never {
 }
 
 function normalizedAbsolute(path: string, label: string): string {
-  if (!posix.isAbsolute(path) || path.includes("\0")) unavailable(`invalid ${label}`);
+  if (!posix.isAbsolute(path) || path.includes("\0"))
+    unavailable(`invalid ${label}`);
   return posix.normalize(path);
 }
 
 function sameArray(left: readonly string[], right: readonly string[]): boolean {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 function expectedProfile(policy: ScopeSandboxPolicy): string[] {
@@ -60,16 +71,22 @@ function expectedProfile(policy: ScopeSandboxPolicy): string[] {
   if (policy.mode === "workspace-write") {
     return [
       ...BWRAP_READ_ONLY_PROFILE,
-      "--tmpfs", "/tmp",
-      "--bind", policy.workspaceRoot, policy.workspaceRoot,
+      "--tmpfs",
+      "/tmp",
+      "--bind",
+      policy.workspaceRoot,
+      policy.workspaceRoot,
     ];
   }
-  return unavailable("the active permission mode cannot be confined by the DSH bwrap provider");
+  return unavailable(
+    "the active permission mode cannot be confined by the DSH bwrap provider",
+  );
 }
 
 function separatorIndex(argv: readonly string[]): number {
   const index = argv.indexOf("--");
-  if (index < 0 || index === argv.length - 1) unavailable("the sandbox provider returned an invalid bwrap invocation");
+  if (index < 0 || index === argv.length - 1)
+    unavailable("the sandbox provider returned an invalid bwrap invocation");
   return index;
 }
 
@@ -81,7 +98,10 @@ export function isSupportedBwrapInvocation(
   if (confined.enforcement !== "full") return false;
   try {
     const separator = separatorIndex(confined.argv);
-    return sameArray(confined.argv.slice(0, separator), expectedProfile(policy));
+    return sameArray(
+      confined.argv.slice(0, separator),
+      expectedProfile(policy),
+    );
   } catch {
     return false;
   }
@@ -96,7 +116,10 @@ export function detectBwrapIsolation(
   workspaceRoot: string,
   platform = process.platform,
   execute: BwrapProbeExecutor = (argv) => {
-    const result = spawnSync(argv[0], argv.slice(1), { stdio: "ignore", timeout: 5_000 });
+    const result = spawnSync(argv[0], argv.slice(1), {
+      stdio: "ignore",
+      timeout: 5_000,
+    });
     return result.error === undefined && result.status === 0;
   },
 ): boolean {
@@ -105,12 +128,17 @@ export function detectBwrapIsolation(
     const policy: ScopeSandboxPolicy = { mode: "read-only", workspaceRoot };
     const confined = provider.confine(["true"], policy);
     if (!isSupportedBwrapInvocation(confined, policy)) return false;
-    const probe = confineIsolatedBwrap(confined, policy, {
-      mode: "isolated",
+    const probe = confineIsolatedBwrap(
+      confined,
+      policy,
+      {
+        mode: "isolated",
+        workspaceRoot,
+        roots: [],
+        navigationRoots: [workspaceRoot],
+      },
       workspaceRoot,
-      roots: [],
-      navigationRoots: [workspaceRoot],
-    }, workspaceRoot);
+    );
     return execute(probe.argv);
   } catch {
     return false;
@@ -127,17 +155,29 @@ function visibleWorkingDirectory(
   roots: readonly string[],
 ): string {
   const workdir = normalizedAbsolute(
-    requested === undefined ? workspaceRoot : posix.resolve(workspaceRoot, requested),
+    requested === undefined
+      ? workspaceRoot
+      : posix.resolve(workspaceRoot, requested),
     "process working directory",
   );
-  if (!isWithin(workdir, workspaceRoot)) unavailable("the process working directory is outside the session workspace");
+  if (!isWithin(workdir, workspaceRoot))
+    unavailable(
+      "the process working directory is outside the session workspace",
+    );
   const content = roots.some((root) => isWithin(workdir, root));
-  const navigation = workdir === workspaceRoot || roots.some((root) => isWithin(root, workdir));
-  if (!content && !navigation) unavailable("the process working directory is outside the active session scope");
+  const navigation =
+    workdir === workspaceRoot || roots.some((root) => isWithin(root, workdir));
+  if (!content && !navigation)
+    unavailable(
+      "the process working directory is outside the active session scope",
+    );
   return workdir;
 }
 
-function mountPointDirectories(workspaceRoot: string, roots: readonly string[]): string[] {
+function mountPointDirectories(
+  workspaceRoot: string,
+  roots: readonly string[],
+): string[] {
   const result: string[] = [];
   const seen = new Set<string>();
   for (const root of roots) {
@@ -166,21 +206,37 @@ export function confineIsolatedBwrap(
   requestedWorkingDirectory?: string,
 ): ScopeConfinedArgv {
   if (scope.mode !== "isolated") return confined;
-  if (confined.enforcement !== "full") unavailable("the selected sandbox backend reports partial enforcement");
+  if (confined.enforcement !== "full")
+    unavailable("the selected sandbox backend reports partial enforcement");
 
-  const workspaceRoot = normalizedAbsolute(scope.workspaceRoot, "session workspace");
-  if (workspaceRoot === "/") unavailable("the filesystem root cannot be used as an isolated workspace");
-  if (isWithin(workspaceRoot, "/dev")) unavailable("a workspace under /dev cannot be isolated safely");
-  if (normalizedAbsolute(policy.workspaceRoot, "sandbox workspace") !== workspaceRoot) {
+  const workspaceRoot = normalizedAbsolute(
+    scope.workspaceRoot,
+    "session workspace",
+  );
+  if (workspaceRoot === "/")
+    unavailable("the filesystem root cannot be used as an isolated workspace");
+  if (isWithin(workspaceRoot, "/dev"))
+    unavailable("a workspace under /dev cannot be isolated safely");
+  if (
+    normalizedAbsolute(policy.workspaceRoot, "sandbox workspace") !==
+    workspaceRoot
+  ) {
     unavailable("the sandbox and session workspace boundaries do not match");
   }
   if (!isSupportedBwrapInvocation(confined, policy)) {
     unavailable("the sandbox provider is not the supported DSH bwrap profile");
   }
 
-  const roots = scope.roots.map((root) => normalizedAbsolute(root, "scope root"));
-  if (roots.some((root) => !isWithin(root, workspaceRoot))) unavailable("a selected root is outside the session workspace");
-  const workdir = visibleWorkingDirectory(requestedWorkingDirectory, workspaceRoot, roots);
+  const roots = scope.roots.map((root) =>
+    normalizedAbsolute(root, "scope root"),
+  );
+  if (roots.some((root) => !isWithin(root, workspaceRoot)))
+    unavailable("a selected root is outside the session workspace");
+  const workdir = visibleWorkingDirectory(
+    requestedWorkingDirectory,
+    workspaceRoot,
+    roots,
+  );
   const separator = separatorIndex(confined.argv);
   const command = confined.argv.slice(separator + 1);
 
@@ -189,26 +245,43 @@ export function confineIsolatedBwrap(
   if (roots.includes(workspaceRoot)) {
     return {
       ...confined,
-      argv: [...confined.argv.slice(0, separator), "--chdir", workdir, "--", ...command],
+      argv: [
+        ...confined.argv.slice(0, separator),
+        "--chdir",
+        workdir,
+        "--",
+        ...command,
+      ],
     };
   }
 
   const profile = confined.argv.slice(0, separator);
   if (policy.mode === "workspace-write") profile.splice(profile.length - 3, 3);
   const bindFlag = policy.mode === "workspace-write" ? "--bind" : "--ro-bind";
-  const mounts: string[] = ["--dir", BWRAP_STAGING_ROOT, "--tmpfs", BWRAP_STAGING_ROOT];
+  const mounts: string[] = [
+    "--dir",
+    BWRAP_STAGING_ROOT,
+    "--tmpfs",
+    BWRAP_STAGING_ROOT,
+  ];
   for (let index = 0; index < roots.length; index += 1) {
     const staging = `${BWRAP_STAGING_ROOT}/${index}`;
     mounts.push("--dir", staging, bindFlag, roots[index]!, staging);
   }
   mounts.push("--tmpfs", workspaceRoot);
-  for (const directory of mountPointDirectories(workspaceRoot, roots)) mounts.push("--dir", directory);
+  for (const directory of mountPointDirectories(workspaceRoot, roots))
+    mounts.push("--dir", directory);
   for (let index = 0; index < roots.length; index += 1) {
     mounts.push(bindFlag, `${BWRAP_STAGING_ROOT}/${index}`, roots[index]!);
   }
   // Drop the alternate path to selected content and leave no new writable
   // scratch area behind, including under read-only permission.
-  mounts.push("--tmpfs", BWRAP_STAGING_ROOT, "--remount-ro", BWRAP_STAGING_ROOT);
+  mounts.push(
+    "--tmpfs",
+    BWRAP_STAGING_ROOT,
+    "--remount-ro",
+    BWRAP_STAGING_ROOT,
+  );
 
   return {
     ...confined,
@@ -217,10 +290,17 @@ export function confineIsolatedBwrap(
 }
 
 /** Attach the effective scope without changing DSH's public policy shape. */
-export function attachSessionScopePolicy<T extends object>(policy: T, scope: EffectiveSessionScope): T {
+export function attachSessionScopePolicy<T extends object>(
+  policy: T,
+  scope: EffectiveSessionScope,
+): T {
   return Object.assign({}, policy, { [SESSION_SCOPE_POLICY]: scope });
 }
 
-export function sessionScopeFromPolicy(policy: object): EffectiveSessionScope | undefined {
-  return (policy as { [SESSION_SCOPE_POLICY]?: EffectiveSessionScope })[SESSION_SCOPE_POLICY];
+export function sessionScopeFromPolicy(
+  policy: object,
+): EffectiveSessionScope | undefined {
+  return (policy as { [SESSION_SCOPE_POLICY]?: EffectiveSessionScope })[
+    SESSION_SCOPE_POLICY
+  ];
 }

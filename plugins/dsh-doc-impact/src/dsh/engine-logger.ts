@@ -1,5 +1,5 @@
-import { createHostLoggerSink, getPluginLogger } from '@yadsh/dsh-plugin-log';
-import type { PluginLogger } from '@yadsh/dsh-plugin-log';
+import { createHostLoggerSink, getPluginLogger } from "@yadsh/dsh-plugin-log";
+import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
 interface HostLoggerLike {
   info(message: string, ...values: unknown[]): void;
@@ -28,9 +28,9 @@ export function createEngineFileLogger(
   options?: { readonly dir?: string },
 ): EngineFileLogger {
   const file: PluginLogger = getPluginLogger({
-    pluginId: 'dsh-doc-impact',
+    pluginId: "dsh-doc-impact",
     ...(options?.dir === undefined ? {} : { dir: options.dir }),
-    console: 'trace',
+    console: "trace",
     // Engine and config-source messages carry no plugin-name prefix: the
     // shared sink mirrors every record (file and mirror) with the plugin id,
     // and `verboseToInfo` keeps the pre-file one-to-one host mirror.

@@ -53,7 +53,8 @@ export class MemoryProviderRegistry {
     return () => {
       if (!active) return;
       active = false;
-      if (this.providers.get(provider.id) === provider) this.providers.delete(provider.id);
+      if (this.providers.get(provider.id) === provider)
+        this.providers.delete(provider.id);
     };
   }
 
@@ -66,9 +67,11 @@ export class MemoryProviderRegistry {
     if (provider === undefined) {
       throw new DomainExpertsError(
         "MEMORY_PROVIDER_MISSING",
-        `Memory provider "${id}" is not registered. Known providers: ${this.list()
-          .map((entry) => entry.id)
-          .join(", ") || "(none)"}.`,
+        `Memory provider "${id}" is not registered. Known providers: ${
+          this.list()
+            .map((entry) => entry.id)
+            .join(", ") || "(none)"
+        }.`,
         { refs: [id] },
       );
     }

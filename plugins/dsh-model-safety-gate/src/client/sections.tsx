@@ -8,7 +8,18 @@
 
 import type { GateMode, ModelSafetyGateConfig, StreamMode } from "../config.js";
 import type { SafetyGateClassifierState, SafetyGateInspect } from "../types.js";
-import { Chip, ListField, NumberField, Section, SecretField, SelectField, Stats, TextField, Toggle, type SectionProps } from "./components.js";
+import {
+  Chip,
+  ListField,
+  NumberField,
+  Section,
+  SecretField,
+  SelectField,
+  Stats,
+  TextField,
+  Toggle,
+  type SectionProps,
+} from "./components.js";
 import {
   badgeText,
   describeEndpoint,
@@ -31,10 +42,16 @@ const GATE_MODES: ReadonlyArray<{ value: GateMode; label: string }> = [
 const STREAM_MODES: ReadonlyArray<{ value: StreamMode; label: string }> = [
   { value: "observe", label: "Observe — pass chunks through as they arrive" },
   { value: "interrupt", label: "Interrupt — cut the turn on a hit" },
-  { value: "buffered", label: "Buffered — hold chunks until their window passes" },
+  {
+    value: "buffered",
+    label: "Buffered — hold chunks until their window passes",
+  },
 ];
 
-const ACTIONS: ReadonlyArray<{ value: "allow" | "warn" | "block"; label: string }> = [
+const ACTIONS: ReadonlyArray<{
+  value: "allow" | "warn" | "block";
+  label: string;
+}> = [
   { value: "allow", label: "Allow" },
   { value: "warn", label: "Warn" },
   { value: "block", label: "Block" },
@@ -54,7 +71,11 @@ const FAILURE_MODES = [
 ];
 
 /** Small clearing control shown beside a section the user layer overrides. */
-function ResetButton(props: { disabled: boolean; label: string; onClick: () => void }) {
+function ResetButton(props: {
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -78,8 +99,14 @@ export interface StatusProps {
 export function StatusSection(props: StatusProps) {
   const inspect = props.inspect;
   const metrics = inspect?.metrics;
-  const checks = metrics === undefined ? 0 : Object.values(metrics.checks).reduce((sum, value) => sum + value, 0);
-  const blocks = metrics === undefined ? 0 : Object.values(metrics.blocks).reduce((sum, value) => sum + value, 0);
+  const checks =
+    metrics === undefined
+      ? 0
+      : Object.values(metrics.checks).reduce((sum, value) => sum + value, 0);
+  const blocks =
+    metrics === undefined
+      ? 0
+      : Object.values(metrics.blocks).reduce((sum, value) => sum + value, 0);
   const mode = describeMode(inspect?.mode);
   const classifier = inspect?.classifier;
 
@@ -88,14 +115,25 @@ export function StatusSection(props: StatusProps) {
       title="Status"
       modified={false}
       aside={
-        <button type="button" className="msg-btn" disabled={props.refreshing} onClick={props.onRefresh}>
+        <button
+          type="button"
+          className="msg-btn"
+          disabled={props.refreshing}
+          onClick={props.onRefresh}
+        >
           {props.refreshing ? "Refreshing…" : "Refresh"}
         </button>
       }
     >
-      <div className="msg-status">        <Chip
+      <div className="msg-status">
+        {" "}
+        <Chip
           label="Mode"
-          value={inspect === null ? "unknown" : badgeText(inspect.enabled, inspect.mode)}
+          value={
+            inspect === null
+              ? "unknown"
+              : badgeText(inspect.enabled, inspect.mode)
+          }
           tone={inspect === null || !inspect.enabled ? "off" : mode.tone}
         />
         <Chip
@@ -110,7 +148,10 @@ export function StatusSection(props: StatusProps) {
                   : "inactive"
           }
         />
-        <Chip label="Uptime" value={formatUptime(inspect?.startedAt, props.now)} />
+        <Chip
+          label="Uptime"
+          value={formatUptime(inspect?.startedAt, props.now)}
+        />
         <Chip label="Refresh" value="every 3s" />
       </div>
       {classifier !== undefined && classifier.reason !== null ? (
@@ -121,33 +162,73 @@ export function StatusSection(props: StatusProps) {
           { value: formatCount(checks), label: "checks" },
           { value: formatCount(blocks), label: "blocks" },
           { value: formatCount(metrics?.warns), label: "warnings" },
-          { value: formatCount(metrics?.classifierRequests), label: "classifier calls" },
+          {
+            value: formatCount(metrics?.classifierRequests),
+            label: "classifier calls",
+          },
         ]}
       />
       {metrics === undefined ? (
-        <p className="msg-muted">Counters appear once the card reaches the running gate.</p>
+        <p className="msg-muted">
+          Counters appear once the card reaches the running gate.
+        </p>
       ) : (
         <details className="msg-advanced">
           <summary>All counters</summary>
           <div className="msg-advanced-content">
             <Stats
               items={[
-                { value: formatCount(metrics.checks.input), label: "input checks" },
-                { value: formatCount(metrics.checks.text + metrics.checks.reasoning), label: "output checks" },
-                { value: formatCount(metrics.checks.tool), label: "tool checks" },
-                { value: formatCount(metrics.checks["tool-result"]), label: "tool-result checks" },
-                { value: formatCount(metrics.blocks.input), label: "blocked prompts" },
-                { value: formatCount(metrics.blocks.output + metrics.blocks.reasoning), label: "blocked outputs" },
-                { value: formatCount(metrics.blocks.tools), label: "denied tools" },
-                { value: formatCount(metrics.classifierErrors), label: "classifier errors" },
+                {
+                  value: formatCount(metrics.checks.input),
+                  label: "input checks",
+                },
+                {
+                  value: formatCount(
+                    metrics.checks.text + metrics.checks.reasoning,
+                  ),
+                  label: "output checks",
+                },
+                {
+                  value: formatCount(metrics.checks.tool),
+                  label: "tool checks",
+                },
+                {
+                  value: formatCount(metrics.checks["tool-result"]),
+                  label: "tool-result checks",
+                },
+                {
+                  value: formatCount(metrics.blocks.input),
+                  label: "blocked prompts",
+                },
+                {
+                  value: formatCount(
+                    metrics.blocks.output + metrics.blocks.reasoning,
+                  ),
+                  label: "blocked outputs",
+                },
+                {
+                  value: formatCount(metrics.blocks.tools),
+                  label: "denied tools",
+                },
+                {
+                  value: formatCount(metrics.classifierErrors),
+                  label: "classifier errors",
+                },
               ]}
             />
             <p className="msg-muted">
-              Average classifier latency {formatAverage(metrics.classifierLatencyTotalMs, metrics.classifierRequests)}, peak{" "}
-              {formatMs(metrics.classifierLatencyMaxMs)}. Classifier tokens in {formatCount(metrics.classifierInputTokens)}, out{" "}
-              {formatCount(metrics.classifierOutputTokens)}. Quarantine overflow in {formatCount(metrics.bufferOverflows)} turn(s),{" "}
-              {formatCount(metrics.mainOutputCharsQuarantined)} characters held back, about{" "}
-              {formatCount(metrics.estimatedMainTokensPrevented)} main-model tokens never generated.
+              Average classifier latency{" "}
+              {formatAverage(
+                metrics.classifierLatencyTotalMs,
+                metrics.classifierRequests,
+              )}
+              , peak {formatMs(metrics.classifierLatencyMaxMs)}. Classifier
+              tokens in {formatCount(metrics.classifierInputTokens)}, out{" "}
+              {formatCount(metrics.classifierOutputTokens)}. Quarantine overflow
+              in {formatCount(metrics.bufferOverflows)} turn(s),{" "}
+              {formatCount(metrics.mainOutputCharsQuarantined)} characters held
+              back, about {formatCount(metrics.estimatedMainTokensPrevented)}{" "}
+              main-model tokens never generated.
             </p>
           </div>
         </details>
@@ -170,7 +251,9 @@ export function VerdictsSection(props: VerdictsProps) {
       hint={props.inspect === null ? undefined : "Newest first, last 50 checks"}
     >
       {rows.length === 0 ? (
-        <div className="msg-empty">No check has run since the gate started.</div>
+        <div className="msg-empty">
+          No check has run since the gate started.
+        </div>
       ) : (
         <div className="msg-table-wrap">
           <table className="msg-table">
@@ -187,17 +270,25 @@ export function VerdictsSection(props: VerdictsProps) {
             </thead>
             <tbody>
               {rows.map((row, index) => (
-                <tr key={`${row.contentSha256}:${row.channel}:${String(index)}`}>
+                <tr
+                  key={`${row.contentSha256}:${row.channel}:${String(index)}`}
+                >
                   <td className="msg-mono">
                     {row.turn === null ? "—" : `t${row.turn}`}
                     {row.step === null ? "" : `.${row.step}`}
                   </td>
                   <td>
-                    {row.direction === "tools" && row.toolName !== null ? row.toolName : row.channel}
+                    {row.direction === "tools" && row.toolName !== null
+                      ? row.toolName
+                      : row.channel}
                   </td>
                   <td>
-                    <span className={`msg-pill ${row.decision}`}>{row.decision}</span>
-                    {row.errorCode !== null ? <div className="msg-muted">{row.errorCode}</div> : null}
+                    <span className={`msg-pill ${row.decision}`}>
+                      {row.decision}
+                    </span>
+                    {row.errorCode !== null ? (
+                      <div className="msg-muted">{row.errorCode}</div>
+                    ) : null}
                   </td>
                   <td>{joinList(row.categories)}</td>
                   <td>{row.confidence.toFixed(2)}</td>
@@ -206,8 +297,12 @@ export function VerdictsSection(props: VerdictsProps) {
                     <span className="msg-mono" title={row.summary}>
                       {shortHash(row.contentSha256)}
                     </span>
-                    <div className="msg-muted">{formatCount(row.contentChars)} chars</div>
-                    {row.rawContent !== null ? <div className="msg-raw">{row.rawContent}</div> : null}
+                    <div className="msg-muted">
+                      {formatCount(row.contentChars)} chars
+                    </div>
+                    {row.rawContent !== null ? (
+                      <div className="msg-raw">{row.rawContent}</div>
+                    ) : null}
                   </td>
                 </tr>
               ))}
@@ -216,8 +311,9 @@ export function VerdictsSection(props: VerdictsProps) {
         </div>
       )}
       <p className="msg-footer-note">
-        Records carry a content hash, not the content, unless raw logging is switched on in Audit. They identify a check; they are not
-        an inspection log.
+        Records carry a content hash, not the content, unless raw logging is
+        switched on in Audit. They identify a check; they are not an inspection
+        log.
       </p>
     </Section>
   );
@@ -239,7 +335,14 @@ export function GateSection(props: ConfigProps) {
       modified={props.overridden(["enabled"]) || props.overridden(["mode"])}
       aside={
         props.overridden(["enabled"]) || props.overridden(["mode"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["enabled"]); props.unset(["mode"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["enabled"]);
+              props.unset(["mode"]);
+            }}
+          />
         ) : undefined
       }
     >
@@ -294,7 +397,13 @@ export function InputSection(props: ConfigProps) {
       modified={props.overridden(["input"])}
       aside={
         props.overridden(["input"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["input"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["input"]);
+            }}
+          />
         ) : undefined
       }
     >
@@ -328,8 +437,9 @@ export function InputSection(props: ConfigProps) {
         />
       </div>
       <p className="msg-muted">
-        Blocking on usefulness is opt-in on purpose: quality verdicts warn by default, and only an explicit block here turns them into a
-        rejected prompt.
+        Blocking on usefulness is opt-in on purpose: quality verdicts warn by
+        default, and only an explicit block here turns them into a rejected
+        prompt.
       </p>
     </Section>
   );
@@ -346,7 +456,13 @@ export function OutputSection(props: ConfigProps) {
       modified={props.overridden(["output"])}
       aside={
         props.overridden(["output"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["output"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["output"]);
+            }}
+          />
         ) : undefined
       }
     >
@@ -434,8 +550,10 @@ export function OutputSection(props: ConfigProps) {
         </div>
       </details>
       <p className="msg-muted">
-        Buffered is the only mode that can guarantee a blocked sentence never reaches the page: chunks are held until their window has been
-        checked, and an overflow fails closed. Observe never delays, and interrupt cuts the turn once a hit is confirmed.
+        Buffered is the only mode that can guarantee a blocked sentence never
+        reaches the page: chunks are held until their window has been checked,
+        and an overflow fails closed. Observe never delays, and interrupt cuts
+        the turn once a hit is confirmed.
       </p>
     </Section>
   );
@@ -448,7 +566,9 @@ export function ToolsSection(props: ConfigProps) {
   return (
     <Section
       title="Tools and results"
-      modified={props.overridden(["tools"]) || props.overridden(["toolResults"])}
+      modified={
+        props.overridden(["tools"]) || props.overridden(["toolResults"])
+      }
       aside={
         props.overridden(["tools"]) || props.overridden(["toolResults"]) ? (
           <ResetButton
@@ -528,14 +648,22 @@ export function ClassifierSection(props: ConfigProps) {
       modified={props.overridden(["classifier"])}
       aside={
         props.overridden(["classifier"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["classifier"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["classifier"]);
+            }}
+          />
         ) : undefined
       }
     >
       {remote ? (
         <div className="msg-notice warn">
-          <strong>Safety classifier is remote.</strong> Prompts, model output, and reasoning are sent to {endpoint} for classification.
-          Turn on “Require a local classifier” to forbid remote endpoints, or keep the classifier off to stay on the deterministic rules.
+          <strong>Safety classifier is remote.</strong> Prompts, model output,
+          and reasoning are sent to {endpoint} for classification. Turn on
+          “Require a local classifier” to forbid remote endpoints, or keep the
+          classifier off to stay on the deterministic rules.
         </div>
       ) : null}
       <div className="msg-grid">
@@ -646,13 +774,15 @@ export function ClassifierSection(props: ConfigProps) {
       />
       {props.classifierState?.active === false && backend !== "none" ? (
         <div className="msg-notice warn">
-          This backend is configured but not running: {props.classifierState.reason ?? "no transport is attached."} Until it is, every check
-          stops at the deterministic layer.
+          This backend is configured but not running:{" "}
+          {props.classifierState.reason ?? "no transport is attached."} Until it
+          is, every check stops at the deterministic layer.
         </div>
       ) : null}
       <p className="msg-muted">
-        The classifier never has tools and never sees its own output: its calls run under a bypass marker, so moderating a generation cannot
-        recursively moderate the moderator.
+        The classifier never has tools and never sees its own output: its calls
+        run under a bypass marker, so moderating a generation cannot recursively
+        moderate the moderator.
       </p>
     </Section>
   );
@@ -668,7 +798,13 @@ export function AuditSection(props: ConfigProps) {
       modified={props.overridden(["audit"])}
       aside={
         props.overridden(["audit"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["audit"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["audit"]);
+            }}
+          />
         ) : undefined
       }
     >
@@ -694,8 +830,10 @@ export function AuditSection(props: ConfigProps) {
       </div>
       {config?.audit?.includeRawContent === true ? (
         <div className="msg-notice warn">
-          Raw content is on. The checked prompt, output, or tool argument is stored in the session log and the recent-verdict list, so
-          anything the gate inspects — including secrets it matched — is written down verbatim.
+          Raw content is on. The checked prompt, output, or tool argument is
+          stored in the session log and the recent-verdict list, so anything the
+          gate inspects — including secrets it matched — is written down
+          verbatim.
         </div>
       ) : null}
     </Section>
@@ -712,7 +850,13 @@ export function AdvancedSection(props: ConfigProps) {
       modified={props.overridden(["customBlockPatterns"])}
       aside={
         props.overridden(["customBlockPatterns"]) ? (
-          <ResetButton disabled={disabled} label="Reset" onClick={() => { props.unset(["customBlockPatterns"]); }} />
+          <ResetButton
+            disabled={disabled}
+            label="Reset"
+            onClick={() => {
+              props.unset(["customBlockPatterns"]);
+            }}
+          />
         ) : undefined
       }
     >

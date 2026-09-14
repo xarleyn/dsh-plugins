@@ -50,7 +50,9 @@ export function formatTime(time: number): string {
 
 /** The plugin scope a line shows: `plugin` or `plugin/module`. */
 export function formatScope(record: PluginLogRecordView): string {
-  return record.module === "" ? record.pluginId : `${record.pluginId}/${record.module}`;
+  return record.module === ""
+    ? record.pluginId
+    : `${record.pluginId}/${record.module}`;
 }
 
 /**
@@ -60,7 +62,9 @@ export function formatScope(record: PluginLogRecordView): string {
  * @returns one line of log text.
  */
 export function formatRecord(record: PluginLogRecordView): string {
-  const fields = record.fields.map((field) => `${field.key}=${field.value}`).join(" ");
+  const fields = record.fields
+    .map((field) => `${field.key}=${field.value}`)
+    .join(" ");
   const head = `${formatTime(record.time)} ${record.level.toUpperCase().padEnd(5)} [${formatScope(record)}] ${record.event}`;
   return fields === "" ? head : `${head} ${fields}`;
 }
@@ -93,9 +97,13 @@ export function allLevelsFilter(): LogFilter {
  * @param filter - the current filters.
  * @returns whether the record is visible.
  */
-export function matchesFilter(record: PluginLogRecordView, filter: LogFilter): boolean {
+export function matchesFilter(
+  record: PluginLogRecordView,
+  filter: LogFilter,
+): boolean {
   if (!filter.levels.has(record.level)) return false;
-  if (filter.source !== ALL_SOURCES && record.pluginId !== filter.source) return false;
+  if (filter.source !== ALL_SOURCES && record.pluginId !== filter.source)
+    return false;
   const query = filter.query.trim();
   if (query === "") return true;
   return formatRecord(record).toLowerCase().includes(query.toLowerCase());
@@ -163,7 +171,9 @@ export function appendRecords(
   const fresh = batch.filter((record) => record.seq > last);
   if (fresh.length === 0) return current;
   const merged = [...current, ...fresh];
-  return merged.length <= capacity ? merged : merged.slice(merged.length - capacity);
+  return merged.length <= capacity
+    ? merged
+    : merged.slice(merged.length - capacity);
 }
 
 /** What one poll produced, as the panel's reader reports it. */
@@ -177,7 +187,10 @@ export interface LogTailRemote {
 }
 
 /** The panel's read face: one call per poll, with failures already turned into text. */
-export type ReadLogTail = (cursor: number, limit: number) => Promise<LogTailRead>;
+export type ReadLogTail = (
+  cursor: number,
+  limit: number,
+) => Promise<LogTailRead>;
 
 /** The message a failed Remote result carries. */
 function failureMessage(error: unknown): string {
@@ -199,7 +212,9 @@ export function createLogTailReader(remote: LogTailRemote): ReadLogTail {
   return async (cursor, limit) => {
     try {
       const result = await remote.tail(cursor, limit);
-      return result.ok ? { ok: true, value: result.value } : { ok: false, message: failureMessage(result.error) };
+      return result.ok
+        ? { ok: true, value: result.value }
+        : { ok: false, message: failureMessage(result.error) };
     } catch (error) {
       return { ok: false, message: failureMessage(error) };
     }

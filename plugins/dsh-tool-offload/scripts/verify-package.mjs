@@ -15,7 +15,10 @@ const packageJson = JSON.parse(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 
 // Manifest identity.
 assert.match(packageJson.name, /^@yadsh\/dsh-tool-offload$/);
@@ -42,11 +45,17 @@ for (const required of [
   "NOTICE.md",
   "LICENSE",
 ]) {
-  assert.ok(packageJson.files.includes(required), `files is missing: ${required}`);
+  assert.ok(
+    packageJson.files.includes(required),
+    `files is missing: ${required}`,
+  );
 }
 
 // Canonical bundle patch pair (guidelines §4.3).
-assert.match(patch, /# The DSH plugin manager discovers this bundle through package\.json\./);
+assert.match(
+  patch,
+  /# The DSH plugin manager discovers this bundle through package\.json\./,
+);
 assert.match(patch, /id: dsh-tool-offload\b/);
 assert.match(patch, /name: "@yadsh\/dsh-tool-offload"/);
 
@@ -54,8 +63,16 @@ assert.match(patch, /name: "@yadsh\/dsh-tool-offload"/);
 // post-execute reshaping seam and the one-shot subagent service.
 assert.ok(compatibility.deepseekHarness?.range?.length > 0);
 assert.ok(Array.isArray(compatibility.deepseekHarness?.testedReleases));
-assert.ok(compatibility.deepseekHarness?.requiredHostFeatures?.includes("tools/post-execute"));
-assert.ok(compatibility.deepseekHarness?.requiredHostFeatures?.includes("subagents/start"));
+assert.ok(
+  compatibility.deepseekHarness?.requiredHostFeatures?.includes(
+    "tools/post-execute",
+  ),
+);
+assert.ok(
+  compatibility.deepseekHarness?.requiredHostFeatures?.includes(
+    "subagents/start",
+  ),
+);
 
 // Safety-critical surface shipped by the build: no-tools worker invariant and
 // recursion label must stay part of the compiled runtime (SPEC §6.1, §25).
@@ -80,10 +97,21 @@ async function jsFilesUnder(directory) {
 const libRoot = fileURLToPath(new URL("../lib/", import.meta.url));
 const libFiles = await jsFilesUnder(libRoot);
 assert.ok(libFiles.length > 0, "lib build output is missing");
-const libText = (await Promise.all(libFiles.map((path) => readFile(path, "utf8")))).join("\n");
-assert.ok(libText.includes("dsh-tool-offload:"), "built runtime must keep the worker label prefix");
-assert.ok(libText.includes('"subagent"'), "built runtime must reference the delegated-child origin guard");
-assert.ok(libText.includes("allow: []"), "built runtime must keep the no-tools worker filter");
+const libText = (
+  await Promise.all(libFiles.map((path) => readFile(path, "utf8")))
+).join("\n");
+assert.ok(
+  libText.includes("dsh-tool-offload:"),
+  "built runtime must keep the worker label prefix",
+);
+assert.ok(
+  libText.includes('"subagent"'),
+  "built runtime must reference the delegated-child origin guard",
+);
+assert.ok(
+  libText.includes("allow: []"),
+  "built runtime must keep the no-tools worker filter",
+);
 
 // Attribution contract of the plugin (SPEC §28).
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");

@@ -19,10 +19,13 @@ interface ClientHarness {
   remote?: Record<string, unknown>;
 }
 
-function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness = {}): Registration[] {
+function registrationsFor(
+  declared: ReadonlySet<string>,
+  harness: ClientHarness = {},
+): Registration[] {
   const registrations: Registration[] = [];
   const slots = {
-    inject(name: string, callback: () => (() => void)): () => void {
+    inject(name: string, callback: () => () => void): () => void {
       return declared.has(name) ? callback() : () => {};
     },
     register(options: Registration["options"], component: unknown): () => void {
@@ -39,7 +42,10 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     createElement: () => ({ textContent: "", parentNode: null }),
     head: { appendChild: () => {} },
   };
-  const source = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
+  const source = readFileSync(
+    new URL("../src/client.ts", import.meta.url),
+    "utf8",
+  );
   const loader = createModuleLoaderStub();
   runInNewContext(source, {
     window: loader.window,
@@ -47,7 +53,8 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     navigator: { language: "en" },
     console,
   });
-  if (loader.registrations.length === 0) throw new Error("client module did not register");
+  if (loader.registrations.length === 0)
+    throw new Error("client module did not register");
   const moduleFactory = loader.registrations[0]!.factory;
   const plugin = moduleFactory((id: unknown) => {
     if (id === "react") return harness.React ?? {};
@@ -55,9 +62,14 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
     throw new Error(`unexpected module ${id}`);
   }) as { apply(ctx: unknown): void };
   plugin.apply({
-    get: (name: string) => name === "slots"
-      ? slots
-      : name === "sessions" ? sessions : name === "remote" ? harness.remote : undefined,
+    get: (name: string) =>
+      name === "slots"
+        ? slots
+        : name === "sessions"
+          ? sessions
+          : name === "remote"
+            ? harness.remote
+            : undefined,
     effect: (callback: () => unknown) => callback(),
   });
   return registrations;
@@ -65,11 +77,16 @@ function registrationsFor(declared: ReadonlySet<string>, harness: ClientHarness 
 
 describe("client scope placement", () => {
   test("uses projection and host RPC reads instead of durable scope commands", () => {
-    const source = readFileSync(new URL("../src/client.ts", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../src/client.ts", import.meta.url),
+      "utf8",
+    );
 
-    expect(source).toContain("useProjection('session-scope')");
-    expect(source).toContain("ctx.inject(['remote.sessionScope']");
-    expect(source).toContain("scopeRemoteFace.list(sessionId, path)");
+    // Quote style and line breaks belong to the formatter, so the contract is
+    // asserted on the shape of the calls rather than on exact source text.
+    expect(source).toMatch(/useProjection\(["']session-scope["']\)/);
+    expect(source).toMatch(/ctx\.inject\(\s*\[["']remote\.sessionScope["']\]/);
+    expect(source).toMatch(/scopeRemoteFace\.list\(\s*sessionId,\s*path\s*\)/);
     expect(source).not.toMatch(/\/scope (?:capabilities|show|list)/);
   });
 
@@ -86,17 +103,21 @@ describe("client scope placement", () => {
 
     expect(contribution).toMatchObject({
       package: "@yadsh/dsh-session-scope",
-      descriptors: [expect.objectContaining({
-        service: "sessionScopeRead",
-        namespace: "sessionScope",
-        method: "list",
-        invocation: { kind: "direct" },
-      })],
+      descriptors: [
+        expect.objectContaining({
+          service: "sessionScopeRead",
+          namespace: "sessionScope",
+          method: "list",
+          invocation: { kind: "direct" },
+        }),
+      ],
     });
   });
 
   test("uses only the existing composer seat and resolves its workspace root", () => {
-    const registrations = registrationsFor(new Set(["conversation.input.left"]));
+    const registrations = registrationsFor(
+      new Set(["conversation.input.left"]),
+    );
     expect(registrations.map(({ options }) => options.name)).toEqual([
       "conversation.input.left",
     ]);
@@ -106,7 +127,9 @@ describe("client scope placement", () => {
   });
 
   test("does not depend on a new or private hero slot", () => {
-    const registrations = registrationsFor(new Set(["conversation.hero.scope"]));
+    const registrations = registrationsFor(
+      new Set(["conversation.hero.scope"]),
+    );
     expect(registrations).toHaveLength(0);
   });
 
@@ -120,36 +143,53 @@ describe("client scope placement", () => {
     const preset = {};
     const inserted: Array<{ node: unknown; before: unknown }> = [];
     const row = {
-      insertBefore: (node: unknown, before: unknown) => { inserted.push({ node, before }); },
+      insertBefore: (node: unknown, before: unknown) => {
+        inserted.push({ node, before });
+      },
       removeChild: () => {},
     };
     const workspace = { parentNode: row, nextSibling: preset };
     const heroRoot = {
-      querySelector: (selector: string) => selector === 'button[aria-haspopup="menu"]' ? workspace : null,
+      querySelector: (selector: string) =>
+        selector === 'button[aria-haspopup="menu"]' ? workspace : null,
     };
     const probe = {
-      closest: (selector: string) => selector === '[data-phase="hero"]' ? heroRoot : null,
+      closest: (selector: string) =>
+        selector === '[data-phase="hero"]' ? heroRoot : null,
     };
     const mount = {
       className: "",
       parentNode: row,
       attributes: new Map<string, string>(),
-      setAttribute(name: string, value: string) { this.attributes.set(name, value); },
+      setAttribute(name: string, value: string) {
+        this.attributes.set(name, value);
+      },
     };
     const React = {
       Fragment: Symbol("Fragment"),
       useState(initial: unknown) {
         const index = stateCursor++;
         if (!(index in states)) states[index] = initial;
-        return [states[index], (value: unknown) => { states[index] = value; }];
+        return [
+          states[index],
+          (value: unknown) => {
+            states[index] = value;
+          },
+        ];
       },
       useRef(initial: unknown) {
         const index = refCursor++;
         if (!(index in refs)) refs[index] = { current: initial };
         return refs[index];
       },
-      useLayoutEffect(callback: () => unknown) { layoutEffect = callback; },
-      createElement(type: unknown, props: Record<string, unknown> | null, ...children: unknown[]) {
+      useLayoutEffect(callback: () => unknown) {
+        layoutEffect = callback;
+      },
+      createElement(
+        type: unknown,
+        props: Record<string, unknown> | null,
+        ...children: unknown[]
+      ) {
         if (type === "span" && props?.ref !== undefined) {
           (props.ref as { current: unknown }).current = probe;
         }
@@ -157,24 +197,32 @@ describe("client scope placement", () => {
       },
     };
     const document = {
-      createElement: (tag: string) => tag === "span"
-        ? mount
-        : { textContent: "", parentNode: null },
+      createElement: (tag: string) =>
+        tag === "span" ? mount : { textContent: "", parentNode: null },
       head: { appendChild: () => {} },
     };
-    const registrations = registrationsFor(new Set(["conversation.input.left"]), {
-      React,
-      ReactDOM: {
-        createPortal(child: unknown, target: unknown) {
-          portals.push({ child, target });
-          return { child, target };
+    const registrations = registrationsFor(
+      new Set(["conversation.input.left"]),
+      {
+        React,
+        ReactDOM: {
+          createPortal(child: unknown, target: unknown) {
+            portals.push({ child, target });
+            return { child, target };
+          },
         },
+        document,
       },
-      document,
-    });
-    const ScopeButton = registrations[0]?.component as (props: Record<string, unknown>) => unknown;
+    );
+    const ScopeButton = registrations[0]?.component as (
+      props: Record<string, unknown>,
+    ) => unknown;
     const props = {
-      useProjection: () => ({ mode: "full", roots: [], workspaceRoot: "/workspace" }),
+      useProjection: () => ({
+        mode: "full",
+        roots: [],
+        workspaceRoot: "/workspace",
+      }),
       sessionId: "session",
       session: { composerPhase: "blank" },
       workspaceRoot: "/workspace",

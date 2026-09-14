@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
-const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
+const client = await readFile(
+  new URL("../lib/client.js", import.meta.url),
+  "utf8",
+);
 
 assert.match(
   client,
@@ -43,4 +46,6 @@ assert.doesNotMatch(client, /require\(["']@deepseek-ai\//u);
 assert.doesNotMatch(client, /localStorage/u);
 assert.doesNotMatch(client, /fetch\(/u);
 
-process.stdout.write("verify-client-bundle: module identity and safety guards passed\n");
+process.stdout.write(
+  "verify-client-bundle: module identity and safety guards passed\n",
+);

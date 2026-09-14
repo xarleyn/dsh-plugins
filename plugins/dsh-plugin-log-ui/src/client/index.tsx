@@ -5,8 +5,14 @@ import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar-right/client";
-import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
-import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
+import type {
+  RemoteResult,
+  TypertRemoteContribution,
+} from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
 import {
   CardShell,
@@ -15,7 +21,13 @@ import {
   registerSettingsCard,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   ManagedPluginLogFormat,
   ManagedPluginLogLevel,
@@ -64,25 +76,38 @@ function errorText(error: unknown): string {
   return "Could not update plugin logging settings.";
 }
 
-function LevelOptions({ inherit }: { readonly inherit?: ManagedPluginLogLevel }) {
+function LevelOptions({
+  inherit,
+}: {
+  readonly inherit?: ManagedPluginLogLevel;
+}) {
   return (
     <>
-      {inherit !== undefined ? <option value="">Inherit default ({inherit})</option> : null}
+      {inherit !== undefined ? (
+        <option value="">Inherit default ({inherit})</option>
+      ) : null}
       {LEVELS.map((level) => (
-        <option value={level} key={level}>{level === "silent" ? "silent (off)" : level}</option>
+        <option value={level} key={level}>
+          {level === "silent" ? "silent (off)" : level}
+        </option>
       ))}
     </>
   );
 }
 
 function PluginLogSettingsCard({ scope, inspect }: CardProps) {
-  const settingsStore = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+  const settingsStore = useMemo(
+    () => bindSettingsExternalStore(scope),
+    [scope],
+  );
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
     settingsStore.getSnapshot,
   );
-  const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({ consumers: [] });
+  const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({
+    consumers: [],
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const config = settings.value;
@@ -109,25 +134,31 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
     return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
   }, [refresh]);
 
-  const write = useCallback(async (field: keyof PluginLogUiConfig, value: unknown) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await scope.set(field, value);
-      await refresh();
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setSaving(false);
-    }
-  }, [refresh, scope]);
+  const write = useCallback(
+    async (field: keyof PluginLogUiConfig, value: unknown) => {
+      setSaving(true);
+      setError(null);
+      try {
+        await scope.set(field, value);
+        await refresh();
+      } catch (cause) {
+        setError(errorText(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [refresh, scope],
+  );
 
-  const setOverride = useCallback((pluginId: string, level: string) => {
-    const next = { ...levels } as Record<string, ManagedPluginLogLevel>;
-    if (level === "") delete next[pluginId];
-    else next[pluginId] = level as ManagedPluginLogLevel;
-    void write("levels", next);
-  }, [levels, write]);
+  const setOverride = useCallback(
+    (pluginId: string, level: string) => {
+      const next = { ...levels } as Record<string, ManagedPluginLogLevel>;
+      if (level === "") delete next[pluginId];
+      else next[pluginId] = level as ManagedPluginLogLevel;
+      void write("levels", next);
+    },
+    [levels, write],
+  );
 
   if (settings.status === "unavailable") return null;
 
@@ -135,12 +166,24 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
     <CardShell
       title="Plugin logging"
       description="Levels and readable file output for registered server plugins."
-      badge={<span className="dsh-plugin-card__badge">{snapshot.consumers.length} active</span>}
+      badge={
+        <span className="dsh-plugin-card__badge">
+          {snapshot.consumers.length} active
+        </span>
+      }
       label={(open) => `${open ? "Hide" : "Show"} settings: Plugin logging`}
       bodyClassName="plu-body"
     >
-      {error !== null ? <p className="plu-error" role="status">{error}</p> : null}
-      {!writable ? <p className="plu-status">Settings are read-only for this connection.</p> : null}
+      {error !== null ? (
+        <p className="plu-error" role="status">
+          {error}
+        </p>
+      ) : null}
+      {!writable ? (
+        <p className="plu-status">
+          Settings are read-only for this connection.
+        </p>
+      ) : null}
 
       <section className="plu-section">
         <h3>Defaults</h3>
@@ -151,7 +194,9 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               className="plu-select"
               value={defaultLevel}
               disabled={!writable || saving}
-              onChange={(event) => void write("defaultLevel", event.currentTarget.value)}
+              onChange={(event) =>
+                void write("defaultLevel", event.currentTarget.value)
+              }
             >
               <LevelOptions />
             </select>
@@ -162,15 +207,26 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               className="plu-select"
               value={format}
               disabled={!writable || saving}
-              onChange={(event) => void write("format", event.currentTarget.value as ManagedPluginLogFormat)}
+              onChange={(event) =>
+                void write(
+                  "format",
+                  event.currentTarget.value as ManagedPluginLogFormat,
+                )
+              }
             >
               <option value="text">Text — readable lines</option>
               <option value="json">JSON — NDJSON records</option>
             </select>
           </label>
         </div>
-        <p className="plu-hint">Changes apply live. A format switch affects new lines; an existing daily file can contain both formats until rotation.</p>
-        <p className="plu-hint">Live output is the <strong>Plugin logs</strong> tab of the right Sidebar: open it there and pick the panel from the guide page.</p>
+        <p className="plu-hint">
+          Changes apply live. A format switch affects new lines; an existing
+          daily file can contain both formats until rotation.
+        </p>
+        <p className="plu-hint">
+          Live output is the <strong>Plugin logs</strong> tab of the right
+          Sidebar: open it there and pick the panel from the guide page.
+        </p>
       </section>
 
       <section className="plu-section">
@@ -183,14 +239,20 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               <div className="plu-row" key={consumer.pluginId}>
                 <div className="plu-plugin">
                   <code>{consumer.pluginId}</code>
-                  <span>{consumer.instances} instance{consumer.instances === 1 ? "" : "s"} · active: {consumer.level} · {consumer.format}</span>
+                  <span>
+                    {consumer.instances} instance
+                    {consumer.instances === 1 ? "" : "s"} · active:{" "}
+                    {consumer.level} · {consumer.format}
+                  </span>
                 </div>
                 <select
                   className="plu-select"
                   aria-label={`Log level for ${consumer.pluginId}`}
                   value={levels[consumer.pluginId] ?? ""}
                   disabled={!writable || saving}
-                  onChange={(event) => setOverride(consumer.pluginId, event.currentTarget.value)}
+                  onChange={(event) =>
+                    setOverride(consumer.pluginId, event.currentTarget.value)
+                  }
                 >
                   <LevelOptions inherit={defaultLevel} />
                 </select>
@@ -255,7 +317,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               sources: async () => {
                 const snapshot = await inspector.inspect();
                 if (!snapshot.ok) return [];
-                return snapshot.value.consumers.map((consumer) => consumer.pluginId);
+                return snapshot.value.consumers.map(
+                  (consumer) => consumer.pluginId,
+                );
               },
             }),
           },

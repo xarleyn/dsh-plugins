@@ -7,22 +7,22 @@
  */
 
 export type GitToolErrorCode =
-  | 'no-session-cwd'
-  | 'not-a-git-repository'
-  | 'invalid-repository'
-  | 'repository-not-allowed'
-  | 'invalid-oid'
-  | 'invalid-path'
-  | 'invalid-argument'
-  | 'git-timeout'
-  | 'git-failed';
+  | "no-session-cwd"
+  | "not-a-git-repository"
+  | "invalid-repository"
+  | "repository-not-allowed"
+  | "invalid-oid"
+  | "invalid-path"
+  | "invalid-argument"
+  | "git-timeout"
+  | "git-failed";
 
 export class GitToolError extends Error {
   readonly code: GitToolErrorCode;
 
   constructor(code: GitToolErrorCode, message: string) {
     super(`dsh-git-readonly (${code}): ${message}`);
-    this.name = 'GitToolError';
+    this.name = "GitToolError";
     this.code = code;
   }
 }

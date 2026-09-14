@@ -1,17 +1,39 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { DomainExpertsPage, type DomainExpertsApi } from "../src/client/DomainExpertsPage.js";
+import {
+  DomainExpertsPage,
+  type DomainExpertsApi,
+} from "../src/client/DomainExpertsPage.js";
 import type { ApiOutcome } from "../src/client/remote.js";
-import { emptyDomainDraft, type CatalogInfo, type DomainDefinition, type DomainSummary, type ResolvedExpertProfile } from "../src/types.js";
+import {
+  emptyDomainDraft,
+  type CatalogInfo,
+  type DomainDefinition,
+  type DomainSummary,
+  type ResolvedExpertProfile,
+} from "../src/types.js";
 
 const CATALOG: CatalogInfo = {
   scopeProviders: [
-    { id: "filesystem", title: "Filesystem", enforcement: "advisory", builtin: true },
+    {
+      id: "filesystem",
+      title: "Filesystem",
+      enforcement: "advisory",
+      builtin: true,
+    },
   ],
-  memoryProviders: [{ id: "builtin", title: "Built-in storage", builtin: true }],
+  memoryProviders: [
+    { id: "builtin", title: "Built-in storage", builtin: true },
+  ],
   workers: [
-    { id: "code_worker", title: "Code worker", capabilities: [], enforces: ["filesystem"], builtin: false },
+    {
+      id: "code_worker",
+      title: "Code worker",
+      capabilities: [],
+      enforces: ["filesystem"],
+      builtin: false,
+    },
   ],
   tools: [{ name: "domain_expert", provider: "@yadsh/dsh-domain-experts" }],
   memoryNamespaces: [],
@@ -55,10 +77,15 @@ const PROFILE: ResolvedExpertProfile = {
   enabled: true,
   basePolicy: "You are the designated expert for one domain.",
   customInstructions: "Prefer the ledger.",
-  persona: "You are the designated expert for one domain.\n## Scope\n- services/payments/**",
+  persona:
+    "You are the designated expert for one domain.\n## Scope\n- services/payments/**",
   scope: {
     domainId: "payments",
-    filesystem: { primary: ["services/payments/**"], sharedReadOnly: [], denied: [] },
+    filesystem: {
+      primary: ["services/payments/**"],
+      sharedReadOnly: [],
+      denied: [],
+    },
     knowledge: { include: [], exclude: [] },
     external: {},
     memory: { namespace: "domain/payments", sharedNamespaces: [] },
@@ -91,8 +118,18 @@ const PROFILE: ResolvedExpertProfile = {
     },
   ],
   tools: [
-    { name: "domain_expert", kind: "infrastructure", available: true, note: "Provided by this plugin." },
-    { name: "code_worker", kind: "worker", available: true, note: "Code worker; enforces filesystem" },
+    {
+      name: "domain_expert",
+      kind: "infrastructure",
+      available: true,
+      note: "Provided by this plugin.",
+    },
+    {
+      name: "code_worker",
+      kind: "worker",
+      available: true,
+      note: "Code worker; enforces filesystem",
+    },
   ],
   toolFilter: { allow: ["domain_expert", "code_worker"], deny: [] },
   delegation: {
@@ -119,7 +156,16 @@ function apiOf(overrides: Partial<DomainExpertsApi> = {}): DomainExpertsApi {
     listDomains: () => Promise.resolve(ok({ domains: [SUMMARY] })),
     getDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
     draftDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
-    inspectDraft: () => Promise.resolve(ok({ ok: true, code: "", message: "", definition: DEFINITION, issues: [] })),
+    inspectDraft: () =>
+      Promise.resolve(
+        ok({
+          ok: true,
+          code: "",
+          message: "",
+          definition: DEFINITION,
+          issues: [],
+        }),
+      ),
     createDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
     updateDomain: () => Promise.resolve(ok({ domain: DEFINITION })),
     setDomainEnabled: () => Promise.resolve(ok({ domain: DEFINITION })),
@@ -132,7 +178,9 @@ function apiOf(overrides: Partial<DomainExpertsApi> = {}): DomainExpertsApi {
           ok: true,
           code: "",
           message: "",
-          namespaces: [{ namespace: "domain/payments", access: "read-write", records: 1 }],
+          namespaces: [
+            { namespace: "domain/payments", access: "read-write", records: 1 },
+          ],
           records: [
             {
               namespace: "domain/payments",
@@ -149,7 +197,11 @@ function apiOf(overrides: Partial<DomainExpertsApi> = {}): DomainExpertsApi {
     testExpert: () =>
       Promise.resolve(
         ok({
-          result: { summary: "The batch aborts.", status: "completed", findings: [] },
+          result: {
+            summary: "The batch aborts.",
+            status: "completed",
+            findings: [],
+          },
         }),
       ),
     ...overrides,
@@ -158,7 +210,10 @@ function apiOf(overrides: Partial<DomainExpertsApi> = {}): DomainExpertsApi {
 
 function renderPage(overrides: Partial<DomainExpertsApi> = {}) {
   return render(
-    <DomainExpertsPage api={apiOf(overrides)} currentSessionId={() => "session-1"} />,
+    <DomainExpertsPage
+      api={apiOf(overrides)}
+      currentSessionId={() => "session-1"}
+    />,
   );
 }
 
@@ -177,13 +232,21 @@ describe("client page: list", () => {
   it("surfaces a refused list request with its code", async () => {
     renderPage({
       listDomains: () =>
-        Promise.resolve({ ok: false, code: "STORAGE_UNAVAILABLE", message: "storage is closed" }),
+        Promise.resolve({
+          ok: false,
+          code: "STORAGE_UNAVAILABLE",
+          message: "storage is closed",
+        }),
     });
-    expect(await screen.findByText(/STORAGE_UNAVAILABLE: storage is closed/u)).toBeTruthy();
+    expect(
+      await screen.findByText(/STORAGE_UNAVAILABLE: storage is closed/u),
+    ).toBeTruthy();
   });
 
   it("toggles a domain through the list action", async () => {
-    const setDomainEnabled = vi.fn(() => Promise.resolve(ok({ domain: DEFINITION })));
+    const setDomainEnabled = vi.fn(() =>
+      Promise.resolve(ok({ domain: DEFINITION })),
+    );
     renderPage({ setDomainEnabled });
     const toggle = await screen.findByText("Disable");
     fireEvent.click(toggle);
@@ -227,7 +290,8 @@ describe("client page: editor", () => {
               {
                 severity: "error" as const,
                 field: "scope.filesystem.primary",
-                message: 'Path "/etc/passwd" is invalid: absolute paths are outside the workspace.',
+                message:
+                  'Path "/etc/passwd" is invalid: absolute paths are outside the workspace.',
               },
             ],
           }),
@@ -239,12 +303,16 @@ describe("client page: editor", () => {
     fireEvent.change(input, { target: { value: "/etc/passwd" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => {
-      expect(screen.getByText(/absolute paths are outside the workspace/u)).toBeTruthy();
+      expect(
+        screen.getByText(/absolute paths are outside the workspace/u),
+      ).toBeTruthy();
     });
   });
 
   it("creates a domain from an id in the header", async () => {
-    const draftDomain = vi.fn(() => Promise.resolve(ok({ domain: DEFINITION })));
+    const draftDomain = vi.fn(() =>
+      Promise.resolve(ok({ domain: DEFINITION })),
+    );
     renderPage({ draftDomain });
     fireEvent.change(await screen.findByPlaceholderText("new-domain-id"), {
       target: { value: "payments" },
@@ -257,11 +325,15 @@ describe("client page: editor", () => {
   });
 
   it("saves an edited domain and reports success", async () => {
-    const updateDomain = vi.fn(() => Promise.resolve(ok({ domain: DEFINITION })));
+    const updateDomain = vi.fn(() =>
+      Promise.resolve(ok({ domain: DEFINITION })),
+    );
     renderPage({ updateDomain });
     fireEvent.click(await screen.findByText("Payments"));
     fireEvent.click(await screen.findByRole("tab", { name: "General" }));
-    fireEvent.change(screen.getByDisplayValue("Payments"), { target: { value: "Payments v2" } });
+    fireEvent.change(screen.getByDisplayValue("Payments"), {
+      target: { value: "Payments v2" },
+    });
     fireEvent.click(screen.getByText("Save"));
     await waitFor(() => {
       expect(updateDomain).toHaveBeenCalledTimes(1);
@@ -272,11 +344,17 @@ describe("client page: editor", () => {
   it("reports a refused write instead of pretending it saved", async () => {
     renderPage({
       updateDomain: () =>
-        Promise.resolve({ ok: false, code: "DOMAIN_INVALID", message: "id is reserved" }),
+        Promise.resolve({
+          ok: false,
+          code: "DOMAIN_INVALID",
+          message: "id is reserved",
+        }),
     });
     fireEvent.click(await screen.findByText("Payments"));
     fireEvent.click(await screen.findByText("Save"));
-    expect(await screen.findByText(/DOMAIN_INVALID: id is reserved/u)).toBeTruthy();
+    expect(
+      await screen.findByText(/DOMAIN_INVALID: id is reserved/u),
+    ).toBeTruthy();
   });
 });
 
@@ -312,17 +390,25 @@ describe("client page: degraded configuration", () => {
     fireEvent.click(await screen.findByText("Payments"));
     expect(await screen.findByText(/Degraded configuration/u)).toBeTruthy();
     expect(screen.getByText("SCOPE_PROVIDER_MISSING")).toBeTruthy();
-    expect(screen.getByText(/no provider with that id is registered/u)).toBeTruthy();
+    expect(
+      screen.getByText(/no provider with that id is registered/u),
+    ).toBeTruthy();
     expect(screen.getByText("no")).toBeTruthy();
   });
 
   it("surfaces a refused scope resolution instead of rendering an empty inspector", async () => {
     renderPage({
       resolveScope: () =>
-        Promise.resolve({ ok: false, code: "DOMAIN_DISABLED", message: "domain is disabled" }),
+        Promise.resolve({
+          ok: false,
+          code: "DOMAIN_DISABLED",
+          message: "domain is disabled",
+        }),
     });
     fireEvent.click(await screen.findByText("Payments"));
-    expect(await screen.findByText(/DOMAIN_DISABLED: domain is disabled/u)).toBeTruthy();
+    expect(
+      await screen.findByText(/DOMAIN_DISABLED: domain is disabled/u),
+    ).toBeTruthy();
   });
 });
 
@@ -332,13 +418,21 @@ describe("client page: memory and test", () => {
     fireEvent.click(await screen.findByText("Payments"));
     fireEvent.click(await screen.findByRole("tab", { name: "Memory" }));
     fireEvent.click(screen.getByText("Inspect memory"));
-    expect(await screen.findByText(/Settlement closes at 14:00./u)).toBeTruthy();
+    expect(
+      await screen.findByText(/Settlement closes at 14:00./u),
+    ).toBeTruthy();
   });
 
   it("runs a test and shows the answer", async () => {
     const testExpert = vi.fn(() =>
       Promise.resolve(
-        ok({ result: { summary: "The batch aborts.", status: "completed", findings: [] } }),
+        ok({
+          result: {
+            summary: "The batch aborts.",
+            status: "completed",
+            findings: [],
+          },
+        }),
       ),
     );
     renderPage({ testExpert });
@@ -346,7 +440,11 @@ describe("client page: memory and test", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Test" }));
     fireEvent.click(screen.getByText("Run test"));
     await waitFor(() => {
-      expect(testExpert).toHaveBeenCalledWith("payments", expect.any(String), "session-1");
+      expect(testExpert).toHaveBeenCalledWith(
+        "payments",
+        expect.any(String),
+        "session-1",
+      );
     });
     expect(await screen.findByText(/The batch aborts./u)).toBeTruthy();
   });
@@ -354,11 +452,17 @@ describe("client page: memory and test", () => {
   it("surfaces a refused test run", async () => {
     renderPage({
       testExpert: () =>
-        Promise.resolve({ ok: false, code: "TASK_REJECTED", message: "no live session" }),
+        Promise.resolve({
+          ok: false,
+          code: "TASK_REJECTED",
+          message: "no live session",
+        }),
     });
     fireEvent.click(await screen.findByText("Payments"));
     fireEvent.click(await screen.findByRole("tab", { name: "Test" }));
     fireEvent.click(screen.getByText("Run test"));
-    expect(await screen.findByText(/TASK_REJECTED: no live session/u)).toBeTruthy();
+    expect(
+      await screen.findByText(/TASK_REJECTED: no live session/u),
+    ).toBeTruthy();
   });
 });

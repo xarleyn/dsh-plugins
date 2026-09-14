@@ -39,7 +39,10 @@ export function parseCasRef(ref: string): string {
 /** Validate an already-parsed hash shape; used by internal path building. */
 export function assertValidHash(hash: string): string {
   if (!CAS_HASH_PATTERN.test(hash)) {
-    throw new CasError("CAS_INVALID_REF", `invalid SHA-256 hash: ${JSON.stringify(hash)}`);
+    throw new CasError(
+      "CAS_INVALID_REF",
+      `invalid SHA-256 hash: ${JSON.stringify(hash)}`,
+    );
   }
   return hash;
 }

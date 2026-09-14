@@ -283,8 +283,9 @@ export function resolveBase(repoRoot, explicit) {
 
 function shortSha(repoRoot, ref) {
   return (
-    git(repoRoot, ["rev-parse", "--short", ref], { allowFailure: true })?.trim() ??
-    ref
+    git(repoRoot, ["rev-parse", "--short", ref], {
+      allowFailure: true,
+    })?.trim() ?? ref
   );
 }
 
@@ -386,8 +387,12 @@ export function main(argv = process.argv.slice(2)) {
       base: option("base"),
       head: option("head") || process.env.NX_HEAD || "HEAD",
     });
-    const { ok, lines } = report(result, { verbose: argv.includes("--verbose") });
-    const write = ok ? process.stdout.write.bind(process.stdout) : process.stderr.write.bind(process.stderr);
+    const { ok, lines } = report(result, {
+      verbose: argv.includes("--verbose"),
+    });
+    const write = ok
+      ? process.stdout.write.bind(process.stdout)
+      : process.stderr.write.bind(process.stderr);
     write(`${lines.join("\n")}\n`);
     return ok ? 0 : 1;
   } catch (error) {

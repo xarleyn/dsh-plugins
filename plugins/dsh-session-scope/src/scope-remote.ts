@@ -12,14 +12,18 @@ interface ScopeSessions {
 export class SessionScopeReadService extends TypertRemoteService {
   private readonly sessions: ScopeSessions;
 
-  constructor(ctx: Context, private readonly fallbackWorkspaceRoot = "") {
+  constructor(
+    ctx: Context,
+    private readonly fallbackWorkspaceRoot = "",
+  ) {
     super(ctx, "sessionScopeRead", { namespace: "sessionScope" });
     this.sessions = ctx.get("sessions") as ScopeSessions;
   }
 
   async list(sessionId: string, path: string): Promise<DirectoryListing> {
     const session = this.sessions.get(sessionId);
-    if (session === undefined) throw new Error("Session scope is unavailable for this session.");
+    if (session === undefined)
+      throw new Error("Session scope is unavailable for this session.");
     return listScopeDirectory(session, path, this.fallbackWorkspaceRoot);
   }
 }
@@ -36,7 +40,9 @@ function registerRemoteMethod(): void {
     },
   ) => void;
   decorate(
-    SessionScopeReadService.prototype.list as unknown as (...args: unknown[]) => unknown,
+    SessionScopeReadService.prototype.list as unknown as (
+      ...args: unknown[]
+    ) => unknown,
     {
       name: "list",
       private: false,
@@ -46,7 +52,9 @@ function registerRemoteMethod(): void {
       },
     },
   );
-  const markerReceiver = Object.create(SessionScopeReadService.prototype) as object;
+  const markerReceiver = Object.create(
+    SessionScopeReadService.prototype,
+  ) as object;
   for (const initializer of initializers) initializer.call(markerReceiver);
 }
 

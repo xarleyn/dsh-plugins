@@ -1,6 +1,9 @@
 import type { SessionEvent, SessionHeader } from "@deepseek-ai/dsh-session";
 import type { CorrectionEvidence } from "../types.js";
-import { extractCorrectionEvidence, type ContextLimits } from "./context-extractor.js";
+import {
+  extractCorrectionEvidence,
+  type ContextLimits,
+} from "./context-extractor.js";
 import { isDirectUserMessage, messageText } from "./message-text.js";
 import { prefilterCorrection } from "./prefilter.js";
 
@@ -26,10 +29,19 @@ export function scanSession(
     const event = snapshot.events[index];
     if (event === undefined || event.seq <= afterSeq) continue;
     eventsScanned += 1;
-    if (event.type !== "user/message" || !isDirectUserMessage(event.data)) continue;
+    if (event.type !== "user/message" || !isDirectUserMessage(event.data))
+      continue;
     const prefilter = prefilterCorrection(messageText(event.data));
     if (!prefilter.matched) continue;
-    evidence.push(extractCorrectionEvidence(snapshot.session, snapshot.events, index, prefilter, limits));
+    evidence.push(
+      extractCorrectionEvidence(
+        snapshot.session,
+        snapshot.events,
+        index,
+        prefilter,
+        limits,
+      ),
+    );
   }
   return {
     evidence,

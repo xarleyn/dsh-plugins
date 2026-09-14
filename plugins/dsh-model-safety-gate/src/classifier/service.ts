@@ -14,7 +14,12 @@
  * adapted behind `ClassifierTransport`, which unit tests replace with fakes.
  */
 
-import { type SafetyDecision, type SafetyErrorCode, type SafetyVerdict, type ContentChannel } from "../types.js";
+import {
+  type SafetyDecision,
+  type SafetyErrorCode,
+  type SafetyVerdict,
+  type ContentChannel,
+} from "../types.js";
 import type { FailureMode } from "../config.js";
 import { buildClassifierPrompt, CLASSIFIER_SYSTEM_PROMPT } from "./prompt.js";
 import { extractJsonPayload, validateVerdict } from "./schema.js";
@@ -31,7 +36,10 @@ export interface ClassifierUsage {
 
 export interface ClassifierRequestResult {
   readonly verdict: SafetyVerdict | null;
-  readonly failure: { readonly code: SafetyErrorCode; readonly message: string } | null;
+  readonly failure: {
+    readonly code: SafetyErrorCode;
+    readonly message: string;
+  } | null;
   readonly latencyMs: number;
   readonly usage: ClassifierUsage | null;
 }
@@ -44,10 +52,14 @@ export interface ClassifierTransportRequest {
   readonly signal: AbortSignal;
 }
 
-export type ClassifierTransport = (request: ClassifierTransportRequest) => Promise<{ text: string; usage?: ClassifierUsage }>;
+export type ClassifierTransport = (
+  request: ClassifierTransportRequest,
+) => Promise<{ text: string; usage?: ClassifierUsage }>;
 
 /** Decision the caller should take when the classifier did not answer. */
-export function failureDecision(failureMode: FailureMode): SafetyDecision | null {
+export function failureDecision(
+  failureMode: FailureMode,
+): SafetyDecision | null {
   switch (failureMode) {
     case "closed":
       return "block";
@@ -100,11 +112,17 @@ export class SafetyClassifierService {
     return this.classify({ channel: "input", content });
   }
 
-  classifyOutput(content: string, channel: Extract<ContentChannel, "text" | "reasoning">): Promise<ClassifierRequestResult> {
+  classifyOutput(
+    content: string,
+    channel: Extract<ContentChannel, "text" | "reasoning">,
+  ): Promise<ClassifierRequestResult> {
     return this.classify({ channel, content });
   }
 
-  classifyTool(content: string, toolName: string): Promise<ClassifierRequestResult> {
+  classifyTool(
+    content: string,
+    toolName: string,
+  ): Promise<ClassifierRequestResult> {
     return this.classify({ channel: "tool", content, toolName });
   }
 
@@ -116,7 +134,9 @@ export class SafetyClassifierService {
    */
   async classify(options: ClassifyOptions): Promise<ClassifierRequestResult> {
     if (isSafetyInternal()) {
-      return this.unavailable("classifier call attempted inside the safety-bypass context");
+      return this.unavailable(
+        "classifier call attempted inside the safety-bypass context",
+      );
     }
     const transport = this.transport;
     if (transport === null) {
@@ -124,7 +144,10 @@ export class SafetyClassifierService {
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("classifier timeout")), this.timeoutMs);
+    const timer = setTimeout(
+      () => controller.abort(new Error("classifier timeout")),
+      this.timeoutMs,
+    );
     const startedAt = Date.now();
     try {
       const prompt = buildClassifierPrompt({
@@ -150,7 +173,10 @@ export class SafetyClassifierService {
       if (controller.signal.aborted) {
         return {
           verdict: null,
-          failure: { code: "SAFETY_CLASSIFIER_TIMEOUT", message: `classifier did not answer within ${this.timeoutMs}ms` },
+          failure: {
+            code: "SAFETY_CLASSIFIER_TIMEOUT",
+            message: `classifier did not answer within ${this.timeoutMs}ms`,
+          },
           latencyMs,
           usage: null,
         };
@@ -158,7 +184,10 @@ export class SafetyClassifierService {
       if (error instanceof Error && error.name === "AbortError") {
         return {
           verdict: null,
-          failure: { code: "SAFETY_CLASSIFIER_TIMEOUT", message: "classifier request aborted" },
+          failure: {
+            code: "SAFETY_CLASSIFIER_TIMEOUT",
+            message: "classifier request aborted",
+          },
           latencyMs,
           usage: null,
         };
@@ -166,9 +195,13 @@ export class SafetyClassifierService {
       return {
         verdict: null,
         failure: {
-          code: error instanceof Error && "code" in error && (error as { code?: SafetyErrorCode }).code === "SAFETY_CLASSIFIER_INVALID_RESPONSE"
-            ? "SAFETY_CLASSIFIER_INVALID_RESPONSE"
-            : "SAFETY_CLASSIFIER_UNAVAILABLE",
+          code:
+            error instanceof Error &&
+            "code" in error &&
+            (error as { code?: SafetyErrorCode }).code ===
+              "SAFETY_CLASSIFIER_INVALID_RESPONSE"
+              ? "SAFETY_CLASSIFIER_INVALID_RESPONSE"
+              : "SAFETY_CLASSIFIER_UNAVAILABLE",
           message: error instanceof Error ? error.message : String(error),
         },
         latencyMs,
@@ -180,7 +213,14 @@ export class SafetyClassifierService {
   }
 
   /** Resolve what a failed classification means for the caller. */
-  resolveFailure(code: SafetyErrorCode, message: string): { decision: SafetyDecision | null; code: SafetyErrorCode; message: string } {
+  resolveFailure(
+    code: SafetyErrorCode,
+    message: string,
+  ): {
+    decision: SafetyDecision | null;
+    code: SafetyErrorCode;
+    message: string;
+  } {
     return { decision: failureDecision(this.failureMode), code, message };
   }
 

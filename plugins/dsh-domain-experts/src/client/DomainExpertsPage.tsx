@@ -20,9 +20,15 @@ import { StatusLine } from "./components.js";
 
 /** The subset of the Remote surface this page uses. */
 export interface DomainExpertsApi {
-  listDomains(): Promise<ApiOutcome<{ readonly domains: readonly DomainSummary[] }>>;
-  getDomain(id: string): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
-  draftDomain(id: string): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
+  listDomains(): Promise<
+    ApiOutcome<{ readonly domains: readonly DomainSummary[] }>
+  >;
+  getDomain(
+    id: string,
+  ): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
+  draftDomain(
+    id: string,
+  ): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
   inspectDraft(
     definition: DomainDefinition,
   ): Promise<ApiOutcome<DraftInspectionResult>>;
@@ -37,14 +43,19 @@ export interface DomainExpertsApi {
     enabled: boolean,
   ): Promise<ApiOutcome<{ readonly domain: DomainDefinition | null }>>;
   deleteDomain(id: string): Promise<ApiOutcome<{ readonly deleted: boolean }>>;
-  resolveScope(id: string): Promise<ApiOutcome<{ readonly profile: ResolvedExpertProfile | null }>>;
+  resolveScope(
+    id: string,
+  ): Promise<ApiOutcome<{ readonly profile: ResolvedExpertProfile | null }>>;
   catalog(): Promise<ApiOutcome<CatalogInfo>>;
   inspectMemory(
     id: string,
     namespace: string,
     limit: number,
   ): Promise<ApiOutcome<MemoryInspectResult>>;
-  clearMemory(id: string, namespace: string): Promise<ApiOutcome<{ readonly cleared: number }>>;
+  clearMemory(
+    id: string,
+    namespace: string,
+  ): Promise<ApiOutcome<{ readonly cleared: number }>>;
   testExpert(
     id: string,
     task: string,
@@ -109,7 +120,10 @@ export function DomainExpertsPage({
   });
 
   const refresh = useCallback(async (): Promise<void> => {
-    const [listed, described] = await Promise.all([api.listDomains(), api.catalog()]);
+    const [listed, described] = await Promise.all([
+      api.listDomains(),
+      api.catalog(),
+    ]);
     if (!listed.ok) {
       setLoadError(`${listed.code}: ${listed.message}`);
       setDomains([]);
@@ -144,13 +158,21 @@ export function DomainExpertsPage({
       setIsNew(false);
       setStatus(QUIET);
       setMemory({ result: null, error: "" });
-      setTest({ running: false, summary: "", status: "", findings: [], error: "" });
+      setTest({
+        running: false,
+        summary: "",
+        status: "",
+        findings: [],
+        error: "",
+      });
       const loaded = await api.getDomain(domainId);
       if (!loaded.ok || loaded.data.domain === null) {
         setDraft(null);
         setStatus({
           tone: "error",
-          text: loaded.ok ? "The domain no longer exists." : `${loaded.code}: ${loaded.message}`,
+          text: loaded.ok
+            ? "The domain no longer exists."
+            : `${loaded.code}: ${loaded.message}`,
         });
         return;
       }
@@ -166,7 +188,8 @@ export function DomainExpertsPage({
     if (id === "") return;
     const seeded = await api.draftDomain(id);
     const fallback = emptyDomainDraft(id, Date.now());
-    const next = seeded.ok && seeded.data.domain !== null ? seeded.data.domain : fallback;
+    const next =
+      seeded.ok && seeded.data.domain !== null ? seeded.data.domain : fallback;
     setDraft(next);
     setSelected(null);
     setIsNew(true);
@@ -193,28 +216,40 @@ export function DomainExpertsPage({
     if (draft === null) return;
     setBusy(true);
     setStatus({ tone: "info", text: "Saving…" });
-    const outcome = isNew ? await api.createDomain(draft) : await api.updateDomain(draft);
+    const outcome = isNew
+      ? await api.createDomain(draft)
+      : await api.updateDomain(draft);
     setBusy(false);
     if (!outcome.ok) {
       setStatus({ tone: "error", text: `${outcome.code}: ${outcome.message}` });
       return;
     }
     if (outcome.data.domain === null) {
-      setStatus({ tone: "error", text: "The host did not return the saved domain." });
+      setStatus({
+        tone: "error",
+        text: "The host did not return the saved domain.",
+      });
       return;
     }
     setDraft(outcome.data.domain);
     const created = isNew;
     setIsNew(false);
     setSelected(outcome.data.domain.id);
-    setStatus({ tone: "info", text: created ? "Domain created." : "Changes saved." });
+    setStatus({
+      tone: "info",
+      text: created ? "Domain created." : "Changes saved.",
+    });
     await refresh();
     await loadProfile(outcome.data.domain.id);
   }, [api, draft, isNew, loadProfile, refresh]);
 
   const remove = useCallback(async (): Promise<void> => {
     if (draft === null || isNew) return;
-    if (!window.confirm(`Delete domain "${draft.id}"? Its private memory stays in storage.`)) {
+    if (
+      !window.confirm(
+        `Delete domain "${draft.id}"? Its private memory stays in storage.`,
+      )
+    ) {
       return;
     }
     setBusy(true);
@@ -235,7 +270,10 @@ export function DomainExpertsPage({
     async (domainId: string, enabled: boolean): Promise<void> => {
       const outcome = await api.setDomainEnabled(domainId, enabled);
       if (!outcome.ok) {
-        setStatus({ tone: "error", text: `${outcome.code}: ${outcome.message}` });
+        setStatus({
+          tone: "error",
+          text: `${outcome.code}: ${outcome.message}`,
+        });
         return;
       }
       await refresh();
@@ -252,7 +290,10 @@ export function DomainExpertsPage({
       const outcome = await api.inspectMemory(domainId, namespace, 100);
       setBusy(false);
       if (!outcome.ok) {
-        setMemory({ result: null, error: `${outcome.code}: ${outcome.message}` });
+        setMemory({
+          result: null,
+          error: `${outcome.code}: ${outcome.message}`,
+        });
         return;
       }
       setMemory({ result: outcome.data, error: "" });
@@ -278,14 +319,23 @@ export function DomainExpertsPage({
       return;
     }
     setMemory({ result: null, error: "" });
-    setStatus({ tone: "info", text: `Cleared ${String(outcome.data.cleared)} records.` });
+    setStatus({
+      tone: "info",
+      text: `Cleared ${String(outcome.data.cleared)} records.`,
+    });
   }, [api, draft]);
 
   const runTest = useCallback(
     async (task: string): Promise<void> => {
       const domainId = draft?.id;
       if (domainId === undefined) return;
-      setTest({ running: true, summary: "", status: "", findings: [], error: "" });
+      setTest({
+        running: true,
+        summary: "",
+        status: "",
+        findings: [],
+        error: "",
+      });
       const outcome = await api.testExpert(domainId, task, currentSessionId());
       if (!outcome.ok) {
         setTest({
@@ -311,7 +361,10 @@ export function DomainExpertsPage({
   );
 
   const sorted = useMemo(
-    () => [...domains].sort((left, right) => left.name.localeCompare(right.name, "en")),
+    () =>
+      [...domains].sort((left, right) =>
+        left.name.localeCompare(right.name, "en"),
+      ),
     [domains],
   );
 
@@ -321,8 +374,9 @@ export function DomainExpertsPage({
         <div>
           <h2 className="dx-title">Domain Experts</h2>
           <p className="dx-subtitle">
-            A domain expert is a persona bound to a scope, a memory namespace and a tool policy.
-            The expert runs as an ordinary subagent of the caller.
+            A domain expert is a persona bound to a scope, a memory namespace
+            and a tool policy. The expert runs as an ordinary subagent of the
+            caller.
           </p>
         </div>
         <div className="dx-actions">
@@ -356,14 +410,17 @@ export function DomainExpertsPage({
         </div>
       </header>
 
-      {loadError === "" ? null : <StatusLine tone="error">{loadError}</StatusLine>}
+      {loadError === "" ? null : (
+        <StatusLine tone="error">{loadError}</StatusLine>
+      )}
 
       <div className="dx-layout">
         <div className="dx-column">
           <ul className="dx-list">
             {sorted.length === 0 ? (
               <li className="dx-empty">
-                No domains yet. Create one to give a part of the product its own expert.
+                No domains yet. Create one to give a part of the product its own
+                expert.
               </li>
             ) : (
               sorted.map((domain) => (
@@ -387,9 +444,17 @@ export function DomainExpertsPage({
                     }}
                   >
                     <span className="dx-list-name">
-                      {domain.icon === "" ? null : <span aria-hidden="true">{domain.icon}</span>}
+                      {domain.icon === "" ? null : (
+                        <span aria-hidden="true">{domain.icon}</span>
+                      )}
                       {domain.name}
-                      <span className={domain.enabled ? "dx-chip" : "dx-chip dx-chip--advisory"}>
+                      <span
+                        className={
+                          domain.enabled
+                            ? "dx-chip"
+                            : "dx-chip dx-chip--advisory"
+                        }
+                      >
                         {domain.enabled ? "enabled" : "disabled"}
                       </span>
                       {domain.degradations > 0 ? (
@@ -398,10 +463,13 @@ export function DomainExpertsPage({
                         </span>
                       ) : null}
                     </span>
-                    <span className="dx-list-desc">{domain.description || "No description."}</span>
+                    <span className="dx-list-desc">
+                      {domain.description || "No description."}
+                    </span>
                     <span className="dx-list-meta">
-                      {String(domain.primaryPaths)} primary paths · {String(domain.sharedPaths)}{" "}
-                      shared · {String(domain.memoryNamespaces)} memory namespaces ·{" "}
+                      {String(domain.primaryPaths)} primary paths ·{" "}
+                      {String(domain.sharedPaths)} shared ·{" "}
+                      {String(domain.memoryNamespaces)} memory namespaces ·{" "}
                       {String(domain.tools)} tools
                     </span>
                   </button>
@@ -424,49 +492,50 @@ export function DomainExpertsPage({
         </div>
 
         <div className="dx-column dx-column--detail">
-        {draft === null ? (
-          <div className="dx-panel">
-            <p className="dx-empty">
-              Select a domain to edit it, or create a new one. Every restriction the inspector shows
-              is labelled either <strong>enforced</strong> or <strong>advisory</strong>.
-            </p>
-          </div>
-        ) : (
-          <DomainEditor
-            draft={draft}
-            isNew={isNew}
-            busy={busy}
-            status={status}
-            issues={issues}
-            catalog={catalog}
-            profile={profile}
-            profileError={profileError}
-            memory={memory}
-            test={test}
-            onChange={change}
-            onSave={() => {
-              void save();
-            }}
-            onDelete={() => {
-              void remove();
-            }}
-            onCancel={() => {
-              setDraft(null);
-              setSelected(null);
-              setProfile(null);
-              setStatus(QUIET);
-            }}
-            onInspectMemory={(namespace) => {
-              void inspectMemory(namespace);
-            }}
-            onClearMemory={() => {
-              void clearMemory();
-            }}
-            onRunTest={(task) => {
-              void runTest(task);
-            }}
-          />
-        )}
+          {draft === null ? (
+            <div className="dx-panel">
+              <p className="dx-empty">
+                Select a domain to edit it, or create a new one. Every
+                restriction the inspector shows is labelled either{" "}
+                <strong>enforced</strong> or <strong>advisory</strong>.
+              </p>
+            </div>
+          ) : (
+            <DomainEditor
+              draft={draft}
+              isNew={isNew}
+              busy={busy}
+              status={status}
+              issues={issues}
+              catalog={catalog}
+              profile={profile}
+              profileError={profileError}
+              memory={memory}
+              test={test}
+              onChange={change}
+              onSave={() => {
+                void save();
+              }}
+              onDelete={() => {
+                void remove();
+              }}
+              onCancel={() => {
+                setDraft(null);
+                setSelected(null);
+                setProfile(null);
+                setStatus(QUIET);
+              }}
+              onInspectMemory={(namespace) => {
+                void inspectMemory(namespace);
+              }}
+              onClearMemory={() => {
+                void clearMemory();
+              }}
+              onRunTest={(task) => {
+                void runTest(task);
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

@@ -33,7 +33,7 @@ pnpm typecheck
 
 ### Prerequisites
 
-- **Node.js** >= 22
+- **Node.js** >= 22 (`.nvmrc` names the version CI runs)
 - **pnpm** >= 10.4
 - **Git**
 
@@ -50,6 +50,8 @@ pnpm typecheck
 | `pnpm test` | Run all tests |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm check` | Run the complete local validation pipeline |
+| `pnpm format` | Check formatting with the shared Prettier config |
+| `pnpm format:write` | Rewrite files that fail the formatting check |
 | `pnpm deps:check` | Enforce workspace dependency boundaries |
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
 | `pnpm affected:check` | Run lint/typecheck/test/build on affected packages only |
@@ -59,6 +61,12 @@ pnpm typecheck
 ### Affected Builds
 
 Nx automatically calculates which packages are affected by your changes. Use `pnpm affected:check` to run the full pipeline only on changed packages — this is significantly faster than running everything.
+
+### Formatting and Line Endings
+
+Prettier and its ignore list live in the repository root (`.prettierrc`, `.prettierignore`); no package carries its own copy, and `pnpm format` checks every package from one place. Generated and machine-owned files stay outside the check — `CHANGELOG.md` is written by `nx release` on every release, `lib/` and `.nx/` are build output and caches, and `pnpm-lock.yaml` belongs to pnpm. Markdown is not formatted: Prettier's markdown printer rewrites fenced code and pads every table cell, which is churn in hand-written prose rather than formatting.
+
+Every text file is stored and checked out with LF line endings. `.gitattributes` enforces that on staging and checkout, and `.editorconfig` keeps editors from writing CRLF in the first place. Both matter, because a working tree that disagrees with the index stays invisible to `git status` until something stages it.
 
 ---
 

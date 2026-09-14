@@ -17,7 +17,9 @@ import { resolveCasResultsConfig } from "../../src/config.js";
 const roots: string[] = [];
 
 /** Create a unique temporary directory, removed automatically after the run. */
-export async function tempRoot(prefix = "dsh-cas-results-test-"): Promise<string> {
+export async function tempRoot(
+  prefix = "dsh-cas-results-test-",
+): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
   roots.push(root);
   return root;
@@ -32,12 +34,20 @@ export async function cleanupTempRoots(): Promise<void> {
       // removed, so the walk can lose the directory it is deleting. Node
       // retries the ENOTEMPTY, EPERM and EBUSY this produces only when the
       // retry budget is set.
-      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 20 });
+      await rm(root, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 20,
+      });
     }
   }
 }
 
-export function buildStore(root: string, compression: CompressionMode = "none"): FilesystemCasStore {
+export function buildStore(
+  root: string,
+  compression: CompressionMode = "none",
+): FilesystemCasStore {
   let tick = 0;
   return new FilesystemCasStore(root, {
     compression,
@@ -64,7 +74,8 @@ export function makeLog(bytes: number): string {
   let written = 0;
   let index = 0;
   while (written < bytes) {
-    const level = index % 25 === 0 ? "ERROR" : index % 17 === 0 ? "WARN" : "INFO";
+    const level =
+      index % 25 === 0 ? "ERROR" : index % 17 === 0 ? "WARN" : "INFO";
     const line = `2026-08-30T18:42:0${index % 10}.000Z ${level} worker ${index}: doing work ${"y".repeat(30)}`;
     lines.push(line);
     written += line.length + 1;
@@ -81,7 +92,9 @@ export const TINY_PNG_BYTES = Uint8Array.from(
   ),
 );
 
-export function testConfig(overrides: Partial<ResolvedCasResultsConfig> = {}): ResolvedCasResultsConfig {
+export function testConfig(
+  overrides: Partial<ResolvedCasResultsConfig> = {},
+): ResolvedCasResultsConfig {
   return { ...resolveCasResultsConfig({}), ...overrides };
 }
 

@@ -50,8 +50,6 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint src tests scripts",
-    "format": "prettier --check . --end-of-line auto",
-    "format:write": "prettier --write . --end-of-line auto",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
@@ -89,7 +87,6 @@
     "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
-    "prettier": "catalog:tooling",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

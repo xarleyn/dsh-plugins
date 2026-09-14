@@ -78,7 +78,10 @@ export class DraftSessionsService extends TypertRemoteService {
 
   async update(request: UpdateDraftRequest): Promise<DraftSession> {
     const draft = await this.store.update(request);
-    this.logger.info("draft.updated", { revision: draft.revision, state: draft.state });
+    this.logger.info("draft.updated", {
+      revision: draft.revision,
+      state: draft.state,
+    });
     return draft;
   }
 

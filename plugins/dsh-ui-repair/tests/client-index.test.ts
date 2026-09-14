@@ -14,10 +14,10 @@ describe("client entrypoint", () => {
       value: { mode: "suggest" | "auto" };
       writable: true;
     } = {
-        status: "ready",
-        value: { mode: "suggest" },
-        writable: true,
-      };
+      status: "ready",
+      value: { mode: "suggest" },
+      writable: true,
+    };
     let settingsListener: (() => void) | undefined;
     const scope = {
       getSnapshot: () => snapshot,
@@ -59,13 +59,18 @@ describe("client entrypoint", () => {
       getMode(): string;
     };
     expect(runtime.getMode()).toBe("suggest");
-    expect(ctx.settingsScope.bind).toHaveBeenCalledWith({ namespace: "ui-repair" });
+    expect(ctx.settingsScope.bind).toHaveBeenCalledWith({
+      namespace: "ui-repair",
+    });
     expect(ctx.slots.inject).toHaveBeenCalledWith(
       "settings.plugin.item",
       expect.any(Function),
     );
     expect(ctx.slots.register).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "settings.plugin.item", key: "ui-repair" }),
+      expect.objectContaining({
+        name: "settings.plugin.item",
+        key: "ui-repair",
+      }),
       expect.any(Function),
     );
     snapshot = {
@@ -84,7 +89,9 @@ describe("client entrypoint", () => {
 
   it("is a no-op without a DOM", () => {
     const provide = vi.fn();
-    const dispose = apply({ provide } as unknown as Context, { document: null });
+    const dispose = apply({ provide } as unknown as Context, {
+      document: null,
+    });
     dispose();
     expect(provide).not.toHaveBeenCalled();
   });

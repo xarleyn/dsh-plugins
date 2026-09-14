@@ -11,9 +11,18 @@
  * `warn` — discussing or quoting an attack is not performing it.
  */
 
-import type { ScanFinding, ScanResult, SafetyCategory, SafetyDecision } from "../types.js";
+import type {
+  ScanFinding,
+  ScanResult,
+  SafetyCategory,
+  SafetyDecision,
+} from "../types.js";
 import { DECISION_ORDER, SafetyGateError } from "../types.js";
-import { compileInjectionRule, INJECTION_RULES, type InjectionRule } from "./injection.js";
+import {
+  compileInjectionRule,
+  INJECTION_RULES,
+  type InjectionRule,
+} from "./injection.js";
 import { decodeEncodings, foldText } from "./normalize.js";
 import { findHighEntropyTokens, SECRET_RULES } from "./secrets.js";
 
@@ -43,7 +52,8 @@ function compile(rule: InjectionRule): CompiledRule {
 }
 
 /** Double-quote styles and inline/triple backticks (single ` also fenced). */
-const QUOTED_SPAN = /"[^"\n]{1,400}"|“[^”\n]{1,400}”|«[^«»\n]{1,400}»|„[^“”\n]{1,400}“|`[^`\n]{1,400}`|```[\s\S]{0,4000}?```/g;
+const QUOTED_SPAN =
+  /"[^"\n]{1,400}"|“[^”\n]{1,400}”|«[^«»\n]{1,400}»|„[^“”\n]{1,400}“|`[^`\n]{1,400}`|```[\s\S]{0,4000}?```/g;
 
 /** Longest repeated-character run that is still considered prose. */
 const MAX_CHAR_RUN = 256;
@@ -57,7 +67,8 @@ function floodRatio(folded: string): number {
   const grams = new Set<string>();
   const total = sample.length - 8;
   if (total <= 0) return 0;
-  for (let index = 0; index < total; index += 1) grams.add(sample.slice(index, index + 8));
+  for (let index = 0; index < total; index += 1)
+    grams.add(sample.slice(index, index + 8));
   return grams.size / total;
 }
 
@@ -70,8 +81,14 @@ export class SafetyScanner {
   private readonly budget: number;
 
   constructor(options: ScannerOptions) {
-    if (!Number.isFinite(options.maxScanChars) || options.maxScanChars < 1_024) {
-      throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", "scanner maxScanChars must be an integer >= 1024");
+    if (
+      !Number.isFinite(options.maxScanChars) ||
+      options.maxScanChars < 1_024
+    ) {
+      throw new SafetyGateError(
+        "SAFETY_INVALID_ARGUMENT",
+        "scanner maxScanChars must be an integer >= 1024",
+      );
     }
     this.budget = options.maxScanChars;
     const custom = (options.customBlockPatterns ?? []).map((source, index) => {
@@ -79,7 +96,11 @@ export class SafetyScanner {
       try {
         regex = new RegExp(source, "iu");
       } catch (error) {
-        throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", `customBlockPatterns[${index}] is not a valid regular expression`, { cause: error });
+        throw new SafetyGateError(
+          "SAFETY_INVALID_ARGUMENT",
+          `customBlockPatterns[${index}] is not a valid regular expression`,
+          { cause: error },
+        );
       }
       return {
         id: `custom.${index}`,
@@ -89,7 +110,11 @@ export class SafetyScanner {
         regex,
       };
     });
-    this.rules = [...INJECTION_RULES.map(compile), ...SECRET_RULES.map(compile), ...custom];
+    this.rules = [
+      ...INJECTION_RULES.map(compile),
+      ...SECRET_RULES.map(compile),
+      ...custom,
+    ];
   }
 
   /**
@@ -101,7 +126,13 @@ export class SafetyScanner {
   scan(raw: string, options?: { allowQuotedDowngrade?: boolean }): ScanResult {
     const allowQuotedDowngrade = options?.allowQuotedDowngrade ?? true;
     if (raw.length === 0) {
-      return { findings: [], decision: "allow", categories: [], scannedChars: 0, truncated: false };
+      return {
+        findings: [],
+        decision: "allow",
+        categories: [],
+        scannedChars: 0,
+        truncated: false,
+      };
     }
 
     const truncated = raw.length > this.budget;
@@ -116,10 +147,15 @@ export class SafetyScanner {
     const record = (finding: ScanFinding): void => {
       findings.push(finding);
       categories.add(finding.category);
-      if (DECISION_ORDER[finding.severity] > DECISION_ORDER[decision]) decision = finding.severity;
+      if (DECISION_ORDER[finding.severity] > DECISION_ORDER[decision])
+        decision = finding.severity;
     };
 
-    const collect = (rule: CompiledRule, text: string, allowQuotedDowngrade: boolean): void => {
+    const collect = (
+      rule: CompiledRule,
+      text: string,
+      allowQuotedDowngrade: boolean,
+    ): void => {
       const global = new RegExp(rule.regex.source, `${rule.regex.flags}g`);
       let hits = 0;
       for (const match of text.matchAll(global)) {
@@ -130,7 +166,13 @@ export class SafetyScanner {
         if (seenHits.has(dedupeKey)) continue;
         seenHits.add(dedupeKey);
         const severity = rule.severity;
-        const quoted = quotedSpans !== null && insideSpans(match.index ?? 0, (match.index ?? 0) + matched.length, quotedSpans);
+        const quoted =
+          quotedSpans !== null &&
+          insideSpans(
+            match.index ?? 0,
+            (match.index ?? 0) + matched.length,
+            quotedSpans,
+          );
         if (severity === "block" && quoted && allowQuotedDowngrade) {
           record({
             ruleId: rule.id,
@@ -188,7 +230,11 @@ export class SafetyScanner {
         confidence: 0.6,
       });
     }
-    if (fold.foldedChanged && /[а-яё]/.test(fold.folded) === false && /\b(?:ignore|disregard|instructions?)\b/.test(fold.folded)) {
+    if (
+      fold.foldedChanged &&
+      /[а-яё]/.test(fold.folded) === false &&
+      /\b(?:ignore|disregard|instructions?)\b/.test(fold.folded)
+    ) {
       record({
         ruleId: "obfuscation.homoglyph",
         category: "prompt_injection",
@@ -198,8 +244,14 @@ export class SafetyScanner {
       });
     }
 
-    const charRun = fold.folded.match(new RegExp(`(.)\\1{${MAX_CHAR_RUN},}`, "u"));
-    if (charRun !== null || (fold.folded.length >= FLOOD_MIN_CHARS && floodRatio(fold.folded) < FLOOD_UNIQUE_RATIO)) {
+    const charRun = fold.folded.match(
+      new RegExp(`(.)\\1{${MAX_CHAR_RUN},}`, "u"),
+    );
+    if (
+      charRun !== null ||
+      (fold.folded.length >= FLOOD_MIN_CHARS &&
+        floodRatio(fold.folded) < FLOOD_UNIQUE_RATIO)
+    ) {
       record({
         ruleId: "flood.repeated_payload",
         category: "unknown_high_risk",
@@ -235,6 +287,10 @@ function collectQuotedSpans(text: string): Array<[number, number]> | null {
   return spans.length > 0 ? spans : null;
 }
 
-function insideSpans(start: number, end: number, spans: ReadonlyArray<readonly [number, number]>): boolean {
+function insideSpans(
+  start: number,
+  end: number,
+  spans: ReadonlyArray<readonly [number, number]>,
+): boolean {
   return spans.some(([from, to]) => start >= from && end <= to);
 }

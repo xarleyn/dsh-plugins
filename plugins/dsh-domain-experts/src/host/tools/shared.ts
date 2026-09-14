@@ -37,7 +37,10 @@ export interface ToolDependencies {
   /** The expert run a session belongs to, or `undefined` for a plain caller. */
   activeRun(sessionId: string): ActiveRun | undefined;
   /** Apply the caller expert's cross-domain policy to a target domain. */
-  delegationVerdict(callerDomainId: string, targetDomainId: string): DelegationVerdict;
+  delegationVerdict(
+    callerDomainId: string,
+    targetDomainId: string,
+  ): DelegationVerdict;
   /** Whether the caller may start another expert child right now. */
   parallelBudget(callerSessionId: string): ParallelBudget;
   /** The memory provider the deployment selected. */
@@ -60,7 +63,10 @@ export function toToolError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export function toolFailureDetail(error: unknown): { code: string; message: string } {
+export function toolFailureDetail(error: unknown): {
+  code: string;
+  message: string;
+} {
   return { code: errorCodeOf(error), message: errorMessageOf(error) };
 }
 
@@ -99,6 +105,10 @@ export function requestOf(args: {
 }
 
 /** One-line status shared by every tool's rendered result. */
-export function statusLine(domainId: string, status: string, durationMs: number): string {
+export function statusLine(
+  domainId: string,
+  status: string,
+  durationMs: number,
+): string {
   return `domain=${domainId} status=${status} durationMs=${String(Math.round(durationMs))}`;
 }

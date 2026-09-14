@@ -2,7 +2,11 @@ import { existsSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import type { ResolvedResourceEntry } from "../../types.js";
 import { refusalFor } from "./path-guard.js";
-import type { DomainScopeProvider, ScopeProviderInput, ScopeProviderOutput } from "./registry.js";
+import type {
+  DomainScopeProvider,
+  ScopeProviderInput,
+  ScopeProviderOutput,
+} from "./registry.js";
 
 export const FILESYSTEM_PROVIDER_ID = "filesystem";
 
@@ -28,7 +32,13 @@ export function createFilesystemProvider(): DomainScopeProvider {
       const enforcedBy = [...input.enforcedBy];
       const entries: ResolvedResourceEntry[] = [
         ...filesystem.primary.map((path) =>
-          entry(path, "primary", enforcement, enforcedBy, "Owned by this domain."),
+          entry(
+            path,
+            "primary",
+            enforcement,
+            enforcedBy,
+            "Owned by this domain.",
+          ),
         ),
         ...filesystem.sharedReadOnly.map((path) =>
           entry(
@@ -40,7 +50,13 @@ export function createFilesystemProvider(): DomainScopeProvider {
           ),
         ),
         ...filesystem.denied.map((path) =>
-          entry(path, "denied", enforcement, enforcedBy, "Explicitly outside this domain."),
+          entry(
+            path,
+            "denied",
+            enforcement,
+            enforcedBy,
+            "Explicitly outside this domain.",
+          ),
         ),
       ];
       return { resources: entries, external: "" };
@@ -61,7 +77,10 @@ function entry(
     enforcement,
     enforcedBy,
     provider: FILESYSTEM_PROVIDER_ID,
-    note: enforcement === "enforced" ? note : `${note} Not applied by any selected worker.`,
+    note:
+      enforcement === "enforced"
+        ? note
+        : `${note} Not applied by any selected worker.`,
   };
 }
 
@@ -79,7 +98,10 @@ export type ResolvedPath =
  * remaining segments, then requires the result to stay under the real root.
  * Any consumer that hands a path to a subprocess should call this first.
  */
-export function resolveWithinRoot(root: string, candidate: string): ResolvedPath {
+export function resolveWithinRoot(
+  root: string,
+  candidate: string,
+): ResolvedPath {
   const refusal = refusalFor(candidate);
   if (refusal !== null) return { ok: false, reason: refusal };
   if (root === "") return { ok: false, reason: "no-root" };
@@ -97,7 +119,8 @@ export function resolveWithinRoot(root: string, candidate: string): ResolvedPath
   }
 
   const realProbe = realpathSync(probe);
-  const realTarget = trailing.length > 0 ? resolve(realProbe, ...trailing) : realProbe;
+  const realTarget =
+    trailing.length > 0 ? resolve(realProbe, ...trailing) : realProbe;
   const rel = relative(absoluteRoot, realTarget);
   if (rel === "") return { ok: true, path: absoluteRoot };
   if (rel.startsWith("..") || isAbsolute(rel)) {

@@ -31,7 +31,10 @@ export function describeMode(mode: GateMode | undefined): ModeLabel {
 }
 
 /** Badge text: the running mode, or that the whole gate is switched off. */
-export function badgeText(enabled: boolean | undefined, mode: GateMode | undefined): string {
+export function badgeText(
+  enabled: boolean | undefined,
+  mode: GateMode | undefined,
+): string {
   if (enabled === false) return "Disabled";
   return describeMode(mode).label;
 }
@@ -43,8 +46,17 @@ export function formatCount(value: number | undefined): string {
 }
 
 /** One decimal place, or a dash when there is nothing to average yet. */
-export function formatAverage(totalMs: number | undefined, count: number | undefined): string {
-  if (totalMs === undefined || count === undefined || count <= 0 || !Number.isFinite(totalMs)) return "—";
+export function formatAverage(
+  totalMs: number | undefined,
+  count: number | undefined,
+): string {
+  if (
+    totalMs === undefined ||
+    count === undefined ||
+    count <= 0 ||
+    !Number.isFinite(totalMs)
+  )
+    return "—";
   return `${(totalMs / count).toFixed(1)} ms`;
 }
 
@@ -56,8 +68,16 @@ export function formatMs(value: number | undefined): string {
 }
 
 /** Uptime of the running gate, in at most two units. */
-export function formatUptime(startedAt: number | undefined, now: number): string {
-  if (startedAt === undefined || !Number.isFinite(startedAt) || now <= startedAt) return "—";
+export function formatUptime(
+  startedAt: number | undefined,
+  now: number,
+): string {
+  if (
+    startedAt === undefined ||
+    !Number.isFinite(startedAt) ||
+    now <= startedAt
+  )
+    return "—";
   const seconds = Math.floor((now - startedAt) / 1_000);
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -109,7 +129,8 @@ export function parseListDraft(text: string): string[] {
 export function isOverridden(user: unknown, path: readonly string[]): boolean {
   let cursor: unknown = user;
   for (const segment of path) {
-    if (typeof cursor !== "object" || cursor === null || Array.isArray(cursor)) return false;
+    if (typeof cursor !== "object" || cursor === null || Array.isArray(cursor))
+      return false;
     const record = cursor as Record<string, unknown>;
     if (!Object.hasOwn(record, segment)) return false;
     cursor = record[segment];
@@ -119,7 +140,8 @@ export function isOverridden(user: unknown, path: readonly string[]): boolean {
 
 /** Top-level keys the user layer carries; the reset-all action clears exactly these. */
 export function overriddenKeys(user: unknown): string[] {
-  if (typeof user !== "object" || user === null || Array.isArray(user)) return [];
+  if (typeof user !== "object" || user === null || Array.isArray(user))
+    return [];
   return Object.keys(user as Record<string, unknown>).sort();
 }
 
@@ -128,7 +150,10 @@ export function overriddenKeys(user: unknown): string[] {
  * notice is a deployment obligation (design SPEC §22): content leaves the
  * process whenever the operator points the classifier at a remote endpoint.
  */
-export function describeEndpoint(backend: string | undefined, endpoint: string | undefined): string {
+export function describeEndpoint(
+  backend: string | undefined,
+  endpoint: string | undefined,
+): string {
   if (endpoint !== undefined && endpoint.length > 0) return endpoint;
   if (backend === "none") return "no classifier endpoint";
   return "the configured endpoint";

@@ -1,0 +1,16 @@
+# Editor defaults for this repository. Git enforces the same ending through
+# .gitattributes on staging and checkout; this file is what keeps editors and
+# tools from writing CRLF into new and edited files in the first place.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = true
+
+# Markdown hard line breaks are two trailing spaces.
+[*.md]
+trim_trailing_whitespace = false

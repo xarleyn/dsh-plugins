@@ -12,7 +12,10 @@ import type {} from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
+import type {
+  RemoteResult,
+  TypertRemoteContribution,
+} from "@deepseek-ai/dsh-typert-protocol";
 import safetyGateRemote from "@yadsh/dsh-model-safety-gate/remote";
 import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
 

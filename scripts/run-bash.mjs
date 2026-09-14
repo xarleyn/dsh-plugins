@@ -19,7 +19,10 @@ function findWithWhere(executable) {
 function isMsysBash(candidate) {
   const normalized = windowsPath.normalize(candidate).toLowerCase();
   if (normalized.endsWith("\\windows\\system32\\bash.exe")) return false;
-  return normalized.endsWith("\\bin\\bash.exe") || normalized.endsWith("\\usr\\bin\\bash.exe");
+  return (
+    normalized.endsWith("\\bin\\bash.exe") ||
+    normalized.endsWith("\\usr\\bin\\bash.exe")
+  );
 }
 
 function bashCandidatesFromGit(gitExecutable) {
@@ -95,12 +98,14 @@ export function discoverBash({
   }
 
   if (checked.length === 0) checked.push("no candidates were returned");
-  throw new Error([
-    "Git Bash is required on Windows to run repository shell gates.",
-    "Checked candidates:",
-    ...checked.map((candidate) => `- ${candidate}`),
-    "Set DSH_BASH_PATH to an existing Git Bash executable to override discovery.",
-  ].join("\n"));
+  throw new Error(
+    [
+      "Git Bash is required on Windows to run repository shell gates.",
+      "Checked candidates:",
+      ...checked.map((candidate) => `- ${candidate}`),
+      "Set DSH_BASH_PATH to an existing Git Bash executable to override discovery.",
+    ].join("\n"),
+  );
 }
 
 export function main(argv = process.argv.slice(2)) {

@@ -2,7 +2,10 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import domainExpertsRemote from "@yadsh/dsh-domain-experts/remote";
-import { DomainExpertsPage, type DomainExpertsApi } from "./DomainExpertsPage.js";
+import {
+  DomainExpertsPage,
+  type DomainExpertsApi,
+} from "./DomainExpertsPage.js";
 import { DOMAIN_EXPERTS_STYLES } from "./styles.js";
 import {
   toOutcome,
@@ -38,7 +41,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
      * each pass replaces the previous registration instead of stacking one.
      */
     await ctx.inject(["remote.domainExperts"], (remoteContext) => {
-      const namespace = (remoteContext.remote as DomainExpertsClientRemote).domainExperts;
+      const namespace = (remoteContext.remote as DomainExpertsClientRemote)
+        .domainExperts;
       disposeSlot?.();
       disposeSlot = ctx.slots.inject("settings.plugins.tab", () =>
         ctx.slots.register(
@@ -76,9 +80,12 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
     listDomains: async () => toOutcome(await namespace.listDomains()),
     getDomain: async (id) => toOutcome(await namespace.getDomain(id)),
     draftDomain: async (id) => toOutcome(await namespace.draftDomain(id)),
-    inspectDraft: async (definition) => toOutcome(await namespace.inspectDraft(definition)),
-    createDomain: async (definition) => toOutcome(await namespace.createDomain(definition)),
-    updateDomain: async (definition) => toOutcome(await namespace.updateDomain(definition)),
+    inspectDraft: async (definition) =>
+      toOutcome(await namespace.inspectDraft(definition)),
+    createDomain: async (definition) =>
+      toOutcome(await namespace.createDomain(definition)),
+    updateDomain: async (definition) =>
+      toOutcome(await namespace.updateDomain(definition)),
     setDomainEnabled: async (id, enabled) =>
       toOutcome(await namespace.setDomainEnabled(id, enabled)),
     deleteDomain: async (id) => toOutcome(await namespace.deleteDomain(id)),
@@ -99,7 +106,9 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
  */
 function injectStyles(): () => void {
   if (typeof document === "undefined") return () => undefined;
-  const existing = document.querySelector(`style[data-plugin="${STYLE_MARKER}"]`);
+  const existing = document.querySelector(
+    `style[data-plugin="${STYLE_MARKER}"]`,
+  );
   if (existing !== null) existing.remove();
   const style = document.createElement("style");
   style.setAttribute("data-plugin", STYLE_MARKER);

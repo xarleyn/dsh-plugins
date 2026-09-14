@@ -10,7 +10,14 @@
  * (SPEC §40), so a crash cannot leave half-written metadata that parses.
  */
 
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { KvMetadataIoError } from "../errors.js";
 import type { SnapshotInvalidationReason } from "../errors.js";
@@ -30,7 +37,9 @@ export interface RepositoryPutInput {
 
 function isNotFoundError(error: unknown): boolean {
   return (
-    typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT"
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "ENOENT"
   );
 }
 
@@ -48,7 +57,10 @@ export class SnapshotRepository {
 
   #manifestPath(identity: SnapshotIdentity): string {
     const digest = snapshotFilename(identity).replace(/\.bin$/, "");
-    return join(this.#sessionsDir(identity.serverInstanceKey), `${digest}.json`);
+    return join(
+      this.#sessionsDir(identity.serverInstanceKey),
+      `${digest}.json`,
+    );
   }
 
   /** Load the manifest for an identity; null when none exists. */
@@ -59,12 +71,16 @@ export class SnapshotRepository {
       text = await readFile(path, "utf8");
     } catch (error) {
       if (isNotFoundError(error)) return null;
-      throw new KvMetadataIoError(`cannot read manifest ${path}`, { cause: error });
+      throw new KvMetadataIoError(`cannot read manifest ${path}`, {
+        cause: error,
+      });
     }
     try {
       return parseManifest(JSON.parse(text));
     } catch (error) {
-      throw new KvMetadataIoError(`cannot parse manifest ${path}`, { cause: error });
+      throw new KvMetadataIoError(`cannot parse manifest ${path}`, {
+        cause: error,
+      });
     }
   }
 
@@ -119,7 +135,9 @@ export class SnapshotRepository {
       return true;
     } catch (error) {
       if (isNotFoundError(error)) return false;
-      throw new KvMetadataIoError(`cannot remove manifest ${path}`, { cause: error });
+      throw new KvMetadataIoError(`cannot remove manifest ${path}`, {
+        cause: error,
+      });
     }
   }
 
@@ -169,7 +187,9 @@ export class SnapshotRepository {
       instanceKeys = await readdir(instancesDir);
     } catch (error) {
       if (isNotFoundError(error)) return result;
-      throw new KvMetadataIoError(`cannot list ${instancesDir}`, { cause: error });
+      throw new KvMetadataIoError(`cannot list ${instancesDir}`, {
+        cause: error,
+      });
     }
     for (const instanceKey of instanceKeys) {
       const sessionsDir = join(instancesDir, instanceKey, "sessions");
@@ -178,13 +198,17 @@ export class SnapshotRepository {
         files = await readdir(sessionsDir);
       } catch (error) {
         if (isNotFoundError(error)) continue;
-        throw new KvMetadataIoError(`cannot list ${sessionsDir}`, { cause: error });
+        throw new KvMetadataIoError(`cannot list ${sessionsDir}`, {
+          cause: error,
+        });
       }
       for (const file of files) {
         if (!file.endsWith(".json")) continue;
         const path = join(sessionsDir, file);
         try {
-          const manifest = parseManifest(JSON.parse(await readFile(path, "utf8")));
+          const manifest = parseManifest(
+            JSON.parse(await readFile(path, "utf8")),
+          );
           if (manifest.sessionId === sessionId) result.push(manifest);
         } catch {
           // Unreadable manifests are not session state; ignore here.
@@ -198,7 +222,9 @@ export class SnapshotRepository {
    * Find a ready, runtime-compatible manifest for the identity; incompatible
    * manifests are marked invalid (SPEC §31) and ignored.
    */
-  async findCompatible(identity: SnapshotIdentity): Promise<SnapshotManifest | null> {
+  async findCompatible(
+    identity: SnapshotIdentity,
+  ): Promise<SnapshotManifest | null> {
     const manifest = await this.load(identity);
     if (!manifest) return null;
     const storedIdentity: SnapshotIdentity = {
@@ -216,7 +242,11 @@ export class SnapshotRepository {
     if (!compatibleShape) return null;
     if (manifest.state !== "ready") return null;
     if (storedIdentity.compatibilityVersion !== identity.compatibilityVersion) {
-      await this.markInvalid(identity, "MODEL_FINGERPRINT_CHANGED", new Date().toISOString());
+      await this.markInvalid(
+        identity,
+        "MODEL_FINGERPRINT_CHANGED",
+        new Date().toISOString(),
+      );
       return null;
     }
     return manifest;
@@ -231,7 +261,9 @@ export class SnapshotRepository {
       instanceKeys = await readdir(instancesDir);
     } catch (error) {
       if (isNotFoundError(error)) return result;
-      throw new KvMetadataIoError(`cannot list ${instancesDir}`, { cause: error });
+      throw new KvMetadataIoError(`cannot list ${instancesDir}`, {
+        cause: error,
+      });
     }
     for (const instanceKey of instanceKeys) {
       const sessionsDir = join(instancesDir, instanceKey, "sessions");
@@ -240,7 +272,9 @@ export class SnapshotRepository {
         files = await readdir(sessionsDir);
       } catch (error) {
         if (isNotFoundError(error)) continue;
-        throw new KvMetadataIoError(`cannot list ${sessionsDir}`, { cause: error });
+        throw new KvMetadataIoError(`cannot list ${sessionsDir}`, {
+          cause: error,
+        });
       }
       for (const file of files) {
         if (!file.endsWith(".json")) continue;
@@ -271,12 +305,17 @@ export class SnapshotRepository {
     const tmpPath = `${path}.${process.pid}.${Date.now().toString(36)}.tmp`;
     try {
       await mkdir(dirname(path), { recursive: true });
-      await writeFile(tmpPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+      await writeFile(
+        tmpPath,
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        "utf8",
+      );
       await rename(tmpPath, path);
     } catch (error) {
       await rm(tmpPath, { force: true }).catch(() => {});
-      throw new KvMetadataIoError(`cannot write manifest ${path}`, { cause: error });
+      throw new KvMetadataIoError(`cannot write manifest ${path}`, {
+        cause: error,
+      });
     }
   }
 }
-

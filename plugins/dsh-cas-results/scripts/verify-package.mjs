@@ -14,7 +14,10 @@ const packageJson = JSON.parse(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 
 // Manifest identity.
 assert.match(packageJson.name, /^@yadsh\/dsh-cas-results$/);
@@ -41,18 +44,28 @@ for (const required of [
   "NOTICE.md",
   "LICENSE",
 ]) {
-  assert.ok(packageJson.files.includes(required), `files is missing: ${required}`);
+  assert.ok(
+    packageJson.files.includes(required),
+    `files is missing: ${required}`,
+  );
 }
 
 // Canonical bundle patch pair (guidelines §4.3).
-assert.match(patch, /# The DSH plugin manager discovers this bundle through package\.json\./);
+assert.match(
+  patch,
+  /# The DSH plugin manager discovers this bundle through package\.json\./,
+);
 assert.match(patch, /id: dsh-cas-results\b/);
 assert.match(patch, /name: "@yadsh\/dsh-cas-results"/);
 
 // Compatibility manifest (guidelines §7).
 assert.ok(compatibility.deepseekHarness?.range?.length > 0);
 assert.ok(Array.isArray(compatibility.deepseekHarness?.testedReleases));
-assert.ok(compatibility.deepseekHarness?.requiredHostFeatures?.includes("tools/post-execute"));
+assert.ok(
+  compatibility.deepseekHarness?.requiredHostFeatures?.includes(
+    "tools/post-execute",
+  ),
+);
 
 // Attribution contract of the plugin (SPEC §2, §33 AC12).
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");

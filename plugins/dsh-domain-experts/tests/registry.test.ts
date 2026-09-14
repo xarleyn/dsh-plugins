@@ -5,7 +5,13 @@ import { domainOf, domainTableOf, fixedClock } from "./helpers/fakes.js";
 
 function registryOf(seed = [domainOf("inventory"), domainOf("payments")]) {
   const clock = fixedClock();
-  return { registry: new DomainRegistry(domainTableOf(seed.map((d) => [d.id, d] as const)), clock), clock };
+  return {
+    registry: new DomainRegistry(
+      domainTableOf(seed.map((d) => [d.id, d] as const)),
+      clock,
+    ),
+    clock,
+  };
 }
 
 describe("registry: read", () => {
@@ -14,19 +20,26 @@ describe("registry: read", () => {
       domainOf("beta", { name: "Beta" }),
       domainOf("alpha", { name: "Alpha" }),
     ]);
-    expect(registry.list().map((domain) => domain.id)).toEqual(["alpha", "beta"]);
+    expect(registry.list().map((domain) => domain.id)).toEqual([
+      "alpha",
+      "beta",
+    ]);
   });
 
   it("finds a domain by id and reports a missing one with the known ids", () => {
     const { registry } = registryOf();
     expect(registry.get("payments")?.name).toBe("payments");
     expect(registry.get("nope")).toBeUndefined();
-    expect(() => registry.require("nope")).toThrowError(/Known domains: inventory, payments/u);
+    expect(() => registry.require("nope")).toThrowError(
+      /Known domains: inventory, payments/u,
+    );
   });
 
   it("refuses a disabled domain through requireEnabled", () => {
     const { registry } = registryOf([domainOf("payments", { enabled: false })]);
-    expect(() => registry.requireEnabled("payments")).toThrowError(DomainExpertsError);
+    expect(() => registry.requireEnabled("payments")).toThrowError(
+      DomainExpertsError,
+    );
     try {
       registry.requireEnabled("payments");
     } catch (error) {
@@ -36,14 +49,20 @@ describe("registry: read", () => {
 
   it("reports summaries", () => {
     const { registry } = registryOf([domainOf("payments")]);
-    expect(registry.summaries()[0]).toMatchObject({ id: "payments", primaryPaths: 0 });
+    expect(registry.summaries()[0]).toMatchObject({
+      id: "payments",
+      primaryPaths: 0,
+    });
   });
 });
 
 describe("registry: create", () => {
   it("stamps both timestamps and normalizes the record", async () => {
     const { registry } = registryOf([]);
-    const created = await registry.create({ id: "payments", scope: { filesystem: { primary: ["./services//payments"] } } });
+    const created = await registry.create({
+      id: "payments",
+      scope: { filesystem: { primary: ["./services//payments"] } },
+    });
     expect(created.createdAt).toBe(created.updatedAt);
     expect(created.scope.filesystem.primary).toEqual(["services/payments"]);
     expect(registry.get("payments")).toEqual(created);
@@ -71,7 +90,10 @@ describe("registry: update", () => {
     const first = await registry.update({ ...seed, name: "Payments renamed" });
     expect(first.createdAt).toBe(seed.createdAt);
     expect(first.updatedAt).toBeGreaterThan(seed.updatedAt);
-    const second = await registry.update({ ...first, name: "Payments renamed again" });
+    const second = await registry.update({
+      ...first,
+      name: "Payments renamed again",
+    });
     expect(second.createdAt).toBe(seed.createdAt);
     expect(second.updatedAt).toBeGreaterThan(first.updatedAt);
     expect(clock()).toBeGreaterThan(second.updatedAt);
@@ -95,7 +117,9 @@ describe("registry: update", () => {
 
 describe("registry: enable and remove", () => {
   it("toggles enabled without touching other fields", async () => {
-    const { registry } = registryOf([domainOf("payments", { description: "keep me" })]);
+    const { registry } = registryOf([
+      domainOf("payments", { description: "keep me" }),
+    ]);
     const disabled = await registry.setEnabled("payments", false);
     expect(disabled.enabled).toBe(false);
     expect(disabled.description).toBe("keep me");
