@@ -28,8 +28,14 @@ test("derives focused scope from the last legacy selection", () => {
   mkdirSync(first);
   mkdirSync(second);
   const events = [
-    { type: "workspace-scope/selection", data: { roots: [first], workspaceRoot: workspace, workspace: false } },
-    { type: "workspace-scope/selection", data: { roots: [second], workspaceRoot: workspace, workspace: false } },
+    {
+      type: "workspace-scope/selection",
+      data: { roots: [first], workspaceRoot: workspace, workspace: false },
+    },
+    {
+      type: "workspace-scope/selection",
+      data: { roots: [second], workspaceRoot: workspace, workspace: false },
+    },
   ];
 
   expect(effectiveSessionScope(events, { cwd: workspace })).toMatchObject({
@@ -44,8 +50,19 @@ test("a new snapshot is authoritative over later legacy events", () => {
   const selected = join(workspace, "selected");
   mkdirSync(selected);
   const events = [
-    { type: "session-scope/set", data: { version: 1, mode: "focused", roots: [selected], workspaceRoot: workspace } },
-    { type: "workspace-scope/selection", data: { roots: [workspace], workspaceRoot: workspace } },
+    {
+      type: "session-scope/set",
+      data: {
+        version: 1,
+        mode: "focused",
+        roots: [selected],
+        workspaceRoot: workspace,
+      },
+    },
+    {
+      type: "workspace-scope/selection",
+      data: { roots: [workspace], workspaceRoot: workspace },
+    },
   ];
 
   expect(effectiveSessionScope(events, { cwd: workspace })).toMatchObject({

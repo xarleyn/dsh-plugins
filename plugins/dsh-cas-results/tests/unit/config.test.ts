@@ -5,7 +5,11 @@ import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { CasError } from "../../src/cas/errors.js";
-import { CAS_RESULTS_DEFAULTS, CasResultsConfigSchema, resolveCasResultsConfig } from "../../src/config.js";
+import {
+  CAS_RESULTS_DEFAULTS,
+  CasResultsConfigSchema,
+  resolveCasResultsConfig,
+} from "../../src/config.js";
 import { resolveStoreDir } from "../../src/service.js";
 
 describe("resolveCasResultsConfig", () => {
@@ -13,12 +17,26 @@ describe("resolveCasResultsConfig", () => {
     const config = resolveCasResultsConfig({});
     expect(config.enabled).toBe(true);
     expect(config.storeDir).toBeNull();
-    expect(config.thresholds).toEqual({ textBytes: 16_384, htmlBytes: 8_192, logBytes: 16_384 });
+    expect(config.thresholds).toEqual({
+      textBytes: 16_384,
+      htmlBytes: 8_192,
+      logBytes: 16_384,
+    });
     expect(config.preview.maxChars).toBe(4_096);
     expect(config.preview.keepPatterns).toContain("error");
-    expect(config.base64).toEqual({ enabled: true, minChars: 8_192, requireStrongDetection: true });
-    expect(config.storage).toEqual({ compression: "auto", maxBytes: 10 * 1024 * 1024 * 1024 });
-    expect(config.retrieval).toEqual({ defaultBytes: 32_768, maxBytes: 262_144 });
+    expect(config.base64).toEqual({
+      enabled: true,
+      minChars: 8_192,
+      requireStrongDetection: true,
+    });
+    expect(config.storage).toEqual({
+      compression: "auto",
+      maxBytes: 10 * 1024 * 1024 * 1024,
+    });
+    expect(config.retrieval).toEqual({
+      defaultBytes: 32_768,
+      maxBytes: 262_144,
+    });
     expect(config.gc.enabled).toBe(true);
     expect(config.gc.ttlMs).toBe(30 * 24 * 3_600_000);
     expect(config.includeErrors).toBe(false);
@@ -47,10 +65,20 @@ describe("resolveCasResultsConfig", () => {
   });
 
   it("rejects structurally impossible config loudly", () => {
-    expect(() => resolveCasResultsConfig({ thresholds: { textBytes: -1 } })).toThrowError(CasError);
-    expect(() => resolveCasResultsConfig({ storage: { compression: "brotli" as never } })).toThrowError(/compression/);
-    expect(() => resolveCasResultsConfig({ retrieval: { defaultBytes: 4_096, maxBytes: 2_048 } })).toThrowError(/maxBytes/);
-    expect(() => resolveCasResultsConfig({ gc: { intervalMs: 10 } })).toThrowError(/intervalMs/);
+    expect(() =>
+      resolveCasResultsConfig({ thresholds: { textBytes: -1 } }),
+    ).toThrowError(CasError);
+    expect(() =>
+      resolveCasResultsConfig({ storage: { compression: "brotli" as never } }),
+    ).toThrowError(/compression/);
+    expect(() =>
+      resolveCasResultsConfig({
+        retrieval: { defaultBytes: 4_096, maxBytes: 2_048 },
+      }),
+    ).toThrowError(/maxBytes/);
+    expect(() =>
+      resolveCasResultsConfig({ gc: { intervalMs: 10 } }),
+    ).toThrowError(/intervalMs/);
   });
 });
 
@@ -66,7 +94,9 @@ describe("CasResultsConfigSchema", () => {
 describe("resolveStoreDir", () => {
   it("prefers the explicit config path", () => {
     const config = resolveCasResultsConfig({ storeDir: "/var/lib/cas" });
-    expect(resolveStoreDir(config, { DSH_HOME: "/home/dsh" })).toBe(resolve("/var/lib/cas"));
+    expect(resolveStoreDir(config, { DSH_HOME: "/home/dsh" })).toBe(
+      resolve("/var/lib/cas"),
+    );
   });
 
   it("falls back to <DSH_HOME>/storages/dsh-cas-results (SPEC §14)", () => {

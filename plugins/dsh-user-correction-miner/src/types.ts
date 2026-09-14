@@ -25,11 +25,13 @@ export interface CorrectionClassification {
   readonly confidence: number;
   readonly target: CorrectionTarget;
   readonly durability: CorrectionDurability;
-  readonly severity: "preference" | "workflow" | "destructive-risk" | "security";
+  readonly severity:
+    "preference" | "workflow" | "destructive-risk" | "security";
   readonly correctedBehavior?: string;
 }
 
-export type ContextEventKind = "user" | "assistant" | "tool-call" | "tool-result";
+export type ContextEventKind =
+  "user" | "assistant" | "tool-call" | "tool-result";
 
 export interface CorrectionContextEvent {
   readonly seq: number;
@@ -102,7 +104,13 @@ export interface CorrectionStore {
   getCursor(workspaceKey: string): ScanCursor | undefined;
   putCursor(cursor: ScanCursor): Promise<void>;
   hasCorrection(id: string): boolean;
-  putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void>;
+  putCorrection(
+    record: CorrectionRecord,
+    maxRecordsPerWorkspace: number,
+  ): Promise<void>;
   countCorrections(workspaceKey: string): number;
-  listCorrections(workspaceKey: string, limit?: number): readonly CorrectionRecord[];
+  listCorrections(
+    workspaceKey: string,
+    limit?: number,
+  ): readonly CorrectionRecord[];
 }

@@ -19,7 +19,11 @@ const CLASS_LABEL: Record<ResolvedResourceEntry["class"], string> = {
  * rendered for every resource, memory namespace and delegation target —
  * `advisory` is never hidden or styled as success.
  */
-export function ScopeInspector({ profile }: { readonly profile: ResolvedExpertProfile }) {
+export function ScopeInspector({
+  profile,
+}: {
+  readonly profile: ResolvedExpertProfile;
+}) {
   return (
     <div className="dx-panel">
       <div className="dx-section">
@@ -35,7 +39,9 @@ export function ScopeInspector({ profile }: { readonly profile: ResolvedExpertPr
         note="Enforced means a selected worker actually applies the restriction. Advisory means it is only written into the expert's persona."
       >
         {profile.resources.length === 0 ? (
-          <p className="dx-empty">No filesystem or knowledge resources configured.</p>
+          <p className="dx-empty">
+            No filesystem or knowledge resources configured.
+          </p>
         ) : (
           <table className="dx-table">
             <thead>
@@ -48,14 +54,18 @@ export function ScopeInspector({ profile }: { readonly profile: ResolvedExpertPr
             </thead>
             <tbody>
               {profile.resources.map((resource) => (
-                <tr key={`${resource.provider}:${resource.class}:${resource.path}`}>
+                <tr
+                  key={`${resource.provider}:${resource.class}:${resource.path}`}
+                >
                   <td className="dx-mono">{resource.path}</td>
                   <td>{CLASS_LABEL[resource.class]}</td>
                   <td>
                     <EnforcementChip enforcement={resource.enforcement} />
                   </td>
                   <td className="dx-mono">
-                    {resource.enforcedBy.length === 0 ? "—" : resource.enforcedBy.join(", ")}
+                    {resource.enforcedBy.length === 0
+                      ? "—"
+                      : resource.enforcedBy.join(", ")}
                   </td>
                 </tr>
               ))}
@@ -115,7 +125,9 @@ export function ScopeInspector({ profile }: { readonly profile: ResolvedExpertPr
           {String(profile.delegation.maxParallel)}.
         </p>
         {profile.delegation.peers.length === 0 ? (
-          <p className="dx-empty">No other enabled domain is reachable under this policy.</p>
+          <p className="dx-empty">
+            No other enabled domain is reachable under this policy.
+          </p>
         ) : (
           <table className="dx-table">
             <thead>
@@ -169,7 +181,10 @@ export function ScopeInspector({ profile }: { readonly profile: ResolvedExpertPr
         <Section title="Degraded configuration">
           <ul className="dx-issues">
             {profile.degradations.map((item, index) => (
-              <li className="dx-issue dx-issue--warning" key={`${item.code}-${String(index)}`}>
+              <li
+                className="dx-issue dx-issue--warning"
+                key={`${item.code}-${String(index)}`}
+              >
                 <strong>{item.code}</strong> {item.message}
               </li>
             ))}

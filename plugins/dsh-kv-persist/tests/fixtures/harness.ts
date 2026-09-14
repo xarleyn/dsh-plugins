@@ -7,7 +7,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveKvPersistConfig } from "../../src/config.js";
-import type { KvPersistConfig, ResolvedKvPersistConfig } from "../../src/config.js";
+import type {
+  KvPersistConfig,
+  ResolvedKvPersistConfig,
+} from "../../src/config.js";
 import { SingleSlotCoordinator } from "../../src/coordinator/coordinator.js";
 import type { CoordinatorRequest } from "../../src/coordinator/coordinator.js";
 import type { KvPersistLogger } from "../../src/observability/diagnostics.js";
@@ -91,7 +94,9 @@ export function makeRequest(options: {
 }
 
 /** Drain a coordinated stream, collecting the chunks. */
-export async function consume(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[]> {
+export async function consume(
+  stream: AsyncIterable<StreamChunk>,
+): Promise<StreamChunk[]> {
   const chunks: StreamChunk[] = [];
   for await (const chunk of stream) chunks.push(chunk);
   return chunks;
@@ -101,7 +106,10 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
+export function deferred(): {
+  readonly promise: Promise<void>;
+  readonly resolve: () => void;
+} {
   let resolve: () => void = () => undefined;
   const promise = new Promise<void>((done) => {
     resolve = done;
@@ -109,7 +117,10 @@ export function deferred(): { readonly promise: Promise<void>; readonly resolve:
   return { promise, resolve };
 }
 
-export function buildIdentity(harness: Harness, sessionId: string): SnapshotIdentity {
+export function buildIdentity(
+  harness: Harness,
+  sessionId: string,
+): SnapshotIdentity {
   return buildSnapshotIdentity({
     sessionId,
     route: { provider: "local-qwen", model: "qwen-test" },
@@ -122,7 +133,11 @@ export function residentKey(harness: Harness, sessionId: string): string {
   return snapshotFilename(buildIdentity(harness, sessionId));
 }
 
-export async function run(harness: Harness, sessionId: string, provider = "local-qwen") {
+export async function run(
+  harness: Harness,
+  sessionId: string,
+  provider = "local-qwen",
+) {
   const stream = await harness.coordinator.runSessionRequest(
     makeRequest({ sessionId, provider }),
   );

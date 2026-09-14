@@ -44,7 +44,9 @@ export class DomainRegistry {
     return this.table.get(id) !== undefined;
   }
 
-  summaries(decorate?: (definition: DomainDefinition) => number): readonly DomainSummary[] {
+  summaries(
+    decorate?: (definition: DomainDefinition) => number,
+  ): readonly DomainSummary[] {
     return this.list().map((definition) =>
       summarizeDomain(definition, decorate?.(definition) ?? 0),
     );
@@ -74,9 +76,13 @@ export class DomainRegistry {
     const parsed = parseDomainDefinition(input, this.now());
     assertValidDomain(parsed);
     if (this.has(parsed.id)) {
-      throw new DomainExpertsError("DOMAIN_EXISTS", `Domain "${parsed.id}" already exists.`, {
-        refs: [parsed.id],
-      });
+      throw new DomainExpertsError(
+        "DOMAIN_EXISTS",
+        `Domain "${parsed.id}" already exists.`,
+        {
+          refs: [parsed.id],
+        },
+      );
     }
     const now = this.now();
     const record = normalizeDomainDefinition({
@@ -145,9 +151,13 @@ export class DomainRegistry {
   requireEnabled(id: string): DomainDefinition {
     const record = this.require(id);
     if (!record.enabled) {
-      throw new DomainExpertsError("DOMAIN_DISABLED", `Domain "${id}" is disabled.`, {
-        refs: [id],
-      });
+      throw new DomainExpertsError(
+        "DOMAIN_DISABLED",
+        `Domain "${id}" is disabled.`,
+        {
+          refs: [id],
+        },
+      );
     }
     return record;
   }
@@ -157,7 +167,10 @@ export class DomainRegistry {
   }
 }
 
-function compareDomains(left: DomainDefinition, right: DomainDefinition): number {
+function compareDomains(
+  left: DomainDefinition,
+  right: DomainDefinition,
+): number {
   const byName = left.name.localeCompare(right.name, "en");
   if (byName !== 0) return byName;
   return left.id.localeCompare(right.id, "en");

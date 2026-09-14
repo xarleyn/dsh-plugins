@@ -17,7 +17,13 @@ export const LOG_PANEL_KIND = "plugin-log";
 export const LOG_PANEL_ID = "@yadsh/dsh-plugin-log-ui/panel";
 
 /** The guide capsule's glyph: three log lines, shorter at the end. */
-function LogLinesGlyph({ size, className }: { readonly size?: number; readonly className?: string }): ReactNode {
+function LogLinesGlyph({
+  size,
+  className,
+}: {
+  readonly size?: number;
+  readonly className?: string;
+}): ReactNode {
   return (
     <svg
       width={size ?? 16}
@@ -53,12 +59,14 @@ export function logPanelDefinition(): SidebarRightTabDefinition {
     kind: LOG_PANEL_KIND,
     priority: "extension",
     title: () => "Plugin logs",
-    guide: [{
-      // After the workspace files capsule, which opens the column's default tab.
-      order: 20,
-      title: () => "Plugin logs",
-      description: () => "Live output from every registered plugin logger",
-      icon: LogLinesGlyph,
-    }],
+    guide: [
+      {
+        // After the workspace files capsule, which opens the column's default tab.
+        order: 20,
+        title: () => "Plugin logs",
+        description: () => "Live output from every registered plugin logger",
+        icon: LogLinesGlyph,
+      },
+    ],
   };
 }

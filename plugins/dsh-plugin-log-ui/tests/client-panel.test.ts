@@ -2,7 +2,11 @@ import { Context } from "@deepseek-ai/cordis";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PluginLogTail } from "../src/types.js";
 import * as clientModule from "../src/client/index.js";
-import { logPanelDefinition, LOG_PANEL_ID, LOG_PANEL_KIND } from "../src/client/panel/definition.js";
+import {
+  logPanelDefinition,
+  LOG_PANEL_ID,
+  LOG_PANEL_KIND,
+} from "../src/client/panel/definition.js";
 
 const { apply } = clientModule;
 
@@ -48,7 +52,11 @@ function installDom(): { readonly tags: StyleTag[] } {
       };
       return tag;
     },
-    head: { appendChild: (tag: StyleTag) => { tags.push(tag); } },
+    head: {
+      appendChild: (tag: StyleTag) => {
+        tags.push(tag);
+      },
+    },
   };
   return { tags };
 }
@@ -72,7 +80,10 @@ interface TabType {
   readonly patterns: readonly string[] | undefined;
   /** Read at open time: the chip's text is the registry's capture, not a prop. */
   readonly title: (address: string) => string;
-  readonly guide: readonly { readonly order: number; readonly title: () => string }[];
+  readonly guide: readonly {
+    readonly order: number;
+    readonly title: () => string;
+  }[];
 }
 
 interface Registration {
@@ -87,7 +98,11 @@ interface Harness {
   readonly types: TabType[];
   readonly registrations: Registration[];
   readonly mounted: { readonly count: number };
-  readonly disposed: { readonly remote: number; readonly tabs: number; readonly slots: number };
+  readonly disposed: {
+    readonly remote: number;
+    readonly tabs: number;
+    readonly slots: number;
+  };
 }
 
 function harnessOf(): Harness {
@@ -98,14 +113,20 @@ function harnessOf(): Harness {
   const disposed = { remote: 0, tabs: 0, slots: 0 };
 
   const namespace = {
-    inspect: () => Promise.resolve({
-      ok: true as const,
-      value: {
-        consumers: [
-          { pluginId: "dsh-sample", level: "info" as const, format: "text" as const, instances: 1 },
-        ],
-      },
-    }),
+    inspect: () =>
+      Promise.resolve({
+        ok: true as const,
+        value: {
+          consumers: [
+            {
+              pluginId: "dsh-sample",
+              level: "info" as const,
+              format: "text" as const,
+              instances: 1,
+            },
+          ],
+        },
+      }),
     tail: () => Promise.resolve({ ok: true as const, value: EMPTY_TAIL }),
   };
 
@@ -126,7 +147,11 @@ function harnessOf(): Harness {
     bind: () => ({
       set: () => Promise.resolve(),
       subscribe: () => () => undefined,
-      getSnapshot: () => ({ status: "unavailable", value: undefined, writable: false }),
+      getSnapshot: () => ({
+        status: "unavailable",
+        value: undefined,
+        writable: false,
+      }),
     }),
   });
   ctx.provide("sidebarRightTabs", {
@@ -139,7 +164,12 @@ function harnessOf(): Harness {
   });
   ctx.provide("slots", {
     inject: (name: string, callback: () => (() => void) | void) => {
-      registrations.push({ name, key: undefined, locale: undefined, props: {} });
+      registrations.push({
+        name,
+        key: undefined,
+        locale: undefined,
+        props: {},
+      });
       const dispose = callback();
       return () => {
         disposed.slots += 1;
@@ -180,10 +210,14 @@ describe("client apply()", () => {
     expect(type?.title("sidebar://plugin-log")).toBe("Plugin logs");
     // A page type: it claims no resource address, so it opens by kind alone.
     expect(type?.patterns).toBeUndefined();
-    expect(type?.guide?.map((entry) => [entry.order, entry.title()])).toEqual([[20, "Plugin logs"]]);
+    expect(type?.guide?.map((entry) => [entry.order, entry.title()])).toEqual([
+      [20, "Plugin logs"],
+    ]);
 
     const body = harness.registrations.find(
-      (registration) => registration.name === "sidebar.right.pane.tab" && registration.key !== undefined,
+      (registration) =>
+        registration.name === "sidebar.right.pane.tab" &&
+        registration.key !== undefined,
     );
     expect(body?.key).toBe(LOG_PANEL_ID);
     // No locale namespace: the panel's copy ships with the plugin, so the
@@ -193,8 +227,11 @@ describe("client apply()", () => {
     expect(typeof body?.props["sources"]).toBe("function");
 
     // The settings card still mounts beside the panel.
-    expect(harness.registrations.some((registration) => registration.name === "settings.plugin.item"))
-      .toBe(true);
+    expect(
+      harness.registrations.some(
+        (registration) => registration.name === "settings.plugin.item",
+      ),
+    ).toBe(true);
 
     await dispose();
     expect(harness.disposed.remote).toBe(1);
@@ -206,7 +243,10 @@ describe("client apply()", () => {
     const body = harness.registrations.find(
       (registration) => registration.key === LOG_PANEL_ID,
     );
-    const read = body?.props["read"] as (cursor: number, limit: number) => Promise<unknown>;
+    const read = body?.props["read"] as (
+      cursor: number,
+      limit: number,
+    ) => Promise<unknown>;
     expect(await read(0, 10)).toEqual({ ok: true, value: EMPTY_TAIL });
   });
 
@@ -241,7 +281,9 @@ describe("client apply()", () => {
 describe("log panel definition", () => {
   it("offers one guide entry, ordered after the workspace files capsule", () => {
     const definition = logPanelDefinition();
-    expect(definition.guide?.map((entry) => [entry.order, entry.title()])).toEqual([[20, "Plugin logs"]]);
+    expect(
+      definition.guide?.map((entry) => [entry.order, entry.title()]),
+    ).toEqual([[20, "Plugin logs"]]);
     expect(definition.title("sidebar://plugin-log")).toBe("Plugin logs");
   });
 });

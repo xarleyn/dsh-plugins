@@ -39,7 +39,10 @@ export function serializeToolArguments(args: unknown): string {
     const json = JSON.stringify(args, null, 0);
     return json === undefined ? "" : json.slice(0, MAX_ARGS_CHARS);
   } catch {
-    return String(Object.prototype.toString.call(args)).slice(0, MAX_ARGS_CHARS);
+    return String(Object.prototype.toString.call(args)).slice(
+      0,
+      MAX_ARGS_CHARS,
+    );
   }
 }
 
@@ -49,13 +52,16 @@ export interface PreExecuteGuardDeps {
   readonly risk: TurnRiskTracker;
 }
 
-export function createPreExecuteGuard(deps: PreExecuteGuardDeps): PreExecuteListener {
+export function createPreExecuteGuard(
+  deps: PreExecuteGuardDeps,
+): PreExecuteListener {
   return async (exec, next) => {
     if (!deps.config.tools.enabled) return next();
 
     const sessionId = exec.agent !== undefined ? String(exec.agent.id) : null;
     const sensitiveOnly = deps.config.tools.sensitiveTools;
-    if (sensitiveOnly.length > 0 && !sensitiveOnly.includes(exec.name)) return next();
+    if (sensitiveOnly.length > 0 && !sensitiveOnly.includes(exec.name))
+      return next();
 
     const content = `${exec.name}\n${serializeToolArguments(exec.arguments)}`;
     const result = await deps.pipeline.run({
@@ -63,7 +69,9 @@ export function createPreExecuteGuard(deps: PreExecuteGuardDeps): PreExecuteList
       content,
       channel: "tool",
       direction: "tools",
-      classifierTrigger: deps.config.tools.semanticClassifier ? "always" : "never",
+      classifierTrigger: deps.config.tools.semanticClassifier
+        ? "always"
+        : "never",
       toolName: exec.name,
       sessionId,
       turn: null,
@@ -74,17 +82,27 @@ export function createPreExecuteGuard(deps: PreExecuteGuardDeps): PreExecuteList
     // no finding or accumulated turn risk may affect tool execution.
     if (deps.config.mode === "audit") return next();
 
-    const decision: SafetyDecision = applyGateMode(result.decision, deps.config.mode);
-    const riskLevel = sessionId !== null ? deps.risk.get(sessionId)?.riskLevel : undefined;
+    const decision: SafetyDecision = applyGateMode(
+      result.decision,
+      deps.config.mode,
+    );
+    const riskLevel =
+      sessionId !== null ? deps.risk.get(sessionId)?.riskLevel : undefined;
     const surface = deps.risk.escalate(decision, riskLevel);
 
     if (surface === "deny") {
       // Deny without echoing matched content (sanitized audit carries the
       // verdict; the model only sees the policy reason).
-      return { kind: "deny", reason: `Blocked by dsh-model-safety-gate (${result.verdict.categories.join(", ") || "policy"})` };
+      return {
+        kind: "deny",
+        reason: `Blocked by dsh-model-safety-gate (${result.verdict.categories.join(", ") || "policy"})`,
+      };
     }
     if (surface === "ask") {
-      return { kind: "ask", reason: `Safety gate requests approval (${result.verdict.categories.join(", ") || "policy"})` };
+      return {
+        kind: "ask",
+        reason: `Safety gate requests approval (${result.verdict.categories.join(", ") || "policy"})`,
+      };
     }
     return next();
   };

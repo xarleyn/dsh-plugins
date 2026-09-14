@@ -6,7 +6,10 @@
  * and the tool identity with bounded serialized arguments.
  */
 
-import type { ToolExecution, ToolExecutionResult } from "@deepseek-ai/dsh-tools";
+import type {
+  ToolExecution,
+  ToolExecutionResult,
+} from "@deepseek-ai/dsh-tools";
 
 import { byteLength, estimateTokens } from "../utils/text.js";
 
@@ -30,7 +33,10 @@ interface TextBlockLike {
   readonly text?: unknown;
 }
 
-export function inspectResult(exec: ToolExecution, result: Readonly<ToolExecutionResult>): OffloadCandidate {
+export function inspectResult(
+  exec: ToolExecution,
+  result: Readonly<ToolExecutionResult>,
+): OffloadCandidate {
   const blocks = (result.content as readonly TextBlockLike[] | undefined) ?? [];
   const textBlocks: string[] = [];
   let allTextual = blocks.length > 0;
@@ -54,7 +60,10 @@ export function inspectResult(exec: ToolExecution, result: Readonly<ToolExecutio
 }
 
 /** Bounded, total serialization: routing never fails on exotic arguments. */
-export function serializeArgs(args: unknown, maxBytes: number = MAX_ARGS_BYTES): string {
+export function serializeArgs(
+  args: unknown,
+  maxBytes: number = MAX_ARGS_BYTES,
+): string {
   let text: string;
   try {
     text = JSON.stringify(args) ?? String(args);

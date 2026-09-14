@@ -12,7 +12,11 @@ function segmentSize(segment: string, unit: TextBudgetUnit): number {
  * Truncates text only between Unicode code points and includes the ellipsis in
  * the requested budget.
  */
-export function truncateText(text: string, maxSize: number, unit: TextBudgetUnit): string {
+export function truncateText(
+  text: string,
+  maxSize: number,
+  unit: TextBudgetUnit,
+): string {
   const ellipsisSize = segmentSize(ELLIPSIS, unit);
   if (maxSize < ellipsisSize) return "";
 

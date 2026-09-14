@@ -1,4 +1,3 @@
-
 // dsh-doc-impact browser client bootstrap. tsdown wraps this module. tsdown wraps this module in the
 // classic factory served by the DSH web ModuleLoader at
 // /plugins/@yadsh/dsh-doc-impact/client.js.
@@ -25,7 +24,6 @@
 // card); the method guards and fallback translations below keep headless or
 // older profiles safe.
 
-
 import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
 import { ConfigCard } from "./card.js";
 import { DICT, fallbackT } from "./dictionary.js";
@@ -40,7 +38,11 @@ export const inject = ["slots", "settingsScope", "locale"];
 export function apply(ctx: any): void {
   let _t = fallbackT;
   const locale = ctx.locale;
-  if (locale && typeof locale.register === "function" && typeof locale.bind === "function") {
+  if (
+    locale &&
+    typeof locale.register === "function" &&
+    typeof locale.bind === "function"
+  ) {
     locale.register(LOCALE_NS, DICT);
     _t = locale.bind(LOCALE_NS);
   }
@@ -56,6 +58,6 @@ export function apply(ctx: any): void {
     component: ConfigCard,
     inject: function () {
       return form.inject();
-    }
+    },
   });
 }

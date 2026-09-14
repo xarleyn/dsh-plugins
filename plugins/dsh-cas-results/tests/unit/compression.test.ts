@@ -4,7 +4,13 @@ import { randomBytes } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { applyAutoCompression, decompressPayload, compressPayload, isPreCompressedMedia, resolveCodec } from "../../src/cas/compression.js";
+import {
+  applyAutoCompression,
+  decompressPayload,
+  compressPayload,
+  isPreCompressedMedia,
+  resolveCodec,
+} from "../../src/cas/compression.js";
 import { CasError } from "../../src/cas/errors.js";
 import { makeText } from "../fixtures/store-fixtures.js";
 
@@ -24,7 +30,9 @@ describe("resolveCodec", () => {
   it("auto leaves already-compressed binary media alone", () => {
     expect(resolveCodec("auto", "binary", "image/png")).toBe("none");
     expect(resolveCodec("auto", "binary", "application/zip")).toBe("none");
-    expect(resolveCodec("auto", "binary", "application/octet-stream")).toBe("gzip");
+    expect(resolveCodec("auto", "binary", "application/octet-stream")).toBe(
+      "gzip",
+    );
   });
 });
 
@@ -53,7 +61,9 @@ describe("compress/decompress roundtrip", () => {
 
   it("throws CAS_INTEGRITY_FAILED on corrupt gzip input", async () => {
     const corrupt = new Uint8Array([0x1f, 0x8b, 0xff, 0xff, 0x00]);
-    await expect(decompressPayload(corrupt, "gzip")).rejects.toThrowError(CasError);
+    await expect(decompressPayload(corrupt, "gzip")).rejects.toThrowError(
+      CasError,
+    );
   });
 });
 

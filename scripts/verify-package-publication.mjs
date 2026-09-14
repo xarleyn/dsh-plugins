@@ -38,7 +38,12 @@ export async function isPackagePublished(name, { fetchImpl = fetch } = {}) {
   // The abbreviated packument is served from a CDN cache, so a package
   // bootstrapped minutes ago can still answer 404 there. The version document
   // is a separate cache entry, and has to agree before the release is stopped.
-  return packageExists(name, "/latest", { accept: "application/json" }, fetchImpl);
+  return packageExists(
+    name,
+    "/latest",
+    { accept: "application/json" },
+    fetchImpl,
+  );
 }
 
 /** Packages among `packages` that the registry does not know yet. */
@@ -69,7 +74,13 @@ export function readReleaseRows(tsvFile) {
  * so the message carries the whole recovery: publish one tarball by hand, then
  * register the publisher the workflow uses.
  */
-export function unpublishedPackagesMessage(packages, { repository = "xarleyn/dsh-plugins", workflow = ".github/workflows/release.yml" } = {}) {
+export function unpublishedPackagesMessage(
+  packages,
+  {
+    repository = "xarleyn/dsh-plugins",
+    workflow = ".github/workflows/release.yml",
+  } = {},
+) {
   const listed = packages
     .map(
       (item) =>

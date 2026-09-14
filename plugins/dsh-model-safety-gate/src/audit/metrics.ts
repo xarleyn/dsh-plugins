@@ -7,8 +7,20 @@
  */
 
 export interface SafetyMetricsSnapshot {
-  readonly checks: { readonly input: number; readonly text: number; readonly reasoning: number; readonly tool: number; readonly "tool-result": number };
-  readonly blocks: { readonly input: number; readonly output: number; readonly reasoning: number; readonly tools: number; readonly "tool-results": number };
+  readonly checks: {
+    readonly input: number;
+    readonly text: number;
+    readonly reasoning: number;
+    readonly tool: number;
+    readonly "tool-result": number;
+  };
+  readonly blocks: {
+    readonly input: number;
+    readonly output: number;
+    readonly reasoning: number;
+    readonly tools: number;
+    readonly "tool-results": number;
+  };
   readonly warns: number;
   readonly classifierRequests: number;
   readonly classifierErrors: number;
@@ -22,8 +34,14 @@ export interface SafetyMetricsSnapshot {
 }
 
 export class SafetyMetrics {
-  private checks: Record<"input" | "text" | "reasoning" | "tool" | "tool-result", number> = { input: 0, text: 0, reasoning: 0, tool: 0, "tool-result": 0 };
-  private blocks: Record<"input" | "output" | "reasoning" | "tools" | "tool-results", number> = { input: 0, output: 0, reasoning: 0, tools: 0, "tool-results": 0 };
+  private checks: Record<
+    "input" | "text" | "reasoning" | "tool" | "tool-result",
+    number
+  > = { input: 0, text: 0, reasoning: 0, tool: 0, "tool-result": 0 };
+  private blocks: Record<
+    "input" | "output" | "reasoning" | "tools" | "tool-results",
+    number
+  > = { input: 0, output: 0, reasoning: 0, tools: 0, "tool-results": 0 };
   private warns = 0;
   private classifierRequests = 0;
   private classifierErrors = 0;
@@ -47,10 +65,16 @@ export class SafetyMetrics {
     this.warns += 1;
   }
 
-  recordClassifierCall(usage: { inputTokens: number; outputTokens: number } | null, latencyMs: number): void {
+  recordClassifierCall(
+    usage: { inputTokens: number; outputTokens: number } | null,
+    latencyMs: number,
+  ): void {
     this.classifierRequests += 1;
     this.classifierLatencyTotalMs += latencyMs;
-    this.classifierLatencyMaxMs = Math.max(this.classifierLatencyMaxMs, latencyMs);
+    this.classifierLatencyMaxMs = Math.max(
+      this.classifierLatencyMaxMs,
+      latencyMs,
+    );
     if (usage !== null) {
       this.classifierInputTokens += usage.inputTokens;
       this.classifierOutputTokens += usage.outputTokens;

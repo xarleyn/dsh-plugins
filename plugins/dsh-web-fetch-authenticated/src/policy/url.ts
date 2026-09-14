@@ -10,13 +10,13 @@
 
 /** Upstream cap parity: the maximum accepted request URL length. */
 export interface UrlValidationLimits {
-  readonly maxUrlLength: number
+  readonly maxUrlLength: number;
 }
 
 export class InvalidUrlError extends Error {
   constructor(message: string) {
-    super(message)
-    this.name = 'InvalidUrlError'
+    super(message);
+    this.name = "InvalidUrlError";
   }
 }
 
@@ -31,43 +31,49 @@ export class InvalidUrlError extends Error {
  */
 export function validateFetchUrl(input: string, maxUrlLength: number): URL {
   if (input.length > maxUrlLength) {
-    throw new InvalidUrlError(`URL exceeds the maximum length of ${maxUrlLength}`)
+    throw new InvalidUrlError(
+      `URL exceeds the maximum length of ${maxUrlLength}`,
+    );
   }
-  let url: URL
+  let url: URL;
   try {
-    url = new URL(input)
+    url = new URL(input);
   } catch {
-    throw new InvalidUrlError(`invalid URL: ${truncateForMessage(input)}`)
+    throw new InvalidUrlError(`invalid URL: ${truncateForMessage(input)}`);
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new InvalidUrlError(`unsupported URL scheme "${url.protocol}" (only http and https are allowed)`)
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new InvalidUrlError(
+      `unsupported URL scheme "${url.protocol}" (only http and https are allowed)`,
+    );
   }
   if (url.username.length > 0 || url.password.length > 0) {
-    throw new InvalidUrlError('credentials in URLs are not allowed')
+    throw new InvalidUrlError("credentials in URLs are not allowed");
   }
   if (url.hostname.length === 0) {
-    throw new InvalidUrlError('URL has an empty hostname')
+    throw new InvalidUrlError("URL has an empty hostname");
   }
-  return url
+  return url;
 }
 
 /** Two URLs are same-origin when scheme, hostname, and port all match. */
 export function isSameOrigin(a: URL, b: URL): boolean {
-  return a.protocol === b.protocol && a.hostname === b.hostname && a.port === b.port
+  return (
+    a.protocol === b.protocol && a.hostname === b.hostname && a.port === b.port
+  );
 }
 
 /** Canonical `scheme://host[:port]` of a URL; the string the UI shows as origin. */
 export function originOf(url: URL): string {
-  return url.origin
+  return url.origin;
 }
 
 /** The effective port of a URL: explicit, or the scheme default. */
 export function effectivePort(url: URL): number {
-  if (url.port !== '') return Number(url.port)
-  return url.protocol === 'https:' ? 443 : 80
+  if (url.port !== "") return Number(url.port);
+  return url.protocol === "https:" ? 443 : 80;
 }
 
 /** Bound an untrusted fragment embedded in an error message. */
 export function truncateForMessage(text: string, maxLength = 200): string {
-  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}…`
+  return text.length <= maxLength ? text : `${text.slice(0, maxLength)}…`;
 }

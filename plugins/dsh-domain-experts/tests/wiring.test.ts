@@ -33,7 +33,10 @@ interface Harness {
 }
 
 function harnessOf(
-  options: { readonly storage?: () => Promise<DomainExpertsStorage>; readonly config?: Record<string, unknown> } = {},
+  options: {
+    readonly storage?: () => Promise<DomainExpertsStorage>;
+    readonly config?: Record<string, unknown>;
+  } = {},
 ): Harness {
   const ctx = new Context();
   const registered: string[] = [];
@@ -63,7 +66,11 @@ const DEFINITION: DomainDefinition = {
   name: "Payments",
   description: "Payment processing and settlement.",
   scope: {
-    filesystem: { primary: ["services/payments/**"], sharedReadOnly: [], denied: [] },
+    filesystem: {
+      primary: ["services/payments/**"],
+      sharedReadOnly: [],
+      denied: [],
+    },
     documentation: { include: [], exclude: [] },
     providers: {},
   },
@@ -135,7 +142,10 @@ describe("wiring: remote contract", () => {
     const duplicate = await harness.service.createDomain(DEFINITION);
     expect(duplicate.code).toBe("DOMAIN_EXISTS");
     expect((await harness.service.getDomain("ghost")).domain).toBeNull();
-    const updated = await harness.service.updateDomain({ ...DEFINITION, id: "ghost" });
+    const updated = await harness.service.updateDomain({
+      ...DEFINITION,
+      id: "ghost",
+    });
     expect(updated.code).toBe("DOMAIN_NOT_FOUND");
   });
 
@@ -165,15 +175,21 @@ describe("wiring: remote contract", () => {
       enforcement: "advisory",
     });
     expect(resolved.profile?.memory[0]?.namespace).toBe("domain/payments");
-    expect(resolved.profile?.persona).toContain("You are the designated expert");
+    expect(resolved.profile?.persona).toContain(
+      "You are the designated expert",
+    );
   });
 
   it("lists the catalog and the built-in namespaces", async () => {
     const harness = harnessOf();
     const catalog = harness.service.catalog();
     expect(catalog.ok).toBe(true);
-    expect(catalog.scopeProviders.map((provider) => provider.id)).toEqual(["filesystem"]);
-    expect(catalog.memoryProviders.map((provider) => provider.id)).toEqual(["builtin"]);
+    expect(catalog.scopeProviders.map((provider) => provider.id)).toEqual([
+      "filesystem",
+    ]);
+    expect(catalog.memoryProviders.map((provider) => provider.id)).toEqual([
+      "builtin",
+    ]);
     expect(catalog.tools.map((tool) => tool.name)).toEqual([
       "domain_expert",
       "domain_experts_list",
@@ -186,22 +202,35 @@ describe("wiring: remote contract", () => {
     await harness.service.createDomain(DEFINITION);
     const own = await harness.service.inspectMemory("payments", "", 50);
     expect(own.ok).toBe(true);
-    expect(own.namespaces.map((view) => view.namespace)).toEqual(["domain/payments"]);
+    expect(own.namespaces.map((view) => view.namespace)).toEqual([
+      "domain/payments",
+    ]);
 
-    const foreign = await harness.service.inspectMemory("payments", "domain/inventory", 50);
+    const foreign = await harness.service.inspectMemory(
+      "payments",
+      "domain/inventory",
+      50,
+    );
     expect(foreign.ok).toBe(false);
     expect(foreign.code).toBe("MEMORY_SCOPE_DENIED");
 
     const cleared = await harness.service.clearMemory("payments", "");
     expect(cleared.ok).toBe(true);
-    const refused = await harness.service.clearMemory("payments", "domain/inventory");
+    const refused = await harness.service.clearMemory(
+      "payments",
+      "domain/inventory",
+    );
     expect(refused.code).toBe("MEMORY_SCOPE_DENIED");
   });
 
   it("refuses a test run without a live session instead of throwing", async () => {
     const harness = harnessOf();
     await harness.service.createDomain(DEFINITION);
-    const outcome = await harness.service.testExpert("payments", "why is it stale", "");
+    const outcome = await harness.service.testExpert(
+      "payments",
+      "why is it stale",
+      "",
+    );
     expect(outcome.ok).toBe(false);
     expect(outcome.code).toBe("TASK_REJECTED");
     expect(outcome.message).toContain("live session");
@@ -216,9 +245,9 @@ describe("wiring: remote contract", () => {
       enforces: ["filesystem"],
       tool: "code_worker",
     });
-    expect(harness.service.catalog().workers.map((worker) => worker.id)).toEqual([
-      "code_worker",
-    ]);
+    expect(
+      harness.service.catalog().workers.map((worker) => worker.id),
+    ).toEqual(["code_worker"]);
     dispose();
     expect(harness.service.catalog().workers).toEqual([]);
   });
@@ -237,7 +266,8 @@ describe("wiring: remote contract", () => {
 describe("wiring: degraded storage", () => {
   it("answers STORAGE_UNAVAILABLE instead of throwing at load", async () => {
     const harness = harnessOf({
-      storage: () => Promise.reject(new Error("backend-not-found: no kv backend")),
+      storage: () =>
+        Promise.reject(new Error("backend-not-found: no kv backend")),
     });
     const listed = await harness.service.listDomains();
     expect(listed.ok).toBe(false);
@@ -255,16 +285,16 @@ describe("wiring: degraded storage", () => {
     expect(resolved.profile).toBeNull();
 
     // A synchronous tool path degrades the same way.
-    expect(() => harness.service["requireDefinitionSync"]("payments")).toThrowError(
-      /Domain storage is not open/u,
-    );
+    expect(() =>
+      harness.service["requireDefinitionSync"]("payments"),
+    ).toThrowError(/Domain storage is not open/u);
 
     // Memory answers with the same code, because its backing table is deferred
     // rather than absent: the provider is registered for the plugin's lifetime.
     const memory = await harness.service.inspectMemory("payments", "", 10);
     expect(memory.code).toBe("STORAGE_UNAVAILABLE");
-    expect(harness.service.catalog().memoryProviders.map((provider) => provider.id)).toEqual([
-      "builtin",
-    ]);
+    expect(
+      harness.service.catalog().memoryProviders.map((provider) => provider.id),
+    ).toEqual(["builtin"]);
   });
 });

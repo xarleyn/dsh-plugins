@@ -7,9 +7,17 @@ import {
   correctionRecordSchema,
   scanCursorSchema,
 } from "../src/dsh/storage.js";
-import type { CorrectionRecord, CorrectionStore, ScanCursor } from "../src/types.js";
+import type {
+  CorrectionRecord,
+  CorrectionStore,
+  ScanCursor,
+} from "../src/types.js";
 
-function record(id: string, workspaceKey: string, createdAt: number): CorrectionRecord {
+function record(
+  id: string,
+  workspaceKey: string,
+  createdAt: number,
+): CorrectionRecord {
   return {
     id,
     sessionId: `session-${id}`,
@@ -43,7 +51,10 @@ function domainStore(): DomainCorrectionStore {
     async delete(key: string) {
       return records.delete(key);
     },
-    async update(key: string, transform: (value: CorrectionRecord) => CorrectionRecord) {
+    async update(
+      key: string,
+      transform: (value: CorrectionRecord) => CorrectionRecord,
+    ) {
       const current = records.get(key);
       if (current === undefined) throw new Error("missing key");
       const next = transform(current);
@@ -71,11 +82,16 @@ describe("correction miner storage domain", () => {
 
   it("rejects malformed durable records", () => {
     expect(() => correctionRecordSchema.parse({ id: "only-an-id" })).toThrow();
-    expect(() => scanCursorSchema.parse({ workspaceKey: "x", sessionWatermarks: {} })).toThrow();
+    expect(() =>
+      scanCursorSchema.parse({ workspaceKey: "x", sessionWatermarks: {} }),
+    ).toThrow();
   });
 
   it("counts and retains the newest records independently per workspace", async () => {
-    const stores: CorrectionStore[] = [new MemoryCorrectionStore(), domainStore()];
+    const stores: CorrectionStore[] = [
+      new MemoryCorrectionStore(),
+      domainStore(),
+    ];
     for (const store of stores) {
       for (const value of [
         record("a-1", "workspace-a", 1),
@@ -89,8 +105,14 @@ describe("correction miner storage domain", () => {
 
       expect(store.countCorrections("workspace-a")).toBe(2);
       expect(store.countCorrections("workspace-b")).toBe(2);
-      expect(store.listCorrections("workspace-a").map(({ id }) => id)).toEqual(["a-3", "a-2"]);
-      expect(store.listCorrections("workspace-b").map(({ id }) => id)).toEqual(["b-2", "b-1"]);
+      expect(store.listCorrections("workspace-a").map(({ id }) => id)).toEqual([
+        "a-3",
+        "a-2",
+      ]);
+      expect(store.listCorrections("workspace-b").map(({ id }) => id)).toEqual([
+        "b-2",
+        "b-1",
+      ]);
     }
   });
 

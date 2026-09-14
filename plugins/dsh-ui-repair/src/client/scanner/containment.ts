@@ -4,11 +4,7 @@ import {
   inferPlugin,
   matches,
 } from "../dom.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 const TEXT_SELECTOR = [
   "a",
@@ -170,7 +166,7 @@ function visibleRatio(element: DOMRect, parent: DOMRect): number {
     Math.min(element.bottom, parent.bottom) - Math.max(element.top, parent.top),
   );
   const area = element.width * element.height;
-  return area <= 0 ? 0 : Math.round((width * height / area) * 100) / 100;
+  return area <= 0 ? 0 : Math.round(((width * height) / area) * 100) / 100;
 }
 
 export function scanOutsideParent(
@@ -194,7 +190,12 @@ export function scanOutsideParent(
       continue;
     }
     const edges = outsideEdges(rect, parentRect);
-    const maxOutside = Math.max(edges.left, edges.right, edges.top, edges.bottom);
+    const maxOutside = Math.max(
+      edges.left,
+      edges.right,
+      edges.top,
+      edges.bottom,
+    );
     if (maxOutside <= config.overflowTolerancePx) continue;
     const style = computedStyle(element);
     if (style === undefined) continue;
@@ -217,9 +218,8 @@ export function scanOutsideParent(
       ) {
         suggestedCss = { "max-width": "100%" };
       } else if (rect.width <= parentRect.width + config.overflowTolerancePx) {
-        const delta = edges.left > config.overflowTolerancePx
-          ? edges.left
-          : -edges.right;
+        const delta =
+          edges.left > config.overflowTolerancePx ? edges.left : -edges.right;
         suggestedCss = {
           translate: `${Math.round(delta * 100) / 100}px 0`,
         };
@@ -259,7 +259,12 @@ export function scanOutsideParent(
         const actual = element.getBoundingClientRect();
         const owner = parent.getBoundingClientRect();
         const after = outsideEdges(actual, owner);
-        const error = Math.max(after.left, after.right, after.top, after.bottom);
+        const error = Math.max(
+          after.left,
+          after.right,
+          after.top,
+          after.bottom,
+        );
         const ok = error <= config.overflowTolerancePx;
         return {
           ok,

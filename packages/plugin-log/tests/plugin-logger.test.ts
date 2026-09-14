@@ -15,12 +15,17 @@ import {
   subscribePluginLogRecords,
   subscribePluginLoggerRegistry,
 } from "../src/index.js";
-import type { PluginLogger, PluginLogLevel, PluginLogRecord } from "../src/index.js";
-
+import type {
+  PluginLogger,
+  PluginLogLevel,
+  PluginLogRecord,
+} from "../src/index.js";
 
 describe("resolveDshHome", () => {
   it("prefers $DSH_HOME when set", () => {
-    expect(resolveDshHome({ DSH_HOME: "D:/tmp/dsh-home" })).toMatch(/dsh-home$/);
+    expect(resolveDshHome({ DSH_HOME: "D:/tmp/dsh-home" })).toMatch(
+      /dsh-home$/,
+    );
   });
 
   it("falls back to ~/.dsh", () => {
@@ -102,7 +107,11 @@ describe("createHostLoggerSink", () => {
     sink("debug", "debug message");
     sink("info", "info message");
 
-    expect(calls).toEqual(["info:trace message", "info:debug message", "info:info message"]);
+    expect(calls).toEqual([
+      "info:trace message",
+      "info:debug message",
+      "info:info message",
+    ]);
   });
 });
 
@@ -124,7 +133,9 @@ describe("createPluginLogger", () => {
     }
     const pending = directories;
     directories = [];
-    await Promise.all(pending.map((dir) => rm(dir, { recursive: true, force: true })));
+    await Promise.all(
+      pending.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
   });
 
   async function newDir(): Promise<string> {
@@ -135,7 +146,12 @@ describe("createPluginLogger", () => {
 
   it("writes NDJSON records with plugin, level, time, event and fields", async () => {
     const dir = await newDir();
-    const logger = createPluginLogger({ pluginId: "dsh-test", dir, level: "info", console: "silent" });
+    const logger = createPluginLogger({
+      pluginId: "dsh-test",
+      dir,
+      level: "info",
+      console: "silent",
+    });
     logger.info("test.event", { a: 1, label: "x" });
     await logger.close();
 
@@ -161,7 +177,9 @@ describe("createPluginLogger", () => {
       console: "silent",
       now: () => now,
     });
-    logger.child("worker").warn("readable.event", { attempt: 2, label: "hello world" });
+    logger
+      .child("worker")
+      .warn("readable.event", { attempt: 2, label: "hello world" });
     await logger.close();
 
     const entries = await readdir(dir);
@@ -174,7 +192,12 @@ describe("createPluginLogger", () => {
 
   it("drops records below the configured level", async () => {
     const dir = await newDir();
-    const logger = createPluginLogger({ pluginId: "dsh-test", dir, level: "error", console: "silent" });
+    const logger = createPluginLogger({
+      pluginId: "dsh-test",
+      dir,
+      level: "error",
+      console: "silent",
+    });
     logger.info("dropped.event");
     expect(await readdir(dir)).toEqual([]);
     logger.error("kept.event");
@@ -187,7 +210,12 @@ describe("createPluginLogger", () => {
 
   it("adds a module field through child()", async () => {
     const dir = await newDir();
-    const logger = createPluginLogger({ pluginId: "dsh-test", dir, level: "info", console: "silent" });
+    const logger = createPluginLogger({
+      pluginId: "dsh-test",
+      dir,
+      level: "info",
+      console: "silent",
+    });
     logger.child("coordinator").warn("child.event", { k: 1 });
     await logger.close();
 
@@ -256,7 +284,11 @@ describe("createPluginLogger", () => {
     expect(() => logger.warn("mirrored.too", { k: 1 })).not.toThrow();
     await logger.close();
 
-    expect(mirrored.some((line) => line.startsWith("warn:[dsh-test] mirrored.too k=1"))).toBe(true);
+    expect(
+      mirrored.some((line) =>
+        line.startsWith("warn:[dsh-test] mirrored.too k=1"),
+      ),
+    ).toBe(true);
   });
 
   it("honors the console mirror default of warn without touching info", async () => {
@@ -278,7 +310,12 @@ describe("createPluginLogger", () => {
   it("disables file output when DSH_LOG_DISABLED=1", async () => {
     const dir = await newDir();
     process.env.DSH_LOG_DISABLED = "1";
-    const logger = createPluginLogger({ pluginId: "dsh-test", dir, level: "info", console: "silent" });
+    const logger = createPluginLogger({
+      pluginId: "dsh-test",
+      dir,
+      level: "info",
+      console: "silent",
+    });
     logger.info("no.file");
     await logger.close();
     expect(await readdir(dir)).toEqual([]);
@@ -287,7 +324,11 @@ describe("createPluginLogger", () => {
   it("resolves the level from DSH_LOG_LEVEL when no explicit level is given", async () => {
     const dir = await newDir();
     process.env.DSH_LOG_LEVEL = "error";
-    const logger = createPluginLogger({ pluginId: "dsh-test", dir, console: "silent" });
+    const logger = createPluginLogger({
+      pluginId: "dsh-test",
+      dir,
+      console: "silent",
+    });
     expect(logger.level).toBe("error");
     logger.setLevel("info");
     expect(logger.level).toBe("info");
@@ -310,7 +351,9 @@ describe("createPluginLogger", () => {
   });
 
   it("rejects plugin ids that would escape the log directory", () => {
-    expect(() => createPluginLogger({ pluginId: "../escape", dir: "unused" })).toThrowError(/pluginId/);
+    expect(() =>
+      createPluginLogger({ pluginId: "../escape", dir: "unused" }),
+    ).toThrowError(/pluginId/);
   });
 });
 
@@ -326,7 +369,12 @@ describe("getPluginLogger", () => {
   });
 
   function options(level?: PluginLogLevel) {
-    return { pluginId: "dsh-cached", dir: directory, level, console: "silent" as const };
+    return {
+      pluginId: "dsh-cached",
+      dir: directory,
+      level,
+      console: "silent" as const,
+    };
   }
 
   it("returns the cached instance for the same plugin and dir", async () => {
@@ -361,7 +409,10 @@ describe("plugin logger registry", () => {
     await Promise.all(pending.map((logger) => logger.close()));
   });
 
-  function create(pluginId: string, level: PluginLogLevel = "info"): PluginLogger {
+  function create(
+    pluginId: string,
+    level: PluginLogLevel = "info",
+  ): PluginLogger {
     const logger = createPluginLogger({
       pluginId,
       level,
@@ -466,7 +517,10 @@ describe("plugin log record bus", () => {
     await Promise.all(pending.map((logger) => logger.close()));
   });
 
-  function create(pluginId: string, level: PluginLogLevel = "info"): PluginLogger {
+  function create(
+    pluginId: string,
+    level: PluginLogLevel = "info",
+  ): PluginLogger {
     const logger = createPluginLogger({
       pluginId,
       level,
@@ -488,7 +542,9 @@ describe("plugin log record bus", () => {
     logger.child("worker").warn("record.warn");
     unsubscribe();
 
-    expect(seen.map((record) => [record.level, record.module, record.event])).toEqual([
+    expect(
+      seen.map((record) => [record.level, record.module, record.event]),
+    ).toEqual([
       ["info", undefined, "record.info"],
       ["warn", "worker", "record.warn"],
     ]);

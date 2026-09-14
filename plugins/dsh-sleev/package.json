@@ -58,8 +58,6 @@
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint src tests scripts",
-    "format": "prettier --check . --end-of-line auto",
-    "format:write": "prettier --write . --end-of-line auto",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:package": "node scripts/verify-package.mjs",
@@ -119,7 +117,6 @@
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "eslint": "catalog:tooling",
-    "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "tsx": "catalog:tooling",

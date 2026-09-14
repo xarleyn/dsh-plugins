@@ -63,10 +63,7 @@ function noop(): void {}
  * returned disposer removes the tag when this call created it. No-op in
  * non-DOM environments (headless bundles, module probes).
  */
-export function injectCardStyles(
-  pluginName: string,
-  css: string,
-): () => void {
+export function injectCardStyles(pluginName: string, css: string): () => void {
   if (typeof document === "undefined") return noop;
   // Minimal-DOM probes (unit-test stubs) may lack querySelector; treat that as
   // "not injected yet" instead of crashing.

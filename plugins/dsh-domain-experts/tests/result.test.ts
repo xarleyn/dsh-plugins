@@ -8,7 +8,11 @@ const STRUCTURED = [
   JSON.stringify({
     summary: "The status is stale because the batch aborts before committing.",
     findings: [
-      { claim: "The scheduler aborts on timeout", evidence: ["services/payments/batch.ts:41"], confidence: "high" },
+      {
+        claim: "The scheduler aborts on timeout",
+        evidence: ["services/payments/batch.ts:41"],
+        confidence: "high",
+      },
       { claim: "The retry path never runs" },
     ],
     conflicts: ["The README says the batch is idempotent"],
@@ -27,25 +31,33 @@ describe("result: structured parsing", () => {
     expect(parsed.findings[0]?.confidence).toBe("high");
     expect(parsed.findings[1]?.confidence).toBe("medium");
     expect(parsed.findings[1]?.evidence).toEqual([]);
-    expect(parsed.conflicts).toEqual(["The README says the batch is idempotent"]);
+    expect(parsed.conflicts).toEqual([
+      "The README says the batch is idempotent",
+    ]);
     expect(parsed.followUps).toEqual(["Check the retry configuration"]);
   });
 
   it("accepts a plain json fence", () => {
-    const parsed = parseExpertAnswer('```json\n{"summary":"ok","findings":[]}\n```');
+    const parsed = parseExpertAnswer(
+      '```json\n{"summary":"ok","findings":[]}\n```',
+    );
     expect(parsed.structured).toBe(true);
     expect(parsed.summary).toBe("ok");
   });
 
   it("accepts an unfenced object with the expected shape", () => {
-    const parsed = parseExpertAnswer('Here it is: {"summary":"bare","findings":["plain claim"]}');
+    const parsed = parseExpertAnswer(
+      'Here it is: {"summary":"bare","findings":["plain claim"]}',
+    );
     expect(parsed.structured).toBe(true);
     expect(parsed.summary).toBe("bare");
     expect(parsed.findings[0]?.claim).toBe("plain claim");
   });
 
   it("degrades to prose instead of losing the answer", () => {
-    const parsed = parseExpertAnswer("The batch is fine, I found nothing wrong.");
+    const parsed = parseExpertAnswer(
+      "The batch is fine, I found nothing wrong.",
+    );
     expect(parsed.structured).toBe(false);
     expect(parsed.summary).toBe("The batch is fine, I found nothing wrong.");
     expect(parsed.findings).toEqual([]);
@@ -64,7 +76,9 @@ describe("result: structured parsing", () => {
   });
 
   it("survives malformed JSON in the fence", () => {
-    const parsed = parseExpertAnswer("```domain-expert-result\n{ not json }\n```");
+    const parsed = parseExpertAnswer(
+      "```domain-expert-result\n{ not json }\n```",
+    );
     expect(parsed.structured).toBe(false);
   });
 

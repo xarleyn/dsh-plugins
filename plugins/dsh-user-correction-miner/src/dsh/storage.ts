@@ -1,6 +1,14 @@
-import { defineDomain, domainTable, type Domain } from "@deepseek-ai/dsh-storage-domain";
+import {
+  defineDomain,
+  domainTable,
+  type Domain,
+} from "@deepseek-ai/dsh-storage-domain";
 import { z } from "zod";
-import type { CorrectionRecord, CorrectionStore, ScanCursor } from "../types.js";
+import type {
+  CorrectionRecord,
+  CorrectionStore,
+  ScanCursor,
+} from "../types.js";
 
 const classificationSchema = z.object({
   isCorrection: z.boolean(),
@@ -76,10 +84,14 @@ export const CORRECTION_MINER_DOMAIN = defineDomain({
   tables: {
     corrections: domainTable<string, CorrectionRecord>(correctionRecordSchema),
     clusters: domainTable<string, Record<string, unknown>>(futureRecordSchema),
-    candidates: domainTable<string, Record<string, unknown>>(futureRecordSchema),
+    candidates: domainTable<string, Record<string, unknown>>(
+      futureRecordSchema,
+    ),
     replays: domainTable<string, Record<string, unknown>>(futureRecordSchema),
     decisions: domainTable<string, Record<string, unknown>>(futureRecordSchema),
-    rule_bindings: domainTable<string, Record<string, unknown>>(futureRecordSchema),
+    rule_bindings: domainTable<string, Record<string, unknown>>(
+      futureRecordSchema,
+    ),
     scan_cursors: domainTable<string, ScanCursor>(scanCursorSchema),
   },
 });
@@ -101,10 +113,16 @@ export class DomainCorrectionStore implements CorrectionStore {
     return this.domain.table("corrections").get(id) !== undefined;
   }
 
-  async putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void> {
+  async putCorrection(
+    record: CorrectionRecord,
+    maxRecordsPerWorkspace: number,
+  ): Promise<void> {
     const table = this.domain.table("corrections");
     await table.put(record.id, record);
-    const workspaceRecords = oldestWorkspaceRecords(table.entries(), record.workspaceKey);
+    const workspaceRecords = oldestWorkspaceRecords(
+      table.entries(),
+      record.workspaceKey,
+    );
     const excess = workspaceRecords.slice(
       0,
       Math.max(0, workspaceRecords.length - maxRecordsPerWorkspace),
@@ -120,11 +138,17 @@ export class DomainCorrectionStore implements CorrectionStore {
     return count;
   }
 
-  listCorrections(workspaceKey: string, limit = 50): readonly CorrectionRecord[] {
+  listCorrections(
+    workspaceKey: string,
+    limit = 50,
+  ): readonly CorrectionRecord[] {
     return [...this.domain.table("corrections").entries()]
       .map(([, record]) => record)
       .filter((record) => record.workspaceKey === workspaceKey)
-      .sort((left, right) => right.createdAt - left.createdAt || right.eventSeq - left.eventSeq)
+      .sort(
+        (left, right) =>
+          right.createdAt - left.createdAt || right.eventSeq - left.eventSeq,
+      )
       .slice(0, limit);
   }
 }
@@ -146,9 +170,15 @@ export class MemoryCorrectionStore implements CorrectionStore {
     return this.corrections.has(id);
   }
 
-  async putCorrection(record: CorrectionRecord, maxRecordsPerWorkspace: number): Promise<void> {
+  async putCorrection(
+    record: CorrectionRecord,
+    maxRecordsPerWorkspace: number,
+  ): Promise<void> {
     this.corrections.set(record.id, structuredClone(record));
-    const workspaceRecords = oldestWorkspaceRecords(this.corrections.entries(), record.workspaceKey);
+    const workspaceRecords = oldestWorkspaceRecords(
+      this.corrections.entries(),
+      record.workspaceKey,
+    );
     const excess = workspaceRecords.slice(
       0,
       Math.max(0, workspaceRecords.length - maxRecordsPerWorkspace),
@@ -164,10 +194,16 @@ export class MemoryCorrectionStore implements CorrectionStore {
     return count;
   }
 
-  listCorrections(workspaceKey: string, limit = 50): readonly CorrectionRecord[] {
+  listCorrections(
+    workspaceKey: string,
+    limit = 50,
+  ): readonly CorrectionRecord[] {
     return [...this.corrections.values()]
       .filter((record) => record.workspaceKey === workspaceKey)
-      .sort((left, right) => right.createdAt - left.createdAt || right.eventSeq - left.eventSeq)
+      .sort(
+        (left, right) =>
+          right.createdAt - left.createdAt || right.eventSeq - left.eventSeq,
+      )
       .slice(0, limit)
       .map((record) => structuredClone(record));
   }

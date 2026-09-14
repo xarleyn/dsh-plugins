@@ -19,7 +19,11 @@ export function createListDomainsTool(dependencies: ToolDependencies) {
         type: "object",
         additionalProperties: false,
         properties: {
-          count: { type: "integer", required: true, description: "Number of enabled domains." },
+          count: {
+            type: "integer",
+            required: true,
+            description: "Number of enabled domains.",
+          },
           domains: {
             type: "array",
             required: true,
@@ -28,9 +32,21 @@ export function createListDomainsTool(dependencies: ToolDependencies) {
               type: "object",
               additionalProperties: false,
               properties: {
-                id: { type: "string", required: true, description: "Domain id for domain_expert." },
-                name: { type: "string", required: true, description: "Display name." },
-                description: { type: "string", required: true, description: "One-line purpose." },
+                id: {
+                  type: "string",
+                  required: true,
+                  description: "Domain id for domain_expert.",
+                },
+                name: {
+                  type: "string",
+                  required: true,
+                  description: "Display name.",
+                },
+                description: {
+                  type: "string",
+                  required: true,
+                  description: "One-line purpose.",
+                },
               },
             },
           },
@@ -43,7 +59,10 @@ export function createListDomainsTool(dependencies: ToolDependencies) {
             value.count === 0
               ? "No domain experts are enabled in this deployment."
               : `${String(value.count)} domain expert${value.count === 1 ? "" : "s"} available:\n${value.domains
-                  .map((domain) => `- ${domain.id}: ${domain.name}${domain.description === "" ? "" : ` — ${domain.description}`}`)
+                  .map(
+                    (domain) =>
+                      `- ${domain.id}: ${domain.name}${domain.description === "" ? "" : ` — ${domain.description}`}`,
+                  )
                   .join("\n")}`,
         },
       ],
@@ -51,7 +70,10 @@ export function createListDomainsTool(dependencies: ToolDependencies) {
     execute() {
       try {
         const domains = dependencies.list();
-        return Promise.resolve({ count: domains.length, domains: [...domains] });
+        return Promise.resolve({
+          count: domains.length,
+          domains: [...domains],
+        });
       } catch (error) {
         throw toToolError(error);
       }

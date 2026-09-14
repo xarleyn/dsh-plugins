@@ -2,9 +2,7 @@
   "deepseekHarness": {
     "channel": "next",
     "range": ">=0.1.5-rc.2 <0.2.0",
-    "testedReleases": [
-      "0.1.5-rc.2"
-    ],
+    "testedReleases": ["0.1.5-rc.2"],
     "requiredHostFeatures": [
       "tools/register",
       "tools/restrict",
@@ -14,10 +12,7 @@
       "storageDomain.open",
       "settings.installSection"
     ],
-    "requiredClientFeatures": [
-      "settings.plugins.tab",
-      "typert.remote"
-    ]
+    "requiredClientFeatures": ["settings.plugins.tab", "typert.remote"]
   },
   "node": "^22.19.0 || >=24.0.0"
 }

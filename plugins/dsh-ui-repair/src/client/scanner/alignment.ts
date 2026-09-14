@@ -5,11 +5,7 @@ import {
   matches,
 } from "../dom.js";
 import { dominantPosition } from "../geometry.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 const ROW_SELECTOR =
   "button,a,li,[role='menuitem'],[role='tab'],[data-dsh-ui-repair-row]";
@@ -169,10 +165,7 @@ export function scanIconAlignment(
     const measurements = measureRows(parent);
     if (measurements.length < 3) continue;
     const positions = measurements.map(({ x }) => x);
-    const dominant = dominantPosition(
-      positions,
-      config.alignmentTolerancePx,
-    );
+    const dominant = dominantPosition(positions, config.alignmentTolerancePx);
     if (dominant.members < 2) continue;
     const outliers = measurements.filter(
       ({ x }) => Math.abs(x - dominant.center) > config.alignmentTolerancePx,
@@ -186,8 +179,11 @@ export function scanIconAlignment(
     const confidence = Math.min(
       1,
       Math.round(
-        (0.76 + clusterRatio * 0.12 + (consistentSize ? 0.07 : 0) +
-          (outliers.length === 1 ? 0.05 : 0) + (explicit ? 0.04 : 0)) *
+        (0.76 +
+          clusterRatio * 0.12 +
+          (consistentSize ? 0.07 : 0) +
+          (outliers.length === 1 ? 0.05 : 0) +
+          (explicit ? 0.04 : 0)) *
           100,
       ) / 100,
     );

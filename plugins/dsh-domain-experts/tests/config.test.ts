@@ -67,9 +67,9 @@ describe("config: overrides", () => {
   });
 
   it("refuses an unknown cross-domain mode instead of narrowing it silently", () => {
-    expect(() => resolveConfig({ defaultCrossDomainMode: "wide-open" })).toThrowError(
-      /defaultCrossDomainMode must be one of/u,
-    );
+    expect(() =>
+      resolveConfig({ defaultCrossDomainMode: "wide-open" }),
+    ).toThrowError(/defaultCrossDomainMode must be one of/u);
   });
 
   it("falls back for a non-finite or negative number", () => {
@@ -91,15 +91,17 @@ describe("config: overrides", () => {
     expect(resolveConfig({ subagentProvider: "   " }).subagentProvider).toBe(
       DEFAULT_SUBAGENT_PROVIDER,
     );
-    expect(resolveConfig({ defaultMemoryProvider: "" }).defaultMemoryProvider).toBe(
-      DEFAULT_MEMORY_PROVIDER,
-    );
+    expect(
+      resolveConfig({ defaultMemoryProvider: "" }).defaultMemoryProvider,
+    ).toBe(DEFAULT_MEMORY_PROVIDER);
   });
 });
 
 describe("config: draft defaults", () => {
   it("seeds a new domain from the plugin defaults", () => {
-    const defaults = domainDraftDefaults(resolveConfig({ defaultMaxDepth: 4, defaultCrossDomainMode: "disabled" }));
+    const defaults = domainDraftDefaults(
+      resolveConfig({ defaultMaxDepth: 4, defaultCrossDomainMode: "disabled" }),
+    );
     expect(defaults).toEqual({ maxDepth: 4, crossDomainMode: "disabled" });
   });
 });

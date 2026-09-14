@@ -32,7 +32,10 @@ function errorFields(error: unknown): Record<string, unknown> {
   return { reason: error instanceof Error ? error.message : String(error) };
 }
 
-async function closeResources(domain: CorrectionMinerDomain | undefined, logger: PluginLogger): Promise<void> {
+async function closeResources(
+  domain: CorrectionMinerDomain | undefined,
+  logger: PluginLogger,
+): Promise<void> {
   await domain?.close().catch((error: unknown) => {
     logger.warn("storage.close_failed", errorFields(error));
   });

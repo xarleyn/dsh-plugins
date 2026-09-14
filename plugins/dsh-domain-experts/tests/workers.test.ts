@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { WorkerRegistry, type DomainWorker } from "../src/host/workers/registry.js";
+import {
+  WorkerRegistry,
+  type DomainWorker,
+} from "../src/host/workers/registry.js";
 
 const CODE: DomainWorker = {
   id: "code_worker",
@@ -37,7 +40,9 @@ describe("worker registry", () => {
     const registry = new WorkerRegistry();
     registry.register(CODE);
     expect(() => registry.register(CODE)).toThrowError(/already registered/u);
-    expect(() => registry.register({ ...CODE, id: "Code Worker" })).toThrowError(/must match/u);
+    expect(() =>
+      registry.register({ ...CODE, id: "Code Worker" }),
+    ).toThrowError(/must match/u);
   });
 
   it("selects a worker by its id or by its tool name", () => {
@@ -59,8 +64,14 @@ describe("worker registry", () => {
     registry.register(CODE);
     registry.register({ ...JIRA_UNTYPED, enforces: ["filesystem", "jira"] });
     const selected = registry.selectedFor(["code_worker", "jira_worker"], []);
-    expect(registry.enforcedProviders(selected)).toEqual(["filesystem", "jira"]);
-    expect(registry.enforcersOf(selected, "filesystem")).toEqual(["code_worker", "jira_worker"]);
+    expect(registry.enforcedProviders(selected)).toEqual([
+      "filesystem",
+      "jira",
+    ]);
+    expect(registry.enforcersOf(selected, "filesystem")).toEqual([
+      "code_worker",
+      "jira_worker",
+    ]);
     expect(registry.enforcersOf(selected, "jira")).toEqual(["jira_worker"]);
     expect(registry.enforcersOf(selected, "wiki")).toEqual([]);
   });

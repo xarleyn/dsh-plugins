@@ -46,10 +46,7 @@ export function createLogger(name: string): Logger {
 /**
  * Check whether the actual DSH/Cordis major is at least the required major.
  */
-export function hasCompatibleMajor(
-  actual: string,
-  required: string,
-): boolean {
+export function hasCompatibleMajor(actual: string, required: string): boolean {
   const partsA = actual.split(".").map((v) => Number.parseInt(v, 10));
   const partsR = required.split(".").map((v) => Number.parseInt(v, 10));
 
@@ -77,9 +74,10 @@ export function validateConfig<T extends Record<string, unknown>>(
   const obj = config as Record<string, unknown>;
   const result: Record<string, unknown> = {};
 
-  for (const [key, expectedType] of Object.entries(
-    schema,
-  ) as [string, "string" | "number" | "boolean" | "object"][]) {
+  for (const [key, expectedType] of Object.entries(schema) as [
+    string,
+    "string" | "number" | "boolean" | "object",
+  ][]) {
     const value = obj[key];
 
     if (value === undefined) {

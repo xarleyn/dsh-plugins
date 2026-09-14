@@ -40,9 +40,14 @@ export function Section(props: {
       <div className="msg-section-title">
         <h3>
           {props.title}
-          {props.modified ? <span className="msg-modified">modified</span> : null}
+          {props.modified ? (
+            <span className="msg-modified">modified</span>
+          ) : null}
         </h3>
-        {props.aside ?? (props.hint === undefined ? null : <span className="msg-muted">{props.hint}</span>)}
+        {props.aside ??
+          (props.hint === undefined ? null : (
+            <span className="msg-muted">{props.hint}</span>
+          ))}
       </div>
       {props.children}
     </section>
@@ -204,7 +209,8 @@ export function ListField(props: {
 
   const commit = () => {
     const next = parseListDraft(draft);
-    if (next.join("\u0000") !== props.value.join("\u0000")) props.onCommit(next);
+    if (next.join("\u0000") !== props.value.join("\u0000"))
+      props.onCommit(next);
   };
 
   return (
@@ -227,7 +233,9 @@ export function ListField(props: {
 }
 
 /** Grouped counters rendered as one row of tiles. */
-export function Stats(props: { items: ReadonlyArray<{ value: string; label: string }> }) {
+export function Stats(props: {
+  items: ReadonlyArray<{ value: string; label: string }>;
+}) {
   return (
     <div className="msg-stats">
       {props.items.map((item) => (
@@ -268,7 +276,11 @@ export function SecretField(props: {
           autoComplete="off"
           value={draft}
           disabled={props.disabled}
-          placeholder={props.configured === true ? "Type a new key to replace it" : props.placeholder}
+          placeholder={
+            props.configured === true
+              ? "Type a new key to replace it"
+              : props.placeholder
+          }
           onChange={(event) => {
             setDraft(event.currentTarget.value);
           }}
@@ -292,7 +304,11 @@ export function SecretField(props: {
 /** Status chip pair: label and value with the mode's tone. */
 export function Chip(props: { label: string; value: string; tone?: string }) {
   return (
-    <span className={props.tone === undefined ? "msg-chip" : `msg-chip ${props.tone}`}>
+    <span
+      className={
+        props.tone === undefined ? "msg-chip" : `msg-chip ${props.tone}`
+      }
+    >
       {props.label} <b>{props.value}</b>
     </span>
   );

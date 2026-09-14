@@ -1,4 +1,4 @@
-import { PLUGIN_CARD_SHELL_CSS } from '@yadsh/dsh-plugin-kit/client'
+import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .wfa-body,.wfa-body *{box-sizing:border-box}
@@ -53,4 +53,4 @@ textarea.wfa-control{resize:vertical}
 .wfa-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
 .wfa-note{font-size:10px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
 @media(max-width:720px){.wfa-grid{grid-template-columns:1fr}.wfa-checks{grid-template-columns:1fr}.wfa-rule{grid-template-columns:minmax(0,1fr)}.wfa-actions{justify-content:flex-start}}
-`
+`;
