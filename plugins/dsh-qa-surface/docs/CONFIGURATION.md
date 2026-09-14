@@ -11,6 +11,12 @@ rules are:
   user-resizable transcript/composer width; the page is the only ceiling (the
   content grows until its drag handles reach the edge budget), and each QA
   route persists its chosen width in browser storage;
+- the transcript's gutter is shared: fenced code blocks alone may break up to
+  32px per side out of the text column, never further than the live gutter and
+  never into the drag handles' lane, while markdown tables stay in the column,
+  sized to their content (`max-content`) with per-cell ceilings computed from
+  the chat width — a wider table scrolls inside its own frame instead of
+  stretching the column;
 - duplicate/blank suggested questions are removed;
 - duplicate/blank running phrases are removed, each phrase is at most 120
   characters, and an empty list restores the built-in phrases;
