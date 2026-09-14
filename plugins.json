@@ -252,6 +252,25 @@
       "client": true
     },
     {
+      "name": "dsh-qa-browser",
+      "npm": "@yadsh/dsh-qa-browser",
+      "path": "plugins/dsh-qa-browser",
+      "description": "Session-scoped Playwright browser runtime for DeepSeek Harness and QA Surface",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "browser",
+        "playwright",
+        "qa"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-browser",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-browser#readme",
+      "client": false
+    },
+    {
       "name": "dsh-qa-surface",
       "npm": "@yadsh/dsh-qa-surface",
       "path": "plugins/dsh-qa-surface",
