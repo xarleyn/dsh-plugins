@@ -24,7 +24,8 @@ export interface ToolExecutionLike {
 }
 
 /** The subset of the pre-execute decision this guard produces. */
-export type VikingUriDecision = { kind: "allow" } | { kind: "deny"; reason: string };
+export type VikingUriDecision =
+  { kind: "allow" } | { kind: "deny"; reason: string };
 
 interface GuardHint {
   readonly tool: string;
@@ -34,11 +35,11 @@ interface GuardHint {
 const GUARDED_TOOLS: Record<string, GuardHint> = {
   read: {
     tool: mcp("read"),
-    example: uri => `${mcp("read")}(uris="${uri}")`,
+    example: (uri) => `${mcp("read")}(uris="${uri}")`,
   },
   glob: {
     tool: mcp("list"),
-    example: uri => `${mcp("list")}(uri="${uri}")`,
+    example: (uri) => `${mcp("list")}(uri="${uri}")`,
   },
   grep: {
     tool: mcp("grep"),
@@ -47,19 +48,20 @@ const GUARDED_TOOLS: Record<string, GuardHint> = {
   },
   bash: {
     tool: `${mcp("read")} or ${mcp("search")}`,
-    example: uri => `${mcp("read")}(uris="${uri}")`,
+    example: (uri) => `${mcp("read")}(uris="${uri}")`,
   },
   edit: {
     tool: mcp("edit"),
-    example: uri => `${mcp("edit")}(uri="${uri}", old_string="...", new_string="...")`,
+    example: (uri) =>
+      `${mcp("edit")}(uri="${uri}", old_string="...", new_string="...")`,
   },
   write: {
     tool: mcp("write"),
-    example: uri => `${mcp("write")}(uri="${uri}", content="...")`,
+    example: (uri) => `${mcp("write")}(uri="${uri}", content="...")`,
   },
   str_replace_editor: {
     tool: "the OpenViking MCP tools",
-    example: uri => `${mcp("read")}(uris="${uri}")`,
+    example: (uri) => `${mcp("read")}(uris="${uri}")`,
   },
 };
 

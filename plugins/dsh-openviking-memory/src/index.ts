@@ -59,14 +59,27 @@ export const name = "dsh-openviking-memory";
  */
 export const inject = ["agents", "sessions", "tools"] as const;
 
-export { Config, MCP_SERVER_NAME, resolveConfig, resolveInjectionPlan } from "./config.js";
-export type { Config as OpenVikingConfig, InjectionPlan, ResolvedConfig } from "./config.js";
+export {
+  Config,
+  MCP_SERVER_NAME,
+  resolveConfig,
+  resolveInjectionPlan,
+} from "./config.js";
+export type {
+  Config as OpenVikingConfig,
+  InjectionPlan,
+  ResolvedConfig,
+} from "./config.js";
 export { OpenVikingClient } from "./client.js";
 export { OPENVIKING_PLUGIN_SOURCE } from "./capture.js";
 export { injectStartupProfile } from "./lifecycle.js";
 export { buildMcpConfig, PROXY_PATH } from "./mcp.js";
 export { OpenVikingRuntime } from "./runtime.js";
-export { buildSkillsConfig, SKILL_PROVIDER_NAME, SKILLS_DIR } from "./skills.js";
+export {
+  buildSkillsConfig,
+  SKILL_PROVIDER_NAME,
+  SKILLS_DIR,
+} from "./skills.js";
 export { guardVikingUri } from "./uri-guard.js";
 
 declare module "@deepseek-ai/cordis" {
@@ -108,11 +121,18 @@ export default class OpenVikingMemory extends Service {
     this.logger = createOpenVikingLogger(ctx.logger);
 
     const client = new OpenVikingClient(this.resolved);
-    this.runtime = new OpenVikingRuntime(client, this.resolved, this.logger, this.injection);
-
-    const skipMemory = (session: Session | undefined): boolean => Boolean(
-      this.resolved.skipSubagentSessions && session?.header?.origin === "subagent",
+    this.runtime = new OpenVikingRuntime(
+      client,
+      this.resolved,
+      this.logger,
+      this.injection,
     );
+
+    const skipMemory = (session: Session | undefined): boolean =>
+      Boolean(
+        this.resolved.skipSubagentSessions &&
+        session?.header?.origin === "subagent",
+      );
 
     // Session disposal has to outlive every injection decision, so it is
     // registered before the startup-profile branch can return.
@@ -140,7 +160,9 @@ export default class OpenVikingMemory extends Service {
         "openvikingMemory.disposeSession()",
       );
       if (!this.injection.startupProfile) {
-        this.logger.debug("startup_profile_skipped", { sessionId: String(agent.session.id) });
+        this.logger.debug("startup_profile_skipped", {
+          sessionId: String(agent.session.id),
+        });
         return false;
       }
       // `emit` dispatch does not await the returned promise, and this is the
@@ -148,44 +170,50 @@ export default class OpenVikingMemory extends Service {
       // here rather than surfacing as an unhandled rejection. Per-step profile
       // delivery covers the case where the agent left `idle` before this
       // landed.
-      return injectStartupProfile(agent, this.runtime).catch((error: unknown) => {
-        this.logger.warn("startup_profile_failed", {
-          sessionId: String(agent.session.id),
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return false;
-      });
+      return injectStartupProfile(agent, this.runtime).catch(
+        (error: unknown) => {
+          this.logger.warn("startup_profile_failed", {
+            sessionId: String(agent.session.id),
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return false;
+        },
+      );
     });
 
     // prepend: downstream waterfall listeners run first, so this plugin sees
     // the final claimed batch and appends after every other contributor.
     // Profile + recall are independent after `next()`; run them concurrently so
     // the agent/pre-step waterfall spends less wall time.
-    ctx.on("agent/pre-step", async ({ agent, signal }, next): Promise<PreStepDecision> => {
-      const decision = await next();
-      if (skipMemory(agent.session)) return decision;
-      if (decision.kind !== "enter" || signal.aborted) return decision;
+    ctx.on(
+      "agent/pre-step",
+      async ({ agent, signal }, next): Promise<PreStepDecision> => {
+        const decision = await next();
+        if (skipMemory(agent.session)) return decision;
+        if (decision.kind !== "enter" || signal.aborted) return decision;
 
-      // Zero-work gating (SPEC §12): a disabled capability contributes no task
-      // at all, so neither `profileMessage` nor `recallMessage` runs — and no
-      // OpenViking request is issued on its behalf.
-      const tasks: Promise<UserMessage | null>[] = [];
-      if (this.injection.stepProfile) {
-        tasks.push(this.runtime.profileMessage(agent));
-      }
-      if (this.injection.recall) {
-        tasks.push(this.runtime.recallMessage(agent, decision.messages));
-      }
-      if (tasks.length === 0) return decision;
+        // Zero-work gating (SPEC §12): a disabled capability contributes no task
+        // at all, so neither `profileMessage` nor `recallMessage` runs — and no
+        // OpenViking request is issued on its behalf.
+        const tasks: Promise<UserMessage | null>[] = [];
+        if (this.injection.stepProfile) {
+          tasks.push(this.runtime.profileMessage(agent));
+        }
+        if (this.injection.recall) {
+          tasks.push(this.runtime.recallMessage(agent, decision.messages));
+        }
+        if (tasks.length === 0) return decision;
 
-      const additions = (await Promise.all(tasks)).filter(
-        (message): message is UserMessage => message !== null,
-      );
-      if (signal.aborted) return decision;
-      return additions.length > 0
-        ? { kind: "enter", messages: [...decision.messages, ...additions] }
-        : decision;
-    }, { prepend: true });
+        const additions = (await Promise.all(tasks)).filter(
+          (message): message is UserMessage => message !== null,
+        );
+        if (signal.aborted) return decision;
+        return additions.length > 0
+          ? { kind: "enter", messages: [...decision.messages, ...additions] }
+          : decision;
+      },
+      { prepend: true },
+    );
 
     ctx.on("session/event", (session, event) => {
       if (skipMemory(session)) return;
@@ -193,7 +221,7 @@ export default class OpenVikingMemory extends Service {
       this.runtime.maybeCommit(session, event);
     });
 
-    ctx.on("session/flush", async session => {
+    ctx.on("session/flush", async (session) => {
       if (skipMemory(session)) return;
       await this.runtime.flush(session);
     });

@@ -14,7 +14,10 @@ import { access } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { Config as McpClientConfig, type StdioConfig } from "@deepseek-ai/dsh-mcp-client";
+import {
+  Config as McpClientConfig,
+  type StdioConfig,
+} from "@deepseek-ai/dsh-mcp-client";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { MCP_SERVER_NAME, resolveConfig } from "../src/config.js";
@@ -30,8 +33,18 @@ const packageRoot = fileURLToPath(new URL("../", import.meta.url));
  * developer's own key would decide the outcome of a test about *defaults*.
  */
 const NO_CREDENTIAL_FILES: NodeJS.ProcessEnv = {
-  OPENVIKING_CLI_CONFIG_FILE: join(packageRoot, "tests", "fixtures", "absent-ovcli.conf"),
-  OPENVIKING_CONFIG_FILE: join(packageRoot, "tests", "fixtures", "absent-ov.conf"),
+  OPENVIKING_CLI_CONFIG_FILE: join(
+    packageRoot,
+    "tests",
+    "fixtures",
+    "absent-ovcli.conf",
+  ),
+  OPENVIKING_CONFIG_FILE: join(
+    packageRoot,
+    "tests",
+    "fixtures",
+    "absent-ov.conf",
+  ),
 };
 
 /** The stdio arm of the bridge's config union, asserted before it is read. */
@@ -95,7 +108,9 @@ describe("buildMcpConfig", () => {
   });
 
   it("the config validates against the pinned bridge's own schema", async () => {
-    const result = await McpClientConfig["~standard"].validate(buildMcpConfig(resolved));
+    const result = await McpClientConfig["~standard"].validate(
+      buildMcpConfig(resolved),
+    );
 
     expect(result.issues).toBeUndefined();
   });
@@ -134,7 +149,9 @@ describe("buildMcpConfig", () => {
 describe("PROXY_PATH", () => {
   it("points at the compiled proxy entrypoint", async () => {
     // Normalized because `fileURLToPath` yields backslashes on Windows.
-    expect(PROXY_PATH.replaceAll("\\", "/").endsWith("servers/mcp-proxy.js")).toBe(true);
+    expect(
+      PROXY_PATH.replaceAll("\\", "/").endsWith("servers/mcp-proxy.js"),
+    ).toBe(true);
 
     const sourceSibling = PROXY_PATH.replace(/\.js$/, ".ts");
     const builtEntry = join(packageRoot, "lib", "servers", "mcp-proxy.js");
@@ -145,7 +162,9 @@ describe("PROXY_PATH", () => {
     expect(existsSync(sourceEntry)).toBe(true);
     expect(sourceSibling).toBe(sourceEntry);
 
-    const live = [builtEntry, sourceSibling].filter(candidate => existsSync(candidate));
+    const live = [builtEntry, sourceSibling].filter((candidate) =>
+      existsSync(candidate),
+    );
     expect(live.length).toBeGreaterThan(0);
     for (const candidate of live) {
       await expect(access(candidate)).resolves.toBeUndefined();
@@ -158,7 +177,9 @@ describe("the entry's tool mount", () => {
     harness = await createHarness({ endpoint: "http://ov.local/" });
 
     const bridges = harness.mounted.filter(
-      entry => (entry.config as { serverName?: string } | undefined)?.serverName === "openviking",
+      (entry) =>
+        (entry.config as { serverName?: string } | undefined)?.serverName ===
+        "openviking",
     );
 
     expect(bridges).toHaveLength(1);
@@ -166,9 +187,13 @@ describe("the entry's tool mount", () => {
     // The mounted module is DSH's own mcp-client bridge, mounted as a module
     // (namespace plugin with `apply`), not a tool registered on ctx.tools.
     expect((bridge.plugin as { name?: string }).name).toBe("mcp-client");
-    expect(typeof (bridge.plugin as { apply?: unknown }).apply).toBe("function");
+    expect(typeof (bridge.plugin as { apply?: unknown }).apply).toBe(
+      "function",
+    );
 
-    const config = stdioConfig(bridge.config as ReturnType<typeof buildMcpConfig>);
+    const config = stdioConfig(
+      bridge.config as ReturnType<typeof buildMcpConfig>,
+    );
     expect(config.env.OPENVIKING_URL).toBe("http://ov.local");
     expect(config.failOnStartupError).toBe(false);
   });

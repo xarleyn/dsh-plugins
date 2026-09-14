@@ -32,7 +32,8 @@ const TOOL_RESULT_TYPES = new Set([
 // guards against pathological payloads.
 const DEFAULT_TOOL_MAX_CHARS = 1000000;
 
-const ACK_RE = /^(?:ok|okay|k|yes|yep|no|nope|thanks|thank you|thx|done|收到|好的|好|嗯|可以|继续|不用|不需要|没了|好了)[.!?。！？\s]*$/i;
+const ACK_RE =
+  /^(?:ok|okay|k|yes|yep|no|nope|thanks|thank you|thx|done|收到|好的|好|嗯|可以|继续|不用|不需要|没了|好了)[.!?。！？\s]*$/i;
 const SLASH_COMMAND_RE = /^\/[a-z0-9_-]{1,64}\b/i;
 const METADATA_KEYS = [
   "session_id",
@@ -115,12 +116,18 @@ type BlockLike = {
 };
 
 function normalizeType(value: unknown): string {
-  return String(value || "").toLowerCase().replace(/[-\s]/g, "_");
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[-\s]/g, "_");
 }
 
 function isToolCallBlock(block: BlockLike | null | undefined): boolean {
   const type = normalizeType(block?.type || block?.kind || block?.role);
-  return TOOL_CALL_TYPES.has(type) || Boolean(block?.tool_calls) || Boolean(block?.function?.name);
+  return (
+    TOOL_CALL_TYPES.has(type) ||
+    Boolean(block?.tool_calls) ||
+    Boolean(block?.function?.name)
+  );
 }
 
 function isToolResultBlock(block: BlockLike | null | undefined): boolean {
@@ -129,16 +136,25 @@ function isToolResultBlock(block: BlockLike | null | undefined): boolean {
 }
 
 function oneLine(text: unknown): string {
-  return String(text || "").replace(/\s+/g, " ").trim();
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-export function truncateCaptureText(text: unknown, maxChars: number = 2000): string {
+export function truncateCaptureText(
+  text: unknown,
+  maxChars: number = 2000,
+): string {
   const value = String(text || "").trim();
-  if (!Number.isFinite(maxChars) || maxChars <= 0 || value.length <= maxChars) return value;
+  if (!Number.isFinite(maxChars) || maxChars <= 0 || value.length <= maxChars)
+    return value;
   return `${value.slice(0, Math.max(0, maxChars - 20)).trimEnd()}\n[truncated]`;
 }
 
-function stringifyCompact(value: unknown, maxChars: number | undefined): string {
+function stringifyCompact(
+  value: unknown,
+  maxChars: number | undefined,
+): string {
   if (value == null) return "";
   if (typeof value === "string") return truncateCaptureText(value, maxChars);
   try {
@@ -171,19 +187,23 @@ function blockText(block: BlockLike | null | undefined): string {
 function toolName(block: BlockLike | null | undefined): string {
   return oneLine(
     block?.name ||
-    block?.tool_name ||
-    block?.toolName ||
-    block?.tool ||
-    block?.function?.name ||
-    block?.call?.name ||
-    "",
+      block?.tool_name ||
+      block?.toolName ||
+      block?.tool ||
+      block?.function?.name ||
+      block?.call?.name ||
+      "",
   );
 }
 
-function toolPayload(block: BlockLike | null | undefined, kind: "call" | "result"): unknown {
+function toolPayload(
+  block: BlockLike | null | undefined,
+  kind: "call" | "result",
+): unknown {
   if (!block || typeof block !== "object") return "";
   if (kind === "call") {
-    return block.input ??
+    return (
+      block.input ??
       block.state?.input ??
       block.arguments ??
       block.args ??
@@ -192,9 +212,11 @@ function toolPayload(block: BlockLike | null | undefined, kind: "call" | "result
       block.command ??
       block.call?.input ??
       block.call?.arguments ??
-      "";
+      ""
+    );
   }
-  return block.output ??
+  return (
+    block.output ??
     block.state?.output ??
     block.result ??
     block.error ??
@@ -202,28 +224,39 @@ function toolPayload(block: BlockLike | null | undefined, kind: "call" | "result
     block.data ??
     block.content ??
     block.text ??
-    "";
+    ""
+  );
 }
 
 function toolId(block: BlockLike | null | undefined): string {
   return oneLine(
     block?.call_id ||
-    block?.callId ||
-    block?.callID ||
-    block?.tool_call_id ||
-    block?.toolCallId ||
-    block?.tool_use_id ||
-    block?.toolUseId ||
-    block?.function_call_id ||
-    block?.functionCallId ||
-    block?.id ||
-    "",
+      block?.callId ||
+      block?.callID ||
+      block?.tool_call_id ||
+      block?.toolCallId ||
+      block?.tool_use_id ||
+      block?.toolUseId ||
+      block?.function_call_id ||
+      block?.functionCallId ||
+      block?.id ||
+      "",
   );
 }
 
-function toolStatus(block: BlockLike | null | undefined, kind: "call" | "result"): CapturedToolPart["tool_status"] {
+function toolStatus(
+  block: BlockLike | null | undefined,
+  kind: "call" | "result",
+): CapturedToolPart["tool_status"] {
   if (kind === "call") return "running";
-  if (block?.is_error || block?.isError || block?.state?.isError || block?.error || block?.state?.error) return "error";
+  if (
+    block?.is_error ||
+    block?.isError ||
+    block?.state?.isError ||
+    block?.error ||
+    block?.state?.error
+  )
+    return "error";
   const status = oneLine(block?.status || block?.state?.status || "");
   return (status || "completed") as CapturedToolPart["tool_status"];
 }
@@ -231,15 +264,19 @@ function toolStatus(block: BlockLike | null | undefined, kind: "call" | "result"
 function setToolInput(part: CapturedToolPart, payload: unknown): void {
   const input = parseMaybeJson(payload);
   if (input === "" || input == null) return;
-  part.tool_input = typeof input === "object" && !Array.isArray(input)
-    ? (input as Record<string, unknown>)
-    : { value: input };
+  part.tool_input =
+    typeof input === "object" && !Array.isArray(input)
+      ? (input as Record<string, unknown>)
+      : { value: input };
 }
 
 function buildToolPart(
   block: BlockLike,
   kind: "call" | "result",
-  { toolMaxChars = DEFAULT_TOOL_MAX_CHARS, toolNameById = {} }: {
+  {
+    toolMaxChars = DEFAULT_TOOL_MAX_CHARS,
+    toolNameById = {},
+  }: {
     readonly toolMaxChars?: number;
     readonly toolNameById?: Record<string, string>;
   } = {},
@@ -264,7 +301,11 @@ function buildToolPart(
   return part;
 }
 
-function formatToolBlock(block: BlockLike, kind: "call" | "result", maxChars: number | undefined): string {
+function formatToolBlock(
+  block: BlockLike,
+  kind: "call" | "result",
+  maxChars: number | undefined,
+): string {
   const name = toolName(block);
   const payload = toolPayload(block, kind);
   const body = oneLine(stringifyCompact(payload, maxChars));
@@ -274,7 +315,10 @@ function formatToolBlock(block: BlockLike, kind: "call" | "result", maxChars: nu
     : `[${label}${name ? ` ${name}` : ""}]`;
 }
 
-function blockToText(block: unknown, options: { readonly toolMaxChars?: number }): string {
+function blockToText(
+  block: unknown,
+  options: { readonly toolMaxChars?: number },
+): string {
   if (!block) return "";
   if (typeof block === "string") return block;
   if (Array.isArray(block)) return extractTextFromContent(block, options);
@@ -289,14 +333,20 @@ function blockToText(block: unknown, options: { readonly toolMaxChars?: number }
 
   const type = normalizeType(node.type || node.kind || node.role);
   if (TEXT_BLOCK_TYPES.has(type)) return blockText(node);
-  if (isToolCallBlock(node)) return formatToolBlock(node, "call", options.toolMaxChars);
-  if (isToolResultBlock(node)) return formatToolBlock(node, "result", options.toolMaxChars);
-  if (Array.isArray(node.content)) return extractTextFromContent(node.content, options);
+  if (isToolCallBlock(node))
+    return formatToolBlock(node, "call", options.toolMaxChars);
+  if (isToolResultBlock(node))
+    return formatToolBlock(node, "result", options.toolMaxChars);
+  if (Array.isArray(node.content))
+    return extractTextFromContent(node.content, options);
   if (!type) return blockText(node);
   return "";
 }
 
-export function extractTextFromContent(content: unknown, options: { readonly toolMaxChars?: number } = {}): string {
+export function extractTextFromContent(
+  content: unknown,
+  options: { readonly toolMaxChars?: number } = {},
+): string {
   const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options };
   if (!content) return "";
   if (typeof content === "string") return content;
@@ -307,19 +357,31 @@ export function extractTextFromContent(content: unknown, options: { readonly too
       .join("\n\n");
   }
   if (typeof content === "object") {
-    return blockToText(content, opts) || stringifyCompact(content, opts.toolMaxChars);
+    return (
+      blockToText(content, opts) || stringifyCompact(content, opts.toolMaxChars)
+    );
   }
   return "";
 }
 
-export function extractTextFromPayload(payload: unknown, options: { readonly toolMaxChars?: number } = {}): string {
+export function extractTextFromPayload(
+  payload: unknown,
+  options: { readonly toolMaxChars?: number } = {},
+): string {
   if (!payload || typeof payload !== "object") return "";
   const node = payload as BlockLike;
 
   const chunks: string[] = [];
   const directType = normalizeType(node.type || node.kind || node.role);
-  if (TOOL_RESULT_TYPES.has(directType) || directType === "tool" || TOOL_CALL_TYPES.has(directType)) {
-    const direct = blockToText(payload, { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options });
+  if (
+    TOOL_RESULT_TYPES.has(directType) ||
+    directType === "tool" ||
+    TOOL_CALL_TYPES.has(directType)
+  ) {
+    const direct = blockToText(payload, {
+      toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+      ...options,
+    });
     if (direct) return direct;
   }
 
@@ -331,7 +393,14 @@ export function extractTextFromPayload(payload: unknown, options: { readonly too
     if (contentText) chunks.push(contentText);
   }
 
-  for (const key of ["tool_calls", "toolCalls", "function_call", "functionCall", "tool_call", "toolCall"]) {
+  for (const key of [
+    "tool_calls",
+    "toolCalls",
+    "function_call",
+    "functionCall",
+    "tool_call",
+    "toolCall",
+  ]) {
     const value = node[key];
     if (!value) continue;
     const toolText = extractTextFromContent(value, options);
@@ -339,7 +408,10 @@ export function extractTextFromPayload(payload: unknown, options: { readonly too
   }
 
   if (chunks.length === 0) {
-    const direct = blockToText(payload, { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options });
+    const direct = blockToText(payload, {
+      toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+      ...options,
+    });
     if (direct) chunks.push(direct);
   }
 
@@ -348,9 +420,16 @@ export function extractTextFromPayload(payload: unknown, options: { readonly too
 
 function extractPartsFromContent(
   content: unknown,
-  options: { readonly toolMaxChars?: number; readonly toolNameById?: Record<string, string> } = {},
+  options: {
+    readonly toolMaxChars?: number;
+    readonly toolNameById?: Record<string, string>;
+  } = {},
 ): CapturedPart[] {
-  const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, toolNameById: {}, ...options };
+  const opts = {
+    toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+    toolNameById: {},
+    ...options,
+  };
   const parts: CapturedPart[] = [];
   if (!content) return parts;
   if (typeof content === "string") {
@@ -378,11 +457,18 @@ function extractPartsFromContent(
 
 export function extractPartsFromPayload(
   payload: unknown,
-  options: { readonly toolMaxChars?: number; readonly toolNameById?: Record<string, string> } = {},
+  options: {
+    readonly toolMaxChars?: number;
+    readonly toolNameById?: Record<string, string>;
+  } = {},
 ): CapturedPart[] {
   if (!payload || typeof payload !== "object") return [];
   const node = payload as BlockLike;
-  const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, toolNameById: {}, ...options };
+  const opts = {
+    toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
+    toolNameById: {},
+    ...options,
+  };
   if (node.message && typeof node.message === "object") {
     return extractPartsFromPayload(node.message, opts);
   }
@@ -391,7 +477,11 @@ export function extractPartsFromPayload(
   if (TOOL_CALL_TYPES.has(directType) || isToolCallBlock(node)) {
     return [buildToolPart(node, "call", opts)];
   }
-  if (TOOL_RESULT_TYPES.has(directType) || directType === "tool" || directType === "function") {
+  if (
+    TOOL_RESULT_TYPES.has(directType) ||
+    directType === "tool" ||
+    directType === "function"
+  ) {
     return [buildToolPart(node, "result", opts)];
   }
 
@@ -399,11 +489,19 @@ export function extractPartsFromPayload(
   if (node.content !== undefined) {
     parts.push(...extractPartsFromContent(node.content, opts));
   }
-  for (const key of ["tool_calls", "toolCalls", "function_call", "functionCall", "tool_call", "toolCall"]) {
+  for (const key of [
+    "tool_calls",
+    "toolCalls",
+    "function_call",
+    "functionCall",
+    "tool_call",
+    "toolCall",
+  ]) {
     const value = node[key];
     if (!value) continue;
     if (Array.isArray(value)) {
-      for (const block of value) parts.push(...extractPartsFromPayload(block, opts));
+      for (const block of value)
+        parts.push(...extractPartsFromPayload(block, opts));
     } else {
       parts.push(...extractPartsFromPayload(value, opts));
     }
@@ -412,15 +510,18 @@ export function extractPartsFromPayload(
 }
 
 function stripMetadataFences(text: unknown): string {
-  return String(text || "").replace(/```(?:json)?\s*([\s\S]*?)```/gi, (match: string, body: string): string => {
-    const lower = body.toLowerCase();
-    let hits = 0;
-    for (const key of METADATA_KEYS) {
-      const re = new RegExp(`["']?${key}["']?\\s*:`, "i");
-      if (re.test(lower)) hits += 1;
-    }
-    return hits >= 3 ? "" : match;
-  });
+  return String(text || "").replace(
+    /```(?:json)?\s*([\s\S]*?)```/gi,
+    (match: string, body: string): string => {
+      const lower = body.toLowerCase();
+      let hits = 0;
+      for (const key of METADATA_KEYS) {
+        const re = new RegExp(`["']?${key}["']?\\s*:`, "i");
+        if (re.test(lower)) hits += 1;
+      }
+      return hits >= 3 ? "" : match;
+    },
+  );
 }
 
 function stripInjectedDigestBlocks(text: unknown): string {
@@ -454,7 +555,9 @@ function stripInjectedDigestBlocks(text: unknown): string {
         continue;
       }
       if (
-        /^(?:[-*]\s+|#{1,6}\s+|More detail:|Use OpenViking MCP|Latest committed archive|Resume continuity|viking:\/\/)/i.test(trimmed) ||
+        /^(?:[-*]\s+|#{1,6}\s+|More detail:|Use OpenViking MCP|Latest committed archive|Resume continuity|viking:\/\/)/i.test(
+          trimmed,
+        ) ||
         /^\s{2,}\S/.test(line)
       ) {
         continue;
@@ -474,7 +577,10 @@ export function sanitizeCapturedText(text: unknown): string {
     // literal trips the repository's `no-control-regex` rule.
     .replaceAll("\u0000", "")
     .replace(/<openviking-context\b[^>]*>[\s\S]*?<\/openviking-context>/gi, " ")
-    .replace(/<relevant-memor(?:y|ies)\b[^>]*>[\s\S]*?<\/relevant-memor(?:y|ies)>/gi, " ")
+    .replace(
+      /<relevant-memor(?:y|ies)\b[^>]*>[\s\S]*?<\/relevant-memor(?:y|ies)>/gi,
+      " ",
+    )
     .replace(/^\s*Sender\s*\([^)]+\)\s*```[\s\S]*?```\s*/gim, " ")
     .replace(/^\s*Conversation (?:metadata|info):\s*```[\s\S]*?```\s*/gim, " ")
     .replace(/^\s*\[?\d{4}-\d{2}-\d{2}[T ][^\]\n]{3,80}\]?\s*/gm, "")
@@ -513,7 +619,8 @@ export function shouldCaptureText(
     const compiled = compileInputFilters(cfg?.captureFilters);
     if (compiled.rules.length) {
       const verdict = applyInputFilters(capped, compiled.rules, { role });
-      if (verdict.dropped) return { shouldCapture: false, reason: "filtered", text: "" };
+      if (verdict.dropped)
+        return { shouldCapture: false, reason: "filtered", text: "" };
       capped = verdict.text;
       if (!capped) return { shouldCapture: false, reason: "empty", text: "" };
     }

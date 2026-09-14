@@ -31,8 +31,9 @@ afterEach(async () => {
 /** Requests that read `memories/profile.md` — only the profile path does. */
 function profileReads(target: Harness): number {
   return target.requests.filter(
-    request => request.path === "/api/v1/content/read"
-      && request.search.includes("profile.md"),
+    (request) =>
+      request.path === "/api/v1/content/read" &&
+      request.search.includes("profile.md"),
   ).length;
 }
 
@@ -74,10 +75,15 @@ async function runSession(
     cwd: options.cwd ?? "/workspace/project",
   });
 
-  await emit(target, "agent/session-start", { agent: fake.agent, source: "startup" });
+  await emit(target, "agent/session-start", {
+    agent: fake.agent,
+    source: "startup",
+  });
   const startupProfile = profileReads(target);
 
-  const messages = [userMessage("what did we decide about the recall budget last time?")];
+  const messages = [
+    userMessage("what did we decide about the recall budget last time?"),
+  ];
   await emit(
     target,
     "agent/pre-step",
@@ -110,7 +116,11 @@ describe("automatic injection matrix (SPEC §22.2)", () => {
     harness = await createHarness({ autoInject: false });
     const result = await runSession(harness);
 
-    expect(result).toEqual({ startupProfile: 0, stepRecall: 0, totalProfile: 0 });
+    expect(result).toEqual({
+      startupProfile: 0,
+      stepRecall: 0,
+      totalProfile: 0,
+    });
     expect(harness.requests).toEqual([]);
   });
 
@@ -124,7 +134,10 @@ describe("automatic injection matrix (SPEC §22.2)", () => {
   });
 
   it("injectStepProfile:false removes the per-step profile fallback entirely", async () => {
-    harness = await createHarness({ injectStartupProfile: false, injectStepProfile: false });
+    harness = await createHarness({
+      injectStartupProfile: false,
+      injectStepProfile: false,
+    });
     const result = await runSession(harness);
 
     expect(result.startupProfile).toBe(0);
@@ -149,7 +162,11 @@ describe("automatic injection matrix (SPEC §22.2)", () => {
     });
     const result = await runSession(harness);
 
-    expect(result).toEqual({ startupProfile: 0, stepRecall: 0, totalProfile: 0 });
+    expect(result).toEqual({
+      startupProfile: 0,
+      stepRecall: 0,
+      totalProfile: 0,
+    });
     expect(harness.requests).toEqual([]);
   });
 
@@ -171,12 +188,20 @@ describe("automatic injection matrix (SPEC §22.2)", () => {
 describe("manual-only mode (SPEC §11, §22.3)", () => {
   it("disables every automatic injection while capture, commit, tools, skills and the guard stay live", async () => {
     harness = await createHarness({ autoInject: false, syncTurns: true });
-    const fake = createFakeAgent({ sessionId: "dsh-manual", cwd: "/workspace/project" });
+    const fake = createFakeAgent({
+      sessionId: "dsh-manual",
+      cwd: "/workspace/project",
+    });
 
-    await emit(harness, "agent/session-start", { agent: fake.agent, source: "startup" });
+    await emit(harness, "agent/session-start", {
+      agent: fake.agent,
+      source: "startup",
+    });
 
     const before = harness.requests.length;
-    const messages = [userMessage("please remember the deploy checklist for release day")];
+    const messages = [
+      userMessage("please remember the deploy checklist for release day"),
+    ];
     await emit(
       harness,
       "agent/pre-step",
@@ -195,23 +220,31 @@ describe("manual-only mode (SPEC §11, §22.3)", () => {
       time: Date.now(),
       data: userMessage("the release step is gated on the smoke suite"),
     });
-    await emit(harness, "session/event", fake.agent.session, { type: "turn/end", data: {} });
+    await emit(harness, "session/event", fake.agent.session, {
+      type: "turn/end",
+      data: {},
+    });
     await emit(harness, "session/flush", fake.agent.session);
 
     const ovId = ovSessionId(fake.agent.session.id);
-    expect(harness.requestsFor(`/api/v1/sessions/${ovId}/messages`).length).toBeGreaterThan(0);
+    expect(
+      harness.requestsFor(`/api/v1/sessions/${ovId}/messages`).length,
+    ).toBeGreaterThan(0);
     expect(harness.countRequests("/api/v1/sessions/")).toBeGreaterThan(0);
 
     // Both surfaces are mounted regardless of the injection controls.
     expect(harness.mounted).toHaveLength(2);
     expect(
       harness.mounted.some(
-        entry => (entry.config as { providerName?: string }).providerName === "openviking",
+        (entry) =>
+          (entry.config as { providerName?: string }).providerName ===
+          "openviking",
       ),
     ).toBe(true);
     expect(
       harness.mounted.some(
-        entry => (entry.config as { serverName?: string }).serverName === "openviking",
+        (entry) =>
+          (entry.config as { serverName?: string }).serverName === "openviking",
       ),
     ).toBe(true);
 
@@ -223,13 +256,19 @@ describe("manual-only mode (SPEC §11, §22.3)", () => {
     harness = await createHarness({ autoInject: false, syncTurns: false });
     const fake = createFakeAgent({ sessionId: "dsh-silent" });
 
-    await emit(harness, "agent/session-start", { agent: fake.agent, source: "startup" });
+    await emit(harness, "agent/session-start", {
+      agent: fake.agent,
+      source: "startup",
+    });
     await emit(harness, "session/event", fake.agent.session, {
       type: "user/message",
       time: Date.now(),
       data: userMessage("a durable fact worth remembering"),
     });
-    await emit(harness, "session/event", fake.agent.session, { type: "turn/end", data: {} });
+    await emit(harness, "session/event", fake.agent.session, {
+      type: "turn/end",
+      data: {},
+    });
     await emit(harness, "session/flush", fake.agent.session);
 
     expect(harness.requests).toEqual([]);
@@ -249,16 +288,26 @@ describe("injection controls never reach into capture", () => {
     await emit(harness, "session/flush", fake.agent.session);
 
     expect(
-      harness.requestsFor(`/api/v1/sessions/${ovSessionId(fake.agent.session.id)}/messages`).length,
+      harness.requestsFor(
+        `/api/v1/sessions/${ovSessionId(fake.agent.session.id)}/messages`,
+      ).length,
     ).toBeGreaterThan(0);
   });
 
   it("skipSubagentSessions keeps a delegated session out of every path", async () => {
     harness = await createHarness({ skipSubagentSessions: true });
-    const fake = createFakeAgent({ sessionId: "dsh-child", origin: "subagent" });
+    const fake = createFakeAgent({
+      sessionId: "dsh-child",
+      origin: "subagent",
+    });
 
-    await emit(harness, "agent/session-start", { agent: fake.agent, source: "startup" });
-    const messages = [userMessage("delegated exploration chatter about memory budgets")];
+    await emit(harness, "agent/session-start", {
+      agent: fake.agent,
+      source: "startup",
+    });
+    const messages = [
+      userMessage("delegated exploration chatter about memory budgets"),
+    ];
     const decision = await emit(
       harness,
       "agent/pre-step",

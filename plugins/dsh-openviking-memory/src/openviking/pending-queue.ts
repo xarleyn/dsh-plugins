@@ -29,7 +29,16 @@
  *                                  (default: 50)
  */
 
-import { mkdir, readdir, readFile, rename, writeFile, unlink, stat, chmod } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  writeFile,
+  unlink,
+  stat,
+  chmod,
+} from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -40,7 +49,8 @@ const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_TTL_DAYS = 7;
 const DEFAULT_REPLAY_LIMIT = 50;
 const PROCESSING_STALE_MS = 10 * 60 * 1000;
-const DEFAULT_PENDING_DIR = (): string => join(homedir(), ".openviking", "pending");
+const DEFAULT_PENDING_DIR = (): string =>
+  join(homedir(), ".openviking", "pending");
 
 // Pending queue files may contain raw memory payload / transcript content.
 // Use restrictive permissions explicitly so we don't depend on umask.
@@ -157,13 +167,18 @@ function getReplayLimit(): number {
 
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${(value as readonly unknown[]).map((item) => stableStringify(item)).join(",")}]`;
+  if (Array.isArray(value))
+    return `[${(value as readonly unknown[]).map((item) => stableStringify(item)).join(",")}]`;
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record).sort();
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(record[k])}`).join(",")}}`;
 }
 
-function makeDedupKey(type: string, sessionId: string, payload: unknown): string {
+function makeDedupKey(
+  type: string,
+  sessionId: string,
+  payload: unknown,
+): string {
   return createHash("sha256")
     .update(type)
     .update("\n")
@@ -193,7 +208,9 @@ function pendingFromProcessingFilename(filename: string): string {
   return filename.replace(/\.processing$/, ".json");
 }
 
-function isRetryableReplayFailure(res: PendingFetchResult | null | undefined): boolean {
+function isRetryableReplayFailure(
+  res: PendingFetchResult | null | undefined,
+): boolean {
   return isRetryableFailure(res as RetryableResult);
 }
 
@@ -277,7 +294,9 @@ export async function enqueue(
   options: { readonly createdAt?: number } = {},
 ): Promise<EnqueueResult> {
   const dir = getPendingDir();
-  const now = Number.isFinite(options.createdAt) ? (options.createdAt as number) : Date.now();
+  const now = Number.isFinite(options.createdAt)
+    ? (options.createdAt as number)
+    : Date.now();
   const dedupKey = makeDedupKey(type, sessionId, payload);
   const filename = pendingFilename(dedupKey, 0);
   const entry: PendingEntry = {
@@ -292,7 +311,11 @@ export async function enqueue(
   try {
     await ensurePendingDir(dir);
   } catch (err) {
-    return { ok: false, error: (err as { message?: string } | null)?.message || String(err), dedupKey };
+    return {
+      ok: false,
+      error: (err as { message?: string } | null)?.message || String(err),
+      dedupKey,
+    };
   }
 
   const existing = await findExistingByDedupKey(dir, dedupKey);
@@ -309,7 +332,11 @@ export async function enqueue(
     return { ok: true, path: filename, dedupKey };
   } catch (err) {
     if ((err as { code?: string } | null)?.code !== "EEXIST") {
-      return { ok: false, error: (err as { message?: string } | null)?.message || String(err), dedupKey };
+      return {
+        ok: false,
+        error: (err as { message?: string } | null)?.message || String(err),
+        dedupKey,
+      };
     }
   }
 
@@ -317,7 +344,11 @@ export async function enqueue(
   if (duplicate) {
     return { ok: true, path: duplicate.filename, deduped: true, dedupKey };
   }
-  return { ok: false, error: `pending file exists but dedup entry was not readable: ${filename}`, dedupKey };
+  return {
+    ok: false,
+    error: `pending file exists but dedup entry was not readable: ${filename}`,
+    dedupKey,
+  };
 }
 
 /**
@@ -370,7 +401,9 @@ export async function claimForReplay(filename: string): Promise<string | null> {
  * entry keeps its original filename, retry count, and createdAt position, so a
  * later run retries it as if this attempt never happened.
  */
-export async function releaseClaim(claimedFilename: string): Promise<string | null> {
+export async function releaseClaim(
+  claimedFilename: string,
+): Promise<string | null> {
   if (!claimedFilename.endsWith(".processing")) return null;
   const dir = getPendingDir();
   const restored = pendingFromProcessingFilename(claimedFilename);
@@ -398,7 +431,10 @@ export async function dequeue(filename: string): Promise<boolean> {
 /**
  * Increment retry count on a pending entry. Returns false if max retries exceeded.
  */
-export async function incrementRetry(filename: string, entry: PendingEntry): Promise<boolean> {
+export async function incrementRetry(
+  filename: string,
+  entry: PendingEntry,
+): Promise<boolean> {
   const dir = getPendingDir();
   const maxRetries = getMaxRetries();
   entry.retries = (entry.retries || 0) + 1;
@@ -477,7 +513,11 @@ export async function replayPending(
   }
 
   const replayLimit = getReplayLimit();
-  log("pending-queue", { count: pending.length, replayLimit, action: "replay-start" });
+  log("pending-queue", {
+    count: pending.length,
+    replayLimit,
+    action: "replay-start",
+  });
 
   let replayed = 0;
   let failed = 0;
@@ -553,7 +593,9 @@ export async function replayPending(
           action: released ? "replay-deferred" : "release-failed",
           sessionId: entry.sessionId,
           type: entry.type,
-          status: (res?.result as ReplayResultFields | null | undefined)?.status || res?.status,
+          status:
+            (res?.result as ReplayResultFields | null | undefined)?.status ||
+            res?.status,
           retries: entry.retries || 0,
         });
       }

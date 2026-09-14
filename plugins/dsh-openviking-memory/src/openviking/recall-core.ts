@@ -13,12 +13,36 @@ import { dirname, join } from "node:path";
 
 import { compressRecallContext } from "./recall-compress-core.js";
 
-const PREFERENCE_QUERY_RE = /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
-const TEMPORAL_QUERY_RE = /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
+const PREFERENCE_QUERY_RE =
+  /prefer|preference|favorite|favourite|like|偏好|喜欢|爱好|更倾向/i;
+const TEMPORAL_QUERY_RE =
+  /when|what time|date|day|month|year|yesterday|today|tomorrow|last|next|什么时候|何时|哪天|几月|几年|昨天|今天|明天/i;
 const QUERY_TOKEN_RE = /[a-z0-9一-龥]{2,}/gi;
 const STOPWORDS = new Set([
-  "what", "when", "where", "which", "who", "whom", "whose", "why", "how", "did", "does",
-  "is", "are", "was", "were", "the", "and", "for", "with", "from", "that", "this", "your", "you",
+  "what",
+  "when",
+  "where",
+  "which",
+  "who",
+  "whom",
+  "whose",
+  "why",
+  "how",
+  "did",
+  "does",
+  "is",
+  "are",
+  "was",
+  "were",
+  "the",
+  "and",
+  "for",
+  "with",
+  "from",
+  "that",
+  "this",
+  "your",
+  "you",
 ]);
 const USER_RESERVED_DIRS = new Set(["memories", "skills"]);
 
@@ -190,14 +214,19 @@ type RecallLog = (event: string, data: Record<string, unknown>) => void;
  * reads the original performed directly.
  */
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 export function estimateTokens(text: unknown): number {
   return text ? Math.ceil(String(text).length / 4) : 0;
 }
 
-function scaleQuotas(limit: number, weights: Record<string, number>): Record<string, number> {
+function scaleQuotas(
+  limit: number,
+  weights: Record<string, number>,
+): Record<string, number> {
   const slots = Math.max(1, Math.floor(Number(limit) || DEFAULT_CONTEXT_LIMIT));
   const order = Object.keys(weights);
   const quotas: Record<string, number> = Object.fromEntries(
@@ -209,16 +238,22 @@ function scaleQuotas(limit: number, weights: Record<string, number>): Record<str
   }
 
   for (const key of order) quotas[key] = 1;
-  const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+  const totalWeight = Object.values(weights).reduce(
+    (sum, weight) => sum + weight,
+    0,
+  );
   const ideals: Record<string, number> = Object.fromEntries(
-    order.map((key): [string, number] => [key, slots * weights[key]! / totalWeight]),
+    order.map((key): [string, number] => [
+      key,
+      (slots * weights[key]!) / totalWeight,
+    ]),
   );
   while (order.reduce((sum, key) => sum + quotas[key]!, 0) < slots) {
-    const key = order.reduce((best, candidate) => (
+    const key = order.reduce((best, candidate) =>
       ideals[candidate]! - quotas[candidate]! > ideals[best]! - quotas[best]!
         ? candidate
-        : best
-    ));
+        : best,
+    );
     quotas[key] = (quotas[key] ?? 0) + 1;
   }
   return quotas;
@@ -241,7 +276,9 @@ export function buildRecallEndpointBody(cfg: RecallConfig = {}): RecallBody {
     query: "",
     quotas: legacyMemoryQuotas(limit),
     max_chars: Math.max(Number(cfg.recallMaxContentChars || 0) * limit, 1000),
-    min_score: Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35,
+    min_score: Number.isFinite(Number(cfg.scoreThreshold))
+      ? Number(cfg.scoreThreshold)
+      : 0.35,
     render: true,
   };
   if (cfg.recallPeerScope === "actor") body.peer_scope = "actor";
@@ -253,9 +290,15 @@ export function buildRecallEndpointBody(cfg: RecallConfig = {}): RecallBody {
  * purpose, budget, session) and leaves the mechanics — quota ratios, tier
  * degradation, cross-turn dedup — to the server's defaults.
  */
-export function buildContextSearchBody(cfg: RecallConfig = {}, options: RecallOptions = {}): RecallBody {
+export function buildContextSearchBody(
+  cfg: RecallConfig = {},
+  options: RecallOptions = {},
+): RecallBody {
   const rewriteMode = String(cfg.recallRewrite || "off").toLowerCase();
-  const limit = Math.max(1, Math.floor(Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT)));
+  const limit = Math.max(
+    1,
+    Math.floor(Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT)),
+  );
   const maxTokens = Math.max(
     64,
     Math.floor(Number(cfg.recallMaxTokens || DEFAULT_CONTEXT_MAX_TOKENS)),
@@ -264,7 +307,9 @@ export function buildContextSearchBody(cfg: RecallConfig = {}, options: RecallOp
     query: "",
     mode: "context",
     purpose: "coding",
-    score_threshold: Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35,
+    score_threshold: Number.isFinite(Number(cfg.scoreThreshold))
+      ? Number(cfg.scoreThreshold)
+      : 0.35,
   };
   const limitConfigured = cfg.recallLimitConfigured === true;
   const maxTokensConfigured = cfg.recallMaxTokensConfigured === true;
@@ -275,9 +320,11 @@ export function buildContextSearchBody(cfg: RecallConfig = {}, options: RecallOp
   const sessionId = String(options.sessionId || "").trim();
   if (sessionId) {
     body.session_id = sessionId;
-    const queryExpansionConfigured = cfg.recallQueryExpansionConfigured === true;
+    const queryExpansionConfigured =
+      cfg.recallQueryExpansionConfigured === true;
     if (queryExpansionConfigured) {
-      body.query_expansion = cfg.recallQueryExpansion === "off" ? "off" : "auto";
+      body.query_expansion =
+        cfg.recallQueryExpansion === "off" ? "off" : "auto";
     }
     const dedupTurns = Number(cfg.recallDedupTurns);
     const resolvedDedupTurns = Number.isFinite(dedupTurns)
@@ -286,16 +333,22 @@ export function buildContextSearchBody(cfg: RecallConfig = {}, options: RecallOp
     if (resolvedDedupTurns > 0) body.dedup_turns = resolvedDedupTurns;
   }
 
-  const excludeUris: unknown[] = Array.isArray(options.excludeUris) ? options.excludeUris.slice(0, 200) : [];
+  const excludeUris: unknown[] = Array.isArray(options.excludeUris)
+    ? options.excludeUris.slice(0, 200)
+    : [];
   if (excludeUris.length) body.exclude_uris = excludeUris;
 
   if (rewriteMode === "server") body.rewrite = true;
-  else if (rewriteMode === "auto" && !options.localCompressorAvailable) body.rewrite = "auto";
+  else if (rewriteMode === "auto" && !options.localCompressorAvailable)
+    body.rewrite = "auto";
   const rewriteMaxBullets = Math.max(
     1,
-    Math.floor(Number(cfg.recallCompressMaxBullets || DEFAULT_REWRITE_MAX_BULLETS)),
+    Math.floor(
+      Number(cfg.recallCompressMaxBullets || DEFAULT_REWRITE_MAX_BULLETS),
+    ),
   );
-  const rewriteMaxBulletsConfigured = cfg.recallCompressMaxBulletsConfigured === true;
+  const rewriteMaxBulletsConfigured =
+    cfg.recallCompressMaxBulletsConfigured === true;
   if (body.rewrite !== undefined && rewriteMaxBulletsConfigured) {
     body.rewrite_max_bullets = rewriteMaxBullets;
   }
@@ -323,15 +376,22 @@ const SERVER_REWRITE_REQUEST_TIMEOUT_MS = 45000;
  * stages will run: reading `cfg` alone cannot tell a bare retrieval from one
  * that also spends the expansion or rewrite fuse.
  */
-export function contextRequestTimeoutMs(cfg: RecallConfig = {}, body: RecallBody = {}): number | undefined {
+export function contextRequestTimeoutMs(
+  cfg: RecallConfig = {},
+  body: RecallBody = {},
+): number | undefined {
   const wantsRewrite = body.rewrite !== undefined;
   // `query_expansion` defaults to "auto" server-side, so only an explicit "off"
   // takes the expansion fuse back out of the budget.
-  const wantsExpansion = Boolean(body.session_id) && body.query_expansion !== "off";
+  const wantsExpansion =
+    Boolean(body.session_id) && body.query_expansion !== "off";
   const configured = Number(cfg.recallContextTimeoutMs);
-  if (Number.isFinite(configured) && configured > 0) return Math.max(1000, Math.floor(configured));
+  if (Number.isFinite(configured) && configured > 0)
+    return Math.max(1000, Math.floor(configured));
   if (!wantsRewrite && !wantsExpansion) return undefined;
-  const floor = wantsRewrite ? SERVER_REWRITE_REQUEST_TIMEOUT_MS : EXPANSION_REQUEST_TIMEOUT_MS;
+  const floor = wantsRewrite
+    ? SERVER_REWRITE_REQUEST_TIMEOUT_MS
+    : EXPANSION_REQUEST_TIMEOUT_MS;
   return Math.max(Number(cfg.timeoutMs) || 0, floor);
 }
 
@@ -365,17 +425,32 @@ function rankItem(item: RecallItem, profile: QueryProfile): number {
   const abstract = String(item.abstract || item.overview || "").trim();
   const cat = String(item.category || "").toLowerCase();
   const uri = String(item.uri || "").toLowerCase();
-  const leafBoost = (item.level === 2 || uri.endsWith(".md")) ? 0.12 : 0;
-  const eventBoost = profile.wantsTemporal && (cat === "events" || uri.includes("/events/")) ? 0.1 : 0;
-  const prefBoost = profile.wantsPreference && (cat === "preferences" || uri.includes("/preferences/")) ? 0.08 : 0;
-  const overlapBoost = lexicalOverlapBoost(profile.tokens, `${item.uri} ${abstract}`);
+  const leafBoost = item.level === 2 || uri.endsWith(".md") ? 0.12 : 0;
+  const eventBoost =
+    profile.wantsTemporal && (cat === "events" || uri.includes("/events/"))
+      ? 0.1
+      : 0;
+  const prefBoost =
+    profile.wantsPreference &&
+    (cat === "preferences" || uri.includes("/preferences/"))
+      ? 0.08
+      : 0;
+  const overlapBoost = lexicalOverlapBoost(
+    profile.tokens,
+    `${item.uri} ${abstract}`,
+  );
   return base + leafBoost + eventBoost + prefBoost + overlapBoost;
 }
 
 function isEventOrCaseItem(item: RecallItem): boolean {
   const cat = String(item.category || "").toLowerCase();
   const uri = String(item.uri || "").toLowerCase();
-  return cat === "events" || cat === "cases" || uri.includes("/events/") || uri.includes("/cases/");
+  return (
+    cat === "events" ||
+    cat === "cases" ||
+    uri.includes("/events/") ||
+    uri.includes("/cases/")
+  );
 }
 
 function dedupeItems(items: readonly RecallItem[]): RecallItem[] {
@@ -384,7 +459,9 @@ function dedupeItems(items: readonly RecallItem[]): RecallItem[] {
   for (const item of items) {
     const key = isEventOrCaseItem(item)
       ? `uri:${item.uri}`
-      : (String(item.abstract || item.overview || "").trim().toLowerCase() || `uri:${item.uri}`);
+      : String(item.abstract || item.overview || "")
+          .trim()
+          .toLowerCase() || `uri:${item.uri}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(item);
@@ -392,7 +469,10 @@ function dedupeItems(items: readonly RecallItem[]): RecallItem[] {
   return out;
 }
 
-async function resolveUserSpace(fetchJSON: FetchJSON, actorPeerId: string = ""): Promise<string> {
+async function resolveUserSpace(
+  fetchJSON: FetchJSON,
+  actorPeerId: string = "",
+): Promise<string> {
   if (userSpaceCache) return userSpaceCache;
 
   let fallbackSpace = "default";
@@ -416,20 +496,34 @@ async function resolveUserSpace(fetchJSON: FetchJSON, actorPeerId: string = ""):
       })
       .filter((n) => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
     if (spaces.length > 0) {
-      if (spaces.includes(fallbackSpace)) { userSpaceCache = fallbackSpace; return fallbackSpace; }
-      if (spaces.includes("default")) { userSpaceCache = "default"; return "default"; }
-      if (spaces.length === 1) { userSpaceCache = spaces[0]!; return spaces[0]!; }
+      if (spaces.includes(fallbackSpace)) {
+        userSpaceCache = fallbackSpace;
+        return fallbackSpace;
+      }
+      if (spaces.includes("default")) {
+        userSpaceCache = "default";
+        return "default";
+      }
+      if (spaces.length === 1) {
+        userSpaceCache = spaces[0]!;
+        return spaces[0]!;
+      }
     }
   }
   userSpaceCache = fallbackSpace;
   return fallbackSpace;
 }
 
-async function resolveTargetUri(fetchJSON: FetchJSON, targetUri: string, actorPeerId: string = ""): Promise<string> {
+async function resolveTargetUri(
+  fetchJSON: FetchJSON,
+  targetUri: string,
+  actorPeerId: string = "",
+): Promise<string> {
   const trimmed = targetUri.trim().replace(/\/+$/, "");
   // viking://~ is the home alias: the server expands it to the caller's own user
   // space, so it needs no client-side rewrite.
-  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/")) return trimmed;
+  if (trimmed === "viking://~" || trimmed.startsWith("viking://~/"))
+    return trimmed;
   // Legacy compat: uid-less viking://user/<reserved> URIs may still sit in plugin
   // configs. Newer servers reject them, so rewrite to an explicit-uid URI here.
   const m = trimmed.match(/^viking:\/\/user(?:\/(.*))?$/);
@@ -443,35 +537,77 @@ async function resolveTargetUri(fetchJSON: FetchJSON, targetUri: string, actorPe
   return `viking://user/${space}/${parts.join("/")}`;
 }
 
-async function searchOneSource(fetchJSON: FetchJSON, query: string, source: RecallSource, limit: number, actorPeerId: string = ""): Promise<RecallItem[]> {
-  const resolvedUri = await resolveTargetUri(fetchJSON, source.uri, actorPeerId);
-  const body: RecallBody = { query, target_uri: resolvedUri, limit, score_threshold: 0 };
-  const res = await fetchJSON("/api/v1/search/find", {
-    method: "POST",
-    body: JSON.stringify(body),
-  }, { actorPeerId });
+async function searchOneSource(
+  fetchJSON: FetchJSON,
+  query: string,
+  source: RecallSource,
+  limit: number,
+  actorPeerId: string = "",
+): Promise<RecallItem[]> {
+  const resolvedUri = await resolveTargetUri(
+    fetchJSON,
+    source.uri,
+    actorPeerId,
+  );
+  const body: RecallBody = {
+    query,
+    target_uri: resolvedUri,
+    limit,
+    score_threshold: 0,
+  };
+  const res = await fetchJSON(
+    "/api/v1/search/find",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { actorPeerId },
+  );
   if (!res.ok) return [];
   const bucket = asRecord(res.result)?.[source.bucket];
   const items: unknown[] = Array.isArray(bucket) ? bucket : [];
-  return items.map((item): RecallItem => ({ ...(item as RecallItem), _sourceType: source.type }));
+  return items.map((item): RecallItem => ({
+    ...(item as RecallItem),
+    _sourceType: source.type,
+  }));
 }
 
-async function searchAllSources(fetchJSON: FetchJSON, query: string, perSourceLimit: number, actorPeerId: string = "", log: RecallLog = () => {}): Promise<RecallItem[]> {
+async function searchAllSources(
+  fetchJSON: FetchJSON,
+  query: string,
+  perSourceLimit: number,
+  actorPeerId: string = "",
+  log: RecallLog = () => {},
+): Promise<RecallItem[]> {
   const results = await Promise.all(
-    SOURCES.map((src) => searchOneSource(fetchJSON, query, src, perSourceLimit, actorPeerId)),
+    SOURCES.map((src) =>
+      searchOneSource(fetchJSON, query, src, perSourceLimit, actorPeerId),
+    ),
   );
   const all = results.flat();
   log("recall_search_summary", {
-    counts: SOURCES.map((src, i) => ({ type: src.type, uri: src.uri, count: results[i]!.length })),
+    counts: SOURCES.map((src, i) => ({
+      type: src.type,
+      uri: src.uri,
+      count: results[i]!.length,
+    })),
     total: all.length,
   });
   return all;
 }
 
-async function resolveItemContent(fetchJSON: FetchJSON, item: RecallItem, cfg: RecallConfig, actorPeerId: string = ""): Promise<string> {
+async function resolveItemContent(
+  fetchJSON: FetchJSON,
+  item: RecallItem,
+  cfg: RecallConfig,
+  actorPeerId: string = "",
+): Promise<string> {
   let content: string;
 
-  if (cfg.recallPreferAbstract && String(item.abstract || item.overview || "").trim()) {
+  if (
+    cfg.recallPreferAbstract &&
+    String(item.abstract || item.overview || "").trim()
+  ) {
     content = String(item.abstract || item.overview).trim();
   } else if (item.level === 2) {
     try {
@@ -480,13 +616,19 @@ async function resolveItemContent(fetchJSON: FetchJSON, item: RecallItem, cfg: R
         {},
         { actorPeerId },
       );
-      const body = res.ok && typeof res.result === "string" ? res.result.trim() : "";
-      content = body || String(item.abstract || item.overview || "").trim() || String(item.uri);
+      const body =
+        res.ok && typeof res.result === "string" ? res.result.trim() : "";
+      content =
+        body ||
+        String(item.abstract || item.overview || "").trim() ||
+        String(item.uri);
     } catch {
-      content = String(item.abstract || item.overview || "").trim() || String(item.uri);
+      content =
+        String(item.abstract || item.overview || "").trim() || String(item.uri);
     }
   } else {
-    content = String(item.abstract || item.overview || "").trim() || String(item.uri);
+    content =
+      String(item.abstract || item.overview || "").trim() || String(item.uri);
   }
 
   const maxChars = Math.max(50, Number(cfg.recallMaxContentChars || 500));
@@ -494,7 +636,13 @@ async function resolveItemContent(fetchJSON: FetchJSON, item: RecallItem, cfg: R
   return content;
 }
 
-async function buildFallbackInjectionBlock(fetchJSON: FetchJSON, items: readonly RecallItem[], cfg: RecallConfig, actorPeerId: string = "", log: RecallLog = () => {}): Promise<string | null> {
+async function buildFallbackInjectionBlock(
+  fetchJSON: FetchJSON,
+  items: readonly RecallItem[],
+  cfg: RecallConfig,
+  actorPeerId: string = "",
+  log: RecallLog = () => {},
+): Promise<string | null> {
   if (items.length === 0) return null;
 
   let budgetRemaining = Math.max(200, Number(cfg.recallTokenBudget || 2000));
@@ -510,7 +658,12 @@ async function buildFallbackInjectionBlock(fetchJSON: FetchJSON, items: readonly
     const uriLine = `- [${item._sourceType} ${score}%] ${item.uri}`;
 
     if (budgetRemaining > 0) {
-      const content = await resolveItemContent(fetchJSON, item, cfg, actorPeerId);
+      const content = await resolveItemContent(
+        fetchJSON,
+        item,
+        cfg,
+        actorPeerId,
+      );
       const contentLine = `- [${item._sourceType} ${score}%] ${content}`;
       const lineTokens = estimateTokens(contentLine);
 
@@ -530,7 +683,8 @@ async function buildFallbackInjectionBlock(fetchJSON: FetchJSON, items: readonly
 
   lines.push("</openviking-context>");
 
-  const budgetUsed = Math.max(200, Number(cfg.recallTokenBudget || 2000)) - budgetRemaining;
+  const budgetUsed =
+    Math.max(200, Number(cfg.recallTokenBudget || 2000)) - budgetRemaining;
   log("recall_injection_built", {
     contentItems: contentCount,
     hintItems: hintCount,
@@ -545,32 +699,49 @@ const LEGACY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 function stateFile(name: string): string {
   const override = String(process.env.OPENVIKING_STATE_DIR || "").trim();
-  return override ? join(override, name) : join(homedir(), ".openviking", "state", name);
+  return override
+    ? join(override, name)
+    : join(homedir(), ".openviking", "state", name);
 }
 
 async function readJsonFile(path: string): Promise<StateRecord | null> {
-  try { return JSON.parse(await readFile(path, "utf8")) as StateRecord; } catch { return null; }
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as StateRecord;
+  } catch {
+    return null;
+  }
 }
 
-async function writeJsonFile(path: string, value: Record<string, unknown>): Promise<void> {
+async function writeJsonFile(
+  path: string,
+  value: Record<string, unknown>,
+): Promise<void> {
   try {
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.tmp`;
     await writeFile(tmp, JSON.stringify(value));
     await rename(tmp, path);
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 /**
  * Hooks are one-shot processes, so "this server has no context face" has to be
  * remembered on disk or every turn pays for a rejected request.
  */
-export async function isContextFaceLegacy(path: string = stateFile("context-face.json"), now: number = Date.now()): Promise<boolean> {
+export async function isContextFaceLegacy(
+  path: string = stateFile("context-face.json"),
+  now: number = Date.now(),
+): Promise<boolean> {
   const cached = await readJsonFile(path);
   return Boolean(cached?.legacyUntil && Number(cached.legacyUntil) > now);
 }
 
-export async function markContextFaceLegacy(path: string = stateFile("context-face.json"), now: number = Date.now()): Promise<void> {
+export async function markContextFaceLegacy(
+  path: string = stateFile("context-face.json"),
+  now: number = Date.now(),
+): Promise<void> {
   await writeJsonFile(path, { legacyUntil: now + LEGACY_CACHE_TTL_MS });
 }
 
@@ -584,13 +755,21 @@ export function peerScopeMemoPath(): string {
   return stateFile("peer-scope.json");
 }
 
-export async function readPeerScopeDowngrade(path: string = peerScopeMemoPath(), now: number = Date.now()): Promise<StateRecord | null> {
+export async function readPeerScopeDowngrade(
+  path: string = peerScopeMemoPath(),
+  now: number = Date.now(),
+): Promise<StateRecord | null> {
   const cached = await readJsonFile(path);
   if (!cached?.legacyUntil || Number(cached.legacyUntil) <= now) return null;
   return cached;
 }
 
-export async function markPeerScopeDowngrade(scope: unknown, status: unknown, path: string = peerScopeMemoPath(), now: number = Date.now()): Promise<void> {
+export async function markPeerScopeDowngrade(
+  scope: unknown,
+  status: unknown,
+  path: string = peerScopeMemoPath(),
+  now: number = Date.now(),
+): Promise<void> {
   await writeJsonFile(path, {
     legacyUntil: now + LEGACY_CACHE_TTL_MS,
     scope: String(scope || ""),
@@ -600,8 +779,14 @@ export async function markPeerScopeDowngrade(scope: unknown, status: unknown, pa
 }
 
 function looksLikeUnknownField(res: FetchJSONResult): boolean {
-  const text = JSON.stringify(res?.error ?? res?.result ?? res?.detail ?? "").toLowerCase();
-  return text.includes("extra") || text.includes("mode") || text.includes("unexpected");
+  const text = JSON.stringify(
+    res?.error ?? res?.result ?? res?.detail ?? "",
+  ).toLowerCase();
+  return (
+    text.includes("extra") ||
+    text.includes("mode") ||
+    text.includes("unexpected")
+  );
 }
 
 function wrapContext(body: string): string {
@@ -618,11 +803,22 @@ function wrapContext(body: string): string {
  * the deprecated /recall preset. Returns the injection block, "" when there was
  * nothing relevant, or null when no server-side path was usable at all.
  */
-async function buildServerAssembledBlock(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, options: RecallOptions = {}): Promise<string | null> {
+async function buildServerAssembledBlock(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  options: RecallOptions = {},
+): Promise<string | null> {
   const actorPeerId = options.actorPeerId ?? cfg.peerId ?? "";
   const log: RecallLog = options.log || (() => {});
 
-  const block = await recallViaContextFace(fetchJSON, cfg, query, { ...options, actorPeerId }, log);
+  const block = await recallViaContextFace(
+    fetchJSON,
+    cfg,
+    query,
+    { ...options, actorPeerId },
+    log,
+  );
   if (block !== null) return block;
   return recallViaEndpoint(fetchJSON, cfg, query, actorPeerId, log);
 }
@@ -633,17 +829,26 @@ async function buildServerAssembledBlock(fetchJSON: FetchJSON, cfg: RecallConfig
  * (their own compression, their own envelope) use this instead of the block
  * builders below.
  */
-export async function fetchAssembledContext(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, options: RecallOptions = {}): Promise<AssembledContext | null> {
+export async function fetchAssembledContext(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  options: RecallOptions = {},
+): Promise<AssembledContext | null> {
   const actorPeerId = options.actorPeerId || "";
   const log: RecallLog = options.log || (() => {});
   if (await isContextFaceLegacy(options.legacyCachePath)) return null;
 
   const body = buildContextSearchBody(cfg, options);
   body.query = query;
-  const res = await fetchJSON("/api/v1/search/search", {
-    method: "POST",
-    body: JSON.stringify(body),
-  }, { actorPeerId, timeoutMs: contextRequestTimeoutMs(cfg, body) });
+  const res = await fetchJSON(
+    "/api/v1/search/search",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+    { actorPeerId, timeoutMs: contextRequestTimeoutMs(cfg, body) },
+  );
 
   if (!res.ok) {
     const status = res.status || 0;
@@ -664,7 +869,9 @@ export async function fetchAssembledContext(fetchJSON: FetchJSON, cfg: RecallCon
     tiers: stats.tier_counts || {},
     rewrite: stats.rewrite || "off",
   });
-  const rawEntries: unknown[] = Array.isArray(result.entries) ? result.entries : [];
+  const rawEntries: unknown[] = Array.isArray(result.entries)
+    ? result.entries
+    : [];
   return {
     rendered: String(result.rendered || "").trim(),
     entries: rawEntries.map((entry): RecallItem => entry as RecallItem),
@@ -673,8 +880,17 @@ export async function fetchAssembledContext(fetchJSON: FetchJSON, cfg: RecallCon
   };
 }
 
-async function recallViaContextFace(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, options: RecallOptions, log: RecallLog): Promise<string | null> {
-  const assembled = await fetchAssembledContext(fetchJSON, cfg, query, { ...options, log });
+async function recallViaContextFace(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  options: RecallOptions,
+  log: RecallLog,
+): Promise<string | null> {
+  const assembled = await fetchAssembledContext(fetchJSON, cfg, query, {
+    ...options,
+    log,
+  });
   if (assembled === null) return null;
 
   const { rendered, entries } = assembled;
@@ -711,7 +927,13 @@ async function recallViaContextFace(fetchJSON: FetchJSON, cfg: RecallConfig, que
   return wrapContext(injected);
 }
 
-async function recallViaEndpoint(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, actorPeerId: string = "", log: RecallLog = () => {}): Promise<string | null> {
+async function recallViaEndpoint(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  actorPeerId: string = "",
+  log: RecallLog = () => {},
+): Promise<string | null> {
   const body = buildRecallEndpointBody(cfg);
   body.query = query;
   const res = await postRecall(fetchJSON, body, { actorPeerId, log });
@@ -724,7 +946,11 @@ async function recallViaEndpoint(fetchJSON: FetchJSON, cfg: RecallConfig, query:
   return wrapContext(rendered);
 }
 
-export async function postRecall(fetchJSON: FetchJSON, body: RecallBody, opts: PostRecallOptions = {}): Promise<FetchJSONResult> {
+export async function postRecall(
+  fetchJSON: FetchJSON,
+  body: RecallBody,
+  opts: PostRecallOptions = {},
+): Promise<FetchJSONResult> {
   const actorPeerId = opts.actorPeerId || "";
   const log: RecallLog = opts.log || (() => {});
   const memoPath = opts.peerScopeMemoPath;
@@ -732,14 +958,18 @@ export async function postRecall(fetchJSON: FetchJSON, body: RecallBody, opts: P
 
   // A remembered downgrade is still a downgrade: recall runs wider than the
   // caller asked for, so the memo doubles as the doctor's evidence.
-  if (request.peer_scope && await readPeerScopeDowngrade(memoPath)) {
+  if (request.peer_scope && (await readPeerScopeDowngrade(memoPath))) {
     delete request.peer_scope;
   }
 
-  const res = await fetchJSON("/api/v1/search/recall", {
-    method: "POST",
-    body: JSON.stringify(request),
-  }, { actorPeerId });
+  const res = await fetchJSON(
+    "/api/v1/search/recall",
+    {
+      method: "POST",
+      body: JSON.stringify(request),
+    },
+    { actorPeerId },
+  );
   if (!request.peer_scope || (res.status !== 400 && res.status !== 422)) {
     return res;
   }
@@ -753,12 +983,20 @@ export async function postRecall(fetchJSON: FetchJSON, body: RecallBody, opts: P
 
   const downgraded: RecallBody = { ...request };
   delete downgraded.peer_scope;
-  await markPeerScopeDowngrade(String(request.peer_scope), res.status || 0, memoPath);
+  await markPeerScopeDowngrade(
+    String(request.peer_scope),
+    res.status || 0,
+    memoPath,
+  );
   log("recall_peer_scope_downgrade", { status: res.status || 0 });
-  return fetchJSON("/api/v1/search/recall", {
-    method: "POST",
-    body: JSON.stringify(downgraded),
-  }, { actorPeerId });
+  return fetchJSON(
+    "/api/v1/search/recall",
+    {
+      method: "POST",
+      body: JSON.stringify(downgraded),
+    },
+    { actorPeerId },
+  );
 }
 
 /**
@@ -771,21 +1009,39 @@ export async function postRecall(fetchJSON: FetchJSON, body: RecallBody, opts: P
  * separately — as itself, which is both cheaper and wider than a bare
  * cross-peer read (that would need the user id, and reaches memories only).
  */
-export async function buildRecallBlock(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, options: RecallOptions = {}): Promise<string | null> {
+export async function buildRecallBlock(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  options: RecallOptions = {},
+): Promise<string | null> {
   const primary = await recallForPeer(fetchJSON, cfg, query, options);
 
   const legacyPeerId = String(options.legacyPeerId || "").trim();
   const actorPeerId = options.actorPeerId ?? cfg.peerId ?? "";
-  if (cfg.recallPeerScope !== "actor" || !legacyPeerId || legacyPeerId === actorPeerId) return primary;
+  if (
+    cfg.recallPeerScope !== "actor" ||
+    !legacyPeerId ||
+    legacyPeerId === actorPeerId
+  )
+    return primary;
 
   const log: RecallLog = options.log || (() => {});
-  const legacy = await recallForPeer(fetchJSON, cfg, query, { ...options, actorPeerId: legacyPeerId });
+  const legacy = await recallForPeer(fetchJSON, cfg, query, {
+    ...options,
+    actorPeerId: legacyPeerId,
+  });
   if (!legacy) return primary;
   log("recall_legacy_peer_hit", { legacyPeerId });
   return primary ? `${primary}\n${legacy}` : legacy;
 }
 
-async function recallForPeer(fetchJSON: FetchJSON, cfg: RecallConfig, query: string, options: RecallOptions = {}): Promise<string | null> {
+async function recallForPeer(
+  fetchJSON: FetchJSON,
+  cfg: RecallConfig,
+  query: string,
+  options: RecallOptions = {},
+): Promise<string | null> {
   const actorPeerId = options.actorPeerId ?? cfg.peerId ?? "";
   const log: RecallLog = options.log || (() => {});
   const trimmed = String(query || "").trim();
@@ -800,13 +1056,24 @@ async function recallForPeer(fetchJSON: FetchJSON, cfg: RecallConfig, query: str
   });
   if (serverBlock !== null) return serverBlock || null;
 
-  const recallLimit = Math.max(1, Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT));
+  const recallLimit = Math.max(
+    1,
+    Number(cfg.recallLimit || DEFAULT_CONTEXT_LIMIT),
+  );
   const perSourceLimit = Math.max(recallLimit * 2, 8);
-  const raw = await searchAllSources(fetchJSON, trimmed, perSourceLimit, actorPeerId, log);
+  const raw = await searchAllSources(
+    fetchJSON,
+    trimmed,
+    perSourceLimit,
+    actorPeerId,
+    log,
+  );
   if (raw.length === 0) return null;
 
   const profile = buildQueryProfile(trimmed);
-  const scoreThreshold = Number.isFinite(Number(cfg.scoreThreshold)) ? Number(cfg.scoreThreshold) : 0.35;
+  const scoreThreshold = Number.isFinite(Number(cfg.scoreThreshold))
+    ? Number(cfg.scoreThreshold)
+    : 0.35;
   const filtered = raw.filter((it) => clampScore(it.score) >= scoreThreshold);
   filtered.sort((a, b) => rankItem(b, profile) - rankItem(a, profile));
   const picked = dedupeItems(filtered).slice(0, recallLimit);
@@ -814,7 +1081,11 @@ async function recallForPeer(fetchJSON: FetchJSON, cfg: RecallConfig, query: str
     rawCount: raw.length,
     filteredCount: filtered.length,
     pickedCount: picked.length,
-    items: picked.map((it) => ({ type: it._sourceType, uri: it.uri, score: clampScore(it.score) })),
+    items: picked.map((it) => ({
+      type: it._sourceType,
+      uri: it.uri,
+      score: clampScore(it.score),
+    })),
   });
 
   if (picked.length === 0) return null;

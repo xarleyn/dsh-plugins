@@ -61,7 +61,10 @@ function firstText(payload: CapturePayload | null): string {
 
 describe("user and assistant messages", () => {
   it("captures a user message with its role, parts, event time and peer", () => {
-    const payload = captureEvent(userEvent("Remember that deployment uses blue.", EVENT_TIME), CONFIG);
+    const payload = captureEvent(
+      userEvent("Remember that deployment uses blue.", EVENT_TIME),
+      CONFIG,
+    );
 
     expect(payload).toEqual({
       role: "user",
@@ -72,10 +75,13 @@ describe("user and assistant messages", () => {
   });
 
   it("omits peer_id when the config has none", () => {
-    const payload = captureEvent(userEvent("Remember that deployment uses blue."), {
-      ...CONFIG,
-      peerId: "",
-    });
+    const payload = captureEvent(
+      userEvent("Remember that deployment uses blue."),
+      {
+        ...CONFIG,
+        peerId: "",
+      },
+    );
 
     expect(payload).not.toBeNull();
     expect(Object.hasOwn(payload as CapturePayload, "peer_id")).toBe(false);
@@ -89,7 +95,12 @@ describe("user and assistant messages", () => {
         data: {
           message: {
             role: "assistant",
-            content: [{ type: "text", text: "Deployment uses blue for every environment." }],
+            content: [
+              {
+                type: "text",
+                text: "Deployment uses blue for every environment.",
+              },
+            ],
             source: { kind: "model" },
           },
         },
@@ -99,7 +110,9 @@ describe("user and assistant messages", () => {
 
     expect(payload).toEqual({
       role: "assistant",
-      parts: [{ type: "text", text: "Deployment uses blue for every environment." }],
+      parts: [
+        { type: "text", text: "Deployment uses blue for every environment." },
+      ],
       created_at: EVENT_TIME_ISO,
       peer_id: "workspace-a",
     });
@@ -112,7 +125,12 @@ describe("user and assistant messages", () => {
         data: {
           message: {
             role: "assistant",
-            content: [{ type: "text", text: "Deployment uses blue for every environment." }],
+            content: [
+              {
+                type: "text",
+                text: "Deployment uses blue for every environment.",
+              },
+            ],
             source: { kind: "model" },
           },
         },
@@ -131,8 +149,17 @@ describe("injected context is never mirrored into memory", () => {
         type: "user/message",
         data: {
           role: "user",
-          content: [{ type: "text", text: "<openviking-context>blue</openviking-context>" }],
-          source: { kind: "plugin", plugin: OPENVIKING_PLUGIN_SOURCE, form: "recall" },
+          content: [
+            {
+              type: "text",
+              text: "<openviking-context>blue</openviking-context>",
+            },
+          ],
+          source: {
+            kind: "plugin",
+            plugin: OPENVIKING_PLUGIN_SOURCE,
+            form: "recall",
+          },
         },
       },
       CONFIG,
@@ -147,7 +174,9 @@ describe("injected context is never mirrored into memory", () => {
         type: "user/message",
         data: {
           role: "user",
-          content: [{ type: "text", text: "Time sampled while preparing turn 3" }],
+          content: [
+            { type: "text", text: "Time sampled while preparing turn 3" },
+          ],
           source: { kind: "plugin", plugin: "time-context", form: "snapshot" },
         },
       },
@@ -165,7 +194,11 @@ describe("tool calls and results", () => {
     const call = captureEvent(
       {
         type: "tool/call",
-        data: { callId: "call-1", name: "bash", arguments: '{"command":"pwd"}' },
+        data: {
+          callId: "call-1",
+          name: "bash",
+          arguments: '{"command":"pwd"}',
+        },
       },
       CONFIG,
       toolNames,
@@ -222,7 +255,9 @@ describe("tool calls and results", () => {
               {
                 type: "tool-result",
                 toolCallId: "call-err",
-                content: [{ type: "text", text: "bash: df: command not found" }],
+                content: [
+                  { type: "text", text: "bash: df: command not found" },
+                ],
                 is_error: true,
               },
             ],
@@ -234,7 +269,10 @@ describe("tool calls and results", () => {
       toolNames,
     );
 
-    expect(captured?.parts?.[0]).toMatchObject({ type: "tool", tool_status: "error" });
+    expect(captured?.parts?.[0]).toMatchObject({
+      type: "tool",
+      tool_status: "error",
+    });
     expect(toolNames.size).toBe(0);
   });
 
@@ -246,7 +284,12 @@ describe("tool calls and results", () => {
           message: {
             role: "user",
             content: [
-              { type: "tool-result", toolCallId: "call-boom", error: "boom", content: [] },
+              {
+                type: "tool-result",
+                toolCallId: "call-boom",
+                error: "boom",
+                content: [],
+              },
             ],
             source: { kind: "tool", callId: "call-boom" },
           },
@@ -256,7 +299,10 @@ describe("tool calls and results", () => {
       new Map([["call-boom", "bash"]]),
     );
 
-    expect(captured?.parts?.[0]).toMatchObject({ type: "tool", tool_status: "error" });
+    expect(captured?.parts?.[0]).toMatchObject({
+      type: "tool",
+      tool_status: "error",
+    });
   });
 
   it("records no names and captures nothing when tool results are disabled", () => {
@@ -278,7 +324,11 @@ describe("tool calls and results", () => {
           message: {
             role: "user",
             content: [
-              { type: "tool-result", toolCallId: "call-disabled", content: [{ type: "text", text: "/workspace" }] },
+              {
+                type: "tool-result",
+                toolCallId: "call-disabled",
+                content: [{ type: "text", text: "/workspace" }],
+              },
             ],
             source: { kind: "tool", callId: "call-disabled" },
           },
@@ -298,7 +348,11 @@ describe("tool calls and results", () => {
       {
         type: "tool/result",
         data: {
-          message: { role: "user", content: [], source: { kind: "tool", callId: "call-empty" } },
+          message: {
+            role: "user",
+            content: [],
+            source: { kind: "tool", callId: "call-empty" },
+          },
         },
       },
       CONFIG,
@@ -312,8 +366,14 @@ describe("tool calls and results", () => {
 
 describe("event timing", () => {
   it("keeps the event time so identical offline messages do not deduplicate", () => {
-    const first = captureEvent(userEvent("Repeat this exact fact.", 1_700_000_000_000), CONFIG);
-    const second = captureEvent(userEvent("Repeat this exact fact.", 1_700_000_001_000), CONFIG);
+    const first = captureEvent(
+      userEvent("Repeat this exact fact.", 1_700_000_000_000),
+      CONFIG,
+    );
+    const second = captureEvent(
+      userEvent("Repeat this exact fact.", 1_700_000_001_000),
+      CONFIG,
+    );
 
     expect(first?.created_at).toBe("2023-11-14T22:13:20.000Z");
     expect(second?.created_at).toBe("2023-11-14T22:13:21.000Z");
@@ -346,7 +406,9 @@ describe("the capture gate", () => {
 
   it("captures a long factual sentence", () => {
     const payload = captureEvent(
-      userEvent("The retry policy for ingest lives in settings.yaml and uses exponential backoff."),
+      userEvent(
+        "The retry policy for ingest lives in settings.yaml and uses exponential backoff.",
+      ),
       CONFIG,
     );
 
@@ -370,13 +432,18 @@ describe("the capture gate", () => {
 
     expect(captureEvent(userEvent(text), CONFIG)).not.toBeNull();
     expect(
-      captureEvent(userEvent(text), { ...CONFIG, captureFilters: ["d|wipe the production\\b|"] }),
+      captureEvent(userEvent(text), {
+        ...CONFIG,
+        captureFilters: ["d|wipe the production\\b|"],
+      }),
     ).toBeNull();
   });
 
   it("honours a substitution filter", () => {
     const payload = captureEvent(
-      userEvent("The secret handshake is documented in the vault for the team."),
+      userEvent(
+        "The secret handshake is documented in the vault for the team.",
+      ),
       { ...CONFIG, captureFilters: ["s/secret/REDACTED/g"] },
     );
 
@@ -389,8 +456,14 @@ describe("the capture gate", () => {
 describe("promptText builds the recall query", () => {
   it("keeps the current input and excludes this plugin's own injected blocks", () => {
     const own = createUserMessage({
-      content: [{ type: "text", text: "OpenViking recall: deployment uses blue" }],
-      source: { kind: "plugin", plugin: OPENVIKING_PLUGIN_SOURCE, form: "recall" },
+      content: [
+        { type: "text", text: "OpenViking recall: deployment uses blue" },
+      ],
+      source: {
+        kind: "plugin",
+        plugin: OPENVIKING_PLUGIN_SOURCE,
+        form: "recall",
+      },
     });
 
     expect(
@@ -406,12 +479,23 @@ describe("promptText builds the recall query", () => {
 
   it("keeps another plugin's context, which is not this plugin retrieving itself", () => {
     const own = createUserMessage({
-      content: [{ type: "text", text: "OpenViking recall: deployment uses blue" }],
-      source: { kind: "plugin", plugin: OPENVIKING_PLUGIN_SOURCE, form: "recall" },
+      content: [
+        { type: "text", text: "OpenViking recall: deployment uses blue" },
+      ],
+      source: {
+        kind: "plugin",
+        plugin: OPENVIKING_PLUGIN_SOURCE,
+        form: "recall",
+      },
     });
     const other = createUserMessage({
       content: [{ type: "text", text: "background job completed" }],
-      source: { kind: "plugin", plugin: "job-controller", form: "notice", summary: "done" },
+      source: {
+        kind: "plugin",
+        plugin: "job-controller",
+        form: "notice",
+        summary: "done",
+      },
     });
 
     expect(

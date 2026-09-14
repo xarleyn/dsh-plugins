@@ -78,7 +78,9 @@ interface ProfileBlock {
  * entry property reads the original performed directly.
  */
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 /**
@@ -86,7 +88,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  * Duplicated rather than imported to avoid coupling session-start to
  * auto-recall's module-level fetchJSON closure.
  */
-async function resolveUserSpace(fetchJSON: FetchJSON, actorPeerId: string = ""): Promise<string> {
+async function resolveUserSpace(
+  fetchJSON: FetchJSON,
+  actorPeerId: string = "",
+): Promise<string> {
   if (_userSpaceCache) return _userSpaceCache;
 
   let fallbackSpace = "default";
@@ -110,9 +115,18 @@ async function resolveUserSpace(fetchJSON: FetchJSON, actorPeerId: string = ""):
       })
       .filter((n) => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
     if (spaces.length > 0) {
-      if (spaces.includes(fallbackSpace)) { _userSpaceCache = fallbackSpace; return fallbackSpace; }
-      if (spaces.includes("default")) { _userSpaceCache = "default"; return "default"; }
-      if (spaces.length === 1) { _userSpaceCache = spaces[0]!; return spaces[0]!; }
+      if (spaces.includes(fallbackSpace)) {
+        _userSpaceCache = fallbackSpace;
+        return fallbackSpace;
+      }
+      if (spaces.includes("default")) {
+        _userSpaceCache = "default";
+        return "default";
+      }
+      if (spaces.length === 1) {
+        _userSpaceCache = spaces[0]!;
+        return spaces[0]!;
+      }
     }
   }
   _userSpaceCache = fallbackSpace;
@@ -163,7 +177,11 @@ function tokensToCharsBudget(content: string, maxTokens: number): number {
   return Math.floor(maxTokens / Math.max(tokensPerChar, 0.25));
 }
 
-async function readProfile(fetchJSON: FetchJSON, profileUri: string, actorPeerId: string = ""): Promise<string | null> {
+async function readProfile(
+  fetchJSON: FetchJSON,
+  profileUri: string,
+  actorPeerId: string = "",
+): Promise<string | null> {
   const res = await fetchJSON(
     `/api/v1/content/read?uri=${encodeURIComponent(profileUri)}`,
     {},
@@ -183,7 +201,11 @@ async function readProfile(fetchJSON: FetchJSON, profileUri: string, actorPeerId
  * `rel_path` (e.g. "zhengxiao.wu/pr_workflow.md") is preserved as display name
  * to keep owner-namespacing visible and unambiguous when multiple owners exist.
  */
-async function lsDir(fetchJSON: FetchJSON, dirUri: string, actorPeerId: string = ""): Promise<MemoryLeaf[]> {
+async function lsDir(
+  fetchJSON: FetchJSON,
+  dirUri: string,
+  actorPeerId: string = "",
+): Promise<MemoryLeaf[]> {
   const url = `/api/v1/fs/ls?uri=${encodeURIComponent(dirUri)}&output=agent&recursive=true&abs_limit=512&node_limit=512`;
   const res = await fetchJSON(url, {}, { actorPeerId });
   if (!res.ok || !Array.isArray(res.result)) return [];
@@ -192,9 +214,12 @@ async function lsDir(fetchJSON: FetchJSON, dirUri: string, actorPeerId: string =
     .filter((e): e is Record<string, unknown> => e !== null)
     .filter((e) => !e.isDir)
     .map((e) => {
-      const rel = typeof e.rel_path === "string" && e.rel_path
-        ? e.rel_path
-        : (typeof e.name === "string" ? e.name : "");
+      const rel =
+        typeof e.rel_path === "string" && e.rel_path
+          ? e.rel_path
+          : typeof e.name === "string"
+            ? e.name
+            : "";
       return {
         name: rel,
         abstract: typeof e.abstract === "string" ? e.abstract.trim() : "",
@@ -252,7 +277,11 @@ function elideProfile(content: string, maxTokens: number): string {
   return `${head}${ELLIPSIS}${lines.slice(tailStart).join("\n")}`;
 }
 
-function formatListing(headerUri: string, entries: readonly MemoryLeaf[], budgetTokens: number): ListingBlock {
+function formatListing(
+  headerUri: string,
+  entries: readonly MemoryLeaf[],
+  budgetTokens: number,
+): ListingBlock {
   if (entries.length === 0) return { lines: [], used: 0, dropped: 0 };
   // Header is the full directory URI; child lines are relative paths so the
   // agent can reconstruct each leaf's full URI by concatenation while the
@@ -263,7 +292,11 @@ function formatListing(headerUri: string, entries: readonly MemoryLeaf[], budget
   // of silently violating the cap (Copilot review point).
   if (headerTokens > budgetTokens) {
     const stub = `  ${headerUri}/  (${entries.length} entries, budget too tight; use \`memory_recall\`)`;
-    return { lines: [stub], used: estimateTokens(stub), dropped: entries.length };
+    return {
+      lines: [stub],
+      used: estimateTokens(stub),
+      dropped: entries.length,
+    };
   }
   const lines = [header];
   let used = headerTokens;
@@ -307,7 +340,11 @@ function formatListing(headerUri: string, entries: readonly MemoryLeaf[], budget
  *   droppedPref: number, droppedEnt: number,
  * }>}
  */
-export async function buildProfileBlock(fetchJSON: FetchJSON, totalBudgetTokens: number, actorPeerId: string = ""): Promise<ProfileBlock | null> {
+export async function buildProfileBlock(
+  fetchJSON: FetchJSON,
+  totalBudgetTokens: number,
+  actorPeerId: string = "",
+): Promise<ProfileBlock | null> {
   const space = await resolveUserSpace(fetchJSON, actorPeerId);
   const profileUri = `viking://user/${space}/memories/profile.md`;
   const prefUri = `viking://user/${space}/memories/preferences`;

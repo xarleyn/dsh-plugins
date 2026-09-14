@@ -21,7 +21,11 @@ export const SKILL_PROVIDER_NAME = "openviking";
 /** The shared `openviking-memory` skill, vendored from upstream `examples/skills`. */
 export const SKILLS_DIR = fileURLToPath(new URL("../skills", import.meta.url));
 
-export function buildSkillsConfig(): { providerName: string; includeDefaultRoots: boolean; bundledSkillDir: string } {
+export function buildSkillsConfig(): {
+  providerName: string;
+  includeDefaultRoots: boolean;
+  bundledSkillDir: string;
+} {
   return {
     providerName: SKILL_PROVIDER_NAME,
     includeDefaultRoots: false,

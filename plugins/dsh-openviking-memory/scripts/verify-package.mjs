@@ -8,9 +8,15 @@ import { access, readFile } from "node:fs/promises";
 const manifest = JSON.parse(
   await readFile(new URL("../package.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 const license = await readFile(new URL("../LICENSE", import.meta.url), "utf8");
-const upstream = await readFile(new URL("../UPSTREAM.md", import.meta.url), "utf8");
+const upstream = await readFile(
+  new URL("../UPSTREAM.md", import.meta.url),
+  "utf8",
+);
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
@@ -38,8 +44,18 @@ assert.match(upstream, /not an official OpenViking distribution/u);
 // UPSTREAM.md deliberately stays in the repository: the package-hygiene gate
 // keeps documentation out of the tarball, and the published README carries the
 // same attribution with an absolute link back to it.
-for (const entry of ["lib", "skills", "cordis.patch.yml", "compatibility.json", "README.md", "LICENSE"]) {
-  assert.ok(manifest.files.includes(entry), `package.json#files must publish ${entry}`);
+for (const entry of [
+  "lib",
+  "skills",
+  "cordis.patch.yml",
+  "compatibility.json",
+  "README.md",
+  "LICENSE",
+]) {
+  assert.ok(
+    manifest.files.includes(entry),
+    `package.json#files must publish ${entry}`,
+  );
 }
 assert.equal(compatibility.node, manifest.engines.node);
 assert.deepEqual(compatibility.deepseekHarness.testedReleases, ["0.1.5-rc.2"]);
@@ -48,8 +64,16 @@ assert.deepEqual(compatibility.deepseekHarness.testedReleases, ["0.1.5-rc.2"]);
 assert.equal(manifest.dependencies["@deepseek-ai/cordis"], undefined);
 for (const name of Object.keys(manifest.peerDependencies)) {
   if (!name.startsWith("@deepseek-ai/")) continue;
-  assert.equal(manifest.devDependencies[name] !== undefined, true, `${name} needs a dev copy`);
-  assert.equal(manifest.dependencies[name], undefined, `${name} must not be a dependency`);
+  assert.equal(
+    manifest.devDependencies[name] !== undefined,
+    true,
+    `${name} needs a dev copy`,
+  );
+  assert.equal(
+    manifest.dependencies[name],
+    undefined,
+    `${name} must not be a dependency`,
+  );
 }
 
 for (const path of [
@@ -66,9 +90,16 @@ for (const path of [
   await access(new URL(path, import.meta.url));
 }
 
-const proxy = await readFile(new URL("../lib/servers/mcp-proxy.js", import.meta.url), "utf8");
+const proxy = await readFile(
+  new URL("../lib/servers/mcp-proxy.js", import.meta.url),
+  "utf8",
+);
 assert.match(proxy, /createOpenVikingMcpProxy/u);
-assert.doesNotMatch(proxy, /^#!\/usr\/bin\/env/u, "proxy is spawned via process.execPath, not a shebang");
+assert.doesNotMatch(
+  proxy,
+  /^#!\/usr\/bin\/env/u,
+  "proxy is spawned via process.execPath, not a shebang",
+);
 
 const skill = await readFile(
   new URL("../skills/openviking-memory/SKILL.md", import.meta.url),

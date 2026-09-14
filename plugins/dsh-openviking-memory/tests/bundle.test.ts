@@ -18,7 +18,11 @@ import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFakeAgent, createHarness, type Harness } from "./helpers/harness.js";
+import {
+  createFakeAgent,
+  createHarness,
+  type Harness,
+} from "./helpers/harness.js";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 
@@ -101,25 +105,46 @@ describe("package hygiene (SPEC §25)", () => {
   it("publishes every artefact the runtime references and no documentation", async () => {
     const manifest = await readJson<Manifest>("package.json");
 
-    for (const entry of ["lib", "skills", "cordis.patch.yml", "compatibility.json", "README.md", "LICENSE"]) {
+    for (const entry of [
+      "lib",
+      "skills",
+      "cordis.patch.yml",
+      "compatibility.json",
+      "README.md",
+      "LICENSE",
+    ]) {
       expect(manifest.files).toContain(entry);
     }
     // SPEC.md, UPSTREAM.md, docs/** and CHANGELOG.md stay in the repository:
     // the package-hygiene gate keeps documentation out of the tarball.
-    for (const forbidden of ["SPEC.md", "UPSTREAM.md", "ROADMAP.md", "CHANGELOG.md", "docs"]) {
+    for (const forbidden of [
+      "SPEC.md",
+      "UPSTREAM.md",
+      "ROADMAP.md",
+      "CHANGELOG.md",
+      "docs",
+    ]) {
       expect(manifest.files).not.toContain(forbidden);
     }
-    expect(manifest.files.some(entry => entry.startsWith("docs/"))).toBe(false);
+    expect(manifest.files.some((entry) => entry.startsWith("docs/"))).toBe(
+      false,
+    );
   });
 
   it("treats DSH runtime packages as peers and logs through the shared plugin log", async () => {
     const manifest = await readJson<Manifest>("package.json");
 
     for (const name of Object.keys(manifest.dependencies)) {
-      expect(name.startsWith("@deepseek-ai/"), `${name} must not be a runtime dependency`).toBe(false);
+      expect(
+        name.startsWith("@deepseek-ai/"),
+        `${name} must not be a runtime dependency`,
+      ).toBe(false);
     }
     for (const name of Object.keys(manifest.peerDependencies)) {
-      expect(manifest.devDependencies[name], `${name} needs a development copy`).toBeDefined();
+      expect(
+        manifest.devDependencies[name],
+        `${name} needs a development copy`,
+      ).toBeDefined();
     }
     expect(manifest.dependencies["@yadsh/dsh-plugin-log"]).toBe("workspace:^");
     expect(manifest.scripts["verify:package"]).toBeDefined();
@@ -128,17 +153,27 @@ describe("package hygiene (SPEC §25)", () => {
 
   it("keeps discoverability metadata and its declared compatibility in sync", async () => {
     const manifest = await readJson<Manifest>("package.json");
-    const compatibility = await readJson<{ node: string; deepseekHarness: { range: string; testedReleases: string[] } }>(
-      "compatibility.json",
-    );
+    const compatibility = await readJson<{
+      node: string;
+      deepseekHarness: { range: string; testedReleases: string[] };
+    }>("compatibility.json");
 
-    for (const keyword of ["deepseek-harness", "dsh", "dsh-plugin", "cordis", "openviking", "memory"]) {
+    for (const keyword of [
+      "deepseek-harness",
+      "dsh",
+      "dsh-plugin",
+      "cordis",
+      "openviking",
+      "memory",
+    ]) {
       expect(manifest.keywords).toContain(keyword);
     }
     expect(manifest.description).toMatch(/deepseek harness/i);
     expect(compatibility.node).toBe(manifest.engines.node);
     expect(compatibility.deepseekHarness.range).toBe(">=0.1.5-rc.2 <0.2.0");
-    expect(compatibility.deepseekHarness.testedReleases).toEqual(["0.1.5-rc.2"]);
+    expect(compatibility.deepseekHarness.testedReleases).toEqual([
+      "0.1.5-rc.2",
+    ]);
   });
 });
 
@@ -169,7 +204,9 @@ describe("licence and upstream attribution (SPEC §4)", () => {
 
     // The README is the published artefact, so it has to carry the notice even
     // though UPSTREAM.md itself stays in the repository.
-    expect(readme).toContain("not maintained or endorsed by the OpenViking project");
+    expect(readme).toContain(
+      "not maintained or endorsed by the OpenViking project",
+    );
     expect(readme).toContain("https://github.com/volcengine/OpenViking");
     expect(readme).toContain("Apache License 2.0");
     // Running both the official plugin and this fork is unsupported.
@@ -181,20 +218,26 @@ describe("licence and upstream attribution (SPEC §4)", () => {
       "src/client.ts",
       "src/servers/mcp-proxy.ts",
       ...(await readdir(join(packageRoot, "src/openviking")))
-        .filter(name => name.endsWith(".ts"))
-        .map(name => `src/openviking/${name}`),
+        .filter((name) => name.endsWith(".ts"))
+        .map((name) => `src/openviking/${name}`),
     ];
 
     expect(ported.length).toBeGreaterThan(10);
     for (const path of ported) {
       const source = await readText(path);
-      expect(source, path).toContain("Derived from OpenViking's @openviking/dsh-memory-plugin.");
-      expect(source, path).toContain("Licensed under the Apache License, Version 2.0.");
+      expect(source, path).toContain(
+        "Derived from OpenViking's @openviking/dsh-memory-plugin.",
+      );
+      expect(source, path).toContain(
+        "Licensed under the Apache License, Version 2.0.",
+      );
     }
   });
 
   it("ships the vendored skill with its front matter intact", async () => {
-    const skill = await readText(join("skills", "openviking-memory", "SKILL.md"));
+    const skill = await readText(
+      join("skills", "openviking-memory", "SKILL.md"),
+    );
 
     expect(skill.split("\n")[0]).toBe("---");
     expect(skill).toMatch(/^---\nname: openviking-memory\n/);

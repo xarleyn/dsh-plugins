@@ -29,7 +29,10 @@ import { buildMcpProxyConfig } from "../openviking/mcp-proxy-config.js";
 import { createOpenVikingMcpProxy } from "../openviking/mcp-proxy-core.js";
 import type { McpProxyConfig } from "../openviking/mcp-proxy-config.js";
 
-export function readProxyConfig(env: NodeJS.ProcessEnv = process.env, cwd: string = process.cwd()): McpProxyConfig {
+export function readProxyConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd(),
+): McpProxyConfig {
   const cfg = resolveConfig({}, env, cwd);
   const creds = resolveOpenVikingCredentials(env);
   return buildMcpProxyConfig({
@@ -53,6 +56,12 @@ export function readProxyConfig(env: NodeJS.ProcessEnv = process.env, cwd: strin
   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === resolvePath(process.argv[1] as string)) {
-  createOpenVikingMcpProxy({ readConfig: readProxyConfig, loggerFactory: createLogger }).start();
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === resolvePath(process.argv[1] as string)
+) {
+  createOpenVikingMcpProxy({
+    readConfig: readProxyConfig,
+    loggerFactory: createLogger,
+  }).start();
 }

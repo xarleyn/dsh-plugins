@@ -18,7 +18,9 @@ import * as mcpClient from "@deepseek-ai/dsh-mcp-client";
 import { MCP_SERVER_NAME, type ResolvedConfig } from "./config.js";
 
 /** The stdio proxy DSH starts as a local MCP server. */
-export const PROXY_PATH = fileURLToPath(new URL("./servers/mcp-proxy.js", import.meta.url));
+export const PROXY_PATH = fileURLToPath(
+  new URL("./servers/mcp-proxy.js", import.meta.url),
+);
 
 /**
  * Build the dsh-mcp-client config for the OpenViking stdio proxy.

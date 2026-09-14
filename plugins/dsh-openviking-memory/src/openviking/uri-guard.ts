@@ -53,7 +53,10 @@ export function findVikingUri(
   return findVikingUriInValue(args, new Set(contentKeys));
 }
 
-export function findVikingUriInValue(value: unknown, skipKeys?: ReadonlySet<string>): string | null {
+export function findVikingUriInValue(
+  value: unknown,
+  skipKeys?: ReadonlySet<string>,
+): string | null {
   if (typeof value === "string") {
     const match = value.match(/\bviking:\/\/[^\s"'`<>)]*/i);
     return match?.[0] || null;
@@ -83,7 +86,8 @@ export interface GuardHint {
 
 export function buildGuardMessage(uri: string, hint: GuardHint = {}): string {
   const tool = hint.tool || "the OpenViking MCP tools";
-  const example = typeof hint.example === "function" ? hint.example(uri) : hint.example;
+  const example =
+    typeof hint.example === "function" ? hint.example(uri) : hint.example;
   const lines = [
     "viking:// URIs are OpenViking virtual paths, not local filesystem paths.",
     `Use ${tool} instead.`,

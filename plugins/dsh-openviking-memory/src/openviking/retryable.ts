@@ -16,10 +16,15 @@
 export interface RetryableResult {
   readonly ok?: boolean;
   readonly status?: number;
-  readonly error?: { readonly code?: string; readonly details?: unknown } | null;
+  readonly error?: {
+    readonly code?: string;
+    readonly details?: unknown;
+  } | null;
 }
 
-export function isRetryableFailure(result: RetryableResult | null | undefined): boolean {
+export function isRetryableFailure(
+  result: RetryableResult | null | undefined,
+): boolean {
   if (!result || result.ok) return false;
   const status = Number(result.status || 0);
   if (!status || status === 408 || status === 429 || status >= 500) {

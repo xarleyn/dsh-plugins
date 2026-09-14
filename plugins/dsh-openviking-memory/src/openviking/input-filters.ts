@@ -59,7 +59,11 @@ export interface ParsedInputFilterRule {
 /** The outcome of compiling a configured filter list. */
 export interface InputFilterCompileResult {
   readonly rules: readonly InputFilterRule[];
-  readonly errors: readonly { readonly index: number; readonly source: string; readonly message: string }[];
+  readonly errors: readonly {
+    readonly index: number;
+    readonly source: string;
+    readonly message: string;
+  }[];
 }
 
 /** What one pass of the filters did to a piece of text. */
@@ -76,7 +80,11 @@ export interface InputFilterVerdict {
  * `\<delim>` is un-escaped, so `\d` / `\b` / `\x2c` reach RegExp verbatim.
  * Returns the index of the closing delimiter, or -1 when it is missing.
  */
-function scanField(source: string, start: number, delim: string): { value: string; end: number } {
+function scanField(
+  source: string,
+  start: number,
+  delim: string,
+): { value: string; end: number } {
   let out = "";
   let i = start;
   while (i < source.length) {
@@ -101,10 +109,14 @@ function scanField(source: string, start: number, delim: string): { value: strin
 
 export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
   if (typeof source !== "string") {
-    return { source: String(source ?? ""), error: "rule must be a string" } as ParsedInputFilterRule;
+    return {
+      source: String(source ?? ""),
+      error: "rule must be a string",
+    } as ParsedInputFilterRule;
   }
   const raw = source.trim();
-  if (!raw) return { source: raw, error: "rule is empty" } as ParsedInputFilterRule;
+  if (!raw)
+    return { source: raw, error: "rule is empty" } as ParsedInputFilterRule;
 
   let scope: InputFilterScope = "";
   let rest = raw;
@@ -125,7 +137,10 @@ export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
   }
   const delim = rest[1];
   if (delim === undefined) {
-    return { source: raw, error: `missing delimiter after "${op}"` } as ParsedInputFilterRule;
+    return {
+      source: raw,
+      error: `missing delimiter after "${op}"`,
+    } as ParsedInputFilterRule;
   }
   if (/[A-Za-z0-9\s\\]/.test(delim)) {
     return {
@@ -141,7 +156,10 @@ export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
   let flagsRaw: string;
   if (op === "s") {
     if (first.end < 0) {
-      return { source: raw, error: `missing ${JSON.stringify(delim)} after the pattern` } as ParsedInputFilterRule;
+      return {
+        source: raw,
+        error: `missing ${JSON.stringify(delim)} after the pattern`,
+      } as ParsedInputFilterRule;
     }
     const second = scanField(rest, first.end + 1, delim);
     if (second.end < 0) {
@@ -156,14 +174,22 @@ export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
     flagsRaw = first.end < 0 ? "" : rest.slice(first.end + 1);
   }
 
-  if (!pattern) return { source: raw, error: "pattern is empty" } as ParsedInputFilterRule;
+  if (!pattern)
+    return { source: raw, error: "pattern is empty" } as ParsedInputFilterRule;
 
   const flags = new Set<string>();
   for (const flag of flagsRaw) {
     if (!ALLOWED_FLAGS.includes(flag)) {
-      return { source: raw, error: `unknown flag "${flag}" — allowed flags are i, m, s, u, g` } as ParsedInputFilterRule;
+      return {
+        source: raw,
+        error: `unknown flag "${flag}" — allowed flags are i, m, s, u, g`,
+      } as ParsedInputFilterRule;
     }
-    if (flags.has(flag)) return { source: raw, error: `duplicate flag "${flag}"` } as ParsedInputFilterRule;
+    if (flags.has(flag))
+      return {
+        source: raw,
+        error: `duplicate flag "${flag}"`,
+      } as ParsedInputFilterRule;
     flags.add(flag);
   }
   // d/k decide with .test(), which advances lastIndex on a global regex and
@@ -176,7 +202,8 @@ export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
   } catch (err) {
     // V8 already says "Invalid regular expression: <pattern>: <why>"; keep that
     // detail without stuttering the prefix the doctors key off.
-    const message = (err as { message?: string } | null)?.message || String(err);
+    const message =
+      (err as { message?: string } | null)?.message || String(err);
     return {
       source: raw,
       error: /^invalid regular expression/i.test(message)
@@ -190,16 +217,25 @@ export function parseInputFilterRule(source: unknown): ParsedInputFilterRule {
 
 export function compileInputFilters(rules: unknown): InputFilterCompileResult {
   const compiled: InputFilterRule[] = [];
-  const errors: { readonly index: number; readonly source: string; readonly message: string }[] = [];
+  const errors: {
+    readonly index: number;
+    readonly source: string;
+    readonly message: string;
+  }[] = [];
   const list: readonly unknown[] = Array.isArray(rules) ? rules : [];
   list.forEach((entry, index) => {
     if (typeof entry !== "string") {
-      errors.push({ index, source: String(entry ?? ""), message: "rule must be a string" });
+      errors.push({
+        index,
+        source: String(entry ?? ""),
+        message: "rule must be a string",
+      });
       return;
     }
     if (!entry.trim()) return;
     const parsed = parseInputFilterRule(entry);
-    if (parsed.error) errors.push({ index, source: parsed.source, message: parsed.error });
+    if (parsed.error)
+      errors.push({ index, source: parsed.source, message: parsed.error });
     else compiled.push({ ...parsed, index });
   });
   return { rules: compiled, errors };
@@ -215,11 +251,16 @@ export function compileInputFilters(rules: unknown): InputFilterCompileResult {
 export function applyInputFilters(
   text: unknown,
   compiled: readonly InputFilterRule[],
-  { role = "", substituteOnly = false }: { readonly role?: string; readonly substituteOnly?: boolean } = {},
+  {
+    role = "",
+    substituteOnly = false,
+  }: { readonly role?: string; readonly substituteOnly?: boolean } = {},
 ): InputFilterVerdict {
   const original = typeof text === "string" ? text : String(text ?? "");
   let current = original;
-  const rules: readonly InputFilterRule[] = Array.isArray(compiled) ? compiled : [];
+  const rules: readonly InputFilterRule[] = Array.isArray(compiled)
+    ? compiled
+    : [];
   for (const rule of rules) {
     if (rule.scope && rule.scope !== role) continue;
     if (rule.op === "s") {
@@ -229,7 +270,13 @@ export function applyInputFilters(
     if (substituteOnly) continue;
     const matched = rule.re.test(current);
     if ((rule.op === "d" && matched) || (rule.op === "k" && !matched)) {
-      return { text: "", changed: false, dropped: true, ruleIndex: rule.index, op: rule.op };
+      return {
+        text: "",
+        changed: false,
+        dropped: true,
+        ruleIndex: rule.index,
+        op: rule.op,
+      };
     }
   }
   const finalText = current.trim();

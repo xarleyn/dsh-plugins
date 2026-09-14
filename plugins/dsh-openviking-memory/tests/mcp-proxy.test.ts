@@ -43,7 +43,10 @@ interface RecordedCall {
 /** The local-tool surface the factory accepts. */
 type LocalToolProvider = {
   listTools(): unknown[];
-  callTool(params: unknown, context: { readonly config: McpProxyConfig }): Promise<unknown>;
+  callTool(
+    params: unknown,
+    context: { readonly config: McpProxyConfig },
+  ): Promise<unknown>;
 };
 
 /** The four injection points the factory accepts, plus the fake stdio sink. */
@@ -90,7 +93,10 @@ function createProxy(options: {
   loggerFactory?: (
     hookName: string,
     config: McpProxyConfig,
-  ) => { log(stage: string, data?: unknown): void; logError(stage: string, err: unknown): void };
+  ) => {
+    log(stage: string, data?: unknown): void;
+    logError(stage: string, err: unknown): void;
+  };
 }): ProxyHarness {
   const calls: RecordedCall[] = [];
   const writes: string[] = [];
@@ -120,9 +126,10 @@ function createProxy(options: {
       url: String(input),
       method: init?.method ?? "GET",
       headers: (init?.headers ?? {}) as Record<string, string>,
-      body: init?.body === undefined
-        ? {}
-        : (JSON.parse(String(init.body)) as Record<string, unknown>),
+      body:
+        init?.body === undefined
+          ? {}
+          : (JSON.parse(String(init.body)) as Record<string, unknown>),
       signal: init?.signal ?? undefined,
     };
     calls.push(call);
@@ -133,8 +140,8 @@ function createProxy(options: {
   const proxy = createOpenVikingMcpProxy({
     stdout,
     readConfig: () => config,
-    loggerFactory: options.loggerFactory
-      ?? (() => ({ log() {}, logError() {} })),
+    loggerFactory:
+      options.loggerFactory ?? (() => ({ log() {}, logError() {} })),
     fetchImpl,
     localToolProvider: options.localToolProvider ?? null,
   });
@@ -198,14 +205,20 @@ describe("parseSseMessages", () => {
 describe("request forwarding", () => {
   it("posts the request to the configured MCP URL and returns the upstream result", async () => {
     const upstream = rpcResult(7, { tools: [{ name: "find" }] });
-    const { proxy, calls, writes } = createProxy({ respond: () => jsonResponse(upstream) });
+    const { proxy, calls, writes } = createProxy({
+      respond: () => jsonResponse(upstream),
+    });
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 7, method: "tools/list" });
 
     expect(calls).toHaveLength(1);
     expect(calls[0]!.url).toBe("http://ov.local/mcp");
     expect(calls[0]!.method).toBe("POST");
-    expect(calls[0]!.body).toEqual({ jsonrpc: "2.0", id: 7, method: "tools/list" });
+    expect(calls[0]!.body).toEqual({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "tools/list",
+    });
     expect(calls[0]!.headers["Content-Type"]).toBe("application/json");
     expect(calls[0]!.headers.Authorization).toBe("Bearer api-key");
 
@@ -224,7 +237,10 @@ describe("request forwarding", () => {
     ].join("\n");
     const { proxy, writes } = createProxy({
       respond: () =>
-        new Response(events, { status: 200, headers: { "Content-Type": "text/event-stream" } }),
+        new Response(events, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
     });
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 9, method: "tools/call" });
@@ -236,7 +252,9 @@ describe("request forwarding", () => {
   });
 
   it("rejects a non-JSON-RPC payload on the invalid-request code", async () => {
-    const { proxy, calls, writes } = createProxy({ respond: () => jsonResponse({}) });
+    const { proxy, calls, writes } = createProxy({
+      respond: () => jsonResponse({}),
+    });
 
     await proxy.handleMessage({ method: "tools/list" });
 
@@ -248,11 +266,15 @@ describe("request forwarding", () => {
 describe("protocol headers", () => {
   it("sends the proxy's own protocol version, then the server-negotiated one", async () => {
     const { proxy, calls } = createProxy({
-      respond: call =>
+      respond: (call) =>
         call.body.method === "initialize"
-          ? jsonResponse(rpcResult(call.body.id, { protocolVersion: "2025-03-26" }), 200, {
-              "mcp-session-id": "session-abc",
-            })
+          ? jsonResponse(
+              rpcResult(call.body.id, { protocolVersion: "2025-03-26" }),
+              200,
+              {
+                "mcp-session-id": "session-abc",
+              },
+            )
           : jsonResponse(rpcResult(call.body.id, { tools: [] })),
     });
 
@@ -274,7 +296,9 @@ describe("protocol headers", () => {
     expect(calls[1]!.headers["MCP-Protocol-Version"]).toBe("2025-03-26");
     expect(calls[1]!.headers["Mcp-Session-Id"]).toBe("session-abc");
     expect(
-      calls.some(call => call.headers["MCP-Protocol-Version"] === "2024-11-05"),
+      calls.some(
+        (call) => call.headers["MCP-Protocol-Version"] === "2024-11-05",
+      ),
     ).toBe(false);
   });
 });
@@ -282,8 +306,7 @@ describe("protocol headers", () => {
 describe("upstream failures", () => {
   it("reports a 401 as -32001 with the credential sources the operator must check", async () => {
     const { proxy, writes } = createProxy({
-      respond: () =>
-        jsonResponse({ error: { message: "invalid token" } }, 401),
+      respond: () => jsonResponse({ error: { message: "invalid token" } }, 401),
     });
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 3, method: "tools/list" });
@@ -296,7 +319,9 @@ describe("upstream failures", () => {
   });
 
   it("reports a 403 as -32001 as well", async () => {
-    const { proxy, writes } = createProxy({ respond: () => jsonResponse({}, 403) });
+    const { proxy, writes } = createProxy({
+      respond: () => jsonResponse({}, 403),
+    });
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 4, method: "tools/list" });
 
@@ -321,7 +346,11 @@ describe("upstream failures", () => {
 
   it("reports an empty upstream response as -32003", async () => {
     const { proxy, writes } = createProxy({
-      respond: () => new Response("", { status: 200, headers: { "Content-Type": "application/json" } }),
+      respond: () =>
+        new Response("", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
     });
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 6, method: "tools/list" });
@@ -333,7 +362,7 @@ describe("upstream failures", () => {
     const { proxy, writes } = createProxy({
       config: { timeoutMs: 25 },
       // Never answers: the proxy's own deadline is what ends the request.
-      respond: call =>
+      respond: (call) =>
         new Promise<Response>((_resolve, reject) => {
           call.signal?.addEventListener("abort", () => {
             const abort = new Error("The operation was aborted");
@@ -380,12 +409,17 @@ describe("session recovery", () => {
       respond: (call) => {
         if (call.body.method === "initialize") {
           initializeCount += 1;
-          return jsonResponse(rpcResult(call.body.id, { protocolVersion: "2025-06-18" }), 200, {
-            "mcp-session-id": `session-${initializeCount}`,
-          });
+          return jsonResponse(
+            rpcResult(call.body.id, { protocolVersion: "2025-06-18" }),
+            200,
+            {
+              "mcp-session-id": `session-${initializeCount}`,
+            },
+          );
         }
         listCount += 1;
-        if (listCount > 1) return jsonResponse(rpcResult(call.body.id, { tools: [] }));
+        if (listCount > 1)
+          return jsonResponse(rpcResult(call.body.id, { tools: [] }));
         return jsonResponse({ error: { message: "session gone" } }, status);
       },
     };
@@ -402,11 +436,21 @@ describe("session recovery", () => {
         method: "initialize",
         params: { protocolVersion: "2025-06-18" },
       });
-      await proxy.handleMessage({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+      await proxy.handleMessage({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/list",
+      });
 
-      expect(calls.filter(call => call.body.method === "initialize")).toHaveLength(2);
-      expect(calls.filter(call => call.body.method === "tools/list")).toHaveLength(2);
-      expect(writtenMessages(writes).at(-1)).toEqual(rpcResult(2, { tools: [] }));
+      expect(
+        calls.filter((call) => call.body.method === "initialize"),
+      ).toHaveLength(2);
+      expect(
+        calls.filter((call) => call.body.method === "tools/list"),
+      ).toHaveLength(2);
+      expect(writtenMessages(writes).at(-1)).toEqual(
+        rpcResult(2, { tools: [] }),
+      );
     });
   }
 
@@ -422,7 +466,9 @@ describe("session recovery", () => {
       params: { protocolVersion: "2025-06-18" },
     });
 
-    expect(calls.filter(call => call.body.method === "initialize")).toHaveLength(1);
+    expect(
+      calls.filter((call) => call.body.method === "initialize"),
+    ).toHaveLength(1);
   });
 });
 
@@ -432,7 +478,9 @@ describe("stdout serialization", () => {
       respond: async (call) => {
         // Uneven latencies, so the two requests are genuinely in flight at once
         // and would interleave if each wrote without waiting for the other.
-        await new Promise(resolve => setTimeout(resolve, call.body.id === 1 ? 10 : 2));
+        await new Promise((resolve) =>
+          setTimeout(resolve, call.body.id === 1 ? 10 : 2),
+        );
         return jsonResponse(rpcResult(call.body.id, { echoed: call.body.id }));
       },
     });
@@ -446,17 +494,25 @@ describe("stdout serialization", () => {
     expect(events).toEqual(["start:0", "end:0", "start:1", "end:1"]);
     expect(writes).toHaveLength(2);
     const messages = writtenMessages(writes);
-    expect(messages.every(message => message.jsonrpc === "2.0")).toBe(true);
-    expect(new Set(messages.map(message => message.id))).toEqual(new Set([1, 2]));
+    expect(messages.every((message) => message.jsonrpc === "2.0")).toBe(true);
+    expect(new Set(messages.map((message) => message.id))).toEqual(
+      new Set([1, 2]),
+    );
   });
 });
 
 describe("localToolProvider", () => {
   const localTools = [
-    { name: "openviking_find", description: "local find", inputSchema: { type: "object" } },
+    {
+      name: "openviking_find",
+      description: "local find",
+      inputSchema: { type: "object" },
+    },
   ];
 
-  function provider(callTool: LocalToolProvider["callTool"]): LocalToolProvider {
+  function provider(
+    callTool: LocalToolProvider["callTool"],
+  ): LocalToolProvider {
     return { listTools: () => localTools, callTool };
   }
 
@@ -467,7 +523,10 @@ describe("localToolProvider", () => {
           rpcResult(1, {
             tools: [
               { name: "upstream_only", description: "upstream" },
-              { name: "openviking_find", description: "shadowed upstream copy" },
+              {
+                name: "openviking_find",
+                description: "shadowed upstream copy",
+              },
             ],
           }),
         ),
@@ -476,15 +535,20 @@ describe("localToolProvider", () => {
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 
-    const result = writtenMessages(writes)[0]!.result as { tools: { name: string }[] };
-    expect(result.tools.map(tool => tool.name)).toEqual(["upstream_only", "openviking_find"]);
+    const result = writtenMessages(writes)[0]!.result as {
+      tools: { name: string }[];
+    };
+    expect(result.tools.map((tool) => tool.name)).toEqual([
+      "upstream_only",
+      "openviking_find",
+    ]);
     expect(result.tools[1]).toEqual(localTools[0]);
   });
 
   it("answers a local tools/call without any upstream request", async () => {
-    const callTool = vi.fn<LocalToolProvider["callTool"]>(
-      async () => ({ content: [{ type: "text", text: "local answer" }] }),
-    );
+    const callTool = vi.fn<LocalToolProvider["callTool"]>(async () => ({
+      content: [{ type: "text", text: "local answer" }],
+    }));
     const { proxy, calls, writes } = createProxy({
       respond: () => jsonResponse({}),
       localToolProvider: provider(callTool),
@@ -503,7 +567,9 @@ describe("localToolProvider", () => {
       name: "openviking_find",
       arguments: { query: "budget" },
     });
-    expect(callTool.mock.calls[0]![1].config.mcpUrl).toBe("http://ov.local/mcp");
+    expect(callTool.mock.calls[0]![1].config.mcpUrl).toBe(
+      "http://ov.local/mcp",
+    );
     expect(writtenMessages(writes)).toEqual([
       rpcResult(3, { content: [{ type: "text", text: "local answer" }] }),
     ]);
@@ -524,7 +590,7 @@ describe("localToolProvider", () => {
     });
 
     expect(callTool).not.toHaveBeenCalled();
-    expect(calls.map(call => call.body.method)).toEqual(["tools/call"]);
+    expect(calls.map((call) => call.body.method)).toEqual(["tools/call"]);
   });
 });
 
@@ -541,7 +607,10 @@ describe("debug-log createLogger", () => {
 
   it("is a no-op that never touches the filesystem when debug is off", async () => {
     const path = join(directory, "nested", "debug.ndjson");
-    const logger = createLogger("mcp-proxy", { debug: false, debugLogPath: path });
+    const logger = createLogger("mcp-proxy", {
+      debug: false,
+      debugLogPath: path,
+    });
 
     logger.log("start", { mcpUrl: "http://ov.local/mcp" });
     logger.logError("start", new Error("nope"));
@@ -564,7 +633,10 @@ describe("debug-log createLogger", () => {
 
   it("appends one NDJSON object per call when debug is on", async () => {
     const path = join(directory, "debug.ndjson");
-    const logger = createLogger("mcp-proxy", { debug: true, debugLogPath: path });
+    const logger = createLogger("mcp-proxy", {
+      debug: true,
+      debugLogPath: path,
+    });
 
     logger.log("start", { mcpUrl: "http://ov.local/mcp" });
     logger.log("credentials_reloaded", { reason: "auth_failure" });
@@ -572,7 +644,9 @@ describe("debug-log createLogger", () => {
 
     const lines = (await readFile(path, "utf8")).trimEnd().split("\n");
     expect(lines).toHaveLength(3);
-    const entries = lines.map(line => JSON.parse(line) as Record<string, unknown>);
+    const entries = lines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
 
     for (const entry of entries) {
       expect(entry.hook).toBe("mcp-proxy");
@@ -591,37 +665,50 @@ describe("debug-log createLogger", () => {
     expect(entries[2]!.stage).toBe("request_failed");
     expect(entries[2]!.data).toBeUndefined();
     expect(entries[2]!.error).toMatchObject({ message: "kaboom" });
-    expect(typeof (entries[2]!.error as { stack?: unknown }).stack).toBe("string");
+    expect(typeof (entries[2]!.error as { stack?: unknown }).stack).toBe(
+      "string",
+    );
   });
 
   it("records a thrown non-Error as a string", async () => {
     const path = join(directory, "debug.ndjson");
-    const logger = createLogger("mcp-proxy", { debug: true, debugLogPath: path });
+    const logger = createLogger("mcp-proxy", {
+      debug: true,
+      debugLogPath: path,
+    });
 
     logger.logError("request_failed", "plain string");
 
-    const entry = JSON.parse((await readFile(path, "utf8")).trim()) as Record<string, unknown>;
+    const entry = JSON.parse((await readFile(path, "utf8")).trim()) as Record<
+      string,
+      unknown
+    >;
     expect(entry.error).toBe("plain string");
   });
 });
 
 describe("buildMcpProxyConfig", () => {
   it("derives the MCP URL from the base URL and trims its trailing slashes", () => {
-    expect(buildMcpProxyConfig({ baseUrl: "http://ov.local/", env: {} }).mcpUrl).toBe(
-      "http://ov.local/mcp",
-    );
+    expect(
+      buildMcpProxyConfig({ baseUrl: "http://ov.local/", env: {} }).mcpUrl,
+    ).toBe("http://ov.local/mcp");
     expect(trimSlash("http://ov.local///")).toBe("http://ov.local");
   });
 
   it("clamps the timeout to at least one second", () => {
-    expect(buildMcpProxyConfig({ baseUrl: "http://ov.local", env: {} }).timeoutMs).toBe(
-      DEFAULT_PROXY_TIMEOUT_MS,
-    );
     expect(
-      buildMcpProxyConfig({ baseUrl: "http://ov.local", timeoutMs: 5, env: {} }).timeoutMs,
+      buildMcpProxyConfig({ baseUrl: "http://ov.local", env: {} }).timeoutMs,
+    ).toBe(DEFAULT_PROXY_TIMEOUT_MS);
+    expect(
+      buildMcpProxyConfig({ baseUrl: "http://ov.local", timeoutMs: 5, env: {} })
+        .timeoutMs,
     ).toBe(1000);
     expect(
-      buildMcpProxyConfig({ baseUrl: "http://ov.local", timeoutMs: 45000, env: {} }).timeoutMs,
+      buildMcpProxyConfig({
+        baseUrl: "http://ov.local",
+        timeoutMs: 45000,
+        env: {},
+      }).timeoutMs,
     ).toBe(45000);
   });
 
@@ -632,9 +719,15 @@ describe("buildMcpProxyConfig", () => {
       env: {},
     });
 
-    expect(config.watchedPaths).toContain(join(homedir(), ".openviking", "ovcli.conf"));
-    expect(config.watchedPaths).toContain(join(homedir(), ".openviking", "ov.conf"));
-    expect(config.watchedPaths.filter(path => path === "/tmp/custom.conf")).toHaveLength(1);
+    expect(config.watchedPaths).toContain(
+      join(homedir(), ".openviking", "ovcli.conf"),
+    );
+    expect(config.watchedPaths).toContain(
+      join(homedir(), ".openviking", "ov.conf"),
+    );
+    expect(
+      config.watchedPaths.filter((path) => path === "/tmp/custom.conf"),
+    ).toHaveLength(1);
     expect(new Set(config.watchedPaths).size).toBe(config.watchedPaths.length);
     expect(config.watchedPaths).not.toContain("");
   });
@@ -651,7 +744,9 @@ describe("buildMcpProxyConfig", () => {
 
   it("expands `~` and lists the environment overrides before the defaults", () => {
     expect(normalizeConfigPath("~")).toBe(homedir());
-    expect(normalizeConfigPath("~/ov/ovcli.conf")).toBe(join(homedir(), "ov", "ovcli.conf"));
+    expect(normalizeConfigPath("~/ov/ovcli.conf")).toBe(
+      join(homedir(), "ov", "ovcli.conf"),
+    );
     expect(normalizeConfigPath("")).toBe("");
 
     const paths = defaultCredentialPaths({
@@ -699,7 +794,10 @@ describe("readProxyConfig", () => {
   });
 
   it("uses OV_DEBUG_LOG as the debug log path", () => {
-    const config = readProxyConfig({ ...env, OV_DEBUG_LOG: "C:/tmp/ov.ndjson" }, "/workspace");
+    const config = readProxyConfig(
+      { ...env, OV_DEBUG_LOG: "C:/tmp/ov.ndjson" },
+      "/workspace",
+    );
 
     expect(config.debug).toBe(true);
     expect(config.debugLogPath).toBe("C:/tmp/ov.ndjson");
