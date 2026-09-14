@@ -13,7 +13,10 @@ import type {
 import { QaBrowserSessionManager } from "../src/host/session-manager.js";
 import type {
   BrowserNavigationRequest,
+  BrowserSnapshotMode,
+  BrowserWaitRequest,
   BrowserViewport,
+  LocatorPlan,
 } from "../src/types.js";
 
 class FakePage implements BrowserPageHandle {
@@ -46,6 +49,59 @@ class FakePage implements BrowserPageHandle {
     this.currentTitle = new URL(request.url).hostname;
     this.activeNavigations -= 1;
     for (const listener of this.changed) listener();
+    return { url: this.currentUrl, title: this.currentTitle };
+  }
+
+  async snapshot(_mode: BrowserSnapshotMode) {
+    return [
+      {
+        role: "textbox",
+        name: "Email",
+        locator: { type: "label", label: "Email", exact: true } as const,
+        fingerprint: { role: "textbox", name: "Email", label: "Email" },
+        interactive: true,
+      },
+      {
+        role: "button",
+        name: "Continue",
+        locator: {
+          type: "role",
+          role: "button",
+          name: "Continue",
+          exact: true,
+        } as const,
+        fingerprint: { role: "button", name: "Continue" },
+        interactive: true,
+      },
+    ];
+  }
+
+  async validateLocator(_locator: LocatorPlan): Promise<void> {}
+
+  async click(_locator: LocatorPlan): Promise<void> {}
+
+  async type(
+    _locator: LocatorPlan,
+    _text: string,
+    _options?: { readonly clear?: boolean; readonly submit?: boolean },
+  ): Promise<void> {}
+
+  async setValue(_locator: LocatorPlan): Promise<void> {}
+
+  async press(_key: string): Promise<void> {}
+
+  async hover(_locator: LocatorPlan): Promise<void> {}
+
+  async scroll(_deltaY: number, _locator?: LocatorPlan): Promise<void> {}
+
+  async wait(
+    _request: Omit<BrowserWaitRequest, "ref"> & {
+      readonly locator?: LocatorPlan;
+    },
+  ): Promise<void> {}
+
+  async history(action: "back" | "forward" | "reload") {
+    this.currentTitle = action;
     return { url: this.currentUrl, title: this.currentTitle };
   }
 
@@ -220,6 +276,23 @@ describe("QaBrowserSessionManager", () => {
     });
     await manager.ensureSession("crash");
     expect(manager.getSession("crash")?.status).toBe("ready");
+    await manager.dispose();
+  });
+
+  it("binds semantic refs to a revision and refuses stale actions", async () => {
+    const { manager } = createHarness();
+    const session = await manager.ensureSession("semantic");
+    const tabId = session.selectedTabId!;
+    const snapshot = await manager.snapshot("semantic", tabId);
+    expect(snapshot.text).toContain('[e1] textbox "Email"');
+    await expect(
+      manager.type("semantic", tabId, "e1", "secret"),
+    ).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(manager.click("semantic", tabId, "e2")).rejects.toMatchObject({
+      code: "BROWSER_STALE_REF",
+    });
     await manager.dispose();
   });
 });

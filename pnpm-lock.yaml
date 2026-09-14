@@ -1042,6 +1042,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(df33aafd3e5ffc7e1d800e6bdb613fcc)
+      '@deepseek-ai/dsh-tools':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(3d1f7388b5ad3ebe6299c7cfa1d9c23a)
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.2

@@ -1,4 +1,12 @@
-import type { BrowserNavigationRequest, BrowserViewport } from "../../types.js";
+import type {
+  BrowserFormValue,
+  BrowserNavigationRequest,
+  BrowserSnapshotMode,
+  BrowserViewport,
+  BrowserWaitRequest,
+  ElementFingerprint,
+  LocatorPlan,
+} from "../../types.js";
 
 export interface BrowserProviderStartOptions {
   readonly executablePath: string | null;
@@ -19,11 +27,46 @@ export interface ProviderNavigationResult {
   readonly title: string;
 }
 
+export interface ProviderSnapshotNode {
+  readonly role: string;
+  readonly name: string;
+  readonly text?: string;
+  readonly locator: LocatorPlan;
+  readonly fingerprint: ElementFingerprint;
+  readonly interactive: boolean;
+}
+
 export interface BrowserPageHandle {
   url(): string;
   title(): Promise<string>;
   navigate(
     request: BrowserNavigationRequest,
+  ): Promise<ProviderNavigationResult>;
+  snapshot(mode: BrowserSnapshotMode): Promise<readonly ProviderSnapshotNode[]>;
+  validateLocator(locator: LocatorPlan): Promise<void>;
+  click(
+    locator: LocatorPlan,
+    options?: {
+      readonly button?: "left" | "middle" | "right";
+      readonly clickCount?: 1 | 2;
+    },
+  ): Promise<void>;
+  type(
+    locator: LocatorPlan,
+    text: string,
+    options?: { readonly clear?: boolean; readonly submit?: boolean },
+  ): Promise<void>;
+  setValue(locator: LocatorPlan, value: BrowserFormValue): Promise<void>;
+  press(key: string): Promise<void>;
+  hover(locator: LocatorPlan): Promise<void>;
+  scroll(deltaY: number, locator?: LocatorPlan): Promise<void>;
+  wait(
+    request: Omit<BrowserWaitRequest, "ref"> & {
+      readonly locator?: LocatorPlan;
+    },
+  ): Promise<void>;
+  history(
+    action: "back" | "forward" | "reload",
   ): Promise<ProviderNavigationResult>;
   setViewport(viewport: BrowserViewport): Promise<void>;
   screenshot(): Promise<Buffer>;
