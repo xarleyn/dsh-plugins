@@ -10,6 +10,13 @@ const FRONT_MATTER_FENCE = "---";
 const DEFAULT_BRANCHES = ["main", "master", "origin/main", "origin/master"];
 const MAX_LISTED_FILES = 3;
 
+/**
+ * One tag per release run, created by the release workflow after npm
+ * publication. It anchors every released project at once, so the tag list
+ * stops growing by one tag per released package.
+ */
+const WAVE_TAG_GLOB = "release/*";
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -144,6 +151,19 @@ export function lastReleaseTag(repoRoot, projectName, head) {
   return tag;
 }
 
+/** The newest release-wave tag (`release/*`) that the given head can reach. */
+export function lastWaveTag(repoRoot, head) {
+  const [tag] = gitLines(repoRoot, [
+    "tag",
+    "--list",
+    WAVE_TAG_GLOB,
+    "--merged",
+    head,
+    "--sort=-v:refname",
+  ]);
+  return tag;
+}
+
 /** Every file `git diff` reports between two refs inside a project directory. */
 export function changedFiles(repoRoot, from, to, directory) {
   return gitLines(
@@ -168,17 +188,20 @@ function planIgnoreMatchers(repoRoot) {
 
 /**
  * Commits no release tag covers yet, per project. The range starts at the
- * project's own last release tag, because a branch that released its own work
- * carries tags the default branch does not: comparing such a project against
- * the default branch reports an already-published release as unreleased and
- * asks for plans that the release already consumed. A project without a tag
- * has never shipped, so its whole change against the base is unreleased.
+ * newest release-wave tag the head can reach, because a branch that released
+ * its own work carries that tag the default branch does not: comparing such a
+ * project against the default branch reports an already-published release as
+ * unreleased and asks for plans that the release already consumed. Until the
+ * first wave ships, the per-project tags of the previous release scheme keep
+ * this meaning. A project without any reachable tag has never shipped, so its
+ * whole change against the base is unreleased.
  */
 export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
   const ignoreMatchers = planIgnoreMatchers(repoRoot);
+  const waveTag = lastWaveTag(repoRoot, head);
 
   return publishableReleaseProjects(repoRoot).map((project) => {
-    const tag = lastReleaseTag(repoRoot, project.name, head);
+    const tag = waveTag ?? lastReleaseTag(repoRoot, project.name, head);
     const from = tag ?? base;
     const files = changedFiles(repoRoot, from, head, project.directory).filter(
       (file) => !ignoreMatchers.some((matcher) => matcher.test(file)),

@@ -20,6 +20,10 @@ import {
   readReleaseRows,
   unpublishedPackagesMessage,
 } from "./verify-package-publication.mjs";
+import {
+  buildWaveNotes,
+  changelogSection,
+} from "./wave-release-notes.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -98,6 +102,7 @@ function createFixture({ withVersionPlan = false } = {}) {
       projectsRelationship: "independent",
       versionPlans: true,
       releaseTag: { pattern: "{projectName}@{version}" },
+      git: { tag: false },
       changelog: {
         workspaceChangelog: false,
         projectChangelogs: false,
@@ -255,6 +260,38 @@ describe("Nx release commands", () => {
     assert.deepEqual(repositoryState(root), before);
   });
 
+  test("a release commit is created without per-project tags", () => {
+    const root = createFixture({ withVersionPlan: true });
+    const before = repositoryState(root);
+    const result = runNx(root, "release", "--skip-publish");
+
+    assertSucceeded(result, "nx release --skip-publish");
+    const state = repositoryState(root);
+    assert.notEqual(state.head, before.head, "the release commit must exist");
+    assert.match(state.manifest, /"version": "1\.0\.1"/u);
+    assert.deepEqual(
+      state.plans,
+      [],
+      "the release must consume the version plans",
+    );
+    assert.equal(
+      state.tags,
+      before.tags,
+      "the release must not create tags; the workflow adds one wave tag",
+    );
+  });
+
+  test("the repository release config stops creating per-project tags", () => {
+    const nxConfig = JSON.parse(
+      readFileSync(path.join(repositoryRoot, "nx.json"), "utf8"),
+    );
+    assert.equal(
+      nxConfig.release?.git?.tag,
+      false,
+      "nx must leave tagging to the workflow's wave tag",
+    );
+  });
+
   test("the first-release branch remains valid and dry", () => {
     const root = createFixture({ withVersionPlan: true });
     const before = repositoryState(root);
@@ -320,7 +357,13 @@ describe("Nx release commands", () => {
     );
     assert.match(
       workflow,
-      /- name: Create per-package GitHub Releases\s+if: inputs\.dry_run == false && inputs\.create_github_releases/u,
+      /- name: Create the release-wave GitHub Release\s+if: inputs\.dry_run == false && inputs\.create_github_releases/u,
+    );
+    assert.match(workflow, /- name: Tag the release wave/u);
+    assert.match(workflow, /git tag -a "\$wave_tag" -m "Release wave/u);
+    assert.match(
+      workflow,
+      /node scripts\/wave-release-notes\.mjs --tsv="\$RUNNER_TEMP\/release-packages\.tsv"/u,
     );
 
     const root = createFixture();
@@ -371,8 +414,9 @@ describe("Nx release commands", () => {
     const preflight = step("Verify packages exist on npm");
     const artifacts = step("Upload release artifacts");
     const publish = step("Publish to npm with OIDC");
+    const waveTag = step("Tag the release wave");
     const push = step("Push release commit and tags");
-    const githubReleases = step("Create per-package GitHub Releases");
+    const githubReleases = step("Create the release-wave GitHub Release");
 
     assert.ok(
       preflight < publish,
@@ -383,10 +427,17 @@ describe("Nx release commands", () => {
       "the tarballs must be uploaded even when publishing fails",
     );
     assert.ok(
-      publish < push,
-      "npm publication must finish before the release commit is pushed",
+      publish < waveTag,
+      "the wave tag is only created for versions npm already has",
     );
-    assert.ok(push < githubReleases, "GitHub Releases are built from pushed tags");
+    assert.ok(
+      waveTag < push,
+      "the wave tag must be pushed with the release commit",
+    );
+    assert.ok(
+      push < githubReleases,
+      "the GitHub Release is built from the pushed wave tag",
+    );
     assert.match(workflow, /if ! npm publish "\$\{args\[@\]\}"; then/u);
     assert.match(workflow, /Failed to publish %d package\(s\)/u);
   });
@@ -486,6 +537,89 @@ describe("package publication gate", () => {
       name: "@yadsh/dsh-a",
       version: "1.2.3",
     });
+  });
+});
+
+describe("wave release notes", () => {
+  function writeChangelog(root, directory, sections) {
+    mkdirSync(path.join(root, directory), { recursive: true });
+    writeFileSync(
+      path.join(root, directory, "CHANGELOG.md"),
+      sections.join("\n"),
+    );
+  }
+
+  test("the notes carry each package's changelog entry for its released version", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "dsh-wave-notes-"));
+    fixtures.push(root);
+    writeChangelog(root, "plugins/dsh-a", [
+      "## 1.1.0 (2026-09-14)",
+      "",
+      "### 🚀 Features",
+      "",
+      "- First feature.",
+      "",
+      "## 1.0.0 (2026-09-01)",
+      "",
+      "- Older entry.",
+      "",
+    ]);
+    writeChangelog(root, "plugins/dsh-b", ["## 0.2.0", "", "- No date heading.", ""]);
+
+    const tsv = path.join(root, "release-packages.tsv");
+    writeFileSync(
+      tsv,
+      [
+        "@yadsh/dsh-a\t1.1.0\tplugins/dsh-a\tyadsh-dsh-a-1.1.0.tgz",
+        "@yadsh/dsh-b\t0.2.0\tplugins/dsh-b\tyadsh-dsh-b-0.2.0.tgz",
+      ].join("\n"),
+    );
+
+    const markdown = buildWaveNotes(readReleaseRows(tsv), root);
+
+    assert.match(markdown, /^## @yadsh\/dsh-a 1\.1\.0$/mu);
+    assert.match(markdown, /- First feature\./u);
+    assert.doesNotMatch(markdown, /Older entry/u);
+    assert.match(markdown, /^## @yadsh\/dsh-b 0\.2\.0$/mu);
+    assert.match(markdown, /- No date heading\./u);
+    assert.doesNotMatch(markdown, /No changelog entry/u);
+  });
+
+  test("a package without a changelog entry still gets its section", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "dsh-wave-notes-"));
+    fixtures.push(root);
+
+    const markdown = buildWaveNotes(
+      [
+        {
+          name: "@yadsh/dsh-c",
+          version: "0.1.0",
+          directory: "plugins/dsh-c",
+          tarball: "yadsh-dsh-c-0.1.0.tgz",
+        },
+      ],
+      root,
+    );
+
+    assert.match(markdown, /^## @yadsh\/dsh-c 0\.1\.0$/mu);
+    assert.match(markdown, /No changelog entry was found/u);
+  });
+
+  test("a version heading never absorbs a longer version's section", () => {
+    const changelog = [
+      "## 1.1.0 (2026-09-14)",
+      "",
+      "- Current entry.",
+      "",
+      "## 1.1.01 (2026-09-13)",
+      "",
+      "- Typo release.",
+      "",
+    ].join("\n");
+
+    const section = changelogSection(changelog, "1.1.0");
+    assert.match(section, /Current entry/u);
+    assert.doesNotMatch(section, /Typo release/u);
   });
 });
 
