@@ -115,8 +115,9 @@ export class QaPolicyAdmission {
    * otherwise deny the model the exact file an upload produced and the prompt
    * points it at. A backend without a resolvable root simply keeps the fence
    * closed — attachments then only work where reads are not fenced per user.
+   * Source preview asks for the same root, so one upload is readable by both.
    */
-  private attachmentRoot(): string | undefined {
+  attachmentRoot(): string | undefined {
     const store = this.ctx.get("attachments") as
       { readonly root?: unknown } | undefined;
     return typeof store?.root === "string" ? store.root : undefined;

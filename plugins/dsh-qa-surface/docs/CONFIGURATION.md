@@ -46,7 +46,8 @@ rules are:
   mounted by an agent preset live in that preset's ancestor scope; the Host
   validates and restricts the complete agent-scoped view, not just globals.
 - `lockdown.sharedReadOnlyRoots` contains only absolute paths. It widens the
-  per-user path guard for reviewed filesystem read tools, but does not grant a
+  per-user path guard for reviewed filesystem read tools, and it is the second
+  root group of the source preview, but it does not grant a
   tool that is absent from the allow-list.
 
 ## Pinning chats to a directory
@@ -195,8 +196,14 @@ overlapping file ranges are normalized during deduplication.
 `sources.filePreview` is a narrow read capability, not a filesystem browser.
 The Host serves only a path already present in the attested session's canonical
 evidence bundle, resolves symlinks with `realpath`, rejects root escape, and
-applies `maxBytes` plus `maxMarkdownRenderBytes`. Markdown uses the client's
-HTML-free renderer; relative links and executable raw HTML are not activated.
+applies `maxBytes` plus `maxMarkdownRenderBytes`. The readable roots are the
+ones the per-user execution guard already opens for the model: the chat's own
+`cwd`, every `lockdown.sharedReadOnlyRoots` entry, and the mounted attachment
+store. A deployment that keeps shared documents beside the per-account scratch
+directory therefore previews the files its assistant cites, while a path
+recorded from anywhere else is refused with `(reason: outside-roots)`. Markdown
+uses the client's HTML-free renderer; relative links and executable raw HTML
+are not activated.
 
 Set `sources.display.showOriginBadges: true` while auditing inheritance. Local
 subagent sources carry run/session origins automatically. An opaque provider

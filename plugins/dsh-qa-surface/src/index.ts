@@ -28,7 +28,10 @@ import { QaPolicyAdmission } from "./secure-session.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { FileQaProvenanceSnapshotStore } from "./provenance/snapshot-store.js";
-import { readSourceFilePreview } from "./provenance/file-preview.js";
+import {
+  readSourceFilePreview,
+  QaSourcePreviewError,
+} from "./provenance/file-preview.js";
 import {
   existingQaUserWorkspace,
   prepareQaUserWorkspace,
@@ -79,6 +82,18 @@ const CONFIGURATION_ERROR = "Assistant configuration is unavailable.";
 
 /** The `(reason: <code>)` marker contract shared with the attestation path. */
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
+
+/**
+ * The preview refusal codes the browser branches on. `unavailable` covers a
+ * disabled capability, a chat without a cwd and an unreadable file alike; the
+ * panel tells the audience the file may be gone, which is true of all three.
+ */
+type QaSourcePreviewRefusal = "outside-roots" | "not-evidence" | "unavailable";
+
+/** Fold a preview refusal into the shared reason marker. */
+function sourcePreviewRefusal(reason: QaSourcePreviewRefusal): Error {
+  return new Error(`QA source preview refused the request (reason: ${reason})`);
+}
 
 /** Host companion: validates config, owns the admission boundary and the route. */
 export class QaSurface extends TypertRemoteService {
@@ -511,7 +526,15 @@ export class QaSurface extends TypertRemoteService {
     return this.userQuestions.cancel(sessionId, requestId);
   }
 
-  /** Narrow read-only preview capability for files already present as sources. */
+  /**
+   * Narrow read-only preview capability for files already present as sources.
+   *
+   * The readable roots mirror the per-user execution guard: the chat's own cwd
+   * plus the deployment's shared read-only directories and the attachment
+   * store. Without that mirroring a source the model was explicitly allowed to
+   * read — the normal case for a deployment whose docs and code live beside
+   * the per-account scratch directory — could never be opened in the panel.
+   */
   @Remote("readSourceFile")
   async readSourceFile(
     token: string,
@@ -519,27 +542,37 @@ export class QaSurface extends TypertRemoteService {
     sourcePath: string,
   ): Promise<QaSourceFilePreview> {
     await this.admission.secureSession(token, sessionId);
-    const config = this.getConfig().sources.filePreview;
-    if (
-      !config.enabled ||
-      !this.provenance.sourceAllowed(sessionId, sourcePath)
-    ) {
-      throw new Error("Source preview is unavailable.");
+    const config = this.getConfig();
+    if (!config.sources.filePreview.enabled) {
+      throw sourcePreviewRefusal("unavailable");
     }
     const agent = this.ctx.agents.get(
       (await import("@deepseek-ai/dsh-session/types")).SessionId(sessionId),
     );
-    const root = agent?.session.header.cwd;
-    if (root === undefined) throw new Error("Source preview is unavailable.");
+    const cwd = agent?.session.header.cwd;
+    if (cwd === undefined) throw sourcePreviewRefusal("unavailable");
+    const attachmentRoot = this.admission.attachmentRoot();
     try {
       return await readSourceFilePreview({
-        root,
         sourcePath,
-        maxBytes: config.maxBytes,
-        maxMarkdownRenderBytes: config.maxMarkdownRenderBytes,
+        cwd,
+        isEvidence: (canonicalPath) =>
+          this.provenance.sourceAllowed(sessionId, canonicalPath),
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        maxBytes: config.sources.filePreview.maxBytes,
+        maxMarkdownRenderBytes:
+          config.sources.filePreview.maxMarkdownRenderBytes,
       });
-    } catch {
-      throw new Error("Source preview is unavailable.");
+    } catch (error) {
+      this.logger.debug("source.preview-refused", {
+        sessionId,
+        reason:
+          error instanceof QaSourcePreviewError ? error.reason : "unavailable",
+      });
+      throw sourcePreviewRefusal(
+        error instanceof QaSourcePreviewError ? error.reason : "unavailable",
+      );
     }
   }
 
