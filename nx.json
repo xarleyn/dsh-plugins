@@ -25,6 +25,9 @@
     "version": {
       "updateDependents": "always"
     },
+    "git": {
+      "tag": false
+    },
     "releaseTag": {
       "pattern": "{projectName}@{version}"
     },

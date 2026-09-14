@@ -148,6 +148,52 @@ describe("version plan gate", () => {
     assert.doesNotMatch(result.output, /@fixture\/dsh-beta/u);
   });
 
+  test("a release wave tag covers every project the wave released", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    commit(root, "feat: change alpha and beta");
+    git(root, "tag", "release/2026-09-14");
+
+    const result = check(root, base);
+
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /3 project\(s\) were released/u);
+  });
+
+  test("a change after the wave tag needs a plan", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    commit(root, "feat: change alpha");
+    git(root, "tag", "release/2026-09-14");
+    editSource(root, "plugins/dsh-alpha", "export const x = 3;\n");
+    commit(root, "feat: change alpha again");
+
+    const result = check(root, base);
+
+    assert.equal(result.status, 1, result.output);
+    assert.match(
+      result.output,
+      /@fixture\/dsh-alpha: 1 file\(s\) since release\/2026-09-14/u,
+    );
+    assert.doesNotMatch(result.output, /@fixture\/dsh-beta/u);
+  });
+
+  test("a wave tag anchors every project, even one a per-project tag left behind", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    commit(root, "feat: change alpha");
+    git(root, "tag", "@fixture/dsh-alpha@1.1.0");
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    commit(root, "feat: change beta");
+    git(root, "tag", "release/2026-09-14");
+
+    const result = check(root, base);
+
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /3 project\(s\) were released/u);
+  });
+
   test("a plan file covers an unreleased change", () => {
     const { root, base } = createFixture();
     editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
