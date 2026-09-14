@@ -46,6 +46,8 @@ export interface QaAccountUserPublic {
   readonly disabled: boolean;
   /** Self-declared identity the QA prompt renders; empty until edited. */
   readonly profile: QaAccountProfile;
+  /** The account's own starter buttons; empty until customized. */
+  readonly starters: QaAccountStarters;
 }
 
 /** One external system the deployment collects a handle for. */
@@ -77,6 +79,29 @@ export interface QaAccountProfileInput {
   readonly fullName: string;
   readonly identities: Readonly<Record<string, string>>;
   readonly instructions: string;
+}
+
+/** One starter button: what it reads and what pressing it sends. */
+export interface QaAccountStarter {
+  readonly label: string;
+  readonly prompt: string;
+}
+
+/**
+ * An account's own starter buttons plus the choice about the deployment's
+ * built-in suggestions. Pure UI preferences: unlike the profile, none of this
+ * reaches the agent prompt.
+ */
+export interface QaAccountStarters {
+  readonly items: readonly QaAccountStarter[];
+  /** Hide the deployment's suggested questions in this account's composer. */
+  readonly hideDefaults: boolean;
+}
+
+/** Full-replace starters write: an absent value clears the stored one. */
+export interface QaAccountStartersInput {
+  readonly items: readonly QaAccountStarter[];
+  readonly hideDefaults: boolean;
 }
 
 /** One successful login/registration: the bearer token plus the user. */
@@ -405,6 +430,10 @@ export interface QaSurfaceConfig {
       /** Character cap on the user's free-form agent guidance. */
       readonly instructionsMaxLength?: number;
     };
+    /** Per-account starter buttons above an empty composer. */
+    readonly starters?: {
+      readonly enabled?: boolean;
+    };
   };
   readonly entry?: {
     /** Inject the root → /qa redirect for non-loopback hostnames. */
@@ -515,6 +544,10 @@ export interface ResolvedQaSurfaceConfig {
       readonly inject: boolean;
       readonly identities: readonly QaAccountIdentityField[];
       readonly instructionsMaxLength: number;
+    };
+    /** Per-account starter buttons above an empty composer. */
+    readonly starters: {
+      readonly enabled: boolean;
     };
     /**
      * Personal Skills. Resolution turns the flag off on any deployment that

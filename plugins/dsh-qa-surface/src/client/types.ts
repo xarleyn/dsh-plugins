@@ -9,6 +9,8 @@ import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/cli
 import type {
   QaAccountProfileInput,
   QaAccountSession,
+  QaAccountStartersInput,
+  QaAccountStarter,
   QaAccountUserPublic,
   QaApprovalDecision,
   QaClaimResult,
@@ -267,7 +269,15 @@ export interface QaAccountsApi {
     token: string,
     input: QaAccountProfileInput,
   ): Promise<RemoteResult<QaAccountUserPublic>>;
+  /** Replace the caller's own starter buttons; the token is the identity. */
+  accountsUpdateStarters(
+    token: string,
+    input: QaAccountStartersInput,
+  ): Promise<RemoteResult<QaAccountUserPublic>>;
 }
+
+/** One button above an empty composer: what it reads and what it sends. */
+export type QaQuickQuestion = QaAccountStarter;
 
 /** Result shape every generated remote call resolves to. */
 export type RemoteResult<Value> =

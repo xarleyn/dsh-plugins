@@ -1,6 +1,7 @@
 import type {
   QaAccountProfileInput,
   QaAccountSession,
+  QaAccountStartersInput,
   QaAccountUserPublic,
   QaOwnershipEntry,
   ResolvedQaSurfaceConfig,
@@ -71,6 +72,10 @@ export function accountsErrorMessage(code: string | null): string {
       return "Проверьте поля профиля: значение слишком длинное или недопустимое.";
     case "profile-disabled":
       return "Профиль отключён на этом сервере.";
+    case "invalid-starters":
+      return "Проверьте подсказки: заполните название и промпт, текст не слишком длинный.";
+    case "starters-disabled":
+      return "Свои подсказки отключены на этом сервере.";
     case "registration-disabled":
       return "Регистрация на этом сервере отключена.";
     case "rate-limited":
@@ -230,6 +235,33 @@ export class QaAccountsController {
       return null;
     } catch (error) {
       console.warn("dsh-qa-surface: profile update failed", error);
+      return accountsErrorMessage(null);
+    }
+  }
+
+  /**
+   * Replace the signed-in user's own starter buttons, mirroring
+   * {@link updateProfile}: refusal copy on rejection, null once the snapshot
+   * carries the stored record, so the composer picks the new buttons up.
+   */
+  async updateStarters(input: QaAccountStartersInput): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsUpdateStarters(
+        token,
+        input,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.publish({ ...this.snapshot, user: result.value });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: starters update failed", error);
       return accountsErrorMessage(null);
     }
   }

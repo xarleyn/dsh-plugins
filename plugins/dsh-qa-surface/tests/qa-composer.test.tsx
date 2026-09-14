@@ -76,11 +76,28 @@ describe("QA composer", () => {
     mount({
       onSend: send,
       placeholder: "Спросите",
-      quickQuestions: ["Что ты умеешь?", "С чего начать?"],
+      quickQuestions: [
+        { label: "Что ты умеешь?", prompt: "Что ты умеешь?" },
+        { label: "С чего начать?", prompt: "С чего начать?" },
+      ],
     });
     fireEvent.click(screen.getByRole("button", { name: "Что ты умеешь?" }));
     await waitFor(() =>
       expect(send).toHaveBeenCalledWith("Что ты умеешь?", []),
+    );
+  });
+
+  it("shows the label but sends the prompt of a starter", async () => {
+    const send = vi.fn(async () => true);
+    mount({
+      onSend: send,
+      quickQuestions: [
+        { label: "Мои задачи", prompt: "Найди мои открытые задачи в Jira" },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Мои задачи" }));
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("Найди мои открытые задачи в Jira", []),
     );
   });
 

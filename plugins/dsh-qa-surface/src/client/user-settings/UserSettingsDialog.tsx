@@ -4,14 +4,17 @@ import type {
   QaAccountIdentityField,
   QaAccountProfile,
   QaAccountProfileInput,
+  QaAccountStarters,
+  QaAccountStartersInput,
 } from "../../types.js";
 import type { QaBoundSkillApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
+import { QaStartersSettingsPage } from "./StartersSettingsPage.js";
 
 /** Sections of the user-facing settings dialog. */
-export type QaSettingsSectionId = "profile" | "general" | "skills";
+export type QaSettingsSectionId = "profile" | "starters" | "general" | "skills";
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -27,6 +30,11 @@ export interface QaUserSettingsDialogProps {
     readonly fields: readonly QaAccountIdentityField[];
     readonly instructionsMaxLength: number;
     readonly onSave: (input: QaAccountProfileInput) => Promise<string | null>;
+  };
+  /** Self-service starter buttons; absent when the deployment turns them off. */
+  readonly starters?: {
+    readonly starters: QaAccountStarters;
+    readonly onSave: (input: QaAccountStartersInput) => Promise<string | null>;
   };
   /** Personal skills; absent when the deployment cannot host them. */
   readonly skills?: QaBoundSkillApi;
@@ -55,12 +63,15 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.profile !== undefined) {
       models.push({ id: "profile", title: "Профиль" });
     }
+    if (props.starters !== undefined) {
+      models.push({ id: "starters", title: "Быстрые сообщения" });
+    }
     models.push({ id: "general", title: "Общие" });
     if (props.skills !== undefined) {
       models.push({ id: "skills", title: "Навыки" });
     }
     return models;
-  }, [props.profile, props.skills]);
+  }, [props.profile, props.starters, props.skills]);
   // A section the deployment withdrew while the dialog was open must not leave
   // an empty panel behind.
   const active = sections.some((entry) => entry.id === section)
@@ -111,6 +122,12 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               identities={props.profile.fields}
               instructionsMaxLength={props.profile.instructionsMaxLength}
               onSave={props.profile.onSave}
+            />
+          ) : null}
+          {active === "starters" && props.starters !== undefined ? (
+            <QaStartersSettingsPage
+              starters={props.starters.starters}
+              onSave={props.starters.onSave}
             />
           ) : null}
           {active === "general" ? (

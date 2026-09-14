@@ -54,9 +54,10 @@ function dropSplitSurrogate(value: string): string {
 
 /**
  * One single-line field: control characters out, whitespace runs collapsed to
- * a space, trimmed to at most `maxLength` characters.
+ * a space, trimmed to at most `maxLength` characters. Shared with the starter
+ * editor, whose button label obeys the same rules.
  */
-function cleanLine(value: unknown, maxLength: number): string {
+export function cleanLine(value: unknown, maxLength: number): string {
   if (typeof value !== "string") return "";
   const cleaned = stripControlCharacters(value, false)
     .replace(/\s+/gu, " ")
@@ -67,9 +68,10 @@ function cleanLine(value: unknown, maxLength: number): string {
 /**
  * One multi-line field: line feeds survive (three or more collapse to a blank
  * line), every other control character is dropped, and the result is trimmed
- * to at most `maxLength` characters.
+ * to at most `maxLength` characters. Shared with the starter editor, whose
+ * sent prompt obeys the same rules.
  */
-function cleanBlock(value: unknown, maxLength: number): string {
+export function cleanBlock(value: unknown, maxLength: number): string {
   if (typeof value !== "string") return "";
   const cleaned = stripControlCharacters(value.replace(/\r\n?/gu, "\n"), true)
     .replace(/\n{3,}/gu, "\n\n")

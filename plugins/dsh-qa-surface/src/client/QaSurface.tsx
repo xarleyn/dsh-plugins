@@ -16,10 +16,13 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
   QaAccountProfileInput,
+  QaAccountStartersInput,
   QaApprovalDecision,
   QaAttachmentDraft,
   QaQuestionAnswerItem,
 } from "../types.js";
+import { effectiveQuickQuestions } from "../starters.js";
+import type { QaQuickQuestion } from "./types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
 import type {
@@ -84,7 +87,7 @@ import { qaStorageNamespace } from "../shared/session-key.js";
 const noopSubscribe = () => () => undefined;
 
 /** Stable empty stand-in so memoized children see one identity, not a fresh []. */
-const NO_QUESTIONS: readonly string[] = Object.freeze([]);
+const NO_QUESTIONS: readonly QaQuickQuestion[] = Object.freeze([]);
 
 const ACCOUNTS_CHECKING_SNAPSHOT: QaAccountsSnapshot = { stage: "checking" };
 const noopAccountsSnapshot = (): QaAccountsSnapshot =>
@@ -516,6 +519,19 @@ export function QaSurface(props: QaSurfaceProps) {
     () => countChatAttachments(fileGroups),
     [fileGroups],
   );
+  // Buttons above an empty composer: the account's own starters, then the
+  // deployment's suggestions unless the account hid them. Anonymous visitors
+  // (and deployments with the feature off) see the deployment list alone.
+  const quickQuestions = useMemo(
+    () =>
+      effectiveQuickQuestions(
+        config.accounts.starters.enabled && accountsSnapshot.stage === "authed"
+          ? accountsSnapshot.user.starters
+          : undefined,
+        config.suggestedQuestions,
+      ),
+    [config, accountsSnapshot],
+  );
   // Admins group the sidebar by chat owner; everyone else sees the flat list.
   const ownerNames = useMemo(
     () =>
@@ -559,12 +575,20 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateProfile(input),
         }
       : undefined;
+    const starters = config.accounts.starters.enabled
+      ? {
+          starters: accountsSnapshot.user.starters,
+          onSave: (input: QaAccountStartersInput) =>
+            accounts.updateStarters(input),
+        }
+      : undefined;
     const skills =
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    if (profile === undefined && skills === undefined) return undefined;
-    return { profile, skills };
+    if (profile === undefined && starters === undefined && skills === undefined)
+      return undefined;
+    return { profile, starters, skills };
   }, [accounts, accountsSnapshot, config, boundSkillApi]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
@@ -712,6 +736,9 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.profile === undefined
             ? {}
             : { profile: settingsDialog.profile })}
+          {...(settingsDialog.starters === undefined
+            ? {}
+            : { starters: settingsDialog.starters })}
           {...(settingsDialog.skills === undefined
             ? {}
             : { skills: settingsDialog.skills })}
@@ -924,9 +951,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 <QaComposer
                   key={state.sessionId ?? "draft"}
                   placeholder={config.branding.placeholder}
-                  quickQuestions={
-                    empty ? config.suggestedQuestions : NO_QUESTIONS
-                  }
+                  quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
                   canSend={state.canSend}
                   canStop={state.canStop}
                   running={state.phase === "running"}

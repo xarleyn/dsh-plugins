@@ -44,6 +44,7 @@ function session(token: string): {
           instructions: "",
           updatedAt: null,
         },
+        starters: { items: [], hideDefaults: false },
       },
     },
   };
@@ -77,6 +78,10 @@ function remote(
         ...session("t-login").value.user,
         profile: { ...input, updatedAt: "2026-09-13T00:00:00.000Z" },
       },
+    })),
+    accountsUpdateStarters: vi.fn(async (_token, input) => ({
+      ok: true as const,
+      value: { ...session("t-login").value.user, starters: input },
     })),
     ...overrides,
   } as QaAccountsApi;
@@ -446,5 +451,45 @@ describe("QA accounts controller", () => {
       }),
     ).resolves.toContain("Не удалось");
     expect(api.accountsUpdateProfile).not.toHaveBeenCalled();
+  });
+
+  it("stores the signed-in user's starters and reports refusals inline", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    const input = {
+      items: [{ label: "Мои задачи", prompt: "Найди мои задачи в Jira" }],
+      hideDefaults: true,
+    };
+    expect(await accounts.updateStarters(input)).toBeNull();
+    expect(api.accountsUpdateStarters).toHaveBeenCalledWith("t-login", input);
+    // The snapshot carries the stored starters, so the composer updates.
+    expect(accounts.getSnapshot()).toMatchObject({
+      stage: "authed",
+      user: { starters: input },
+    });
+
+    const refused = controller(
+      remote({
+        accountsUpdateStarters: vi.fn(async () => ({
+          ok: false as const,
+          error: new Error("nope (reason: invalid-starters)"),
+        })),
+      }),
+    );
+    await refused.start();
+    await refused.login("a@b.co", "password-1");
+    expect(await refused.updateStarters(input)).toContain("подсказки");
+  });
+
+  it("refuses a starters write while anonymous", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await expect(
+      accounts.updateStarters({ items: [], hideDefaults: false }),
+    ).resolves.toContain("Не удалось");
+    expect(api.accountsUpdateStarters).not.toHaveBeenCalled();
   });
 });

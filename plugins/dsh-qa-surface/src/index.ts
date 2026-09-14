@@ -51,6 +51,7 @@ import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountProfileInput,
   QaAccountSession,
+  QaAccountStartersInput,
   QaAccountUserPublic,
   QaApprovalDecision,
   QaClaimResult,
@@ -397,6 +398,19 @@ export class QaSurface extends TypertRemoteService {
     input: QaAccountProfileInput,
   ): QaAccountUserPublic {
     return this.accountRemotes.updateProfile(token, input);
+  }
+
+  /**
+   * Replace the caller's own starter buttons. Same self-service contract as
+   * the profile write: the token names the only editable account, and the
+   * deployment's limits are enforced in the store before anything is written.
+   */
+  @Remote("accountsUpdateStarters")
+  accountsUpdateStarters(
+    token: string,
+    input: QaAccountStartersInput,
+  ): QaAccountUserPublic {
+    return this.accountRemotes.updateStarters(token, input);
   }
 
   /**
