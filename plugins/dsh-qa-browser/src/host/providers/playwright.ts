@@ -30,6 +30,12 @@ import type {
 type PlaywrightModule = typeof import("playwright");
 type PlaywrightLoader = () => Promise<PlaywrightModule>;
 
+interface PolicyBlockState {
+  readonly byPage: WeakMap<Page, unknown>;
+  sequence: number;
+  lastError?: unknown;
+}
+
 function systemBrowserCandidates(): readonly string[] {
   if (process.platform === "win32") {
     const roots = [
@@ -63,6 +69,10 @@ function launchCandidates(
   chromium: BrowserType,
   options: BrowserProviderStartOptions,
 ): readonly LaunchOptions[] {
+  const common = {
+    headless: options.headless,
+    chromiumSandbox: options.chromiumSandbox,
+  } satisfies LaunchOptions;
   if (options.executablePath !== null) {
     if (!existsSync(options.executablePath)) {
       throw new QaBrowserError(
@@ -71,34 +81,34 @@ function launchCandidates(
       );
     }
     return [
-      { executablePath: options.executablePath, headless: options.headless },
+      { executablePath: options.executablePath, ...common },
     ];
   }
 
   const candidates: LaunchOptions[] = [];
   const discovered = chromium.executablePath();
   if (existsSync(discovered)) {
-    candidates.push({ executablePath: discovered, headless: options.headless });
+    candidates.push({ executablePath: discovered, ...common });
   }
   if (options.browserChannel !== "chromium") {
     candidates.push({
       channel: options.browserChannel,
-      headless: options.headless,
+      ...common,
     });
   }
   for (const executablePath of systemBrowserCandidates()) {
     if (existsSync(executablePath)) {
-      candidates.push({ executablePath, headless: options.headless });
+      candidates.push({ executablePath, ...common });
     }
   }
-  if (candidates.length === 0) candidates.push({ headless: options.headless });
+  if (candidates.length === 0) candidates.push(common);
   return candidates;
 }
 
 class PlaywrightPageHandle implements BrowserPageHandle {
   constructor(
     private readonly page: Page,
-    private readonly blockedRequests: WeakMap<Page, unknown>,
+    private readonly blockedRequests: PolicyBlockState,
   ) {}
 
   url(): string {
@@ -112,15 +122,26 @@ class PlaywrightPageHandle implements BrowserPageHandle {
   async navigate(
     request: Parameters<BrowserPageHandle["navigate"]>[0],
   ): Promise<ProviderNavigationResult> {
-    this.blockedRequests.delete(this.page);
+    this.blockedRequests.byPage.delete(this.page);
+    const blockSequence = this.blockedRequests.sequence;
     try {
       await this.page.goto(request.url, {
         waitUntil: request.waitUntil ?? "domcontentloaded",
       });
     } catch (error) {
-      const policyError = this.blockedRequests.get(this.page);
-      this.blockedRequests.delete(this.page);
+      const policyError = this.blockedRequests.byPage.get(this.page);
+      this.blockedRequests.byPage.delete(this.page);
       if (policyError !== undefined) throw policyError;
+      if (this.blockedRequests.sequence !== blockSequence) {
+        throw this.blockedRequests.lastError;
+      }
+      if (/ERR_BLOCKED_BY_CLIENT/iu.test(browserErrorMessage(error))) {
+        throw new QaBrowserError(
+          "BROWSER_REDIRECT_BLOCKED",
+          "Browser navigation was stopped because a redirect or subrequest violated the network policy.",
+          { cause: error },
+        );
+      }
       throw error;
     }
     return { url: this.page.url(), title: await this.page.title() };
@@ -503,7 +524,7 @@ class PlaywrightContextHandle implements BrowserContextHandle {
 
   constructor(
     private readonly context: BrowserContext,
-    private readonly blockedRequests: WeakMap<Page, unknown>,
+    private readonly blockedRequests: PolicyBlockState,
   ) {}
 
   async newPage(): Promise<BrowserPageHandle> {
@@ -596,16 +617,30 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     });
     context.setDefaultTimeout(options.actionTimeoutMs);
     context.setDefaultNavigationTimeout(options.navigationTimeoutMs);
-    const blockedRequests = new WeakMap<Page, unknown>();
+    const blockedRequests: PolicyBlockState = {
+      byPage: new WeakMap<Page, unknown>(),
+      sequence: 0,
+    };
     await context.route("**/*", async (route) => {
       try {
         await options.validateRequest(route.request().url());
         await route.continue();
       } catch (error) {
+        blockedRequests.sequence += 1;
+        blockedRequests.lastError = error;
         try {
-          blockedRequests.set(route.request().frame().page(), error);
+          blockedRequests.byPage.set(route.request().frame().page(), error);
         } catch {
           // A service-worker request has no frame. It is still aborted below.
+        }
+        if (route.request().isNavigationRequest()) {
+          // Redirect requests can race with frame replacement. Record the
+          // policy error on every page in this isolated session context so the
+          // active navigation reports the stable security error, not only
+          // Playwright's generic net::ERR_FAILED wrapper.
+          for (const page of context.pages()) {
+            blockedRequests.byPage.set(page, error);
+          }
         }
         await route.abort("blockedbyclient");
       }

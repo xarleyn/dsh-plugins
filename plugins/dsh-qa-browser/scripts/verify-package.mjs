@@ -46,5 +46,6 @@ assert.deepEqual(built.BROWSER_CORE_TOOL_NAMES, [
   "browser_viewport",
   "browser_history",
 ]);
+assert.deepEqual(built.BROWSER_VISION_TOOL_NAMES, ["browser_screenshot"]);
 
 console.log("verify-package: all gates passed");

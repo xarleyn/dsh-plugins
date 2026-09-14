@@ -4,7 +4,7 @@ import { QaBrowserConfigSchema } from "./config.js";
 import { QaBrowserService } from "./host/service.js";
 
 export const name = "dsh-qa-browser";
-export const inject = ["agents", "tools"] as const;
+export const inject = ["agents", "attachments", "tools"] as const;
 export const Config = QaBrowserConfigSchema;
 
 declare module "@deepseek-ai/cordis" {
@@ -45,7 +45,9 @@ export {
 } from "./host/session-manager.js";
 export {
   BROWSER_CORE_TOOL_NAMES,
+  BROWSER_VISION_TOOL_NAMES,
   createBrowserCoreTools,
+  createBrowserVisionTools,
 } from "./host/tools/index.js";
 export {
   QaBrowserService,

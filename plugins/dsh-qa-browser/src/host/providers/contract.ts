@@ -12,6 +12,7 @@ export interface BrowserProviderStartOptions {
   readonly executablePath: string | null;
   readonly browserChannel: string;
   readonly headless: boolean;
+  readonly chromiumSandbox: boolean;
 }
 
 export interface BrowserContextOptions {

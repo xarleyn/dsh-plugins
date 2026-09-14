@@ -1,4 +1,5 @@
 import { defineTool, type ToolDefinition } from "@deepseek-ai/dsh-tools";
+import type { ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
 
 import type { BrowserFormValue } from "../../types.js";
 import type { QaBrowserService } from "../service.js";
@@ -470,6 +471,8 @@ export const BROWSER_CORE_TOOL_NAMES = [
   "browser_history",
 ] as const;
 
+export const BROWSER_VISION_TOOL_NAMES = ["browser_screenshot"] as const;
+
 export function createBrowserCoreTools(
   service: QaBrowserService,
 ): readonly ToolDefinition[] {
@@ -487,5 +490,53 @@ export function createBrowserCoreTools(
     tabsTool(service),
     viewportTool(service),
     historyTool(service),
+  ];
+}
+
+export function createBrowserVisionTools(
+  service: QaBrowserService,
+): readonly ToolDefinition[] {
+  return [
+    defineTool({
+      name: "browser_screenshot",
+      description:
+        "Capture the selected Browser tab as a durable native DSH image attachment. Use semantic refs first and screenshots when visual inspection is needed.",
+      parameters: { tabId: TAB_PARAMETER },
+      output: {
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            sessionId: { type: "string", required: true },
+            tabId: { type: "string", required: true },
+            attachment: {
+              type: "object",
+              required: true,
+              additionalProperties: true,
+            },
+          },
+        },
+        render: (_args, value) => [
+          {
+            type: "text",
+            text: `Browser screenshot captured for ${value.tabId}.`,
+          },
+          {
+            type: "image",
+            attachment: value.attachment as unknown as ImageAttachmentRef,
+          },
+        ],
+      },
+      async execute(args, exec) {
+        const sessionId = toolSessionId(exec);
+        const tabId = await selectedTabId(service, sessionId, args.tabId);
+        const attachment = await service.screenshotArtifact(sessionId, tabId);
+        return {
+          sessionId,
+          tabId,
+          attachment: attachment as unknown as Record<string, never>,
+        };
+      },
+    }),
   ];
 }
