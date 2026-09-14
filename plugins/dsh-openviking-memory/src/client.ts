@@ -113,9 +113,13 @@ export class OpenVikingClient {
   }
 
   headers(options: FetchJSONOptions = {}): Record<string, string> {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (this.config.apiKey) headers.Authorization = `Bearer ${this.config.apiKey}`;
-    if (this.config.account) headers["X-OpenViking-Account"] = this.config.account;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (this.config.apiKey)
+      headers.Authorization = `Bearer ${this.config.apiKey}`;
+    if (this.config.account)
+      headers["X-OpenViking-Account"] = this.config.account;
     if (this.config.user) headers["X-OpenViking-User"] = this.config.user;
     const actorPeerId = options.actorPeerId ?? this.config.peerId;
     if (actorPeerId) headers["X-OpenViking-Actor-Peer"] = actorPeerId;
@@ -144,19 +148,20 @@ export class OpenVikingClient {
         },
         signal: controller.signal,
       });
-      const body = (await response.json().catch(() => ({}))) as Envelope | null | undefined;
-      const traceId = (
-        body?.result?.trace_id
-        || body?.error?.trace_id
-        || body?.trace_id
-        || undefined
-      ) as string | undefined;
+      const body = (await response.json().catch(() => ({}))) as
+        Envelope | null | undefined;
+      const traceId = (body?.result?.trace_id ||
+        body?.error?.trace_id ||
+        body?.trace_id ||
+        undefined) as string | undefined;
       if (!response.ok || body?.status === "error") {
         return {
           ok: false,
           result: null,
           status: response.status,
-          error: (body?.error || { message: `HTTP ${response.status}` }) as OpenVikingError,
+          error: (body?.error || {
+            message: `HTTP ${response.status}`,
+          }) as OpenVikingError,
           traceId,
         };
       }
@@ -171,7 +176,9 @@ export class OpenVikingClient {
         ok: false,
         result: null,
         status: 0,
-        error: { message: error instanceof Error ? error.message : String(error) },
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
       };
     } finally {
       clearTimeout(timer);
@@ -188,30 +195,51 @@ export class OpenVikingClient {
     return response;
   }
 
-  async ensureSession(sessionId: string, actorPeerId?: string): Promise<boolean> {
+  async ensureSession(
+    sessionId: string,
+    actorPeerId?: string,
+  ): Promise<boolean> {
     const response = await this.ensureSessionResult(sessionId, actorPeerId);
-    return response.ok
-      || (response.status === 409 && response.error?.code === "ALREADY_EXISTS");
+    return (
+      response.ok ||
+      (response.status === 409 && response.error?.code === "ALREADY_EXISTS")
+    );
   }
 
-  async ensureSessionResult(sessionId: string, actorPeerId?: string): Promise<OpenVikingResult> {
-    const response = await this.fetchJSON("/api/v1/sessions", {
-      method: "POST",
-      body: JSON.stringify({ session_id: sessionId }),
-    }, { actorPeerId });
+  async ensureSessionResult(
+    sessionId: string,
+    actorPeerId?: string,
+  ): Promise<OpenVikingResult> {
+    const response = await this.fetchJSON(
+      "/api/v1/sessions",
+      {
+        method: "POST",
+        body: JSON.stringify({ session_id: sessionId }),
+      },
+      { actorPeerId },
+    );
     return response;
   }
 
-  async getSession(sessionId: string, actorPeerId?: string): Promise<OpenVikingSessionMetadata | null> {
+  async getSession(
+    sessionId: string,
+    actorPeerId?: string,
+  ): Promise<OpenVikingSessionMetadata | null> {
     const response = await this.fetchJSON(
       `/api/v1/sessions/${encodeURIComponent(sessionId)}`,
       {},
       { timeoutMs: 5000, actorPeerId },
     );
-    return response.ok ? (response.result as OpenVikingSessionMetadata | null) : null;
+    return response.ok
+      ? (response.result as OpenVikingSessionMetadata | null)
+      : null;
   }
 
-  async getSessionArchive(sessionId: string, archiveId: string, actorPeerId?: string): Promise<unknown> {
+  async getSessionArchive(
+    sessionId: string,
+    archiveId: string,
+    actorPeerId?: string,
+  ): Promise<unknown> {
     const response = await this.fetchJSON(
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/archives/${encodeURIComponent(archiveId)}`,
       {},
@@ -220,7 +248,11 @@ export class OpenVikingClient {
     return response.ok ? response.result : null;
   }
 
-  async addMessage(sessionId: string, payload: unknown, actorPeerId?: string): Promise<OpenVikingResult> {
+  async addMessage(
+    sessionId: string,
+    payload: unknown,
+    actorPeerId?: string,
+  ): Promise<OpenVikingResult> {
     return this.fetchJSON(
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/messages`,
       {
@@ -240,21 +272,36 @@ export class OpenVikingClient {
       `/api/v1/sessions/${encodeURIComponent(sessionId)}/commit`,
       {
         method: "POST",
-        body: JSON.stringify({ keep_recent_count: this.config.commitKeepRecentCount }),
+        body: JSON.stringify({
+          keep_recent_count: this.config.commitKeepRecentCount,
+        }),
       },
       { timeoutMs: options.timeoutMs ?? 30000, actorPeerId },
     );
   }
 
-  async find(query: string, options: FindOptions = {}): Promise<OpenVikingFindEntry[]> {
-    const body: { query: string; target_uri?: string; limit?: number; score_threshold?: number } = { query };
+  async find(
+    query: string,
+    options: FindOptions = {},
+  ): Promise<OpenVikingFindEntry[]> {
+    const body: {
+      query: string;
+      target_uri?: string;
+      limit?: number;
+      score_threshold?: number;
+    } = { query };
     if (options.targetUri) body.target_uri = options.targetUri;
     if (options.limit) body.limit = options.limit;
-    if (options.scoreThreshold !== undefined) body.score_threshold = options.scoreThreshold;
-    const response = await this.fetchJSON("/api/v1/search/find", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }, { actorPeerId: options.actorPeerId });
+    if (options.scoreThreshold !== undefined)
+      body.score_threshold = options.scoreThreshold;
+    const response = await this.fetchJSON(
+      "/api/v1/search/find",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+      { actorPeerId: options.actorPeerId },
+    );
     if (!response.ok || !response.result) return [];
 
     const results: OpenVikingFindEntry[] = [];
@@ -264,8 +311,13 @@ export class OpenVikingClient {
       for (const entry of entries) {
         results.push({
           uri: entry?.uri || "",
-          contextType: entry?.context_type
-            || (bucket === "memories" ? "memory" : bucket === "skills" ? "skill" : "resource"),
+          contextType:
+            entry?.context_type ||
+            (bucket === "memories"
+              ? "memory"
+              : bucket === "skills"
+                ? "skill"
+                : "resource"),
           score: Number(entry?.score || 0),
           abstract: entry?.abstract || "",
           overview: entry?.overview || null,
@@ -275,12 +327,17 @@ export class OpenVikingClient {
     return results;
   }
 
-  async read(uri: string, level: string, actorPeerId?: string): Promise<unknown> {
-    const endpoint = level === "abstract"
-      ? "abstract"
-      : level === "overview"
-        ? "overview"
-        : "read";
+  async read(
+    uri: string,
+    level: string,
+    actorPeerId?: string,
+  ): Promise<unknown> {
+    const endpoint =
+      level === "abstract"
+        ? "abstract"
+        : level === "overview"
+          ? "overview"
+          : "read";
     const response = await this.fetchJSON(
       `/api/v1/content/${endpoint}?uri=${encodeURIComponent(uri)}`,
       {},
@@ -307,7 +364,11 @@ export class OpenVikingClient {
     return response.ok ? response.result : null;
   }
 
-  async forget(uri: string, recursive: boolean = false, actorPeerId?: string): Promise<boolean> {
+  async forget(
+    uri: string,
+    recursive: boolean = false,
+    actorPeerId?: string,
+  ): Promise<boolean> {
     const response = await this.fetchJSON(
       `/api/v1/fs?uri=${encodeURIComponent(uri)}&recursive=${recursive}`,
       { method: "DELETE" },
@@ -316,13 +377,21 @@ export class OpenVikingClient {
     return response.ok;
   }
 
-  async addResource(path: string, reason: string, actorPeerId?: string): Promise<unknown> {
+  async addResource(
+    path: string,
+    reason: string,
+    actorPeerId?: string,
+  ): Promise<unknown> {
     const body: { path: string; reason?: string } = { path };
     if (reason) body.reason = reason;
-    const response = await this.fetchJSON("/api/v1/resources", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }, { timeoutMs: 30000, actorPeerId });
+    const response = await this.fetchJSON(
+      "/api/v1/resources",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+      { timeoutMs: 30000, actorPeerId },
+    );
     return response.ok ? response.result : null;
   }
 }

@@ -61,9 +61,8 @@ export function captureEvent(
 
   const message = eventMessage(event);
   if (!message) return null;
-  const toolCallId = event.type === "tool/result"
-    ? String(toolCallIdOf(message) || "")
-    : "";
+  const toolCallId =
+    event.type === "tool/result" ? String(toolCallIdOf(message) || "") : "";
   try {
     return captureMessage(event, message, config, toolNames);
   } finally {
@@ -74,7 +73,10 @@ export function captureEvent(
 type MessageLike = {
   readonly role?: unknown;
   readonly content?: unknown;
-  readonly source?: { readonly kind?: unknown; readonly callId?: unknown } & Record<string, unknown>;
+  readonly source?: {
+    readonly kind?: unknown;
+    readonly callId?: unknown;
+  } & Record<string, unknown>;
   readonly [key: string]: unknown;
 };
 
@@ -106,19 +108,20 @@ function captureMessage(
     toolNameById,
   });
   const decision = shouldCaptureText(rawText, role, config);
-  const structuredParts = parts.filter(part => part?.type !== "text");
+  const structuredParts = parts.filter((part) => part?.type !== "text");
   if (!decision.shouldCapture && structuredParts.length === 0) return null;
 
-  const hasTextPart = parts.some(part => part?.type === "text");
+  const hasTextPart = parts.some((part) => part?.type === "text");
   const bodyParts: CapturedPart[] = [
     ...(hasTextPart && decision.shouldCapture && decision.text
       ? [{ type: "text" as const, text: decision.text }]
       : []),
     ...structuredParts,
   ];
-  const payload: CapturePayload = bodyParts.length > 0
-    ? { role, parts: bodyParts }
-    : { role, content: decision.text };
+  const payload: CapturePayload =
+    bodyParts.length > 0
+      ? { role, parts: bodyParts }
+      : { role, content: decision.text };
   const createdAt = eventCreatedAt(event);
   if (createdAt) payload.created_at = createdAt;
   if (config.peerId) payload.peer_id = config.peerId;
@@ -130,13 +133,18 @@ function captureMessage(
  * step's claimed batch except this plugin's own injected blocks, which would
  * otherwise make memory retrieve itself.
  */
-export function promptText(messages: readonly UserMessage[] | null | undefined): string {
+export function promptText(
+  messages: readonly UserMessage[] | null | undefined,
+): string {
   return (messages || [])
-    .filter(message => !(
-      message?.source?.kind === "plugin"
-      && message.source.plugin === OPENVIKING_PLUGIN_SOURCE
-    ))
-    .map(message => extractTextFromPayload(message))
+    .filter(
+      (message) =>
+        !(
+          message?.source?.kind === "plugin" &&
+          message.source.plugin === OPENVIKING_PLUGIN_SOURCE
+        ),
+    )
+    .map((message) => extractTextFromPayload(message))
     .filter(Boolean)
     .join("\n\n")
     .trim();

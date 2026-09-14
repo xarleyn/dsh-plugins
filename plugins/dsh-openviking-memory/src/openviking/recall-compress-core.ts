@@ -52,7 +52,11 @@ type RunCompressor = (prompt: string) => Promise<unknown>;
 // bullet-length contract. Hard per-bullet limits pin the digest to headline
 // density; leaving it unconstrained lets small models rewrite long URIs into dead
 // links, which the URI repair below cleans up.
-export function buildRecallCompressionPrompt({ query, rendered, maxBullets = 6 }: {
+export function buildRecallCompressionPrompt({
+  query,
+  rendered,
+  maxBullets = 6,
+}: {
   query: unknown;
   rendered: unknown;
   maxBullets?: number;
@@ -116,10 +120,15 @@ function nearestUri(candidate: string, validUris: readonly string[]): string {
  * set the server actually returned, and drop bullets whose citation cannot be
  * recovered so the digest never carries a dead link.
  */
-export function repairDigestUris(digest: unknown, validUris: readonly unknown[] = []): string {
+export function repairDigestUris(
+  digest: unknown,
+  validUris: readonly unknown[] = [],
+): string {
   const text = String(digest || "");
   if (!text) return "";
-  const valid = validUris.map((uri) => String(uri || "").trim()).filter(Boolean);
+  const valid = validUris
+    .map((uri) => String(uri || "").trim())
+    .filter(Boolean);
   if (!valid.length) return text;
   const validSet = new Set(valid);
 
@@ -136,7 +145,11 @@ export function repairDigestUris(digest: unknown, validUris: readonly unknown[] 
     let dropped = false;
     const repaired = tokenized.replace(/viking:\/\/[^\s<>"')\]]+/g, (uri) => {
       let decoded = uri;
-      try { decoded = decodeURI(uri); } catch { /* keep the original candidate */ }
+      try {
+        decoded = decodeURI(uri);
+      } catch {
+        /* keep the original candidate */
+      }
       if (validSet.has(decoded)) return decoded;
       const nearest = nearestUri(decoded, valid);
       if (nearest) return nearest;
@@ -148,27 +161,50 @@ export function repairDigestUris(digest: unknown, validUris: readonly unknown[] 
   return lines.join("\n").trim();
 }
 
-export function normalizeCompressedContext(raw: unknown, maxChars: number = 4000, maxBullets: number = 6): string | null {
+export function normalizeCompressedContext(
+  raw: unknown,
+  maxChars: number = 4000,
+  maxBullets: number = 6,
+): string | null {
   const text = String(raw || "").trim();
   if (!text) return null;
   if (text.toUpperCase() === NO_RELEVANT_MEMORY) return "";
-  const bullets = text.split(/\r?\n/)
+  const bullets = text
+    .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => /^[-*]\s+/.test(line) && line.includes("viking://"))
     .slice(0, Math.max(1, maxBullets))
-    .map((line) => `- ${line.replace(/^[-*]\s+/, "").slice(0, 500).trim()}`);
+    .map(
+      (line) =>
+        `- ${line
+          .replace(/^[-*]\s+/, "")
+          .slice(0, 500)
+          .trim()}`,
+    );
   if (!bullets.length) return null;
-  return (`${DIGEST_HEADER}\n${bullets.join("\n")}`).slice(0, Math.max(100, maxChars));
+  return `${DIGEST_HEADER}\n${bullets.join("\n")}`.slice(
+    0,
+    Math.max(100, maxChars),
+  );
 }
 
-export function recallDigestCacheKey({ query = "", rendered = "", entries = [], maxInputChars = 18000, maxBullets = 6 }: {
+export function recallDigestCacheKey({
+  query = "",
+  rendered = "",
+  entries = [],
+  maxInputChars = 18000,
+  maxBullets = 6,
+}: {
   query?: unknown;
   rendered?: unknown;
   entries?: readonly RecallCompressEntry[];
   maxInputChars?: number;
   maxBullets?: number;
 } = {}): string {
-  const uris = entries.map((entry) => String(entry?.uri || "").trim()).filter(Boolean).sort();
+  const uris = entries
+    .map((entry) => String(entry?.uri || "").trim())
+    .filter(Boolean)
+    .sort();
   const source = JSON.stringify({
     version: 2,
     query: String(query),
@@ -182,20 +218,38 @@ export function recallDigestCacheKey({ query = "", rendered = "", entries = [], 
 
 async function readCache(path: string): Promise<RecallDigestCache | null> {
   if (!path) return null;
-  try { return JSON.parse(await readFile(path, "utf8")) as RecallDigestCache; } catch { return null; }
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as RecallDigestCache;
+  } catch {
+    return null;
+  }
 }
 
-async function writeCache(path: string, value: RecallDigestCache): Promise<void> {
+async function writeCache(
+  path: string,
+  value: RecallDigestCache,
+): Promise<void> {
   if (!path) return;
   try {
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.tmp`;
     await writeFile(tmp, JSON.stringify(value));
     await rename(tmp, path);
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
-export async function compressRecallContext({ query, rendered, shortContext = rendered, entries = [], cfg = {}, runCompressor, cachePath = "", now = 0 }: {
+export async function compressRecallContext({
+  query,
+  rendered,
+  shortContext = rendered,
+  entries = [],
+  cfg = {},
+  runCompressor,
+  cachePath = "",
+  now = 0,
+}: {
   query: unknown;
   rendered?: unknown;
   shortContext?: unknown;
@@ -209,10 +263,16 @@ export async function compressRecallContext({ query, rendered, shortContext = re
   if (!input) return { status: COMPRESS_EMPTY, context: "" };
   const minChars = Math.max(0, Number(cfg.recallCompressMinInputChars ?? 1500));
   if (input.length < minChars) {
-    return { status: COMPRESS_OK, context: String(shortContext ?? input).trim() };
+    return {
+      status: COMPRESS_OK,
+      context: String(shortContext ?? input).trim(),
+    };
   }
 
-  const maxInputChars = Math.max(1000, Number(cfg.recallCompressMaxInputChars || 18000));
+  const maxInputChars = Math.max(
+    1000,
+    Number(cfg.recallCompressMaxInputChars || 18000),
+  );
   const maxBullets = Math.max(1, Number(cfg.recallCompressMaxBullets || 6));
   const key = recallDigestCacheKey({
     query,
@@ -238,9 +298,10 @@ export async function compressRecallContext({ query, rendered, shortContext = re
   if (!normalized) return { status: COMPRESS_EMPTY, context: "" };
 
   const validUris = entries.map((entry) => entry?.uri).filter(Boolean);
-  const repaired = repairDigestUris(normalized, validUris.length
-    ? validUris
-    : (input.match(/viking:\/\/[^\s<>"']+/g) || []));
+  const repaired = repairDigestUris(
+    normalized,
+    validUris.length ? validUris : input.match(/viking:\/\/[^\s<>"']+/g) || [],
+  );
   const digest = normalizeCompressedContext(repaired, 4000, maxBullets);
   if (!digest) return { status: COMPRESS_FAILED, context: "" };
 

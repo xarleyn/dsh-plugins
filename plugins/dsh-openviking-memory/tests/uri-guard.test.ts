@@ -13,14 +13,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { guardVikingUri, type VikingUriDecision } from "../src/uri-guard.js";
 import { createHarness, emit, type Harness } from "./helpers/harness.js";
 
-const FIRST_LINE = "viking:// URIs are OpenViking virtual paths, not local filesystem paths.";
+const FIRST_LINE =
+  "viking:// URIs are OpenViking virtual paths, not local filesystem paths.";
 
 /** A URI in the shape the model would produce for a stored memory. */
 const MEMORY_URI = "viking://user/default/memories/profile.md";
 
 /** Narrow a decision to its denial variant, failing loudly on an allow. */
-function requireDeny(decision: VikingUriDecision): { readonly kind: "deny"; readonly reason: string } {
-  if (decision.kind !== "deny") throw new Error(`expected a denial, got ${decision.kind}`);
+function requireDeny(decision: VikingUriDecision): {
+  readonly kind: "deny";
+  readonly reason: string;
+} {
+  if (decision.kind !== "deny")
+    throw new Error(`expected a denial, got ${decision.kind}`);
   return decision;
 }
 
@@ -28,7 +33,10 @@ function requireDeny(decision: VikingUriDecision): { readonly kind: "deny"; read
  * A `next` spy that returns one sentinel decision object, so a delegation can
  * be asserted with `toBe` — "the identical value came back", not "an equal one".
  */
-function spyNext(): { readonly sentinel: VikingUriDecision; readonly next: () => Promise<VikingUriDecision> } {
+function spyNext(): {
+  readonly sentinel: VikingUriDecision;
+  readonly next: () => Promise<VikingUriDecision>;
+} {
   const sentinel: VikingUriDecision = { kind: "allow" };
   const next = vi.fn(async (): Promise<VikingUriDecision> => sentinel);
   return { sentinel, next };
@@ -41,12 +49,36 @@ describe("guarded tool names", () => {
     /** The exact tail of the `Use … instead.` line. */
     readonly tool: string;
   }[] = [
-    { name: "read", args: { file_path: MEMORY_URI }, tool: "mcp__openviking__read" },
-    { name: "glob", args: { path: "viking://user/default/memories" }, tool: "mcp__openviking__list" },
-    { name: "grep", args: { path: "viking://user/default/memories", pattern: "profile" }, tool: "mcp__openviking__grep" },
-    { name: "bash", args: { command: `cat ${MEMORY_URI}` }, tool: "mcp__openviking__read or mcp__openviking__search" },
-    { name: "edit", args: { file_path: MEMORY_URI }, tool: "mcp__openviking__edit" },
-    { name: "write", args: { file_path: MEMORY_URI }, tool: "mcp__openviking__write" },
+    {
+      name: "read",
+      args: { file_path: MEMORY_URI },
+      tool: "mcp__openviking__read",
+    },
+    {
+      name: "glob",
+      args: { path: "viking://user/default/memories" },
+      tool: "mcp__openviking__list",
+    },
+    {
+      name: "grep",
+      args: { path: "viking://user/default/memories", pattern: "profile" },
+      tool: "mcp__openviking__grep",
+    },
+    {
+      name: "bash",
+      args: { command: `cat ${MEMORY_URI}` },
+      tool: "mcp__openviking__read or mcp__openviking__search",
+    },
+    {
+      name: "edit",
+      args: { file_path: MEMORY_URI },
+      tool: "mcp__openviking__edit",
+    },
+    {
+      name: "write",
+      args: { file_path: MEMORY_URI },
+      tool: "mcp__openviking__write",
+    },
     {
       name: "str_replace_editor",
       args: { command: "view", path: MEMORY_URI },
@@ -54,35 +86,64 @@ describe("guarded tool names", () => {
     },
   ];
 
-  it.each(DENIED)("denies $name and points at $tool", async ({ name, args, tool }) => {
-    const { next } = spyNext();
+  it.each(DENIED)(
+    "denies $name and points at $tool",
+    async ({ name, args, tool }) => {
+      const { next } = spyNext();
 
-    const denial = requireDeny(await guardVikingUri({ name, arguments: args }, next));
+      const denial = requireDeny(
+        await guardVikingUri({ name, arguments: args }, next),
+      );
 
-    expect(next).not.toHaveBeenCalled();
-    expect(denial.reason.startsWith(FIRST_LINE)).toBe(true);
-    expect(denial.reason.split("\n")[1]).toBe(`Use ${tool} instead.`);
-    expect(denial.reason).toMatch(/\nExample: /);
-  });
+      expect(next).not.toHaveBeenCalled();
+      expect(denial.reason.startsWith(FIRST_LINE)).toBe(true);
+      expect(denial.reason.split("\n")[1]).toBe(`Use ${tool} instead.`);
+      expect(denial.reason).toMatch(/\nExample: /);
+    },
+  );
 
   it("names the OpenViking tool in the example line for each guarded tool", async () => {
     const { next } = spyNext();
 
-    const read = requireDeny(await guardVikingUri({ name: "read", arguments: { file_path: MEMORY_URI } }, next));
-    expect(read.reason).toContain(`Example: mcp__openviking__read(uris="${MEMORY_URI}")`);
+    const read = requireDeny(
+      await guardVikingUri(
+        { name: "read", arguments: { file_path: MEMORY_URI } },
+        next,
+      ),
+    );
+    expect(read.reason).toContain(
+      `Example: mcp__openviking__read(uris="${MEMORY_URI}")`,
+    );
 
-    const glob = requireDeny(await guardVikingUri({ name: "glob", arguments: { path: "viking://user/default/memories" } }, next));
-    expect(glob.reason).toContain('Example: mcp__openviking__list(uri="viking://user/default/memories")');
+    const glob = requireDeny(
+      await guardVikingUri(
+        { name: "glob", arguments: { path: "viking://user/default/memories" } },
+        next,
+      ),
+    );
+    expect(glob.reason).toContain(
+      'Example: mcp__openviking__list(uri="viking://user/default/memories")',
+    );
 
     const grep = requireDeny(
-      await guardVikingUri({ name: "grep", arguments: { path: MEMORY_URI, pattern: "profile" } }, next),
+      await guardVikingUri(
+        { name: "grep", arguments: { path: MEMORY_URI, pattern: "profile" } },
+        next,
+      ),
     );
     expect(grep.reason).toContain(
       `Example: mcp__openviking__grep(pattern="profile", uri="${MEMORY_URI}")`,
     );
 
-    const write = requireDeny(await guardVikingUri({ name: "write", arguments: { file_path: MEMORY_URI } }, next));
-    expect(write.reason).toContain(`Example: mcp__openviking__write(uri="${MEMORY_URI}", content="...")`);
+    const write = requireDeny(
+      await guardVikingUri(
+        { name: "write", arguments: { file_path: MEMORY_URI } },
+        next,
+      ),
+    );
+    expect(write.reason).toContain(
+      `Example: mcp__openviking__write(uri="${MEMORY_URI}", content="...")`,
+    );
   });
 });
 
@@ -90,7 +151,10 @@ describe("delegation", () => {
   it("passes a non-guarded tool name through untouched", async () => {
     const { sentinel, next } = spyNext();
 
-    const decision = await guardVikingUri({ name: "todo_write", arguments: { items: [] } }, next);
+    const decision = await guardVikingUri(
+      { name: "todo_write", arguments: { items: [] } },
+      next,
+    );
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(decision).toBe(sentinel);
@@ -112,7 +176,10 @@ describe("delegation", () => {
   it("passes a guarded tool with an ordinary filesystem path through", async () => {
     const { sentinel, next } = spyNext();
 
-    const decision = await guardVikingUri({ name: "read", arguments: { file_path: "/tmp/a" } }, next);
+    const decision = await guardVikingUri(
+      { name: "read", arguments: { file_path: "/tmp/a" } },
+      next,
+    );
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(decision).toBe(sentinel);
@@ -124,10 +191,19 @@ describe("delegation", () => {
 // viking path, and no file was created.
 describe("content is not a location", () => {
   const ALLOWED: readonly (readonly [string, Record<string, unknown>])[] = [
-    ["write", { file_path: "notes.md", content: "see viking://user/default/memories/x" }],
     [
       "write",
-      { file_path: "/home/me/notes.md", content: "docs say viking://user/default/ is virtual" },
+      {
+        file_path: "notes.md",
+        content: "see viking://user/default/memories/x",
+      },
+    ],
+    [
+      "write",
+      {
+        file_path: "/home/me/notes.md",
+        content: "docs say viking://user/default/ is virtual",
+      },
     ],
     [
       "edit",
@@ -137,17 +213,27 @@ describe("content is not a location", () => {
         new_string: "see viking://user/default/memories/",
       },
     ],
-    ["str_replace_editor", { command: "create", path: "/tmp/notes.md", file_text: "viking://user/default/" }],
+    [
+      "str_replace_editor",
+      {
+        command: "create",
+        path: "/tmp/notes.md",
+        file_text: "viking://user/default/",
+      },
+    ],
   ];
 
-  it.each(ALLOWED)("allows %s whose content mentions a viking URI", async (name, args) => {
-    const { sentinel, next } = spyNext();
+  it.each(ALLOWED)(
+    "allows %s whose content mentions a viking URI",
+    async (name, args) => {
+      const { sentinel, next } = spyNext();
 
-    const decision = await guardVikingUri({ name, arguments: args }, next);
+      const decision = await guardVikingUri({ name, arguments: args }, next);
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(decision).toBe(sentinel);
-  });
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(decision).toBe(sentinel);
+    },
+  );
 });
 
 describe("a viking URI used as a location is still denied", () => {
@@ -165,7 +251,9 @@ describe("a viking URI used as a location is still denied", () => {
   it.each(DENIED)("denies %s", async (name, args) => {
     const { next } = spyNext();
 
-    const denial = requireDeny(await guardVikingUri({ name, arguments: args }, next));
+    const denial = requireDeny(
+      await guardVikingUri({ name, arguments: args }, next),
+    );
 
     expect(next).not.toHaveBeenCalled();
     expect(denial.reason.startsWith(FIRST_LINE)).toBe(true);
@@ -217,6 +305,8 @@ describe("the wired listener", () => {
     expect(next).not.toHaveBeenCalled();
     const denial = requireDeny(decision);
     expect(denial.reason.startsWith(FIRST_LINE)).toBe(true);
-    expect(denial.reason.split("\n")[1]).toBe("Use mcp__openviking__list instead.");
+    expect(denial.reason.split("\n")[1]).toBe(
+      "Use mcp__openviking__list instead.",
+    );
   });
 });

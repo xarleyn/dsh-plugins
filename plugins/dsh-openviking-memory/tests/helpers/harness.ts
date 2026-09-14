@@ -35,7 +35,10 @@ export interface HarnessOptions {
   /** Response bodies keyed by pathname; a function may build one per request. */
   readonly responses?: Record<string, unknown>;
   /** Let a test override the stubbed transport entirely. */
-  readonly fetchImpl?: (path: string, init: RequestInit | undefined) => Promise<Response>;
+  readonly fetchImpl?: (
+    path: string,
+    init: RequestInit | undefined,
+  ) => Promise<Response>;
   /** Skip the environment isolation (for the config tests that set it themselves). */
   readonly isolateEnv?: boolean;
 }
@@ -44,7 +47,10 @@ export interface Harness {
   readonly ctx: Context;
   readonly plugin: OpenVikingMemory;
   readonly listeners: Map<string, RecordedListener>;
-  readonly disposers: { readonly name: string; readonly dispose: () => unknown }[];
+  readonly disposers: {
+    readonly name: string;
+    readonly dispose: () => unknown;
+  }[];
   readonly requests: RecordedRequest[];
   /**
    * Plugins the entry passed to `ctx.plugin`. Mounting is recorded instead of
@@ -135,24 +141,38 @@ export async function createHarness(
   const requests: RecordedRequest[] = [];
   const responses = { ...DEFAULT_RESPONSES, ...options.responses };
 
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-    const url = new URL(typeof input === "string" || input instanceof URL ? String(input) : input.url);
+  globalThis.fetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => {
+    const url = new URL(
+      typeof input === "string" || input instanceof URL
+        ? String(input)
+        : input.url,
+    );
     requests.push({
       path: url.pathname,
       search: url.search,
       method: init?.method ?? "GET",
-      body: init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      body:
+        init?.body === undefined ? undefined : JSON.parse(String(init.body)),
     });
     if (options.fetchImpl) return options.fetchImpl(url.pathname, init);
     if (!Object.hasOwn(responses, url.pathname)) {
-      return jsonResponse({ status: "error", error: { code: "NOT_FOUND" } }, 404);
+      return jsonResponse(
+        { status: "error", error: { code: "NOT_FOUND" } },
+        404,
+      );
     }
     return jsonResponse({ status: "ok", result: responses[url.pathname] });
   }) as typeof globalThis.fetch;
 
   const ctx = new Context();
   const listeners = new Map<string, RecordedListener>();
-  const disposers: { readonly name: string; readonly dispose: () => unknown }[] = [];
+  const disposers: {
+    readonly name: string;
+    readonly dispose: () => unknown;
+  }[] = [];
 
   // Record while still registering for real: the plugin's own registration
   // path stays exercised, and a test can invoke a listener by name.
@@ -161,7 +181,11 @@ export async function createHarness(
     configurable: true,
     value: (name: string, listener: RecordedListener, opts?: unknown) => {
       listeners.set(name, listener);
-      return (originalOn as (n: string, l: never, o?: unknown) => unknown)(name, listener as never, opts);
+      return (originalOn as (n: string, l: never, o?: unknown) => unknown)(
+        name,
+        listener as never,
+        opts,
+      );
     },
   });
 
@@ -169,10 +193,12 @@ export async function createHarness(
   Object.defineProperty(ctx, "effect", {
     configurable: true,
     value: (execute: () => () => unknown, name?: string) => {
-      const result = (originalEffect as unknown as (
-        e: () => () => unknown,
-        n?: string,
-      ) => () => void)(execute, name);
+      const result = (
+        originalEffect as unknown as (
+          e: () => () => unknown,
+          n?: string,
+        ) => () => void
+      )(execute, name);
       disposers.push({ name: name ?? "anonymous", dispose: execute() });
       return result;
     },
@@ -198,10 +224,11 @@ export async function createHarness(
     disposers,
     requests,
     mounted,
-    paths: () => requests.map(request => request.path),
+    paths: () => requests.map((request) => request.path),
     countRequests: (prefix: string) =>
-      requests.filter(request => request.path.startsWith(prefix)).length,
-    requestsFor: (path: string) => requests.filter(request => request.path === path),
+      requests.filter((request) => request.path.startsWith(prefix)).length,
+    requestsFor: (path: string) =>
+      requests.filter((request) => request.path === path),
     dispose: async () => {
       for (const entry of disposers) await entry.dispose();
       globalThis.fetch = savedFetch;
@@ -218,14 +245,19 @@ export async function createHarness(
 }
 
 /** A fake agent with just the surface the plugin touches. */
-export function createFakeAgent(options: {
-  readonly sessionId?: string;
-  readonly cwd?: string;
-  readonly origin?: "subagent";
-  readonly status?: "idle" | "running";
-  readonly ownEvents?: readonly unknown[];
-  readonly inbox?: { readonly nextTurn?: readonly unknown[]; readonly nextStep?: readonly unknown[] };
-} = {}): {
+export function createFakeAgent(
+  options: {
+    readonly sessionId?: string;
+    readonly cwd?: string;
+    readonly origin?: "subagent";
+    readonly status?: "idle" | "running";
+    readonly ownEvents?: readonly unknown[];
+    readonly inbox?: {
+      readonly nextTurn?: readonly unknown[];
+      readonly nextStep?: readonly unknown[];
+    };
+  } = {},
+): {
   agent: Agent;
   injected: UserMessage[];
   sessionDisposers: (() => unknown)[];
@@ -274,16 +306,28 @@ export function createFakeAgent(options: {
 }
 
 /** A fake session object for the session-scoped listeners. */
-export function createFakeSession(sessionId: string, header: Record<string, unknown> = {}): Session {
+export function createFakeSession(
+  sessionId: string,
+  header: Record<string, unknown> = {},
+): Session {
   return {
     id: sessionId,
-    header: { version: 1, id: sessionId, createdAt: 0, isSeeded: false, ...header },
+    header: {
+      version: 1,
+      id: sessionId,
+      createdAt: 0,
+      isSeeded: false,
+      ...header,
+    },
     ownEvents: () => [],
   } as unknown as Session;
 }
 
 /** A DSH user message like the agent loop builds. */
-export function userMessage(text: string, source: Record<string, unknown> = { kind: "user" }): UserMessage {
+export function userMessage(
+  text: string,
+  source: Record<string, unknown> = { kind: "user" },
+): UserMessage {
   return createUserMessage({
     content: [{ type: "text", text }],
     source: source as never,
@@ -294,7 +338,13 @@ export function userMessage(text: string, source: Record<string, unknown> = { ki
 export function preStepPayload(
   agent: Agent,
   messages: readonly UserMessage[],
-): { agent: Agent; messages: UserMessage[]; turn: number; step: number; signal: AbortSignal } {
+): {
+  agent: Agent;
+  messages: UserMessage[];
+  turn: number;
+  step: number;
+  signal: AbortSignal;
+} {
   return {
     agent,
     messages: [...messages],
@@ -320,5 +370,7 @@ export async function emit(
 ): Promise<unknown> {
   const listener = harness.listeners.get(name);
   if (!listener) throw new Error(`no listener registered for ${name}`);
-  return await (listener as unknown as (...values: unknown[]) => Promise<unknown>)(...args);
+  return await (
+    listener as unknown as (...values: unknown[]) => Promise<unknown>
+  )(...args);
 }

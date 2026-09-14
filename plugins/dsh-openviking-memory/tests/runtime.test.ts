@@ -13,7 +13,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
-import { subscribePluginLogRecords, type PluginLogRecord } from "@yadsh/dsh-plugin-log";
+import {
+  subscribePluginLogRecords,
+  type PluginLogRecord,
+} from "@yadsh/dsh-plugin-log";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Config } from "../src/index.js";
@@ -35,7 +38,8 @@ const tempDirs: string[] = [];
 afterEach(async () => {
   await harness?.dispose();
   harness = undefined;
-  for (const dir of tempDirs.splice(0)) await rm(dir, { recursive: true, force: true });
+  for (const dir of tempDirs.splice(0))
+    await rm(dir, { recursive: true, force: true });
 });
 
 /** The OpenViking session id the runtime derives from a DSH session id. */
@@ -48,7 +52,9 @@ function ovPath(ovSessionId: string, suffix = ""): string {
   return `/api/v1/sessions/${ovSessionId}${suffix}`;
 }
 
-type FetchHandler = (init: RequestInit | undefined) => Response | Promise<Response>;
+type FetchHandler = (
+  init: RequestInit | undefined,
+) => Response | Promise<Response>;
 
 /** The same well-formed answers the shared harness stubs by default. */
 const SUCCESS_BODIES: Record<string, unknown> = {
@@ -75,7 +81,10 @@ function ok(result: unknown = {}): Response {
 
 /** The envelope the client turns into `{ ok: false, status }`. */
 function failure(status: number, code = "FAILED"): Response {
-  return json({ status: "error", error: { code, message: `HTTP ${status}` } }, status);
+  return json(
+    { status: "error", error: { code, message: `HTTP ${status}` } },
+    status,
+  );
 }
 
 /**
@@ -97,24 +106,41 @@ function transport(
 async function pendingFiles(): Promise<string[]> {
   const dir = process.env.OPENVIKING_PENDING_DIR;
   if (!dir) throw new Error("OPENVIKING_PENDING_DIR is not set");
-  return (await readdir(dir)).filter(name => name.endsWith(".json"));
+  return (await readdir(dir)).filter((name) => name.endsWith(".json"));
 }
 
-function captureEvent(text: string): { type: string; time: number; data: unknown } {
+function captureEvent(text: string): {
+  type: string;
+  time: number;
+  data: unknown;
+} {
   return { type: "user/message", time: Date.now(), data: userMessage(text) };
 }
 
 describe("capture and the pending queue", () => {
   it("queues a retryable capture failure but drops a permanent client error", async () => {
-    for (const [status, expected] of [[503, 1], [400, 0]] as const) {
+    for (const [status, expected] of [
+      [503, 1],
+      [400, 0],
+    ] as const) {
       const sessionId = `dsh-capture-${status}`;
       const messages = ovPath(ovId(sessionId), "/messages");
-      const session = createFakeSession(sessionId, { cwd: "/workspace/project" });
-      const local = await createHarness({}, {
-        fetchImpl: transport({ [messages]: () => failure(status) }),
+      const session = createFakeSession(sessionId, {
+        cwd: "/workspace/project",
       });
+      const local = await createHarness(
+        {},
+        {
+          fetchImpl: transport({ [messages]: () => failure(status) }),
+        },
+      );
 
-      await emit(local, "session/event", session, captureEvent(`Remember the HTTP ${status} behaviour.`));
+      await emit(
+        local,
+        "session/event",
+        session,
+        captureEvent(`Remember the HTTP ${status} behaviour.`),
+      );
       await emit(local, "session/flush", session);
 
       expect(await pendingFiles(), `HTTP ${status}`).toHaveLength(expected);
@@ -129,25 +155,41 @@ describe("capture and the pending queue", () => {
   });
 
   it("queues a capture only when the initialization failure is retryable", async () => {
-    for (const [status, expected] of [[503, 1], [400, 0]] as const) {
+    for (const [status, expected] of [
+      [503, 1],
+      [400, 0],
+    ] as const) {
       const sessionId = `dsh-init-${status}`;
       const ovSession = ovId(sessionId);
-      const session = createFakeSession(sessionId, { cwd: "/workspace/project" });
-      const local = await createHarness({}, {
-        fetchImpl: transport({
-          // The session-ensure call fails; the message itself would succeed, so
-          // a stale `hasPendingWrites` latch is the only way this test passes
-          // when the initialization failure should have been dropped.
-          "/api/v1/sessions": () => failure(status),
-          [ovPath(ovSession, "/messages")]: () => ok({}),
-        }),
+      const session = createFakeSession(sessionId, {
+        cwd: "/workspace/project",
       });
+      const local = await createHarness(
+        {},
+        {
+          fetchImpl: transport({
+            // The session-ensure call fails; the message itself would succeed, so
+            // a stale `hasPendingWrites` latch is the only way this test passes
+            // when the initialization failure should have been dropped.
+            "/api/v1/sessions": () => failure(status),
+            [ovPath(ovSession, "/messages")]: () => ok({}),
+          }),
+        },
+      );
 
-      await emit(local, "session/event", session, captureEvent(`Remember the init ${status} behaviour.`));
+      await emit(
+        local,
+        "session/event",
+        session,
+        captureEvent(`Remember the init ${status} behaviour.`),
+      );
       await emit(local, "session/flush", session);
 
       expect(await pendingFiles(), `HTTP ${status}`).toHaveLength(expected);
-      expect(local.requestsFor(ovPath(ovSession, "/messages")), `HTTP ${status}`).toHaveLength(0);
+      expect(
+        local.requestsFor(ovPath(ovSession, "/messages")),
+        `HTTP ${status}`,
+      ).toHaveLength(0);
 
       await local.dispose();
     }
@@ -157,19 +199,26 @@ describe("capture and the pending queue", () => {
     const sessionId = "dsh-commit-fail";
     const ovSession = ovId(sessionId);
     const session = createFakeSession(sessionId, { cwd: "/workspace/project" });
-    harness = await createHarness({}, {
-      fetchImpl: transport({
-        [ovPath(ovSession)]: () => ok({ pending_tokens: 50000 }),
-        [ovPath(ovSession, "/commit")]: () => failure(503, "UNAVAILABLE"),
-      }),
-    });
+    harness = await createHarness(
+      {},
+      {
+        fetchImpl: transport({
+          [ovPath(ovSession)]: () => ok({ pending_tokens: 50000 }),
+          [ovPath(ovSession, "/commit")]: () => failure(503, "UNAVAILABLE"),
+        }),
+      },
+    );
 
-    await emit(harness, "session/event", session, { type: "turn/end", time: Date.now(), data: {} });
+    await emit(harness, "session/event", session, {
+      type: "turn/end",
+      time: Date.now(),
+      data: {},
+    });
     await emit(harness, "session/flush", session);
 
     expect(harness.requestsFor(ovPath(ovSession, "/commit"))).toHaveLength(1);
     const pending = await listPending();
-    expect(pending.map(item => item.entry.type)).toEqual(["commitSession"]);
+    expect(pending.map((item) => item.entry.type)).toEqual(["commitSession"]);
     expect(pending[0]!.entry.payload).toEqual({ keep_recent_count: 10 });
   });
 
@@ -178,25 +227,47 @@ describe("capture and the pending queue", () => {
     const ovSession = ovId(sessionId);
     const messages = ovPath(ovSession, "/messages");
     const session = createFakeSession(sessionId, { cwd: "/workspace/project" });
-    harness = await createHarness({}, { fetchImpl: transport({ [messages]: () => failure(503) }) });
+    harness = await createHarness(
+      {},
+      { fetchImpl: transport({ [messages]: () => failure(503) }) },
+    );
 
-    await emit(harness, "session/event", session, captureEvent("First queued message."));
+    await emit(
+      harness,
+      "session/event",
+      session,
+      captureEvent("First queued message."),
+    );
     await emit(harness, "session/flush", session);
-    await emit(harness, "session/event", session, captureEvent("Second queued message."));
+    await emit(
+      harness,
+      "session/event",
+      session,
+      captureEvent("Second queued message."),
+    );
     await emit(harness, "session/flush", session);
 
     // The latch holds after the first failure: the second turn never hits the wire.
     expect(harness.requestsFor(messages)).toHaveLength(1);
     let pending = await listPending();
-    expect(pending.map(item => item.entry.type)).toEqual(["addMessage", "addMessage"]);
-    const createdAt = pending.map(item => item.entry.createdAt);
+    expect(pending.map((item) => item.entry.type)).toEqual([
+      "addMessage",
+      "addMessage",
+    ]);
+    const createdAt = pending.map((item) => item.entry.createdAt);
     // Strictly increasing, not merely non-decreasing: a tie would make the
     // queue's readdir order, not `createdAt`, decide the replay order.
     expect(createdAt[1]!).toBeGreaterThan(createdAt[0]!);
-    expect(createdAt).toEqual([...createdAt].sort((left, right) => left - right));
+    expect(createdAt).toEqual(
+      [...createdAt].sort((left, right) => left - right),
+    );
 
     // A turn/end while the latch holds neither reads the session nor commits.
-    await emit(harness, "session/event", session, { type: "turn/end", time: Date.now(), data: {} });
+    await emit(harness, "session/event", session, {
+      type: "turn/end",
+      time: Date.now(),
+      data: {},
+    });
     await emit(harness, "session/flush", session);
     expect(harness.requestsFor(ovPath(ovSession, "/commit"))).toHaveLength(0);
     expect(harness.requestsFor(ovPath(ovSession))).toHaveLength(0);
@@ -212,25 +283,40 @@ describe("capture and the pending queue", () => {
       { createdAt: Date.now() + 10_000 },
     );
     expect(commit.ok).toBe(true);
-    expect((await listPending()).map(item => item.entry.type)).toEqual([
+    expect((await listPending()).map((item) => item.entry.type)).toEqual([
       "addMessage",
       "addMessage",
       "commitSession",
     ]);
 
-    await emit(harness, "session/event", session, captureEvent("Third queued message."));
+    await emit(
+      harness,
+      "session/event",
+      session,
+      captureEvent("Third queued message."),
+    );
     await emit(harness, "session/flush", session);
     pending = await listPending();
-    expect(pending.map(item => item.entry.type)).toEqual([
+    expect(pending.map((item) => item.entry.type)).toEqual([
       "addMessage",
       "addMessage",
       "addMessage",
     ]);
     expect(
-      pending.map(item => (item.entry.payload as { parts?: { text?: string }[] }).parts?.[0]?.text),
-    ).toEqual(["First queued message.", "Second queued message.", "Third queued message."]);
-    const afterSupersede = pending.map(item => item.entry.createdAt);
-    expect(afterSupersede).toEqual([...afterSupersede].sort((left, right) => left - right));
+      pending.map(
+        (item) =>
+          (item.entry.payload as { parts?: { text?: string }[] }).parts?.[0]
+            ?.text,
+      ),
+    ).toEqual([
+      "First queued message.",
+      "Second queued message.",
+      "Third queued message.",
+    ]);
+    const afterSupersede = pending.map((item) => item.entry.createdAt);
+    expect(afterSupersede).toEqual(
+      [...afterSupersede].sort((left, right) => left - right),
+    );
   });
 });
 
@@ -241,27 +327,43 @@ describe("commit threshold", () => {
     const ovSession = ovId(sessionId);
     const session = createFakeSession(sessionId, { cwd: "/workspace/project" });
     const records: PluginLogRecord[] = [];
-    const unsubscribe = subscribePluginLogRecords(record => records.push(record));
+    const unsubscribe = subscribePluginLogRecords((record) =>
+      records.push(record),
+    );
 
     try {
-      harness = await createHarness({ commitTokenThreshold: 20000 }, {
-        fetchImpl: transport({
-          [ovPath(ovSession)]: () => ok({ pending_tokens: pendingTokens }),
-          [ovPath(ovSession, "/commit")]: () => ok({ trace_id: "trace-server-1" }),
-        }),
-      });
+      harness = await createHarness(
+        { commitTokenThreshold: 20000 },
+        {
+          fetchImpl: transport({
+            [ovPath(ovSession)]: () => ok({ pending_tokens: pendingTokens }),
+            [ovPath(ovSession, "/commit")]: () =>
+              ok({ trace_id: "trace-server-1" }),
+          }),
+        },
+      );
 
-      await emit(harness, "session/event", session, { type: "turn/end", time: Date.now(), data: {} });
+      await emit(harness, "session/event", session, {
+        type: "turn/end",
+        time: Date.now(),
+        data: {},
+      });
       await emit(harness, "session/flush", session);
       expect(harness.requestsFor(ovPath(ovSession, "/commit"))).toHaveLength(0);
-      expect(records.filter(record => record.event === "commit")).toHaveLength(0);
+      expect(
+        records.filter((record) => record.event === "commit"),
+      ).toHaveLength(0);
 
       pendingTokens = 50000;
-      await emit(harness, "session/event", session, { type: "turn/end", time: Date.now(), data: {} });
+      await emit(harness, "session/event", session, {
+        type: "turn/end",
+        time: Date.now(),
+        data: {},
+      });
       await emit(harness, "session/flush", session);
 
       expect(harness.requestsFor(ovPath(ovSession, "/commit"))).toHaveLength(1);
-      const commits = records.filter(record => record.event === "commit");
+      const commits = records.filter((record) => record.event === "commit");
       expect(commits).toHaveLength(1);
       expect(commits[0]!.fields).toMatchObject({
         sessionId: ovSession,
@@ -277,39 +379,56 @@ describe("commit threshold", () => {
 describe("flush", () => {
   it("waits only for the session it was asked about", async () => {
     let releaseSecond!: () => void;
-    const secondGate = new Promise<void>(resolve => {
+    const secondGate = new Promise<void>((resolve) => {
       releaseSecond = resolve;
     });
     let secondStarted!: () => void;
-    const secondReachedTheGate = new Promise<void>(resolve => {
+    const secondReachedTheGate = new Promise<void>((resolve) => {
       secondStarted = resolve;
     });
 
     const first = createFakeSession("first", { cwd: "/workspace/first" });
     const second = createFakeSession("second", { cwd: "/workspace/second" });
-    harness = await createHarness({}, {
-      fetchImpl: transport({
-        // Gate the second session's initialization, i.e. before any of its own
-        // writes can reach the wire. The shared ensure-session endpoint tells
-        // the two sessions apart by the id in its body.
-        "/api/v1/sessions": async init => {
-          const body = init?.body === undefined ? "" : String(init.body);
-          if (body.includes(ovId("second"))) {
-            secondStarted();
-            await secondGate;
-          }
-          return ok({});
-        },
-      }),
-    });
+    harness = await createHarness(
+      {},
+      {
+        fetchImpl: transport({
+          // Gate the second session's initialization, i.e. before any of its own
+          // writes can reach the wire. The shared ensure-session endpoint tells
+          // the two sessions apart by the id in its body.
+          "/api/v1/sessions": async (init) => {
+            const body = init?.body === undefined ? "" : String(init.body);
+            if (body.includes(ovId("second"))) {
+              secondStarted();
+              await secondGate;
+            }
+            return ok({});
+          },
+        }),
+      },
+    );
 
-    await emit(harness, "session/event", first, captureEvent("A fact for the first session."));
-    await emit(harness, "session/event", second, captureEvent("A fact for the second session."));
+    await emit(
+      harness,
+      "session/event",
+      first,
+      captureEvent("A fact for the first session."),
+    );
+    await emit(
+      harness,
+      "session/event",
+      second,
+      captureEvent("A fact for the second session."),
+    );
     await secondReachedTheGate;
 
     await emit(harness, "session/flush", first);
-    expect(harness.requestsFor(ovPath(ovId("first"), "/messages"))).toHaveLength(1);
-    expect(harness.requestsFor(ovPath(ovId("second"), "/messages"))).toHaveLength(0);
+    expect(
+      harness.requestsFor(ovPath(ovId("first"), "/messages")),
+    ).toHaveLength(1);
+    expect(
+      harness.requestsFor(ovPath(ovId("second"), "/messages")),
+    ).toHaveLength(0);
 
     // Flushing the second session does block on its own pending write...
     let settled = false;
@@ -322,35 +441,51 @@ describe("flush", () => {
     // ...and releases it as soon as that write is done.
     releaseSecond();
     await flushingSecond;
-    expect(harness.requestsFor(ovPath(ovId("second"), "/messages"))).toHaveLength(1);
+    expect(
+      harness.requestsFor(ovPath(ovId("second"), "/messages")),
+    ).toHaveLength(1);
   });
 });
 
 describe("dispose", () => {
   it("drains the final commit before deleting the session state, and is safe twice", async () => {
     let releaseCommit!: () => void;
-    const commitGate = new Promise<void>(resolve => {
+    const commitGate = new Promise<void>((resolve) => {
       releaseCommit = resolve;
     });
     let commitStarted!: () => void;
-    const commitInFlight = new Promise<void>(resolve => {
+    const commitInFlight = new Promise<void>((resolve) => {
       commitStarted = resolve;
     });
 
     const ovSession = ovId("dispose");
-    harness = await createHarness({}, {
-      fetchImpl: transport({
-        [ovPath(ovSession, "/commit")]: async () => {
-          commitStarted();
-          await commitGate;
-          return ok({ trace_id: "shutdown" });
-        },
-      }),
+    harness = await createHarness(
+      {},
+      {
+        fetchImpl: transport({
+          [ovPath(ovSession, "/commit")]: async () => {
+            commitStarted();
+            await commitGate;
+            return ok({ trace_id: "shutdown" });
+          },
+        }),
+      },
+    );
+    const fake = createFakeAgent({
+      sessionId: "dispose",
+      cwd: "/workspace/dispose",
     });
-    const fake = createFakeAgent({ sessionId: "dispose", cwd: "/workspace/dispose" });
 
-    await emit(harness, "agent/session-start", { agent: fake.agent, source: "startup" });
-    await emit(harness, "session/event", fake.agent.session, captureEvent("A turn worth remembering."));
+    await emit(harness, "agent/session-start", {
+      agent: fake.agent,
+      source: "startup",
+    });
+    await emit(
+      harness,
+      "session/event",
+      fake.agent.session,
+      captureEvent("A turn worth remembering."),
+    );
     await emit(harness, "session/flush", fake.agent.session);
 
     // The session-start listener registered exactly one disposer: the runtime's
@@ -385,13 +520,25 @@ describe("dispose", () => {
     const one = createFakeSession("one", { cwd: "/workspace/one" });
     const two = createFakeSession("two", { cwd: "/workspace/two" });
 
-    await emit(harness, "session/event", one, captureEvent("First session turn."));
-    await emit(harness, "session/event", two, captureEvent("Second session turn."));
+    await emit(
+      harness,
+      "session/event",
+      one,
+      captureEvent("First session turn."),
+    );
+    await emit(
+      harness,
+      "session/event",
+      two,
+      captureEvent("Second session turn."),
+    );
     await emit(harness, "session/flush", one);
     await emit(harness, "session/flush", two);
     expect(harness.plugin.runtime.liveSessions).toBe(2);
 
-    const lifecycle = harness.disposers.find(entry => entry.name.endsWith(".lifecycle"));
+    const lifecycle = harness.disposers.find((entry) =>
+      entry.name.endsWith(".lifecycle"),
+    );
     expect(lifecycle).toBeDefined();
     await lifecycle!.dispose();
 
@@ -414,10 +561,25 @@ describe("syncTurns: false", () => {
     );
     expect(leftover.ok).toBe(true);
 
-    const fake = createFakeAgent({ sessionId: "dsh-sync-off", cwd: "/workspace/off" });
-    await emit(harness, "agent/session-start", { agent: fake.agent, source: "startup" });
-    await emit(harness, "session/event", fake.agent.session, captureEvent("Never sent."));
-    await emit(harness, "session/event", fake.agent.session, { type: "turn/end", time: Date.now(), data: {} });
+    const fake = createFakeAgent({
+      sessionId: "dsh-sync-off",
+      cwd: "/workspace/off",
+    });
+    await emit(harness, "agent/session-start", {
+      agent: fake.agent,
+      source: "startup",
+    });
+    await emit(
+      harness,
+      "session/event",
+      fake.agent.session,
+      captureEvent("Never sent."),
+    );
+    await emit(harness, "session/event", fake.agent.session, {
+      type: "turn/end",
+      time: Date.now(),
+      data: {},
+    });
     await emit(harness, "session/flush", fake.agent.session);
     await fake.sessionDisposers[0]!();
 
@@ -432,7 +594,9 @@ describe("syncTurns: false", () => {
     expect(harness.paths()).toEqual(["/health", "/api/v1/sessions"]);
 
     const pending = await listPending();
-    expect(pending.map(item => item.entry.sessionId)).toEqual(["dsh-earlier"]);
+    expect(pending.map((item) => item.entry.sessionId)).toEqual([
+      "dsh-earlier",
+    ]);
     expect(pending[0]!.entry.retries).toBe(0);
   });
 });
@@ -451,7 +615,7 @@ describe("workspace peer", () => {
       const seen: Record<string, string>[] = [];
       const local = await createHarness(config, {
         fetchImpl: transport({
-          [messages]: init => {
+          [messages]: (init) => {
             seen.push((init?.headers ?? {}) as Record<string, string>);
             return ok({});
           },
@@ -459,7 +623,12 @@ describe("workspace peer", () => {
       });
 
       const session = createFakeSession(sessionId, { cwd });
-      await emit(local, "session/event", session, captureEvent("A workspace-scoped fact."));
+      await emit(
+        local,
+        "session/event",
+        session,
+        captureEvent("A workspace-scoped fact."),
+      );
       await emit(local, "session/flush", session);
 
       expect(local.requestsFor(messages)).toHaveLength(1);
@@ -467,11 +636,19 @@ describe("workspace peer", () => {
       return seen[0]!;
     };
 
-    const byCwd = await headersForSession("dsh-peer-cwd", { peerSource: "cwd", workspacePeer: true });
+    const byCwd = await headersForSession("dsh-peer-cwd", {
+      peerSource: "cwd",
+      workspacePeer: true,
+    });
     // The legacy rule: one byte in, one byte out, no collapsing and no trimming.
-    expect(byCwd["X-OpenViking-Actor-Peer"]).toBe(cwd.replace(/[^A-Za-z0-9]/g, "-"));
+    expect(byCwd["X-OpenViking-Actor-Peer"]).toBe(
+      cwd.replace(/[^A-Za-z0-9]/g, "-"),
+    );
 
-    const disabled = await headersForSession("dsh-peer-none", { peerSource: "none", workspacePeer: true });
+    const disabled = await headersForSession("dsh-peer-none", {
+      peerSource: "none",
+      workspacePeer: true,
+    });
     expect("X-OpenViking-Actor-Peer" in disabled).toBe(false);
   });
 });
@@ -482,17 +659,31 @@ describe("startup profile injection", () => {
   function priorStartupProfile(): unknown {
     return createUserMessage({
       content: [{ type: "text", text: "stored profile" }],
-      source: { kind: "plugin", plugin: "openviking-memory", form: "instructions" },
+      source: {
+        kind: "plugin",
+        plugin: "openviking-memory",
+        form: "instructions",
+      },
     });
   }
 
   it("claims the profile once while idle and leaves it to pre-step after a turn starts", async () => {
-    harness = await createHarness({}, {
-      fetchImpl: transport({ "/api/v1/content/read": () => ok(PROFILE) }),
-    });
+    harness = await createHarness(
+      {},
+      {
+        fetchImpl: transport({ "/api/v1/content/read": () => ok(PROFILE) }),
+      },
+    );
 
-    const idle = createFakeAgent({ sessionId: "profile-idle", cwd: "/workspace/project", ownEvents: [] });
-    await emit(harness, "agent/session-start", { agent: idle.agent, source: "startup" });
+    const idle = createFakeAgent({
+      sessionId: "profile-idle",
+      cwd: "/workspace/project",
+      ownEvents: [],
+    });
+    await emit(harness, "agent/session-start", {
+      agent: idle.agent,
+      source: "startup",
+    });
     expect(idle.injected).toHaveLength(1);
     expect(idle.injected[0]!.source).toMatchObject({
       kind: "plugin",
@@ -502,7 +693,9 @@ describe("startup profile injection", () => {
 
     // The claim is one-shot: the next step adds the profile a second time only
     // if delivery had not already happened.
-    const messages = [userMessage("what did we decide about the recall budget last time?")];
+    const messages = [
+      userMessage("what did we decide about the recall budget last time?"),
+    ];
     const decision = await emit(
       harness,
       "agent/pre-step",
@@ -517,7 +710,10 @@ describe("startup profile injection", () => {
       status: "running",
       ownEvents: [],
     });
-    await emit(harness, "agent/session-start", { agent: running.agent, source: "startup" });
+    await emit(harness, "agent/session-start", {
+      agent: running.agent,
+      source: "startup",
+    });
     expect(running.injected).toEqual([]);
 
     const resumed = createFakeAgent({
@@ -525,7 +721,10 @@ describe("startup profile injection", () => {
       cwd: "/workspace/project",
       ownEvents: [{ type: "user/message", data: priorStartupProfile() }],
     });
-    await emit(harness, "agent/session-start", { agent: resumed.agent, source: "startup" });
+    await emit(harness, "agent/session-start", {
+      agent: resumed.agent,
+      source: "startup",
+    });
     expect(resumed.injected).toEqual([]);
   });
 });

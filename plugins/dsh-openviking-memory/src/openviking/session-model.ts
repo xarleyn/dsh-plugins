@@ -11,7 +11,11 @@
  * Shared OpenViking session-id helpers for memory plugin harnesses.
  */
 
-export function deriveHarnessSessionId(prefix: string, sessionId: string, suffix: string = ""): string {
+export function deriveHarnessSessionId(
+  prefix: string,
+  sessionId: string,
+  suffix: string = "",
+): string {
   if (!prefix || typeof prefix !== "string") {
     throw new Error("deriveHarnessSessionId requires a non-empty prefix");
   }
@@ -20,6 +24,8 @@ export function deriveHarnessSessionId(prefix: string, sessionId: string, suffix
   }
   const base = `${prefix}${sessionId}`;
   if (!suffix) return base;
-  const normalized = String(suffix).replace(/:/g, "-").replace(/[^A-Za-z0-9._-]/g, "-");
+  const normalized = String(suffix)
+    .replace(/:/g, "-")
+    .replace(/[^A-Za-z0-9._-]/g, "-");
   return `${base}__${normalized}`;
 }

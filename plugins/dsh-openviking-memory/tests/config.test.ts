@@ -27,7 +27,10 @@ import {
 /** One `~standard.validate` result, narrowed to what these tests assert. */
 interface SchemaResult {
   readonly value?: Config;
-  readonly issues?: readonly { readonly message: string; readonly path?: readonly unknown[] }[];
+  readonly issues?: readonly {
+    readonly message: string;
+    readonly path?: readonly unknown[];
+  }[];
 }
 
 interface StandardSchemaLike {
@@ -68,7 +71,10 @@ afterEach(async () => {
   await rm(stateDir, { recursive: true, force: true });
 });
 
-function resolveIn(input: Config = {}, overrides: NodeJS.ProcessEnv = {}): ResolvedConfig {
+function resolveIn(
+  input: Config = {},
+  overrides: NodeJS.ProcessEnv = {},
+): ResolvedConfig {
   return resolveConfig(input, { ...envBase, ...overrides }, WORKSPACE);
 }
 
@@ -197,13 +203,16 @@ describe("the config schema is fail-loud (SPEC §14)", () => {
     ["captureFilters that is not an array", { captureFilters: "not-an-array" }],
   ];
 
-  it.each(REJECTED)("reports issues for %s instead of clamping", async (_label, input) => {
-    const result = await validate(input);
+  it.each(REJECTED)(
+    "reports issues for %s instead of clamping",
+    async (_label, input) => {
+      const result = await validate(input);
 
-    expect(result.issues).toBeDefined();
-    expect(result.issues?.length ?? 0).toBeGreaterThan(0);
-    expect(result.value).toBeUndefined();
-  });
+      expect(result.issues).toBeDefined();
+      expect(result.issues?.length ?? 0).toBeGreaterThan(0);
+      expect(result.value).toBeUndefined();
+    },
+  );
 
   it("resolves a valid config without issues", async () => {
     const result = await validate({
@@ -259,19 +268,73 @@ describe("resolveInjectionPlan is a pure conjunction with the master switch", ()
     readonly autoRecall: boolean;
     readonly plan: InjectionPlan;
   }[] = [
-    { autoInject: false, injectStartupProfile: false, injectStepProfile: false, autoRecall: false, plan: { startupProfile: false, stepProfile: false, recall: false } },
-    { autoInject: false, injectStartupProfile: true, injectStepProfile: false, autoRecall: false, plan: { startupProfile: false, stepProfile: false, recall: false } },
-    { autoInject: false, injectStartupProfile: false, injectStepProfile: true, autoRecall: false, plan: { startupProfile: false, stepProfile: false, recall: false } },
-    { autoInject: false, injectStartupProfile: false, injectStepProfile: false, autoRecall: true, plan: { startupProfile: false, stepProfile: false, recall: false } },
-    { autoInject: false, injectStartupProfile: true, injectStepProfile: true, autoRecall: true, plan: { startupProfile: false, stepProfile: false, recall: false } },
-    { autoInject: true, injectStartupProfile: true, injectStepProfile: true, autoRecall: true, plan: { startupProfile: true, stepProfile: true, recall: true } },
-    { autoInject: true, injectStartupProfile: true, injectStepProfile: false, autoRecall: false, plan: { startupProfile: true, stepProfile: false, recall: false } },
-    { autoInject: true, injectStartupProfile: false, injectStepProfile: true, autoRecall: true, plan: { startupProfile: false, stepProfile: true, recall: true } },
+    {
+      autoInject: false,
+      injectStartupProfile: false,
+      injectStepProfile: false,
+      autoRecall: false,
+      plan: { startupProfile: false, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: false,
+      injectStartupProfile: true,
+      injectStepProfile: false,
+      autoRecall: false,
+      plan: { startupProfile: false, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: false,
+      injectStartupProfile: false,
+      injectStepProfile: true,
+      autoRecall: false,
+      plan: { startupProfile: false, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: false,
+      injectStartupProfile: false,
+      injectStepProfile: false,
+      autoRecall: true,
+      plan: { startupProfile: false, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: false,
+      injectStartupProfile: true,
+      injectStepProfile: true,
+      autoRecall: true,
+      plan: { startupProfile: false, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: true,
+      injectStartupProfile: true,
+      injectStepProfile: true,
+      autoRecall: true,
+      plan: { startupProfile: true, stepProfile: true, recall: true },
+    },
+    {
+      autoInject: true,
+      injectStartupProfile: true,
+      injectStepProfile: false,
+      autoRecall: false,
+      plan: { startupProfile: true, stepProfile: false, recall: false },
+    },
+    {
+      autoInject: true,
+      injectStartupProfile: false,
+      injectStepProfile: true,
+      autoRecall: true,
+      plan: { startupProfile: false, stepProfile: true, recall: true },
+    },
   ];
 
   it.each(MATRIX)(
     "autoInject=$autoInject mirrors $injectStartupProfile/$injectStepProfile/$autoRecall",
-    ({ autoInject, injectStartupProfile, injectStepProfile, autoRecall, plan }) => {
+    ({
+      autoInject,
+      injectStartupProfile,
+      injectStepProfile,
+      autoRecall,
+      plan,
+    }) => {
       const resolved = resolveIn({
         autoInject,
         injectStartupProfile,
@@ -297,9 +360,9 @@ describe("inert-for-compatibility knobs", () => {
     expect(resolveIn({ captureMode: "semantic" }).captureMode).toBe("semantic");
     // The schema rejects an unknown mode; the resolver still normalizes one that
     // reaches it, so a config written for an older build cannot leak through.
-    expect(resolveIn({ captureMode: "fuzzy" as unknown as CaptureMode }).captureMode).toBe(
-      "semantic",
-    );
+    expect(
+      resolveIn({ captureMode: "fuzzy" as unknown as CaptureMode }).captureMode,
+    ).toBe("semantic");
   });
 
   it("survives resolution with the value the user set", () => {

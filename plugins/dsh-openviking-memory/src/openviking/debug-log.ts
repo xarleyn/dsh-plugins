@@ -20,13 +20,17 @@ import { dirname } from "node:path";
 function ensureDir(filePath: string): void {
   try {
     mkdirSync(dirname(filePath), { recursive: true });
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 function writeLine(filePath: string, obj: unknown): void {
   try {
     appendFileSync(filePath, JSON.stringify(obj) + "\n");
-  } catch { /* best effort */ }
+  } catch {
+    /* best effort */
+  }
 }
 
 function localISO(): string {
@@ -35,19 +39,28 @@ function localISO(): string {
   const sign = off <= 0 ? "+" : "-";
   const abs = Math.abs(off);
   const local = new Date(d.getTime() - off * 60000);
-  return local.toISOString().replace(
-    "Z",
-    `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`,
-  );
+  return local
+    .toISOString()
+    .replace(
+      "Z",
+      `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`,
+    );
 }
 
 const noop = (): void => {};
 
 export function createLogger(
   hookName: string,
-  overrideCfg?: { readonly debug?: boolean; readonly debugLogPath?: string } | null,
-): { log(stage: string, data?: unknown): void; logError(stage: string, err: unknown): void } {
-  const c: { readonly debug?: boolean; readonly debugLogPath?: string } = overrideCfg || {};
+  overrideCfg?: {
+    readonly debug?: boolean;
+    readonly debugLogPath?: string;
+  } | null,
+): {
+  log(stage: string, data?: unknown): void;
+  logError(stage: string, err: unknown): void;
+} {
+  const c: { readonly debug?: boolean; readonly debugLogPath?: string } =
+    overrideCfg || {};
   if (!c.debug) return { log: noop, logError: noop };
 
   // `?? ""` rather than a truthiness test on the optional value: the closures
@@ -61,9 +74,10 @@ export function createLogger(
   }
 
   function logError(stage: string, err: unknown): void {
-    const error = err instanceof Error
-      ? { message: err.message, stack: err.stack }
-      : String(err);
+    const error =
+      err instanceof Error
+        ? { message: err.message, stack: err.stack }
+        : String(err);
     writeLine(logPath, { ts: localISO(), hook: hookName, stage, error });
   }
 

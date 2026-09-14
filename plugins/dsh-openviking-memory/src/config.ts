@@ -10,7 +10,10 @@ import { readFileSync } from "node:fs";
 
 import z from "@deepseek-ai/schemastery";
 
-import { buildUserAgent, resolveOpenVikingCredentials } from "./openviking/credentials.js";
+import {
+  buildUserAgent,
+  resolveOpenVikingCredentials,
+} from "./openviking/credentials.js";
 import { resolveEffectivePeerId } from "./openviking/workspace-peer.js";
 
 /**
@@ -42,7 +45,9 @@ function readManifestVersion(): string | undefined {
       readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
     );
     const version = (manifest as { version?: unknown }).version;
-    return typeof version === "string" && version.trim() ? version.trim() : undefined;
+    return typeof version === "string" && version.trim()
+      ? version.trim()
+      : undefined;
   } catch {
     return undefined;
   }
@@ -61,7 +66,12 @@ export const CAPTURE_MODES = ["semantic", "keyword"] as const;
 export type CaptureMode = (typeof CAPTURE_MODES)[number];
 
 /** Where the digest for a server-assembled context block comes from. */
-export const RECALL_REWRITE_MODES = ["off", "auto", "client", "server"] as const;
+export const RECALL_REWRITE_MODES = [
+  "off",
+  "auto",
+  "client",
+  "server",
+] as const;
 export type RecallRewriteMode = (typeof RECALL_REWRITE_MODES)[number];
 
 /**
@@ -253,14 +263,24 @@ export const Config: z<Config> = z.object({
   recallMaxTokens: z.number().step(1).min(64).max(1000000),
   recallCompressMaxBullets: z.number().step(1).min(1).max(50),
 
-  commitTokenThreshold: z.number().step(1).min(1000).max(1000000).default(20000),
+  commitTokenThreshold: z
+    .number()
+    .step(1)
+    .min(1000)
+    .max(1000000)
+    .default(20000),
   commitKeepRecentCount: z.number().step(1).min(0).max(1000).default(10),
 
   syncTurns: z.boolean().default(true),
   captureToolResults: z.boolean().default(false),
   captureMode: z.union(CAPTURE_MODES).default("semantic"),
   captureMaxLength: z.number().step(1).min(200).max(100000).default(24000),
-  captureToolMaxChars: z.number().step(1).min(200).max(1000000).default(1000000),
+  captureToolMaxChars: z
+    .number()
+    .step(1)
+    .min(200)
+    .max(1000000)
+    .default(1000000),
   captureAssistantTurns: z.boolean().default(true),
   captureFilters: z.array(z.string()).default([]),
 
@@ -326,7 +346,9 @@ export interface ResolvedConfig {
  * `ResolvedConfig` with mutable members: the resolver starts from defaults and
  * then normalizes in place, exactly as the upstream module did.
  */
-type MutableResolvedConfig = { -readonly [K in keyof ResolvedConfig]: ResolvedConfig[K] };
+type MutableResolvedConfig = {
+  -readonly [K in keyof ResolvedConfig]: ResolvedConfig[K];
+};
 
 /**
  * Merge user config over credential files and environment overrides, then
@@ -359,29 +381,42 @@ export function resolveConfig(
     workspacePeer: input.workspacePeer ?? DEFAULT_CONFIG.workspacePeer,
     peerSource: input.peerSource ?? DEFAULT_CONFIG.peerSource,
     recallPeerScope: input.recallPeerScope ?? DEFAULT_CONFIG.recallPeerScope,
-    recallQueryExpansion: input.recallQueryExpansion ?? DEFAULT_CONFIG.recallQueryExpansion,
+    recallQueryExpansion:
+      input.recallQueryExpansion ?? DEFAULT_CONFIG.recallQueryExpansion,
     syncTurns: input.syncTurns ?? DEFAULT_CONFIG.syncTurns,
-    recallTokenBudget: input.recallTokenBudget ?? DEFAULT_CONFIG.recallTokenBudget,
-    recallMaxContentChars: input.recallMaxContentChars ?? DEFAULT_CONFIG.recallMaxContentChars,
-    recallPreferAbstract: input.recallPreferAbstract ?? DEFAULT_CONFIG.recallPreferAbstract,
+    recallTokenBudget:
+      input.recallTokenBudget ?? DEFAULT_CONFIG.recallTokenBudget,
+    recallMaxContentChars:
+      input.recallMaxContentChars ?? DEFAULT_CONFIG.recallMaxContentChars,
+    recallPreferAbstract:
+      input.recallPreferAbstract ?? DEFAULT_CONFIG.recallPreferAbstract,
     recallLimit: input.recallLimit ?? DEFAULT_CONFIG.recallLimit,
     scoreThreshold: input.scoreThreshold ?? DEFAULT_CONFIG.scoreThreshold,
     minQueryLength: input.minQueryLength ?? DEFAULT_CONFIG.minQueryLength,
-    profileTokenBudget: input.profileTokenBudget ?? DEFAULT_CONFIG.profileTokenBudget,
-    commitTokenThreshold: input.commitTokenThreshold ?? DEFAULT_CONFIG.commitTokenThreshold,
-    commitKeepRecentCount: input.commitKeepRecentCount ?? DEFAULT_CONFIG.commitKeepRecentCount,
-    captureToolResults: input.captureToolResults ?? DEFAULT_CONFIG.captureToolResults,
+    profileTokenBudget:
+      input.profileTokenBudget ?? DEFAULT_CONFIG.profileTokenBudget,
+    commitTokenThreshold:
+      input.commitTokenThreshold ?? DEFAULT_CONFIG.commitTokenThreshold,
+    commitKeepRecentCount:
+      input.commitKeepRecentCount ?? DEFAULT_CONFIG.commitKeepRecentCount,
+    captureToolResults:
+      input.captureToolResults ?? DEFAULT_CONFIG.captureToolResults,
     captureMode: input.captureMode ?? DEFAULT_CONFIG.captureMode,
     captureMaxLength: input.captureMaxLength ?? DEFAULT_CONFIG.captureMaxLength,
-    captureToolMaxChars: input.captureToolMaxChars ?? DEFAULT_CONFIG.captureToolMaxChars,
-    captureAssistantTurns: input.captureAssistantTurns ?? DEFAULT_CONFIG.captureAssistantTurns,
+    captureToolMaxChars:
+      input.captureToolMaxChars ?? DEFAULT_CONFIG.captureToolMaxChars,
+    captureAssistantTurns:
+      input.captureAssistantTurns ?? DEFAULT_CONFIG.captureAssistantTurns,
     captureFilters: input.captureFilters ?? [...DEFAULT_CONFIG.captureFilters],
-    skipSubagentSessions: input.skipSubagentSessions ?? DEFAULT_CONFIG.skipSubagentSessions,
+    skipSubagentSessions:
+      input.skipSubagentSessions ?? DEFAULT_CONFIG.skipSubagentSessions,
     requestTimeoutMs: input.requestTimeoutMs ?? DEFAULT_CONFIG.requestTimeoutMs,
-    mcpToolCallTimeoutMs: input.mcpToolCallTimeoutMs ?? DEFAULT_CONFIG.mcpToolCallTimeoutMs,
+    mcpToolCallTimeoutMs:
+      input.mcpToolCallTimeoutMs ?? DEFAULT_CONFIG.mcpToolCallTimeoutMs,
     recallRewrite: input.recallRewrite ?? DEFAULT_CONFIG.recallRewrite,
     recallDedupTurns: input.recallDedupTurns ?? DEFAULT_CONFIG.recallDedupTurns,
-    recallContextTimeoutMs: input.recallContextTimeoutMs ?? DEFAULT_CONFIG.recallContextTimeoutMs,
+    recallContextTimeoutMs:
+      input.recallContextTimeoutMs ?? DEFAULT_CONFIG.recallContextTimeoutMs,
     recallMaxTokens: input.recallMaxTokens ?? DEFAULT_CONFIG.recallMaxTokens,
     recallCompressMaxBullets:
       input.recallCompressMaxBullets ?? DEFAULT_CONFIG.recallCompressMaxBullets,
@@ -391,10 +426,18 @@ export function resolveConfig(
     autoRecall: input.autoRecall ?? true,
     // "Configured" means the user named the knob, not that a default filled it:
     // each of these switches the matching request field on.
-    recallLimitConfigured: Object.prototype.hasOwnProperty.call(input, "recallLimit"),
-    recallQueryExpansionConfigured:
-      Object.prototype.hasOwnProperty.call(input, "recallQueryExpansion"),
-    recallMaxTokensConfigured: Object.prototype.hasOwnProperty.call(input, "recallMaxTokens"),
+    recallLimitConfigured: Object.prototype.hasOwnProperty.call(
+      input,
+      "recallLimit",
+    ),
+    recallQueryExpansionConfigured: Object.prototype.hasOwnProperty.call(
+      input,
+      "recallQueryExpansion",
+    ),
+    recallMaxTokensConfigured: Object.prototype.hasOwnProperty.call(
+      input,
+      "recallMaxTokens",
+    ),
     recallCompressMaxBulletsConfigured: Object.prototype.hasOwnProperty.call(
       input,
       "recallCompressMaxBullets",
@@ -408,10 +451,12 @@ export function resolveConfig(
     );
   }
   if (env.OPENVIKING_RECALL_PEER_SCOPE) {
-    config.recallPeerScope = env.OPENVIKING_RECALL_PEER_SCOPE as RecallPeerScope;
+    config.recallPeerScope =
+      env.OPENVIKING_RECALL_PEER_SCOPE as RecallPeerScope;
   }
   if (env.OPENVIKING_RECALL_QUERY_EXPANSION) {
-    config.recallQueryExpansion = env.OPENVIKING_RECALL_QUERY_EXPANSION as RecallQueryExpansion;
+    config.recallQueryExpansion =
+      env.OPENVIKING_RECALL_QUERY_EXPANSION as RecallQueryExpansion;
     config.recallQueryExpansionConfigured = true;
   }
   if (env.OPENVIKING_RECALL_LIMIT) {
@@ -419,14 +464,23 @@ export function resolveConfig(
     config.recallLimitConfigured = true;
   }
 
-  config.endpoint = String(config.endpoint || DEFAULT_CONFIG.endpoint).replace(/\/+$/, "");
+  config.endpoint = String(config.endpoint || DEFAULT_CONFIG.endpoint).replace(
+    /\/+$/,
+    "",
+  );
   config.workspacePeer = config.workspacePeer !== false;
   const effectivePeer = resolveEffectivePeerId({ cfg: config, cwd });
   config.peerId = effectivePeer.peerId;
   config.legacyPeerId = effectivePeer.legacyPeerId;
   config.recallPeerScope = config.recallPeerScope === "actor" ? "actor" : "all";
-  config.recallQueryExpansion = config.recallQueryExpansion === "off" ? "off" : "auto";
-  config.recallLimit = clampInteger(config.recallLimit, 1, 50, DEFAULT_CONFIG.recallLimit);
+  config.recallQueryExpansion =
+    config.recallQueryExpansion === "off" ? "off" : "auto";
+  config.recallLimit = clampInteger(
+    config.recallLimit,
+    1,
+    50,
+    DEFAULT_CONFIG.recallLimit,
+  );
   config.recallMaxContentChars = clampInteger(
     config.recallMaxContentChars,
     100,
@@ -520,9 +574,12 @@ export function resolveConfig(
   config.recallRewrite = RECALL_REWRITE_MODES.includes(config.recallRewrite)
     ? config.recallRewrite
     : "off";
-  config.captureMode = config.captureMode === "keyword" ? "keyword" : "semantic";
+  config.captureMode =
+    config.captureMode === "keyword" ? "keyword" : "semantic";
   config.captureFilters = Array.isArray(config.captureFilters)
-    ? config.captureFilters.filter((rule): rule is string => typeof rule === "string")
+    ? config.captureFilters.filter(
+        (rule): rule is string => typeof rule === "string",
+      )
     : [];
   config.syncTurns = config.syncTurns !== false;
   config.captureAssistantTurns = config.captureAssistantTurns !== false;
@@ -556,19 +613,31 @@ export function resolveInjectionPlan(config: ResolvedConfig): InjectionPlan {
 }
 
 function environmentBoolean(value: unknown, fallback: boolean): boolean {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   if (["0", "false", "no", "off"].includes(normalized)) return false;
   if (["1", "true", "yes", "on"].includes(normalized)) return true;
   return fallback;
 }
 
-function clampInteger(value: unknown, minimum: number, maximum: number, fallback: number): number {
+function clampInteger(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
   const number = Math.round(Number(value));
   if (!Number.isFinite(number)) return fallback;
   return Math.max(minimum, Math.min(maximum, number));
 }
 
-function clampNumber(value: unknown, minimum: number, maximum: number, fallback: number): number {
+function clampNumber(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  fallback: number,
+): number {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.max(minimum, Math.min(maximum, number));

@@ -15,7 +15,11 @@ import { fileURLToPath } from "node:url";
 import { Config as SkillFilesystemConfig } from "@deepseek-ai/dsh-skill-filesystem";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { buildSkillsConfig, SKILL_PROVIDER_NAME, SKILLS_DIR } from "../src/skills.js";
+import {
+  buildSkillsConfig,
+  SKILL_PROVIDER_NAME,
+  SKILLS_DIR,
+} from "../src/skills.js";
 import { createHarness, type Harness } from "./helpers/harness.js";
 
 const packageRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -31,10 +35,14 @@ function frontMatterOf(text: string): string {
 /** The value of one top-level front-matter key, including its block content. */
 function frontMatterValue(frontMatter: string, key: string): string {
   const lines = frontMatter.split("\n");
-  const index = lines.findIndex(line => line.startsWith(`${key}:`));
+  const index = lines.findIndex((line) => line.startsWith(`${key}:`));
   if (index === -1) return "";
   const value: string[] = [lines[index]!.slice(key.length + 1)];
-  for (let i = index + 1; i < lines.length && /^\s+\S/.test(lines[i]!); i += 1) {
+  for (
+    let i = index + 1;
+    i < lines.length && /^\s+\S/.test(lines[i]!);
+    i += 1
+  ) {
     value.push(lines[i]!);
   }
   return value.join("\n").trim();
@@ -60,7 +68,8 @@ describe("buildSkillsConfig", () => {
   });
 
   it("the provider config validates against the pinned provider's own schema", async () => {
-    const result = await SkillFilesystemConfig["~standard"].validate(buildSkillsConfig());
+    const result =
+      await SkillFilesystemConfig["~standard"].validate(buildSkillsConfig());
 
     expect(result.issues).toBeUndefined();
   });
@@ -74,7 +83,11 @@ describe("the vendored skill", () => {
     expect(existsSync(SKILL_FILE)).toBe(true);
     // The same file also sits under the working directory's package root, which
     // is what a checkout without a build step serves.
-    expect(existsSync(join(process.cwd(), "skills", "openviking-memory", "SKILL.md"))).toBe(true);
+    expect(
+      existsSync(
+        join(process.cwd(), "skills", "openviking-memory", "SKILL.md"),
+      ),
+    ).toBe(true);
   });
 
   it("carries the YAML front matter the catalog parses", async () => {
@@ -87,7 +100,9 @@ describe("the vendored skill", () => {
     // A non-empty description, parsed rather than snapshot-compared: the
     // catalog only needs a usable trigger description, and the wording is free
     // to change.
-    expect(frontMatterValue(frontMatter, "description").length).toBeGreaterThan(0);
+    expect(frontMatterValue(frontMatter, "description").length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("stays readable outside a restricted workspace filesystem", async () => {
@@ -102,15 +117,22 @@ describe("the entry's skill mount", () => {
     harness = await createHarness({ endpoint: "http://127.0.0.1:1933" });
 
     const providers = harness.mounted.filter(
-      entry =>
-        (entry.config as { providerName?: string } | undefined)?.providerName === "openviking",
+      (entry) =>
+        (entry.config as { providerName?: string } | undefined)
+          ?.providerName === "openviking",
     );
 
     expect(providers).toHaveLength(1);
     const provider = providers[0]!;
-    expect((provider.plugin as { name?: string }).name).toBe("skill-filesystem");
-    expect(typeof (provider.plugin as { apply?: unknown }).apply).toBe("function");
-    expect((provider.config as { bundledSkillDir?: string }).bundledSkillDir).toBe(SKILLS_DIR);
+    expect((provider.plugin as { name?: string }).name).toBe(
+      "skill-filesystem",
+    );
+    expect(typeof (provider.plugin as { apply?: unknown }).apply).toBe(
+      "function",
+    );
+    expect(
+      (provider.config as { bundledSkillDir?: string }).bundledSkillDir,
+    ).toBe(SKILLS_DIR);
   });
 
   it("apply mounts both the tool surface and the skill", async () => {
@@ -119,13 +141,16 @@ describe("the entry's skill mount", () => {
     expect(harness.mounted).toHaveLength(2);
     expect(
       harness.mounted.filter(
-        entry => (entry.config as { serverName?: string } | undefined)?.serverName === "openviking",
+        (entry) =>
+          (entry.config as { serverName?: string } | undefined)?.serverName ===
+          "openviking",
       ),
     ).toHaveLength(1);
     expect(
       harness.mounted.filter(
-        entry =>
-          (entry.config as { providerName?: string } | undefined)?.providerName === "openviking",
+        (entry) =>
+          (entry.config as { providerName?: string } | undefined)
+            ?.providerName === "openviking",
       ),
     ).toHaveLength(1);
   });

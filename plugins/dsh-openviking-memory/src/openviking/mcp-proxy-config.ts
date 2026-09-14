@@ -40,7 +40,9 @@ export function normalizeConfigPath(value: unknown): string {
  * The credential files every harness must watch: the two `OPENVIKING_*_FILE`
  * overrides and the two default locations under `~/.openviking`.
  */
-export function defaultCredentialPaths(env: NodeJS.ProcessEnv = process.env): string[] {
+export function defaultCredentialPaths(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
   return [
     normalizeConfigPath(env.OPENVIKING_CLI_CONFIG_FILE),
     normalizeConfigPath(env.OPENVIKING_CONFIG_FILE),

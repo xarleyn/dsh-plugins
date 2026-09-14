@@ -22,7 +22,11 @@
  * The old behaviour is still one word away, byte for byte.
  */
 
-import { legacySanitize, resolveWorkspaceIdentity, sanitizePeerId } from "./workspace-identity.js";
+import {
+  legacySanitize,
+  resolveWorkspaceIdentity,
+  sanitizePeerId,
+} from "./workspace-identity.js";
 import type { WorkspaceIdentity } from "./workspace-identity.js";
 
 /**
@@ -66,15 +70,18 @@ export function peerSourceTemplates(
   source: unknown,
   onWarn: ((message: string) => void) | null = null,
 ): string[] {
-  if (Array.isArray(source)) return (source as unknown[]).map(String).filter(Boolean);
+  if (Array.isArray(source))
+    return (source as unknown[]).map(String).filter(Boolean);
   const raw = String(source ?? "").trim();
   if (!raw) return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
-  if (Object.hasOwn(PEER_SOURCE_PRESETS, raw)) return PEER_SOURCE_PRESETS[raw as keyof typeof PEER_SOURCE_PRESETS];
+  if (Object.hasOwn(PEER_SOURCE_PRESETS, raw))
+    return PEER_SOURCE_PRESETS[raw as keyof typeof PEER_SOURCE_PRESETS];
   if (raw.includes("{")) return [raw];
 
-  const message = `OpenViking: ignored peer.source ${JSON.stringify(raw)}: it is neither a preset `
-    + `(${Object.keys(PEER_SOURCE_PRESETS).join(", ")}) nor a template such as "team-{dir}". `
-    + `Falling back to ${DEFAULT_PEER_SOURCE}.`;
+  const message =
+    `OpenViking: ignored peer.source ${JSON.stringify(raw)}: it is neither a preset ` +
+    `(${Object.keys(PEER_SOURCE_PRESETS).join(", ")}) nor a template such as "team-{dir}". ` +
+    `Falling back to ${DEFAULT_PEER_SOURCE}.`;
   if (typeof onWarn === "function") onWarn(message);
   else process.stderr.write(`${message}\n`);
   return PEER_SOURCE_PRESETS[DEFAULT_PEER_SOURCE];
@@ -87,19 +94,25 @@ export function peerSourceTemplates(
  * silently shared identity, so an empty variable falls through to the next
  * template instead.
  */
-export function renderPeerTemplate(template: unknown, vars: Record<string, unknown>): string {
+export function renderPeerTemplate(
+  template: unknown,
+  vars: Record<string, unknown>,
+): string {
   const text = String(template || "");
   if (!text) return "";
   let empty = false;
-  const rendered = text.replace(VARIABLE_RE, (match: string, name: string): string => {
-    if (!Object.hasOwn(vars, name)) {
-      empty = true;
-      return "";
-    }
-    const value = String(vars[name] ?? "");
-    if (!value) empty = true;
-    return value;
-  });
+  const rendered = text.replace(
+    VARIABLE_RE,
+    (match: string, name: string): string => {
+      if (!Object.hasOwn(vars, name)) {
+        empty = true;
+        return "";
+      }
+      const value = String(vars[name] ?? "");
+      if (!value) empty = true;
+      return value;
+    },
+  );
   return empty ? "" : rendered;
 }
 
@@ -146,13 +159,21 @@ export function resolveEffectivePeerId({
   onWarn = null,
 }: EffectivePeerOptions = {}): EffectivePeer {
   const explicit = String(cfg.peerId || "").trim();
-  if (explicit) return { peerId: explicit, source: "explicit", origin: "explicit", legacyPeerId: "" };
+  if (explicit)
+    return {
+      peerId: explicit,
+      source: "explicit",
+      origin: "explicit",
+      legacyPeerId: "",
+    };
 
   // `OPENVIKING_WORKSPACE_PEER=0` predates `peer.source` and still means "none".
-  if (cfg.workspacePeer === false) return { peerId: "", source: "none", origin: "disabled", legacyPeerId: "" };
+  if (cfg.workspacePeer === false)
+    return { peerId: "", source: "none", origin: "disabled", legacyPeerId: "" };
 
   const templates = peerSourceTemplates(cfg.peerSource, onWarn);
-  if (!templates.length) return { peerId: "", source: "none", origin: "none", legacyPeerId: "" };
+  if (!templates.length)
+    return { peerId: "", source: "none", origin: "none", legacyPeerId: "" };
 
   // `harness` is composed here rather than in the identity, whose result is
   // cached on disk under a cwd-only key — two harnesses in one directory would

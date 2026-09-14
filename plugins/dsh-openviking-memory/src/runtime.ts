@@ -20,7 +20,11 @@ import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
 import type { Session } from "@deepseek-ai/dsh-session";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
-import { captureEvent, OPENVIKING_PLUGIN_SOURCE, promptText } from "./capture.js";
+import {
+  captureEvent,
+  OPENVIKING_PLUGIN_SOURCE,
+  promptText,
+} from "./capture.js";
 import { traceIdOf, type OpenVikingClient } from "./client.js";
 import type { InjectionPlan, ResolvedConfig } from "./config.js";
 import { buildProfileBlock } from "./openviking/profile-inject.js";
@@ -97,7 +101,11 @@ export class OpenVikingRuntime {
     state = {
       dshSessionId: String(session.id),
       ovSessionId: deriveHarnessSessionId("dsh-", String(session.id)),
-      config: { ...this.config, peerId: peer.peerId, legacyPeerId: peer.legacyPeerId },
+      config: {
+        ...this.config,
+        peerId: peer.peerId,
+        legacyPeerId: peer.legacyPeerId,
+      },
       ready: false,
       profileBlock: "",
       profileDelivered: false,
@@ -139,8 +147,8 @@ export class OpenVikingRuntime {
       state.config.peerId,
     );
     if (
-      !ensured.ok
-      && !(ensured.status === 409 && ensured.error?.code === "ALREADY_EXISTS")
+      !ensured.ok &&
+      !(ensured.status === 409 && ensured.error?.code === "ALREADY_EXISTS")
     ) {
       state.initializationRetryable = isRetryableFailure(ensured);
       return state;
@@ -185,7 +193,8 @@ export class OpenVikingRuntime {
    */
   async profileMessage(agent: Agent): Promise<UserMessage | null> {
     const state = await this.initialize(agent);
-    if (!state.ready || !state.profileBlock || state.profileDelivered) return null;
+    if (!state.ready || !state.profileBlock || state.profileDelivered)
+      return null;
     if (hasStartupProfile(agent)) {
       state.profileDelivered = true;
       return null;
@@ -194,7 +203,10 @@ export class OpenVikingRuntime {
     return pluginMessage(state.profileBlock, "instructions");
   }
 
-  async recallMessage(agent: Agent, messages: readonly UserMessage[]): Promise<UserMessage | null> {
+  async recallMessage(
+    agent: Agent,
+    messages: readonly UserMessage[],
+  ): Promise<UserMessage | null> {
     const state = await this.initialize(agent);
     if (!state.ready) return null;
     const query = promptText(messages);
@@ -255,7 +267,11 @@ export class OpenVikingRuntime {
         state.ovSessionId,
         state.config.peerId,
       );
-      if (Number(metadata?.pending_tokens || 0) < state.config.commitTokenThreshold) return;
+      if (
+        Number(metadata?.pending_tokens || 0) <
+        state.config.commitTokenThreshold
+      )
+        return;
       const response = await this.client.commitSession(
         state.ovSessionId,
         state.config.peerId,
@@ -264,7 +280,9 @@ export class OpenVikingRuntime {
         sessionId: state.ovSessionId,
         ok: response.ok,
         trace_id: traceIdOf(response.result) || response.traceId,
-        error: response.ok ? undefined : response.error?.message || response.error?.code,
+        error: response.ok
+          ? undefined
+          : response.error?.message || response.error?.code,
       });
       if (isRetryableFailure(response)) {
         await this.enqueueFinalCommit(state, {
@@ -279,7 +297,11 @@ export class OpenVikingRuntime {
   }
 
   async disposeAll(): Promise<void> {
-    await Promise.all([...this.states.values()].map(state => this.disposeById(state.dshSessionId)));
+    await Promise.all(
+      [...this.states.values()].map((state) =>
+        this.disposeById(state.dshSessionId),
+      ),
+    );
   }
 
   private disposeById(sessionId: string): Promise<void> {
@@ -300,7 +322,12 @@ export class OpenVikingRuntime {
         const response = await this.client.commitSession(
           state.ovSessionId,
           state.config.peerId,
-          { timeoutMs: Math.min(3000, Number(state.config.requestTimeoutMs) || 3000) },
+          {
+            timeoutMs: Math.min(
+              3000,
+              Number(state.config.requestTimeoutMs) || 3000,
+            ),
+          },
         );
         this.log("shutdown_commit", {
           sessionId: state.ovSessionId,
@@ -320,13 +347,16 @@ export class OpenVikingRuntime {
     return state.disposing;
   }
 
-  private enqueueWrite(state: SessionState, operation: () => Promise<void>): void {
-    state.writes = state.writes
-      .then(operation)
-      .catch(error => this.log("write_error", {
+  private enqueueWrite(
+    state: SessionState,
+    operation: () => Promise<void>,
+  ): void {
+    state.writes = state.writes.then(operation).catch((error) =>
+      this.log("write_error", {
         sessionId: state.ovSessionId,
         error: error instanceof Error ? error.message : String(error),
-      }));
+      }),
+    );
   }
 
   private async enqueuePending(
@@ -336,7 +366,9 @@ export class OpenVikingRuntime {
   ): Promise<{ ok: boolean; error?: string }> {
     const createdAt = Math.max(Date.now(), state.pendingCreatedAt + 1);
     state.pendingCreatedAt = createdAt;
-    const result = await enqueue(type, state.ovSessionId, payload, { createdAt });
+    const result = await enqueue(type, state.ovSessionId, payload, {
+      createdAt,
+    });
     if (result.ok) {
       // Log the latch transition only: every message that follows while the
       // latch holds takes the cheap enqueue path, so this fires once per
@@ -356,12 +388,18 @@ export class OpenVikingRuntime {
     return result;
   }
 
-  private async enqueueFinalCommit(state: SessionState, payload: unknown): Promise<void> {
+  private async enqueueFinalCommit(
+    state: SessionState,
+    payload: unknown,
+  ): Promise<void> {
     await this.removePendingCommits(state);
     await this.enqueuePending(state, "commitSession", payload);
   }
 
-  private async enqueuePendingMessage(state: SessionState, payload: unknown): Promise<void> {
+  private async enqueuePendingMessage(
+    state: SessionState,
+    payload: unknown,
+  ): Promise<void> {
     const result = await this.enqueuePending(state, "addMessage", payload);
     if (result.ok) await this.removePendingCommits(state);
   }
@@ -370,8 +408,8 @@ export class OpenVikingRuntime {
     const pending = await listPending();
     for (const item of pending) {
       if (
-        item.entry?.type === "commitSession"
-        && item.entry.sessionId === state.ovSessionId
+        item.entry?.type === "commitSession" &&
+        item.entry.sessionId === state.ovSessionId
       ) {
         await dequeue(item.filename);
       }
@@ -381,7 +419,7 @@ export class OpenVikingRuntime {
   async refreshPendingState(state: SessionState): Promise<void> {
     const wasPending = state.hasPendingWrites;
     const pending = (await listPending()).filter(
-      item => item.entry?.sessionId === state.ovSessionId,
+      (item) => item.entry?.sessionId === state.ovSessionId,
     );
     state.hasPendingWrites = pending.length > 0;
     state.pendingCreatedAt = pending.reduce(
@@ -400,7 +438,9 @@ export class OpenVikingRuntime {
    * path calls it without options and keeps consuming retries; the drainer
    * passes consumeRetries:false so transient failures stay retryable.
    */
-  async replayPendingQueue(options: { readonly consumeRetries?: boolean } = {}): Promise<void> {
+  async replayPendingQueue(
+    options: { readonly consumeRetries?: boolean } = {},
+  ): Promise<void> {
     await replayPending(
       (path, init) => this.client.fetchJSON(path, init),
       (stage, data) => this.log(stage, data),
@@ -451,12 +491,17 @@ export class OpenVikingRuntime {
    */
   startDrainer(): NodeJS.Timeout {
     if (this.drainTimer) return this.drainTimer;
-    const parsed = parseInt(process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS || "", 10);
+    const parsed = parseInt(
+      process.env.OPENVIKING_PENDING_DRAIN_INTERVAL_MS || "",
+      10,
+    );
     const intervalMs = Number.isFinite(parsed) && parsed > 0 ? parsed : 60000;
     this.drainTimer = setInterval(() => {
-      void this.drainTick().catch(error => this.log("drain_error", {
-        error: error instanceof Error ? error.message : String(error),
-      }));
+      void this.drainTick().catch((error) =>
+        this.log("drain_error", {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
     }, intervalMs);
     this.drainTimer.unref?.();
     return this.drainTimer;
@@ -499,7 +544,10 @@ export class OpenVikingRuntime {
   }
 }
 
-function pluginMessage(content: string, form: "instructions" | "recall"): UserMessage {
+function pluginMessage(
+  content: string,
+  form: "instructions" | "recall",
+): UserMessage {
   // dsh's own constructor: identity, normalization, and any future Message
   // invariants come from the pinned peer instead of a hand-built object.
   return createUserMessage({
@@ -521,18 +569,26 @@ function hasStartupProfile(agent: Agent): boolean {
   const session = agent.session;
   // `ownEvents()` is the fork-aware view of the session log: the parent's
   // inherited prefix is excluded, so a fork re-injects its own profile.
-  const inHistory = session.ownEvents().some(event => (
-    event.type === "user/message" && isStartupProfile(event.data)
-  ));
+  const inHistory = session
+    .ownEvents()
+    .some(
+      (event) => event.type === "user/message" && isStartupProfile(event.data),
+    );
   if (inHistory) return true;
-  return [agent.inbox?.nextTurn, agent.inbox?.nextStep].some(messages => (
-    (messages || []).some(isStartupProfile)
-  ));
+  return [agent.inbox?.nextTurn, agent.inbox?.nextStep].some((messages) =>
+    (messages || []).some(isStartupProfile),
+  );
 }
 
 function isStartupProfile(message: unknown): boolean {
-  const source = (message as { source?: { kind?: unknown; plugin?: unknown; form?: unknown } } | null)?.source;
-  return source?.kind === "plugin"
-    && source.plugin === OPENVIKING_PLUGIN_SOURCE
-    && source.form === "instructions";
+  const source = (
+    message as {
+      source?: { kind?: unknown; plugin?: unknown; form?: unknown };
+    } | null
+  )?.source;
+  return (
+    source?.kind === "plugin" &&
+    source.plugin === OPENVIKING_PLUGIN_SOURCE &&
+    source.form === "instructions"
+  );
 }

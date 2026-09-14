@@ -49,7 +49,11 @@ interface LocalTool {
 interface JsonRpcErrorResponse {
   readonly jsonrpc: string;
   readonly id: unknown;
-  readonly error: { readonly code: number; readonly message: string; readonly data?: unknown };
+  readonly error: {
+    readonly code: number;
+    readonly message: string;
+    readonly data?: unknown;
+  };
 }
 
 /** What one `postToMcp` round trip resolved to. */
@@ -67,7 +71,10 @@ interface ProxyLogger {
 /** A harness-supplied set of tools answered in-process. */
 interface LocalToolProvider {
   listTools(): unknown[];
-  callTool(params: unknown, context: { readonly config: McpProxyConfig }): Promise<unknown>;
+  callTool(
+    params: unknown,
+    context: { readonly config: McpProxyConfig },
+  ): Promise<unknown>;
 }
 
 /** Injected dependencies and stdio streams. */
@@ -75,7 +82,10 @@ interface CreateOpenVikingMcpProxyOptions {
   readonly stdin?: NodeJS.ReadableStream;
   readonly stdout?: NodeJS.WritableStream;
   readonly readConfig?: () => McpProxyConfig;
-  readonly loggerFactory?: (hookName: string, config: McpProxyConfig) => ProxyLogger;
+  readonly loggerFactory?: (
+    hookName: string,
+    config: McpProxyConfig,
+  ) => ProxyLogger;
   readonly fetchImpl?: typeof fetch;
   readonly localToolProvider?: LocalToolProvider | null;
 }
@@ -97,7 +107,12 @@ class HttpStatusError extends Error {
 
   readonly messages: unknown[];
 
-  constructor(status: number, statusText: string, bodyText: string, messages: unknown[] = []) {
+  constructor(
+    status: number,
+    statusText: string,
+    bodyText: string,
+    messages: unknown[] = [],
+  ) {
     super(`HTTP ${status}${statusText ? ` ${statusText}` : ""}`);
     this.name = "HttpStatusError";
     this.status = status;
@@ -107,7 +122,9 @@ class HttpStatusError extends Error {
   }
 }
 
-function snapshotPaths(paths: readonly string[] | undefined): Map<string, string> {
+function snapshotPaths(
+  paths: readonly string[] | undefined,
+): Map<string, string> {
   const out = new Map<string, string>();
   for (const path of paths || []) {
     try {
@@ -120,7 +137,10 @@ function snapshotPaths(paths: readonly string[] | undefined): Map<string, string
   return out;
 }
 
-function snapshotsDiffer(a: Map<string, string>, b: Map<string, string>): boolean {
+function snapshotsDiffer(
+  a: Map<string, string>,
+  b: Map<string, string>,
+): boolean {
   if (a.size !== b.size) return true;
   for (const [key, value] of a.entries()) {
     if (b.get(key) !== value) return true;
@@ -152,11 +172,21 @@ function isRequest(message: unknown): boolean {
 }
 
 function messageId(message: unknown): unknown {
-  return isRequest(message) ? (message as { readonly id?: unknown }).id : undefined;
+  return isRequest(message)
+    ? (message as { readonly id?: unknown }).id
+    : undefined;
 }
 
-function errorResponse(id: unknown, code: number, message: string, data?: unknown): JsonRpcErrorResponse {
-  const error: { code: number; message: string; data?: unknown } = { code, message };
+function errorResponse(
+  id: unknown,
+  code: number,
+  message: string,
+  data?: unknown,
+): JsonRpcErrorResponse {
+  const error: { code: number; message: string; data?: unknown } = {
+    code,
+    message,
+  };
   if (data !== undefined) error.data = data;
   return { jsonrpc: "2.0", id: id ?? null, error };
 }
@@ -172,7 +202,9 @@ function parseMaybeJson(text: unknown): unknown {
 }
 
 /** Read a message's `result` payload as the typed shape the proxy probes. */
-function resultOf(message: JsonRpcMessage | null | undefined): JsonRpcResult | null | undefined {
+function resultOf(
+  message: JsonRpcMessage | null | undefined,
+): JsonRpcResult | null | undefined {
   return message?.result as JsonRpcResult | null | undefined;
 }
 
@@ -214,12 +246,20 @@ function parseHttpBody(contentType: unknown, text: unknown): unknown[] {
 
 function serializeBodyForError(bodyText: unknown): string {
   const parsed = parseMaybeJson(bodyText) as
-    | { readonly error?: { readonly message?: unknown } | null; readonly detail?: unknown }
+    | {
+        readonly error?: { readonly message?: unknown } | null;
+        readonly detail?: unknown;
+      }
     | null
     | undefined;
   if (parsed?.error?.message) return parsed.error.message as string;
-  if (parsed?.detail) return typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
-  const compact = String(bodyText || "").replace(/\s+/g, " ").trim();
+  if (parsed?.detail)
+    return typeof parsed.detail === "string"
+      ? parsed.detail
+      : JSON.stringify(parsed.detail);
+  const compact = String(bodyText || "")
+    .replace(/\s+/g, " ")
+    .trim();
   return compact.slice(0, 500);
 }
 
@@ -248,11 +288,16 @@ export function createOpenVikingMcpProxy({
   // Bound to `const` after the guards: the narrowing those guards establish is
   // not preserved inside the closures below.
   const readConfigFn: () => McpProxyConfig = readConfig;
-  const loggerFactoryFn: (hookName: string, config: McpProxyConfig) => ProxyLogger = loggerFactory;
+  const loggerFactoryFn: (
+    hookName: string,
+    config: McpProxyConfig,
+  ) => ProxyLogger = loggerFactory;
 
   let proxyConfig: McpProxyConfig = readConfigFn();
   let logger: ProxyLogger = loggerFactoryFn("mcp-proxy", proxyConfig);
-  let watchedSnapshot: Map<string, string> = snapshotPaths(proxyConfig.watchedPaths);
+  let watchedSnapshot: Map<string, string> = snapshotPaths(
+    proxyConfig.watchedPaths,
+  );
   let sessionId = "";
   let initializeRequest: Record<string, unknown> | null = null;
   let initializedNotification: Record<string, unknown> | null = null;
@@ -267,22 +312,30 @@ export function createOpenVikingMcpProxy({
   function log(stage: string, data?: unknown): void {
     try {
       logger.log(stage, data);
-    } catch { /* debug logging must never affect protocol IO */ }
+    } catch {
+      /* debug logging must never affect protocol IO */
+    }
   }
 
   function logError(stage: string, err: unknown): void {
     try {
       logger.logError(stage, err);
-    } catch { /* debug logging must never affect protocol IO */ }
+    } catch {
+      /* debug logging must never affect protocol IO */
+    }
   }
 
   function localTools(): LocalTool[] {
-    if (!localToolProvider || typeof localToolProvider.listTools !== "function") return [];
+    if (!localToolProvider || typeof localToolProvider.listTools !== "function")
+      return [];
     const tools = localToolProvider.listTools();
     return Array.isArray(tools) ? (tools as LocalTool[]) : [];
   }
 
-  function appendLocalTools(message: JsonRpcMessage, outbound: JsonRpcMessage): JsonRpcMessage {
+  function appendLocalTools(
+    message: JsonRpcMessage,
+    outbound: JsonRpcMessage,
+  ): JsonRpcMessage {
     const result = resultOf(outbound);
     const tools = result?.tools;
     if (message.method !== "tools/list" || !Array.isArray(tools)) {
@@ -303,13 +356,14 @@ export function createOpenVikingMcpProxy({
 
   async function callLocalTool(message: JsonRpcMessage): Promise<unknown> {
     if (
-      message.method !== "tools/call"
-      || !localToolProvider
-      || typeof localToolProvider.callTool !== "function"
+      message.method !== "tools/call" ||
+      !localToolProvider ||
+      typeof localToolProvider.callTool !== "function"
     ) {
       return null;
     }
-    const name = (message.params as { readonly name?: unknown } | undefined)?.name;
+    const name = (message.params as { readonly name?: unknown } | undefined)
+      ?.name;
     if (!localTools().some((tool) => tool?.name === name)) return null;
     reloadIfCredentialFilesChanged("local_tool_call");
     return localToolProvider.callTool(message.params, { config: proxyConfig });
@@ -337,20 +391,25 @@ export function createOpenVikingMcpProxy({
     return true;
   }
 
-  function headersForRequest(includeSession: boolean = true): Record<string, string> {
+  function headersForRequest(
+    includeSession: boolean = true,
+  ): Record<string, string> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Accept": "application/json, text/event-stream",
+      Accept: "application/json, text/event-stream",
       // Always the proxy's current version (default, then server-negotiated) —
       // never the client's un-negotiated ask, which strict upstreams reject
       // with HTTP 400 before initialize negotiation can run.
       "MCP-Protocol-Version": protocolVersion,
     };
     if (includeSession && sessionId) headers["Mcp-Session-Id"] = sessionId;
-    if (proxyConfig.apiKey) headers.Authorization = `Bearer ${proxyConfig.apiKey}`;
-    if (proxyConfig.account) headers["X-OpenViking-Account"] = proxyConfig.account;
+    if (proxyConfig.apiKey)
+      headers.Authorization = `Bearer ${proxyConfig.apiKey}`;
+    if (proxyConfig.account)
+      headers["X-OpenViking-Account"] = proxyConfig.account;
     if (proxyConfig.user) headers["X-OpenViking-User"] = proxyConfig.user;
-    if (proxyConfig.peerId) headers["X-OpenViking-Actor-Peer"] = proxyConfig.peerId;
+    if (proxyConfig.peerId)
+      headers["X-OpenViking-Actor-Peer"] = proxyConfig.peerId;
     if (proxyConfig.userAgent) headers["User-Agent"] = proxyConfig.userAgent;
     return headers;
   }
@@ -358,12 +417,17 @@ export function createOpenVikingMcpProxy({
   function writeMessage(obj: JsonRpcMessage): Promise<unknown> {
     const line = `${JSON.stringify(obj)}\n`;
     stdoutChain = stdoutChain
-      .then(() => new Promise<unknown>((resolve) => stdout.write(line, resolve)))
+      .then(
+        () => new Promise<unknown>((resolve) => stdout.write(line, resolve)),
+      )
       .catch(() => {});
     return stdoutChain;
   }
 
-  function mapError(message: JsonRpcMessage, err: unknown): JsonRpcErrorResponse {
+  function mapError(
+    message: JsonRpcMessage,
+    err: unknown,
+  ): JsonRpcErrorResponse {
     const id = messageId(message);
     if (err instanceof HttpStatusError) {
       if (err.status === 401 || err.status === 403) {
@@ -399,7 +463,11 @@ export function createOpenVikingMcpProxy({
         id,
         -32004,
         `OpenViking MCP request timed out after ${proxyConfig.timeoutMs}ms (${proxyConfig.mcpUrl}). The server may still be processing (rerank can be slow) — check /health or raise OPENVIKING_TIMEOUT_MS.`,
-        { timeoutMs: proxyConfig.timeoutMs, mcpUrl: proxyConfig.mcpUrl, cause: msg },
+        {
+          timeoutMs: proxyConfig.timeoutMs,
+          mcpUrl: proxyConfig.mcpUrl,
+          cause: msg,
+        },
       );
     }
     return errorResponse(
@@ -412,7 +480,10 @@ export function createOpenVikingMcpProxy({
 
   async function postToMcp(
     message: JsonRpcMessage,
-    { includeSession = true, timeoutMs = proxyConfig.timeoutMs }: {
+    {
+      includeSession = true,
+      timeoutMs = proxyConfig.timeoutMs,
+    }: {
       readonly includeSession?: boolean;
       readonly timeoutMs?: number;
     } = {},
@@ -428,12 +499,17 @@ export function createOpenVikingMcpProxy({
         signal: controller.signal,
       });
       const text = await res.text();
-      const messages = parseHttpBody(res.headers.get("content-type"), text) as JsonRpcMessage[];
+      const messages = parseHttpBody(
+        res.headers.get("content-type"),
+        text,
+      ) as JsonRpcMessage[];
       const nextSessionId = res.headers.get("mcp-session-id");
       if (nextSessionId) sessionId = nextSessionId;
       if (message?.method === "initialize" && res.ok) {
         const negotiated = resultOf(
-          messages.find((m) => typeof resultOf(m)?.protocolVersion === "string"),
+          messages.find(
+            (m) => typeof resultOf(m)?.protocolVersion === "string",
+          ),
         )?.protocolVersion;
         if (negotiated) protocolVersion = negotiated as string;
       }
@@ -468,7 +544,9 @@ export function createOpenVikingMcpProxy({
 
   async function reinitialize(failedSessionId: string): Promise<void> {
     if (!initializeRequest) {
-      throw new Error("MCP session expired before initialize parameters were cached");
+      throw new Error(
+        "MCP session expired before initialize parameters were cached",
+      );
     }
     if (reinitializeInFlight) return reinitializeInFlight;
     reinitializeInFlight = (async () => {
@@ -478,9 +556,15 @@ export function createOpenVikingMcpProxy({
       sessionId = "";
       const result = await postToMcp(reinit, { includeSession: false });
       if (initializedNotification) {
-        await postToMcp(cloneMessage(initializedNotification), { includeSession: true });
+        await postToMcp(cloneMessage(initializedNotification), {
+          includeSession: true,
+        });
       }
-      log("reinitialized", { mcpUrl: proxyConfig.mcpUrl, status: result.status, sessionId: Boolean(sessionId) });
+      log("reinitialized", {
+        mcpUrl: proxyConfig.mcpUrl,
+        status: result.status,
+        sessionId: Boolean(sessionId),
+      });
     })().finally(() => {
       reinitializeInFlight = null;
     });
@@ -497,22 +581,29 @@ export function createOpenVikingMcpProxy({
 
     const failedSessionId = sessionId;
     try {
-      return await postToMcp(message, { includeSession: message.method !== "initialize" });
+      return await postToMcp(message, {
+        includeSession: message.method !== "initialize",
+      });
     } catch (err) {
-      if (err instanceof HttpStatusError && (err.status === 401 || err.status === 403)) {
+      if (
+        err instanceof HttpStatusError &&
+        (err.status === 401 || err.status === 403)
+      ) {
         if (reloadIfCredentialFilesChanged("auth_failure")) {
           sessionId = "";
           if (message.method !== "initialize" && initializeRequest) {
             await reinitialize(failedSessionId);
           }
-          return await postToMcp(message, { includeSession: message.method !== "initialize" });
+          return await postToMcp(message, {
+            includeSession: message.method !== "initialize",
+          });
         }
       }
       if (
-        err instanceof HttpStatusError
-        && (err.status === 400 || err.status === 404)
-        && message.method !== "initialize"
-        && initializeRequest
+        err instanceof HttpStatusError &&
+        (err.status === 400 || err.status === 404) &&
+        message.method !== "initialize" &&
+        initializeRequest
       ) {
         await reinitialize(failedSessionId);
         return await postToMcp(message, { includeSession: true });
@@ -525,8 +616,14 @@ export function createOpenVikingMcpProxy({
   }
 
   async function handleMessage(message: unknown): Promise<void> {
-    if (!message || typeof message !== "object" || (message as JsonRpcMessage).jsonrpc !== "2.0") {
-      await writeMessage(errorResponse(null, -32600, "Invalid JSON-RPC message"));
+    if (
+      !message ||
+      typeof message !== "object" ||
+      (message as JsonRpcMessage).jsonrpc !== "2.0"
+    ) {
+      await writeMessage(
+        errorResponse(null, -32600, "Invalid JSON-RPC message"),
+      );
       return;
     }
 
@@ -545,7 +642,11 @@ export function createOpenVikingMcpProxy({
       const localResult = await callLocalTool(request);
       if (localResult !== null) {
         if (expectsResponse) {
-          await writeMessage({ jsonrpc: "2.0", id: request.id, result: localResult });
+          await writeMessage({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: localResult,
+          });
         }
         return;
       }
@@ -560,7 +661,13 @@ export function createOpenVikingMcpProxy({
       const result = await send;
       if (!expectsResponse) return;
       if (result.messages.length === 0) {
-        await writeMessage(errorResponse(request.id, -32003, "OpenViking MCP upstream returned an empty response"));
+        await writeMessage(
+          errorResponse(
+            request.id,
+            -32003,
+            "OpenViking MCP upstream returned an empty response",
+          ),
+        );
         return;
       }
       for (const outbound of result.messages) {
@@ -606,7 +713,11 @@ export function createOpenVikingMcpProxy({
       credentialPath: proxyConfig.credentialPath,
       hasApiKey: Boolean(proxyConfig.apiKey),
     });
-    const rl = createInterface({ input: stdin, crlfDelay: Infinity, terminal: false });
+    const rl = createInterface({
+      input: stdin,
+      crlfDelay: Infinity,
+      terminal: false,
+    });
     rl.on("line", (line: string) => {
       void handleLine(line);
     });
