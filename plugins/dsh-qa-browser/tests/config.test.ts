@@ -26,6 +26,7 @@ describe("resolveQaBrowserConfig", () => {
     });
 
     expect(config.runtime).toMatchObject({
+      chromiumSandbox: true,
       actionTimeoutMs: 250,
       navigationTimeoutMs: 180_000,
       idleTimeoutMs: 60_000,

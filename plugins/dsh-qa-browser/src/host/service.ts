@@ -1,5 +1,6 @@
 import { Context, Service } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent";
+import type { AttachmentStore, ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
 import type {} from "@deepseek-ai/dsh-tools";
 import {
   createHostLoggerSink,
@@ -31,7 +32,10 @@ import {
   QaBrowserSessionManager,
   type BrowserRuntimeLogger,
 } from "./session-manager.js";
-import { createBrowserCoreTools } from "./tools/index.js";
+import {
+  createBrowserCoreTools,
+  createBrowserVisionTools,
+} from "./tools/index.js";
 
 export interface QaBrowserServiceDependencies {
   readonly provider?: BrowserProvider;
@@ -43,12 +47,13 @@ export interface QaBrowserServiceDependencies {
 
 /** Public Host service. Browser state is keyed only by DSH session id. */
 export class QaBrowserService extends Service {
-  static inject = ["agents", "tools"];
+  static inject = ["agents", "attachments", "tools"];
   static Config = QaBrowserConfigSchema;
 
   readonly config: ResolvedQaBrowserConfig;
   private readonly manager: QaBrowserSessionManager;
   private readonly logger: BrowserRuntimeLogger & { close?(): Promise<void> };
+  private readonly attachments: AttachmentStore;
   private readonly toolDisposers: (() => void)[] = [];
   private disposePromise: Promise<void> | undefined;
 
@@ -58,6 +63,7 @@ export class QaBrowserService extends Service {
     dependencies: QaBrowserServiceDependencies = {},
   ) {
     super(ctx, "qaBrowser");
+    this.attachments = ctx.attachments;
     this.config = resolveQaBrowserConfig(config);
     this.logger =
       dependencies.logger ??
@@ -78,6 +84,11 @@ export class QaBrowserService extends Service {
     });
     if (this.config.enabled && this.config.capabilities.core) {
       for (const definition of createBrowserCoreTools(this)) {
+        this.toolDisposers.push(ctx.tools.register(definition));
+      }
+    }
+    if (this.config.enabled && this.config.capabilities.vision) {
+      for (const definition of createBrowserVisionTools(this)) {
         this.toolDisposers.push(ctx.tools.register(definition));
       }
     }
@@ -239,9 +250,21 @@ export class QaBrowserService extends Service {
     return this.manager.setViewport(sessionId, tabId, viewport);
   }
 
-  /** Phase-1 host primitive; Phase 4 will wrap it in native DSH artifacts. */
+  /** Raw screenshot primitive for trusted Host integrations such as QA Surface. */
   screenshot(sessionId: string, tabId: string): Promise<Buffer> {
     return this.manager.screenshot(sessionId, tabId);
+  }
+
+  async screenshotArtifact(
+    sessionId: string,
+    tabId: string,
+  ): Promise<ImageAttachmentRef> {
+    const image = await this.manager.screenshot(sessionId, tabId);
+    return this.attachments.saveImage({
+      data: image,
+      mediaType: "image/png",
+      name: `qa-browser-${tabId}.png`,
+    });
   }
 
   dispose(): Promise<void> {

@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { QaBrowserService } from "../src/host/service.js";
 import {
   BROWSER_CORE_TOOL_NAMES,
+  BROWSER_VISION_TOOL_NAMES,
   createBrowserCoreTools,
+  createBrowserVisionTools,
 } from "../src/host/tools/index.js";
 
 function execution(): ToolRunContext {
@@ -67,5 +69,33 @@ describe("Browser tool contract", () => {
       secret,
       { clear: true, submit: undefined },
     );
+  });
+
+  it("renders screenshots through the durable native image attachment path", async () => {
+    const attachment = {
+      attachmentId: "sha256:test",
+      mediaType: "image/png",
+      bytes: 1024,
+      width: 1440,
+      height: 900,
+      name: "qa-browser-tab_test.png",
+    };
+    const service = {
+      ensureSession: vi.fn(async () => ({ selectedTabId: "tab_test" })),
+      screenshotArtifact: vi.fn(async () => attachment),
+    } as unknown as QaBrowserService;
+    const tools = createBrowserVisionTools(service);
+    expect(tools.map((tool) => tool.name)).toEqual(BROWSER_VISION_TOOL_NAMES);
+
+    const tool = tools[0]!;
+    const value = await tool.execute({}, execution());
+    expect(service.screenshotArtifact).toHaveBeenCalledWith(
+      "session-test",
+      "tab_test",
+    );
+    expect(tool.output.render({}, value as never)).toEqual([
+      { type: "text", text: "Browser screenshot captured for tab_test." },
+      { type: "image", attachment },
+    ]);
   });
 });

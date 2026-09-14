@@ -9,6 +9,7 @@ export interface QaBrowserConfig {
     readonly executablePath?: string | null;
     readonly browserChannel?: string;
     readonly headless?: boolean;
+    readonly chromiumSandbox?: boolean;
     readonly actionTimeoutMs?: number;
     readonly navigationTimeoutMs?: number;
     readonly idleTimeoutMinutes?: number;
@@ -59,6 +60,7 @@ export interface ResolvedQaBrowserConfig {
     readonly executablePath: string | null;
     readonly browserChannel: string;
     readonly headless: boolean;
+    readonly chromiumSandbox: boolean;
     readonly actionTimeoutMs: number;
     readonly navigationTimeoutMs: number;
     readonly idleTimeoutMs: number;
@@ -109,6 +111,7 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
     executablePath: null,
     browserChannel: "chromium",
     headless: true,
+    chromiumSandbox: true,
     actionTimeoutMs: 15_000,
     navigationTimeoutMs: 30_000,
     idleTimeoutMs: 30 * 60_000,
@@ -166,6 +169,12 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
         executablePath: nullableString.default(null),
         browserChannel: z.string().default("chromium"),
         headless: z.boolean().default(true),
+        chromiumSandbox: z
+          .boolean()
+          .default(true)
+          .description(
+            "Keep the Chromium process sandbox enabled. Disable only in a separately hardened container.",
+          ),
         actionTimeoutMs: z.number().default(15_000),
         navigationTimeoutMs: z.number().default(30_000),
         idleTimeoutMinutes: z.number().default(30),
@@ -266,6 +275,7 @@ export function resolveQaBrowserConfig(
       executablePath: executable,
       browserChannel: raw.runtime?.browserChannel?.trim() || "chromium",
       headless: raw.runtime?.headless ?? true,
+      chromiumSandbox: raw.runtime?.chromiumSandbox ?? true,
       actionTimeoutMs: clampInteger(
         raw.runtime?.actionTimeoutMs,
         250,

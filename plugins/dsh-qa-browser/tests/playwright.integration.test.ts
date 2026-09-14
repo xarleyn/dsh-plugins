@@ -25,7 +25,15 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       new URL("./fixtures/app.html", import.meta.url),
       "utf8",
     );
-    const server = createServer((_request, response) => {
+    let port = 0;
+    const server = createServer((request, response) => {
+      if (request.url === "/redirect-denied") {
+        response.writeHead(302, {
+          location: `http://localhost:${port}/private-target`,
+        });
+        response.end();
+        return;
+      }
       response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       response.end(html);
     });
@@ -35,10 +43,12 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
 
     try {
       const address = server.address() as AddressInfo;
+      port = address.port;
       const config = resolveQaBrowserConfig({
         runtime: {
           executablePath: process.env["DSH_QA_BROWSER_EXECUTABLE"] ?? null,
         },
+        security: { network: { denyHosts: ["localhost"] } },
       });
       const manager = new QaBrowserSessionManager({
         config,
@@ -83,6 +93,11 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       expect(image.subarray(0, 8)).toEqual(
         Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       );
+      await expect(
+        manager.navigate("integration-session", tabId, {
+          url: `http://127.0.0.1:${address.port}/redirect-denied`,
+        }),
+      ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) =>
