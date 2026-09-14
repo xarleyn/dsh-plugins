@@ -1,15 +1,22 @@
 /**
- * Sanitized audit records and session-event payloads (design SPEC §23).
+ * Sanitized audit records (design SPEC §23).
  *
- * The plugin publishes four custom session event types. They are log-only
- * (never part of the model surface) and sanitized: content hash plus
- * decision metadata, no raw content unless raw logging is enabled.
+ * The plugin publishes four audit record categories through its own logger.
+ * They never enter the Harness session journal or the model surface and are
+ * sanitized: content hash plus decision metadata, no raw content unless raw
+ * logging is enabled.
  */
 
-import type { CheckDirection, ContentChannel, SafetyDecision, SafetyErrorCode, SafetyVerdict } from "../types.js";
+import type {
+  CheckDirection,
+  ContentChannel,
+  SafetyDecision,
+  SafetyErrorCode,
+  SafetyVerdict,
+} from "../types.js";
 import { contentSha256, rawPreview } from "./sanitizer.js";
 
-/** Custom session event types published by the plugin. */
+/** Stable audit record categories published by the plugin. */
 export const SAFETY_EVENT_TYPES = {
   check: "safety-gate/check",
   block: "safety-gate/block",
@@ -17,9 +24,11 @@ export const SAFETY_EVENT_TYPES = {
   classifierError: "safety-gate/classifier-error",
 } as const;
 
-export type SafetyEventType = (typeof SAFETY_EVENT_TYPES)[keyof typeof SAFETY_EVENT_TYPES];
+export type SafetyEventType =
+  (typeof SAFETY_EVENT_TYPES)[keyof typeof SAFETY_EVENT_TYPES];
 
 export interface SafetyAuditEvent {
+  readonly sessionId: string | null;
   readonly turn: number | null;
   readonly step: number | null;
   readonly direction: CheckDirection;
@@ -43,6 +52,7 @@ export interface SafetyAuditEvent {
 }
 
 export interface BuildAuditEventInput {
+  readonly sessionId: string | null;
   readonly turn: number | null;
   readonly step: number | null;
   readonly direction: CheckDirection;
@@ -66,6 +76,7 @@ export interface BuildAuditEventInput {
 /** Compose one sanitized audit record from a finished check. */
 export function buildAuditEvent(input: BuildAuditEventInput): SafetyAuditEvent {
   const event: SafetyAuditEvent = {
+    sessionId: input.sessionId,
     turn: input.turn,
     step: input.step,
     direction: input.direction,
@@ -85,7 +96,12 @@ export function buildAuditEvent(input: BuildAuditEventInput): SafetyAuditEvent {
     policyVersion: input.policyVersion,
     ...(input.errorCode !== undefined ? { errorCode: input.errorCode } : {}),
     ...(input.includeRawContent
-      ? { rawContent: rawPreview(input.content, input.rawContentMaxChars ?? 400) }
+      ? {
+          rawContent: rawPreview(
+            input.content,
+            input.rawContentMaxChars ?? 400,
+          ),
+        }
       : {}),
   };
   return event;

@@ -27,6 +27,7 @@ import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
+import { FileQaProvenanceSnapshotStore } from "./provenance/snapshot-store.js";
 import { readSourceFilePreview } from "./provenance/file-preview.js";
 import {
   existingQaUserWorkspace,
@@ -126,7 +127,15 @@ export class QaSurface extends TypertRemoteService {
           existingQaUserWorkspace(registeredWorkspacePath, userId),
       },
     );
-    this.provenance = new QaProvenanceHost(ctx, () => this.getConfig());
+    this.provenance = new QaProvenanceHost(
+      ctx,
+      () => this.getConfig(),
+      new FileQaProvenanceSnapshotStore(),
+      (error) =>
+        this.logger.error("sources.persistence-failed", {
+          message: error instanceof Error ? error.message : String(error),
+        }),
+    );
     // The one place a composed gate's `ask` becomes a decision for an attested
     // chat: refused outright while approvals are blocked, parked for the
     // operator's answer while they are interactive. The question seam shares
@@ -423,7 +432,7 @@ export class QaSurface extends TypertRemoteService {
     }
   }
 
-  /** Return canonical Host snapshots; replay is rebuilt from qa/sources events. */
+  /** Return canonical Host snapshots from plugin-owned durable provenance. */
   @Remote("sources")
   async sources(
     token: string,

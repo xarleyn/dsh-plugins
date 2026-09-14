@@ -16,7 +16,10 @@ const packageJson = JSON.parse(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 
 // Manifest identity.
 assert.match(packageJson.name, /^@yadsh\/dsh-model-safety-gate$/);
@@ -25,7 +28,14 @@ assert.equal(packageJson.license, "MIT");
 assert.equal(packageJson.engines.node, compatibility.node);
 
 // Exports: exhaustive public surface, including the browser and wire entry points.
-for (const exportPath of [".", "./client", "./remote", "./typert", "./types", "./package.json"]) {
+for (const exportPath of [
+  ".",
+  "./client",
+  "./remote",
+  "./typert",
+  "./types",
+  "./package.json",
+]) {
   assert.ok(
     Object.hasOwn(packageJson.exports, exportPath),
     `package export is missing: ${exportPath}`,
@@ -53,14 +63,21 @@ for (const required of [
   "THIRD_PARTY_NOTICES.md",
   "LICENSE",
 ]) {
-  assert.ok(packageJson.files.includes(required), `files is missing: ${required}`);
+  assert.ok(
+    packageJson.files.includes(required),
+    `files is missing: ${required}`,
+  );
 }
 
 // DSH runtime packages stay peer-only (SPEC.md §1, criterion 16). A third-party
 // runtime library (zod, used by the generated Remote codec) is allowed; a
 // harness package never is.
 for (const dependency of Object.keys(packageJson.dependencies ?? {})) {
-  assert.doesNotMatch(dependency, /^@deepseek-ai\//, `harness package must stay a peer: ${dependency}`);
+  assert.doesNotMatch(
+    dependency,
+    /^@deepseek-ai\//,
+    `harness package must stay a peer: ${dependency}`,
+  );
 }
 // Harness packages and the browser runtime the host page already provides are
 // the only peers; anything else belongs in dependencies.
@@ -73,14 +90,22 @@ for (const peer of Object.keys(packageJson.peerDependencies)) {
 }
 
 // Canonical bundle patch pair (guidelines §4.3).
-assert.match(patch, /# The DSH plugin manager discovers this bundle through package\.json\./);
+assert.match(
+  patch,
+  /# The DSH plugin manager discovers this bundle through package\.json\./,
+);
 assert.match(patch, /id: dsh-model-safety-gate\b/);
 assert.match(patch, /name: "@yadsh\/dsh-model-safety-gate"/);
 
 // Compatibility manifest (guidelines §7): the four guarded extension points.
 assert.ok(compatibility.deepseekHarness?.range?.length > 0);
 assert.ok(Array.isArray(compatibility.deepseekHarness?.testedReleases));
-for (const feature of ["agent/pre-step", "llm/stream", "tools/pre-execute", "tools/post-execute"]) {
+for (const feature of [
+  "agent/pre-step",
+  "llm/stream",
+  "tools/pre-execute",
+  "tools/post-execute",
+]) {
   assert.ok(
     compatibility.deepseekHarness?.requiredHostFeatures?.includes(feature),
     `requiredHostFeatures is missing: ${feature}`,
@@ -91,10 +116,23 @@ for (const feature of ["agent/pre-step", "llm/stream", "tools/pre-execute", "too
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
 assert.match(readme, /NOTICE\.md/);
 const notice = await readFile(new URL("../NOTICE.md", import.meta.url), "utf8");
-for (const upstream of ["dsh-defend", "PerryLink", "dsh-run-guard", "dsh-autogate", "dsh-secure-audit", "dsh-injection-guard"]) {
-  assert.ok(notice.includes(upstream), `NOTICE.md is missing attribution: ${upstream}`);
+for (const upstream of [
+  "dsh-defend",
+  "PerryLink",
+  "dsh-run-guard",
+  "dsh-autogate",
+  "dsh-secure-audit",
+  "dsh-injection-guard",
+]) {
+  assert.ok(
+    notice.includes(upstream),
+    `NOTICE.md is missing attribution: ${upstream}`,
+  );
 }
-const thirdParty = await readFile(new URL("../THIRD_PARTY_NOTICES.md", import.meta.url), "utf8");
+const thirdParty = await readFile(
+  new URL("../THIRD_PARTY_NOTICES.md", import.meta.url),
+  "utf8",
+);
 assert.match(thirdParty, /Apache-2\.0/);
 assert.match(thirdParty, /bundles no third-party source/);
 
@@ -115,19 +153,37 @@ for (const path of [
   "lib/typert.remote-client.js",
   "lib/typert.remote-client.d.ts",
 ]) {
-  assert((await stat(new URL(`../${path}`, import.meta.url))).isFile(), `${path} must be built`);
+  assert(
+    (await stat(new URL(`../${path}`, import.meta.url))).isFile(),
+    `${path} must be built`,
+  );
 }
 
 // Browser bundle identity (AGENTS.md): the registration id is the full package
 // name, and the card shell is the canonical one.
-const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
+const client = await readFile(
+  new URL("../lib/client.js", import.meta.url),
+  "utf8",
+);
 assert.match(client, /id:\s*"@yadsh\/dsh-model-safety-gate"/u);
 verifyPluginCardContract(client, {
-  legacyPatterns: [/\.msg-gate-card\b/u, /\.msg-panel\b/u, /dsh-plugin-card\s*\*/u],
+  legacyPatterns: [
+    /\.msg-gate-card\b/u,
+    /\.msg-panel\b/u,
+    /dsh-plugin-card\s*\*/u,
+  ],
 });
 
 // The card must not ship the classifier key: the wire projection is redacted
 // host-side, and the bundle itself never carries a literal key field name pair.
 assert.match(client, /apiKeyConfigured/u);
+
+const host = await readFile(
+  new URL("../lib/service.js", import.meta.url),
+  "utf8",
+);
+assert.doesNotMatch(host, /KNOWN_SESSION_EVENT_TYPES/u);
+assert.doesNotMatch(host, /\.append\(["']safety-gate\//u);
+assert.match(host, /sessionId/u);
 
 console.log("verify-package: all gates passed");

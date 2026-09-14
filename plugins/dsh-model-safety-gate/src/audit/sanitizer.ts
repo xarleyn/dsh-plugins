@@ -3,7 +3,7 @@
  *
  * By default audit records carry a content hash, never the content itself:
  * raw blocked content, secret values, and matched spans stay out of logs and
- * session events unless `audit.includeRawContent` is explicitly enabled.
+ * plugin audit logs unless `audit.includeRawContent` is explicitly enabled.
  */
 
 import { createHash } from "node:crypto";

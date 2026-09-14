@@ -1,7 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import {
-  KNOWN_SESSION_EVENT_TYPES,
   SessionId,
   type Session,
   type SessionEvent,
@@ -10,6 +9,10 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { QaSourceCollector } from "./collector.js";
 import { createDefaultSourceExtractorRegistry } from "./extractors.js";
 import { normalizeReportedSource } from "./reported.js";
+import {
+  MemoryQaProvenanceSnapshotStore,
+  type QaProvenanceSnapshotStore,
+} from "./snapshot-store.js";
 import type {
   QaReportedSource,
   QaSourceOrigin,
@@ -107,6 +110,7 @@ export class QaProvenanceHost {
     Map<number, QaSourceCollector>
   >();
   private readonly snapshots = new Map<string, Map<number, QaTurnSources>>();
+  private readonly seededSessions = new Set<string>();
   private readonly calls = new Map<string, Map<string, ToolCallRecord>>();
   private readonly lineage = new Map<string, LineageRecord>();
   private readonly disposers: (() => void)[] = [];
@@ -114,13 +118,10 @@ export class QaProvenanceHost {
   constructor(
     private readonly ctx: Context,
     private readonly config: () => ResolvedQaSurfaceConfig,
+    private readonly store: QaProvenanceSnapshotStore = new MemoryQaProvenanceSnapshotStore(),
+    private readonly onPersistenceError: (error: unknown) => void = () =>
+      undefined,
   ) {
-    const known = KNOWN_SESSION_EVENT_TYPES as Set<string>;
-    const ownedEventRegistration = !known.has(QA_SOURCES_EVENT);
-    known.add(QA_SOURCES_EVENT);
-    if (ownedEventRegistration)
-      this.disposers.push(() => known.delete(QA_SOURCES_EVENT));
-
     for (const session of ctx.sessions.list()) this.seed(session);
     this.disposers.push(
       ctx.on("session/created", (session) => this.seed(session), {
@@ -163,6 +164,7 @@ export class QaProvenanceHost {
     const sessionId = String(session.id);
     this.collectors.delete(sessionId);
     this.snapshots.delete(sessionId);
+    this.seededSessions.delete(sessionId);
     this.calls.delete(sessionId);
     this.lineage.delete(sessionId);
   }
@@ -170,6 +172,7 @@ export class QaProvenanceHost {
   private forgetAll(): void {
     this.collectors.clear();
     this.snapshots.clear();
+    this.seededSessions.clear();
     this.calls.clear();
     this.lineage.clear();
   }
@@ -177,6 +180,7 @@ export class QaProvenanceHost {
   bundles(sessionId: string): readonly QaTurnSources[] {
     const session = this.ctx.sessions.get(SessionId(sessionId));
     if (session !== undefined) this.seed(session);
+    else this.hydrateStored(sessionId);
     const turns = new Set<number>([
       ...(this.collectors.get(sessionId)?.keys() ?? []),
       ...(this.snapshots.get(sessionId)?.keys() ?? []),
@@ -198,19 +202,21 @@ export class QaProvenanceHost {
   }
 
   private seed(session: Session): void {
-    if (
-      this.snapshots.has(String(session.id)) ||
-      this.collectors.has(String(session.id))
-    )
-      return;
+    const sessionId = String(session.id);
+    if (this.seededSessions.has(sessionId)) return;
+    this.hydrateStored(sessionId);
     for (const event of session.snapshotEvents())
       this.observeEvent(session, event);
+    this.seededSessions.add(sessionId);
   }
 
   private observeEvent(session: Session, event: SessionEvent): void {
     const sessionId = String(session.id);
     if (event.type === QA_SOURCES_EVENT) {
       this.sessionSnapshots(sessionId).set(event.data.turn, event.data);
+      // Backward compatibility: once an old journal has been repaired as
+      // ignorable and can be opened, migrate its snapshot out of Harness.
+      this.persistSnapshot(event.data);
       return;
     }
     if (event.type === "tool/call") {
@@ -272,10 +278,10 @@ export class QaProvenanceHost {
     const bundle = this.collector(sessionId, turn).snapshot();
     const previous = this.snapshots.get(sessionId)?.get(turn);
     if (JSON.stringify(previous) !== JSON.stringify(bundle)) {
+      if (!this.persistSnapshot(bundle)) return;
       this.sessionSnapshots(sessionId).set(turn, bundle);
-      agent.session.append(QA_SOURCES_EVENT, bundle);
     }
-    // The durable event (or its earlier copy) now mirrors the collector;
+    // The plugin-owned snapshot (or its earlier copy) now mirrors the collector;
     // bundles() falls back to the snapshot, so the collector can go.
     const byTurn = this.collectors.get(sessionId);
     if (byTurn !== undefined) {
@@ -507,5 +513,26 @@ export class QaProvenanceHost {
       this.snapshots.get(sessionId) ?? new Map<number, QaTurnSources>();
     this.snapshots.set(sessionId, snapshots);
     return snapshots;
+  }
+
+  private hydrateStored(sessionId: string): void {
+    if (this.snapshots.has(sessionId)) return;
+    try {
+      for (const bundle of this.store.list(sessionId)) {
+        this.sessionSnapshots(sessionId).set(bundle.turn, bundle);
+      }
+    } catch (error) {
+      this.onPersistenceError(error);
+    }
+  }
+
+  private persistSnapshot(bundle: QaTurnSources): boolean {
+    try {
+      this.store.put(bundle);
+      return true;
+    } catch (error) {
+      this.onPersistenceError(error);
+      return false;
+    }
   }
 }

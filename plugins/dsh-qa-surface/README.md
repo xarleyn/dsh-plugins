@@ -341,9 +341,22 @@ Sources are structured Host-owned provenance, independent of
 `ui.showToolActivity`. Successful reads/fetches, bounded web-search evidence,
 Jira/Confluence/knowledge results, and inherited subagent sources are
 normalized and deduplicated into one turn bundle. That exact bundle feeds the
-answer footer and the right rail's sources tab and is persisted as
-`qa/sources`, so reload does not rerun tools. Search-only discovery stays
-hidden by default.
+answer footer and the right rail's sources tab and is persisted in the
+plugin-owned `$DSH_HOME/qa-sources.json`, so reload does not rerun tools and
+no custom event enters the Harness session journal. Search-only discovery
+stays hidden by default.
+
+Legacy sessions written by earlier releases can be repaired while DSH is
+stopped. Preview changes first, then apply them with an automatic backup:
+
+```bash
+qa-repair-sessions
+qa-repair-sessions --write
+```
+
+The repair only marks legacy `safety-gate/*` and `qa/sources` records as
+ignorable; it does not delete them. Each changed session file is backed up as
+`*.pre-plugin-event-repair.bak` before atomic replacement.
 
 Local file cards open a source-scoped, read-only preview after Host-side real
 path validation against the attested session root. Markdown opens rendered by
