@@ -12,9 +12,20 @@ import type { SafetyClassifierService } from "./classifier/service.js";
 import type { SafetyScanner } from "./rules/scanner.js";
 import { mergeL0L1 } from "./rules/policy.js";
 import { SafetyMetrics } from "./audit/metrics.js";
-import { SAFETY_EVENT_TYPES, buildAuditEvent, type SafetyAuditEvent, type SafetyEventType } from "./audit/events.js";
+import {
+  SAFETY_EVENT_TYPES,
+  buildAuditEvent,
+  type SafetyAuditEvent,
+  type SafetyEventType,
+} from "./audit/events.js";
 import { isSafetyErrorCode } from "./types.js";
-import type { CheckDirection, ContentChannel, SafetyDecision, SafetyVerdict, ScanResult } from "./types.js";
+import type {
+  CheckDirection,
+  ContentChannel,
+  SafetyDecision,
+  SafetyVerdict,
+  ScanResult,
+} from "./types.js";
 
 /** When the L1 classifier should run for a check. */
 export type ClassifierTrigger = "always" | "suspicious" | "never";
@@ -49,7 +60,7 @@ export interface CheckPipelineOptions {
   readonly classifier: SafetyClassifierService | null;
   readonly config: ResolvedSafetyGateConfig;
   readonly metrics: SafetyMetrics;
-  /** Session-event sink; implementations must not throw into the pipeline. */
+  /** Audit sink; implementations must not throw into the pipeline. */
   readonly emit: (type: SafetyEventType, event: SafetyAuditEvent) => void;
 }
 
@@ -61,7 +72,10 @@ export class CheckPipeline {
   private readonly classifier: SafetyClassifierService | null;
   private readonly config: ResolvedSafetyGateConfig;
   readonly metrics: SafetyMetrics;
-  private readonly emit: (type: SafetyEventType, event: SafetyAuditEvent) => void;
+  private readonly emit: (
+    type: SafetyEventType,
+    event: SafetyAuditEvent,
+  ) => void;
 
   constructor(options: CheckPipelineOptions) {
     this.scanner = options.scanner;
@@ -78,16 +92,25 @@ export class CheckPipeline {
 
     let l0: ScanResult;
     try {
-      l0 = this.scanner.scan(input.content, { allowQuotedDowngrade: input.allowQuotedDowngrade ?? true });
+      l0 = this.scanner.scan(input.content, {
+        allowQuotedDowngrade: input.allowQuotedDowngrade ?? true,
+      });
     } catch {
       // A broken scanner must never take the harness down: treat as allow.
-      l0 = { findings: [], decision: "allow", categories: [], scannedChars: 0, truncated: false };
+      l0 = {
+        findings: [],
+        decision: "allow",
+        categories: [],
+        scannedChars: 0,
+        truncated: false,
+      };
     }
 
     const wantsClassifier =
       this.classifier !== null &&
       this.classifier.enabled &&
-      (input.classifierTrigger === "always" || (input.classifierTrigger === "suspicious" && l0.decision !== "allow"));
+      (input.classifierTrigger === "always" ||
+        (input.classifierTrigger === "suspicious" && l0.decision !== "allow"));
 
     let l1: SafetyVerdict | null = null;
     let l1Failure: SafetyDecision | null = null;
@@ -98,7 +121,10 @@ export class CheckPipeline {
       classifierRan = true;
       const request =
         input.channel === "tool"
-          ? await this.classifier.classifyTool(input.content, input.toolName ?? "unknown")
+          ? await this.classifier.classifyTool(
+              input.content,
+              input.toolName ?? "unknown",
+            )
           : input.channel === "text" || input.channel === "reasoning"
             ? await this.classifier.classifyOutput(input.content, input.channel)
             : await this.classifier.classifyInput(input.content);
@@ -107,9 +133,20 @@ export class CheckPipeline {
       }
       if (request.failure !== null) {
         this.metrics.recordClassifierError();
-        failure = { code: request.failure.code, message: request.failure.message };
-        l1Failure = this.classifier.resolveFailure(request.failure.code, request.failure.message).decision;
-        this.emitClassifierError(input, request.failure.code, request.failure.message, request.latencyMs);
+        failure = {
+          code: request.failure.code,
+          message: request.failure.message,
+        };
+        l1Failure = this.classifier.resolveFailure(
+          request.failure.code,
+          request.failure.message,
+        ).decision;
+        this.emitClassifierError(
+          input,
+          request.failure.code,
+          request.failure.message,
+          request.latencyMs,
+        );
       } else if (request.verdict !== null) {
         l1 = request.verdict;
       }
@@ -119,7 +156,8 @@ export class CheckPipeline {
     const decision = merged.decision;
 
     if (decision === "warn") this.metrics.recordWarn();
-    if (decision === "block") this.metrics.recordBlock(blockBucket(input.channel));
+    if (decision === "block")
+      this.metrics.recordBlock(blockBucket(input.channel));
 
     this.emitAudit(input, merged, {
       classifierRan,
@@ -134,7 +172,9 @@ export class CheckPipeline {
         confidence: merged.confidence,
         categories: merged.categories,
         summary: merged.summary,
-        ...(merged.policyRuleIds !== undefined ? { policyRuleIds: merged.policyRuleIds } : {}),
+        ...(merged.policyRuleIds !== undefined
+          ? { policyRuleIds: merged.policyRuleIds }
+          : {}),
       },
       decision,
       l0,
@@ -160,6 +200,7 @@ export class CheckPipeline {
       summary: message.slice(0, 200),
     };
     const event = buildAuditEvent({
+      sessionId: input.sessionId ?? null,
       turn: input.turn ?? null,
       step: input.step ?? null,
       direction: input.direction,
@@ -170,7 +211,8 @@ export class CheckPipeline {
       content: input.content,
       policyVersion: POLICY_VERSION,
       classifier: {
-        provider: this.config.classifier.provider || this.config.classifier.baseURL,
+        provider:
+          this.config.classifier.provider || this.config.classifier.baseURL,
         model: this.config.classifier.model,
         ran: true,
       },
@@ -184,7 +226,11 @@ export class CheckPipeline {
   private emitAudit(
     input: PipelineCheckInput,
     merged: SafetyVerdict & { l0Decision: SafetyDecision },
-    meta: { classifierRan: boolean; failure: { code: string; message: string } | null; latencyMs: number },
+    meta: {
+      classifierRan: boolean;
+      failure: { code: string; message: string } | null;
+      latencyMs: number;
+    },
   ): void {
     if (!this.config.audit.enabled) return;
     const eventType: SafetyEventType =
@@ -194,6 +240,7 @@ export class CheckPipeline {
           ? SAFETY_EVENT_TYPES.warn
           : SAFETY_EVENT_TYPES.check;
     const event = buildAuditEvent({
+      sessionId: input.sessionId ?? null,
       turn: input.turn ?? null,
       step: input.step ?? null,
       direction: input.direction,
@@ -212,13 +259,17 @@ export class CheckPipeline {
       },
       latencyMs: meta.latencyMs,
       includeRawContent: this.config.audit.includeRawContent,
-      ...(isSafetyErrorCode(meta.failure?.code) ? { errorCode: meta.failure.code } : {}),
+      ...(isSafetyErrorCode(meta.failure?.code)
+        ? { errorCode: meta.failure.code }
+        : {}),
     });
     this.emit(eventType, event);
   }
 }
 
-function blockBucket(channel: ContentChannel): "input" | "output" | "reasoning" | "tools" | "tool-results" {
+function blockBucket(
+  channel: ContentChannel,
+): "input" | "output" | "reasoning" | "tools" | "tool-results" {
   switch (channel) {
     case "input":
       return "input";

@@ -33,9 +33,10 @@ the permission system, or approval gates, and it never patches DSH core.
   configured failure mode — `closed`, `open`, `rules-only` (default), `ask`.
 - **Safety ≠ usefulness**: quality verdicts (unclear, spam, low-information)
   warn by default and never block unless explicitly opted in.
-- **Sanitized audit**: session events and counters record decisions with
+- **Sanitized audit**: plugin logs and counters record decisions with
   content hashes, never raw blocked content or secret values (raw logging is
-  opt-in).
+  opt-in). Audit records include the session id but never enter the Harness
+  session journal.
 - **Classifier isolation**: classifier calls run under a process-local bypass
   marker, so moderating a generation never recursively moderates the
   moderator; the classifier has no tools.
@@ -53,44 +54,45 @@ dsh plugin --profile web add @yadsh/dsh-model-safety-gate
 All options are optional; defaults are shown.
 
 ```yaml
-enabled: true            # master switch for the whole gate
-mode: warn               # off | audit | warn | enforce — default decision profile
-                         # audit records findings but never enforces, including turn-risk escalation
+enabled: true # master switch for the whole gate
+mode:
+  warn # off | audit | warn | enforce — default decision profile
+  # audit records findings but never enforces, including turn-risk escalation
 
 classifier:
-  backend: none          # none | dsh | openai-compatible
-  provider: ""           # backend: dsh — DSH provider id for the classifier model
-  model: ""              # backend: dsh — model id
-  baseURL: ""            # backend: openai-compatible — endpoint base URL
-  apiKey: ""             # backend: openai-compatible — API key (kept out of logs)
-  timeoutMs: 3000        # classifier request timeout
-  maxTokens: 128         # bounded structured response
+  backend: none # none | dsh | openai-compatible
+  provider: "" # backend: dsh — DSH provider id for the classifier model
+  model: "" # backend: dsh — model id
+  baseURL: "" # backend: openai-compatible — endpoint base URL
+  apiKey: "" # backend: openai-compatible — API key (kept out of logs)
+  timeoutMs: 3000 # classifier request timeout
+  maxTokens: 128 # bounded structured response
   temperature: 0
   failureMode: rules-only # closed | open | rules-only | ask — on timeout/error/malformed
-  requireLocal: false     # true forbids remote (openai-compatible) endpoints
+  requireLocal: false # true forbids remote (openai-compatible) endpoints
 
 input:
-  enabled: true          # gate user prompts on agent/pre-step
-  safetyAction: block    # allow | warn | block for safety verdicts
-  qualityAction: warn    # allow | warn | block for quality-only verdicts (block = opt-in)
+  enabled: true # gate user prompts on agent/pre-step
+  safetyAction: block # allow | warn | block for safety verdicts
+  qualityAction: warn # allow | warn | block for quality-only verdicts (block = opt-in)
 
 output:
-  enabled: true          # gate main-model streaming output
-  mode: buffered         # observe | interrupt | buffered
-  text: true             # check the visible-answer channel
-  reasoning: true        # check the reasoning channel when the provider streams it
-  checkEveryChars: 512   # new quarantined chars between classifier snapshots
-  windowChars: 1536      # snapshot window size sent to the classifier
-  lookbehindChars: 768   # preceding context included with each window
+  enabled: true # gate main-model streaming output
+  mode: buffered # observe | interrupt | buffered
+  text: true # check the visible-answer channel
+  reasoning: true # check the reasoning channel when the provider streams it
+  checkEveryChars: 512 # new quarantined chars between classifier snapshots
+  windowChars: 1536 # snapshot window size sent to the classifier
+  lookbehindChars: 768 # preceding context included with each window
   minCheckIntervalMs: 250
   maxBufferedChars: 8192 # overflow fails closed in buffered mode
 
 tools:
-  enabled: true          # gate tool calls on tools/pre-execute
+  enabled: true # gate tool calls on tools/pre-execute
   semanticClassifier: true
 
 toolResults:
-  enabled: true          # scan tool results on tools/post-execute
+  enabled: true # scan tool results on tools/post-execute
   classifyUntrustedSources: true
 
 audit:
@@ -106,11 +108,11 @@ allowSessionOverride: true # false forbids per-session downgrade of the global m
 
 ### Deployment presets
 
-| Profile | Input | Output | Tools | Failure mode |
-| --- | --- | --- | --- | --- |
-| Personal | warn | interrupt | ask | rules-only |
-| Balanced | block | buffered | ask | rules-only |
-| Strict | block | buffered (text + reasoning) | block | closed, session override disabled |
+| Profile  | Input | Output                      | Tools | Failure mode                      |
+| -------- | ----- | --------------------------- | ----- | --------------------------------- |
+| Personal | warn  | interrupt                   | ask   | rules-only                        |
+| Balanced | block | buffered                    | ask   | rules-only                        |
+| Strict   | block | buffered (text + reasoning) | block | closed, session override disabled |
 
 ### Privacy
 
@@ -147,11 +149,11 @@ no effect today.
 ### Harness API
 
 ```ts
-ctx.safetyGate.inspect();  // effective config, metrics, recent verdicts
+ctx.safetyGate.inspect(); // effective config, metrics, recent verdicts
 ```
 
 The plugin registers one Cordis service (`safetyGate`) and publishes four
-log-only session event types (`safety-gate/check|block|warn|classifier-error`).
+stable plugin-log categories (`safety-gate/check|block|warn|classifier-error`).
 
 ## Compatibility
 

@@ -1,5 +1,12 @@
 # SPEC: Structured Sources / Provenance for `dsh-qa-surface`
 
+> Implementation note (2026-09-14): sections below that propose a custom
+> `qa/sources` session event are superseded. The implementation stores
+> materialized bundles in `$DSH_HOME/qa-sources.json` and never extends or
+> appends to the Harness event vocabulary. This avoids cold-replay failures in
+> linked deployments where plugins and the journal reader resolve different
+> physical copies of `@deepseek-ai/dsh-session`.
+
 Status: Draft / implementation plan  
 Target: `plugins/dsh-qa-surface`  
 Scope: source collection, source inheritance from subagents, unified source UI, source preview, Markdown rendering for local `.md` files

@@ -36,17 +36,17 @@ It does not parse assistant prose.
 ## Replay and persistence
 
 The completed implementation rebuilds collectors from persisted
-`tool/call`/`tool/result.meta` events and writes one materialized `qa/sources`
-snapshot at `agent/turn-stopping`. The type is declaration-merged into
-`SessionEventMap`.
+`tool/call`/`tool/result.meta` events and writes one materialized snapshot to
+the plugin-owned `$DSH_HOME/qa-sources.json` at `agent/turn-stopping`.
 
-The pinned DSH exports its live `KNOWN_SESSION_EVENT_TYPES` set. As already
-demonstrated by the repository's `dsh-session-scope` plugin, registering the
-plugin event there is the supported compatibility mechanism when
-`Session.append` cannot mark an extension event ignorable. Registration is
-effect-scoped and removed on plugin disposal. A Host that owns sessions with
-these events must load `dsh-qa-surface`, just as it must load any plugin that
-owns a required durable event vocabulary.
+Earlier releases declaration-merged `qa/sources`, registered it in a
+process-local `KNOWN_SESSION_EVENT_TYPES` set, and appended it to the Harness
+journal. Linked deployments can load a different physical copy of the session
+module than the journal reader, so that registration does not survive the
+module boundary or a Host restart. The current implementation never appends a
+custom session event. `qa-repair-sessions` marks only the legacy plugin records
+ignorable so Harness can reopen those logs; replay then migrates old
+`qa/sources` payloads into plugin-owned storage.
 
 ## Subagent lifecycle
 
@@ -75,7 +75,7 @@ rejects traversal/symlink escape, caps bytes, and exposes no write/list API.
 - extractor registry with read, grep discovery, web search, and web fetch;
 - evidence promotion, deduplication, ranking, and a default display threshold;
 - bounded structured web-search promotion (five results by default);
-- Host per-turn collectors and materialized/replayable `qa/sources` events;
+- Host per-turn collectors and plugin-owned materialized/replayable snapshots;
 - local and nested subagent inheritance plus opaque-provider reporting;
 - structured Jira, Confluence, knowledge and reported-source adapters;
 - one canonical snapshot used by grouped drawer and answer footer;

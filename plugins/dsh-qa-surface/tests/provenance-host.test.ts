@@ -6,6 +6,7 @@ import {
   QA_REPORT_SOURCES_TOOL,
   QaProvenanceHost,
 } from "../src/provenance/host-store.js";
+import { MemoryQaProvenanceSnapshotStore } from "../src/provenance/snapshot-store.js";
 import { resolveConfig } from "../src/resolve-config.js";
 
 type Listener = (...args: never[]) => unknown;
@@ -161,7 +162,7 @@ describe("Host provenance lifecycle", () => {
     host.dispose();
   });
 
-  it("replays durable tool metadata and materializes qa/sources", () => {
+  it("replays durable tool metadata without appending custom session events", () => {
     const root = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
     const world = harness([root.session]);
     const host = new QaProvenanceHost(world.ctx, () => resolveConfig());
@@ -183,13 +184,46 @@ describe("Host provenance lifecycle", () => {
       agent: { id: "root", session: root.session },
       turn: 1,
     });
-    expect(root.appended).toEqual([
-      expect.objectContaining({
-        type: "qa/sources",
-        data: expect.objectContaining({ turn: 1 }),
-      }),
-    ]);
+    expect(root.appended).toEqual([]);
     host.dispose();
+  });
+
+  it("restores plugin-owned source snapshots after a Host restart", () => {
+    const store = new MemoryQaProvenanceSnapshotStore();
+    const firstSession = fakeSession(
+      "root",
+      readEvents("D:/repo/docs/guide.md"),
+    );
+    const firstWorld = harness([firstSession.session]);
+    const firstHost = new QaProvenanceHost(
+      firstWorld.ctx,
+      () => resolveConfig(),
+      store,
+    );
+
+    firstWorld.emit("agent/turn-stopping", {
+      agent: { id: "root", session: firstSession.session },
+      turn: 1,
+    });
+    expect(firstSession.appended).toEqual([]);
+    firstHost.dispose();
+
+    const restoredSession = fakeSession("root", []);
+    const restoredWorld = harness([restoredSession.session]);
+    const restoredHost = new QaProvenanceHost(
+      restoredWorld.ctx,
+      () => resolveConfig(),
+      store,
+    );
+    expect(restoredHost.bundles("root")).toMatchObject([
+      {
+        sessionId: "root",
+        turn: 1,
+        sources: [{ id: "file:docs/guide.md" }],
+      },
+    ]);
+    expect(restoredSession.appended).toEqual([]);
+    restoredHost.dispose();
   });
 
   it("bubbles nested observable child sources to the root turn", () => {
@@ -376,8 +410,8 @@ describe("Host provenance lifecycle", () => {
       agent: { id: "root", session: root.session },
       turn: 1,
     });
-    // Materialize retires the in-memory collector; the persisted qa/sources
-    // event must keep answering bundles().
+    // Materialize retires the in-memory collector; the plugin-owned snapshot
+    // must keep answering bundles().
     expect(host.bundles("root")).toMatchObject([
       {
         sessionId: "root",

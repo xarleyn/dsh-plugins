@@ -6,4 +6,5 @@ export * from "./file-preview.js";
 export * from "./host-store.js";
 export * from "./normalize.js";
 export * from "./reported.js";
+export * from "./snapshot-store.js";
 export type * from "./types.js";

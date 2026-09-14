@@ -15,7 +15,8 @@
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
   "bin": {
-    "qa-accounts": "./lib/cli.js"
+    "qa-accounts": "./lib/cli.js",
+    "qa-repair-sessions": "./scripts/repair-session-events.mjs"
   },
   "exports": {
     ".": {
@@ -66,6 +67,7 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
+    "scripts/repair-session-events.mjs",
     "cordis.patch.yml",
     "compatibility.json",
     "capability-policy.json",

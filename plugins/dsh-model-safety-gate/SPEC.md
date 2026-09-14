@@ -62,16 +62,17 @@ Numbered, testable guarantees for version 0.1.0:
 ## 2. Data model
 
 - **SafetyVerdict** (`version: 1`): `decision` = `allow | warn | review |
-  block`, `confidence` in `0..1`, `categories: string[]`, `summary`, optional
+block`, `confidence` in `0..1`, `categories: string[]`, `summary`, optional
   `policyRuleIds`. Classifier output is validated against the schema;
   malformed output is a classifier failure and follows the configured failure
   mode.
-- **Audit record**: turn/step coordinates, direction (`input|output`), channel
+- **Audit record**: session id, turn/step coordinates, direction (`input|output`), channel
   (`text|reasoning|tool|tool-result`), decision, categories, confidence,
   classifier provider/model, latency, `contentSha256`, policy version. No raw
   content by default.
-- No on-disk persistence in 0.1: audit is a bounded in-memory ring per host
-  process plus session events; counters are process-lifetime metrics.
+- Audit is a bounded in-memory ring per host process plus the standard plugin
+  logger; it is deliberately excluded from Harness session journals. Counters
+  are process-lifetime metrics.
 
 ## 3. Lifecycle
 
@@ -112,7 +113,7 @@ guard to the classifier's own traffic.
   `tools/post-execute` with per-turn risk state.
 - Safety/quality separation: quality verdicts warn by default and never block
   unless explicitly opted in.
-- Sanitized audit events (`safety/check|block|warn|classifier-error`), failure
+- Sanitized plugin-log records (`safety-gate/check|block|warn|classifier-error`), failure
   modes, monotonic merge, counters.
 - Settings page (`Settings → Plugins → Plugin configuration`) over the live
   `model-safety-gate` settings namespace: gate, input, output, tools, results,
@@ -136,7 +137,8 @@ guard to the classifier's own traffic.
 ## 5. Required end-to-end scenarios
 
 1. **Blocked prompt.** User sends a jailbreak prompt → pre-step rejects →
-   model is never called → session records `safety/block` with the category.
+   model is never called → the plugin audit records `safety-gate/block`
+   with the category and session id.
 2. **Quarantine.** Mock model streams an unsafe sentence split across chunks
    in buffered mode → classifier blocks → downstream observes no unsafe bytes;
    the turn ends aborted; the provider abort signal is observed.
@@ -153,16 +155,16 @@ guard to the classifier's own traffic.
 
 ## 6. Implementation status
 
-| Area | Status |
-| --- | --- |
-| L0 deterministic scanner | Implemented |
-| Classifier service (dsh / openai-compatible / none) | Implemented |
-| Input guard (`agent/pre-step`) | Implemented |
-| Output stream guard with quarantine (`llm/stream`) | Implemented |
-| Tool gate + tool-result risk state | Implemented |
-| Audit events + counters | Implemented |
-| Web settings page (live namespace + status Remote) | Implemented (0.2) |
-| Chat moderation banners, session shield control | Planned (0.2) |
-| Per-session mode override | Planned (0.2, needs the shield UI) |
-| OpenTelemetry spans | Planned |
-| Adversarial corpus evaluation harness | Partial (fixtures + unit metrics) |
+| Area                                                | Status                             |
+| --------------------------------------------------- | ---------------------------------- |
+| L0 deterministic scanner                            | Implemented                        |
+| Classifier service (dsh / openai-compatible / none) | Implemented                        |
+| Input guard (`agent/pre-step`)                      | Implemented                        |
+| Output stream guard with quarantine (`llm/stream`)  | Implemented                        |
+| Tool gate + tool-result risk state                  | Implemented                        |
+| Plugin audit records + counters                     | Implemented                        |
+| Web settings page (live namespace + status Remote)  | Implemented (0.2)                  |
+| Chat moderation banners, session shield control     | Planned (0.2)                      |
+| Per-session mode override                           | Planned (0.2, needs the shield UI) |
+| OpenTelemetry spans                                 | Planned                            |
+| Adversarial corpus evaluation harness               | Partial (fixtures + unit metrics)  |

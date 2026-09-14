@@ -16,6 +16,7 @@ const required = [
   "lib/typert.remote-client.d.ts",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
+  "scripts/repair-session-events.mjs",
   "cordis.patch.yml",
   "compatibility.json",
   "capability-policy.json",
@@ -38,6 +39,10 @@ const manifest = JSON.parse(
   await readFile(new URL("package.json", root), "utf8"),
 );
 assert.equal(manifest.name, "@yadsh/dsh-qa-surface");
+assert.equal(
+  manifest.bin["qa-repair-sessions"],
+  "./scripts/repair-session-events.mjs",
+);
 assert.equal(manifest.exports["./client"].default, "./lib/client.js");
 assert.equal(
   manifest.exports["./remote"].default,
@@ -90,7 +95,19 @@ const navigationMarker = await readFile(
   new URL("lib/navigation-marker.js", root),
   "utf8",
 );
+const provenanceHost = await readFile(
+  new URL("lib/provenance/host-store.js", root),
+  "utf8",
+);
+const provenanceStore = await readFile(
+  new URL("lib/provenance/snapshot-store.js", root),
+  "utf8",
+);
+const hostRuntime = `${host}\n${provenanceHost}\n${provenanceStore}`;
 assert.match(host, /webServer/u);
+assert.doesNotMatch(hostRuntime, /KNOWN_SESSION_EVENT_TYPES/u);
+assert.doesNotMatch(hostRuntime, /\.append\(["']qa\/sources/u);
+assert.match(hostRuntime, /qa-sources\.json/u);
 assert.match(`${hostRoute}\n${navigationMarker}`, /__dsh_qa_route/u);
 assert.doesNotMatch(`${host}\n${hostRoute}`, /registerFallback/u);
 assert.match(admission, /permissionPresets\.set/u);
@@ -103,6 +120,15 @@ assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
+
+const repair = await readFile(
+  new URL("scripts/repair-session-events.mjs", root),
+  "utf8",
+);
+assert.match(repair, /safety-gate\/warn/u);
+assert.match(repair, /qa\/sources/u);
+assert.match(repair, /ignorable/u);
+assert.match(repair, /pre-plugin-event-repair\.bak/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
 const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");

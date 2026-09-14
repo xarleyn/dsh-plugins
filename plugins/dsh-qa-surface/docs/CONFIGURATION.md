@@ -180,10 +180,11 @@ confined to the user's directory, and writes are never exempted.
 ## Structured sources
 
 The `sources` block controls provenance independently from Activity rendering.
-The defaults collect parent and subagent results, persist a `qa/sources` event,
-hide discovery-only candidates, group visible evidence by kind, and promote at
-most five substantive `web_search` results when no fetch occurs. URL tracking
-parameters and overlapping file ranges are normalized during deduplication.
+The defaults collect parent and subagent results, persist a turn snapshot in
+the plugin-owned `$DSH_HOME/qa-sources.json`, hide discovery-only candidates,
+group visible evidence by kind, and promote at most five substantive
+`web_search` results when no fetch occurs. URL tracking parameters and
+overlapping file ranges are normalized during deduplication.
 
 `sources.filePreview` is a narrow read capability, not a filesystem browser.
 The Host serves only a path already present in the attested session's canonical

@@ -23,7 +23,6 @@
  */
 
 import type { Context } from "@deepseek-ai/cordis";
-import { KNOWN_SESSION_EVENT_TYPES } from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
@@ -32,15 +31,17 @@ import {
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 
-import { createDshClassifierTransport, type DshLlmRuntime } from "./classifier/dsh-backend.js";
+import {
+  createDshClassifierTransport,
+  type DshLlmRuntime,
+} from "./classifier/dsh-backend.js";
 import { isSafetyInternal } from "./classifier/isolation.js";
 import { createOpenAiCompatibleTransport } from "./classifier/openai-backend.js";
-import { SafetyClassifierService, type ClassifierTransport } from "./classifier/service.js";
 import {
-  SAFETY_EVENT_TYPES,
-  type SafetyAuditEvent,
-  type SafetyEventType,
-} from "./audit/events.js";
+  SafetyClassifierService,
+  type ClassifierTransport,
+} from "./classifier/service.js";
+import { type SafetyAuditEvent, type SafetyEventType } from "./audit/events.js";
 import { SafetyMetrics } from "./audit/metrics.js";
 import {
   ModelSafetyGateConfigSchema,
@@ -48,7 +49,11 @@ import {
   type ModelSafetyGateConfig,
   type ResolvedSafetyGateConfig,
 } from "./config.js";
-import { createInputGuard, type PreStepDecisionStruct, type PreStepPayload } from "./guards/input.js";
+import {
+  createInputGuard,
+  type PreStepDecisionStruct,
+  type PreStepPayload,
+} from "./guards/input.js";
 import { guardOutputStream } from "./guards/output-stream.js";
 import { TurnRiskTracker } from "./guards/risk-state.js";
 import { createPostExecuteGuard } from "./guards/tool-results.js";
@@ -58,14 +63,25 @@ import { SafetyScanner } from "./rules/scanner.js";
 import { SAFETY_GATE_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { cancelTurn, type CancellableAgent } from "./stream/cancellation.js";
 import type { StreamChunk } from "./stream/chunks.js";
-import type { SafetyGateAuditRow, SafetyGateClassifierState, SafetyGateInspect } from "./types.js";
+import type {
+  SafetyGateAuditRow,
+  SafetyGateClassifierState,
+  SafetyGateInspect,
+} from "./types.js";
 
 /** Structural view of the host context used at the registration seam. */
 export interface SafetyGateHostContext {
-  on(event: string, listener: (...args: never[]) => unknown, options?: unknown): () => void;
+  on(
+    event: string,
+    listener: (...args: never[]) => unknown,
+    options?: unknown,
+  ): () => void;
   inject(services: readonly string[], fn: (ctx: ToolHostContext) => void): void;
   effect(factory: () => () => void, name: string): void;
-  logger: { info(message: string, ...values: unknown[]): void; warn(message: string, ...values: unknown[]): void };
+  logger: {
+    info(message: string, ...values: unknown[]): void;
+    warn(message: string, ...values: unknown[]): void;
+  };
   /**
    * Optional-service read. Every service this gate only *tolerates* is read
    * through here: the property proxy resolves per fiber topology and throws on
@@ -78,11 +94,6 @@ export interface SafetyGateHostContext {
 /** Structural face of the agent registry this gate resolves live agents from. */
 export interface AgentRegistryFace {
   get(id: unknown): CancellableAgent | undefined;
-}
-
-/** Structural face of the session registry the audit supplement appends through. */
-export interface SessionRegistryFace {
-  get(id: unknown): { append(type: string, data: unknown): unknown } | undefined;
 }
 
 /** Structural view of the tool runtime sub-context. */
@@ -134,7 +145,6 @@ export class ModelSafetyGate extends TypertRemoteService {
   private readonly entryConfig: ModelSafetyGateConfig;
   private readonly startedAt = Date.now();
   private readonly disposers: Array<() => void> = [];
-  private readonly knownEventTypes: string[] = [];
   private readonly agentsBySession = new Map<string, CancellableAgent>();
   private configSource: () => ModelSafetyGateConfig;
   private resolved: ResolvedSafetyGateConfig;
@@ -152,10 +162,13 @@ export class ModelSafetyGate extends TypertRemoteService {
     pipeline: CheckPipeline;
     readonly risk: TurnRiskTracker;
   };
-  private lastSessionId: string | null = null;
   private disposed = false;
 
-  constructor(ctx: Context, config: ModelSafetyGateConfig = {}, deps: SafetyGateServiceDeps = {}) {
+  constructor(
+    ctx: Context,
+    config: ModelSafetyGateConfig = {},
+    deps: SafetyGateServiceDeps = {},
+  ) {
     // The Typert generator reads these as literals: the Cordis service key and
     // the wire namespace must be spelled here, not aliased through a constant.
     super(ctx, "safetyGate", { namespace: "safetyGate" });
@@ -171,11 +184,11 @@ export class ModelSafetyGate extends TypertRemoteService {
       (getPluginLogger({
         pluginId: "dsh-model-safety-gate",
         console: "warn",
-        consoleSink: createHostLoggerSink(host.logger as unknown as Context["logger"]),
+        consoleSink: createHostLoggerSink(
+          host.logger as unknown as Context["logger"],
+        ),
       }) as PluginLogger);
     this.metrics = deps.metrics ?? new SafetyMetrics();
-
-    this.registerSessionEventTypes();
 
     this.classifier = this.createClassifier();
     this.scanner = this.createScanner();
@@ -222,10 +235,16 @@ export class ModelSafetyGate extends TypertRemoteService {
   }
 
   /** Test/diagnostics hook mirroring the cancellation path (SPEC §15). */
-  cancelSession(sessionId: string, reason: string, host?: SafetyGateHostContext): boolean {
+  cancelSession(
+    sessionId: string,
+    reason: string,
+    host?: SafetyGateHostContext,
+  ): boolean {
     const lookup = (id: string): CancellableAgent | undefined =>
-      (host === undefined ? undefined : (host.get("agents") as AgentRegistryFace | undefined)?.get(id))
-      ?? this.agentsBySession.get(id);
+      (host === undefined
+        ? undefined
+        : (host.get("agents") as AgentRegistryFace | undefined)?.get(id)) ??
+      this.agentsBySession.get(id);
     return cancelTurn(lookup, sessionId, reason);
   }
 
@@ -242,7 +261,9 @@ export class ModelSafetyGate extends TypertRemoteService {
       // Structural seam, like the rest of this file: the injected face is read
       // defensively so a host without a mounted settings provider keeps the
       // composition entry as the configuration source.
-      const settings = (settingsCtx as unknown as { settings?: SettingsInstallFace }).settings;
+      const settings = (
+        settingsCtx as unknown as { settings?: SettingsInstallFace }
+      ).settings;
       if (settings === undefined) return;
       settings.installSection(
         this.owner,
@@ -281,7 +302,9 @@ export class ModelSafetyGate extends TypertRemoteService {
     } catch (error) {
       // The settings provider validates on write; this keeps a source that
       // turned invalid through another path from taking the running gate down.
-      this.logger.warn("safety.config.rejected", { message: String((error as Error).message) });
+      this.logger.warn("safety.config.rejected", {
+        message: String((error as Error).message),
+      });
       return;
     }
     this.resolved = next;
@@ -310,9 +333,15 @@ export class ModelSafetyGate extends TypertRemoteService {
       failureMode: classifierConfig.failureMode,
     };
     if (this.deps.transport !== undefined) {
-      return new SafetyClassifierService({ transport: this.deps.transport, ...options });
+      return new SafetyClassifierService({
+        transport: this.deps.transport,
+        ...options,
+      });
     }
-    return new SafetyClassifierService({ transport: this.buildTransport(), ...options });
+    return new SafetyClassifierService({
+      transport: this.buildTransport(),
+      ...options,
+    });
   }
 
   private buildTransport(): ClassifierTransport | null {
@@ -320,7 +349,9 @@ export class ModelSafetyGate extends TypertRemoteService {
     if (classifierConfig.backend === "dsh") {
       const llm = this.host.get("llm") as DshLlmRuntime | undefined;
       if (llm === undefined) {
-        this.logger.warn("safety.classifier.no_llm", { backend: classifierConfig.backend });
+        this.logger.warn("safety.classifier.no_llm", {
+          backend: classifierConfig.backend,
+        });
         return null;
       }
       return createDshClassifierTransport(llm, {
@@ -358,7 +389,7 @@ export class ModelSafetyGate extends TypertRemoteService {
         this.deps.emit ??
         ((type, event) => {
           this.auditRing.push(event);
-          this.publishEvent(this.host, type, event);
+          this.publishAudit(type, event);
         }),
     });
   }
@@ -393,7 +424,11 @@ export class ModelSafetyGate extends TypertRemoteService {
   private recentAudit(): readonly SafetyGateAuditRow[] {
     const entries = this.auditRing.list();
     const rows: SafetyGateAuditRow[] = [];
-    for (let index = entries.length - 1; index >= 0 && rows.length < AUDIT_WINDOW; index -= 1) {
+    for (
+      let index = entries.length - 1;
+      index >= 0 && rows.length < AUDIT_WINDOW;
+      index -= 1
+    ) {
       const event = entries[index];
       if (event === undefined) continue;
       rows.push({
@@ -420,23 +455,11 @@ export class ModelSafetyGate extends TypertRemoteService {
     return rows;
   }
 
-  /**
-   * Custom session event types must be registered with the harness, which
-   * otherwise refuses to reconstruct logs containing unknown events. They are
-   * log-only and never part of the model surface.
-   */
-  private registerSessionEventTypes(): void {
-    const known = KNOWN_SESSION_EVENT_TYPES as Set<string>;
-    for (const type of Object.values(SAFETY_EVENT_TYPES)) {
-      known.add(type);
-      this.knownEventTypes.push(type);
-    }
-  }
-
-  private publishEvent(host: SafetyGateHostContext, type: SafetyEventType, event: SafetyAuditEvent): void {
+  private publishAudit(type: SafetyEventType, event: SafetyAuditEvent): void {
     // Audit supplement failures must never flip a gate decision.
     try {
       this.logger.info(type.replace("/", "."), {
+        sessionId: event.sessionId,
         decision: event.decision,
         channel: event.channel,
         categories: event.categories,
@@ -444,26 +467,24 @@ export class ModelSafetyGate extends TypertRemoteService {
         sha256: event.contentSha256,
         latencyMs: event.latencyMs,
         errorCode: event.errorCode,
+        ...(event.rawContent === undefined
+          ? {}
+          : { rawContent: event.rawContent }),
       });
     } catch {
       // Logger failures are contained.
     }
-    const sessionId = this.lastSessionId;
-    if (sessionId === null) return;
-    try {
-      const sessions = host.get("sessions") as SessionRegistryFace | undefined;
-      sessions?.get(sessionId)?.append(type, event);
-    } catch {
-      // Session append failures are contained.
-    }
   }
 
-  private resolveAgentLookup(host: SafetyGateHostContext, deps: SafetyGateServiceDeps): (sessionId: string) => CancellableAgent | undefined {
+  private resolveAgentLookup(
+    host: SafetyGateHostContext,
+    deps: SafetyGateServiceDeps,
+  ): (sessionId: string) => CancellableAgent | undefined {
     if (deps.agentLookup !== undefined) return deps.agentLookup;
     // Read per call: the gate must survive a host that mounts the registry later.
     return (sessionId: string): CancellableAgent | undefined =>
-      (host.get("agents") as AgentRegistryFace | undefined)?.get(sessionId)
-      ?? this.agentsBySession.get(sessionId);
+      (host.get("agents") as AgentRegistryFace | undefined)?.get(sessionId) ??
+      this.agentsBySession.get(sessionId);
   }
 
   private registerGuards(): void {
@@ -480,7 +501,10 @@ export class ModelSafetyGate extends TypertRemoteService {
     this.disposers.push(
       host.on(
         "agent/pre-step",
-        (async (payload: PreStepAgentPayload, next: () => Promise<PreStepDecisionStruct>): Promise<PreStepDecisionStruct> => {
+        (async (
+          payload: PreStepAgentPayload,
+          next: () => Promise<PreStepDecisionStruct>,
+        ): Promise<PreStepDecisionStruct> => {
           const sessionId = String(payload.agent?.id ?? "");
           if (payload.agent !== undefined) {
             this.agentsBySession.set(sessionId, payload.agent);
@@ -489,7 +513,6 @@ export class ModelSafetyGate extends TypertRemoteService {
               if (!oldest.done) this.agentsBySession.delete(oldest.value);
             }
           }
-          this.lastSessionId = sessionId.length > 0 ? sessionId : null;
           return inputGuard({ ...payload, sessionId }, next);
         }) as never,
         { global: true },
@@ -499,15 +522,27 @@ export class ModelSafetyGate extends TypertRemoteService {
     this.disposers.push(
       host.on(
         "llm/stream",
-        ((options: StreamGuardOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> => {
+        ((
+          options: StreamGuardOptions,
+          next: () => AsyncIterable<StreamChunk>,
+        ): AsyncIterable<StreamChunk> => {
           const config = guards.config;
-          if (!config.enabled || config.mode === "off" || !config.output.enabled) return next();
+          if (
+            !config.enabled ||
+            config.mode === "off" ||
+            !config.output.enabled
+          )
+            return next();
           if (isSafetyInternal()) return next();
           // Non-agent traffic (title generation, compaction, plugin one-shots)
           // stays bypass in 0.1 (design SPEC §16).
           if (options.purpose !== undefined) return next();
-          const sessionId = options.sessionId !== undefined && options.sessionId !== null ? String(options.sessionId) : null;
-          const agentKnown = sessionId !== null && agentLookup(sessionId) !== undefined;
+          const sessionId =
+            options.sessionId !== undefined && options.sessionId !== null
+              ? String(options.sessionId)
+              : null;
+          const agentKnown =
+            sessionId !== null && agentLookup(sessionId) !== undefined;
           if (!agentKnown) return next();
           return guardOutputStream(next(), {
             config,
@@ -527,7 +562,10 @@ export class ModelSafetyGate extends TypertRemoteService {
         toolCtx.on("tools/pre-execute", createPreExecuteGuard(guards) as never),
       );
       this.disposers.push(
-        toolCtx.on("tools/post-execute", createPostExecuteGuard(guards) as never),
+        toolCtx.on(
+          "tools/post-execute",
+          createPostExecuteGuard(guards) as never,
+        ),
       );
     });
 
@@ -539,8 +577,6 @@ export class ModelSafetyGate extends TypertRemoteService {
   private dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    const known = KNOWN_SESSION_EVENT_TYPES as Set<string>;
-    for (const type of this.knownEventTypes) known.delete(type);
     for (const dispose of this.disposers) {
       try {
         dispose();
