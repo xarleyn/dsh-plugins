@@ -2,7 +2,7 @@
 
 Product contract for `@yadsh/dsh-cas-results`. This file is the canonical
 statement of the behavior the plugin guarantees; the original design document
-lives in `docs/SPEC-dsh-cas-results-design.md` and the implementation status
+lives in `docs/specs/design.md` and the implementation status
 table at the bottom of this file must always reflect reality.
 
 ## 1. Product contract

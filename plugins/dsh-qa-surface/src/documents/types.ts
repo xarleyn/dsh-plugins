@@ -6,7 +6,7 @@
  * providers implement. They are deliberately free of any backend vocabulary:
  * a tool result never names pandoc, LibreOffice or Docling, so a provider can
  * be replaced without touching a prompt, a skill or a workflow
- * (docs/qa-surface-document-pipeline-spec.md §4.1, §22).
+ * (docs/specs/document-pipeline.md §4.1, §22).
  */
 
 /** Formats the pipeline can read and write. */

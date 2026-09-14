@@ -2,7 +2,7 @@
 
 > Behavioral contract of the shipped plugin. The full design document —
 > motivation, safety model, phased plan — is
-> `docs/SPEC-dsh-tool-offload-design.md`.
+> `docs/specs/design.md`.
 
 **Type:** Host-service (no client surface).
 **Peers:** Cordis, schemastery, `dsh-tools`, `dsh-subagent`.

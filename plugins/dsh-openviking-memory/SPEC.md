@@ -5,7 +5,7 @@ implementation.
 
 The original fork specification — the upstream import plan, the port strategy and
 the phased roadmap this package was built from — is archived at
-[docs/SPEC-dsh-openviking-memory-fork.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/docs/SPEC-dsh-openviking-memory-fork.md).
+[docs/specs/fork.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/docs/specs/fork.md).
 Where the two disagree, this file and the repository guidelines win.
 
 ## 1. Product contract

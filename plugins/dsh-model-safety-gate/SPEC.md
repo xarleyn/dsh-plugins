@@ -7,7 +7,7 @@ The plugin is an additional decision layer only — it never replaces the DSH
 sandbox, permission system, or approval gates.
 
 The full design document with the architecture rationale lives in
-`docs/SPEC-dsh-model-safety-gate-design.md` (working notes; not part of the npm
+`docs/specs/design.md` (working notes; not part of the npm
 tarball).
 
 ## 1. Product contract

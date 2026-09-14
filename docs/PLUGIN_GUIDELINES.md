@@ -124,7 +124,7 @@ plugins/<name>/
 │   └── runtime/          # механизмы клиента (DOM, подписки, хуки)
 ├── tests/                # *.test.ts, зеркалит src
 ├── scripts/              # verify-*.mjs, smoke-packed-*.mjs
-├── docs/                 # images/, superpowers/{specs,plans}
+├── docs/                 # images/, specs/
 ├── cordis.patch.yml
 ├── compatibility.json
 ├── package.json, tsconfig*.json, tsdown.config.ts, vitest.config.ts
@@ -598,11 +598,13 @@ SPEC.md обновляется вместе с изменением поведе
 
 **В корне плагина ровно одна спека — `SPEC.md`.** Исходная спека реализации и
 есть этот файл (после первых итераций он становится продуктовым контрактом).
-Спеки доработок, дизайн-доки и рабочие заметки живут в `docs/` под именем
-`docs/SPEC-<plugin>-<topic>.md` — например
-`docs/SPEC-dsh-qa-surface-accounts.md` (аккаунты),
-`docs/SPEC-dsh-tool-offload-design.md` (исходный дизайн). Не заводить в корне
-`SPEC-<plugin>.md`, `dsh-<plugin>-SPEC.md` и файлы с неанглийскими именами:
+Спеки доработок и дизайн-доки живут в `docs/specs/` под именем
+`docs/specs/<topic>.md` (kebab-case, без имени плагина в имени файла) —
+например `docs/specs/accounts.md` (аккаунты, dsh-qa-surface),
+`docs/specs/design.md` (исходный дизайн, dsh-tool-offload). Не заводить в корне
+`SPEC-<plugin>.md`, `dsh-<plugin>-SPEC.md` и файлы с неанглийскими именами;
+в `docs/` не заводить спеки в старых стилях (`SPEC-<plugin>-<topic>.md`,
+`<ТЕМА>-SPEC.md`, `<topic>-spec.md`):
 `SPEC.md` в корне — единственная точка входа, остальное ссылки из него.
 
 ### 8.3 Прочее
@@ -611,8 +613,8 @@ SPEC.md обновляется вместе с изменением поведе
 - `docs/INVESTIGATE.md` — рабочие заметки по интеграции с хостом: какие DSH API
   и версии предполагаются, что проверено на живом стенде. Ссылки на конкретные
   § этого файла из `src/` допустимы и ожидаемы.
-- `docs/superpowers/specs|plans/` — дизайн-доки и планы работ с датами;
-  не заменяют SPEC.md.
+- `docs/specs/` — спеки доработок и дизайн-доки (`<topic>.md`); не заменяют
+  SPEC.md.
 - `docs/images/` — скриншоты для README (попадают в tarball).
 - `ROADMAP.md` — только публичные намерения, без внутренних деталей.
 - Язык: EN — первичный; RU/ZH — переводы. Код, идентификаторы, коды ошибок —
