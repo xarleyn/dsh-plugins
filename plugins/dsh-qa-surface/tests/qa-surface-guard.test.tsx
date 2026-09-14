@@ -66,4 +66,30 @@ describe("QaSurfaceGuard", () => {
     expect(document.body.dataset.dshQaSurface).toBe("active");
     expect(document.documentElement.dataset.dshQaBoot).toBe("done");
   });
+
+  it("swaps the favicon to the branding logo while active, restoring on exit", () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    document.head.innerHTML = '<link rel="icon" href="/host.ico">';
+    const face = {
+      config: {
+        subscribe: () => () => undefined,
+        getSnapshot: () => ({
+          config: { branding: { logoUrl: "/qa-logo.svg" } },
+        }),
+      },
+    } as unknown as QaSurfaceProps;
+    const { unmount } = render(<QaSurfaceGuard {...face} />);
+    expect(
+      document
+        .querySelector('link[data-dsh-qa-surface="favicon"]')
+        ?.getAttribute("href"),
+    ).toBe("/qa-logo.svg");
+    unmount();
+    expect(
+      document.querySelector('link[data-dsh-qa-surface="favicon"]'),
+    ).toBeNull();
+    expect(
+      document.querySelector('link[rel~="icon"]')?.getAttribute("href"),
+    ).toBe("/host.ico");
+  });
 });
