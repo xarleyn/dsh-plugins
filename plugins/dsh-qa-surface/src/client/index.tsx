@@ -16,7 +16,8 @@ import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
 import { QaChatIndex } from "./chat-index.js";
-import { QaSurface } from "./QaSurface.js";
+import type { QaSurfaceFace } from "./QaSurface.js";
+import { QaSurfaceGuard } from "./QaSurfaceGuard.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
   QaAccountsApi,
@@ -457,37 +458,48 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             name: "shell.overlay",
             id: "dsh-qa-surface",
             order: -10_000,
-            inject: () => ({
-              route,
-              config,
-              // The host dsh-session merge types ctx.sessions as SessionStore in
-              // this program; the client assembly provides the ISessions face.
-              sessions: ctx.sessions as unknown as QaSessions,
-              conversation: ctx.uiConversation,
-              api: qaApi,
-              connection: ctx.connection.generation,
-              secureSession,
-              createSession: (token: string) =>
-                policyRemote.createSession(token),
-              sourceApi,
-              skillApi,
-              approvalApi,
-              questionApi,
-              accounts,
-              // The upload service is optional on the page: a deployment that
-              // does not serve it keeps images, and a staged file refuses the
-              // send with a message instead of losing the draft. Read through
-              // the untyped service lookup on purpose — the QA bundle does not
-              // link the upload package.
-              fileUpload: () =>
-                (
-                  ctx as unknown as {
-                    get(service: string): unknown;
-                  }
-                ).get("fileUpload") as QaFileUpload | undefined,
-            }),
+            inject: (): QaSurfaceFace => {
+              try {
+                return {
+                  route,
+                  config,
+                  // The host dsh-session merge types ctx.sessions as SessionStore in
+                  // this program; the client assembly provides the ISessions face.
+                  sessions: ctx.sessions as unknown as QaSessions,
+                  conversation: ctx.uiConversation,
+                  api: qaApi,
+                  connection: ctx.connection.generation,
+                  secureSession,
+                  createSession: (token: string) =>
+                    policyRemote.createSession(token),
+                  sourceApi,
+                  skillApi,
+                  approvalApi,
+                  questionApi,
+                  accounts,
+                  // The upload service is optional on the page: a deployment that
+                  // does not serve it keeps images, and a staged file refuses the
+                  // send with a message instead of losing the draft. Read through
+                  // the untyped service lookup on purpose — the QA bundle does not
+                  // link the upload package.
+                  fileUpload: () =>
+                    (
+                      ctx as unknown as {
+                        get(service: string): unknown;
+                      }
+                    ).get("fileUpload") as QaFileUpload | undefined,
+                };
+              } catch {
+                // The face reads host services lazily (cordis service
+                // visibility), so assembly can fail here. Hand the guard an
+                // empty face: it renders the fullscreen failure card instead
+                // of the entry crashing, which would retire the overlay and
+                // uncover the host shell beneath it.
+                return {} as QaSurfaceFace;
+              }
+            },
           },
-          QaSurface,
+          QaSurfaceGuard,
         ),
       );
     },
