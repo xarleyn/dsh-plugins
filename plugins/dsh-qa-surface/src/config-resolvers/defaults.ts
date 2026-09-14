@@ -1,4 +1,5 @@
 import { DEFAULT_QA_TEXT_EXTENSIONS } from "../attachment-rules.js";
+import { DEFAULT_QA_DOCUMENTS_CONFIG } from "../documents/defaults.js";
 import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
@@ -136,5 +137,6 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxPending: 8,
       extensions: DEFAULT_QA_TEXT_EXTENSIONS,
     }),
+    documents: DEFAULT_QA_DOCUMENTS_CONFIG,
   },
 );

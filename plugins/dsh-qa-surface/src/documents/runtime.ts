@@ -1,0 +1,199 @@
+/**
+ * The runtime facade the tools talk to.
+ *
+ * One instance lives in the plugin and survives across calls, so the backend
+ * registry, the concurrency semaphores and the version caches are shared
+ * instead of rebuilt per request. The four operations are the whole surface:
+ * everything else in this subsystem is an implementation detail behind them.
+ */
+
+import { ArtifactStore } from "./artifacts/store.js";
+import {
+  applyDocumentsEnvOverrides,
+  resolveDocumentsConfig,
+  type QaDocumentsConfig,
+  type ResolvedQaDocumentsConfig,
+} from "./config.js";
+import {
+  documentCapabilities,
+  documentHealth,
+  type HealthOptions,
+} from "./capabilities.js";
+import { DocumentError } from "./errors.js";
+import {
+  createProviders,
+  type ProviderSeams,
+  type ProviderSet,
+} from "./providers/registry.js";
+import { convertDocument } from "./orchestrator/convert-document.js";
+import { createDocument } from "./orchestrator/create-document.js";
+import { inspectDocument } from "./orchestrator/inspect-document.js";
+import { toMarkdown } from "./orchestrator/extract-document.js";
+import {
+  createRuntimeDeps,
+  silentDocumentLogger,
+  type DocumentLogger,
+  type DocumentRuntimeDeps,
+} from "./orchestrator/runtime-deps.js";
+import {
+  loadScopeTemplates,
+  resolveDocumentScope,
+  type DocumentScope,
+} from "./orchestrator/scope.js";
+import { loadTemplateRegistry } from "./templates/registry.js";
+import { CONVERSION_ROUTES } from "./orchestrator/convert-document.js";
+import type {
+  DocumentCapabilities,
+  DocumentConvertInput,
+  DocumentConvertResult,
+  DocumentCreateInput,
+  DocumentCreateResult,
+  DocumentHealth,
+  DocumentInspectInput,
+  DocumentInspectResult,
+  DocumentToMarkdownInput,
+  DocumentToMarkdownResult,
+} from "./types.js";
+
+export interface DocumentRuntimeOptions {
+  readonly config: ResolvedQaDocumentsConfig;
+  readonly logger?: DocumentLogger;
+  readonly seams?: ProviderSeams;
+  /** Pre-built registry; tests substitute stub backends here. */
+  readonly providers?: ProviderSet;
+  readonly now?: () => Date;
+}
+
+export class DocumentRuntime {
+  readonly config: ResolvedQaDocumentsConfig;
+  readonly providers: ProviderSet;
+  private readonly deps: DocumentRuntimeDeps;
+  private readonly seams: ProviderSeams;
+
+  constructor(options: DocumentRuntimeOptions) {
+    this.config = options.config;
+    this.seams = options.seams ?? {};
+    this.providers =
+      options.providers ?? createProviders(this.config, this.seams);
+    this.deps = createRuntimeDeps({
+      config: this.config,
+      providers: this.providers,
+      logger: options.logger ?? silentDocumentLogger,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
+  }
+
+  async create(
+    input: DocumentCreateInput,
+    scope: DocumentScope,
+  ): Promise<DocumentCreateResult> {
+    return await createDocument(this.deps, input, scope);
+  }
+
+  async toMarkdown(
+    input: DocumentToMarkdownInput,
+    scope: DocumentScope,
+  ): Promise<DocumentToMarkdownResult> {
+    return await toMarkdown(this.deps, input, scope);
+  }
+
+  async convert(
+    input: DocumentConvertInput,
+    scope: DocumentScope,
+  ): Promise<DocumentConvertResult> {
+    return await convertDocument(this.deps, input, scope);
+  }
+
+  async inspect(
+    input: DocumentInspectInput,
+    scope: DocumentScope,
+  ): Promise<DocumentInspectResult> {
+    return await inspectDocument(this.deps, input, scope);
+  }
+
+  async health(
+    options: { readonly probeProcessBackends?: boolean } = {},
+  ): Promise<DocumentHealth> {
+    const healthOptions: HealthOptions = {
+      config: this.config,
+      providers: this.providers,
+      ...(options.probeProcessBackends === undefined
+        ? {}
+        : { probeProcessBackends: options.probeProcessBackends }),
+    };
+    return await documentHealth(healthOptions);
+  }
+
+  async capabilities(scope?: DocumentScope): Promise<DocumentCapabilities> {
+    const templates =
+      scope === undefined
+        ? await loadTemplateRegistry(undefined)
+        : await loadScopeTemplates(this.config, scope.workspaceRoot);
+    return documentCapabilities({
+      config: this.config,
+      providers: this.providers,
+      templates,
+    });
+  }
+
+  /** Routes this runtime advertises, in documentation order. */
+  routes(): readonly (readonly [string, string])[] {
+    return CONVERSION_ROUTES;
+  }
+
+  /**
+   * Retention sweep (§41). Meaningful only for a pinned storage root: with the
+   * default per-workspace layout the plugin cannot enumerate workspaces, and a
+   * sweep that guessed would delete other projects' artifacts.
+   */
+  async cleanup(
+    options: { readonly now?: Date } = {},
+  ): Promise<{ removed: string[] } | undefined> {
+    if (!this.config.retention.enabled || this.config.storage.root === null)
+      return undefined;
+    const store = new ArtifactStore({ root: this.config.storage.root });
+    const removed = await store.cleanup({
+      maxAgeDays: this.config.retention.maxAgeDays,
+      ...(options.now === undefined ? {} : { now: options.now }),
+    });
+    if (removed.removed.length > 0) {
+      this.deps.logger.info("documents.retention", {
+        removed: removed.removed.length,
+      });
+    }
+    return removed;
+  }
+}
+
+/** Build a runtime from raw (schema-parsed) configuration. */
+export function createDocumentRuntime(options: {
+  readonly config: QaDocumentsConfig;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly logger?: DocumentLogger;
+  readonly seams?: ProviderSeams;
+  readonly providers?: ProviderSet;
+  readonly now?: () => Date;
+}): DocumentRuntime {
+  const withEnv = applyDocumentsEnvOverrides(
+    options.config,
+    options.env ?? process.env,
+  );
+  const resolved = resolveDocumentsConfig(withEnv);
+  if (!resolved.enabled) {
+    throw new DocumentError(
+      "BACKEND_UNAVAILABLE",
+      "the document subsystem is disabled in this deployment",
+    );
+  }
+  return new DocumentRuntime({
+    config: resolved,
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.seams === undefined ? {} : { seams: options.seams }),
+    ...(options.providers === undefined
+      ? {}
+      : { providers: options.providers }),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+}
+
+export { resolveDocumentScope };

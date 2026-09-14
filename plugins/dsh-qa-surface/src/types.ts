@@ -1,3 +1,7 @@
+import type {
+  QaDocumentsConfig,
+  ResolvedQaDocumentsConfig,
+} from "./documents/config.js";
 import type { QaTurnSources } from "./provenance/types.js";
 
 export type QaSessionPolicy = "browser-persistent" | "new-on-load" | "fixed";
@@ -252,6 +256,8 @@ export interface QaSurfaceConfig {
   };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
+  /** Document pipeline: creation, conversion and extraction (see documents/). */
+  readonly documents?: QaDocumentsConfig;
 }
 
 /** What a QA visitor may attach to one message. */
@@ -405,6 +411,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly maxPending: number;
     readonly extensions: readonly string[];
   };
+  readonly documents: ResolvedQaDocumentsConfig;
 }
 
 export interface QaSourceFilePreview {
