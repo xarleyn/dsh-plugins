@@ -31,5 +31,20 @@ const built = await import("../lib/index.js");
 assert.equal(built.name, "dsh-qa-browser");
 assert.equal(built.default, built.QaBrowserService);
 assert.equal(built.QA_BROWSER_DEFAULTS.runtime.provider, "playwright");
+assert.deepEqual(built.BROWSER_CORE_TOOL_NAMES, [
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_click",
+  "browser_type",
+  "browser_fill_form",
+  "browser_select",
+  "browser_press",
+  "browser_hover",
+  "browser_scroll",
+  "browser_wait",
+  "browser_tabs",
+  "browser_viewport",
+  "browser_history",
+]);
 
 console.log("verify-package: all gates passed");

@@ -22,6 +22,23 @@ export interface QaBrowserConfig {
     readonly height?: number;
     readonly deviceScaleFactor?: number;
   };
+  readonly snapshots?: {
+    readonly mode?: "interactive" | "document";
+    readonly maxChars?: number;
+    readonly returnDeltaAfterActions?: boolean;
+  };
+  readonly capabilities?: {
+    readonly core?: boolean;
+    readonly vision?: boolean;
+    readonly coordinateInput?: boolean;
+    readonly devtools?: boolean;
+    readonly network?: boolean;
+    readonly trace?: boolean;
+    readonly storage?: boolean;
+    readonly downloads?: boolean;
+    readonly uploads?: boolean;
+    readonly unsafeEvaluate?: boolean;
+  };
   readonly security?: {
     readonly network?: {
       readonly allowedSchemes?: string[];
@@ -55,6 +72,23 @@ export interface ResolvedQaBrowserConfig {
     readonly height: number;
     readonly deviceScaleFactor: number;
   };
+  readonly snapshots: {
+    readonly mode: "interactive" | "document";
+    readonly maxChars: number;
+    readonly returnDeltaAfterActions: boolean;
+  };
+  readonly capabilities: {
+    readonly core: boolean;
+    readonly vision: boolean;
+    readonly coordinateInput: boolean;
+    readonly devtools: boolean;
+    readonly network: boolean;
+    readonly trace: boolean;
+    readonly storage: boolean;
+    readonly downloads: boolean;
+    readonly uploads: boolean;
+    readonly unsafeEvaluate: boolean;
+  };
   readonly security: {
     readonly network: {
       readonly allowedSchemes: readonly string[];
@@ -87,6 +121,23 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
     width: 1_440,
     height: 900,
     deviceScaleFactor: 1,
+  },
+  snapshots: {
+    mode: "interactive",
+    maxChars: 30_000,
+    returnDeltaAfterActions: true,
+  },
+  capabilities: {
+    core: true,
+    vision: true,
+    coordinateInput: true,
+    devtools: false,
+    network: false,
+    trace: false,
+    storage: false,
+    downloads: true,
+    uploads: false,
+    unsafeEvaluate: false,
   },
   security: {
     network: {
@@ -133,6 +184,29 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
         deviceScaleFactor: z.number().default(1),
       })
       .description("Default viewport for newly created tabs."),
+    snapshots: z
+      .object({
+        mode: z
+          .union(["interactive", "document"] as const)
+          .default("interactive"),
+        maxChars: z.number().default(30_000),
+        returnDeltaAfterActions: z.boolean().default(true),
+      })
+      .description("Semantic snapshot limits."),
+    capabilities: z
+      .object({
+        core: z.boolean().default(true),
+        vision: z.boolean().default(true),
+        coordinateInput: z.boolean().default(true),
+        devtools: z.boolean().default(false),
+        network: z.boolean().default(false),
+        trace: z.boolean().default(false),
+        storage: z.boolean().default(false),
+        downloads: z.boolean().default(true),
+        uploads: z.boolean().default(false),
+        unsafeEvaluate: z.boolean().default(false),
+      })
+      .description("Browser capability gates."),
     security: z
       .object({
         network: z
@@ -218,6 +292,23 @@ export function resolveQaBrowserConfig(
         4,
         Math.max(0.5, raw.viewport?.deviceScaleFactor ?? 1),
       ),
+    },
+    snapshots: {
+      mode: raw.snapshots?.mode ?? "interactive",
+      maxChars: clampInteger(raw.snapshots?.maxChars, 1_000, 100_000, 30_000),
+      returnDeltaAfterActions: raw.snapshots?.returnDeltaAfterActions ?? true,
+    },
+    capabilities: {
+      core: raw.capabilities?.core ?? true,
+      vision: raw.capabilities?.vision ?? true,
+      coordinateInput: raw.capabilities?.coordinateInput ?? true,
+      devtools: raw.capabilities?.devtools ?? false,
+      network: raw.capabilities?.network ?? false,
+      trace: raw.capabilities?.trace ?? false,
+      storage: raw.capabilities?.storage ?? false,
+      downloads: raw.capabilities?.downloads ?? true,
+      uploads: raw.capabilities?.uploads ?? false,
+      unsafeEvaluate: raw.capabilities?.unsafeEvaluate ?? false,
     },
     security: {
       network: {

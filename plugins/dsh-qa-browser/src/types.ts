@@ -50,3 +50,86 @@ export interface BrowserActionResult {
     readonly to?: string;
   };
 }
+
+export type BrowserSnapshotMode = "interactive" | "document";
+
+export type LocatorPlan =
+  | {
+      readonly type: "role";
+      readonly role: string;
+      readonly name?: string;
+      readonly exact?: boolean;
+      readonly nth?: number;
+    }
+  | {
+      readonly type: "label";
+      readonly label: string;
+      readonly exact?: boolean;
+      readonly nth?: number;
+    }
+  | {
+      readonly type: "placeholder";
+      readonly value: string;
+      readonly exact?: boolean;
+      readonly nth?: number;
+    }
+  | { readonly type: "testId"; readonly value: string; readonly nth?: number }
+  | {
+      readonly type: "text";
+      readonly value: string;
+      readonly exact?: boolean;
+      readonly nth?: number;
+    }
+  | { readonly type: "css-fallback"; readonly selector: string };
+
+export interface ElementFingerprint {
+  readonly role?: string;
+  readonly name?: string;
+  readonly label?: string;
+  readonly placeholder?: string;
+  readonly text?: string;
+  readonly testId?: string;
+}
+
+export interface ElementRefRecord {
+  readonly ref: string;
+  readonly tabId: string;
+  readonly revision: number;
+  readonly locator: LocatorPlan;
+  readonly fingerprint: ElementFingerprint;
+}
+
+export interface SnapshotLine {
+  readonly ref?: string;
+  readonly role: string;
+  readonly name: string;
+  readonly text?: string;
+}
+
+export interface BrowserSnapshot {
+  readonly sessionId: string;
+  readonly tabId: string;
+  readonly revision: number;
+  readonly url: string;
+  readonly title: string;
+  readonly mode: BrowserSnapshotMode;
+  readonly lines: readonly SnapshotLine[];
+  readonly text: string;
+  readonly truncated: boolean;
+}
+
+export interface BrowserSnapshotOptions {
+  readonly mode?: BrowserSnapshotMode;
+  readonly maxChars?: number;
+}
+
+export type BrowserFormValue = string | boolean | readonly string[];
+
+export interface BrowserWaitRequest {
+  readonly timeMs?: number;
+  readonly url?: string;
+  readonly text?: string;
+  readonly ref?: string;
+  readonly state?: "visible" | "hidden";
+  readonly timeoutMs?: number;
+}

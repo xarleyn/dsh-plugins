@@ -13,6 +13,9 @@ export type QaBrowserErrorCode =
   | "BROWSER_REDIRECT_BLOCKED"
   | "BROWSER_DSH_ORIGIN_BLOCKED"
   | "BROWSER_TIMEOUT"
+  | "BROWSER_TARGET_NOT_FOUND"
+  | "BROWSER_TARGET_AMBIGUOUS"
+  | "BROWSER_STALE_REF"
   | "BROWSER_ACTION_FAILED";
 
 export class QaBrowserError extends Error {

@@ -2,10 +2,7 @@ import type { lookup } from "node:dns/promises";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  resolveQaBrowserConfig,
-  type QaBrowserConfig,
-} from "../src/config.js";
+import { resolveQaBrowserConfig, type QaBrowserConfig } from "../src/config.js";
 import { QaBrowserError } from "../src/errors.js";
 import { BrowserNetworkPolicy } from "../src/host/policy.js";
 

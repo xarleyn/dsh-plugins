@@ -13,12 +13,14 @@ The first implementation slice provides:
 - one isolated `BrowserContext` per DSH session;
 - opaque, persistent tab identities and per-tab mutation queues;
 - navigation, viewport, screenshot and tab lifecycle Host primitives;
+- compact semantic snapshots with revision-bound refs;
+- focused navigate, snapshot, click, type, fill, select, keyboard, hover,
+  scroll, wait, tabs, viewport and history agent tools;
 - server-side scheme, host, DNS, private-network and metadata-endpoint policy;
 - agent-disposal, idle-eviction and plugin-shutdown cleanup.
 
-Semantic tools, native DSH screenshot artifacts and the QA Surface panel are
-deliberately subsequent slices. No Browser code or Playwright dependency is
-added to `dsh-qa-surface`.
+Native DSH screenshot artifacts and the QA Surface panel are subsequent slices.
+No Browser code or Playwright dependency is added to `dsh-qa-surface`.
 
 ## Requirements
 

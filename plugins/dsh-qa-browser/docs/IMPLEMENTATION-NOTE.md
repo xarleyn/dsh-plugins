@@ -37,8 +37,10 @@ should first exist without a server-enforced boundary. Redirect and subresource
 requests are rechecked by Playwright routing; metadata endpoints remain denied
 even when a hostname is explicitly allowed.
 
-## Next slice
+## Semantic slice
 
-The next change should add semantic snapshots, revision-bound refs and focused
-agent tools on top of `QaBrowserService`. The panel should follow only after
-those Host contracts and the native screenshot artifact result are stable.
+The second implementation stage adds semantic snapshots, revision-bound refs
+and focused agent tools on top of `QaBrowserService`. A deterministic form
+fixture proves fill, select, checkbox and click behavior without CSS selectors
+or screenshots. The panel follows only after these Host contracts and the
+native screenshot artifact result are stable.

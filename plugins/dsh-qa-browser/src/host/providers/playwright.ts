@@ -6,10 +6,17 @@ import type {
   BrowserContext,
   BrowserType,
   LaunchOptions,
+  Locator,
   Page,
 } from "playwright";
 
 import { browserErrorMessage, QaBrowserError } from "../../errors.js";
+import type {
+  BrowserFormValue,
+  BrowserSnapshotMode,
+  BrowserWaitRequest,
+  LocatorPlan,
+} from "../../types.js";
 import type {
   BrowserContextHandle,
   BrowserContextOptions,
@@ -17,6 +24,7 @@ import type {
   BrowserProvider,
   BrowserProviderStartOptions,
   ProviderNavigationResult,
+  ProviderSnapshotNode,
 } from "./contract.js";
 
 type PlaywrightModule = typeof import("playwright");
@@ -116,6 +124,344 @@ class PlaywrightPageHandle implements BrowserPageHandle {
       throw error;
     }
     return { url: this.page.url(), title: await this.page.title() };
+  }
+
+  async snapshot(
+    mode: BrowserSnapshotMode,
+  ): Promise<readonly ProviderSnapshotNode[]> {
+    const selector =
+      mode === "interactive"
+        ? "button,a[href],input,textarea,select,summary,[role],[contenteditable],h1,h2,h3,h4,h5,h6"
+        : "button,a[href],input,textarea,select,summary,[role],[contenteditable],h1,h2,h3,h4,h5,h6,p,li,pre,blockquote,output";
+    const raw = await this.page.locator(selector).evaluateAll((elements) => {
+      const roleFor = (element: Element): string => {
+        const explicit = element.getAttribute("role")?.trim();
+        if (explicit) return explicit;
+        const tag = element.tagName.toLowerCase();
+        if (tag === "a") return "link";
+        if (tag === "button" || tag === "summary") return "button";
+        if (/^h[1-6]$/u.test(tag)) return "heading";
+        if (tag === "textarea") return "textbox";
+        if (tag === "select") return "combobox";
+        if (tag === "li") return "listitem";
+        if (tag === "input") {
+          const type = (element.getAttribute("type") ?? "text").toLowerCase();
+          if (type === "checkbox") return "checkbox";
+          if (type === "radio") return "radio";
+          if (type === "submit" || type === "button" || type === "reset")
+            return "button";
+          return "textbox";
+        }
+        return tag === "p" ? "paragraph" : tag;
+      };
+      const selectorFor = (element: Element): string => {
+        const parts: string[] = [];
+        let current: Element | null = element;
+        while (current && current.tagName.toLowerCase() !== "html") {
+          const tag = current.tagName.toLowerCase();
+          const parent: Element | null = current.parentElement;
+          if (parent === null) {
+            parts.unshift(tag);
+            break;
+          }
+          const siblings = [...parent.children].filter(
+            (candidate) => candidate.tagName === current!.tagName,
+          );
+          const suffix =
+            siblings.length <= 1
+              ? ""
+              : `:nth-of-type(${siblings.indexOf(current) + 1})`;
+          parts.unshift(`${tag}${suffix}`);
+          current = parent;
+        }
+        return parts.join(" > ");
+      };
+      return elements.slice(0, 500).flatMap((element) => {
+        const html = element as HTMLElement;
+        const style = window.getComputedStyle(html);
+        const rect = html.getBoundingClientRect();
+        if (
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          rect.width <= 0 ||
+          rect.height <= 0
+        ) {
+          return [];
+        }
+        const label =
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement ||
+          element instanceof HTMLSelectElement
+            ? [...(element.labels ?? [])]
+                .map((item) => {
+                  const copy = item.cloneNode(true) as Element;
+                  for (const control of copy.querySelectorAll(
+                    "input,textarea,select,button",
+                  )) {
+                    control.remove();
+                  }
+                  return copy.textContent?.replace(/\s+/gu, " ").trim() ?? "";
+                })
+                .filter(Boolean)
+                .join(" ")
+            : "";
+        const text = (element.textContent ?? "").replace(/\s+/gu, " ").trim();
+        const placeholder = element.getAttribute("placeholder")?.trim() ?? "";
+        const testId = element.getAttribute("data-testid")?.trim() ?? "";
+        const name =
+          [
+            element.getAttribute("aria-label")?.trim(),
+            label,
+            element.getAttribute("alt")?.trim(),
+            element.getAttribute("title")?.trim(),
+            placeholder,
+            text,
+          ]
+            .find((value) => value !== undefined && value !== "")
+            ?.replace(/\s+/gu, " ")
+            .trim()
+            .slice(0, 300) ?? roleFor(element);
+        const role = roleFor(element);
+        const interactive =
+          [
+            "button",
+            "link",
+            "textbox",
+            "checkbox",
+            "radio",
+            "combobox",
+            "option",
+            "slider",
+            "spinbutton",
+            "switch",
+            "tab",
+            "menuitem",
+          ].includes(role) || html.tabIndex >= 0;
+        return [
+          {
+            role,
+            name: name || role,
+            text: text.slice(0, 500),
+            label,
+            placeholder,
+            testId,
+            selector: selectorFor(element),
+            interactive,
+          },
+        ];
+      });
+    });
+
+    const occurrences = new Map<string, number>();
+    return raw.map((node) => {
+      const base =
+        node.name !== ""
+          ? ({
+              type: "role",
+              role: node.role,
+              name: node.name,
+              exact: true,
+            } as const)
+          : node.label !== ""
+            ? ({ type: "label", label: node.label, exact: true } as const)
+            : node.testId !== ""
+              ? ({ type: "testId", value: node.testId } as const)
+              : node.placeholder !== ""
+                ? ({
+                    type: "placeholder",
+                    value: node.placeholder,
+                    exact: true,
+                  } as const)
+                : ({ type: "css-fallback", selector: node.selector } as const);
+      const key = JSON.stringify(base);
+      const nth = occurrences.get(key) ?? 0;
+      occurrences.set(key, nth + 1);
+      const locator: LocatorPlan =
+        base.type === "css-fallback" ? base : { ...base, nth };
+      return {
+        role: node.role,
+        name: node.name,
+        ...(node.text === "" ? {} : { text: node.text }),
+        locator,
+        fingerprint: {
+          role: node.role,
+          name: node.name,
+          ...(node.label === "" ? {} : { label: node.label }),
+          ...(node.placeholder === "" ? {} : { placeholder: node.placeholder }),
+          ...(node.testId === "" ? {} : { testId: node.testId }),
+          ...(node.text === "" ? {} : { text: node.text }),
+        },
+        interactive: node.interactive,
+      };
+    });
+  }
+
+  async validateLocator(locator: LocatorPlan): Promise<void> {
+    const { base, nth } = this.resolveBase(locator);
+    const count = await base.count();
+    if (count <= nth) {
+      throw new QaBrowserError(
+        "BROWSER_TARGET_NOT_FOUND",
+        `The referenced page element no longer exists (${locator.type}: ${
+          locator.type === "label"
+            ? locator.label
+            : locator.type === "placeholder" || locator.type === "testId"
+              ? locator.value
+              : locator.type === "role"
+                ? `${locator.role}/${locator.name ?? ""}`
+                : locator.type
+        }).`,
+      );
+    }
+  }
+
+  async click(
+    locator: LocatorPlan,
+    options: Parameters<BrowserPageHandle["click"]>[1] = {},
+  ): Promise<void> {
+    await (
+      await this.resolved(locator)
+    ).click({
+      button: options.button ?? "left",
+      clickCount: options.clickCount ?? 1,
+    });
+  }
+
+  async type(
+    locator: LocatorPlan,
+    text: string,
+    options: Parameters<BrowserPageHandle["type"]>[2] = {},
+  ): Promise<void> {
+    const target = await this.resolved(locator);
+    if (options.clear) await target.fill("");
+    await target.pressSequentially(text);
+    if (options.submit) await target.press("Enter");
+  }
+
+  async setValue(locator: LocatorPlan, value: BrowserFormValue): Promise<void> {
+    const target = await this.resolved(locator);
+    if (typeof value === "boolean") {
+      if (value) await target.check();
+      else await target.uncheck();
+      return;
+    }
+    if (typeof value !== "string") {
+      await target.selectOption([...value]);
+      return;
+    }
+    const tag = await target.evaluate((element) =>
+      element.tagName.toLowerCase(),
+    );
+    if (tag === "select") await target.selectOption(value);
+    else await target.fill(value);
+  }
+
+  async press(key: string): Promise<void> {
+    await this.page.keyboard.press(key);
+  }
+
+  async hover(locator: LocatorPlan): Promise<void> {
+    await (await this.resolved(locator)).hover();
+  }
+
+  async scroll(deltaY: number, locator?: LocatorPlan): Promise<void> {
+    if (locator === undefined) {
+      await this.page.mouse.wheel(0, deltaY);
+      return;
+    }
+    await (
+      await this.resolved(locator)
+    ).evaluate(
+      (element, delta) => element.scrollBy({ top: delta, behavior: "instant" }),
+      deltaY,
+    );
+  }
+
+  async wait(
+    request: Omit<BrowserWaitRequest, "ref"> & {
+      readonly locator?: LocatorPlan;
+    },
+  ): Promise<void> {
+    const timeout = request.timeoutMs;
+    if (request.timeMs !== undefined)
+      await this.page.waitForTimeout(request.timeMs);
+    if (request.url !== undefined)
+      await this.page.waitForURL(request.url, { timeout });
+    if (request.text !== undefined) {
+      await this.page
+        .getByText(request.text, { exact: false })
+        .first()
+        .waitFor({
+          state: "visible",
+          timeout,
+        });
+    }
+    if (request.locator !== undefined) {
+      await (
+        await this.resolved(request.locator)
+      ).waitFor({
+        state: request.state ?? "visible",
+        timeout,
+      });
+    }
+  }
+
+  async history(
+    action: "back" | "forward" | "reload",
+  ): Promise<ProviderNavigationResult> {
+    if (action === "back")
+      await this.page.goBack({ waitUntil: "domcontentloaded" });
+    else if (action === "forward")
+      await this.page.goForward({ waitUntil: "domcontentloaded" });
+    else await this.page.reload({ waitUntil: "domcontentloaded" });
+    return { url: this.page.url(), title: await this.page.title() };
+  }
+
+  private resolveBase(locator: LocatorPlan): { base: Locator; nth: number } {
+    const nth = locator.type === "css-fallback" ? 0 : (locator.nth ?? 0);
+    switch (locator.type) {
+      case "role":
+        return {
+          base: this.page.getByRole(locator.role as never, {
+            name: locator.name,
+            exact: locator.exact,
+          }),
+          nth,
+        };
+      case "label":
+        return {
+          base: this.page.getByLabel(locator.label, { exact: locator.exact }),
+          nth,
+        };
+      case "placeholder":
+        return {
+          base: this.page.getByPlaceholder(locator.value, {
+            exact: locator.exact,
+          }),
+          nth,
+        };
+      case "testId":
+        return { base: this.page.getByTestId(locator.value), nth };
+      case "text":
+        return {
+          base: this.page.getByText(locator.value, { exact: locator.exact }),
+          nth,
+        };
+      case "css-fallback":
+        return { base: this.page.locator(locator.selector), nth };
+    }
+  }
+
+  private async resolved(locator: LocatorPlan): Promise<Locator> {
+    const { base, nth } = this.resolveBase(locator);
+    const count = await base.count();
+    if (count <= nth) {
+      throw new QaBrowserError(
+        "BROWSER_TARGET_NOT_FOUND",
+        "The referenced page element no longer exists.",
+      );
+    }
+    return base.nth(nth);
   }
 
   async setViewport(
