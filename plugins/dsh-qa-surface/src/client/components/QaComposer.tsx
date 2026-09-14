@@ -6,11 +6,13 @@ import {
   draftFromPaste,
   type QaAttachmentLimits,
 } from "../attachments.js";
+import type { QaQuickQuestion } from "../types.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 
 export interface QaComposerProps {
   readonly placeholder: string;
-  readonly quickQuestions?: readonly string[];
+  /** Shown while the chat is empty; the label reads, the prompt sends. */
+  readonly quickQuestions?: readonly QaQuickQuestion[];
   readonly canSend: boolean;
   readonly canStop: boolean;
   readonly running: boolean;
@@ -136,14 +138,14 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     >
       {(props.quickQuestions?.length ?? 0) > 0 ? (
         <div className="dsh-qa-quick-questions" aria-label="Быстрые вопросы">
-          {props.quickQuestions?.map((question) => (
+          {props.quickQuestions?.map((question, index) => (
             <button
               type="button"
-              key={question}
+              key={index}
               disabled={!props.canSend || submitting}
-              onClick={() => void send(question)}
+              onClick={() => void send(question.prompt)}
             >
-              {question}
+              {question.label}
             </button>
           ))}
         </div>

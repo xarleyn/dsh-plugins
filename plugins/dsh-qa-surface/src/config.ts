@@ -186,6 +186,11 @@ const configSchema = z.object({
           ...D.accounts.profile,
           identities: [...D.accounts.profile.identities],
         }),
+      starters: z
+        .object({
+          enabled: z.boolean().default(D.accounts.starters.enabled),
+        })
+        .default({ ...D.accounts.starters }),
       skills: z
         .object({
           enabled: z.boolean().default(QA_SKILL_ENABLED_BY_DEFAULT),
@@ -212,6 +217,7 @@ const configSchema = z.object({
         ...D.accounts.profile,
         identities: [...D.accounts.profile.identities],
       },
+      starters: { ...D.accounts.starters },
       skills: { ...D.accounts.skills, enabled: QA_SKILL_ENABLED_BY_DEFAULT },
     }),
   entry: z

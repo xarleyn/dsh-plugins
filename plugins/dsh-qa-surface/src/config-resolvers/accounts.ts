@@ -135,6 +135,11 @@ export function resolveAccounts(
       ),
       instructionsMaxLength,
     }),
+    starters: Object.freeze({
+      enabled:
+        input.accounts?.starters?.enabled ??
+        DEFAULT_QA_SURFACE_CONFIG.accounts.starters.enabled,
+    }),
     skills: Object.freeze({
       enabled: skillsEnabled,
       relativeRoot: relativeRoot.trim(),

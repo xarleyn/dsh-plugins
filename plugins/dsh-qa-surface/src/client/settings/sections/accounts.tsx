@@ -158,6 +158,17 @@ export function AccountsSection(props: ConfigProps) {
           props.write(["accounts", "profile", "identities"], fields);
         }}
       />
+      <div className="qa-card-grid">
+        <Toggle
+          checked={accounts?.starters?.enabled ?? true}
+          disabled={disabled || !enabled}
+          label="Свои быстрые сообщения"
+          hint="Пользователь задаёт свои кнопки-подсказки над строкой ввода — название и отправляемый промпт — и может скрыть стандартные вопросы."
+          onChange={(value) => {
+            props.write(["accounts", "starters", "enabled"], value);
+          }}
+        />
+      </div>
     </Section>
   );
 }

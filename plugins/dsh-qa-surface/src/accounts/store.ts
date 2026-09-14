@@ -10,6 +10,7 @@ import type {
   QaAccountProfileInput,
   QaAccountRole,
   QaAccountSession,
+  QaAccountStartersInput,
   QaAccountUserPublic,
   QaClaimResult,
   QaOwnershipEntry,
@@ -20,6 +21,7 @@ import {
   normalizeProfile,
   validateProfileWrite,
 } from "../profile.js";
+import { normalizeStarters, validateStartersWrite } from "../starters.js";
 import { validateCredentials, validatePassword } from "./credentials.js";
 import { QaAccountsError } from "./errors.js";
 import {
@@ -64,6 +66,7 @@ function toPublic(user: StoredUser): QaAccountUserPublic {
     lastLoginAt: user.lastLoginAt,
     disabled: user.disabled === true,
     profile: normalizeProfile(user.profile),
+    starters: normalizeStarters(user.starters),
   };
 }
 
@@ -618,6 +621,32 @@ export class QaAccounts {
     this.reloadIfChanged();
     const user = this.requireUser(token);
     return this.setProfile(user.email, input);
+  }
+
+  /**
+   * Replace the token account's starter buttons. Same self-service shape as
+   * {@link updateOwnProfile}: the token is the only identity, and a rejected
+   * write leaves the stored record untouched.
+   */
+  updateOwnStarters(
+    token: string,
+    input: QaAccountStartersInput,
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    const result = validateStartersWrite(input);
+    if (!result.ok) {
+      throw new QaAccountsError("invalid-starters", result.message);
+    }
+    return toPublic(
+      this.editUser(user.email, (current) => ({
+        ...current,
+        starters: {
+          items: result.value.items.map((item) => ({ ...item })),
+          hideDefaults: result.value.hideDefaults,
+        },
+      })),
+    );
   }
 
   /**

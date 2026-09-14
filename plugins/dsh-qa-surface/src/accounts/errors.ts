@@ -13,6 +13,8 @@ export type QaAccountsErrorReason =
   | "invalid-display-name"
   | "invalid-profile"
   | "profile-disabled"
+  | "invalid-starters"
+  | "starters-disabled"
   | "invalid-role"
   | "weak-password"
   | "registration-disabled"

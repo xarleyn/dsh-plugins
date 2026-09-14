@@ -5,9 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { QaSidebar } from "../src/client/components/QaSidebar.js";
 import { QaUserSettingsDialog } from "../src/client/user-settings/UserSettingsDialog.js";
 import { QaGeneralSettingsPage } from "../src/client/user-settings/GeneralSettingsPage.js";
+import { QaStartersSettingsPage } from "../src/client/user-settings/StartersSettingsPage.js";
 import type {
   QaAccountIdentityField,
   QaAccountProfile,
+  QaAccountStarters,
+  QaAccountStartersInput,
   QaSkillDocument,
   QaSkillSummary,
 } from "../src/types.js";
@@ -242,6 +245,91 @@ describe("QA settings general page", () => {
     expect(screen.getByText("admin")).toBeTruthy();
     expect(screen.getByText("7")).toBeTruthy();
     expect(screen.getByText(/задаёт администратор/u)).toBeTruthy();
+  });
+});
+
+describe("QA settings starters page", () => {
+  function startersPage(props?: {
+    readonly starters?: QaAccountStarters;
+    readonly onSave?: (input: QaAccountStartersInput) => Promise<string | null>;
+  }) {
+    return render(
+      <QaStartersSettingsPage
+        starters={
+          props?.starters ?? {
+            items: [{ label: "Задачи", prompt: "Найди мои задачи" }],
+            hideDefaults: false,
+          }
+        }
+        onSave={props?.onSave ?? vi.fn(async () => null)}
+      />,
+    );
+  }
+
+  it("edits a row and saves the trimmed list", async () => {
+    const onSave = vi.fn(async () => null);
+    startersPage({ onSave });
+    fireEvent.change(screen.getByLabelText("Промпт"), {
+      target: { value: "Найди мои открытые задачи " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith({
+        items: [{ label: "Задачи", prompt: "Найди мои открытые задачи" }],
+        hideDefaults: false,
+      });
+    });
+    expect(await screen.findByText("Подсказки сохранены.")).toBeTruthy();
+  });
+
+  it("blocks the save while any row is incomplete", () => {
+    startersPage({ starters: { items: [], hideDefaults: false } });
+    fireEvent.click(screen.getByRole("button", { name: "Добавить подсказку" }));
+    expect(
+      (screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(screen.getByText(/нужны и название, и промпт/u)).toBeTruthy();
+  });
+
+  it("removes a row and hides the standard suggestions on request", () => {
+    const { container } = startersPage();
+    fireEvent.click(screen.getByRole("button", { name: "Удалить «Задачи»" }));
+    expect(screen.getByText(/Своих подсказок нет/u)).toBeTruthy();
+    expect(container.querySelectorAll(".dsh-qa-starters__item")).toHaveLength(
+      0,
+    );
+    const toggle = screen.getByLabelText(
+      "Показывать стандартные подсказки",
+    ) as HTMLInputElement;
+    expect(toggle.checked).toBe(true);
+    fireEvent.click(toggle);
+    expect(toggle.checked).toBe(false);
+  });
+
+  it("appears as a section of the settings dialog", () => {
+    render(
+      <QaUserSettingsDialog
+        open
+        initialSection="starters"
+        email="i.ivanov@example.com"
+        role="user"
+        chatCount={1}
+        onClose={vi.fn()}
+        starters={{
+          starters: {
+            items: [{ label: "Мои задачи", prompt: "Найди мои задачи" }],
+            hideDefaults: true,
+          },
+          onSave: vi.fn(async () => null),
+        }}
+      />,
+    );
+    expect(screen.getByRole("tab", { name: "Быстрые сообщения" })).toBeTruthy();
+    expect((screen.getByLabelText("Название") as HTMLInputElement).value).toBe(
+      "Мои задачи",
+    );
+    expect(screen.getByText(/сразу отправляет промпт/u)).toBeTruthy();
   });
 });
 

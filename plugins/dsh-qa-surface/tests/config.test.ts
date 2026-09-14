@@ -364,6 +364,9 @@ describe("qa surface config", () => {
         identities: [],
         instructionsMaxLength: 2_000,
       },
+      starters: {
+        enabled: true,
+      },
       // No accounts means no per-account directory to store skills in.
       skills: {
         enabled: false,
@@ -377,6 +380,14 @@ describe("qa surface config", () => {
       redirectNonLoopback: true,
       cookieBootstrap: true,
     });
+  });
+
+  it("resolves the per-account starters flag", () => {
+    expect(resolveConfig().accounts.starters).toEqual({ enabled: true });
+    expect(
+      resolveConfig({ accounts: { starters: { enabled: false } } }).accounts
+        .starters,
+    ).toEqual({ enabled: false });
   });
 
   it("validates the declared identity fields and the instruction cap", () => {
@@ -454,6 +465,9 @@ describe("qa surface config", () => {
           inject: true,
           identities: [],
           instructionsMaxLength: 2_000,
+        },
+        starters: {
+          enabled: true,
         },
         skills: {
           enabled: false,

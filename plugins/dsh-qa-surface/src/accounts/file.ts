@@ -19,6 +19,12 @@ export interface StoredProfile {
   updatedAt?: string;
 }
 
+/** One account's starter buttons as they rest in the accounts file. */
+export interface StoredStarters {
+  items?: { label?: string; prompt?: string }[];
+  hideDefaults?: boolean;
+}
+
 export interface StoredUser {
   readonly id: string;
   readonly email: string;
@@ -37,6 +43,8 @@ export interface StoredUser {
   tokenVersion?: number;
   /** Absent until the owner fills the profile form for the first time. */
   profile?: StoredProfile;
+  /** Absent until the owner customizes the starter buttons. */
+  starters?: StoredStarters;
 }
 
 export interface AccountsFile {

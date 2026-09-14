@@ -90,6 +90,9 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         identities: Object.freeze([]),
         instructionsMaxLength: QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
       }),
+      starters: Object.freeze({
+        enabled: true,
+      }),
       skills: Object.freeze({
         // Off, not because of an operator choice but because the canonical
         // default deployment has no accounts and no per-account directory:

@@ -7,6 +7,7 @@ import {
 import type {
   QaAccountProfileInput,
   QaAccountSession,
+  QaAccountStartersInput,
   QaAccountUserPublic,
   QaClaimResult,
   QaOwnershipEntry,
@@ -49,6 +50,11 @@ export interface QaAccountRemotes {
   updateProfile(
     token: string,
     input: QaAccountProfileInput,
+  ): QaAccountUserPublic;
+  /** Replace the caller's own starter buttons; the token is the identity. */
+  updateStarters(
+    token: string,
+    input: QaAccountStartersInput,
   ): QaAccountUserPublic;
 }
 
@@ -153,6 +159,19 @@ export function createQaAccountRemotes(options: {
           );
         }
         return store.updateOwnProfile(token, input);
+      });
+    },
+    updateStarters: (token, input) => {
+      const config = getConfig();
+      const store = requireAccounts();
+      return run(() => {
+        if (!config.accounts.starters.enabled) {
+          throw new QaAccountsError(
+            "starters-disabled",
+            "self-service starter messages are disabled on this deployment",
+          );
+        }
+        return store.updateOwnStarters(token, input);
       });
     },
   };
