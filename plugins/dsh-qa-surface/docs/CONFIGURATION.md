@@ -503,6 +503,13 @@ accounts:
   there is no shared fallback to fall back to. The resolver reports the
   effective value, and the settings dialog simply has no Навыки section when
   it is off.
+- Two deployment facts decide whether the model ever sees a personal skill.
+  The preset must mount the skill tool package (`dsh-tool-skill`), and
+  `lockdown.toolPolicy.allow` must list `skill`: the harness publishes the
+  model-facing catalog only while that tool is visible in the agent's scope.
+  Invoking a skill as `/name` does not depend on the tool being allowed, so a
+  deployment that skips that entry sees the command work and the catalog stay
+  empty — the half-working state this paragraph exists to prevent.
 - The user edits skills in the same Настройки dialog as the profile: a
   catalog with search, an editor with name, description, "when to use",
   invocation flags, declared tools and a Markdown body, a tool picker over the
