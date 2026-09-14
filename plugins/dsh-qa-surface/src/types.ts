@@ -613,22 +613,30 @@ export interface QaLockdownProof {
   readonly toolAllowList: readonly string[];
 }
 
+export interface QaUserMessage {
+  readonly id: string;
+  readonly role: "user";
+  readonly text: string;
+  /** `pending` is a browser-only optimistic row until the Host emits it. */
+  readonly status: "pending" | "committed";
+  readonly timestamp?: number;
+  readonly images?: readonly QaImageView[];
+  /** Durable files the user attached to this message, in prompt order. */
+  readonly files?: readonly QaFileView[];
+  /**
+   * Chat owner's display name, set only for an admin reading a foreign
+   * chat; the owner themself sees their messages unlabeled.
+   */
+  readonly author?: string;
+}
+
+/** Browser-only user row shown while the Host prepares the accepted turn. */
+export type QaPendingUserMessage = Omit<QaUserMessage, "status"> & {
+  readonly status: "pending";
+};
+
 export type QaMessage =
-  | {
-      readonly id: string;
-      readonly role: "user";
-      readonly text: string;
-      readonly status: "committed";
-      readonly timestamp?: number;
-      readonly images?: readonly QaImageView[];
-      /** Durable files the user attached to this message, in prompt order. */
-      readonly files?: readonly QaFileView[];
-      /**
-       * Chat owner's display name, set only for an admin reading a foreign
-       * chat; the owner themself sees their messages unlabeled.
-       */
-      readonly author?: string;
-    }
+  | QaUserMessage
   | {
       readonly id: string;
       readonly role: "assistant";
@@ -754,6 +762,8 @@ export type QaAttachmentDraft = QaImageDraft | QaFileDraft;
 export interface QaImageView {
   readonly attachmentId: string;
   readonly mediaType: QaImageMediaType;
+  /** Browser-local thumbnail URL, present only on an optimistic message. */
+  readonly previewUrl?: string;
 }
 
 /**
@@ -825,6 +835,8 @@ export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
   readonly messages: readonly QaMessage[];
+  /** Immediate send feedback, kept outside the durable transcript. */
+  readonly pendingMessage: QaPendingUserMessage | null;
   readonly error: string | null;
   readonly canSend: boolean;
   readonly canStop: boolean;

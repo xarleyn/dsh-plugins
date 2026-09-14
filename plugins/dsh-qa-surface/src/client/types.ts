@@ -286,6 +286,7 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   phase: "idle",
   sessionId: null,
   messages: Object.freeze([]),
+  pendingMessage: null,
   error: null,
   canSend: false,
   canStop: false,
