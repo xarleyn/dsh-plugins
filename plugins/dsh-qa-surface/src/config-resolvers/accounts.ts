@@ -3,6 +3,12 @@ import {
   QA_PROFILE_INSTRUCTIONS_MAX_MIN,
   validateIdentityFields,
 } from "../profile.js";
+import {
+  QA_SKILL_ENABLED_BY_DEFAULT,
+  QA_SKILL_MAX_BYTES_MAX,
+  QA_SKILL_MAX_BYTES_MIN,
+  skillRelativeRootProblem,
+} from "../personal-skills/skill-file.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";
@@ -81,6 +87,32 @@ export function resolveAccounts(
       "dsh-qa-surface: workspace-write is allowed only with accounts.perUserWorkspace",
     );
   }
+  const relativeRoot =
+    input.accounts?.skills?.relativeRoot ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.skills.relativeRoot;
+  const relativeRootProblem = skillRelativeRootProblem(relativeRoot);
+  if (relativeRootProblem !== null) {
+    throw new TypeError(
+      `dsh-qa-surface: accounts.skills.relativeRoot ${relativeRootProblem}`,
+    );
+  }
+  const maxSkillBytes =
+    input.accounts?.skills?.maxSkillBytes ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.skills.maxSkillBytes;
+  assertIntInRange(
+    "accounts.skills.maxSkillBytes",
+    maxSkillBytes,
+    QA_SKILL_MAX_BYTES_MIN,
+    QA_SKILL_MAX_BYTES_MAX,
+  );
+  // A deployment without per-account directories has no personal root to
+  // resolve, so the feature reports itself off rather than offering a screen
+  // that could only ever refuse. The configured flags stay untouched: turning
+  // perUserWorkspace on again brings the deployment's own choice back.
+  const skillsEnabled =
+    (input.accounts?.skills?.enabled ?? QA_SKILL_ENABLED_BY_DEFAULT) &&
+    accountsEnabled &&
+    perUserWorkspace;
   return Object.freeze({
     enabled: accountsEnabled,
     allowRegistration:
@@ -102,6 +134,17 @@ export function resolveAccounts(
         identityFields.value.map((field) => Object.freeze({ ...field })),
       ),
       instructionsMaxLength,
+    }),
+    skills: Object.freeze({
+      enabled: skillsEnabled,
+      relativeRoot: relativeRoot.trim(),
+      watch:
+        input.accounts?.skills?.watch ??
+        DEFAULT_QA_SURFACE_CONFIG.accounts.skills.watch,
+      maxSkillBytes,
+      allowResourceEditing:
+        input.accounts?.skills?.allowResourceEditing ??
+        DEFAULT_QA_SURFACE_CONFIG.accounts.skills.allowResourceEditing,
     }),
   });
 }
