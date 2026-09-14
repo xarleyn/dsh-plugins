@@ -1,5 +1,6 @@
 import { resolveAccounts } from "./config-resolvers/accounts.js";
 import { resolveAttachments } from "./config-resolvers/attachments.js";
+import { resolveDocumentsConfig } from "./documents/config.js";
 import {
   normalizeRoutePath,
   resolveBasics,
@@ -9,6 +10,7 @@ import { resolveLockdown } from "./config-resolvers/lockdown.js";
 import { resolveSession } from "./config-resolvers/session.js";
 import { resolveSources } from "./config-resolvers/sources.js";
 import { uniquePhrases, uniqueQuestions } from "./config-resolvers/shared.js";
+import { resolveTools } from "./config-resolvers/tools.js";
 import { resolveUi } from "./config-resolvers/ui.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "./types.js";
 
@@ -28,6 +30,7 @@ export function resolveConfig(
   const lockdown = resolveLockdown(input, ui);
   const sources = resolveSources(input);
   const attachments = resolveAttachments(input);
+  const tools = resolveTools(input);
   const accounts = resolveAccounts(input, { session, lockdown });
   return Object.freeze({
     enabled: basics.enabled,
@@ -48,5 +51,7 @@ export function resolveConfig(
     entry: basics.entry,
     sources,
     attachments,
+    documents: resolveDocumentsConfig(input.documents),
+    tools,
   });
 }

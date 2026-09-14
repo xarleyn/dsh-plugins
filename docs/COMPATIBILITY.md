@@ -40,6 +40,7 @@ instance.
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
+| `@yadsh/dsh-openviking-memory` | Cordis, schemastery, agent, LLM, session, tools, MCP client, skill filesystem |
 | `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/renderer/settings/settings-plugins/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client renderer/settings/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, api-session-controller, api-workspace-controller, permissions, session, settings, tools, workspace, webserver, client connection/conversation/chat/renderer/layout/settings/slots/theme, Typert protocol, React |

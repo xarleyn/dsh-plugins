@@ -25,4 +25,13 @@
           allowSessionReset: false
           toolPolicy:
             mode: allow-list
+            # Documents are the plugin's own tools, not preset tools: the four
+            # names below are registered by `documents.enabled` (default true)
+            # and stay invisible to a chat until they are listed here. They
+            # write an artifact bundle into the session workspace themselves,
+            # so `sandboxMode: read-only` is not what stops them.
+            #   - document_create
+            #   - document_to_markdown
+            #   - document_convert
+            #   - document_inspect
             allow: []

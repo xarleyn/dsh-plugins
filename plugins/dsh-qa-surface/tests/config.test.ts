@@ -364,6 +364,14 @@ describe("qa surface config", () => {
         identities: [],
         instructionsMaxLength: 2_000,
       },
+      // No accounts means no per-account directory to store skills in.
+      skills: {
+        enabled: false,
+        relativeRoot: ".dsh/skills",
+        watch: true,
+        maxSkillBytes: 262_144,
+        allowResourceEditing: false,
+      },
     });
     expect(resolveConfig().entry).toEqual({
       redirectNonLoopback: true,
@@ -447,6 +455,13 @@ describe("qa surface config", () => {
           identities: [],
           instructionsMaxLength: 2_000,
         },
+        skills: {
+          enabled: false,
+          relativeRoot: ".dsh/skills",
+          watch: true,
+          maxSkillBytes: 262_144,
+          allowResourceEditing: false,
+        },
       },
     );
   });
@@ -483,5 +498,38 @@ describe("qa surface config", () => {
         lockdown: { sandboxMode: "workspace-write" },
       }),
     ).toThrow(/fixed sessions/u);
+  });
+
+  it("resolves the QA tool delivery defaults and rejects an impossible policy", () => {
+    expect(resolveConfig().tools).toEqual({
+      dynamicActivation: true,
+      activationSkill: "qa-surface",
+      activationMode: "all",
+      activationPresets: [],
+    });
+    expect(
+      resolveConfig(
+        schemaParse({
+          tools: {
+            dynamicActivation: false,
+            activationSkill: "qa-research",
+            activationPresets: ["qa-research"],
+          },
+        }),
+      ).tools,
+    ).toEqual({
+      dynamicActivation: false,
+      activationSkill: "qa-research",
+      activationMode: "all",
+      activationPresets: ["qa-research"],
+    });
+    // A typo in the trigger must fail the boot, not silently disable the
+    // feature for the whole deployment.
+    expect(() =>
+      resolveConfig({ tools: { activationSkill: "QA Surface" } }),
+    ).toThrow(/kebab-case/u);
+    expect(() => resolveConfig({ tools: { activationPresets: [""] } })).toThrow(
+      /empty names/u,
+    );
   });
 });

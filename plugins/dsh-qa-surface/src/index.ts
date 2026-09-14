@@ -17,8 +17,18 @@ import {
 import { ConfigSchema, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
+import {
+  createQaPersonalSkillRemotes,
+  QaPersonalSkillsHost,
+} from "./personal-skills/index.js";
+import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
 import { QaApprovalGate } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
+import { applyDocumentsEnvOverrides } from "./documents/config.js";
+import {
+  installDocumentSubsystem,
+  type DocumentSubsystem,
+} from "./documents/index.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -26,6 +36,7 @@ import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { QaTools } from "./qa-tools/index.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import { FileQaProvenanceSnapshotStore } from "./provenance/snapshot-store.js";
 import {
@@ -50,6 +61,12 @@ import type {
   QaQuestionAnswerItem,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaSkillDocument,
+  QaSkillDraftInput,
+  QaSkillRemoval,
+  QaSkillSummary,
+  QaSkillToolDescriptor,
+  QaSkillValidation,
   QaSourceFilePreview,
   QaWhoamiResult,
 } from "./types.js";
@@ -107,13 +124,26 @@ export class QaSurface extends TypertRemoteService {
   private readonly userQuestions: QaQuestionGate;
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
+  /** Assigned after the admission gate; that gate only reads it per execution. */
+  private readonly tools!: QaTools;
   /** Account-remote bodies; the wire signatures stay on this class. */
   private readonly accountRemotes: QaAccountRemotes;
+  /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
+  private readonly personalSkills: QaPersonalSkillsHost;
+  /** Personal-skill remote bodies; the wire signatures stay on this class. */
+  private readonly skillRemotes: QaPersonalSkillRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
+  /**
+   * The document subsystem: its own runtime and the four tool registrations.
+   * Rebuilt when the document configuration changes and torn down while the
+   * subsystem or the whole surface is disabled.
+   */
+  private documents: DocumentSubsystem | undefined;
+  private documentsKey: string | undefined;
 
   constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
@@ -126,6 +156,17 @@ export class QaSurface extends TypertRemoteService {
     this.accountRemotes = createQaAccountRemotes({
       getConfig: () => this.getConfig(),
       logger: this.logger,
+    });
+    this.personalSkills = new QaPersonalSkillsHost({
+      ctx,
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+    });
+    this.skillRemotes = createQaPersonalSkillRemotes({
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+      skills: this.personalSkills.service,
+      accounts: this.accountRemotes,
     });
     this.admission = new QaPolicyAdmission(
       ctx,
@@ -141,6 +182,9 @@ export class QaSurface extends TypertRemoteService {
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
       },
+      // Dynamically attached QA tools are not operator-configured allow-list
+      // entries, so the execution guard reads them per call instead.
+      (agent) => this.tools?.activeToolNames(agent) ?? [],
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -211,6 +255,31 @@ export class QaSurface extends TypertRemoteService {
       "dsh-qa-surface.provenance",
     );
     ctx.effect(() => () => this.notes.dispose(), "dsh-qa-surface.prompt-notes");
+    ctx.effect(
+      () => () => this.personalSkills.dispose(),
+      "dsh-qa-surface.personal-skills",
+    );
+    ctx.effect(
+      () => () => {
+        this.documents?.dispose();
+        this.documents = undefined;
+        this.documentsKey = undefined;
+      },
+      "dsh-qa-surface.documents",
+    );
+    // Registered here rather than from the settings callback alone, so a
+    // deployment that never opens the settings page still gets the tools.
+    this.refreshDocuments();
+    // The QA tool catalog is attached per agent, never at boot: nothing here
+    // reaches the model until a managed agent loads the activation skill.
+    this.tools = new QaTools(ctx, {
+      logger: this.logger,
+      dynamicActivation: this.getConfig().tools.dynamicActivation,
+      activationSkill: this.getConfig().tools.activationSkill,
+      activationMode: this.getConfig().tools.activationMode,
+      activationPresets: this.getConfig().tools.activationPresets,
+    });
+    ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue
     // into /qa, the loopback operator keeps the full harness UI.
     ctx.on("webserver/index-inject", (table) => {
@@ -230,10 +299,12 @@ export class QaSurface extends TypertRemoteService {
           onChange: () => {
             const config = this.getConfig();
             this.refreshRoute();
+            this.refreshDocuments();
             this.logger.info("config.updated", {
               enabled: config.enabled,
               route: config.route.path,
               sessionPolicy: config.session.policy,
+              documents: config.documents.enabled,
             });
           },
           validate: (value) => {
@@ -576,6 +647,71 @@ export class QaSurface extends TypertRemoteService {
     }
   }
 
+  /** Every personal skill of the token's account, sorted by name. */
+  @Remote("skillsList")
+  skillsList(token: string): { readonly skills: readonly QaSkillSummary[] } {
+    return this.skillRemotes.list(token);
+  }
+
+  /** One personal skill with the body, its preserved frontmatter and revision. */
+  @Remote("skillsGet")
+  skillsGet(token: string, name: string): QaSkillDocument {
+    return this.skillRemotes.get(token, name);
+  }
+
+  /** Create one skill directory below the account's own workspace. */
+  @Remote("skillsCreate")
+  skillsCreate(token: string, input: QaSkillDraftInput): QaSkillDocument {
+    return this.skillRemotes.create(token, input);
+  }
+
+  /**
+   * Replace one skill. `expectedRevision` is the revision the editor read; a
+   * mismatch is refused rather than overwriting an edit made elsewhere.
+   */
+  @Remote("skillsUpdate")
+  skillsUpdate(
+    token: string,
+    name: string,
+    input: QaSkillDraftInput,
+  ): QaSkillDocument {
+    return this.skillRemotes.update(token, name, input);
+  }
+
+  /** Remove one skill into the account's own trash directory. */
+  @Remote("skillsRemove")
+  skillsRemove(
+    token: string,
+    name: string,
+    expectedRevision: string | null,
+  ): QaSkillRemoval {
+    return this.skillRemotes.remove(token, name, expectedRevision);
+  }
+
+  /**
+   * Check an unsaved draft: the file a save would write and the diagnostics
+   * for it. `name` names the stored skill being edited, or null to create one.
+   */
+  @Remote("skillsValidate")
+  skillsValidate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): QaSkillValidation {
+    return this.skillRemotes.validate(token, name, input);
+  }
+
+  /**
+   * The tool catalog the picker offers, with availability computed against
+   * this deployment's QA scope. Declaring a tool here never grants it.
+   */
+  @Remote("skillsTools")
+  skillsTools(token: string): {
+    readonly tools: readonly QaSkillToolDescriptor[];
+  } {
+    return this.skillRemotes.tools(token);
+  }
+
   private refreshRoute(): void {
     const config = this.getConfig();
     const key = config.enabled
@@ -591,6 +727,32 @@ export class QaSurface extends TypertRemoteService {
     });
     this.routeKey = key;
   }
+
+  /**
+   * Install, rebuild or tear down the document subsystem. The raw entry is
+   * resolved with the documented environment overrides applied, so a
+   * deployment can point `QA_DOCLING_BASE_URL` at its own service without
+   * touching the settings namespace; the settings layer stays authoritative
+   * for everything it declares.
+   */
+  private refreshDocuments(): void {
+    const config = this.getConfig();
+    const enabled = config.enabled && config.documents.enabled;
+    const key = enabled ? JSON.stringify(config.documents) : undefined;
+    if (key === this.documentsKey) return;
+    this.documents?.dispose();
+    this.documents = undefined;
+    this.documentsKey = key;
+    if (key === undefined) return;
+    this.documents = installDocumentSubsystem(this.ctx, {
+      config: applyDocumentsEnvOverrides(
+        this.source().documents ?? {},
+        process.env,
+      ),
+      logger: this.logger,
+      register: (definition) => this.ctx.tools.register(definition),
+    });
+  }
 }
 
 export {
@@ -605,6 +767,7 @@ export { QaAccounts, QaAccountsError } from "./accounts/store.js";
 export { entryRedirectRow, entryRedirectScript } from "./entry-redirect.js";
 export { registerQaNavigationRoute } from "./host-route.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";
 export {
   QaPromptNotes,
