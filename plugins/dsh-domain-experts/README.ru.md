@@ -141,7 +141,7 @@ pnpm --filter @yadsh/dsh-domain-experts check     # lint, typecheck, test, build
 
 `docs/architecture.md` описывает модули; [SPEC.md](./SPEC.md) — это продуктовый
 контракт; исходная проектная заметка находится в
-`docs/superpowers/specs/2026-09-13-domain-experts-design.md`.
+`docs/specs/design.md`.
 
 ## Лицензия
 

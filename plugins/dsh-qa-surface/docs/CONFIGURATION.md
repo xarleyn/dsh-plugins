@@ -426,7 +426,7 @@ still run on the resolved call.
 `document_inspect`. Markdown is the canonical source: the agent writes
 Markdown, the pipeline renders DOCX and/or PDF from it and can read either
 format back out as Markdown. The full design is in
-[`qa-surface-document-pipeline-spec.md`](./qa-surface-document-pipeline-spec.md).
+[`document-pipeline.md`](./specs/document-pipeline.md).
 
 The tools are registered by the plugin, not by a preset, so they exist in the
 Host as soon as `documents.enabled` is true (the default). They become visible

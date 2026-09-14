@@ -4,7 +4,7 @@
 **Type:** Host plugin + browser client (`@yadsh/dsh-domain-experts`)
 **Companion documents:** [README.md](./README.md) (operation),
 [docs/architecture.md](./docs/architecture.md) (modules),
-[docs/superpowers/specs/2026-09-13-domain-experts-design.md](./docs/superpowers/specs/2026-09-13-domain-experts-design.md)
+[docs/specs/design.md](./docs/specs/design.md)
 (the originating design note).
 
 This file is the normative contract. When behaviour and this file disagree, the

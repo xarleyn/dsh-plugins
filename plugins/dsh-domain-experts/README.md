@@ -136,7 +136,7 @@ pnpm --filter @yadsh/dsh-domain-experts check     # lint, typecheck, test, build
 
 `docs/architecture.md` maps the modules; [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-domain-experts/SPEC.md) is the product
 contract; the originating design note lives in
-`docs/superpowers/specs/2026-09-13-domain-experts-design.md`.
+`docs/specs/design.md`.
 
 ## License
 

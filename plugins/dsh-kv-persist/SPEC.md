@@ -1,7 +1,7 @@
 # SPEC — dsh-kv-persist
 
 > Persistent KV-cache/session-state manager for DeepSeek Harness.
-> Full design document: [`docs/dsh-kv-persist.md`](./docs/dsh-kv-persist.md)
+> Full design document: [`docs/specs/design.md`](./docs/specs/design.md)
 > (section references below use its numbering, e.g. «§68»).
 
 **Status:** MVP / v0.1 (Phase 1 of the design roadmap §83)

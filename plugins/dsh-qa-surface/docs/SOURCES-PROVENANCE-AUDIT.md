@@ -4,7 +4,7 @@ Date: 2026-09-11
 Pinned DSH development API: `0.1.5-rc.2`
 
 This note records the Phase 0 findings for
-`SPEC-dsh-qa-surface-sources-provenance.md`. It is intentionally tied to the
+`specs/sources-provenance.md`. It is intentionally tied to the
 versions in this repository rather than to DSH `master`.
 
 ## Existing QA data path

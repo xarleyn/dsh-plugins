@@ -125,7 +125,7 @@ pnpm --filter @yadsh/dsh-domain-experts check     # lint, typecheck, test, build
 ```
 
 `docs/architecture.md` 描述了各模块；[SPEC.md](./SPEC.md) 是产品契约；最初的
-设计说明位于 `docs/superpowers/specs/2026-09-13-domain-experts-design.md`。
+设计说明位于 `docs/specs/design.md`。
 
 ## 许可证
 
