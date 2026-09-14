@@ -18,6 +18,11 @@ import type {
   QaPendingQuestion,
   QaQuestionAnswerItem,
   QaSessionState,
+  QaSkillDocument,
+  QaSkillDraftInput,
+  QaSkillRemoval,
+  QaSkillSummary,
+  QaSkillToolDescriptor,
   QaSourceFilePreview,
   QaTurnSources,
   QaWhoamiResult,
@@ -176,6 +181,56 @@ export interface QaQuestionApi {
   >;
 }
 
+/**
+ * Personal-skill remotes of this plugin's namespace. The browser names a
+ * skill, never a directory: the account token behind the call decides where
+ * that name resolves.
+ */
+export interface QaSkillApi {
+  skillsList(
+    token: string,
+  ): Promise<RemoteResult<{ readonly skills: readonly QaSkillSummary[] }>>;
+  skillsGet(
+    token: string,
+    name: string,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsCreate(
+    token: string,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsUpdate(
+    token: string,
+    name: string,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsRemove(
+    token: string,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  skillsTools(
+    token: string,
+  ): Promise<
+    RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
+  >;
+}
+
+/** The skill API with the account token already bound at the call site. */
+export interface QaBoundSkillApi {
+  list(): Promise<RemoteResult<readonly QaSkillSummary[]>>;
+  get(name: string): Promise<RemoteResult<QaSkillDocument>>;
+  create(input: QaSkillDraftInput): Promise<RemoteResult<QaSkillDocument>>;
+  update(
+    name: string,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  remove(
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  tools(): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
+}
+
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
   accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
@@ -204,7 +259,8 @@ export interface QaAccountsApi {
   ): Promise<RemoteResult<QaAccountUserPublic>>;
 }
 
-type RemoteResult<Value> =
+/** Result shape every generated remote call resolves to. */
+export type RemoteResult<Value> =
   | { readonly ok: true; readonly value: Value }
   | { readonly ok: false; readonly error: unknown };
 
