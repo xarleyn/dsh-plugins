@@ -105,6 +105,12 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       redirectNonLoopback: true,
       cookieBootstrap: true,
     }),
+    tools: Object.freeze({
+      dynamicActivation: true,
+      activationSkill: "qa-surface",
+      activationMode: "all" as const,
+      activationPresets: Object.freeze([]),
+    }),
     sources: Object.freeze({
       enabled: true,
       collect: Object.freeze({
