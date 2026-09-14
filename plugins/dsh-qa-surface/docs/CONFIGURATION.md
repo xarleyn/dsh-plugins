@@ -341,6 +341,24 @@ accounts:
   shape-valid handle key; only keys declared in `accounts.profile.identities`
   ever reach the prompt.
 
+### Starter messages
+
+`accounts.starters` (default `enabled: true`) lets each signed-in user define
+their own starter buttons above an empty composer. The «Быстрые сообщения»
+section of the `Настройки` dialog edits two fields per entry — the label the
+button shows and the prompt pressing it sends — plus a toggle that hides the
+deployment's `suggestedQuestions` for that account alone:
+
+- Storage and write path are the profile's: the record lives in the accounts
+  file next to the profile, `accountsUpdateStarters` is token-scoped, and a
+  write replaces the whole list. Limits: at most 12 entries, labels up to 80
+  characters, prompts up to 2 000; an entry missing either field is refused.
+- The buttons are UI only. Nothing from this record reaches the agent prompt,
+  the tool allow-list, or any other authority.
+- Turn the switch off to keep the buttons operator-defined: the section
+  disappears and the wire write is refused with `starters-disabled`, while the
+  deployment's `suggestedQuestions` keep working unchanged.
+
 ## Entry redirect
 
 `entry.redirectNonLoopback: true` (default) injects one script into the

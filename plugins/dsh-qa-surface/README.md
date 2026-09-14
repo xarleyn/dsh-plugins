@@ -30,8 +30,8 @@ Session and Agent Loop.
   migration of the browser's existing chats, a `qa-accounts` management CLI
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
-- gives each account a `Настройки` dialog — profile, general, and **personal
-  skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+- gives each account a `Настройки` dialog — profile, starter messages,
+  general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
   directory (`accounts.skills`), edited with a catalog, an invocation-flag
   form, a Markdown body, a tool picker over the deployment's registry, and a
   preview of the exact file a save writes. Skills reach the model through a
@@ -146,6 +146,9 @@ config:
       inject: true
       identities: [] # e.g. [{ key: jira, label: Jira }]
       instructionsMaxLength: 2000
+    # Per-account starter buttons above an empty composer (optional).
+    starters:
+      enabled: true
   suggestedQuestions:
     - Как запросить доступ?
     - Где лежит инструкция?
@@ -381,6 +384,19 @@ is how a fresh deployment gets everyone's handles in place before users log
 in. See
 [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md)
 for the limits and the prompt's exact wording.
+
+### Starter messages
+
+The same `Настройки` dialog carries a «Быстрые сообщения» section where the
+signed-in user defines their own starter buttons: each entry is a label (what
+the button reads) and a prompt (what pressing it sends), so a button can say
+«Мои задачи» while sending a full tracker request. The deployment's
+`suggestedQuestions` stay visible next to the user's own buttons unless the
+user hides them with the section's toggle. The list is stored on the account
+(next to the profile, in the accounts file), replaces wholesale on save, and
+is pure UI preference — none of it reaches the agent prompt.
+`accounts.starters.enabled` (default `true`) turns the section off for
+deployments that want the buttons to stay operator-defined.
 
 Session policies:
 
