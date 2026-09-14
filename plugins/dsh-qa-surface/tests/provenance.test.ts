@@ -48,6 +48,13 @@ describe("source normalization", () => {
         "d:/repo",
       ),
     ).toBe("docs/guide.md");
+    // A POSIX absolute path keeps a single leading separator.
+    expect(canonicalizeWorkspacePath("/srv/qa/shared/doc.md")).toBe(
+      "/srv/qa/shared/doc.md",
+    );
+    expect(
+      canonicalizeWorkspacePath("/srv/qa/work/doc.md", "/srv/qa/work"),
+    ).toBe("doc.md");
     expect(
       compactLocations([
         { path: "docs/a.md", lineStart: 8, lineEnd: 12 },

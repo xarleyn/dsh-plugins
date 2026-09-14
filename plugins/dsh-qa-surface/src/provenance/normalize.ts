@@ -68,7 +68,9 @@ function lexicalPath(value: string): string {
   }
   const prefix =
     drive === undefined ? (absolute ? "/" : "") : `${drive[0]?.toLowerCase()}:`;
-  return `${prefix}${prefix !== "" && parts.length > 0 ? "/" : ""}${parts.join("/")}`;
+  // The POSIX absolute prefix already carries its own separator.
+  const separator = prefix.endsWith("/") ? "" : "/";
+  return `${prefix}${prefix !== "" && parts.length > 0 ? separator : ""}${parts.join("/")}`;
 }
 
 /** Normalize separators and, when possible, make a path workspace-relative. */
