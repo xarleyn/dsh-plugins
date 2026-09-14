@@ -23,6 +23,24 @@ describe("QA tool policy", () => {
     ).toEqual(["knowledge.read"]);
   });
 
+  it("admits exactly the dynamic names the catalog attached", () => {
+    const allowed = new Set(["read"]);
+    // The operator's allow-list cannot name a tool that appears only after a
+    // skill load, so the guard reads the activation set per call.
+    expect(
+      qaToolDenial(allowed, "qa_tools_selfcheck", ["qa_tools_selfcheck"]),
+    ).toBeUndefined();
+    expect(qaToolDenial(allowed, "qa_tools_selfcheck")).toMatch(
+      /not available/u,
+    );
+    expect(
+      qaToolDenial(allowed, "read", ["qa_tools_selfcheck"]),
+    ).toBeUndefined();
+    expect(qaToolDenial(allowed, "bash", ["qa_tools_selfcheck"])).toMatch(
+      /not available/u,
+    );
+  });
+
   it("retains preset-scoped tools in the applied restriction", () => {
     const configured = ["glob", "read", "web_fetch"];
     const presetView = new Set(configured);
