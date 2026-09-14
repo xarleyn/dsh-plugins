@@ -31,12 +31,16 @@ const SIGNALS: ReadonlyArray<readonly [name: string, pattern: RegExp]> = [
   ],
 ];
 
-const ONE_OFF = /(?:^|[^\p{L}\p{N}_])(?:сейчас|пока|в\s+этот\s+раз|только\s+сегодня|for\s+now|right\s+now|this\s+time|today)(?=$|[^\p{L}\p{N}_])/iu;
+const ONE_OFF =
+  /(?:^|[^\p{L}\p{N}_])(?:сейчас|пока|в\s+этот\s+раз|только\s+сегодня|for\s+now|right\s+now|this\s+time|today)(?=$|[^\p{L}\p{N}_])/iu;
 
 export function prefilterCorrection(text: string): CorrectionPrefilterResult {
   const normalized = text.replace(/\s+/gu, " ").trim();
-  if (normalized.length === 0) return { matched: false, signals: [], likelyOneOff: false };
-  const signals = SIGNALS.filter(([, pattern]) => pattern.test(normalized)).map(([name]) => name);
+  if (normalized.length === 0)
+    return { matched: false, signals: [], likelyOneOff: false };
+  const signals = SIGNALS.filter(([, pattern]) => pattern.test(normalized)).map(
+    ([name]) => name,
+  );
   return {
     matched: signals.length > 0,
     signals,

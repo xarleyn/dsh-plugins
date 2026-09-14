@@ -6,11 +6,11 @@
  * @module client/sections
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
-import type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
-import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import type { CredentialInfo } from "@deepseek-ai/dsh-credentials/types";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import {
   authSummary,
   formatBytes,
@@ -22,8 +22,8 @@ import {
   parsePositiveInt,
   textToList,
   type NetworkDraft,
-} from './format.js'
-import { validateRule } from '../rule-validation.js'
+} from "./format.js";
+import { validateRule } from "../rule-validation.js";
 import type {
   AuthType,
   DiagnoseReport,
@@ -32,59 +32,85 @@ import type {
   RuleTestReport,
   WebFetchAuthConfig,
   AuthenticatedFetchRule,
-} from '../types.js'
+} from "../types.js";
 
 /** Client face of the Host `credentials` Remote namespace (values never ride it). */
 export interface CredentialsRemote {
-  describe(refs: string[]): Promise<RemoteResult<Record<string, CredentialInfo>>>
-  set(ref: string, value: string): Promise<RemoteResult<void>>
-  unset(ref: string): Promise<RemoteResult<void>>
+  describe(
+    refs: string[],
+  ): Promise<RemoteResult<Record<string, CredentialInfo>>>;
+  set(ref: string, value: string): Promise<RemoteResult<void>>;
+  unset(ref: string): Promise<RemoteResult<void>>;
 }
 
 /** Client face injected into the card. */
 export interface CardFace {
-  scope: SettingsScope<WebFetchAuthConfig>
-  status: () => Promise<RemoteResult<ProviderStatusReport>>
-  testRule: (ruleId: string, url?: string) => Promise<RemoteResult<RuleTestReport>>
-  diagnose: (url: string) => Promise<RemoteResult<DiagnoseReport>>
-  credentials: CredentialsRemote
+  scope: SettingsScope<WebFetchAuthConfig>;
+  status: () => Promise<RemoteResult<ProviderStatusReport>>;
+  testRule: (
+    ruleId: string,
+    url?: string,
+  ) => Promise<RemoteResult<RuleTestReport>>;
+  diagnose: (url: string) => Promise<RemoteResult<DiagnoseReport>>;
+  credentials: CredentialsRemote;
 }
 
-function Pill({ tone, children }: { tone: 'ok' | 'warn' | 'err'; children: string }): JSX.Element {
-  return <span className={`wfa-pill ${tone}`}>{children}</span>
+function Pill({
+  tone,
+  children,
+}: {
+  tone: "ok" | "warn" | "err";
+  children: string;
+}): JSX.Element {
+  return <span className={`wfa-pill ${tone}`}>{children}</span>;
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}): JSX.Element {
   return (
     <label className="wfa-field">
       <span>{label}</span>
       {children}
     </label>
-  )
+  );
 }
 
 /** Provider overview: status, selection, counts, config errors (SPEC §6.1). */
-export function StatusSection({ status: report, warnings }: {
-  status: ProviderStatusReport | undefined
-  warnings: readonly string[]
+export function StatusSection({
+  status: report,
+  warnings,
+}: {
+  status: ProviderStatusReport | undefined;
+  warnings: readonly string[];
 }): JSX.Element {
   if (report === undefined) {
-    return <div className="wfa-empty">Loading provider status…</div>
+    return <div className="wfa-empty">Loading provider status…</div>;
   }
-  const selection = report.fetchProviderId === undefined
-    ? 'not pinned (auto-select)'
-    : report.fetchProviderId === 'authenticated'
-      ? 'pinned to "authenticated"'
-      : `pinned to "${report.fetchProviderId}" — rules are inert until ctx.web selects this provider`
+  const selection =
+    report.fetchProviderId === undefined
+      ? "not pinned (auto-select)"
+      : report.fetchProviderId === "authenticated"
+        ? 'pinned to "authenticated"'
+        : `pinned to "${report.fetchProviderId}" — rules are inert until ctx.web selects this provider`;
   return (
     <section className="wfa-section">
       <div className="wfa-section-title">
         <h3>Provider</h3>
-        <Pill tone={report.enabled ? 'ok' : 'warn'}>{report.enabled ? 'Enabled' : 'Disabled'}</Pill>
+        <Pill tone={report.enabled ? "ok" : "warn"}>
+          {report.enabled ? "Enabled" : "Disabled"}
+        </Pill>
       </div>
       <p className="wfa-muted">
-        {report.ruleCount} rule(s), {report.enabledRuleCount} enabled · ctx.web fetchProvider: {selection} · unmatched URLs:{' '}
-        {report.unmatchedPolicy === 'block' ? 'blocked (strict)' : String(report.unmatchedPolicy)}
+        {report.ruleCount} rule(s), {report.enabledRuleCount} enabled · ctx.web
+        fetchProvider: {selection} · unmatched URLs:{" "}
+        {report.unmatchedPolicy === "block"
+          ? "blocked (strict)"
+          : String(report.unmatchedPolicy)}
       </p>
       {report.configErrors.length > 0 && (
         <div className="wfa-error">
@@ -100,22 +126,31 @@ export function StatusSection({ status: report, warnings }: {
           ))}
         </div>
       )}
-      {report.credentialStates.map(state => (
+      {report.credentialStates.map((state) => (
         <p className="wfa-muted" key={state.ref}>
-          Credential <code>{state.ref}</code>: {state.configured ? 'configured' : 'not configured'}
-          {state.writable ? '' : ' (read-only source — set via the environment)'}
+          Credential <code>{state.ref}</code>:{" "}
+          {state.configured ? "configured" : "not configured"}
+          {state.writable
+            ? ""
+            : " (read-only source — set via the environment)"}
         </p>
       ))}
     </section>
-  )
+  );
 }
 
-function ToggleRow({ title, hint, checked, disabled, onChange }: {
-  title: string
-  hint: string
-  checked: boolean
-  disabled: boolean
-  onChange: (next: boolean) => void
+function ToggleRow({
+  title,
+  hint,
+  checked,
+  disabled,
+  onChange,
+}: {
+  title: string;
+  hint: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (next: boolean) => void;
 }): JSX.Element {
   return (
     <div className="wfa-toggle-row">
@@ -129,21 +164,25 @@ function ToggleRow({ title, hint, checked, disabled, onChange }: {
         checked={checked}
         disabled={disabled}
         aria-label={title}
-        onChange={event => {
-          onChange(event.target.checked)
+        onChange={(event) => {
+          onChange(event.target.checked);
         }}
       />
     </div>
-  )
+  );
 }
 
 /** Global switch and limit defaults (SPEC §23). */
-export function GlobalSection({ config, writable, setPath }: {
-  config: WebFetchAuthConfig | undefined
-  writable: boolean
-  setPath: (path: string[], value: unknown) => void
+export function GlobalSection({
+  config,
+  writable,
+  setPath,
+}: {
+  config: WebFetchAuthConfig | undefined;
+  writable: boolean;
+  setPath: (path: string[], value: unknown) => void;
 }): JSX.Element {
-  const limits = config?.limits
+  const limits = config?.limits;
   return (
     <section className="wfa-section">
       <div className="wfa-section-title">
@@ -154,8 +193,8 @@ export function GlobalSection({ config, writable, setPath }: {
         hint="Disabled providers report unavailable to ctx.web."
         checked={config?.enabled ?? true}
         disabled={!writable}
-        onChange={next => {
-          setPath(['enabled'], next)
+        onChange={(next) => {
+          setPath(["enabled"], next);
         }}
       />
       <ToggleRow
@@ -163,8 +202,8 @@ export function GlobalSection({ config, writable, setPath }: {
         hint="Sanitized per-request records in the plugin log; never secrets."
         checked={config?.audit?.enabled ?? true}
         disabled={!writable}
-        onChange={next => {
-          setPath(['audit', 'enabled'], next)
+        onChange={(next) => {
+          setPath(["audit", "enabled"], next);
         }}
       />
       <div className="wfa-grid">
@@ -173,15 +212,18 @@ export function GlobalSection({ config, writable, setPath }: {
             className="wfa-control"
             inputMode="numeric"
             disabled={!writable}
-            value={limits?.timeoutMs === undefined ? '' : String(limits.timeoutMs)}
-            onChange={event => {
-              const value = parsePositiveInt(event.target.value)
-              const current = config?.limits ?? {}
-              if (value === undefined && event.target.value.trim() !== '') return
-              const next = { ...current }
-              if (value === undefined) delete next.timeoutMs
-              else next.timeoutMs = value
-              setPath(['limits'], next)
+            value={
+              limits?.timeoutMs === undefined ? "" : String(limits.timeoutMs)
+            }
+            onChange={(event) => {
+              const value = parsePositiveInt(event.target.value);
+              const current = config?.limits ?? {};
+              if (value === undefined && event.target.value.trim() !== "")
+                return;
+              const next = { ...current };
+              if (value === undefined) delete next.timeoutMs;
+              else next.timeoutMs = value;
+              setPath(["limits"], next);
             }}
           />
         </Field>
@@ -190,15 +232,20 @@ export function GlobalSection({ config, writable, setPath }: {
             className="wfa-control"
             inputMode="numeric"
             disabled={!writable}
-            value={limits?.maxResponseBytes === undefined ? '' : String(limits.maxResponseBytes)}
-            onChange={event => {
-              const value = parsePositiveInt(event.target.value)
-              const current = config?.limits ?? {}
-              if (value === undefined && event.target.value.trim() !== '') return
-              const next = { ...current }
-              if (value === undefined) delete next.maxResponseBytes
-              else next.maxResponseBytes = value
-              setPath(['limits'], next)
+            value={
+              limits?.maxResponseBytes === undefined
+                ? ""
+                : String(limits.maxResponseBytes)
+            }
+            onChange={(event) => {
+              const value = parsePositiveInt(event.target.value);
+              const current = config?.limits ?? {};
+              if (value === undefined && event.target.value.trim() !== "")
+                return;
+              const next = { ...current };
+              if (value === undefined) delete next.maxResponseBytes;
+              else next.maxResponseBytes = value;
+              setPath(["limits"], next);
             }}
           />
         </Field>
@@ -207,162 +254,191 @@ export function GlobalSection({ config, writable, setPath }: {
             className="wfa-control"
             inputMode="numeric"
             disabled={!writable}
-            value={limits?.maxBodyChars === undefined ? '' : String(limits.maxBodyChars)}
-            onChange={event => {
-              const value = parsePositiveInt(event.target.value)
-              const current = config?.limits ?? {}
-              if (value === undefined && event.target.value.trim() !== '') return
-              const next = { ...current }
-              if (value === undefined) delete next.maxBodyChars
-              else next.maxBodyChars = value
-              setPath(['limits'], next)
+            value={
+              limits?.maxBodyChars === undefined
+                ? ""
+                : String(limits.maxBodyChars)
+            }
+            onChange={(event) => {
+              const value = parsePositiveInt(event.target.value);
+              const current = config?.limits ?? {};
+              if (value === undefined && event.target.value.trim() !== "")
+                return;
+              const next = { ...current };
+              if (value === undefined) delete next.maxBodyChars;
+              else next.maxBodyChars = value;
+              setPath(["limits"], next);
             }}
           />
         </Field>
       </div>
     </section>
-  )
+  );
 }
 
 // ---- Rule draft plumbing ----
 
 interface RuleDraft {
-  id: string
-  name: string
-  description: string
-  enabled: boolean
-  testUrl: string
-  schemesHttp: boolean
-  hosts: string
-  ports: string
-  allowPaths: string
-  denyPaths: string
-  authType: AuthType
-  bearerRef: string
-  basicUsername: string
-  basicPasswordRef: string
-  headerName: string
-  headerRef: string
-  headerPrefix: string
-  adapterType: 'none' | 'jira' | 'confluence'
-  jiraFlavor: 'server' | 'cloud'
-  includeComments: boolean
-  includeLinks: boolean
-  network: NetworkDraft
-  redirectMode: RedirectMode
-  maxRedirects: string
-  allowedOrigins: string
-  timeoutMs: string
-  maxResponseBytes: string
-  maxBodyChars: string
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  testUrl: string;
+  schemesHttp: boolean;
+  hosts: string;
+  ports: string;
+  allowPaths: string;
+  denyPaths: string;
+  authType: AuthType;
+  bearerRef: string;
+  basicUsername: string;
+  basicPasswordRef: string;
+  headerName: string;
+  headerRef: string;
+  headerPrefix: string;
+  adapterType: "none" | "jira" | "confluence";
+  jiraFlavor: "server" | "cloud";
+  includeComments: boolean;
+  includeLinks: boolean;
+  network: NetworkDraft;
+  redirectMode: RedirectMode;
+  maxRedirects: string;
+  allowedOrigins: string;
+  timeoutMs: string;
+  maxResponseBytes: string;
+  maxBodyChars: string;
 }
 
 function ruleToDraft(rule: AuthenticatedFetchRule): RuleDraft {
-  const auth = rule.auth
-  const adapter = rule.adapter
+  const auth = rule.auth;
+  const adapter = rule.adapter;
   return {
     id: rule.id,
     name: rule.name,
-    description: rule.description ?? '',
+    description: rule.description ?? "",
     enabled: rule.enabled,
-    testUrl: rule.testUrl ?? '',
-    schemesHttp: rule.match.schemes?.includes('http') === true,
+    testUrl: rule.testUrl ?? "",
+    schemesHttp: rule.match.schemes?.includes("http") === true,
     hosts: listToText(rule.match.hosts),
-    ports: rule.match.ports === undefined ? '' : rule.match.ports.join(', '),
+    ports: rule.match.ports === undefined ? "" : rule.match.ports.join(", "),
     allowPaths: listToText(rule.match.allowPaths),
     denyPaths: listToText(rule.match.denyPaths),
     authType: auth.type,
-    bearerRef: auth.type === 'bearer' ? auth.credential : '',
-    basicUsername: auth.type === 'basic' ? auth.username : '',
-    basicPasswordRef: auth.type === 'basic' ? auth.passwordCredential : '',
-    headerName: auth.type === 'header' ? auth.headerName : '',
-    headerRef: auth.type === 'header' ? auth.credential : '',
-    headerPrefix: auth.type === 'header' ? auth.prefix ?? '' : '',
-    adapterType: adapter?.type ?? 'none',
-    jiraFlavor: adapter?.jiraFlavor ?? 'server',
+    bearerRef: auth.type === "bearer" ? auth.credential : "",
+    basicUsername: auth.type === "basic" ? auth.username : "",
+    basicPasswordRef: auth.type === "basic" ? auth.passwordCredential : "",
+    headerName: auth.type === "header" ? auth.headerName : "",
+    headerRef: auth.type === "header" ? auth.credential : "",
+    headerPrefix: auth.type === "header" ? (auth.prefix ?? "") : "",
+    adapterType: adapter?.type ?? "none",
+    jiraFlavor: adapter?.jiraFlavor ?? "server",
     includeComments: adapter?.includeComments ?? false,
     includeLinks: adapter?.includeLinks ?? false,
     network: networkToDraft(rule.networkPolicy),
-    redirectMode: rule.redirects?.mode ?? 'same-origin',
-    maxRedirects: rule.redirects?.maxRedirects === undefined ? '' : String(rule.redirects.maxRedirects),
+    redirectMode: rule.redirects?.mode ?? "same-origin",
+    maxRedirects:
+      rule.redirects?.maxRedirects === undefined
+        ? ""
+        : String(rule.redirects.maxRedirects),
     allowedOrigins: listToText(rule.redirects?.allowedOrigins),
-    timeoutMs: rule.limits?.timeoutMs === undefined ? '' : String(rule.limits.timeoutMs),
-    maxResponseBytes: rule.limits?.maxResponseBytes === undefined ? '' : String(rule.limits.maxResponseBytes),
-    maxBodyChars: rule.limits?.maxBodyChars === undefined ? '' : String(rule.limits.maxBodyChars),
-  }
+    timeoutMs:
+      rule.limits?.timeoutMs === undefined ? "" : String(rule.limits.timeoutMs),
+    maxResponseBytes:
+      rule.limits?.maxResponseBytes === undefined
+        ? ""
+        : String(rule.limits.maxResponseBytes),
+    maxBodyChars:
+      rule.limits?.maxBodyChars === undefined
+        ? ""
+        : String(rule.limits.maxBodyChars),
+  };
 }
 
 function emptyDraft(): RuleDraft {
   return {
     id: newRuleId(),
-    name: '',
-    description: '',
+    name: "",
+    description: "",
     enabled: true,
-    testUrl: '',
+    testUrl: "",
     schemesHttp: false,
-    hosts: '',
-    ports: '',
-    allowPaths: '',
-    denyPaths: '',
-    authType: 'bearer',
-    bearerRef: '',
-    basicUsername: '',
-    basicPasswordRef: '',
-    headerName: '',
-    headerRef: '',
-    headerPrefix: '',
-    adapterType: 'none',
-    jiraFlavor: 'server',
+    hosts: "",
+    ports: "",
+    allowPaths: "",
+    denyPaths: "",
+    authType: "bearer",
+    bearerRef: "",
+    basicUsername: "",
+    basicPasswordRef: "",
+    headerName: "",
+    headerRef: "",
+    headerPrefix: "",
+    adapterType: "none",
+    jiraFlavor: "server",
     includeComments: false,
     includeLinks: false,
     network: networkToDraft(undefined),
-    redirectMode: 'same-origin',
-    maxRedirects: '',
-    allowedOrigins: '',
-    timeoutMs: '',
-    maxResponseBytes: '',
-    maxBodyChars: '',
-  }
+    redirectMode: "same-origin",
+    maxRedirects: "",
+    allowedOrigins: "",
+    timeoutMs: "",
+    maxResponseBytes: "",
+    maxBodyChars: "",
+  };
 }
 
-function draftToRule(draft: RuleDraft): { rule: AuthenticatedFetchRule; errors: string[] } {
-  const errors: string[] = []
-  const hosts = textToList(draft.hosts)
-  const portsText = draft.ports.trim()
-  let ports: number[] | undefined
+function draftToRule(draft: RuleDraft): {
+  rule: AuthenticatedFetchRule;
+  errors: string[];
+} {
+  const errors: string[] = [];
+  const hosts = textToList(draft.hosts);
+  const portsText = draft.ports.trim();
+  let ports: number[] | undefined;
   if (portsText.length > 0) {
-    const parts = portsText.split(/[,\s]+/u)
-    if (parts.some(part => !/^\d+$/u.test(part))) errors.push('Ports must be integers separated by commas.')
-    else ports = parts.map(part => Number(part))
+    const parts = portsText.split(/[,\s]+/u);
+    if (parts.some((part) => !/^\d+$/u.test(part)))
+      errors.push("Ports must be integers separated by commas.");
+    else ports = parts.map((part) => Number(part));
   }
-  const auth: AuthenticatedFetchRule['auth'] =
-    draft.authType === 'none'
-      ? { type: 'none' }
-      : draft.authType === 'bearer'
-        ? { type: 'bearer', credential: draft.bearerRef.trim() }
-        : draft.authType === 'basic'
-          ? { type: 'basic', username: draft.basicUsername.trim(), passwordCredential: draft.basicPasswordRef.trim() }
+  const auth: AuthenticatedFetchRule["auth"] =
+    draft.authType === "none"
+      ? { type: "none" }
+      : draft.authType === "bearer"
+        ? { type: "bearer", credential: draft.bearerRef.trim() }
+        : draft.authType === "basic"
+          ? {
+              type: "basic",
+              username: draft.basicUsername.trim(),
+              passwordCredential: draft.basicPasswordRef.trim(),
+            }
           : {
-              type: 'header',
+              type: "header",
               headerName: draft.headerName.trim(),
               credential: draft.headerRef.trim(),
-              ...(draft.headerPrefix.trim().length > 0 ? { prefix: draft.headerPrefix } : {}),
-            }
-  const maxRedirects = parsePositiveInt(draft.maxRedirects)
-  if (draft.maxRedirects.trim() !== '' && maxRedirects === undefined) {
-    errors.push('Max redirects must be a non-negative integer.')
+              ...(draft.headerPrefix.trim().length > 0
+                ? { prefix: draft.headerPrefix }
+                : {}),
+            };
+  const maxRedirects = parsePositiveInt(draft.maxRedirects);
+  if (draft.maxRedirects.trim() !== "" && maxRedirects === undefined) {
+    errors.push("Max redirects must be a non-negative integer.");
   }
-  const allowedOrigins = textToList(draft.allowedOrigins)
+  const allowedOrigins = textToList(draft.allowedOrigins);
   const rule: AuthenticatedFetchRule = {
     id: draft.id,
     name: draft.name.trim(),
     enabled: draft.enabled,
     match: {
-      ...(draft.schemesHttp ? { schemes: ['https', 'http' as const] } : {}),
+      ...(draft.schemesHttp ? { schemes: ["https", "http" as const] } : {}),
       hosts,
       ...(ports === undefined ? {} : { ports }),
-      ...(textToList(draft.allowPaths).length > 0 ? { allowPaths: textToList(draft.allowPaths) } : {}),
-      ...(textToList(draft.denyPaths).length > 0 ? { denyPaths: textToList(draft.denyPaths) } : {}),
+      ...(textToList(draft.allowPaths).length > 0
+        ? { allowPaths: textToList(draft.allowPaths) }
+        : {}),
+      ...(textToList(draft.denyPaths).length > 0
+        ? { denyPaths: textToList(draft.denyPaths) }
+        : {}),
     },
     auth,
     networkPolicy: networkFromDraft(draft.network),
@@ -372,115 +448,143 @@ function draftToRule(draft: RuleDraft): { rule: AuthenticatedFetchRule; errors: 
       ...(allowedOrigins.length > 0 ? { allowedOrigins } : {}),
     },
     limits: buildLimits(draft, errors),
+  };
+  if (draft.adapterType !== "none") {
+    rule.adapter =
+      draft.adapterType === "jira"
+        ? {
+            type: "jira",
+            ...(draft.jiraFlavor !== "server"
+              ? { jiraFlavor: draft.jiraFlavor }
+              : {}),
+            ...(draft.includeComments ? { includeComments: true } : {}),
+            ...(draft.includeLinks ? { includeLinks: true } : {}),
+          }
+        : { type: "confluence" };
   }
-  if (draft.adapterType !== 'none') {
-    rule.adapter = draft.adapterType === 'jira'
-      ? {
-          type: 'jira',
-          ...(draft.jiraFlavor !== 'server' ? { jiraFlavor: draft.jiraFlavor } : {}),
-          ...(draft.includeComments ? { includeComments: true } : {}),
-          ...(draft.includeLinks ? { includeLinks: true } : {}),
-        }
-      : { type: 'confluence' }
-  }
-  if (draft.description.trim().length > 0) rule.description = draft.description.trim()
-  if (draft.testUrl.trim().length > 0) rule.testUrl = draft.testUrl.trim()
-  errors.push(...validateRule(rule, 0))
-  return { rule, errors: [...new Set(errors)] }
+  if (draft.description.trim().length > 0)
+    rule.description = draft.description.trim();
+  if (draft.testUrl.trim().length > 0) rule.testUrl = draft.testUrl.trim();
+  errors.push(...validateRule(rule, 0));
+  return { rule, errors: [...new Set(errors)] };
 }
 
-function buildLimits(draft: RuleDraft, errors: string[]): AuthenticatedFetchRule['limits'] {
-  const limits: NonNullable<AuthenticatedFetchRule['limits']> = {}
-  const timeout = parsePositiveInt(draft.timeoutMs)
-  if (draft.timeoutMs.trim() !== '' && timeout === undefined) errors.push('Timeout must be a positive integer.')
-  if (timeout !== undefined) limits.timeoutMs = timeout
-  const bytes = parsePositiveInt(draft.maxResponseBytes)
-  if (draft.maxResponseBytes.trim() !== '' && bytes === undefined) errors.push('Max response size must be a positive integer.')
-  if (bytes !== undefined) limits.maxResponseBytes = bytes
-  const chars = parsePositiveInt(draft.maxBodyChars)
-  if (draft.maxBodyChars.trim() !== '' && chars === undefined) errors.push('Max body chars must be a positive integer.')
-  if (chars !== undefined) limits.maxBodyChars = chars
-  return limits
+function buildLimits(
+  draft: RuleDraft,
+  errors: string[],
+): AuthenticatedFetchRule["limits"] {
+  const limits: NonNullable<AuthenticatedFetchRule["limits"]> = {};
+  const timeout = parsePositiveInt(draft.timeoutMs);
+  if (draft.timeoutMs.trim() !== "" && timeout === undefined)
+    errors.push("Timeout must be a positive integer.");
+  if (timeout !== undefined) limits.timeoutMs = timeout;
+  const bytes = parsePositiveInt(draft.maxResponseBytes);
+  if (draft.maxResponseBytes.trim() !== "" && bytes === undefined)
+    errors.push("Max response size must be a positive integer.");
+  if (bytes !== undefined) limits.maxResponseBytes = bytes;
+  const chars = parsePositiveInt(draft.maxBodyChars);
+  if (draft.maxBodyChars.trim() !== "" && chars === undefined)
+    errors.push("Max body chars must be a positive integer.");
+  if (chars !== undefined) limits.maxBodyChars = chars;
+  return limits;
 }
 
 /** Write-only credential control (SPEC §6.2/§21): values leave once, never return. */
-function CredentialControl({ refName, onRefChange, credentials }: {
-  refName: string
-  onRefChange: (next: string) => void
-  credentials: CardFace['credentials']
+function CredentialControl({
+  refName,
+  onRefChange,
+  credentials,
+}: {
+  refName: string;
+  onRefChange: (next: string) => void;
+  credentials: CardFace["credentials"];
 }): JSX.Element {
-  const [secret, setSecret] = useState('')
-  const [state, setState] = useState<{ configured: boolean; writable: boolean } | undefined>()
-  const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState<string | undefined>()
-  const activeRef = useRef(refName)
+  const [secret, setSecret] = useState("");
+  const [state, setState] = useState<
+    { configured: boolean; writable: boolean } | undefined
+  >();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | undefined>();
+  const activeRef = useRef(refName);
 
   useEffect(() => {
-    activeRef.current = refName
+    activeRef.current = refName;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(refName)) {
-      setState(undefined)
-      return
+      setState(undefined);
+      return;
     }
-    let cancelled = false
-    void credentials.describe([refName]).then(response => {
-      if (cancelled) return
-      if (response.ok) {
-        const view = response.value[refName]
-        setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
-      } else {
-        setState(undefined)
-      }
-    }).catch(() => {})
+    let cancelled = false;
+    void credentials
+      .describe([refName])
+      .then((response) => {
+        if (cancelled) return;
+        if (response.ok) {
+          const view = response.value[refName];
+          setState({
+            configured: view?.configured ?? false,
+            writable: view?.writable ?? true,
+          });
+        } else {
+          setState(undefined);
+        }
+      })
+      .catch(() => {});
     return () => {
-      cancelled = true
-    }
-  }, [refName, credentials])
+      cancelled = true;
+    };
+  }, [refName, credentials]);
 
   const save = useCallback(async () => {
-    if (secret.length === 0) return
-    setBusy(true)
-    setMessage(undefined)
+    if (secret.length === 0) return;
+    setBusy(true);
+    setMessage(undefined);
     try {
-      const written = await credentials.set(refName, secret)
+      const written = await credentials.set(refName, secret);
       if (!written.ok) {
-        setMessage('The Host refused the write (read-only source?).')
-        return
+        setMessage("The Host refused the write (read-only source?).");
+        return;
       }
-      setSecret('')
-      const response = await credentials.describe([refName])
+      setSecret("");
+      const response = await credentials.describe([refName]);
       if (response.ok) {
-        const view = response.value[refName]
-        setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
+        const view = response.value[refName];
+        setState({
+          configured: view?.configured ?? false,
+          writable: view?.writable ?? true,
+        });
       }
-      setMessage('Credential stored.')
+      setMessage("Credential stored.");
     } catch {
-      setMessage('The Host refused the write (read-only source?).')
+      setMessage("The Host refused the write (read-only source?).");
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }, [credentials, refName, secret])
+  }, [credentials, refName, secret]);
 
   const clear = useCallback(async () => {
-    setBusy(true)
-    setMessage(undefined)
+    setBusy(true);
+    setMessage(undefined);
     try {
-      const removed = await credentials.unset(refName)
+      const removed = await credentials.unset(refName);
       if (!removed.ok) {
-        setMessage('The Host refused the removal.')
-        return
+        setMessage("The Host refused the removal.");
+        return;
       }
-      const response = await credentials.describe([refName])
+      const response = await credentials.describe([refName]);
       if (response.ok) {
-        const view = response.value[refName]
-        setState({ configured: view?.configured ?? false, writable: view?.writable ?? true })
+        const view = response.value[refName];
+        setState({
+          configured: view?.configured ?? false,
+          writable: view?.writable ?? true,
+        });
       }
-      setMessage('Credential removed.')
+      setMessage("Credential removed.");
     } catch {
-      setMessage('The Host refused the removal.')
+      setMessage("The Host refused the removal.");
     } finally {
-      setBusy(false)
+      setBusy(false);
     }
-  }, [credentials, refName])
+  }, [credentials, refName]);
 
   return (
     <div className="wfa-field">
@@ -491,34 +595,48 @@ function CredentialControl({ refName, onRefChange, credentials }: {
             className="wfa-control"
             value={refName}
             placeholder="CORP_JIRA_TOKEN"
-            onChange={event => {
-              onRefChange(event.target.value)
+            onChange={(event) => {
+              onRefChange(event.target.value);
             }}
           />
         </Field>
-        <Field label={`Secret value ${state?.configured === true ? '(configured — leave blank to keep)' : ''}`}>
+        <Field
+          label={`Secret value ${state?.configured === true ? "(configured — leave blank to keep)" : ""}`}
+        >
           <input
             className="wfa-control"
             type="password"
             autoComplete="off"
             value={secret}
-            placeholder={state?.configured === true ? '••••••••' : 'paste the secret'}
-            onChange={event => {
-              setSecret(event.target.value)
+            placeholder={
+              state?.configured === true ? "••••••••" : "paste the secret"
+            }
+            onChange={(event) => {
+              setSecret(event.target.value);
             }}
           />
         </Field>
       </div>
       <div className="wfa-actions">
-        <Pill tone={state === undefined ? 'warn' : state.configured ? 'ok' : 'err'}>
-          {state === undefined ? 'unknown' : state.configured ? 'configured' : 'not configured'}
+        <Pill
+          tone={state === undefined ? "warn" : state.configured ? "ok" : "err"}
+        >
+          {state === undefined
+            ? "unknown"
+            : state.configured
+              ? "configured"
+              : "not configured"}
         </Pill>
         <button
           className="wfa-btn"
           type="button"
-          disabled={busy || secret.length === 0 || !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(refName)}
+          disabled={
+            busy ||
+            secret.length === 0 ||
+            !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(refName)
+          }
           onClick={() => {
-            void save()
+            void save();
           }}
         >
           Save secret
@@ -528,7 +646,7 @@ function CredentialControl({ refName, onRefChange, credentials }: {
           type="button"
           disabled={busy || state?.configured !== true}
           onClick={() => {
-            void clear()
+            void clear();
           }}
         >
           Remove
@@ -536,37 +654,58 @@ function CredentialControl({ refName, onRefChange, credentials }: {
       </div>
       {message !== undefined && <p className="wfa-note">{message}</p>}
       <p className="wfa-note">
-        The secret is written once to the DSH credential store under the reference name above; the rule config keeps only
-        the name. Values are never returned to this page.
+        The secret is written once to the DSH credential store under the
+        reference name above; the rule config keeps only the name. Values are
+        never returned to this page.
       </p>
     </div>
-  )
+  );
 }
 
 /** Add/Edit rule form (SPEC §6.2). */
-function RuleEditor({ initial, credentials, onSave, onCancel }: {
-  initial: AuthenticatedFetchRule | undefined
-  credentials: CardFace['credentials']
-  onSave: (rule: AuthenticatedFetchRule) => void
-  onCancel: () => void
+function RuleEditor({
+  initial,
+  credentials,
+  onSave,
+  onCancel,
+}: {
+  initial: AuthenticatedFetchRule | undefined;
+  credentials: CardFace["credentials"];
+  onSave: (rule: AuthenticatedFetchRule) => void;
+  onCancel: () => void;
 }): JSX.Element {
-  const [draft, setDraft] = useState<RuleDraft>(() => (initial === undefined ? emptyDraft() : ruleToDraft(initial)))
+  const [draft, setDraft] = useState<RuleDraft>(() =>
+    initial === undefined ? emptyDraft() : ruleToDraft(initial),
+  );
   const patch = (changes: Partial<RuleDraft>): void => {
-    setDraft(current => ({ ...current, ...changes }))
-  }
-  const { rule, errors } = draftToRule(draft)
-  const credentialRef = draft.authType === 'bearer' || draft.authType === 'header'
-    ? (draft.authType === 'bearer' ? draft.bearerRef : draft.headerRef).trim()
-    : draft.basicPasswordRef.trim()
+    setDraft((current) => ({ ...current, ...changes }));
+  };
+  const { rule, errors } = draftToRule(draft);
+  const credentialRef =
+    draft.authType === "bearer" || draft.authType === "header"
+      ? (draft.authType === "bearer" ? draft.bearerRef : draft.headerRef).trim()
+      : draft.basicPasswordRef.trim();
 
   return (
     <div className="wfa-editor">
       <div className="wfa-grid">
         <Field label="Rule name">
-          <input className="wfa-control" value={draft.name} onChange={event => { patch({ name: event.target.value }) }} />
+          <input
+            className="wfa-control"
+            value={draft.name}
+            onChange={(event) => {
+              patch({ name: event.target.value });
+            }}
+          />
         </Field>
         <Field label="Description">
-          <input className="wfa-control" value={draft.description} onChange={event => { patch({ description: event.target.value }) }} />
+          <input
+            className="wfa-control"
+            value={draft.description}
+            onChange={(event) => {
+              patch({ description: event.target.value });
+            }}
+          />
         </Field>
       </div>
       <ToggleRow
@@ -574,7 +713,9 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
         hint="Disabled rules never match."
         checked={draft.enabled}
         disabled={false}
-        onChange={next => { patch({ enabled: next }) }}
+        onChange={(next) => {
+          patch({ enabled: next });
+        }}
       />
 
       <div className="wfa-grid">
@@ -583,12 +724,21 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
             className="wfa-control"
             rows={2}
             value={draft.hosts}
-            placeholder={'jira.example.corp\nwiki.example.corp'}
-            onChange={event => { patch({ hosts: event.target.value }) }}
+            placeholder={"jira.example.corp\nwiki.example.corp"}
+            onChange={(event) => {
+              patch({ hosts: event.target.value });
+            }}
           />
         </Field>
         <Field label="Ports (optional, comma separated)">
-          <input className="wfa-control" value={draft.ports} placeholder="443, 8443" onChange={event => { patch({ ports: event.target.value }) }} />
+          <input
+            className="wfa-control"
+            value={draft.ports}
+            placeholder="443, 8443"
+            onChange={(event) => {
+              patch({ ports: event.target.value });
+            }}
+          />
         </Field>
       </div>
       <ToggleRow
@@ -596,7 +746,9 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
         hint="HTTPS is always allowed; adding http warns and transmits the credential unencrypted."
         checked={draft.schemesHttp}
         disabled={false}
-        onChange={next => { patch({ schemesHttp: next }) }}
+        onChange={(next) => {
+          patch({ schemesHttp: next });
+        }}
       />
       <div className="wfa-grid">
         <Field label="Allowed path patterns (optional, one per line)">
@@ -604,8 +756,10 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
             className="wfa-control"
             rows={2}
             value={draft.allowPaths}
-            placeholder={'/browse/**\n/rest/api/**'}
-            onChange={event => { patch({ allowPaths: event.target.value }) }}
+            placeholder={"/browse/**\n/rest/api/**"}
+            onChange={(event) => {
+              patch({ allowPaths: event.target.value });
+            }}
           />
         </Field>
         <Field label="Denied path patterns (optional)">
@@ -614,7 +768,9 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
             rows={2}
             value={draft.denyPaths}
             placeholder="/rest/api/*/settings/**"
-            onChange={event => { patch({ denyPaths: event.target.value }) }}
+            onChange={(event) => {
+              patch({ denyPaths: event.target.value });
+            }}
           />
         </Field>
       </div>
@@ -624,7 +780,9 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
           <select
             className="wfa-control"
             value={draft.authType}
-            onChange={event => { patch({ authType: event.target.value as AuthType }) }}
+            onChange={(event) => {
+              patch({ authType: event.target.value as AuthType });
+            }}
           >
             <option value="none">None</option>
             <option value="bearer">Bearer token</option>
@@ -632,36 +790,52 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
             <option value="header">API key header</option>
           </select>
         </Field>
-        {draft.authType === 'header' && (
+        {draft.authType === "header" && (
           <Field label="Header name">
             <input
               className="wfa-control"
               value={draft.headerName}
               placeholder="X-API-Key"
-              onChange={event => { patch({ headerName: event.target.value }) }}
+              onChange={(event) => {
+                patch({ headerName: event.target.value });
+              }}
             />
           </Field>
         )}
-        {draft.authType === 'basic' && (
+        {draft.authType === "basic" && (
           <Field label="Username">
-            <input className="wfa-control" value={draft.basicUsername} onChange={event => { patch({ basicUsername: event.target.value }) }} />
+            <input
+              className="wfa-control"
+              value={draft.basicUsername}
+              onChange={(event) => {
+                patch({ basicUsername: event.target.value });
+              }}
+            />
           </Field>
         )}
       </div>
-      {draft.authType === 'header' && (
+      {draft.authType === "header" && (
         <div className="wfa-grid">
           <Field label="Value prefix (optional)">
-            <input className="wfa-control" value={draft.headerPrefix} placeholder="ApiKey " onChange={event => { patch({ headerPrefix: event.target.value }) }} />
+            <input
+              className="wfa-control"
+              value={draft.headerPrefix}
+              placeholder="ApiKey "
+              onChange={(event) => {
+                patch({ headerPrefix: event.target.value });
+              }}
+            />
           </Field>
         </div>
       )}
-      {draft.authType !== 'none' && (
+      {draft.authType !== "none" && (
         <CredentialControl
           refName={credentialRef}
-          onRefChange={next => {
-            if (draft.authType === 'bearer') patch({ bearerRef: next })
-            else if (draft.authType === 'basic') patch({ basicPasswordRef: next })
-            else patch({ headerRef: next })
+          onRefChange={(next) => {
+            if (draft.authType === "bearer") patch({ bearerRef: next });
+            else if (draft.authType === "basic")
+              patch({ basicPasswordRef: next });
+            else patch({ headerRef: next });
           }}
           credentials={credentials}
         />
@@ -672,43 +846,73 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
           <select
             className="wfa-control"
             value={draft.adapterType}
-            onChange={event => { patch({ adapterType: event.target.value as RuleDraft['adapterType'] }) }}
+            onChange={(event) => {
+              patch({
+                adapterType: event.target.value as RuleDraft["adapterType"],
+              });
+            }}
           >
             <option value="none">Raw HTTP/HTML</option>
             <option value="jira">Jira issue (REST → clean text)</option>
-            <option value="confluence">Confluence page (REST → clean text)</option>
+            <option value="confluence">
+              Confluence page (REST → clean text)
+            </option>
           </select>
         </Field>
-        {draft.adapterType === 'jira' && (
+        {draft.adapterType === "jira" && (
           <Field label="Jira flavor">
             <select
               className="wfa-control"
               value={draft.jiraFlavor}
-              onChange={event => { patch({ jiraFlavor: event.target.value as RuleDraft['jiraFlavor'] }) }}
+              onChange={(event) => {
+                patch({
+                  jiraFlavor: event.target.value as RuleDraft["jiraFlavor"],
+                });
+              }}
             >
-              <option value="server">Server / Data Center (REST v2, wiki markup)</option>
-              <option value="cloud">Cloud (REST v3, Atlassian Document Format)</option>
+              <option value="server">
+                Server / Data Center (REST v2, wiki markup)
+              </option>
+              <option value="cloud">
+                Cloud (REST v3, Atlassian Document Format)
+              </option>
             </select>
           </Field>
         )}
       </div>
-      {draft.adapterType === 'jira' && (
+      {draft.adapterType === "jira" && (
         <div className="wfa-checks">
           <label className="wfa-check">
-            <input type="checkbox" checked={draft.includeComments} onChange={event => { patch({ includeComments: event.target.checked }) }} />
+            <input
+              type="checkbox"
+              checked={draft.includeComments}
+              onChange={(event) => {
+                patch({ includeComments: event.target.checked });
+              }}
+            />
             Include comments
           </label>
           <label className="wfa-check">
-            <input type="checkbox" checked={draft.includeLinks} onChange={event => { patch({ includeLinks: event.target.checked }) }} />
+            <input
+              type="checkbox"
+              checked={draft.includeLinks}
+              onChange={(event) => {
+                patch({ includeLinks: event.target.checked });
+              }}
+            />
             Include issue links
           </label>
         </div>
       )}
-      {draft.adapterType !== 'none' && (
+      {draft.adapterType !== "none" && (
         <p className="wfa-note">
-          Recognized URLs ({draft.adapterType === 'jira' ? '/browse/ISSUE-KEY' : '/pages/<id>, /display/SPACE/Title'}) are
-          fetched from the product REST API with the same credentials and policy and returned as clean Markdown text;
-          everything else falls back to raw HTTP/HTML.
+          Recognized URLs (
+          {draft.adapterType === "jira"
+            ? "/browse/ISSUE-KEY"
+            : "/pages/<id>, /display/SPACE/Title"}
+          ) are fetched from the product REST API with the same credentials and
+          policy and returned as clean Markdown text; everything else falls back
+          to raw HTTP/HTML.
         </p>
       )}
 
@@ -718,19 +922,26 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
           <div className="wfa-checks">
             {(
               [
-                ['allowPublic', 'Public IPs'],
-                ['allowPrivate', 'Private networks (RFC1918)'],
-                ['allowLoopback', 'Loopback'],
-                ['allowLinkLocal', 'Link-local'],
-                ['allowCGNAT', 'Carrier-grade NAT'],
-                ['allowIPv6ULA', 'IPv6 unique-local'],
+                ["allowPublic", "Public IPs"],
+                ["allowPrivate", "Private networks (RFC1918)"],
+                ["allowLoopback", "Loopback"],
+                ["allowLinkLocal", "Link-local"],
+                ["allowCGNAT", "Carrier-grade NAT"],
+                ["allowIPv6ULA", "IPv6 unique-local"],
               ] as const
             ).map(([key, label]) => (
               <label className="wfa-check" key={key}>
                 <input
                   type="checkbox"
                   checked={draft.network[key]}
-                  onChange={event => { patch({ network: { ...draft.network, [key]: event.target.checked } }) }}
+                  onChange={(event) => {
+                    patch({
+                      network: {
+                        ...draft.network,
+                        [key]: event.target.checked,
+                      },
+                    });
+                  }}
                 />
                 {label}
               </label>
@@ -738,10 +949,35 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
           </div>
           <div className="wfa-grid">
             <Field label="Allowed CIDRs (one per line)">
-              <textarea className="wfa-control" rows={2} value={draft.network.allowedCidrs} placeholder="10.20.0.0/16" onChange={event => { patch({ network: { ...draft.network, allowedCidrs: event.target.value } }) }} />
+              <textarea
+                className="wfa-control"
+                rows={2}
+                value={draft.network.allowedCidrs}
+                placeholder="10.20.0.0/16"
+                onChange={(event) => {
+                  patch({
+                    network: {
+                      ...draft.network,
+                      allowedCidrs: event.target.value,
+                    },
+                  });
+                }}
+              />
             </Field>
             <Field label="Denied CIDRs (one per line)">
-              <textarea className="wfa-control" rows={2} value={draft.network.deniedCidrs} onChange={event => { patch({ network: { ...draft.network, deniedCidrs: event.target.value } }) }} />
+              <textarea
+                className="wfa-control"
+                rows={2}
+                value={draft.network.deniedCidrs}
+                onChange={(event) => {
+                  patch({
+                    network: {
+                      ...draft.network,
+                      deniedCidrs: event.target.value,
+                    },
+                  });
+                }}
+              />
             </Field>
           </div>
           <div className="wfa-grid">
@@ -749,34 +985,81 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
               <select
                 className="wfa-control"
                 value={draft.redirectMode}
-                onChange={event => { patch({ redirectMode: event.target.value as RedirectMode }) }}
+                onChange={(event) => {
+                  patch({ redirectMode: event.target.value as RedirectMode });
+                }}
               >
-                <option value="same-origin">Same-origin only (recommended)</option>
+                <option value="same-origin">
+                  Same-origin only (recommended)
+                </option>
                 <option value="none">No redirects</option>
                 <option value="allowlist">Explicit origin allowlist</option>
               </select>
             </Field>
             <Field label="Max redirects">
-              <input className="wfa-control" value={draft.maxRedirects} placeholder="3" onChange={event => { patch({ maxRedirects: event.target.value }) }} />
+              <input
+                className="wfa-control"
+                value={draft.maxRedirects}
+                placeholder="3"
+                onChange={(event) => {
+                  patch({ maxRedirects: event.target.value });
+                }}
+              />
             </Field>
           </div>
-          {draft.redirectMode === 'allowlist' && (
+          {draft.redirectMode === "allowlist" && (
             <Field label="Allowed redirect origins (one per line)">
-              <textarea className="wfa-control" rows={2} value={draft.allowedOrigins} placeholder="https://sso.example.corp" onChange={event => { patch({ allowedOrigins: event.target.value }) }} />
+              <textarea
+                className="wfa-control"
+                rows={2}
+                value={draft.allowedOrigins}
+                placeholder="https://sso.example.corp"
+                onChange={(event) => {
+                  patch({ allowedOrigins: event.target.value });
+                }}
+              />
             </Field>
           )}
           <div className="wfa-grid">
             <Field label="Timeout (ms)">
-              <input className="wfa-control" value={draft.timeoutMs} placeholder="30000" onChange={event => { patch({ timeoutMs: event.target.value }) }} />
+              <input
+                className="wfa-control"
+                value={draft.timeoutMs}
+                placeholder="30000"
+                onChange={(event) => {
+                  patch({ timeoutMs: event.target.value });
+                }}
+              />
             </Field>
             <Field label="Max response bytes">
-              <input className="wfa-control" value={draft.maxResponseBytes} placeholder="5242880" onChange={event => { patch({ maxResponseBytes: event.target.value }) }} />
+              <input
+                className="wfa-control"
+                value={draft.maxResponseBytes}
+                placeholder="5242880"
+                onChange={(event) => {
+                  patch({ maxResponseBytes: event.target.value });
+                }}
+              />
             </Field>
             <Field label="Max decoded chars">
-              <input className="wfa-control" value={draft.maxBodyChars} placeholder="100000" onChange={event => { patch({ maxBodyChars: event.target.value }) }} />
+              <input
+                className="wfa-control"
+                value={draft.maxBodyChars}
+                placeholder="100000"
+                onChange={(event) => {
+                  patch({ maxBodyChars: event.target.value });
+                }}
+              />
             </Field>
             <Field label="Test URL (optional, used by Test)">
-              <input className="wfa-control" value={draft.testUrl} placeholder="https://jira.example.corp/status" onChange={event => { patch({ testUrl: event.target.value }) }} />
+              <input
+                className="wfa-control"
+                value={draft.testUrl}
+                placeholder="https://jira.example.corp/status"
+                onChange={(event) => {
+                  patch({ testUrl: event.target.value });
+                }}
+              />
             </Field>
           </div>
         </div>
@@ -794,26 +1077,34 @@ function RuleEditor({ initial, credentials, onSave, onCancel }: {
           className="wfa-btn primary"
           type="button"
           disabled={errors.length > 0}
-          onClick={() => { onSave(rule) }}
+          onClick={() => {
+            onSave(rule);
+          }}
         >
           Save rule
         </button>
-        <button className="wfa-btn" type="button" onClick={onCancel}>Cancel</button>
+        <button className="wfa-btn" type="button" onClick={onCancel}>
+          Cancel
+        </button>
       </div>
     </div>
-  )
+  );
 }
 
 /** Per-rule connection tester (SPEC §6.3). */
-function RuleTester({ ruleId, defaultUrl, testRule }: {
-  ruleId: string
-  defaultUrl: string
-  testRule: CardFace['testRule']
+function RuleTester({
+  ruleId,
+  defaultUrl,
+  testRule,
+}: {
+  ruleId: string;
+  defaultUrl: string;
+  testRule: CardFace["testRule"];
 }): JSX.Element {
-  const [url, setUrl] = useState(defaultUrl)
-  const [report, setReport] = useState<RuleTestReport | undefined>()
-  const [error, setError] = useState<string | undefined>()
-  const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState(defaultUrl);
+  const [report, setReport] = useState<RuleTestReport | undefined>();
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
   return (
     <div className="wfa-editor">
       <div className="wfa-actions">
@@ -822,21 +1113,30 @@ function RuleTester({ ruleId, defaultUrl, testRule }: {
           style={{ flex: 1 }}
           value={url}
           placeholder="https://jira.example.corp/browse/PROJ-123"
-          onChange={event => { setUrl(event.target.value) }}
+          onChange={(event) => {
+            setUrl(event.target.value);
+          }}
         />
         <button
           className="wfa-btn primary"
           type="button"
           disabled={busy || url.trim().length === 0}
           onClick={() => {
-            setBusy(true)
-            setError(undefined)
-            void testRule(ruleId, url.trim()).then(result => {
-              if (result.ok) setReport(result.value)
-              else setError(result.error.message)
-            }).catch(cause => {
-              setError(cause instanceof Error ? cause.message : String(cause))
-            }).finally(() => { setBusy(false) })
+            setBusy(true);
+            setError(undefined);
+            void testRule(ruleId, url.trim())
+              .then((result) => {
+                if (result.ok) setReport(result.value);
+                else setError(result.error.message);
+              })
+              .catch((cause) => {
+                setError(
+                  cause instanceof Error ? cause.message : String(cause),
+                );
+              })
+              .finally(() => {
+                setBusy(false);
+              });
           }}
         >
           Run test
@@ -845,53 +1145,77 @@ function RuleTester({ ruleId, defaultUrl, testRule }: {
       {error !== undefined && <div className="wfa-error">{error}</div>}
       {report !== undefined && <TestReport report={report} />}
     </div>
-  )
+  );
 }
 
 function TestReport({ report }: { report: RuleTestReport }): JSX.Element {
   return (
     <div className="wfa-report">
       <div>
-        <Pill tone={report.ok ? 'ok' : 'err'}>{report.outcome}</Pill>{' '}
+        <Pill tone={report.ok ? "ok" : "err"}>{report.outcome}</Pill>{" "}
         {report.statusCode !== undefined && <b>HTTP {report.statusCode}</b>}
         {report.contentType !== undefined && <> · {report.contentType}</>}
-        {report.responseBytes !== undefined && <> · {formatBytes(report.responseBytes)}</>}
+        {report.responseBytes !== undefined && (
+          <> · {formatBytes(report.responseBytes)}</>
+        )}
         <> · {report.redirectCount} redirect(s)</>
         <> · {report.durationMs} ms</>
       </div>
       <div>
-        <b>Auth applied:</b> {report.authApplied ? 'yes' : 'no'}
-        {report.adapter !== undefined && <> · <b>Adapter:</b> {report.adapter}</>}
+        <b>Auth applied:</b> {report.authApplied ? "yes" : "no"}
+        {report.adapter !== undefined && (
+          <>
+            {" "}
+            · <b>Adapter:</b> {report.adapter}
+          </>
+        )}
         {report.credentialState !== undefined && (
-          <> · <b>Credential</b> {report.credentialState.ref}: {report.credentialState.configured ? 'configured' : 'missing'}</>
+          <>
+            {" "}
+            · <b>Credential</b> {report.credentialState.ref}:{" "}
+            {report.credentialState.configured ? "configured" : "missing"}
+          </>
         )}
       </div>
       {report.addresses.length > 0 && (
         <div>
-          <b>Resolved:</b>{' '}
-          {report.addresses.map(address => `${address.address} (${address.networkClass}${address.allowed ? '' : ', DENIED'})`).join(', ')}
+          <b>Resolved:</b>{" "}
+          {report.addresses
+            .map(
+              (address) =>
+                `${address.address} (${address.networkClass}${address.allowed ? "" : ", DENIED"})`,
+            )
+            .join(", ")}
         </div>
       )}
       {report.finalOrigin !== undefined && (
-        <div><b>Final origin:</b> {report.finalOrigin}</div>
+        <div>
+          <b>Final origin:</b> {report.finalOrigin}
+        </div>
       )}
       {report.detail !== undefined && <pre>{report.detail}</pre>}
       {report.preview !== undefined && <pre>{report.preview}</pre>}
     </div>
-  )
+  );
 }
 
 /** Diagnostics without an HTTP request (SPEC §6.4). */
-export function DiagnosticsSection({ diagnose }: { diagnose: CardFace['diagnose'] }): JSX.Element {
-  const [url, setUrl] = useState('')
-  const [report, setReport] = useState<DiagnoseReport | undefined>()
-  const [error, setError] = useState<string | undefined>()
-  const [busy, setBusy] = useState(false)
+export function DiagnosticsSection({
+  diagnose,
+}: {
+  diagnose: CardFace["diagnose"];
+}): JSX.Element {
+  const [url, setUrl] = useState("");
+  const [report, setReport] = useState<DiagnoseReport | undefined>();
+  const [error, setError] = useState<string | undefined>();
+  const [busy, setBusy] = useState(false);
   return (
     <section className="wfa-section">
       <div className="wfa-section-title">
         <h3>Diagnostics</h3>
-        <span className="wfa-note">Match and network policy only — no request is sent.</span>
+        <span className="wfa-note">
+          Match and network policy only — no request is sent.
+        </span>
       </div>
       <div className="wfa-actions">
         <input
@@ -899,21 +1223,30 @@ export function DiagnosticsSection({ diagnose }: { diagnose: CardFace['diagnose'
           style={{ flex: 1 }}
           value={url}
           placeholder="https://jira.example.corp/browse/PROJ-123"
-          onChange={event => { setUrl(event.target.value) }}
+          onChange={(event) => {
+            setUrl(event.target.value);
+          }}
         />
         <button
           className="wfa-btn"
           type="button"
           disabled={busy || url.trim().length === 0}
           onClick={() => {
-            setBusy(true)
-            setError(undefined)
-            void diagnose(url.trim()).then(result => {
-              if (result.ok) setReport(result.value)
-              else setError(result.error.message)
-            }).catch(cause => {
-              setError(cause instanceof Error ? cause.message : String(cause))
-            }).finally(() => { setBusy(false) })
+            setBusy(true);
+            setError(undefined);
+            void diagnose(url.trim())
+              .then((result) => {
+                if (result.ok) setReport(result.value);
+                else setError(result.error.message);
+              })
+              .catch((cause) => {
+                setError(
+                  cause instanceof Error ? cause.message : String(cause),
+                );
+              })
+              .finally(() => {
+                setBusy(false);
+              });
           }}
         >
           Diagnose
@@ -922,55 +1255,84 @@ export function DiagnosticsSection({ diagnose }: { diagnose: CardFace['diagnose'
       {error !== undefined && <div className="wfa-error">{error}</div>}
       {report !== undefined && (
         <div className="wfa-report">
-          <div><b>URL:</b> {report.validUrl ? report.url : `${report.url} (invalid)`}</div>
           <div>
-            <b>Matched rule:</b> {report.match.ruleId === undefined ? report.match.reason : `${report.match.ruleName ?? report.match.ruleId} (${report.match.ruleId})`}
+            <b>URL:</b>{" "}
+            {report.validUrl ? report.url : `${report.url} (invalid)`}
           </div>
-          <div><b>Network:</b> {report.networkAllowed ? 'allowed' : 'denied'}</div>
-          <div><b>Redirects:</b> {report.redirectPolicy.length > 0 ? report.redirectPolicy : '—'}</div>
+          <div>
+            <b>Matched rule:</b>{" "}
+            {report.match.ruleId === undefined
+              ? report.match.reason
+              : `${report.match.ruleName ?? report.match.ruleId} (${report.match.ruleId})`}
+          </div>
+          <div>
+            <b>Network:</b> {report.networkAllowed ? "allowed" : "denied"}
+          </div>
+          <div>
+            <b>Redirects:</b>{" "}
+            {report.redirectPolicy.length > 0 ? report.redirectPolicy : "—"}
+          </div>
           {report.credentialState !== undefined && (
             <div>
-              <b>Credential:</b> {report.credentialState.ref} ({report.credentialState.configured ? 'configured' : 'missing'})
+              <b>Credential:</b> {report.credentialState.ref} (
+              {report.credentialState.configured ? "configured" : "missing"})
             </div>
           )}
           {report.addresses.length > 0 && (
             <div>
-              <b>Resolved:</b>{' '}
-              {report.addresses.map(address => `${address.address} (${address.networkClass}${address.allowed ? '' : ', DENIED'})`).join(', ')}
+              <b>Resolved:</b>{" "}
+              {report.addresses
+                .map(
+                  (address) =>
+                    `${address.address} (${address.networkClass}${address.allowed ? "" : ", DENIED"})`,
+                )
+                .join(", ")}
             </div>
           )}
           {report.detail !== undefined && <pre>{report.detail}</pre>}
         </div>
       )}
     </section>
-  )
+  );
 }
 
 /** The rule table (SPEC §6.1) with inline editor and tester. */
-export function RulesSection({ config, writable, setRules, face }: {
-  config: WebFetchAuthConfig | undefined
-  writable: boolean
-  setRules: (rules: AuthenticatedFetchRule[]) => void
-  face: CardFace
+export function RulesSection({
+  config,
+  writable,
+  setRules,
+  face,
+}: {
+  config: WebFetchAuthConfig | undefined;
+  writable: boolean;
+  setRules: (rules: AuthenticatedFetchRule[]) => void;
+  face: CardFace;
 }): JSX.Element {
-  const rules = config?.rules ?? []
-  const [editingId, setEditingId] = useState<string | undefined>()
-  const [creating, setCreating] = useState(false)
-  const [testingId, setTestingId] = useState<string | undefined>()
+  const rules = config?.rules ?? [];
+  const [editingId, setEditingId] = useState<string | undefined>();
+  const [creating, setCreating] = useState(false);
+  const [testingId, setTestingId] = useState<string | undefined>();
 
   const saveRule = (rule: AuthenticatedFetchRule): void => {
-    const index = rules.findIndex(candidate => candidate.id === rule.id)
-    const next = index >= 0 ? rules.map(candidate => (candidate.id === rule.id ? rule : candidate)) : [...rules, rule]
-    setRules(next)
-    setEditingId(undefined)
-    setCreating(false)
-  }
+    const index = rules.findIndex((candidate) => candidate.id === rule.id);
+    const next =
+      index >= 0
+        ? rules.map((candidate) =>
+            candidate.id === rule.id ? rule : candidate,
+          )
+        : [...rules, rule];
+    setRules(next);
+    setEditingId(undefined);
+    setCreating(false);
+  };
   const deleteRule = (id: string): void => {
-    setRules(rules.filter(rule => rule.id !== id))
-  }
+    setRules(rules.filter((rule) => rule.id !== id));
+  };
   const toggleRule = (id: string, enabled: boolean): void => {
-    setRules(rules.map(rule => (rule.id === id ? { ...rule, enabled } : rule)))
-  }
+    setRules(
+      rules.map((rule) => (rule.id === id ? { ...rule, enabled } : rule)),
+    );
+  };
 
   return (
     <section className="wfa-section">
@@ -980,18 +1342,22 @@ export function RulesSection({ config, writable, setRules, face }: {
           className="wfa-btn"
           type="button"
           disabled={!writable}
-          onClick={() => { setCreating(true); setEditingId(undefined) }}
+          onClick={() => {
+            setCreating(true);
+            setEditingId(undefined);
+          }}
         >
           Add rule
         </button>
       </div>
       {rules.length === 0 && creating === false && (
         <div className="wfa-empty">
-          No rules yet. Every URL is rejected until a rule matches (strict mode).
+          No rules yet. Every URL is rejected until a rule matches (strict
+          mode).
         </div>
       )}
       <div className="wfa-rules">
-        {rules.map(rule => (
+        {rules.map((rule) => (
           <div key={rule.id}>
             <div className="wfa-rule">
               <span className="wfa-rule-main">
@@ -999,26 +1365,56 @@ export function RulesSection({ config, writable, setRules, face }: {
                 <span className="wfa-rule-origin">{originSummary(rule)}</span>
               </span>
               <span className="wfa-actions" style={{ gap: 5 }}>
-                <Pill tone={rule.enabled ? 'ok' : 'warn'}>{rule.enabled ? 'enabled' : 'disabled'}</Pill>
+                <Pill tone={rule.enabled ? "ok" : "warn"}>
+                  {rule.enabled ? "enabled" : "disabled"}
+                </Pill>
                 <Pill tone="warn">{authSummary(rule.auth)}</Pill>
-                {rule.adapter !== undefined && rule.adapter.type !== 'none' && <Pill tone="ok">{rule.adapter.type}</Pill>}
+                {rule.adapter !== undefined && rule.adapter.type !== "none" && (
+                  <Pill tone="ok">{rule.adapter.type}</Pill>
+                )}
               </span>
               <span className="wfa-actions">
-                <button className="wfa-btn link" type="button" disabled={!writable} onClick={() => { toggleRule(rule.id, !rule.enabled) }}>
-                  {rule.enabled ? 'Disable' : 'Enable'}
+                <button
+                  className="wfa-btn link"
+                  type="button"
+                  disabled={!writable}
+                  onClick={() => {
+                    toggleRule(rule.id, !rule.enabled);
+                  }}
+                >
+                  {rule.enabled ? "Disable" : "Enable"}
                 </button>
-                <button className="wfa-btn link" type="button" onClick={() => { setTestingId(testingId === rule.id ? undefined : rule.id); setEditingId(undefined); setCreating(false) }}>
+                <button
+                  className="wfa-btn link"
+                  type="button"
+                  onClick={() => {
+                    setTestingId(testingId === rule.id ? undefined : rule.id);
+                    setEditingId(undefined);
+                    setCreating(false);
+                  }}
+                >
                   Test
                 </button>
                 <button
                   className="wfa-btn link"
                   type="button"
                   disabled={!writable}
-                  onClick={() => { setEditingId(editingId === rule.id ? undefined : rule.id); setCreating(false); setTestingId(undefined) }}
+                  onClick={() => {
+                    setEditingId(editingId === rule.id ? undefined : rule.id);
+                    setCreating(false);
+                    setTestingId(undefined);
+                  }}
                 >
                   Edit
                 </button>
-                <button className="wfa-btn link danger" type="button" disabled={!writable} onClick={() => { deleteRule(rule.id) }}>
+                <button
+                  className="wfa-btn link danger"
+                  type="button"
+                  disabled={!writable}
+                  onClick={() => {
+                    deleteRule(rule.id);
+                  }}
+                >
                   Delete
                 </button>
               </span>
@@ -1026,7 +1422,7 @@ export function RulesSection({ config, writable, setRules, face }: {
             {testingId === rule.id && (
               <RuleTester
                 ruleId={rule.id}
-                defaultUrl={rule.testUrl ?? ''}
+                defaultUrl={rule.testUrl ?? ""}
                 testRule={face.testRule}
               />
             )}
@@ -1036,7 +1432,9 @@ export function RulesSection({ config, writable, setRules, face }: {
                   initial={rule}
                   credentials={face.credentials}
                   onSave={saveRule}
-                  onCancel={() => { setEditingId(undefined) }}
+                  onCancel={() => {
+                    setEditingId(undefined);
+                  }}
                 />
               </div>
             )}
@@ -1048,9 +1446,11 @@ export function RulesSection({ config, writable, setRules, face }: {
           initial={undefined}
           credentials={face.credentials}
           onSave={saveRule}
-          onCancel={() => { setCreating(false) }}
+          onCancel={() => {
+            setCreating(false);
+          }}
         />
       )}
     </section>
-  )
+  );
 }

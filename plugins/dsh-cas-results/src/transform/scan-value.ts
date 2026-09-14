@@ -18,17 +18,30 @@ import type { CasKind, CasStore } from "../cas/types.js";
 import { buildPreviewBody } from "../preview/index.js";
 import type { PreviewOptions } from "../preview/options.js";
 import { classifyText } from "./classify.js";
-import { decodeBase64Candidate, type Base64DetectionOptions } from "./base64.js";
-import { buildBinaryMarker, formatMarkerHeader, formatRetrieveHint, isCasMarkerText } from "./marker.js";
+import {
+  decodeBase64Candidate,
+  type Base64DetectionOptions,
+} from "./base64.js";
+import {
+  buildBinaryMarker,
+  formatMarkerHeader,
+  formatRetrieveHint,
+  isCasMarkerText,
+} from "./marker.js";
 
 export type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | { [key: string]: JsonValue } | readonly JsonValue[];
+export type JsonValue =
+  JsonPrimitive | { [key: string]: JsonValue } | readonly JsonValue[];
 
 export type PreviewStyle = "auto" | "text" | "log" | "html";
 
 export interface TransformPolicy {
   readonly toolName: string;
-  readonly thresholds: { textBytes: number; htmlBytes: number; logBytes: number };
+  readonly thresholds: {
+    textBytes: number;
+    htmlBytes: number;
+    logBytes: number;
+  };
   readonly base64: Base64DetectionOptions;
   readonly preview: PreviewOptions;
   readonly previewStyle: PreviewStyle;
@@ -80,7 +93,15 @@ export async function transformValue(
     logicalBytesOffloaded: 0,
   };
 
-  const transformed = await walk(value, policy, store, firstTool, context, 0, "$");
+  const transformed = await walk(
+    value,
+    policy,
+    store,
+    firstTool,
+    context,
+    0,
+    "$",
+  );
   return {
     changed: context.replacements.length > 0,
     value: transformed,
@@ -98,14 +119,29 @@ async function walk(
   policy: TransformPolicy,
   store: CasStore,
   firstTool: string | undefined,
-  context: { stringsScanned: number; replacements: ValueReplacement[]; objectsStored: number; casHits: number; physicalBytesWritten: number; logicalBytesOffloaded: number },
+  context: {
+    stringsScanned: number;
+    replacements: ValueReplacement[];
+    objectsStored: number;
+    casHits: number;
+    physicalBytesWritten: number;
+    logicalBytesOffloaded: number;
+  },
   depth: number,
   path: string,
 ): Promise<JsonValue> {
   if (typeof value === "string") {
     context.stringsScanned += 1;
-    if (context.stringsScanned > MAX_STRINGS_SCANNED || isCasMarkerText(value)) return value;
-    const replacement = await offloadString(value, policy, store, firstTool, context, path);
+    if (context.stringsScanned > MAX_STRINGS_SCANNED || isCasMarkerText(value))
+      return value;
+    const replacement = await offloadString(
+      value,
+      policy,
+      store,
+      firstTool,
+      context,
+      path,
+    );
     return replacement ?? value;
   }
   if (depth >= MAX_DEPTH) return value;
@@ -113,7 +149,15 @@ async function walk(
     let changed = false;
     const next: JsonValue[] = new Array(value.length);
     for (let index = 0; index < value.length; index += 1) {
-      next[index] = await walk(value[index] as JsonValue, policy, store, firstTool, context, depth + 1, `${path}[${index}]`);
+      next[index] = await walk(
+        value[index] as JsonValue,
+        policy,
+        store,
+        firstTool,
+        context,
+        depth + 1,
+        `${path}[${index}]`,
+      );
       if (next[index] !== value[index]) changed = true;
     }
     return changed ? next : value;
@@ -122,7 +166,15 @@ async function walk(
     let changed = false;
     const next: Record<string, JsonValue> = {};
     for (const [key, child] of Object.entries(value)) {
-      next[key] = await walk(child as JsonValue, policy, store, firstTool, context, depth + 1, `${path}.${key}`);
+      next[key] = await walk(
+        child as JsonValue,
+        policy,
+        store,
+        firstTool,
+        context,
+        depth + 1,
+        `${path}.${key}`,
+      );
       if (next[key] !== child) changed = true;
     }
     return changed ? next : value;
@@ -135,7 +187,13 @@ async function offloadString(
   policy: TransformPolicy,
   store: CasStore,
   firstTool: string | undefined,
-  context: { replacements: ValueReplacement[]; objectsStored: number; casHits: number; physicalBytesWritten: number; logicalBytesOffloaded: number },
+  context: {
+    replacements: ValueReplacement[];
+    objectsStored: number;
+    casHits: number;
+    physicalBytesWritten: number;
+    logicalBytesOffloaded: number;
+  },
   path: string,
 ): Promise<string | null> {
   if (context.replacements.length >= MAX_REPLACEMENTS) return null;
@@ -169,22 +227,36 @@ async function offloadString(
 
   const byteLength = Buffer.byteLength(value, "utf8");
   const classified = classifyText(value);
-  const kind: Exclude<CasKind, "binary"> = policy.previewStyle === "auto" ? classified.kind : policy.previewStyle;
+  const kind: Exclude<CasKind, "binary"> =
+    policy.previewStyle === "auto" ? classified.kind : policy.previewStyle;
   const threshold =
-    kind === "html" ? policy.thresholds.htmlBytes
-    : kind === "log" ? policy.thresholds.logBytes
-    : policy.thresholds.textBytes;
+    kind === "html"
+      ? policy.thresholds.htmlBytes
+      : kind === "log"
+        ? policy.thresholds.logBytes
+        : policy.thresholds.textBytes;
   if (byteLength < threshold) return null;
 
   const payload = Buffer.from(value, "utf8");
   const object = await store.put({
     payload,
     kind,
-    mediaType: kind === "html" ? "text/html" : kind === "log" ? "text/log" : "text/plain",
+    mediaType:
+      kind === "html"
+        ? "text/html"
+        : kind === "log"
+          ? "text/log"
+          : "text/plain",
     encoding: "utf8",
     firstTool,
   });
-  const previewText = buildTextPreview(value, kind, byteLength, object.ref, policy.preview);
+  const previewText = buildTextPreview(
+    value,
+    kind,
+    byteLength,
+    object.ref,
+    policy.preview,
+  );
   recordReplacement(context, {
     path,
     ref: object.ref,
@@ -208,14 +280,25 @@ function buildTextPreview(
     sizeBytes,
     previewBytes: Buffer.byteLength(body, "utf8"),
     kind,
-    mediaType: kind === "html" ? "text/html" : kind === "log" ? "text/log" : "text/plain",
+    mediaType:
+      kind === "html"
+        ? "text/html"
+        : kind === "log"
+          ? "text/log"
+          : "text/plain",
     ref,
   });
   return `${header}\n\n${body}\n\n${formatRetrieveHint(ref)}`;
 }
 
 function recordReplacement(
-  context: { replacements: ValueReplacement[]; objectsStored: number; casHits: number; physicalBytesWritten: number; logicalBytesOffloaded: number },
+  context: {
+    replacements: ValueReplacement[];
+    objectsStored: number;
+    casHits: number;
+    physicalBytesWritten: number;
+    logicalBytesOffloaded: number;
+  },
   replacement: ValueReplacement,
 ): void {
   context.replacements.push(replacement);

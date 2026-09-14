@@ -24,7 +24,11 @@ describe("classic browser bundle", () => {
     };
     const exports = loader.registrations[0]?.factory((name: string) =>
       name === "react/jsx-runtime"
-        ? { jsx: () => undefined, jsxs: () => undefined, Fragment: Symbol("Fragment") }
+        ? {
+            jsx: () => undefined,
+            jsxs: () => undefined,
+            Fragment: Symbol("Fragment"),
+          }
         : fakeReact,
     ) as {
       apply(ctx: unknown): () => void;

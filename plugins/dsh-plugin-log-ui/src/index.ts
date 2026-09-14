@@ -34,7 +34,10 @@ declare module "@deepseek-ai/cordis" {
   }
 }
 
-export class PluginLogUi extends TypertRemoteService implements PluginLogUiService {
+export class PluginLogUi
+  extends TypertRemoteService
+  implements PluginLogUiService
+{
   static inject = inject;
   static Config = ConfigSchema;
 
@@ -64,12 +67,18 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
     this.configSource = () => entry;
 
     ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(ctx, PLUGIN_LOG_SETTINGS_NAMESPACE, ConfigSchema, entry, {
-        setSource: (current) => {
-          this.configSource = current;
+      settingsCtx.settings.installSection(
+        ctx,
+        PLUGIN_LOG_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        entry,
+        {
+          setSource: (current) => {
+            this.configSource = current;
+          },
+          onChange: () => this.applyPolicy(),
         },
-        onChange: () => this.applyPolicy(),
-      });
+      );
     });
 
     ctx.effect(

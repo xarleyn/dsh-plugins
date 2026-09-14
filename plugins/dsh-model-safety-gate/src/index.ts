@@ -9,8 +9,16 @@
 
 import { ModelSafetyGate } from "./service.js";
 
-export { ModelSafetyGate, AuditRing, type SafetyGateServiceDeps } from "./service.js";
-export type { SafetyGateAuditRow, SafetyGateClassifierState, SafetyGateInspect } from "./types.js";
+export {
+  ModelSafetyGate,
+  AuditRing,
+  type SafetyGateServiceDeps,
+} from "./service.js";
+export type {
+  SafetyGateAuditRow,
+  SafetyGateClassifierState,
+  SafetyGateInspect,
+} from "./types.js";
 export { SAFETY_GATE_SETTINGS_NAMESPACE } from "./shared/settings.js";
 export {
   SAFETY_GATE_DEFAULTS,
@@ -42,24 +50,63 @@ export {
 export { SafetyScanner } from "./rules/scanner.js";
 export { foldText, decodeEncodings } from "./rules/normalize.js";
 export { INJECTION_RULES, compileInjectionRule } from "./rules/injection.js";
-export { SECRET_RULES, findHighEntropyTokens, shannonEntropy } from "./rules/secrets.js";
-export { mergeL0L1, mergeDecisions, applyGateMode, decisionForCategories } from "./rules/policy.js";
-export { CheckPipeline, POLICY_VERSION, type PipelineCheckInput, type PipelineCheckResult } from "./pipeline.js";
-export { SafetyClassifierService, createOpenAiCompatibleTransport, createDshClassifierTransport } from "./classifier/index.js";
+export {
+  SECRET_RULES,
+  findHighEntropyTokens,
+  shannonEntropy,
+} from "./rules/secrets.js";
+export {
+  mergeL0L1,
+  mergeDecisions,
+  applyGateMode,
+  decisionForCategories,
+} from "./rules/policy.js";
+export {
+  CheckPipeline,
+  POLICY_VERSION,
+  type PipelineCheckInput,
+  type PipelineCheckResult,
+} from "./pipeline.js";
+export {
+  SafetyClassifierService,
+  createOpenAiCompatibleTransport,
+  createDshClassifierTransport,
+} from "./classifier/index.js";
 export { isSafetyInternal, runIsolated } from "./classifier/isolation.js";
 export { validateVerdict, extractJsonPayload } from "./classifier/schema.js";
-export { buildClassifierPrompt, CLASSIFIER_SYSTEM_PROMPT } from "./classifier/prompt.js";
-export { SAFETY_EVENT_TYPES, buildAuditEvent, type SafetyAuditEvent } from "./audit/events.js";
+export {
+  buildClassifierPrompt,
+  CLASSIFIER_SYSTEM_PROMPT,
+} from "./classifier/prompt.js";
+export {
+  SAFETY_EVENT_TYPES,
+  buildAuditEvent,
+  type SafetyAuditEvent,
+} from "./audit/events.js";
 export { SafetyMetrics, type SafetyMetricsSnapshot } from "./audit/metrics.js";
 export { contentSha256, rawPreview } from "./audit/sanitizer.js";
 export { createInputGuard, extractMessagesText } from "./guards/input.js";
 export { guardOutputStream } from "./guards/output-stream.js";
-export { createPreExecuteGuard, serializeToolArguments } from "./guards/tools.js";
-export { createPostExecuteGuard, extractResultText } from "./guards/tool-results.js";
+export {
+  createPreExecuteGuard,
+  serializeToolArguments,
+} from "./guards/tools.js";
+export {
+  createPostExecuteGuard,
+  extractResultText,
+} from "./guards/tool-results.js";
 export { TurnRiskTracker } from "./guards/risk-state.js";
-export { ChannelQuarantine, PassThroughMonitor, ReleasedTail } from "./stream/quarantine.js";
+export {
+  ChannelQuarantine,
+  PassThroughMonitor,
+  ReleasedTail,
+} from "./stream/quarantine.js";
 export { cancelTurn } from "./stream/cancellation.js";
-export { isDeltaChunk, blockedFinish, type StreamChunk } from "./stream/chunks.js";
+export {
+  isDeltaChunk,
+  blockedFinish,
+  type StreamChunk,
+} from "./stream/chunks.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {

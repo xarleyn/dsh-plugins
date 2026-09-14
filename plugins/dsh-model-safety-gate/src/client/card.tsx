@@ -12,10 +12,24 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { CardShell, bindSettingsExternalStore, startVisibilityAwarePolling } from "@yadsh/dsh-plugin-kit/client";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  CardShell,
+  bindSettingsExternalStore,
+  startVisibilityAwarePolling,
+} from "@yadsh/dsh-plugin-kit/client";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import type { ModelSafetyGateConfig } from "../config.js";
 import type { SafetyGateInspect } from "../types.js";
@@ -41,7 +55,8 @@ export interface SafetyGateCardFace {
   inspect(): Promise<RemoteResult<SafetyGateInspect>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<SafetyGateCardFace>;
+type CardProps = PropsRuntime<"settings.plugin.item"> &
+  InjectFace<SafetyGateCardFace>;
 
 /** Mutation operations as the bound scope declares them. */
 type ScopeOps = Parameters<SettingsScope<ModelSafetyGateConfig>["mutate"]>[0];
@@ -58,7 +73,11 @@ function displayError(error: unknown): string {
 
 export function SafetyGateCard({ scope, inspect }: CardProps) {
   const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
-  const settings = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const settings = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
   const config = settings.value;
   const writable = settings.status === "ready" && settings.writable;
 
@@ -91,7 +110,10 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   }, [inspect]);
 
   useEffect(() => {
-    const stopPolling = startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
+    const stopPolling = startVisibilityAwarePolling(
+      refresh,
+      REFRESH_INTERVAL_MS,
+    );
     return () => {
       stopPolling();
       activeRequest.current += 1;
@@ -105,7 +127,9 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
    */
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
-      const ops = [{ op: "set", path: [...path], value }] as unknown as ScopeOps;
+      const ops = [
+        { op: "set", path: [...path], value },
+      ] as unknown as ScopeOps;
       scope.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
@@ -123,11 +147,17 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
     [scope],
   );
 
-  const overridden = useCallback((path: readonly string[]) => isOverridden(settings.user, path), [settings.user]);
+  const overridden = useCallback(
+    (path: readonly string[]) => isOverridden(settings.user, path),
+    [settings.user],
+  );
 
   const overrides = overriddenKeys(settings.user);
   const resetAll = useCallback(() => {
-    const ops = overrides.map((key) => ({ op: "unset", path: [key] })) as unknown as ScopeOps;
+    const ops = overrides.map((key) => ({
+      op: "unset",
+      path: [key],
+    })) as unknown as ScopeOps;
     scope.mutate(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
@@ -151,7 +181,11 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
     <CardShell
       title="Model Safety Gate"
       description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
-      badge={<span className="dsh-plugin-card__badge">{badgeText(enabled, mode)}</span>}
+      badge={
+        <span className="dsh-plugin-card__badge">
+          {badgeText(enabled, mode)}
+        </span>
+      }
       label={(open) => `${open ? "Hide" : "Show"} settings: Model Safety Gate`}
       bodyClassName="msg-body"
     >
@@ -178,14 +212,25 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
           <AdvancedSection {...sectionProps} />
           <div className="msg-footer">
             <p className="msg-footer-note">
-              Changes apply to the running gate immediately. Chat moderation banners and the per-session override control are not built yet
-              (design SPEC Phase 6), so the <span className="msg-mono">ui.*</span> keys and{" "}
-              <span className="msg-mono">allowSessionOverride</span> are accepted but have no effect today. The gate is a decision layer, not
-              a sandbox: it does not replace the permission system.
+              Changes apply to the running gate immediately. Chat moderation
+              banners and the per-session override control are not built yet
+              (design SPEC Phase 6), so the{" "}
+              <span className="msg-mono">ui.*</span> keys and{" "}
+              <span className="msg-mono">allowSessionOverride</span> are
+              accepted but have no effect today. The gate is a decision layer,
+              not a sandbox: it does not replace the permission system.
             </p>
             {overrides.length > 0 ? (
-              <button type="button" className="msg-btn" disabled={!writable} onClick={resetAll}>
-                Reset {overrides.length === 1 ? "1 override" : `${String(overrides.length)} overrides`}
+              <button
+                type="button"
+                className="msg-btn"
+                disabled={!writable}
+                onClick={resetAll}
+              >
+                Reset{" "}
+                {overrides.length === 1
+                  ? "1 override"
+                  : `${String(overrides.length)} overrides`}
               </button>
             ) : null}
           </div>

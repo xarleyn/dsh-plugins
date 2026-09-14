@@ -5,7 +5,9 @@
  */
 
 import { Context } from "@deepseek-ai/cordis";
-import SettingsProvider, { type SettingsNamespace } from "@deepseek-ai/dsh-settings";
+import SettingsProvider, {
+  type SettingsNamespace,
+} from "@deepseek-ai/dsh-settings";
 import { describe, expect, it, vi } from "vitest";
 
 import ModelSafetyGate from "../../src/index.js";
@@ -25,7 +27,10 @@ class MemorySettings extends SettingsProvider {
     return Promise.resolve(structuredClone(this.storageDocument));
   }
 
-  protected override persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
+  protected override persist(
+    ns: SettingsNamespace,
+    section: Record<string, unknown>,
+  ): Promise<void> {
     this.storageDocument[ns] = structuredClone(section);
     return Promise.resolve();
   }
@@ -64,7 +69,9 @@ describe("safety gate live settings", () => {
     const ctx = await configuredContext({ mode: "warn" });
     expect(ctx.safetyGate.config.mode).toBe("warn");
 
-    await ctx.settings.update(SAFETY_GATE_SETTINGS_NAMESPACE, { mode: "enforce" });
+    await ctx.settings.update(SAFETY_GATE_SETTINGS_NAMESPACE, {
+      mode: "enforce",
+    });
     await vi.waitFor(() => {
       expect(ctx.safetyGate.config.mode).toBe("enforce");
     });
@@ -83,7 +90,9 @@ describe("safety gate live settings", () => {
     await vi.waitFor(() => {
       expect(ctx.safetyGate.config.output.mode).toBe("observe");
     });
-    expect(ctx.safetyGate.config.customBlockPatterns).toEqual(["internal-ticket-[0-9]+"]);
+    expect(ctx.safetyGate.config.customBlockPatterns).toEqual([
+      "internal-ticket-[0-9]+",
+    ]);
     // Untouched keys of the same section keep their resolved defaults.
     expect(ctx.safetyGate.config.output.checkEveryChars).toBe(512);
   });
@@ -91,7 +100,9 @@ describe("safety gate live settings", () => {
   it("refuses a configuration the gate could not act on", async () => {
     const ctx = await configuredContext({ mode: "warn" });
     await expect(
-      ctx.settings.update(SAFETY_GATE_SETTINGS_NAMESPACE, { classifier: { backend: "dsh" } }),
+      ctx.settings.update(SAFETY_GATE_SETTINGS_NAMESPACE, {
+        classifier: { backend: "dsh" },
+      }),
     ).rejects.toThrow(/provider/u);
     await vi.waitFor(() => {
       expect(ctx.safetyGate.config.mode).toBe("warn");

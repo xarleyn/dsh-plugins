@@ -18,12 +18,21 @@ export function previewLog(value: string, options: PreviewOptions): LogPreview {
   const tailBudget = Math.floor(options.maxChars * 0.25);
 
   const head = boundedBlock(lines, 0, options.keepHeadLines, headBudget);
-  const tailStart = Math.max(head.lineCount, lines.length - options.keepTailLines);
+  const tailStart = Math.max(
+    head.lineCount,
+    lines.length - options.keepTailLines,
+  );
   const tail = boundedBlock(lines, tailStart, lines.length, tailBudget);
 
   const headEnd = head.lineCount;
   const tailBegin = tail.text.length > 0 ? tailStart : lines.length;
-  const middle = collectPatternLines(lines, headEnd, tailBegin, options.keepPatterns, patternBudget);
+  const middle = collectPatternLines(
+    lines,
+    headEnd,
+    tailBegin,
+    options.keepPatterns,
+    patternBudget,
+  );
 
   const omittedLines = Math.max(0, tailBegin - headEnd - middle.coveredLines);
   const parts: string[] = [];
@@ -54,7 +63,8 @@ function collectPatternLines(
   for (let index = from; index < to; index += 1) {
     const line = lines[index] ?? "";
     const lower = line.toLowerCase();
-    if (!needles.some((needle) => needle.length > 0 && lower.includes(needle))) continue;
+    if (!needles.some((needle) => needle.length > 0 && lower.includes(needle)))
+      continue;
     // Keep one line of context after the match; it usually carries the
     // continuation of a stack trace.
     const contextLine = index + 1 < to ? (lines[index + 1] ?? "") : "";

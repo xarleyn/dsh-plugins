@@ -17,10 +17,24 @@
 
 import type { ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
-import { isDeltaChunk, blockedFinish, type DeltaChunk, type StreamChunk, type StreamFailure } from "../stream/chunks.js";
-import { ChannelQuarantine, ReleasedTail, PassThroughMonitor } from "../stream/quarantine.js";
+import {
+  isDeltaChunk,
+  blockedFinish,
+  type DeltaChunk,
+  type StreamChunk,
+  type StreamFailure,
+} from "../stream/chunks.js";
+import {
+  ChannelQuarantine,
+  ReleasedTail,
+  PassThroughMonitor,
+} from "../stream/quarantine.js";
 import { cancelTurn, type AgentLookup } from "../stream/cancellation.js";
-import type { ContentChannel, SafetyDecision, SafetyErrorCode } from "../types.js";
+import type {
+  ContentChannel,
+  SafetyDecision,
+  SafetyErrorCode,
+} from "../types.js";
 
 export interface OutputStreamGuardOptions {
   readonly config: ResolvedSafetyGateConfig;
@@ -53,11 +67,17 @@ export function guardOutputStream(
   return (async function* () {
     const channels = new Map<string, BlockChannelState>();
     // Wrapped in a ref so closure writes are visible without CFA narrowing.
-    const stoppedRef: { value: { failure: StreamFailure; preventedChars: number } | null } = { value: null };
+    const stoppedRef: {
+      value: { failure: StreamFailure; preventedChars: number } | null;
+    } = { value: null };
 
-    const keyOf = (channel: OutputChannel, index: number): string => `${channel}:${index}`;
+    const keyOf = (channel: OutputChannel, index: number): string =>
+      `${channel}:${index}`;
 
-    const createState = (channel: OutputChannel, index: number): BlockChannelState => ({
+    const createState = (
+      channel: OutputChannel,
+      index: number,
+    ): BlockChannelState => ({
       channel,
       index,
       quarantine: new ChannelQuarantine({
@@ -75,12 +95,19 @@ export function guardOutputStream(
       tail: new ReleasedTail(config.output.lookbehindChars),
     });
 
-    const stop = (code: SafetyErrorCode, message: string, preventedChars: number): void => {
+    const stop = (
+      code: SafetyErrorCode,
+      message: string,
+      preventedChars: number,
+    ): void => {
       if (stoppedRef.value !== null) return;
       stoppedRef.value = { failure: { message, code }, preventedChars };
     };
 
-    const check = async (state: BlockChannelState, content: string): Promise<SafetyDecision> => {
+    const check = async (
+      state: BlockChannelState,
+      content: string,
+    ): Promise<SafetyDecision> => {
       const result = await pipeline.run({
         content,
         channel: state.channel,
@@ -94,12 +121,21 @@ export function guardOutputStream(
     };
 
     /** Final-check and flush pending quarantined content. Returns null on block. */
-    const finalizePending = async (state: BlockChannelState): Promise<StreamChunk[] | null> => {
+    const finalizePending = async (
+      state: BlockChannelState,
+    ): Promise<StreamChunk[] | null> => {
       if (!state.quarantine.hasPending) return [];
-      const decision = await check(state, state.quarantine.snapshotText(state.tail.tail()));
+      const decision = await check(
+        state,
+        state.quarantine.snapshotText(state.tail.tail()),
+      );
       state.quarantine.markChecked(Date.now());
       if (decision === "block") {
-        stop(codeFor(state.channel), `blocked ${state.channel} output by safety policy`, state.quarantine.size);
+        stop(
+          codeFor(state.channel),
+          `blocked ${state.channel} output by safety policy`,
+          state.quarantine.size,
+        );
         return null;
       }
       return collectFlush(state);
@@ -108,7 +144,8 @@ export function guardOutputStream(
     const collectFlush = (state: BlockChannelState): StreamChunk[] => {
       const flushed = state.quarantine.flush();
       const chunks: StreamChunk[] = [];
-      if (flushed.blockStart !== null) chunks.push(flushed.blockStart as StreamChunk);
+      if (flushed.blockStart !== null)
+        chunks.push(flushed.blockStart as StreamChunk);
       for (const text of flushed.texts) {
         // The lookbehind tail must cover every released char, not just the
         // newest chunk — otherwise a phrase split across two release points
@@ -133,7 +170,10 @@ export function guardOutputStream(
       if (stoppedRef.value !== null) break;
 
       if (chunk.type === "block-start") {
-        if (isGuardedBlockType(chunk.blockType) && config.output[channelFor(chunk.blockType)]) {
+        if (
+          isGuardedBlockType(chunk.blockType) &&
+          config.output[channelFor(chunk.blockType)]
+        ) {
           const channel = channelFor(chunk.blockType);
           const state = createState(channel, chunk.index);
           channels.set(keyOf(channel, chunk.index), state);
@@ -149,7 +189,8 @@ export function guardOutputStream(
       }
 
       if (isDeltaChunk(chunk)) {
-        const channel: OutputChannel = chunk.type === "text-delta" ? "text" : "reasoning";
+        const channel: OutputChannel =
+          chunk.type === "text-delta" ? "text" : "reasoning";
         const state = channels.get(keyOf(channel, chunk.index));
         if (state === undefined) {
           yield chunk;
@@ -165,7 +206,11 @@ export function guardOutputStream(
             const decision = await check(state, state.monitor.windowText());
             state.monitor.markChecked(Date.now());
             if (decision === "block" && mode === "interrupt") {
-              stop(codeFor(channel), `blocked ${channel} output by safety policy`, 0);
+              stop(
+                codeFor(channel),
+                `blocked ${channel} output by safety policy`,
+                0,
+              );
               break;
             }
           }
@@ -175,18 +220,29 @@ export function guardOutputStream(
         const verdict = state.quarantine.append(chunk.text, Date.now());
         if (verdict === "overflow") {
           pipeline.metrics.recordBufferOverflow();
-          stop("SAFETY_BUFFER_OVERFLOW", "quarantine buffer overflow; failing closed", state.quarantine.size);
+          stop(
+            "SAFETY_BUFFER_OVERFLOW",
+            "quarantine buffer overflow; failing closed",
+            state.quarantine.size,
+          );
           break;
         }
         if (verdict === "buffer") continue;
 
         state.quarantine.classifierRunning = true;
-        const decision = await check(state, state.quarantine.snapshotText(state.tail.tail()));
+        const decision = await check(
+          state,
+          state.quarantine.snapshotText(state.tail.tail()),
+        );
         state.quarantine.markChecked(Date.now());
         state.quarantine.classifierRunning = false;
 
         if (decision === "block") {
-          stop(codeFor(channel), `blocked ${channel} output by safety policy`, state.quarantine.size);
+          stop(
+            codeFor(channel),
+            `blocked ${channel} output by safety policy`,
+            state.quarantine.size,
+          );
           break;
         }
         for (const flushed of collectFlush(state)) yield flushed;
@@ -201,7 +257,11 @@ export function guardOutputStream(
             const decision = await check(state, state.monitor.windowText());
             state.monitor.markChecked(Date.now());
             if (decision === "block" && mode === "interrupt") {
-              stop(codeFor(state.channel), `blocked ${state.channel} output by safety policy`, 0);
+              stop(
+                codeFor(state.channel),
+                `blocked ${state.channel} output by safety policy`,
+                0,
+              );
               blockedHere = true;
               break;
             }
@@ -228,7 +288,11 @@ export function guardOutputStream(
             const decision = await check(state, state.monitor.windowText());
             state.monitor.markChecked(Date.now());
             if (decision === "block" && mode === "interrupt") {
-              stop(codeFor(state.channel), `blocked ${state.channel} output by safety policy`, 0);
+              stop(
+                codeFor(state.channel),
+                `blocked ${state.channel} output by safety policy`,
+                0,
+              );
               break;
             }
           }
@@ -251,13 +315,19 @@ export function guardOutputStream(
     if (stopped !== null) {
       pipeline.metrics.recordQuarantinedChars(stopped.preventedChars);
       pipeline.metrics.recordPreventedOutput(stopped.preventedChars);
-      cancelTurn(options.agentLookup, options.sessionId, `Blocked by dsh-model-safety-gate: ${stopped.failure.code}`);
+      cancelTurn(
+        options.agentLookup,
+        options.sessionId,
+        `Blocked by dsh-model-safety-gate: ${stopped.failure.code}`,
+      );
       yield blockedFinish(stopped.failure);
     }
   })();
 }
 
-function isGuardedBlockType(blockType: unknown): blockType is "text" | "reasoning" {
+function isGuardedBlockType(
+  blockType: unknown,
+): blockType is "text" | "reasoning" {
   return blockType === "text" || blockType === "reasoning";
 }
 
@@ -265,10 +335,18 @@ function channelFor(blockType: "text" | "reasoning"): OutputChannel {
   return blockType;
 }
 
-function makeDelta(channel: OutputChannel, index: number, text: string): DeltaChunk {
-  return channel === "text" ? { type: "text-delta", index, text } : { type: "reasoning-delta", index, text };
+function makeDelta(
+  channel: OutputChannel,
+  index: number,
+  text: string,
+): DeltaChunk {
+  return channel === "text"
+    ? { type: "text-delta", index, text }
+    : { type: "reasoning-delta", index, text };
 }
 
 function codeFor(channel: OutputChannel): SafetyErrorCode {
-  return channel === "reasoning" ? "SAFETY_REASONING_BLOCKED" : "SAFETY_OUTPUT_BLOCKED";
+  return channel === "reasoning"
+    ? "SAFETY_REASONING_BLOCKED"
+    : "SAFETY_OUTPUT_BLOCKED";
 }

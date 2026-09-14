@@ -1,4 +1,4 @@
-import { PLUGIN_CARD_SHELL_CSS } from '@yadsh/dsh-plugin-kit/client'
+import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .pf-body,.pf-body *{box-sizing:border-box}
@@ -15,4 +15,4 @@ export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .pf-advanced{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:0 12px}.pf-advanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600}.pf-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
 .pf-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}.pf-table{width:100%;border-collapse:collapse;font-size:11px;min-width:720px}.pf-table th{text-align:left;color:var(--dsw-alias-label-tertiary);font-weight:600;background:var(--dsw-alias-bg-module-platform);padding:8px 10px}.pf-table td{padding:9px 10px;border-top:1px solid var(--dsw-alias-border-l2);vertical-align:top}.pf-section-name{display:flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.pf-new,.pf-warn{font-family:inherit;font-size:8px;font-weight:800;border-radius:4px;padding:2px 4px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-brand-primary)}.pf-warn{color:var(--dsw-alias-label-secondary)}.pf-actions{display:flex;gap:4px}.pf-preview{margin-top:5px;max-width:360px;white-space:pre-wrap;color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:1.4}.pf-empty{padding:22px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12px}.pf-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px}.pf-footer-note{font-size:10px;color:var(--dsw-alias-label-tertiary)}
 @media(max-width:720px){.pf-grid{grid-template-columns:1fr}.pf-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-editor{grid-template-columns:1fr 1fr}.pf-editor input{grid-column:1/-1}.pf-rule{grid-template-columns:minmax(0,1fr) 58px auto}.pf-rule .pf-kind{display:none}}
-`
+`;

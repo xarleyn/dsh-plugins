@@ -58,12 +58,10 @@ export class SleevIntegrationService extends Service {
       console: "trace",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
-    ctx.effect(
-      () => async () => this.logger.close(),
-      "dsh-sleev.logger",
-    );
-    this.telemetry = new CallTelemetryStore(this.logger.child("telemetry"), () =>
-      resolveConfig(configSource()),
+    ctx.effect(() => async () => this.logger.close(), "dsh-sleev.logger");
+    this.telemetry = new CallTelemetryStore(
+      this.logger.child("telemetry"),
+      () => resolveConfig(configSource()),
     );
 
     ctx.inject(["settings"], (settingsCtx) => {

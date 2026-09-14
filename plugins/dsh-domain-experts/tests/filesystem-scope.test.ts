@@ -2,7 +2,10 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { resolveAllWithinRoot, resolveWithinRoot } from "../src/host/scopes/filesystem.js";
+import {
+  resolveAllWithinRoot,
+  resolveWithinRoot,
+} from "../src/host/scopes/filesystem.js";
 
 /**
  * Real-path containment (design §41: symlink and path escapes).
@@ -17,7 +20,10 @@ let root = "";
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "dsh-domain-experts-scope-"));
   await mkdir(join(root, "services", "payments"), { recursive: true });
-  await writeFile(join(root, "services", "payments", "handler.ts"), "export {};\n");
+  await writeFile(
+    join(root, "services", "payments", "handler.ts"),
+    "export {};\n",
+  );
 });
 
 afterAll(async () => {
@@ -48,7 +54,10 @@ describe("resolveWithinRoot", () => {
       ok: false,
       reason: "absolute",
     });
-    expect(resolveWithinRoot(root, "   ")).toMatchObject({ ok: false, reason: "empty" });
+    expect(resolveWithinRoot(root, "   ")).toMatchObject({
+      ok: false,
+      reason: "empty",
+    });
     expect(resolveWithinRoot("", "services/payments")).toMatchObject({
       ok: false,
       reason: "no-root",
@@ -56,7 +65,9 @@ describe("resolveWithinRoot", () => {
   });
 
   it("refuses a symlinked directory that escapes the root", async () => {
-    const outside = await mkdtemp(join(tmpdir(), "dsh-domain-experts-outside-"));
+    const outside = await mkdtemp(
+      join(tmpdir(), "dsh-domain-experts-outside-"),
+    );
     try {
       await writeFile(join(outside, "secret.txt"), "not yours\n");
       const link = join(root, "escape-link");

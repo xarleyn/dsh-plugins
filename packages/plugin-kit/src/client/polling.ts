@@ -30,7 +30,10 @@ export function startVisibilityAwarePolling(
 
   refreshWhenVisible();
   const timer = pollingWindow.setInterval(refreshWhenVisible, intervalMs);
-  visibilityDocument.addEventListener("visibilitychange", handleVisibilityChange);
+  visibilityDocument.addEventListener(
+    "visibilitychange",
+    handleVisibilityChange,
+  );
 
   return () => {
     pollingWindow.clearInterval(timer);

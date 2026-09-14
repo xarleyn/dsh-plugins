@@ -26,20 +26,39 @@ function fail(message) {
 function npm(args, cwd) {
   // Prefer the npm CLI shipped next to the running Node: no shell involved,
   // so arguments and output stay exact on every platform.
-  const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  const npmCli = join(
+    dirname(process.execPath),
+    "node_modules",
+    "npm",
+    "bin",
+    "npm-cli.js",
+  );
   const hasCli = existsSync(npmCli);
   const result = hasCli
-    ? spawnSync(process.execPath, [npmCli, ...args], { cwd, stdio: "pipe", encoding: "utf8" })
-    : spawnSync("npm", args, { cwd, shell: process.platform === "win32", stdio: "pipe", encoding: "utf8" });
+    ? spawnSync(process.execPath, [npmCli, ...args], {
+        cwd,
+        stdio: "pipe",
+        encoding: "utf8",
+      })
+    : spawnSync("npm", args, {
+        cwd,
+        shell: process.platform === "win32",
+        stdio: "pipe",
+        encoding: "utf8",
+      });
   if (result.status !== 0) {
-    fail(`npm ${args.join(" ")} failed (exit ${result.status})\n${result.stdout ?? ""}\n${result.stderr ?? ""}`);
+    fail(
+      `npm ${args.join(" ")} failed (exit ${result.status})\n${result.stdout ?? ""}\n${result.stderr ?? ""}`,
+    );
   }
   return result.stdout;
 }
 
 const target = process.argv[2];
 if (target === undefined) {
-  fail("usage: node scripts/smoke-packed.mjs <tarball-or-directory> [dependency-tarball...]");
+  fail(
+    "usage: node scripts/smoke-packed.mjs <tarball-or-directory> [dependency-tarball...]",
+  );
 }
 const dependencyTarballs = process.argv.slice(3).map((entry) => resolve(entry));
 const statTarget = await stat(target).catch(() => undefined);
@@ -47,9 +66,12 @@ if (statTarget === undefined) fail(`no such file or directory: ${target}`);
 
 let tarball;
 if (statTarget.isDirectory()) {
-  const candidates = (await readdir(target)).filter((name) => name.endsWith(".tgz"));
+  const candidates = (await readdir(target)).filter((name) =>
+    name.endsWith(".tgz"),
+  );
   if (candidates.length === 0) fail(`no .tgz artifact in ${target}`);
-  if (candidates.length > 1) fail(`ambiguous artifact directory: ${candidates.join(", ")}`);
+  if (candidates.length > 1)
+    fail(`ambiguous artifact directory: ${candidates.join(", ")}`);
   tarball = join(resolve(target), candidates[0]);
 } else {
   if (!target.endsWith(".tgz")) fail(`not a tarball: ${target}`);
@@ -81,10 +103,13 @@ try {
     "LICENSE",
   ]) {
     const info = await stat(join(installed, relative)).catch(() => undefined);
-    if (info === undefined || !info.isFile()) fail(`packed package is missing ${relative}`);
+    if (info === undefined || !info.isFile())
+      fail(`packed package is missing ${relative}`);
   }
 
-  const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
+  const manifest = JSON.parse(
+    await readFile(join(installed, "package.json"), "utf8"),
+  );
   if (manifest.exports?.["./package.json"] !== "./package.json") {
     fail("packed package must export ./package.json canonically");
   }
@@ -104,10 +129,14 @@ try {
   // 3. The ESM entry imports and exposes the plugin contract.
   const entry = join(installed, "lib", "index.js");
   const probe = `const plugin = await import(${JSON.stringify(pathToFileURL(entry).href)}); if (plugin.name !== ${JSON.stringify("doc-impact")}) throw new Error("unexpected plugin name: " + plugin.name); if (!Array.isArray(plugin.inject) || !plugin.inject.includes("tools")) throw new Error("plugin inject must include tools"); if (typeof plugin.apply !== "function") throw new Error("plugin.apply is not a function"); console.log("smoke-packed: entry OK (" + plugin.name + ")");`;
-  const check = spawnSync(process.execPath, ["--input-type=module", "-e", probe], {
-    cwd: root,
-    encoding: "utf8",
-  });
+  const check = spawnSync(
+    process.execPath,
+    ["--input-type=module", "-e", probe],
+    {
+      cwd: root,
+      encoding: "utf8",
+    },
+  );
   if (check.status !== 0) {
     fail(`entry import failed\n${check.stdout ?? ""}\n${check.stderr ?? ""}`);
   }

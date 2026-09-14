@@ -32,9 +32,14 @@ describe("session scope process lifecycle", () => {
     const activity = new SessionScopeProcessActivity();
     const { owner } = ownerFixture();
     let release!: () => void;
-    const pending = activity.run(owner, "bash", () => new Promise<void>((resolve) => {
-      release = resolve;
-    }));
+    const pending = activity.run(
+      owner,
+      "bash",
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
 
     expect(activity.hasActive(owner)).toBe(true);
     release();
@@ -45,7 +50,8 @@ describe("session scope process lifecycle", () => {
   test("recognizes only live shell-backed jobs", () => {
     const activity = new SessionScopeProcessActivity();
     const { owner } = ownerFixture();
-    const list = vi.fn()
+    const list = vi
+      .fn()
       .mockReturnValueOnce([{ kind: "bash", status: "running" }])
       .mockReturnValueOnce([{ kind: "pty-send", status: "stopping" }])
       .mockReturnValueOnce([{ kind: "bash", status: "completed" }])
@@ -60,9 +66,15 @@ describe("session scope process lifecycle", () => {
   test("fails closed if a lifecycle service cannot report its state", () => {
     const activity = new SessionScopeProcessActivity();
     const { owner } = ownerFixture();
-    expect(activity.hasActive(owner, {
-      jobs: { list: () => { throw new Error("registry unavailable"); } },
-    })).toBe(true);
+    expect(
+      activity.hasActive(owner, {
+        jobs: {
+          list: () => {
+            throw new Error("registry unavailable");
+          },
+        },
+      }),
+    ).toBe(true);
   });
 
   test("direct session events cannot bypass an active process fence", () => {
@@ -71,12 +83,22 @@ describe("session scope process lifecycle", () => {
     const jobs = { list: vi.fn(() => [{ kind: "bash", status: "running" }]) };
     activity.ensureFence(owner, { jobs });
 
-    expect(() => dispatch("emit", "session/event", [owner.session, {
-      type: "session-scope/set",
-    }])).toThrow(SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE);
-    expect(() => dispatch("emit", "session/event", [{}, {
-      type: "session-scope/set",
-    }])).not.toThrow();
+    expect(() =>
+      dispatch("emit", "session/event", [
+        owner.session,
+        {
+          type: "session-scope/set",
+        },
+      ]),
+    ).toThrow(SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE);
+    expect(() =>
+      dispatch("emit", "session/event", [
+        {},
+        {
+          type: "session-scope/set",
+        },
+      ]),
+    ).not.toThrow();
   });
 
   test("a process fence observes service updates without duplicate listeners", () => {
@@ -85,14 +107,26 @@ describe("session scope process lifecycle", () => {
     let dispatch: ((...args: any[]) => unknown) | undefined;
     const owner: ScopeProcessOwner = {
       session: {},
-      ctx: { on(_event, listener) { registrations += 1; dispatch = listener; } },
+      ctx: {
+        on(_event, listener) {
+          registrations += 1;
+          dispatch = listener;
+        },
+      },
     };
     activity.ensureFence(owner, { jobs: { list: () => [] } });
-    activity.ensureFence(owner, { terminals: { hasOwnerActivity: () => true } });
+    activity.ensureFence(owner, {
+      terminals: { hasOwnerActivity: () => true },
+    });
 
     expect(registrations).toBe(1);
-    expect(() => dispatch?.("emit", "session/event", [owner.session, {
-      type: "session-scope/set",
-    }])).toThrow(SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE);
+    expect(() =>
+      dispatch?.("emit", "session/event", [
+        owner.session,
+        {
+          type: "session-scope/set",
+        },
+      ]),
+    ).toThrow(SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE);
   });
 });

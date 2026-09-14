@@ -30,16 +30,24 @@ describe("session scope read RPC", () => {
     const visible = join(workspace, "visible");
     const outside = temporaryWorkspace();
     mkdirSync(visible);
-    const session: ScopeSession = { header: { cwd: workspace }, snapshotEvents: () => [], append: vi.fn() };
+    const session: ScopeSession = {
+      header: { cwd: workspace },
+      snapshotEvents: () => [],
+      append: vi.fn(),
+    };
     const ctx = new Context();
-    ctx.provide("sessions", { get: (id: string) => id === "session" ? session : undefined });
+    ctx.provide("sessions", {
+      get: (id: string) => (id === "session" ? session : undefined),
+    });
     const service = new SessionScopeReadService(ctx, workspace);
 
     expect(service.typertRemote).toMatchObject({
       serviceKey: "sessionScopeRead",
       namespace: "sessionScope",
     });
-    expect(remoteMethods(service)).toEqual([{ method: "list", invocation: { kind: "direct" } }]);
+    expect(remoteMethods(service)).toEqual([
+      { method: "list", invocation: { kind: "direct" } },
+    ]);
     await expect(service.list("session", workspace)).resolves.toMatchObject({
       entries: [expect.objectContaining({ name: "visible" })],
     });

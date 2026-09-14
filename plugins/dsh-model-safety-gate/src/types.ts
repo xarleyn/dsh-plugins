@@ -10,7 +10,11 @@
 // Type-only, so the public contract module keeps no runtime dependency on the
 // configuration surface; it is also the module the browser card imports its
 // wire types from.
-import type { ClassifierBackend, GateMode, ResolvedSafetyGateConfig } from "./config.js";
+import type {
+  ClassifierBackend,
+  GateMode,
+  ResolvedSafetyGateConfig,
+} from "./config.js";
 import type { SafetyMetricsSnapshot } from "./audit/metrics.js";
 
 /** Verdict schema version. Bumped on incompatible changes to `SafetyVerdict`. */
@@ -88,7 +92,8 @@ export interface SafetyVerdict {
  * Which stream of content a check ran against. Reasoning and visible answer
  * carry separate policies (SPEC §10, §14).
  */
-export type ContentChannel = "input" | "text" | "reasoning" | "tool" | "tool-result";
+export type ContentChannel =
+  "input" | "text" | "reasoning" | "tool" | "tool-result";
 
 /** Deterministic L0 finding for a single matched rule. */
 export interface ScanFinding {
@@ -145,7 +150,9 @@ const SAFETY_ERROR_CODES: ReadonlySet<string> = new Set<string>([
  * Narrow a raw code to the stable union. Classifier failures arrive as plain
  * strings from a transport, and audit records may only carry a declared code.
  */
-export function isSafetyErrorCode(code: string | undefined): code is SafetyErrorCode {
+export function isSafetyErrorCode(
+  code: string | undefined,
+): code is SafetyErrorCode {
   return code !== undefined && SAFETY_ERROR_CODES.has(code);
 }
 
@@ -153,7 +160,11 @@ export function isSafetyErrorCode(code: string | undefined): code is SafetyError
 export class SafetyGateError extends Error {
   readonly code: SafetyErrorCode;
 
-  constructor(code: SafetyErrorCode, message: string, options?: { cause?: unknown }) {
+  constructor(
+    code: SafetyErrorCode,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
     super(message, options as ErrorOptions | undefined);
     this.name = "SafetyGateError";
     this.code = code;
@@ -233,4 +244,3 @@ export interface SafetyGateInspect {
   /** Epoch milliseconds the gate was constructed at. */
   readonly startedAt: number;
 }
-

@@ -32,7 +32,9 @@ export interface KvPersistCounters {
   saveDurationMs: number;
 }
 
-type MutableCounters = { -readonly [K in keyof KvPersistCounters]: KvPersistCounters[K] };
+type MutableCounters = {
+  -readonly [K in keyof KvPersistCounters]: KvPersistCounters[K];
+};
 
 export class KvPersistMetrics {
   readonly #counters: MutableCounters = {

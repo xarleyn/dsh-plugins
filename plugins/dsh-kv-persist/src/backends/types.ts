@@ -52,7 +52,11 @@ export interface KvPersistenceBackend {
    * Persist slot KV state into a server-side snapshot file.
    * `snapshotKey` is the opaque plugin-generated filename (SPEC §16, §44).
    */
-  saveSlot(slotId: number, snapshotKey: string, signal?: AbortSignal): Promise<BackendSaveResult>;
+  saveSlot(
+    slotId: number,
+    snapshotKey: string,
+    signal?: AbortSignal,
+  ): Promise<BackendSaveResult>;
 
   /** Load a snapshot back into the slot. */
   restoreSlot(
@@ -64,5 +68,3 @@ export interface KvPersistenceBackend {
   /** Clear the slot KV state. */
   eraseSlot(slotId: number, signal?: AbortSignal): Promise<BackendEraseResult>;
 }
-
-

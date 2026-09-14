@@ -28,7 +28,8 @@ export function createHostLoggerSink(
 ): PluginConsoleSink {
   return (level: ConsoleLevel, message: string): void => {
     if (level === "trace" || level === "debug") {
-      if (options.verboseToInfo !== true && typeof host.debug === "function") host.debug(message);
+      if (options.verboseToInfo !== true && typeof host.debug === "function")
+        host.debug(message);
       else host.info(message);
     } else if (level === "info") {
       host.info(message);

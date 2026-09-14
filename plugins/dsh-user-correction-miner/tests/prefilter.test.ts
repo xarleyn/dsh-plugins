@@ -13,9 +13,12 @@ describe("prefilterCorrection", () => {
     expect(prefilterCorrection(text).matched).toBe(true);
   });
 
-  it.each(["Спасибо!", "Готово", "Looks good to me."])("rejects ordinary text: %s", (text) => {
-    expect(prefilterCorrection(text).matched).toBe(false);
-  });
+  it.each(["Спасибо!", "Готово", "Looks good to me."])(
+    "rejects ordinary text: %s",
+    (text) => {
+      expect(prefilterCorrection(text).matched).toBe(false);
+    },
+  );
 
   it("marks explicit temporary language without deciding durability", () => {
     expect(prefilterCorrection("Не запускай сейчас тесты.")).toMatchObject({

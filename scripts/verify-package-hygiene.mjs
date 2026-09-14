@@ -15,7 +15,8 @@ const STANDARD_TYPES_LAYOUTS = new Set([
   "./lib/types/index.d.ts",
 ]);
 
-const CANONICAL_REPOSITORY_URL = "git+https://github.com/xarleyn/dsh-plugins.git";
+const CANONICAL_REPOSITORY_URL =
+  "git+https://github.com/xarleyn/dsh-plugins.git";
 const CANONICAL_BUGS_URL = "https://github.com/xarleyn/dsh-plugins/issues";
 const HOMEPAGE_PREFIX = "https://github.com/xarleyn/dsh-plugins/tree/main";
 const BLOB_PREFIX = "https://github.com/xarleyn/dsh-plugins/blob/main";
@@ -75,7 +76,7 @@ export function validatePublishablePlugin(directory) {
       ? rootExport.types
       : undefined;
   if (manifest.types !== exportedTypes) {
-    errors.push("package types must match exports[\".\"].types");
+    errors.push('package types must match exports["."].types');
   }
 
   if (!STANDARD_TYPES_LAYOUTS.has(manifest.types)) {
@@ -154,9 +155,11 @@ export function matchesFilesEntry(entry, target) {
 
 /** True when the published tarball carries the given relative path. */
 export function isPublishedFile(files, target) {
-  if (ALWAYS_SHIPPED.some((rule) =>
-    typeof rule === "string" ? rule === target : rule.test(target),
-  )) {
+  if (
+    ALWAYS_SHIPPED.some((rule) =>
+      typeof rule === "string" ? rule === target : rule.test(target),
+    )
+  ) {
     return true;
   }
   return files.some((entry) => matchesFilesEntry(entry, target));
@@ -258,7 +261,10 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
 
   const relative = toPosixPath(path.relative(repoRoot, directory));
   const repository = manifest.repository;
-  if (repository?.type !== "git" || repository?.url !== CANONICAL_REPOSITORY_URL) {
+  if (
+    repository?.type !== "git" ||
+    repository?.url !== CANONICAL_REPOSITORY_URL
+  ) {
     errors.push(
       `repository must be { type: "git", url: "${CANONICAL_REPOSITORY_URL}", directory: "${relative}" }`,
     );
@@ -302,7 +308,10 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
     }
   }
 
-  if (typeof manifest.name !== "string" || !manifest.name.startsWith("@yadsh/")) {
+  if (
+    typeof manifest.name !== "string" ||
+    !manifest.name.startsWith("@yadsh/")
+  ) {
     errors.push(
       'name must stay inside the "@yadsh/" scope so the documented install command resolves',
     );
@@ -342,7 +351,9 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
   }
 
   if (failures.length > 0) {
-    throw new Error(`publishable plugin hygiene failed:\n- ${failures.join("\n- ")}`);
+    throw new Error(
+      `publishable plugin hygiene failed:\n- ${failures.join("\n- ")}`,
+    );
   }
   return verified;
 }
@@ -412,7 +423,12 @@ export function validateVersionPlan(fileName, content, knownProjects) {
     }
   }
 
-  if (lines.slice(closingFence + 1).join("\n").trim() === "") {
+  if (
+    lines
+      .slice(closingFence + 1)
+      .join("\n")
+      .trim() === ""
+  ) {
     errors.push(
       `${fileName}: add a changelog message after the front matter; nx rejects a plan without one`,
     );
@@ -460,7 +476,11 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   } else {
     const verified = verifyPublishablePlugins();
     const plans = verifyVersionPlans(process.cwd());
-    process.stdout.write(`package hygiene: verified ${verified} publishable plugins\n`);
-    process.stdout.write(`package hygiene: verified ${plans} version plan file(s)\n`);
+    process.stdout.write(
+      `package hygiene: verified ${verified} publishable plugins\n`,
+    );
+    process.stdout.write(
+      `package hygiene: verified ${plans} version plan file(s)\n`,
+    );
   }
 }

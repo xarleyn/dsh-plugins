@@ -1,7 +1,8 @@
 import type { SessionScopeEventData } from "../src/session-scope.js";
 import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 
-const asEvent = (event: SessionScopeEventData): Record<string, unknown> => event as unknown as Record<string, unknown>;
+const asEvent = (event: SessionScopeEventData): Record<string, unknown> =>
+  event as unknown as Record<string, unknown>;
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -21,7 +22,9 @@ import {
 const temporaryDirectories: string[] = [];
 
 function temporaryWorkspace(): string {
-  const workspace = mkdtempSync(join(tmpdir(), "dsh-session-scope-delegation-"));
+  const workspace = mkdtempSync(
+    join(tmpdir(), "dsh-session-scope-delegation-"),
+  );
   temporaryDirectories.push(workspace);
   return workspace;
 }
@@ -30,7 +33,9 @@ function session(
   header: DelegatedScopeSession["header"],
   events: readonly SessionEvent[] = [],
 ): DelegatedScopeSession {
-  const log = events.map((event) => event as { type: string; data: Record<string, unknown> });
+  const log = events.map(
+    (event) => event as { type: string; data: Record<string, unknown> },
+  );
   return {
     header,
     snapshotEvents: () => log,
@@ -51,9 +56,14 @@ describe("delegated session scope", () => {
     const workspace = temporaryWorkspace();
     const selected = join(workspace, "selected");
     mkdirSync(selected);
-    const parent = session({ id: "parent", cwd: workspace }, [{
-      type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     }]);
+    const parent = session({ id: "parent", cwd: workspace }, [
+      {
+        type: "session-scope/set",
+        data: asEvent(
+          createSessionScopeEvent("focused", [selected], workspace, "ui"),
+        ),
+      },
+    ]);
     const child = session({
       id: "child",
       cwd: workspace,
@@ -66,7 +76,9 @@ describe("delegated session scope", () => {
       roots: [canonicalPath(selected)],
       source: "delegation",
     });
-    expect(effectiveSessionScope(child.snapshotEvents(), child.header)).toMatchObject({
+    expect(
+      effectiveSessionScope(child.snapshotEvents(), child.header),
+    ).toMatchObject({
       mode: "focused",
       roots: [canonicalPath(selected)],
     });
@@ -78,42 +90,59 @@ describe("delegated session scope", () => {
     mkdirSync(selected);
     const focused = {
       type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     };
-    const parent = session({ id: "parent", cwd: workspace }, [{
-      type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("full", [], workspace, "ui")),
-    }]);
-    const child = session({
-      id: "child",
-      cwd: workspace,
-      parentSession: "parent",
-      origin: "subagent",
-      seedLength: 1,
-    }, [focused]);
+      data: asEvent(
+        createSessionScopeEvent("focused", [selected], workspace, "ui"),
+      ),
+    };
+    const parent = session({ id: "parent", cwd: workspace }, [
+      {
+        type: "session-scope/set",
+        data: asEvent(createSessionScopeEvent("full", [], workspace, "ui")),
+      },
+    ]);
+    const child = session(
+      {
+        id: "child",
+        cwd: workspace,
+        parentSession: "parent",
+        origin: "subagent",
+        seedLength: 1,
+      },
+      [focused],
+    );
 
     expect(initializeDelegatedSessionScope(child, () => parent)).toMatchObject({
       mode: "focused",
       roots: [canonicalPath(selected)],
     });
-    expect(child.snapshotEvents().at(-1)?.data).toMatchObject({ source: "delegation" });
+    expect(child.snapshotEvents().at(-1)?.data).toMatchObject({
+      source: "delegation",
+    });
   });
 
   test("resumed children keep their durable child-owned snapshot", () => {
     const workspace = temporaryWorkspace();
     const delegated = {
       type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("focused", [], workspace, "delegation")),
+      data: asEvent(
+        createSessionScopeEvent("focused", [], workspace, "delegation"),
+      ),
     };
-    const child = session({
-      id: "child",
-      cwd: workspace,
-      parentSession: "offline-parent",
-      origin: "subagent",
-      seedLength: 0,
-    }, [delegated]);
+    const child = session(
+      {
+        id: "child",
+        cwd: workspace,
+        parentSession: "offline-parent",
+        origin: "subagent",
+        seedLength: 0,
+      },
+      [delegated],
+    );
     const resolveParent = vi.fn();
 
-    expect(initializeDelegatedSessionScope(child, resolveParent)).toBeUndefined();
+    expect(
+      initializeDelegatedSessionScope(child, resolveParent),
+    ).toBeUndefined();
     expect(resolveParent).not.toHaveBeenCalled();
     expect(child.snapshotEvents()).toHaveLength(1);
   });
@@ -127,7 +156,9 @@ describe("delegated session scope", () => {
       origin: "subagent",
     });
 
-    expect(() => initializeDelegatedSessionScope(child, () => undefined)).toThrowError(
+    expect(() =>
+      initializeDelegatedSessionScope(child, () => undefined),
+    ).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.PARENT_UNAVAILABLE }),
     );
     expect(child.snapshotEvents()).toHaveLength(0);
@@ -137,15 +168,27 @@ describe("delegated session scope", () => {
     const workspace = temporaryWorkspace();
     const selected = join(workspace, "selected");
     mkdirSync(selected);
-    const parent = session({
-      id: "parent-child",
-      cwd: workspace,
-      parentSession: "root",
-      origin: "subagent",
-    }, [{
-      type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "delegation")),
-    }]);
+    const parent = session(
+      {
+        id: "parent-child",
+        cwd: workspace,
+        parentSession: "root",
+        origin: "subagent",
+      },
+      [
+        {
+          type: "session-scope/set",
+          data: asEvent(
+            createSessionScopeEvent(
+              "focused",
+              [selected],
+              workspace,
+              "delegation",
+            ),
+          ),
+        },
+      ],
+    );
     const child = session({
       id: "nested",
       cwd: workspace,
@@ -154,23 +197,37 @@ describe("delegated session scope", () => {
     });
 
     initializeDelegatedSessionScope(child, () => parent);
-    expect(effectiveSessionScope(child.snapshotEvents(), child.header).roots).toEqual([canonicalPath(selected)]);
+    expect(
+      effectiveSessionScope(child.snapshotEvents(), child.header).roots,
+    ).toEqual([canonicalPath(selected)]);
   });
 
   test("ordinary session forks retain scope through their copied event prefix", () => {
     const workspace = temporaryWorkspace();
     const selected = join(workspace, "selected");
     mkdirSync(selected);
-    const fork = session({
-      id: "fork",
-      cwd: workspace,
-      parentSession: "parent",
-      seedLength: 1,
-    }, [{
-      type: "session-scope/set",
-      data: asEvent(createSessionScopeEvent("focused", [selected], workspace, "ui"))     }]);
+    const fork = session(
+      {
+        id: "fork",
+        cwd: workspace,
+        parentSession: "parent",
+        seedLength: 1,
+      },
+      [
+        {
+          type: "session-scope/set",
+          data: asEvent(
+            createSessionScopeEvent("focused", [selected], workspace, "ui"),
+          ),
+        },
+      ],
+    );
 
-    expect(initializeDelegatedSessionScope(fork, () => undefined)).toBeUndefined();
-    expect(effectiveSessionScope(fork.snapshotEvents(), fork.header).roots).toEqual([canonicalPath(selected)]);
+    expect(
+      initializeDelegatedSessionScope(fork, () => undefined),
+    ).toBeUndefined();
+    expect(
+      effectiveSessionScope(fork.snapshotEvents(), fork.header).roots,
+    ).toEqual([canonicalPath(selected)]);
   });
 });

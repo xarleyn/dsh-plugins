@@ -8,9 +8,9 @@
  * limits. Every field is documented — this is the deployment contract.
  */
 
-import path from 'node:path';
+import path from "node:path";
 
-import z from '@deepseek-ai/schemastery';
+import z from "@deepseek-ai/schemastery";
 
 /** Raw user-facing configuration. */
 export interface GitReadonlyConfig {
@@ -56,7 +56,7 @@ export interface ResolvedGitReadonlyConfig {
 
 export const GIT_READONLY_DEFAULTS: ResolvedGitReadonlyConfig = {
   enabled: true,
-  gitPath: 'git',
+  gitPath: "git",
   repositoryRoots: [],
   timeoutMs: 15_000,
   historyDefaultLimit: 20,
@@ -65,76 +65,99 @@ export const GIT_READONLY_DEFAULTS: ResolvedGitReadonlyConfig = {
   patchBytes: 200_000,
 };
 
-function clampInteger(value: number | undefined, min: number, max: number, fallback: number): number {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+function clampInteger(
+  value: number | undefined,
+  min: number,
+  max: number,
+  fallback: number,
+): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(value)));
 }
 
 export const GitReadonlyConfigSchema: z<GitReadonlyConfig> = z
   .object({
-    enabled: z.boolean().default(true).description('Register the read-only git tools.'),
+    enabled: z
+      .boolean()
+      .default(true)
+      .description("Register the read-only git tools."),
     gitPath: z
       .string()
-      .default('git')
-      .description('Git executable used for the read-only inspections.'),
+      .default("git")
+      .description("Git executable used for the read-only inspections."),
     repositoryRoots: z
       .array(z.string())
       .default([])
       .description(
-        'Absolute directory roots that tools may select with the repository argument.',
+        "Absolute directory roots that tools may select with the repository argument.",
       ),
     timeoutMs: z
       .number()
       .default(GIT_READONLY_DEFAULTS.timeoutMs)
-      .description('Wall-clock budget per git invocation in milliseconds (1000-30000).'),
+      .description(
+        "Wall-clock budget per git invocation in milliseconds (1000-30000).",
+      ),
     history: z
       .object({
         defaultLimit: z
           .number()
           .default(GIT_READONLY_DEFAULTS.historyDefaultLimit)
-          .description('History page size when the model omits limit (1-50).'),
+          .description("History page size when the model omits limit (1-50)."),
         maxLimit: z
           .number()
           .default(GIT_READONLY_DEFAULTS.historyMaxLimit)
-          .description('Hard upper bound for one history page (1-200).'),
+          .description("Hard upper bound for one history page (1-200)."),
       })
-      .description('Limits for dsh_git_history.'),
+      .description("Limits for dsh_git_history."),
     blame: z
       .object({
         maxLines: z
           .number()
           .default(GIT_READONLY_DEFAULTS.blameMaxLines)
-          .description('Maximum lines attributed by one dsh_git_blame call (1-1000).'),
+          .description(
+            "Maximum lines attributed by one dsh_git_blame call (1-1000).",
+          ),
       })
-      .description('Limits for dsh_git_blame.'),
+      .description("Limits for dsh_git_blame."),
     patchBytes: z
       .number()
       .default(GIT_READONLY_DEFAULTS.patchBytes)
-      .description('Maximum patch bytes returned by dsh_git_show (4096-1048576).'),
+      .description(
+        "Maximum patch bytes returned by dsh_git_show (4096-1048576).",
+      ),
   })
-  .description('Read-only git provenance tools.');
+  .description("Read-only git provenance tools.");
 
 /** Normalize and clamp raw configuration into the resolved shape. */
-export function resolveGitReadonlyConfig(raw?: GitReadonlyConfig | unknown): ResolvedGitReadonlyConfig {
+export function resolveGitReadonlyConfig(
+  raw?: GitReadonlyConfig | unknown,
+): ResolvedGitReadonlyConfig {
   const config = (raw ?? {}) as GitReadonlyConfig;
   const repositoryRoots = [
     ...new Set(
       (config.repositoryRoots ?? [])
         .map((value) => value.trim())
-        .filter((value) => value !== ''),
+        .filter((value) => value !== ""),
     ),
   ];
   if (repositoryRoots.some((value) => !path.isAbsolute(value))) {
-    throw new TypeError('dsh-git-readonly: repositoryRoots must contain only absolute paths');
+    throw new TypeError(
+      "dsh-git-readonly: repositoryRoots must contain only absolute paths",
+    );
   }
   return {
     enabled: config.enabled ?? GIT_READONLY_DEFAULTS.enabled,
     gitPath:
-      typeof config.gitPath === 'string' && config.gitPath.trim() !== ''
+      typeof config.gitPath === "string" && config.gitPath.trim() !== ""
         ? config.gitPath.trim()
         : GIT_READONLY_DEFAULTS.gitPath,
     repositoryRoots,
-    timeoutMs: clampInteger(config.timeoutMs, 1_000, 30_000, GIT_READONLY_DEFAULTS.timeoutMs),
+    timeoutMs: clampInteger(
+      config.timeoutMs,
+      1_000,
+      30_000,
+      GIT_READONLY_DEFAULTS.timeoutMs,
+    ),
     historyDefaultLimit: clampInteger(
       config.history?.defaultLimit,
       1,
@@ -147,7 +170,17 @@ export function resolveGitReadonlyConfig(raw?: GitReadonlyConfig | unknown): Res
       200,
       GIT_READONLY_DEFAULTS.historyMaxLimit,
     ),
-    blameMaxLines: clampInteger(config.blame?.maxLines, 1, 1_000, GIT_READONLY_DEFAULTS.blameMaxLines),
-    patchBytes: clampInteger(config.patchBytes, 4_096, 1_048_576, GIT_READONLY_DEFAULTS.patchBytes),
+    blameMaxLines: clampInteger(
+      config.blame?.maxLines,
+      1,
+      1_000,
+      GIT_READONLY_DEFAULTS.blameMaxLines,
+    ),
+    patchBytes: clampInteger(
+      config.patchBytes,
+      4_096,
+      1_048_576,
+      GIT_READONLY_DEFAULTS.patchBytes,
+    ),
   };
 }

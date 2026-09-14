@@ -14,7 +14,10 @@ import type { KvPersistenceBackend } from "../backends/types.js";
 import type { ResolvedKvPersistConfig } from "../config.js";
 import { buildSnapshotIdentity } from "../snapshots/fingerprint.js";
 import type { SnapshotIdentity } from "../snapshots/fingerprint.js";
-import { assertPluginGeneratedFilename, snapshotFilename } from "../snapshots/naming.js";
+import {
+  assertPluginGeneratedFilename,
+  snapshotFilename,
+} from "../snapshots/naming.js";
 import type { SnapshotRepository } from "../snapshots/repository.js";
 import type { KvPersistLogger } from "../observability/diagnostics.js";
 import { abbreviateSessionId } from "../observability/diagnostics.js";
@@ -117,7 +120,9 @@ export class SingleSlotCoordinator {
    * the service's lazy generator only once consumption starts; its returned
    * iterable must always be consumed or closed so the lease can be released.
    */
-  async runSessionRequest(input: CoordinatorRequest): Promise<AsyncIterable<StreamChunk>> {
+  async runSessionRequest(
+    input: CoordinatorRequest,
+  ): Promise<AsyncIterable<StreamChunk>> {
     if (input.purpose !== undefined || input.sessionId === null) {
       this.#metrics.counters.auxiliaryRequests += 1;
       return this.#runAuxiliary(input);
@@ -158,7 +163,9 @@ export class SingleSlotCoordinator {
    * cleared, and the auxiliary result never becomes session state
    * (Invariant 7).
    */
-  async #runAuxiliary(input: CoordinatorRequest): Promise<AsyncIterable<StreamChunk>> {
+  async #runAuxiliary(
+    input: CoordinatorRequest,
+  ): Promise<AsyncIterable<StreamChunk>> {
     const release = await this.#mutex.acquire();
     try {
       this.#cancelIdleTimer();
@@ -169,12 +176,17 @@ export class SingleSlotCoordinator {
       }
       const owner = this.#slot.ownerSessionId;
       if (owner !== null) {
-        if (this.#policy.shouldCheckpoint(this.#sessions.get(owner), "switch")) {
+        if (
+          this.#policy.shouldCheckpoint(this.#sessions.get(owner), "switch")
+        ) {
           await this.#saveOwnedSession(owner, "switch");
         }
         this.#slot.ownerSessionId = null;
         this.#slot.state = "idle";
-        this.#logger.debug("kv.session.switch", { sessionId: owner, to: "auxiliary" });
+        this.#logger.debug("kv.session.switch", {
+          sessionId: owner,
+          to: "auxiliary",
+        });
       }
       return this.#execute(input, release);
     } catch (error) {
@@ -188,7 +200,10 @@ export class SingleSlotCoordinator {
    * zero disk I/O (Invariant 6), save-before-evict (Invariant 3), lazy
    * restore of a compatible snapshot, or a safe cold assignment.
    */
-  async #prepareSession(sessionId: string, identity: SnapshotIdentity): Promise<RestoreOutcome> {
+  async #prepareSession(
+    sessionId: string,
+    identity: SnapshotIdentity,
+  ): Promise<RestoreOutcome> {
     const runtime = this.#requireRuntime(sessionId);
 
     // 1. Resident fast path: no save, no restore, no management calls.
@@ -198,7 +213,14 @@ export class SingleSlotCoordinator {
       this.#slot.state !== "unknown"
     ) {
       runtime.lifecycle = isDirty(runtime) ? "active-dirty" : "active-clean";
-      return { kind: "already-active", sessionId, tokens: null, bytes: null, durationMs: null, error: null };
+      return {
+        kind: "already-active",
+        sessionId,
+        tokens: null,
+        bytes: null,
+        durationMs: null,
+        error: null,
+      };
     }
 
     // 2. Save-before-evict (SPEC §52, Invariant 3).
@@ -220,18 +242,35 @@ export class SingleSlotCoordinator {
       runtime.lifecycle = "cold";
       this.#metrics.counters.coldPrefills += 1;
       this.#logger.info("kv.session.cold", { sessionId, slot: this.#slot.id });
-      return { kind: "cold", sessionId, tokens: null, bytes: null, durationMs: null, error: null };
+      return {
+        kind: "cold",
+        sessionId,
+        tokens: null,
+        bytes: null,
+        durationMs: null,
+        error: null,
+      };
     }
 
     // 4. Lazy restore (SPEC §23-§24).
     const startedAt = this.#now();
     this.#slot.state = "restoring";
     runtime.lifecycle = "restoring";
-    this.#logger.debug("kv.session.restore.start", { sessionId, slot: this.#slot.id });
+    this.#logger.debug("kv.session.restore.start", {
+      sessionId,
+      slot: this.#slot.id,
+    });
     try {
       assertPluginGeneratedFilename(manifest.snapshotFilename);
-      const result = await this.#backend.restoreSlot(this.#slot.id, manifest.snapshotFilename);
-      if (this.#config.restore.verify && result.nRestored !== null && result.nRestored <= 0) {
+      const result = await this.#backend.restoreSlot(
+        this.#slot.id,
+        manifest.snapshotFilename,
+      );
+      if (
+        this.#config.restore.verify &&
+        result.nRestored !== null &&
+        result.nRestored <= 0
+      ) {
         throw new KvRestoreFailedError(
           `restore verification failed: server reported n_restored=${String(result.nRestored)} (SPEC §24)`,
         );
@@ -271,10 +310,18 @@ export class SingleSlotCoordinator {
       this.#breaker.recordFailure(this.#now());
       this.#logger.warn("kv.session.restore.failed", {
         sessionId,
-        code: error instanceof KvPersistError ? error.code : "KV_RESTORE_FAILED",
+        code:
+          error instanceof KvPersistError ? error.code : "KV_RESTORE_FAILED",
         error: message,
       });
-      return { kind: "cold-fallback", sessionId, tokens: null, bytes: null, durationMs: null, error: message };
+      return {
+        kind: "cold-fallback",
+        sessionId,
+        tokens: null,
+        bytes: null,
+        durationMs: null,
+        error: message,
+      };
     }
   }
 
@@ -283,7 +330,10 @@ export class SingleSlotCoordinator {
    * and unbuffered; only the terminal state is observed. The slot lease stays
    * held until the stream finishes, fails, or is closed by the consumer.
    */
-  #execute(input: CoordinatorRequest, release: () => void): AsyncIterable<StreamChunk> {
+  #execute(
+    input: CoordinatorRequest,
+    release: () => void,
+  ): AsyncIterable<StreamChunk> {
     const downstream = input.next();
     const sessionId = input.purpose === undefined ? input.sessionId : null;
     const finish = (succeeded: boolean): void => {
@@ -332,13 +382,28 @@ export class SingleSlotCoordinator {
    * a clean session is skipped and an in-flight save for the same
    * generation is awaited rather than duplicated (SPEC §27).
    */
-  async #saveOwnedSession(sessionId: string, trigger: CheckpointTrigger): Promise<SnapshotResult> {
+  async #saveOwnedSession(
+    sessionId: string,
+    trigger: CheckpointTrigger,
+  ): Promise<SnapshotResult> {
     const runtime = this.#sessions.get(sessionId);
     if (runtime === undefined || !isDirty(runtime)) {
-      return { kind: "skipped-clean", sessionId, revision: runtime?.persistedRevision ?? 0, bytes: null, error: null };
+      return {
+        kind: "skipped-clean",
+        sessionId,
+        revision: runtime?.persistedRevision ?? 0,
+        bytes: null,
+        error: null,
+      };
     }
     if (this.#slot.ownerSessionId !== sessionId) {
-      return { kind: "skipped-not-owner", sessionId, revision: runtime.dirtyRevision, bytes: null, error: null };
+      return {
+        kind: "skipped-not-owner",
+        sessionId,
+        revision: runtime.dirtyRevision,
+        bytes: null,
+        error: null,
+      };
     }
     if (runtime.saveInFlight !== null) return runtime.saveInFlight;
 
@@ -352,7 +417,10 @@ export class SingleSlotCoordinator {
     const attempt = (async (): Promise<SnapshotResult> => {
       try {
         assertPluginGeneratedFilename(snapshotFilename(identity));
-        const saved = await this.#backend.saveSlot(this.#slot.id, snapshotFilename(identity));
+        const saved = await this.#backend.saveSlot(
+          this.#slot.id,
+          snapshotFilename(identity),
+        );
         await this.#repository.put({
           identity,
           slotId: this.#slot.id,
@@ -373,7 +441,13 @@ export class SingleSlotCoordinator {
           revision: generation,
           durationMs,
         });
-        return { kind: "saved", sessionId, revision: generation, bytes: saved.bytes, error: null };
+        return {
+          kind: "saved",
+          sessionId,
+          revision: generation,
+          bytes: saved.bytes,
+          error: null,
+        };
       } catch (error) {
         // Save failure never fails the session (SPEC §32): stay dirty, log.
         this.#breaker.recordFailure(this.#now());
@@ -387,7 +461,13 @@ export class SingleSlotCoordinator {
           code: error instanceof KvPersistError ? error.code : "KV_SAVE_FAILED",
           error: message,
         });
-        return { kind: "failed", sessionId, revision: generation, bytes: null, error: message };
+        return {
+          kind: "failed",
+          sessionId,
+          revision: generation,
+          bytes: null,
+          error: message,
+        };
       } finally {
         runtime.saveInFlight = null;
       }
@@ -397,10 +477,16 @@ export class SingleSlotCoordinator {
   }
 
   /** Public checkpoint entry for triggers coming from session events. */
-  async checkpoint(sessionId: string, trigger: CheckpointTrigger): Promise<SnapshotResult | null> {
+  async checkpoint(
+    sessionId: string,
+    trigger: CheckpointTrigger,
+  ): Promise<SnapshotResult | null> {
     if (this.#disposed) return null;
     return this.#mutex.runExclusive(async () => {
-      if (!this.#policy.shouldCheckpoint(this.#sessions.get(sessionId), trigger)) return null;
+      if (
+        !this.#policy.shouldCheckpoint(this.#sessions.get(sessionId), trigger)
+      )
+        return null;
       if (this.#breaker.isOpen(this.#now())) return null;
       return this.#saveOwnedSession(sessionId, trigger);
     });
@@ -434,7 +520,8 @@ export class SingleSlotCoordinator {
     await this.#mutex.runExclusive(async () => {
       const owner = this.#slot.ownerSessionId;
       if (owner === null) return;
-      if (!this.#policy.shouldCheckpoint(this.#sessions.get(owner), trigger)) return;
+      if (!this.#policy.shouldCheckpoint(this.#sessions.get(owner), trigger))
+        return;
       if (this.#breaker.isOpen(this.#now())) return;
       await this.#saveOwnedSession(owner, trigger);
     });
@@ -476,10 +563,24 @@ export class SingleSlotCoordinator {
     return this.#mutex.runExclusive(async () => {
       const runtime = this.#sessions.get(sessionId);
       if (runtime === undefined) {
-        return { kind: "cold", sessionId, tokens: null, bytes: null, durationMs: null, error: "no known route for session" };
+        return {
+          kind: "cold",
+          sessionId,
+          tokens: null,
+          bytes: null,
+          durationMs: null,
+          error: "no known route for session",
+        };
       }
       if (this.#breaker.isOpen(this.#now())) {
-        return { kind: "cold-fallback", sessionId, tokens: null, bytes: null, durationMs: null, error: "circuit open" };
+        return {
+          kind: "cold-fallback",
+          sessionId,
+          tokens: null,
+          bytes: null,
+          durationMs: null,
+          error: "circuit open",
+        };
       }
       const identity = this.#identityFor(sessionId, runtime.route);
       return this.#prepareSession(sessionId, identity);
@@ -489,15 +590,26 @@ export class SingleSlotCoordinator {
   /** Explicit save for the service API (SPEC §11 `save`). */
   async saveNow(sessionId: string): Promise<SnapshotResult> {
     return this.#mutex.runExclusive(async () => {
-      if (!this.#policy.shouldCheckpoint(this.#sessions.get(sessionId), "manual")) {
-        return { kind: "skipped-clean", sessionId, revision: 0, bytes: null, error: "nothing to save" };
+      if (
+        !this.#policy.shouldCheckpoint(this.#sessions.get(sessionId), "manual")
+      ) {
+        return {
+          kind: "skipped-clean",
+          sessionId,
+          revision: 0,
+          bytes: null,
+          error: "nothing to save",
+        };
       }
       return this.#saveOwnedSession(sessionId, "manual");
     });
   }
 
   /** Invalidate every snapshot of a session without deleting data (§31). */
-  async invalidate(sessionId: string, reason: SnapshotInvalidationReason = "EXPLICIT"): Promise<void> {
+  async invalidate(
+    sessionId: string,
+    reason: SnapshotInvalidationReason = "EXPLICIT",
+  ): Promise<void> {
     await this.#mutex.runExclusive(async () => {
       const runtime = this.#sessions.get(sessionId);
       if (runtime !== undefined) runtime.lifecycle = "invalid";
@@ -525,11 +637,17 @@ export class SingleSlotCoordinator {
   }
 
   /** Probe the backend (SPEC §34); resets the breaker on success. */
-  async probeBackend(): Promise<{ healthy: boolean; slotIds: readonly number[]; error: string | null }> {
+  async probeBackend(): Promise<{
+    healthy: boolean;
+    slotIds: readonly number[];
+    error: string | null;
+  }> {
     try {
       const capabilities = await this.#backend.probe();
       this.#breaker.recordSuccess();
-      this.#logger.info("kv.backend.ready", { slots: capabilities.slotIds.length });
+      this.#logger.info("kv.backend.ready", {
+        slots: capabilities.slotIds.length,
+      });
       return { healthy: true, slotIds: capabilities.slotIds, error: null };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -547,7 +665,10 @@ export class SingleSlotCoordinator {
 
   // ——— internals ———————————————————————————————————————————————————————
 
-  #ensureRuntime(sessionId: string, route: { provider: string; model: string }): SessionRuntime {
+  #ensureRuntime(
+    sessionId: string,
+    route: { provider: string; model: string },
+  ): SessionRuntime {
     const existing = this.#sessions.get(sessionId);
     if (existing !== undefined) {
       existing.route = { provider: route.provider, model: route.model };
@@ -561,7 +682,10 @@ export class SingleSlotCoordinator {
   #requireRuntime(sessionId: string): SessionRuntime {
     const runtime = this.#sessions.get(sessionId);
     if (runtime === undefined) {
-      throw new KvPersistError("KV_INVARIANT", `missing session runtime for ${abbreviateSessionId(sessionId)}`);
+      throw new KvPersistError(
+        "KV_INVARIANT",
+        `missing session runtime for ${abbreviateSessionId(sessionId)}`,
+      );
     }
     return runtime;
   }

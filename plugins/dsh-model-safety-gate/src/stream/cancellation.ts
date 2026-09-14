@@ -11,13 +11,20 @@
 /** Structural Agent surface used by the guard (testable without Cordis). */
 export interface CancellableAgent {
   readonly id: string | { toString(): string };
-  cancel(cause: { kind: "hook"; reason: string }, options?: { keepInbox?: boolean }): void;
+  cancel(
+    cause: { kind: "hook"; reason: string },
+    options?: { keepInbox?: boolean },
+  ): void;
 }
 
 export type AgentLookup = (sessionId: string) => CancellableAgent | undefined;
 
 /** Cancel the active turn for `sessionId`; returns true when an agent was cancelled. */
-export function cancelTurn(lookup: AgentLookup, sessionId: string | null, reason: string): boolean {
+export function cancelTurn(
+  lookup: AgentLookup,
+  sessionId: string | null,
+  reason: string,
+): boolean {
   if (sessionId === null) return false;
   const agent = lookup(sessionId);
   if (agent === undefined) return false;

@@ -79,7 +79,8 @@ export class ScopeProviderRegistry {
     return () => {
       if (!active) return;
       active = false;
-      if (this.providers.get(provider.id) === provider) this.providers.delete(provider.id);
+      if (this.providers.get(provider.id) === provider)
+        this.providers.delete(provider.id);
     };
   }
 

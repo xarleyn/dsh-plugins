@@ -5,10 +5,7 @@ import {
   scanIconAlignment,
   scanIconSizeConsistency,
 } from "./scanner/alignment.js";
-import {
-  scanOutsideParent,
-  scanTextOverflow,
-} from "./scanner/containment.js";
+import { scanOutsideParent, scanTextOverflow } from "./scanner/containment.js";
 import { scanFlexConstraints } from "./scanner/flex.js";
 import { scanOverflow } from "./scanner/overflow.js";
 import { scanRowAlignment } from "./scanner/rows.js";
@@ -48,9 +45,7 @@ export const DEFAULT_CONFIG: UIRepairConfig = {
   overflowTolerancePx: 1,
 };
 
-function normalizeConfig(
-  input: Partial<UIRepairConfig> = {},
-): UIRepairConfig {
+function normalizeConfig(input: Partial<UIRepairConfig> = {}): UIRepairConfig {
   const autoConfidence = Math.min(
     1,
     Math.max(0, input.autoConfidence ?? DEFAULT_CONFIG.autoConfidence),
@@ -72,19 +67,21 @@ function normalizeConfig(
     ),
     maxElementsPerRoot: Math.max(
       1,
-      Math.floor(
-        input.maxElementsPerRoot ?? DEFAULT_CONFIG.maxElementsPerRoot,
-      ),
+      Math.floor(input.maxElementsPerRoot ?? DEFAULT_CONFIG.maxElementsPerRoot),
     ),
   };
 }
 
 function defaultLogger(): ClientLogger {
   return {
-    debug: (message, details) => console.debug(`[dsh-ui-repair] ${message}`, details),
-    info: (message, details) => console.info(`[dsh-ui-repair] ${message}`, details),
-    warn: (message, details) => console.warn(`[dsh-ui-repair] ${message}`, details),
-    error: (message, details) => console.error(`[dsh-ui-repair] ${message}`, details),
+    debug: (message, details) =>
+      console.debug(`[dsh-ui-repair] ${message}`, details),
+    info: (message, details) =>
+      console.info(`[dsh-ui-repair] ${message}`, details),
+    warn: (message, details) =>
+      console.warn(`[dsh-ui-repair] ${message}`, details),
+    error: (message, details) =>
+      console.error(`[dsh-ui-repair] ${message}`, details),
   };
 }
 
@@ -138,10 +135,7 @@ export class UIRepairRuntime implements UIRepairService {
         config.autoConfidence !== undefined ||
         config.dangerousConfidence !== undefined ||
         config.ignore !== undefined);
-    if (
-      (!this.#config.enabled && previous.enabled) ||
-      autoPolicyChanged
-    ) {
+    if ((!this.#config.enabled && previous.enabled) || autoPolicyChanged) {
       this.rollbackAll();
     }
     if (this.#started) this.#syncObservers();
@@ -262,10 +256,9 @@ export class UIRepairRuntime implements UIRepairService {
     const ignoredSet = new Set(ignored);
     if (this.#config.mode === "auto") {
       for (const candidate of candidates) {
-        const threshold =
-          this.#isRisky(candidate.issue.ruleId)
-            ? this.#config.dangerousConfidence
-            : this.#config.autoConfidence;
+        const threshold = this.#isRisky(candidate.issue.ruleId)
+          ? this.#config.dangerousConfidence
+          : this.#config.autoConfidence;
         if (
           candidate.issue.confidence < threshold ||
           candidate.issue.suggestedCss === undefined ||
@@ -350,14 +343,10 @@ export class UIRepairRuntime implements UIRepairService {
     if (this.#latestReport !== undefined) {
       this.#latestReport = {
         ...this.#latestReport,
-        applied: Array.from(
-          new Set([...this.#latestReport.applied, repairId]),
-        ),
+        applied: Array.from(new Set([...this.#latestReport.applied, repairId])),
         rolledBack:
           outcome === "rolled-back"
-            ? Array.from(
-                new Set([...this.#latestReport.rolledBack, repairId]),
-              )
+            ? Array.from(new Set([...this.#latestReport.rolledBack, repairId]))
             : this.#latestReport.rolledBack,
       };
     }

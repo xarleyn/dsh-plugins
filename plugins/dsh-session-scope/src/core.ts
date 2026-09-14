@@ -111,12 +111,20 @@ export function canonicalPath(path: string): string {
  * @param workspace - the recorded workspace membership marker.
  * @returns the normalized full selection (workspace root included iff writable).
  */
-export function normalizeSelectionRoots(roots: unknown, workspaceRoot: string, workspace: unknown): string[] {
-  const list = Array.isArray(roots) ? roots.filter((root) => typeof root === "string") : [];
+export function normalizeSelectionRoots(
+  roots: unknown,
+  workspaceRoot: string,
+  workspace: unknown,
+): string[] {
+  const list = Array.isArray(roots)
+    ? roots.filter((root) => typeof root === "string")
+    : [];
   if (workspace === false) {
     return list.filter((root) => root !== workspaceRoot);
   }
-  return workspaceRoot && !list.includes(workspaceRoot) ? [workspaceRoot, ...list] : list;
+  return workspaceRoot && !list.includes(workspaceRoot)
+    ? [workspaceRoot, ...list]
+    : list;
 }
 
 /**
@@ -137,10 +145,17 @@ export function selectionOf(events: readonly SessionEvent[]): LegacySelection {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
     if (event.type === SELECTION_EVENT) {
-      const workspaceRoot = typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : "";
+      const workspaceRoot =
+        typeof event.data?.workspaceRoot === "string"
+          ? event.data.workspaceRoot
+          : "";
       const workspace = event.data?.workspace !== false;
       return {
-        roots: normalizeSelectionRoots(event.data?.roots, workspaceRoot, workspace),
+        roots: normalizeSelectionRoots(
+          event.data?.roots,
+          workspaceRoot,
+          workspace,
+        ),
         workspace,
         workspaceRoot,
       };
@@ -167,18 +182,31 @@ export function selectedRootsOf(events: readonly SessionEvent[]): string[] {
  * @param canonical - path canonicalizer (defaults to {@link canonicalPath}).
  * @returns the normalized roots.
  */
-export function normalizeRoots(input: unknown, canonical: (path: string) => string = canonicalPath): string[] {
+export function normalizeRoots(
+  input: unknown,
+  canonical: (path: string) => string = canonicalPath,
+): string[] {
   if (!Array.isArray(input)) {
-    throw new Error(`workspace-scope: "set" expects a JSON array of absolute directory paths`);
+    throw new Error(
+      `workspace-scope: "set" expects a JSON array of absolute directory paths`,
+    );
   }
   if (input.length > MAX_ROOTS) {
-    throw new Error(`workspace-scope: at most ${MAX_ROOTS} directories may be selected, got ${input.length}`);
+    throw new Error(
+      `workspace-scope: at most ${MAX_ROOTS} directories may be selected, got ${input.length}`,
+    );
   }
   const seen = new Set();
   const roots = [];
   for (const candidate of input) {
-    if (typeof candidate !== "string" || candidate.trim() === "" || !isAbsolute(candidate)) {
-      throw new Error(`workspace-scope: ${JSON.stringify(candidate)} is not an absolute directory path`);
+    if (
+      typeof candidate !== "string" ||
+      candidate.trim() === "" ||
+      !isAbsolute(candidate)
+    ) {
+      throw new Error(
+        `workspace-scope: ${JSON.stringify(candidate)} is not an absolute directory path`,
+      );
     }
     const resolved = canonical(candidate);
     if (resolved.length === 0 || seen.has(resolved)) continue;
@@ -197,11 +225,17 @@ export function normalizeRoots(input: unknown, canonical: (path: string) => stri
  * @param caseSensitive - whether lexical comparison preserves case.
  * @returns whether the path is the root or a descendant of it.
  */
-export function isLexicallyUnder(path: string, root: string, caseSensitive = process.platform !== "win32"): boolean {
+export function isLexicallyUnder(
+  path: string,
+  root: string,
+  caseSensitive = process.platform !== "win32",
+): boolean {
   const comparableTarget = caseSensitive ? path : path.toLowerCase();
   const comparableRoot = caseSensitive ? root : root.toLowerCase();
   if (comparableTarget === comparableRoot) return true;
-  const prefix = comparableRoot.endsWith(sep) ? comparableRoot : comparableRoot + sep;
+  const prefix = comparableRoot.endsWith(sep)
+    ? comparableRoot
+    : comparableRoot + sep;
   return comparableTarget.startsWith(prefix);
 }
 
@@ -224,7 +258,8 @@ export async function isPathUnder(
   stat?: IdentityStat,
 ): Promise<boolean> {
   if (isLexicallyUnder(path, root, caseSensitive)) return true;
-  const statFn = stat ?? ((await import("node:fs/promises")).stat as IdentityStat);
+  const statFn =
+    stat ?? ((await import("node:fs/promises")).stat as IdentityStat);
   let rootInfo;
   try {
     rootInfo = await statFn(root, { bigint: true });
@@ -239,7 +274,11 @@ export async function isPathUnder(
     } catch {
       ancestorInfo = void 0;
     }
-    if (ancestorInfo !== void 0 && ancestorInfo.dev === rootInfo.dev && ancestorInfo.ino === rootInfo.ino) {
+    if (
+      ancestorInfo !== void 0 &&
+      ancestorInfo.dev === rootInfo.dev &&
+      ancestorInfo.ino === rootInfo.ino
+    ) {
       return true;
     }
     const parent = dirname(ancestor);
@@ -250,7 +289,7 @@ export async function isPathUnder(
 
 /** Quote one path as an SBPL string literal (Seatbelt profile syntax). */
 export function sbplString(path: string): string {
-  return `"${path.replaceAll("\\", String.raw`\\`).replaceAll("\"", String.raw`\"`)}"`;
+  return `"${path.replaceAll("\\", String.raw`\\`).replaceAll('"', String.raw`\"`)}"`;
 }
 
 /**
@@ -291,13 +330,19 @@ export function augmentConfinedArgv(
     const grants = [];
     for (const root of tmpRoots) grants.push("--tmpfs", root);
     for (const root of extraRoots) grants.push("--bind", root, root);
-    return { ...confined, argv: [...argv.slice(0, at), ...grants, ...argv.slice(at)] };
+    return {
+      ...confined,
+      argv: [...argv.slice(0, at), ...grants, ...argv.slice(at)],
+    };
   }
   if (typeof program === "string" && program.includes("landlock-run")) {
     const grants = [];
     for (const root of tmpRoots) grants.push("--rw", root);
     for (const root of extraRoots) grants.push("--rw", root);
-    return { ...confined, argv: [...argv.slice(0, at), ...grants, ...argv.slice(at)] };
+    return {
+      ...confined,
+      argv: [...argv.slice(0, at), ...grants, ...argv.slice(at)],
+    };
   }
   if (program === "sandbox-exec") {
     const pIndex = argv.indexOf("-p");
@@ -306,7 +351,9 @@ export function augmentConfinedArgv(
       const marker = "(allow file-write*";
       const last = forms.lastIndexOf(marker);
       if (last !== -1) {
-        const extra = [...tmpRoots, ...extraRoots].map((root) => `(subpath ${sbplString(root)})`).join(" ");
+        const extra = [...tmpRoots, ...extraRoots]
+          .map((root) => `(subpath ${sbplString(root)})`)
+          .join(" ");
         const next = `${forms.slice(0, last + marker.length)} ${extra}${forms.slice(last + marker.length)}`;
         const copy = argv.slice();
         copy[pIndex + 1] = next;
@@ -327,7 +374,9 @@ export function augmentConfinedArgv(
  */
 export function renderSelectedPolicyText(policy: SandboxPolicyView): string {
   const workspaceRoot = policy.workspaceRoot;
-  const roots = (policy.extraWritableRoots ?? []).filter((root) => typeof root === "string");
+  const roots = (policy.extraWritableRoots ?? []).filter(
+    (root) => typeof root === "string",
+  );
   const workspaceSelected = roots.includes(workspaceRoot);
   const others = roots.filter((root) => root !== workspaceRoot);
   if (workspaceSelected) {
@@ -354,7 +403,10 @@ export function ancestryCrumbs(target: string): DirectoryCrumb[] {
   let current = target;
   for (;;) {
     const parent = dirname(current);
-    crumbs.unshift({ name: parent === current ? current : basename(current), path: current });
+    crumbs.unshift({
+      name: parent === current ? current : basename(current),
+      path: current,
+    });
     if (parent === current) return crumbs;
     current = parent;
   }
@@ -378,7 +430,8 @@ export async function listDirectoryLevel(
   const { opendir, stat, maxEntries = MAX_LISTING_ENTRIES } = options;
   const opendirFn = opendir ?? (await import("node:fs/promises")).opendir;
   const statFn = stat ?? (await import("node:fs/promises")).stat;
-  const home = process.platform === "win32" ? (process.env.USERPROFILE ?? "") : "/";
+  const home =
+    process.platform === "win32" ? (process.env.USERPROFILE ?? "") : "/";
   const entries: DirectoryEntry[] = [];
   let truncated = false;
   let handle: Dir | undefined;
@@ -395,7 +448,11 @@ export async function listDirectoryLevel(
         }
       }
       if (!enterable) continue;
-      entries.push({ name: dirent.name, path: join(path, dirent.name), hidden: dirent.name.startsWith(".") });
+      entries.push({
+        name: dirent.name,
+        path: join(path, dirent.name),
+        hidden: dirent.name.startsWith("."),
+      });
       if (entries.length >= maxEntries) {
         truncated = true;
         break;
@@ -410,7 +467,9 @@ export async function listDirectoryLevel(
       }
     }
   }
-  entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
+  entries.sort((left, right) =>
+    left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+  );
   return { path, home, crumbs: ancestryCrumbs(path), entries, truncated };
 }
 

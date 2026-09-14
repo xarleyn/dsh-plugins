@@ -14,11 +14,26 @@
  * fail open with the original tool result (SPEC §26).
  */
 
-import { mkdir, opendir, open, readFile, rename, link, stat, unlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  opendir,
+  open,
+  readFile,
+  rename,
+  link,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 
-import { applyAutoCompression, decompressPayload, type CompressionMode, resolveCodec } from "./compression.js";
+import {
+  applyAutoCompression,
+  decompressPayload,
+  type CompressionMode,
+  resolveCodec,
+} from "./compression.js";
 import { CasError } from "./errors.js";
 import { assertValidHash, formatCasRef, sha256Hex } from "./hash.js";
 import type {
@@ -85,21 +100,44 @@ export class FilesystemCasStore implements CasStore {
 
   private blobPath(hash: string): string {
     assertValidHash(hash);
-    return join(this.root, "blobs", "sha256", hash.slice(0, SHARD_WIDTH), hash.slice(SHARD_WIDTH, SHARD_WIDTH * 2), `${hash}.blob`);
+    return join(
+      this.root,
+      "blobs",
+      "sha256",
+      hash.slice(0, SHARD_WIDTH),
+      hash.slice(SHARD_WIDTH, SHARD_WIDTH * 2),
+      `${hash}.blob`,
+    );
   }
 
   private metaPath(hash: string): string {
     assertValidHash(hash);
-    return join(this.root, "meta", "sha256", hash.slice(0, SHARD_WIDTH), hash.slice(SHARD_WIDTH, SHARD_WIDTH * 2), `${hash}.json`);
+    return join(
+      this.root,
+      "meta",
+      "sha256",
+      hash.slice(0, SHARD_WIDTH),
+      hash.slice(SHARD_WIDTH, SHARD_WIDTH * 2),
+      `${hash}.json`,
+    );
   }
 
   private tmpPath(): string {
-    return join(this.root, "tmp", `cas-${process.pid.toString(16)}-${randomBytes(8).toString("hex")}.tmp`);
+    return join(
+      this.root,
+      "tmp",
+      `cas-${process.pid.toString(16)}-${randomBytes(8).toString("hex")}.tmp`,
+    );
   }
 
   private async ensureRoots(): Promise<void> {
     // 0o700 where the platform honors modes (SPEC §25).
-    for (const dir of [this.root, join(this.root, "blobs", "sha256"), join(this.root, "meta", "sha256"), join(this.root, "tmp")]) {
+    for (const dir of [
+      this.root,
+      join(this.root, "blobs", "sha256"),
+      join(this.root, "meta", "sha256"),
+      join(this.root, "tmp"),
+    ]) {
       await mkdir(dir, { recursive: true, mode: 0o700 });
     }
   }
@@ -109,7 +147,10 @@ export class FilesystemCasStore implements CasStore {
       return await this.putUnchecked(input);
     } catch (error) {
       if (error instanceof CasError) throw error;
-      throw new CasError("CAS_STORE_IO", `failed to store payload: ${String(error)}`);
+      throw new CasError(
+        "CAS_STORE_IO",
+        `failed to store payload: ${String(error)}`,
+      );
     }
   }
 
@@ -174,7 +215,10 @@ export class FilesystemCasStore implements CasStore {
           await rename(tmp, finalBlob);
         } catch {
           if (!(await this.blobExists(hash))) {
-            throw new CasError("CAS_STORE_IO", `failed to commit blob ${formatCasRef(hash)}`);
+            throw new CasError(
+              "CAS_STORE_IO",
+              `failed to commit blob ${formatCasRef(hash)}`,
+            );
           }
         }
       }
@@ -189,7 +233,10 @@ export class FilesystemCasStore implements CasStore {
       // (SPEC §26): remove it and fail so the caller passes the original
       // tool result through.
       await unlink(finalBlob).catch(() => undefined);
-      throw new CasError("CAS_STORE_IO", `metadata write failed for ${formatCasRef(hash)}: ${String(error)}`);
+      throw new CasError(
+        "CAS_STORE_IO",
+        `metadata write failed for ${formatCasRef(hash)}: ${String(error)}`,
+      );
     }
     return { ref: formatCasRef(hash), metadata, reused: false };
   }
@@ -206,27 +253,43 @@ export class FilesystemCasStore implements CasStore {
     return meta;
   }
 
-  async read(hash: string, options: CasReadOptions = {}): Promise<CasReadResult> {
+  async read(
+    hash: string,
+    options: CasReadOptions = {},
+  ): Promise<CasReadResult> {
     assertValidHash(hash);
     const meta = await this.stat(hash);
     if (meta === null) {
-      throw new CasError("CAS_OBJECT_MISSING", `CAS object ${formatCasRef(hash)} is not available`);
+      throw new CasError(
+        "CAS_OBJECT_MISSING",
+        `CAS object ${formatCasRef(hash)} is not available`,
+      );
     }
     let stored: Uint8Array;
     try {
       stored = await readFile(this.blobPath(hash));
     } catch (error) {
-      throw new CasError("CAS_STORE_IO", `failed to read blob ${formatCasRef(hash)}: ${String(error)}`);
+      throw new CasError(
+        "CAS_STORE_IO",
+        `failed to read blob ${formatCasRef(hash)}: ${String(error)}`,
+      );
     }
     let payload = await decompressPayload(stored, meta.storageCodec);
     if (options.verify !== false) {
       const actual = sha256Hex(payload);
       if (actual !== hash) {
-        throw new CasError("CAS_INTEGRITY_FAILED", `CAS object ${formatCasRef(hash)} failed its integrity check`);
+        throw new CasError(
+          "CAS_INTEGRITY_FAILED",
+          `CAS object ${formatCasRef(hash)} failed its integrity check`,
+        );
       }
     }
     const offset = Math.min(Math.max(options.offset ?? 0, 0), payload.length);
-    const limit = clamp(options.limit ?? Number.MAX_SAFE_INTEGER, 0, payload.length - offset);
+    const limit = clamp(
+      options.limit ?? Number.MAX_SAFE_INTEGER,
+      0,
+      payload.length - offset,
+    );
     payload = payload.subarray(offset, offset + limit);
     void this.touch(hash, this.now()).catch(() => undefined);
     return {
@@ -244,14 +307,26 @@ export class FilesystemCasStore implements CasStore {
   async search(hash: string, query: CasSearchQuery): Promise<CasSearchResult> {
     assertValidHash(hash);
     if (query.query.length === 0) {
-      throw new CasError("CAS_INVALID_ARGUMENT", "search query must not be empty");
+      throw new CasError(
+        "CAS_INVALID_ARGUMENT",
+        "search query must not be empty",
+      );
     }
-    const maxMatches = clamp(query.maxMatches ?? SEARCH_DEFAULT_MAX_MATCHES, 1, 200);
-    const contextLines = clamp(query.contextLines ?? SEARCH_DEFAULT_CONTEXT_LINES, 0, 20);
+    const maxMatches = clamp(
+      query.maxMatches ?? SEARCH_DEFAULT_MAX_MATCHES,
+      1,
+      200,
+    );
+    const contextLines = clamp(
+      query.contextLines ?? SEARCH_DEFAULT_CONTEXT_LINES,
+      0,
+      20,
+    );
     const whole = await this.read(hash, { verify: true });
     const text = new TextDecoder("utf8", { fatal: false }).decode(whole.bytes);
     const lines = text.split(/\r\n|\r|\n/);
-    const needle = query.caseSensitive === true ? query.query : query.query.toLowerCase();
+    const needle =
+      query.caseSensitive === true ? query.query : query.query.toLowerCase();
 
     const matches: CasSearchMatch[] = [];
     let totalMatches = 0;
@@ -265,23 +340,39 @@ export class FilesystemCasStore implements CasStore {
       const entry: CasSearchMatch = {
         line: index + 1,
         text: truncateLine(line),
-        before: lines.slice(Math.max(0, index - contextLines), index).map(truncateLine),
-        after: lines.slice(index + 1, index + 1 + contextLines).map(truncateLine),
+        before: lines
+          .slice(Math.max(0, index - contextLines), index)
+          .map(truncateLine),
+        after: lines
+          .slice(index + 1, index + 1 + contextLines)
+          .map(truncateLine),
       };
-      const entryChars = entry.text.length + entry.before.join("").length + entry.after.join("").length;
+      const entryChars =
+        entry.text.length +
+        entry.before.join("").length +
+        entry.after.join("").length;
       if (outputChars + entryChars > SEARCH_MAX_OUTPUT_BYTES) continue;
       outputChars += entryChars;
       matches.push(entry);
     }
     const truncated = totalMatches > matches.length;
-    return { ref: formatCasRef(hash), totalMatches, returnedMatches: matches.length, truncated, matches };
+    return {
+      ref: formatCasRef(hash),
+      totalMatches,
+      returnedMatches: matches.length,
+      truncated,
+      matches,
+    };
   }
 
   async touch(hash: string, accessedAt: Date = this.now()): Promise<void> {
     assertValidHash(hash);
     const meta = await this.readMeta(hash).catch(() => undefined);
     if (meta === undefined) return;
-    await this.writeMeta(hash, { ...meta, lastAccessedAt: accessedAt.toISOString() });
+    await this.writeMeta(hash, {
+      ...meta,
+      lastAccessedAt: accessedAt.toISOString(),
+    });
   }
 
   async gc(options: CasGcOptions): Promise<CasGcResult> {
@@ -304,12 +395,16 @@ export class FilesystemCasStore implements CasStore {
       survivors.push(entry);
     }
 
-    const totalLogical = survivors.reduce((sum, entry) => sum + entry.meta.size, 0);
+    const totalLogical = survivors.reduce(
+      (sum, entry) => sum + entry.meta.size,
+      0,
+    );
     if (totalLogical > options.maxBytes) {
       // Quota eviction: oldest last access first (SPEC §24). Once the store
       // stays over quota after routine GC, minAge stops protecting objects.
       const byOldest = [...survivors].sort(
-        (a, b) => Date.parse(a.meta.lastAccessedAt) - Date.parse(b.meta.lastAccessedAt),
+        (a, b) =>
+          Date.parse(a.meta.lastAccessedAt) - Date.parse(b.meta.lastAccessedAt),
       );
       let remaining = totalLogical;
       for (const entry of byOldest) {
@@ -338,7 +433,13 @@ export class FilesystemCasStore implements CasStore {
       largestObjectBytes = Math.max(largestObjectBytes, entry.meta.size);
       hits += entry.meta.hits;
     }
-    return { objects: entries.length, logicalBytes, storedBytes, largestObjectBytes, hits };
+    return {
+      objects: entries.length,
+      logicalBytes,
+      storedBytes,
+      largestObjectBytes,
+      hits,
+    };
   }
 
   /** Remove interrupted staging files left behind by crashed writers. */
@@ -381,18 +482,31 @@ export class FilesystemCasStore implements CasStore {
   private async readMeta(hash: string): Promise<CasMetadata> {
     const raw = await readFile(this.metaPath(hash), "utf8");
     const parsed = JSON.parse(raw) as CasMetadata;
-    if (parsed?.version !== META_VERSION || parsed.hash !== hash || typeof parsed.size !== "number") {
-      throw new CasError("CAS_INTEGRITY_FAILED", `unreadable metadata for ${formatCasRef(hash)}`);
+    if (
+      parsed?.version !== META_VERSION ||
+      parsed.hash !== hash ||
+      typeof parsed.size !== "number"
+    ) {
+      throw new CasError(
+        "CAS_INTEGRITY_FAILED",
+        `unreadable metadata for ${formatCasRef(hash)}`,
+      );
     }
     return parsed;
   }
 
-  private async writeMeta(hash: string, metadata: CasMetadata): Promise<CasMetadata> {
+  private async writeMeta(
+    hash: string,
+    metadata: CasMetadata,
+  ): Promise<CasMetadata> {
     const path = this.metaPath(hash);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     const tmp = this.tmpPath();
     try {
-      await writeFile(tmp, `${JSON.stringify(metadata, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+      await writeFile(tmp, `${JSON.stringify(metadata, null, 2)}\n`, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
       try {
         await rename(tmp, path);
       } catch {
@@ -402,7 +516,11 @@ export class FilesystemCasStore implements CasStore {
           () => true,
           () => false,
         );
-        if (!committed) throw new CasError("CAS_STORE_IO", `failed to commit metadata for ${formatCasRef(hash)}`);
+        if (!committed)
+          throw new CasError(
+            "CAS_STORE_IO",
+            `failed to commit metadata for ${formatCasRef(hash)}`,
+          );
       }
     } finally {
       await unlink(tmp).catch(() => undefined);
@@ -426,7 +544,8 @@ export class FilesystemCasStore implements CasStore {
           if (!entry.name.endsWith(".json")) continue;
           const hash = entry.name.slice(0, -".json".length);
           const meta = await this.readMeta(hash).catch(() => undefined);
-          if (meta !== undefined) entries.push({ hash, path: this.metaPath(hash), meta });
+          if (meta !== undefined)
+            entries.push({ hash, path: this.metaPath(hash), meta });
         }
       }
     }
@@ -442,7 +561,8 @@ export class FilesystemCasStore implements CasStore {
     }
     const names: string[] = [];
     for await (const entry of dir) {
-      if (entry.name.length === SHARD_WIDTH && !entry.name.startsWith(".")) names.push(entry.name);
+      if (entry.name.length === SHARD_WIDTH && !entry.name.startsWith("."))
+        names.push(entry.name);
     }
     return names.sort();
   }

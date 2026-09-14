@@ -55,11 +55,15 @@ describe("scope path model", () => {
     const outside = temporaryWorkspace();
     mkdirSync(nested, { recursive: true });
 
-    expect(normalizeSessionScopeRoots([nested, selected, selected], workspace)).toEqual([canonicalPath(selected)]);
+    expect(
+      normalizeSessionScopeRoots([nested, selected, selected], workspace),
+    ).toEqual([canonicalPath(selected)]);
     expect(() => normalizeSessionScopeRoots([outside], workspace)).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.OUTSIDE_WORKSPACE }),
     );
-    expect(() => normalizeSessionScopeRoots([join(workspace, "missing")], workspace)).toThrowError(
+    expect(() =>
+      normalizeSessionScopeRoots([join(workspace, "missing")], workspace),
+    ).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.INVALID_ROOT }),
     );
   });
@@ -70,10 +74,12 @@ describe("scope path model", () => {
     const outside = temporaryWorkspace();
     const paths = {
       isDirectory: () => true,
-      canonical: (path: string) => path === link ? outside : path,
+      canonical: (path: string) => (path === link ? outside : path),
     };
 
-    expect(() => normalizeSessionScopeRoots([link], workspace, { paths })).toThrowError(
+    expect(() =>
+      normalizeSessionScopeRoots([link], workspace, { paths }),
+    ).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.SYMLINK_ESCAPE }),
     );
   });
@@ -97,9 +103,25 @@ describe("durable scope state", () => {
     mkdirSync(first);
     mkdirSync(second);
     const events = [
-      { type: "session-scope/set", data: createSessionScopeEvent("focused", [first], workspace, "ui") as unknown as Record<string, unknown> },
+      {
+        type: "session-scope/set",
+        data: createSessionScopeEvent(
+          "focused",
+          [first],
+          workspace,
+          "ui",
+        ) as unknown as Record<string, unknown>,
+      },
       { type: "turn/start", data: {} },
-      { type: "session-scope/set", data: createSessionScopeEvent("full", [second], workspace, "command") as unknown as Record<string, unknown> },
+      {
+        type: "session-scope/set",
+        data: createSessionScopeEvent(
+          "full",
+          [second],
+          workspace,
+          "command",
+        ) as unknown as Record<string, unknown>,
+      },
     ];
 
     expect(effectiveSessionScope(events, { cwd: workspace })).toEqual({
@@ -116,15 +138,37 @@ describe("durable scope state", () => {
     const selected = join(workspace, "selected");
     mkdirSync(selected);
 
-    const malformed = effectiveSessionScope([
-      { type: "session-scope/set", data: { version: 9, mode: "focused", roots: [selected], workspaceRoot: workspace } },
-    ], { cwd: workspace });
+    const malformed = effectiveSessionScope(
+      [
+        {
+          type: "session-scope/set",
+          data: {
+            version: 9,
+            mode: "focused",
+            roots: [selected],
+            workspaceRoot: workspace,
+          },
+        },
+      ],
+      { cwd: workspace },
+    );
     expect(malformed.mode).toBe("focused");
     expect(malformed.roots).toEqual([]);
 
-    const stale = effectiveSessionScope([
-      { type: "session-scope/set", data: { version: 1, mode: "focused", roots: [selected], workspaceRoot: otherWorkspace } },
-    ], { cwd: workspace });
+    const stale = effectiveSessionScope(
+      [
+        {
+          type: "session-scope/set",
+          data: {
+            version: 1,
+            mode: "focused",
+            roots: [selected],
+            workspaceRoot: otherWorkspace,
+          },
+        },
+      ],
+      { cwd: workspace },
+    );
     expect(stale.roots).toEqual([]);
   });
 
@@ -133,7 +177,9 @@ describe("durable scope state", () => {
     const selected = join(workspace, "selected");
     mkdirSync(selected);
 
-    expect(createSessionScopeEvent("focused", [selected], workspace, "ui")).toEqual({
+    expect(
+      createSessionScopeEvent("focused", [selected], workspace, "ui"),
+    ).toEqual({
       version: 1,
       mode: "focused",
       roots: [canonicalPath(selected)],
@@ -160,16 +206,29 @@ describe("durable scope state", () => {
       workspaceRoot: canonicalPath(actualWorkspace),
       roots: [canonicalPath(selected)],
     });
-    expect(effectiveSessionScope([{ type: "session-scope/set", data: event as unknown as Record<string, unknown> }], {
-      cwd: aliasWorkspace,
-    })).toMatchObject({
+    expect(
+      effectiveSessionScope(
+        [
+          {
+            type: "session-scope/set",
+            data: event as unknown as Record<string, unknown>,
+          },
+        ],
+        {
+          cwd: aliasWorkspace,
+        },
+      ),
+    ).toMatchObject({
       workspaceRoot: canonicalPath(actualWorkspace),
       roots: [canonicalPath(selected)],
     });
   });
 
   test("exposes stable error instances", () => {
-    const error = new SessionScopeError(SESSION_SCOPE_ERROR.DENIED, "Path is outside the active session scope.");
+    const error = new SessionScopeError(
+      SESSION_SCOPE_ERROR.DENIED,
+      "Path is outside the active session scope.",
+    );
     expect(error).toBeInstanceOf(Error);
     expect(error.code).toBe("SESSION_SCOPE_DENIED");
   });

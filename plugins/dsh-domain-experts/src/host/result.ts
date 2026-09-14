@@ -40,13 +40,16 @@ export function parseExpertAnswer(text: string): ParsedExpertAnswer {
   }
   const prose = trimmed.slice(0, payload.start).trim();
   return {
-    summary: payload.object["summary"] !== undefined
-      ? asText(payload.object["summary"])
-      : prose,
+    summary:
+      payload.object["summary"] !== undefined
+        ? asText(payload.object["summary"])
+        : prose,
     findings: findingsOf(payload.object["findings"]),
     conflicts: stringList(payload.object["conflicts"]),
     assumptions: stringList(payload.object["assumptions"]),
-    followUps: stringList(payload.object["followUps"] ?? payload.object["follow_ups"]),
+    followUps: stringList(
+      payload.object["followUps"] ?? payload.object["follow_ups"],
+    ),
     structured: true,
   };
 }
@@ -95,7 +98,9 @@ function parseObject(text: string): Record<string, unknown> | null {
   if (end === -1) return null;
   try {
     const parsed: unknown = JSON.parse(trimmed.slice(0, end));
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+    return typeof parsed === "object" &&
+      parsed !== null &&
+      !Array.isArray(parsed)
       ? (parsed as Record<string, unknown>)
       : null;
   } catch {
@@ -141,27 +146,29 @@ function findingsOf(value: unknown): readonly DomainExpertFinding[] {
     }
     if (typeof item !== "object" || item === null) continue;
     const record = item as Record<string, unknown>;
-    const claim = asText(record["claim"] ?? record["finding"] ?? record["statement"]);
+    const claim = asText(
+      record["claim"] ?? record["finding"] ?? record["statement"],
+    );
     if (claim === "") continue;
     const confidence = record["confidence"];
     out.push({
       claim,
       evidence: stringList(record["evidence"] ?? record["sources"]),
-      confidence: typeof confidence === "string" &&
+      confidence:
+        typeof confidence === "string" &&
         (CONFIDENCES as readonly string[]).includes(confidence)
-        ? (confidence as ExpertConfidence)
-        : "medium",
+          ? (confidence as ExpertConfidence)
+          : "medium",
     });
   }
   return out;
 }
 
 function stringList(value: unknown): string[] {
-  if (typeof value === "string") return value.trim() === "" ? [] : [value.trim()];
+  if (typeof value === "string")
+    return value.trim() === "" ? [] : [value.trim()];
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => asText(item))
-    .filter((item) => item !== "");
+  return value.map((item) => asText(item)).filter((item) => item !== "");
 }
 
 function asText(value: unknown): string {

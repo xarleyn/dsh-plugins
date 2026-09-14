@@ -1,10 +1,16 @@
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
-import type { SessionLogSnapshot, SessionRecord } from "@deepseek-ai/dsh-session-query";
+import type {
+  SessionLogSnapshot,
+  SessionRecord,
+} from "@deepseek-ai/dsh-session-query";
 import { SessionLogOffset } from "@deepseek-ai/dsh-session";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/config.js";
 import { MemoryCorrectionStore } from "../src/dsh/storage.js";
-import { CorrectionMinerEngine, type MinerLogger } from "../src/mining/engine.js";
+import {
+  CorrectionMinerEngine,
+  type MinerLogger,
+} from "../src/mining/engine.js";
 import { header, userEvent } from "./fixtures/sessions.js";
 
 const logger: MinerLogger = {
@@ -24,11 +30,21 @@ function liveSession(id: string, events: SessionEvent[] = []): Session {
 }
 
 function turnEnd(seq: number): SessionEvent {
-  return { type: "turn/end", seq, time: seq, data: {} } as unknown as SessionEvent;
+  return {
+    type: "turn/end",
+    seq,
+    time: seq,
+    data: {},
+  } as unknown as SessionEvent;
 }
 
 function assistantActivity(seq: number): SessionEvent {
-  return { type: "assistant/message", seq, time: seq, data: {} } as unknown as SessionEvent;
+  return {
+    type: "assistant/message",
+    seq,
+    time: seq,
+    data: {},
+  } as unknown as SessionEvent;
 }
 
 function liveEngine(
@@ -72,7 +88,11 @@ describe("CorrectionMinerEngine", () => {
         userEvent(1, "Используй token=super-secret-value и pnpm, не npm."),
       ],
     } as SessionLogSnapshot;
-    const record = { header: sessionHeader, live: false, persisted: true } as SessionRecord;
+    const record = {
+      header: sessionHeader,
+      live: false,
+      persisted: true,
+    } as SessionRecord;
     const source = {
       async list() {
         return [record];
@@ -89,11 +109,21 @@ describe("CorrectionMinerEngine", () => {
       logger,
     );
 
-    const first = await engine.scan({ cwd: sessionHeader.cwd!, incremental: true });
-    const second = await engine.scan({ cwd: sessionHeader.cwd!, incremental: true });
+    const first = await engine.scan({
+      cwd: sessionHeader.cwd!,
+      incremental: true,
+    });
+    const second = await engine.scan({
+      cwd: sessionHeader.cwd!,
+      incremental: true,
+    });
 
     expect(first).toMatchObject({ correctionsFound: 1, correctionsAdded: 1 });
-    expect(second).toMatchObject({ eventsScanned: 0, correctionsFound: 0, correctionsAdded: 0 });
+    expect(second).toMatchObject({
+      eventsScanned: 0,
+      correctionsFound: 0,
+      correctionsAdded: 0,
+    });
     const [stored] = engine.list(sessionHeader.cwd!);
     expect(stored?.text).toContain("[REDACTED]");
     expect(stored?.text).not.toContain("super-secret-value");
@@ -104,7 +134,8 @@ describe("CorrectionMinerEngine", () => {
     const firstHeader = header("broken");
     const secondHeader = header("good");
     const records = [firstHeader, secondHeader].map(
-      (value) => ({ header: value, live: false, persisted: true }) as SessionRecord,
+      (value) =>
+        ({ header: value, live: false, persisted: true }) as SessionRecord,
     );
     const source = {
       async list() {
@@ -125,7 +156,9 @@ describe("CorrectionMinerEngine", () => {
       resolveConfig(),
       logger,
     );
-    await expect(engine.scan({ cwd: secondHeader.cwd! })).resolves.toMatchObject({
+    await expect(
+      engine.scan({ cwd: secondHeader.cwd! }),
+    ).resolves.toMatchObject({
       sessionsScanned: 1,
       sessionsFailed: 1,
       correctionsAdded: 1,
@@ -177,7 +210,11 @@ describe("CorrectionMinerEngine", () => {
     expect(engine.count(session.header.cwd!)).toBe(0);
     expect(warnings).toHaveBeenCalledWith(
       "pending.evicted",
-      expect.objectContaining({ reason: "ttl", sessionId: "expired", evictedEvents: 1 }),
+      expect.objectContaining({
+        reason: "ttl",
+        sessionId: "expired",
+        evictedEvents: 1,
+      }),
     );
   });
 

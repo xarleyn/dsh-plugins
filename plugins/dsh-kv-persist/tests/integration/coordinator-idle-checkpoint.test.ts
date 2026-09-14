@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  createHarness,
-  run,
-  sleep,
-} from "../fixtures/harness.js";
+import { createHarness, run, sleep } from "../fixtures/harness.js";
 
 describe("single-slot coordinator: idle and manual checkpoints (§26-§28, §50, §71)", () => {
   it("idle checkpoint fires after idleMs and coalesces clean sessions (§26-§28, §71)", async () => {

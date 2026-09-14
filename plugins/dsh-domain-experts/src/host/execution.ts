@@ -164,7 +164,9 @@ export async function runExpert(
     input.request,
   );
 
-  const provider = dependencies.subagents.getProvider(dependencies.subagentProvider);
+  const provider = dependencies.subagents.getProvider(
+    dependencies.subagentProvider,
+  );
   if (provider === undefined) {
     throw new DomainExpertsError(
       "SUBAGENT_PROVIDER_MISSING",
@@ -180,7 +182,10 @@ export async function runExpert(
       "an expert needs a per-child persona, tool masking and a recursion budget",
     );
   }
-  if (!definition.model.inherit && provider.capabilities.agentOptions !== true) {
+  if (
+    !definition.model.inherit &&
+    provider.capabilities.agentOptions !== true
+  ) {
     throw unsupportedCapability(
       provider.name,
       "agentOptions",
@@ -200,12 +205,22 @@ export async function runExpert(
   };
 
   if (input.request.background) {
-    return await startBackground(dependencies, input, profile, request, startedAt, depth);
+    return await startBackground(
+      dependencies,
+      input,
+      profile,
+      request,
+      startedAt,
+      depth,
+    );
   }
 
   let run: SubagentRun;
   try {
-    run = await dependencies.subagents.start(dependencies.subagentProvider, request);
+    run = await dependencies.subagents.start(
+      dependencies.subagentProvider,
+      request,
+    );
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
@@ -289,13 +304,20 @@ async function startBackground(
       { refs: [dependencies.subagentProvider] },
     );
   }
-  const continuableRequest: Omit<SubagentStartRequest, "label" | "signal" | "outputSchema"> = {
+  const continuableRequest: Omit<
+    SubagentStartRequest,
+    "label" | "signal" | "outputSchema"
+  > = {
     prompt: request.prompt,
     parent: request.parent,
     ...(request.persona === undefined ? {} : { persona: request.persona }),
-    ...(request.toolFilter === undefined ? {} : { toolFilter: request.toolFilter }),
+    ...(request.toolFilter === undefined
+      ? {}
+      : { toolFilter: request.toolFilter }),
     ...(request.maxDepth === undefined ? {} : { maxDepth: request.maxDepth }),
-    ...(request.agentOptions === undefined ? {} : { agentOptions: request.agentOptions }),
+    ...(request.agentOptions === undefined
+      ? {}
+      : { agentOptions: request.agentOptions }),
   };
   let started: ContinuableStart;
   try {
@@ -309,7 +331,10 @@ async function startBackground(
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
   const childSessionId = String(started.childId);
-  const path = [...pathOf(dependencies, String(input.parent.session.header.id)), definition.id];
+  const path = [
+    ...pathOf(dependencies, String(input.parent.session.header.id)),
+    definition.id,
+  ];
   dependencies.tracker.register({
     domainId: definition.id,
     childSessionId,
@@ -334,7 +359,10 @@ async function startBackground(
   };
 }
 
-function pathOf(dependencies: ExecutionDependencies, callerSessionId: string): readonly string[] {
+function pathOf(
+  dependencies: ExecutionDependencies,
+  callerSessionId: string,
+): readonly string[] {
   return dependencies.tracker.find(callerSessionId)?.path ?? [];
 }
 
@@ -360,7 +388,9 @@ function emptyResult(
   };
 }
 
-function statusOf(stopReason: SubagentResult["stopReason"]): DomainExpertStatus {
+function statusOf(
+  stopReason: SubagentResult["stopReason"],
+): DomainExpertStatus {
   switch (stopReason) {
     case "completed":
       return "completed";
@@ -452,7 +482,9 @@ function recordAudit(
     status: entry.status,
     durationMs: entry.durationMs,
     path: entry.delegatePath.join(" > "),
-    ...(entry.degraded.length > 0 ? { degraded: entry.degraded.join(",") } : {}),
+    ...(entry.degraded.length > 0
+      ? { degraded: entry.degraded.join(",") }
+      : {}),
   });
   if (detail.path.length > 1) {
     dependencies.logger.info("domain-expert/delegation", {

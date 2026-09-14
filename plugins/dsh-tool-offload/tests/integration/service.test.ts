@@ -11,7 +11,14 @@ import { Context } from "@deepseek-ai/cordis";
 import { ToolOffloadService } from "../../src/service.js";
 import type { ToolOffloadConfig } from "../../src/config.js";
 import type { ToolOffloadListener } from "../../src/integration/post-execute.js";
-import { CapturingLogger, FakeRunner, fakeAgent, fakeExec, makeText, successResult } from "../fixtures/offload-fixtures.js";
+import {
+  CapturingLogger,
+  FakeRunner,
+  fakeAgent,
+  fakeExec,
+  makeText,
+  successResult,
+} from "../fixtures/offload-fixtures.js";
 
 interface Wiring {
   service: ToolOffloadService;
@@ -25,7 +32,10 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
   const ctx = new Context();
   const listeners: ToolOffloadListener[] = [];
   const host = {
-    subagents: { start: async () => undefined as never, getProvider: () => undefined },
+    subagents: {
+      start: async () => undefined as never,
+      getProvider: () => undefined,
+    },
     on(event: "tools/post-execute", listener: ToolOffloadListener) {
       listeners.push(listener);
       return () => undefined;
@@ -33,10 +43,14 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
   };
   // The test harness has no `tools`/`subagents` services; capture the
   // registration callback synchronously instead of waiting for injection.
-  (ctx as unknown as { inject: (services: readonly string[], cb: (c: unknown) => void) => () => void }).inject = (
-    services,
-    cb,
-  ) => {
+  (
+    ctx as unknown as {
+      inject: (
+        services: readonly string[],
+        cb: (c: unknown) => void,
+      ) => () => void;
+    }
+  ).inject = (services, cb) => {
     expect(services).toEqual(["tools", "subagents"]);
     cb(host);
     return () => undefined;
@@ -45,7 +59,10 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
   const logger = new CapturingLogger();
   const service = new ToolOffloadService(
     ctx,
-    { routing: { thresholds: { minBytes: 1_024, minEstimatedTokens: 256 } }, ...overrides },
+    {
+      routing: { thresholds: { minBytes: 1_024, minEstimatedTokens: 256 } },
+      ...overrides,
+    },
     { logger, runner },
   );
   return { service, ctx, listeners, runner, logger };
@@ -63,13 +80,21 @@ describe("ToolOffloadService wiring", () => {
     const listener = listeners[0]!;
     const raw = makeText(4_096);
     const decision = await listener(
-      fakeExec("read", { agent: fakeAgent({ userMessage: "Find the retry logic." }) }),
+      fakeExec("read", {
+        agent: fakeAgent({ userMessage: "Find the retry logic." }),
+      }),
       successResult(raw),
       async () => ({ kind: "accept" }),
     );
-    expect((decision as { content?: { text: string }[] }).content?.[0]?.text).toBe("compact answer");
+    expect(
+      (decision as { content?: { text: string }[] }).content?.[0]?.text,
+    ).toBe("compact answer");
     expect(runner.requests).toHaveLength(1);
-    expect(service.stats().runtime).toMatchObject({ candidates: 1, started: 1, completed: 1 });
+    expect(service.stats().runtime).toMatchObject({
+      candidates: 1,
+      started: 1,
+      completed: 1,
+    });
     (service as unknown as { dispose(): void }).dispose();
   });
 
@@ -77,7 +102,12 @@ describe("ToolOffloadService wiring", () => {
     const { service } = wire({ routing: { thresholds: { minBytes: 1_000 } } });
     const stats = service.stats();
     expect(stats.runtime.candidates).toBe(0);
-    expect(stats.derived).toEqual({ reductionRatio: 0, avgDurationMs: 0, completionRate: 0, estimatedTokensSaved: 0 });
+    expect(stats.derived).toEqual({
+      reductionRatio: 0,
+      avgDurationMs: 0,
+      completionRate: 0,
+      estimatedTokensSaved: 0,
+    });
     expect(stats.config).toMatchObject({
       enabled: true,
       mode: "allowlist",

@@ -9,7 +9,10 @@ import { createDomainMemoryTool } from "../src/host/tools/domain-memory.js";
 import { createListDomainsTool } from "../src/host/tools/list-domains.js";
 import type { ToolDependencies } from "../src/host/tools/shared.js";
 import { DomainRegistry } from "../src/host/registry.js";
-import { createBuiltinMemoryProvider, type MemoryTable } from "../src/host/memory/builtin.js";
+import {
+  createBuiltinMemoryProvider,
+  type MemoryTable,
+} from "../src/host/memory/builtin.js";
 import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
 import { delegationVerdictOf, parallelBudgetOf } from "../src/host/policy.js";
 import { RunTracker } from "../src/host/execution.js";
@@ -29,11 +32,17 @@ import {
   recordingLogger,
 } from "./helpers/fakes.js";
 
-const PAYMENTS = domainOf("payments", { name: "Payments", description: "Settlement." });
+const PAYMENTS = domainOf("payments", {
+  name: "Payments",
+  description: "Settlement.",
+});
 const INVENTORY = domainOf("inventory", {
   name: "Inventory",
   description: "Stock levels.",
-  delegation: { ...domainOf("inventory").delegation, crossDomainMode: "disabled" },
+  delegation: {
+    ...domainOf("inventory").delegation,
+    crossDomainMode: "disabled",
+  },
 });
 
 function execOf(agent: Agent): ToolRunContext {
@@ -56,18 +65,26 @@ async function call(
   return (await tool.execute(args, execOf(agent))) as Record<string, unknown>;
 }
 
-function renderText(tool: ToolDefinition, args: unknown, value: unknown): string {
+function renderText(
+  tool: ToolDefinition,
+  args: unknown,
+  value: unknown,
+): string {
   return tool.output
     .render(args as RenderArgs, value as RenderValue)
     .map((block) => ("text" in block ? block.text : ""))
     .join("\n");
 }
 
-
 /** The argument JSON Schema the harness will validate against. */
-function propertiesOf(tool: ToolDefinition): Record<string, { readonly enum?: readonly string[] }> {
+function propertiesOf(
+  tool: ToolDefinition,
+): Record<string, { readonly enum?: readonly string[] }> {
   const properties = tool.parameters["properties"];
-  return (properties ?? {}) as Record<string, { readonly enum?: readonly string[] }>;
+  return (properties ?? {}) as Record<
+    string,
+    { readonly enum?: readonly string[] }
+  >;
 }
 
 interface Harness {
@@ -89,7 +106,9 @@ function harnessOf(
 ): Harness {
   const clock = fixedClock();
   const domains = new DomainRegistry(
-    domainTableOf(definitions.map((definition) => [definition.id, definition] as const)),
+    domainTableOf(
+      definitions.map((definition) => [definition.id, definition] as const),
+    ),
     clock,
   );
   const memoryTable = memoryRecordTableOf() as unknown as MemoryTable;
@@ -111,7 +130,8 @@ function harnessOf(
         })),
     requireDefinition: (id) => domains.requireEnabled(id),
     run: (input) => {
-      if (options.failWith !== undefined) return Promise.reject(options.failWith);
+      if (options.failWith !== undefined)
+        return Promise.reject(options.failWith);
       runs.push({
         domainId: input.definition.id,
         callerDomain: input.callerDomain,
@@ -124,7 +144,11 @@ function harnessOf(
         status: input.request.background ? "delegated" : "completed",
         summary: `answer from ${input.definition.id}`,
         findings: [
-          { claim: "the batch aborts", evidence: ["services/payments/batch.ts:41"], confidence: "high" },
+          {
+            claim: "the batch aborts",
+            evidence: ["services/payments/batch.ts:41"],
+            confidence: "high",
+          },
         ],
         conflicts: [],
         assumptions: [],
@@ -161,20 +185,33 @@ function harnessOf(
     },
   };
 
-  return { dependencies: { ...dependencies, logger }, runs, tracker, memoryTable, warnings };
+  return {
+    dependencies: { ...dependencies, logger },
+    runs,
+    tracker,
+    memoryTable,
+    warnings,
+  };
 }
 
 const AGENT = agentOf({ id: "session-1", cwd: "/repo" });
 
 describe("tools: domain_experts_list", () => {
   it("returns enabled domains and nothing else", async () => {
-    const harness = harnessOf([PAYMENTS, domainOf("platform", { enabled: false })]);
+    const harness = harnessOf([
+      PAYMENTS,
+      domainOf("platform", { enabled: false }),
+    ]);
     const tool = createListDomainsTool(harness.dependencies);
     const value = await call(tool, {}, AGENT);
     expect(value["count"]).toBe(1);
     const domains = value["domains"] as Record<string, unknown>[];
     expect(domains).toHaveLength(1);
-    expect(Object.keys(domains[0] ?? {}).sort()).toEqual(["description", "id", "name"]);
+    expect(Object.keys(domains[0] ?? {}).sort()).toEqual([
+      "description",
+      "id",
+      "name",
+    ]);
     expect(JSON.stringify(value)).not.toContain("scope");
     expect(JSON.stringify(value)).not.toContain("domain/payments");
   });
@@ -183,14 +220,18 @@ describe("tools: domain_experts_list", () => {
     const harness = harnessOf([PAYMENTS]);
     const tool = createListDomainsTool(harness.dependencies);
     const value = await call(tool, {}, AGENT);
-    expect(renderText(tool, {}, value)).toContain("payments: Payments — Settlement.");
+    expect(renderText(tool, {}, value)).toContain(
+      "payments: Payments — Settlement.",
+    );
   });
 
   it("renders an explicit empty state", async () => {
     const harness = harnessOf([]);
     const tool = createListDomainsTool(harness.dependencies);
     const value = await call(tool, {}, AGENT);
-    expect(renderText(tool, {}, value)).toBe("No domain experts are enabled in this deployment.");
+    expect(renderText(tool, {}, value)).toBe(
+      "No domain experts are enabled in this deployment.",
+    );
   });
 });
 
@@ -198,14 +239,25 @@ describe("tools: domain_expert", () => {
   it("runs a domain for a top-level caller with no caller domain", async () => {
     const harness = harnessOf();
     const tool = createDomainExpertTool(harness.dependencies);
-    const value = await call(tool, { domain: "payments", task: "why is it stale" }, AGENT);
+    const value = await call(
+      tool,
+      { domain: "payments", task: "why is it stale" },
+      AGENT,
+    );
     expect(harness.runs).toEqual([
-      { domainId: "payments", callerDomain: null, task: "why is it stale", background: false },
+      {
+        domainId: "payments",
+        callerDomain: null,
+        task: "why is it stale",
+        background: false,
+      },
     ]);
     expect(value["status"]).toBe("completed");
     expect(value["summary"]).toBe("answer from payments");
     expect(value["durationMs"]).toBe(1234);
-    expect(renderText(tool, {}, value)).toContain("domain=payments status=completed");
+    expect(renderText(tool, {}, value)).toContain(
+      "domain=payments status=completed",
+    );
   });
 
   it("treats a call from another expert as a delegation", async () => {
@@ -238,9 +290,11 @@ describe("tools: domain_expert", () => {
       maxParallel: 3,
     });
     const tool = createDomainExpertTool(harness.dependencies);
-    const error = await call(tool, { domain: "payments", task: "x" }, AGENT).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await call(
+      tool,
+      { domain: "payments", task: "x" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("[DELEGATION_DENIED]");
     expect((error as Error).message).toContain("cross-domain access disabled");
@@ -261,9 +315,11 @@ describe("tools: domain_expert", () => {
       maxParallel: 3,
     });
     const tool = createDomainExpertTool(harness.dependencies);
-    const error = await call(tool, { domain: "payments", task: "x" }, AGENT).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await call(
+      tool,
+      { domain: "payments", task: "x" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
     expect((error as Error).message).toContain("your own domain");
   });
 
@@ -282,11 +338,15 @@ describe("tools: domain_expert", () => {
       });
     }
     const tool = createDomainExpertTool(harness.dependencies);
-    const error = await call(tool, { domain: "payments", task: "x" }, AGENT).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await call(
+      tool,
+      { domain: "payments", task: "x" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
     expect((error as Error).message).toContain("[PARALLELISM_EXCEEDED]");
-    expect((error as Error).message).toContain("allows 3 parallel expert calls");
+    expect((error as Error).message).toContain(
+      "allows 3 parallel expert calls",
+    );
   });
 
   it("reports a missing domain with its code and the known ids", async () => {
@@ -302,22 +362,32 @@ describe("tools: domain_expert", () => {
   it("reports a disabled domain with its own code", async () => {
     const harness = harnessOf([domainOf("payments", { enabled: false })]);
     const tool = createDomainExpertTool(harness.dependencies);
-    const error = await call(tool, { domain: "payments", task: "x" }, AGENT).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await call(
+      tool,
+      { domain: "payments", task: "x" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
     expect((error as Error).message).toContain("[DOMAIN_DISABLED]");
   });
 
   it("declares the mode vocabulary so an unknown one is refused before execution", () => {
     const harness = harnessOf();
     const tool = createDomainExpertTool(harness.dependencies);
-    expect(propertiesOf(tool)["mode"]?.enum).toEqual(["investigate", "answer", "review"]);
+    expect(propertiesOf(tool)["mode"]?.enum).toEqual([
+      "investigate",
+      "answer",
+      "review",
+    ]);
   });
 
   it("passes the background flag through", async () => {
     const harness = harnessOf();
     const tool = createDomainExpertTool(harness.dependencies);
-    await call(tool, { domain: "payments", task: "x", background: true }, AGENT);
+    await call(
+      tool,
+      { domain: "payments", task: "x", background: true },
+      AGENT,
+    );
     expect(harness.runs[0]?.background).toBe(true);
   });
 
@@ -325,7 +395,10 @@ describe("tools: domain_expert", () => {
     const harness = harnessOf();
     const tool = createDomainExpertTool(harness.dependencies);
     const error = await tool
-      .execute({ domain: "payments", task: "x" }, { ...execOf(AGENT), agent: undefined })
+      .execute(
+        { domain: "payments", task: "x" },
+        { ...execOf(AGENT), agent: undefined },
+      )
       .catch((thrown: unknown) => thrown);
     expect((error as Error).message).toContain("requires a calling agent");
   });
@@ -334,16 +407,15 @@ describe("tools: domain_expert", () => {
     const harness = harnessOf();
     const tool = createDomainExpertTool(harness.dependencies);
     expect(typeof tool.output.render).toBe("function");
-    expect(tool.presentCall?.({ domain: "payments", task: "t" })?.title).toContain("payments");
+    expect(
+      tool.presentCall?.({ domain: "payments", task: "t" })?.title,
+    ).toContain("payments");
   });
 });
 
 describe("tools: domain_memory", () => {
   function expertHarness(definition: DomainDefinition = PAYMENTS) {
-    const harness = harnessOf([
-      definition,
-      domainOf("inventory"),
-    ]);
+    const harness = harnessOf([definition, domainOf("inventory")]);
     harness.tracker.register({
       domainId: definition.id,
       childSessionId: "session-1",
@@ -360,7 +432,9 @@ describe("tools: domain_memory", () => {
   it("refuses outside an expert run", async () => {
     const harness = harnessOf();
     const tool = createDomainMemoryTool(harness.dependencies);
-    const error = await call(tool, { action: "read" }, AGENT).catch((thrown: unknown) => thrown);
+    const error = await call(tool, { action: "read" }, AGENT).catch(
+      (thrown: unknown) => thrown,
+    );
     expect((error as Error).message).toContain("[EXPERT_NOT_CALLER]");
   });
 
@@ -369,20 +443,36 @@ describe("tools: domain_memory", () => {
     const tool = createDomainMemoryTool(harness.dependencies);
     const written = await call(
       tool,
-      { action: "write", key: "cutoff", text: "Settlement closes at 14:00.", tags: ["batch"] },
+      {
+        action: "write",
+        key: "cutoff",
+        text: "Settlement closes at 14:00.",
+        tags: ["batch"],
+      },
       AGENT,
     );
     expect(written["affected"]).toBe(1);
-    const read = await call(tool, { action: "read", text: "settlement" }, AGENT);
+    const read = await call(
+      tool,
+      { action: "read", text: "settlement" },
+      AGENT,
+    );
     const records = read["records"] as Record<string, unknown>[];
     expect(records).toHaveLength(1);
-    expect(records[0]).toMatchObject({ namespace: "domain/payments", key: "cutoff" });
+    expect(records[0]).toMatchObject({
+      namespace: "domain/payments",
+      key: "cutoff",
+    });
   });
 
   it("derives a key when none is given", async () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
-    const written = await call(tool, { action: "write", text: "Batch cutoff noted." }, AGENT);
+    const written = await call(
+      tool,
+      { action: "write", text: "Batch cutoff noted." },
+      AGENT,
+    );
     const records = written["records"] as Record<string, unknown>[];
     expect(String(records[0]?.["key"])).toContain("batch-cutoff-noted");
   });
@@ -390,26 +480,38 @@ describe("tools: domain_memory", () => {
   it("refuses a foreign namespace read", async () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
-    const error = await call(tool, { action: "read", namespace: "domain/inventory" }, AGENT).catch(
-      (thrown: unknown) => thrown,
-    );
+    const error = await call(
+      tool,
+      { action: "read", namespace: "domain/inventory" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
     expect((error as Error).message).toContain("[MEMORY_SCOPE_DENIED]");
     expect((error as Error).message).toContain("domain/payments");
   });
 
   it("allows reading a configured shared namespace", async () => {
     const definition = domainOf("payments", {
-      memory: { namespace: "domain/payments", sharedReadOnly: ["shared/product"] },
+      memory: {
+        namespace: "domain/payments",
+        sharedReadOnly: ["shared/product"],
+      },
     });
     const harness = expertHarness(definition);
     const tool = createDomainMemoryTool(harness.dependencies);
-    const value = await call(tool, { action: "read", namespace: "shared/product" }, AGENT);
+    const value = await call(
+      tool,
+      { action: "read", namespace: "shared/product" },
+      AGENT,
+    );
     expect(value["namespaces"]).toContain("shared/product (read-only)");
   });
 
   it("refuses a write to a read-only namespace", async () => {
     const definition = domainOf("payments", {
-      memory: { namespace: "domain/payments", sharedReadOnly: ["shared/product"] },
+      memory: {
+        namespace: "domain/payments",
+        sharedReadOnly: ["shared/product"],
+      },
     });
     const harness = expertHarness(definition);
     const tool = createDomainMemoryTool(harness.dependencies);
@@ -425,9 +527,9 @@ describe("tools: domain_memory", () => {
   it("refuses an empty write and a forget without a key", async () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
-    await expect(call(tool, { action: "write", key: "k", text: "  " }, AGENT)).rejects.toThrowError(
-      /\[TASK_REJECTED\]/u,
-    );
+    await expect(
+      call(tool, { action: "write", key: "k", text: "  " }, AGENT),
+    ).rejects.toThrowError(/\[TASK_REJECTED\]/u);
     await expect(call(tool, { action: "forget" }, AGENT)).rejects.toThrowError(
       /\[TASK_REJECTED\]/u,
     );
@@ -437,10 +539,14 @@ describe("tools: domain_memory", () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
     await call(tool, { action: "write", key: "k", text: "t" }, AGENT);
-    await expect(call(tool, { action: "forget", key: "k" }, AGENT)).resolves.toMatchObject({
+    await expect(
+      call(tool, { action: "forget", key: "k" }, AGENT),
+    ).resolves.toMatchObject({
       affected: 1,
     });
-    await expect(call(tool, { action: "forget", key: "k" }, AGENT)).resolves.toMatchObject({
+    await expect(
+      call(tool, { action: "forget", key: "k" }, AGENT),
+    ).resolves.toMatchObject({
       affected: 0,
     });
   });
@@ -457,7 +563,12 @@ describe("tools: domain_memory", () => {
   it("declares the action vocabulary so an unknown one is refused", () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
-    expect(propertiesOf(tool)["action"]?.enum).toEqual(["read", "write", "forget", "list"]);
+    expect(propertiesOf(tool)["action"]?.enum).toEqual([
+      "read",
+      "write",
+      "forget",
+      "list",
+    ]);
   });
 });
 
@@ -478,7 +589,9 @@ describe("tools: definition shape", () => {
   });
 
   it("keeps normalizing a definition the tools will receive", () => {
-    expect(parseDomainDefinition({ id: "payments" }, 1).memory.namespace).toBe("domain/payments");
+    expect(parseDomainDefinition({ id: "payments" }, 1).memory.namespace).toBe(
+      "domain/payments",
+    );
   });
 
   it("raises a typed domain error for a bad definition before any run", () => {

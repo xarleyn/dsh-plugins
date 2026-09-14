@@ -91,17 +91,30 @@ export interface ToolOverrideConfig {
 export interface ResolvedCasResultsConfig {
   readonly enabled: boolean;
   readonly storeDir: string | null;
-  readonly thresholds: { textBytes: number; htmlBytes: number; logBytes: number };
+  readonly thresholds: {
+    textBytes: number;
+    htmlBytes: number;
+    logBytes: number;
+  };
   readonly preview: {
     maxChars: number;
     keepHeadLines: number;
     keepTailLines: number;
     keepPatterns: readonly string[];
   };
-  readonly base64: { enabled: boolean; minChars: number; requireStrongDetection: boolean };
+  readonly base64: {
+    enabled: boolean;
+    minChars: number;
+    requireStrongDetection: boolean;
+  };
   readonly storage: { compression: CompressionMode; maxBytes: number };
   readonly retrieval: { defaultBytes: number; maxBytes: number };
-  readonly gc: { enabled: boolean; intervalMs: number; ttlMs: number; minAgeMs: number };
+  readonly gc: {
+    enabled: boolean;
+    intervalMs: number;
+    ttlMs: number;
+    minAgeMs: number;
+  };
   readonly includeErrors: boolean;
   readonly excludeTools: readonly string[];
   readonly tools: Readonly<Record<string, ToolOverrideConfig>>;
@@ -116,7 +129,17 @@ export const CAS_RESULTS_DEFAULTS = {
   maxChars: 4_096,
   keepHeadLines: 20,
   keepTailLines: 30,
-  keepPatterns: ["error", "warn", "fail", "fatal", "exception", "assert", "panic", "denied", "timeout"],
+  keepPatterns: [
+    "error",
+    "warn",
+    "fail",
+    "fatal",
+    "exception",
+    "assert",
+    "panic",
+    "denied",
+    "timeout",
+  ],
   base64Enabled: true,
   base64MinChars: 8_192,
   base64RequireStrongDetection: true,
@@ -137,7 +160,13 @@ export const CAS_RESULTS_DEFAULTS = {
 
 const nullableNumber = z.union([z.number(), z.const(null)]);
 const nullableBoolean = z.union([z.boolean(), z.const(null)]);
-const nullablePreviewStyle = z.union([z.const("auto"), z.const("text"), z.const("log"), z.const("html"), z.const(null)]);
+const nullablePreviewStyle = z.union([
+  z.const("auto"),
+  z.const("text"),
+  z.const("log"),
+  z.const("html"),
+  z.const(null),
+]);
 
 export const CasResultsConfigSchema = z.object({
   enabled: z.boolean().default(CAS_RESULTS_DEFAULTS.enabled),
@@ -158,7 +187,9 @@ export const CasResultsConfigSchema = z.object({
       maxChars: z.number().default(CAS_RESULTS_DEFAULTS.maxChars),
       keepHeadLines: z.number().default(CAS_RESULTS_DEFAULTS.keepHeadLines),
       keepTailLines: z.number().default(CAS_RESULTS_DEFAULTS.keepTailLines),
-      keepPatterns: z.array(z.string()).default([...CAS_RESULTS_DEFAULTS.keepPatterns]),
+      keepPatterns: z
+        .array(z.string())
+        .default([...CAS_RESULTS_DEFAULTS.keepPatterns]),
     })
     .default({
       maxChars: CAS_RESULTS_DEFAULTS.maxChars,
@@ -170,7 +201,9 @@ export const CasResultsConfigSchema = z.object({
     .object({
       enabled: z.boolean().default(CAS_RESULTS_DEFAULTS.base64Enabled),
       minChars: z.number().default(CAS_RESULTS_DEFAULTS.base64MinChars),
-      requireStrongDetection: z.boolean().default(CAS_RESULTS_DEFAULTS.base64RequireStrongDetection),
+      requireStrongDetection: z
+        .boolean()
+        .default(CAS_RESULTS_DEFAULTS.base64RequireStrongDetection),
     })
     .default({
       enabled: CAS_RESULTS_DEFAULTS.base64Enabled,
@@ -179,16 +212,26 @@ export const CasResultsConfigSchema = z.object({
     }),
   storage: z
     .object({
-      compression: z.union([z.const("none"), z.const("gzip"), z.const("auto")]).default(CAS_RESULTS_DEFAULTS.compression),
+      compression: z
+        .union([z.const("none"), z.const("gzip"), z.const("auto")])
+        .default(CAS_RESULTS_DEFAULTS.compression),
       maxBytes: z.number().default(CAS_RESULTS_DEFAULTS.storageMaxBytes),
     })
-    .default({ compression: CAS_RESULTS_DEFAULTS.compression, maxBytes: CAS_RESULTS_DEFAULTS.storageMaxBytes }),
+    .default({
+      compression: CAS_RESULTS_DEFAULTS.compression,
+      maxBytes: CAS_RESULTS_DEFAULTS.storageMaxBytes,
+    }),
   retrieval: z
     .object({
-      defaultBytes: z.number().default(CAS_RESULTS_DEFAULTS.retrievalDefaultBytes),
+      defaultBytes: z
+        .number()
+        .default(CAS_RESULTS_DEFAULTS.retrievalDefaultBytes),
       maxBytes: z.number().default(CAS_RESULTS_DEFAULTS.retrievalMaxBytes),
     })
-    .default({ defaultBytes: CAS_RESULTS_DEFAULTS.retrievalDefaultBytes, maxBytes: CAS_RESULTS_DEFAULTS.retrievalMaxBytes }),
+    .default({
+      defaultBytes: CAS_RESULTS_DEFAULTS.retrievalDefaultBytes,
+      maxBytes: CAS_RESULTS_DEFAULTS.retrievalMaxBytes,
+    }),
   gc: z
     .object({
       enabled: z.boolean().default(CAS_RESULTS_DEFAULTS.gcEnabled),
@@ -203,7 +246,9 @@ export const CasResultsConfigSchema = z.object({
       minAgeMs: CAS_RESULTS_DEFAULTS.gcMinAgeMs,
     }),
   includeErrors: z.boolean().default(CAS_RESULTS_DEFAULTS.includeErrors),
-  excludeTools: z.array(z.string()).default([...CAS_RESULTS_DEFAULTS.excludeTools]),
+  excludeTools: z
+    .array(z.string())
+    .default([...CAS_RESULTS_DEFAULTS.excludeTools]),
   tools: z
     .dict(
       z.object({
@@ -218,15 +263,25 @@ export const CasResultsConfigSchema = z.object({
 }) as unknown as z<CasResultsConfig>;
 
 function requirePositive(name: string, value: number, minimum: number): number {
-  if (!Number.isFinite(value) || value < minimum || (minimum >= 1 && !Number.isInteger(value))) {
-    throw new CasError("CAS_INVALID_ARGUMENT", `config "${name}" must be an integer >= ${minimum}`);
+  if (
+    !Number.isFinite(value) ||
+    value < minimum ||
+    (minimum >= 1 && !Number.isInteger(value))
+  ) {
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `config "${name}" must be an integer >= ${minimum}`,
+    );
   }
   return value;
 }
 
 function requireNonNegative(name: string, value: number): number {
   if (!Number.isFinite(value) || value < 0) {
-    throw new CasError("CAS_INVALID_ARGUMENT", `config "${name}" must be a non-negative number`);
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `config "${name}" must be a non-negative number`,
+    );
   }
   return value;
 }
@@ -236,46 +291,107 @@ function requireNonNegative(name: string, value: number): number {
  * throws `CasError` ("CAS_INVALID_ARGUMENT") so misconfiguration is loud at
  * load time, while runtime storage failures fail open later (SPEC §26).
  */
-export function resolveCasResultsConfig(input: CasResultsConfig = {}): ResolvedCasResultsConfig {
+export function resolveCasResultsConfig(
+  input: CasResultsConfig = {},
+): ResolvedCasResultsConfig {
   const thresholds = {
-    textBytes: requirePositive("thresholds.textBytes", input.thresholds?.textBytes ?? CAS_RESULTS_DEFAULTS.textBytes, 1),
-    htmlBytes: requirePositive("thresholds.htmlBytes", input.thresholds?.htmlBytes ?? CAS_RESULTS_DEFAULTS.htmlBytes, 1),
-    logBytes: requirePositive("thresholds.logBytes", input.thresholds?.logBytes ?? CAS_RESULTS_DEFAULTS.logBytes, 1),
+    textBytes: requirePositive(
+      "thresholds.textBytes",
+      input.thresholds?.textBytes ?? CAS_RESULTS_DEFAULTS.textBytes,
+      1,
+    ),
+    htmlBytes: requirePositive(
+      "thresholds.htmlBytes",
+      input.thresholds?.htmlBytes ?? CAS_RESULTS_DEFAULTS.htmlBytes,
+      1,
+    ),
+    logBytes: requirePositive(
+      "thresholds.logBytes",
+      input.thresholds?.logBytes ?? CAS_RESULTS_DEFAULTS.logBytes,
+      1,
+    ),
   };
   const preview = {
-    maxChars: requirePositive("preview.maxChars", input.preview?.maxChars ?? CAS_RESULTS_DEFAULTS.maxChars, 256),
-    keepHeadLines: requireNonNegative("preview.keepHeadLines", input.preview?.keepHeadLines ?? CAS_RESULTS_DEFAULTS.keepHeadLines),
-    keepTailLines: requireNonNegative("preview.keepTailLines", input.preview?.keepTailLines ?? CAS_RESULTS_DEFAULTS.keepTailLines),
-    keepPatterns: [...(input.preview?.keepPatterns ?? CAS_RESULTS_DEFAULTS.keepPatterns)],
+    maxChars: requirePositive(
+      "preview.maxChars",
+      input.preview?.maxChars ?? CAS_RESULTS_DEFAULTS.maxChars,
+      256,
+    ),
+    keepHeadLines: requireNonNegative(
+      "preview.keepHeadLines",
+      input.preview?.keepHeadLines ?? CAS_RESULTS_DEFAULTS.keepHeadLines,
+    ),
+    keepTailLines: requireNonNegative(
+      "preview.keepTailLines",
+      input.preview?.keepTailLines ?? CAS_RESULTS_DEFAULTS.keepTailLines,
+    ),
+    keepPatterns: [
+      ...(input.preview?.keepPatterns ?? CAS_RESULTS_DEFAULTS.keepPatterns),
+    ],
   };
   const base64 = {
     enabled: input.base64?.enabled ?? CAS_RESULTS_DEFAULTS.base64Enabled,
-    minChars: requirePositive("base64.minChars", input.base64?.minChars ?? CAS_RESULTS_DEFAULTS.base64MinChars, 8),
-    requireStrongDetection: input.base64?.requireStrongDetection ?? CAS_RESULTS_DEFAULTS.base64RequireStrongDetection,
+    minChars: requirePositive(
+      "base64.minChars",
+      input.base64?.minChars ?? CAS_RESULTS_DEFAULTS.base64MinChars,
+      8,
+    ),
+    requireStrongDetection:
+      input.base64?.requireStrongDetection ??
+      CAS_RESULTS_DEFAULTS.base64RequireStrongDetection,
   };
-  const compression = input.storage?.compression ?? CAS_RESULTS_DEFAULTS.compression;
-  if (compression !== "none" && compression !== "gzip" && compression !== "auto") {
-    throw new CasError("CAS_INVALID_ARGUMENT", `config "storage.compression" must be none, gzip, or auto (got ${String(compression)})`);
+  const compression =
+    input.storage?.compression ?? CAS_RESULTS_DEFAULTS.compression;
+  if (
+    compression !== "none" &&
+    compression !== "gzip" &&
+    compression !== "auto"
+  ) {
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `config "storage.compression" must be none, gzip, or auto (got ${String(compression)})`,
+    );
   }
   const storage = {
     compression,
-    maxBytes: requirePositive("storage.maxBytes", input.storage?.maxBytes ?? CAS_RESULTS_DEFAULTS.storageMaxBytes, 1),
+    maxBytes: requirePositive(
+      "storage.maxBytes",
+      input.storage?.maxBytes ?? CAS_RESULTS_DEFAULTS.storageMaxBytes,
+      1,
+    ),
   };
   const retrievalDefaultBytes = requirePositive(
     "retrieval.defaultBytes",
     input.retrieval?.defaultBytes ?? CAS_RESULTS_DEFAULTS.retrievalDefaultBytes,
     256,
   );
-  const retrievalMaxBytes = requirePositive("retrieval.maxBytes", input.retrieval?.maxBytes ?? CAS_RESULTS_DEFAULTS.retrievalMaxBytes, 256);
+  const retrievalMaxBytes = requirePositive(
+    "retrieval.maxBytes",
+    input.retrieval?.maxBytes ?? CAS_RESULTS_DEFAULTS.retrievalMaxBytes,
+    256,
+  );
   if (retrievalMaxBytes < retrievalDefaultBytes) {
-    throw new CasError("CAS_INVALID_ARGUMENT", "config \"retrieval.maxBytes\" must be >= \"retrieval.defaultBytes\"");
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      'config "retrieval.maxBytes" must be >= "retrieval.defaultBytes"',
+    );
   }
-  const gcIntervalMs = requirePositive("gc.intervalMs", input.gc?.intervalMs ?? CAS_RESULTS_DEFAULTS.gcIntervalMs, 1_000);
+  const gcIntervalMs = requirePositive(
+    "gc.intervalMs",
+    input.gc?.intervalMs ?? CAS_RESULTS_DEFAULTS.gcIntervalMs,
+    1_000,
+  );
   const gc = {
     enabled: input.gc?.enabled ?? CAS_RESULTS_DEFAULTS.gcEnabled,
     intervalMs: gcIntervalMs,
-    ttlMs: requireNonNegative("gc.ttlMs", input.gc?.ttlMs ?? CAS_RESULTS_DEFAULTS.gcTtlMs),
-    minAgeMs: requireNonNegative("gc.minAgeMs", input.gc?.minAgeMs ?? CAS_RESULTS_DEFAULTS.gcMinAgeMs),
+    ttlMs: requireNonNegative(
+      "gc.ttlMs",
+      input.gc?.ttlMs ?? CAS_RESULTS_DEFAULTS.gcTtlMs,
+    ),
+    minAgeMs: requireNonNegative(
+      "gc.minAgeMs",
+      input.gc?.minAgeMs ?? CAS_RESULTS_DEFAULTS.gcMinAgeMs,
+    ),
   };
   const storeDir = input.storeDir?.trim();
   return {
@@ -285,10 +401,15 @@ export function resolveCasResultsConfig(input: CasResultsConfig = {}): ResolvedC
     preview,
     base64,
     storage,
-    retrieval: { defaultBytes: retrievalDefaultBytes, maxBytes: retrievalMaxBytes },
+    retrieval: {
+      defaultBytes: retrievalDefaultBytes,
+      maxBytes: retrievalMaxBytes,
+    },
     gc,
     includeErrors: input.includeErrors ?? CAS_RESULTS_DEFAULTS.includeErrors,
-    excludeTools: [...(input.excludeTools ?? CAS_RESULTS_DEFAULTS.excludeTools)],
+    excludeTools: [
+      ...(input.excludeTools ?? CAS_RESULTS_DEFAULTS.excludeTools),
+    ],
     tools: input.tools ?? {},
     exposeGcTool: input.exposeGcTool ?? CAS_RESULTS_DEFAULTS.exposeGcTool,
   };

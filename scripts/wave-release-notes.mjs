@@ -74,7 +74,9 @@ function main(argv = process.argv.slice(2)) {
   try {
     const tsvFile = option("tsv");
     if (!tsvFile) throw new Error("--tsv=<release-packages.tsv> is required");
-    process.stdout.write(buildWaveNotes(readReleaseRows(tsvFile), process.cwd()));
+    process.stdout.write(
+      buildWaveNotes(readReleaseRows(tsvFile), process.cwd()),
+    );
     return 0;
   } catch (error) {
     process.stderr.write(

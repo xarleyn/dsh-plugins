@@ -24,7 +24,8 @@ export function createOpenAiCompatibleTransport(options: {
   model: string;
   fetchImpl?: FetchLike;
 }): ClassifierTransport {
-  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  const fetchImpl: FetchLike =
+    options.fetchImpl ?? ((url, init) => fetch(url, init));
   const base = options.baseURL.replace(/\/+$/, "");
   const url = `${base}/chat/completions`;
 
@@ -34,7 +35,9 @@ export function createOpenAiCompatibleTransport(options: {
       signal: request.signal,
       headers: {
         "content-type": "application/json",
-        ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
+        ...(options.apiKey
+          ? { authorization: `Bearer ${options.apiKey}` }
+          : {}),
       },
       body: JSON.stringify({
         model: options.model,
@@ -48,7 +51,9 @@ export function createOpenAiCompatibleTransport(options: {
       }),
     });
     if (!response.ok) {
-      throw new Error(`classifier endpoint responded ${String(response.status)}`);
+      throw new Error(
+        `classifier endpoint responded ${String(response.status)}`,
+      );
     }
     const payload = (await response.json()) as ChatCompletionResponse;
     const text = payload.choices?.[0]?.message?.content;
@@ -57,7 +62,10 @@ export function createOpenAiCompatibleTransport(options: {
     }
     const usage =
       payload.usage !== undefined
-        ? { inputTokens: payload.usage.prompt_tokens ?? 0, outputTokens: payload.usage.completion_tokens ?? 0 }
+        ? {
+            inputTokens: payload.usage.prompt_tokens ?? 0,
+            outputTokens: payload.usage.completion_tokens ?? 0,
+          }
         : null;
     return { text, ...(usage !== null ? { usage } : {}) };
   };
@@ -67,7 +75,10 @@ export function createOpenAiCompatibleTransport(options: {
 export function isLoopbackBaseURL(baseURL: string): boolean {
   try {
     const parsed = new URL(baseURL);
-    return parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]", "0.0.0.0"].includes(parsed.hostname);
+    return (
+      parsed.protocol === "http:" &&
+      ["localhost", "127.0.0.1", "[::1]", "0.0.0.0"].includes(parsed.hostname)
+    );
   } catch {
     return false;
   }

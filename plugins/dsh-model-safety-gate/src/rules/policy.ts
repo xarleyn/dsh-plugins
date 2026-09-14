@@ -19,7 +19,9 @@ import { DECISION_ORDER, VERDICT_VERSION } from "../types.js";
 import type { GateMode, ResolvedSafetyGateConfig } from "../config.js";
 
 /** Monotonic max over decisions (SPEC §19: BLOCK → ALLOW is impossible). */
-export function mergeDecisions(...decisions: readonly SafetyDecision[]): SafetyDecision {
+export function mergeDecisions(
+  ...decisions: readonly SafetyDecision[]
+): SafetyDecision {
   let merged: SafetyDecision = "allow";
   for (const decision of decisions) {
     if (DECISION_ORDER[decision] > DECISION_ORDER[merged]) merged = decision;
@@ -28,7 +30,10 @@ export function mergeDecisions(...decisions: readonly SafetyDecision[]): SafetyD
 }
 
 /** Cap a decision for non-enforcing modes (SPEC §24). */
-export function applyGateMode(decision: SafetyDecision, mode: GateMode): SafetyDecision {
+export function applyGateMode(
+  decision: SafetyDecision,
+  mode: GateMode,
+): SafetyDecision {
   if (mode === "audit") return "allow";
   if (mode === "warn" && decision === "block") return "warn";
   return decision;
@@ -56,19 +61,34 @@ export function mergeL0L1(
   const l0Verdict: SafetyVerdict = {
     version: VERDICT_VERSION,
     decision: l0.decision,
-    confidence: l0.findings.length > 0 ? Math.max(...l0.findings.map((finding) => finding.confidence)) : 1,
+    confidence:
+      l0.findings.length > 0
+        ? Math.max(...l0.findings.map((finding) => finding.confidence))
+        : 1,
     categories: l0.categories,
     summary: l0.findings.map((finding) => finding.ruleId).join(","),
     policyRuleIds: l0.findings.map((finding) => finding.ruleId),
   };
 
-  const sources = [l0Verdict, ...(l1 !== null ? [l1] : []), ...(l1Failure !== undefined ? [emptyVerdict(l1Failure)] : [])];
+  const sources = [
+    l0Verdict,
+    ...(l1 !== null ? [l1] : []),
+    ...(l1Failure !== undefined ? [emptyVerdict(l1Failure)] : []),
+  ];
   const decision = mergeDecisions(...sources.map((source) => source.decision));
-  const categories = [...new Set(sources.flatMap((source) => [...source.categories]))];
-  const ruleIds = [...new Set(sources.flatMap((source) => [...(source.policyRuleIds ?? [])]))];
+  const categories = [
+    ...new Set(sources.flatMap((source) => [...source.categories])),
+  ];
+  const ruleIds = [
+    ...new Set(sources.flatMap((source) => [...(source.policyRuleIds ?? [])])),
+  ];
   const winning = sources.find((source) => source.decision === decision);
   const confidence = sources.some((source) => source.decision === decision)
-    ? Math.max(...sources.filter((source) => source.decision === decision).map((source) => source.confidence))
+    ? Math.max(
+        ...sources
+          .filter((source) => source.decision === decision)
+          .map((source) => source.confidence),
+      )
     : 1;
 
   return {
@@ -106,11 +126,16 @@ const QUALITY_CATEGORY_SET: ReadonlySet<string> = new Set<string>([
  */
 export function decisionForCategories(
   verdict: SafetyVerdict,
-  actions: { readonly safety: SafetyDecision; readonly quality: SafetyDecision },
+  actions: {
+    readonly safety: SafetyDecision;
+    readonly quality: SafetyDecision;
+  },
 ): SafetyDecision {
   const categories = verdict.categories;
   const hasSafety = categories.some((category) => isSafetyCategory(category));
-  const hasQuality = categories.some((category) => QUALITY_CATEGORY_SET.has(category));
+  const hasQuality = categories.some((category) =>
+    QUALITY_CATEGORY_SET.has(category),
+  );
   if (hasSafety) return mergeDecisions(verdict.decision, actions.safety);
   if (hasQuality) return mergeDecisions(verdict.decision, actions.quality);
   return verdict.decision;
@@ -138,12 +163,19 @@ export interface CheckOutcome {
     readonly provider: string;
     readonly model: string;
     readonly ran: boolean;
-    readonly failureMode: ResolvedSafetyGateConfig["classifier"]["failureMode"] | null;
+    readonly failureMode:
+      ResolvedSafetyGateConfig["classifier"]["failureMode"] | null;
   };
 }
 
 export function emptyScan(): ScanResult {
-  return { findings: [], decision: "allow", categories: [], scannedChars: 0, truncated: false };
+  return {
+    findings: [],
+    decision: "allow",
+    categories: [],
+    scannedChars: 0,
+    truncated: false,
+  };
 }
 
 export function allowOutcome(context: CheckContext): CheckOutcome {

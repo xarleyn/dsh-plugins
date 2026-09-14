@@ -124,7 +124,9 @@ describe("dsh-plugin generator", () => {
     });
     expect(packageJson.dsh.client).toEqual({ platform: "web" });
     expect(packageJson.devDependencies.tsdown).toBe("catalog:tooling");
-    expect(packageJson.scripts.build).toBe("tsc -p tsconfig.build.json && tsdown");
+    expect(packageJson.scripts.build).toBe(
+      "tsc -p tsconfig.build.json && tsdown",
+    );
     expect(packageJson.scripts.lint).toBe(
       "eslint src scripts tsdown.config.ts",
     );
@@ -141,7 +143,8 @@ describe("dsh-plugin generator", () => {
     expect(tree.exists(`${root}/src/client/index.tsx`)).toBe(true);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(false);
 
-    const clientSource = tree.read(`${root}/src/client/index.tsx`, "utf8") ?? "";
+    const clientSource =
+      tree.read(`${root}/src/client/index.tsx`, "utf8") ?? "";
     expect(clientSource).toContain("export function apply(");
     expect(clientSource).not.toContain("initializeClient");
 

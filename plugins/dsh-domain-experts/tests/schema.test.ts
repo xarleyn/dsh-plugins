@@ -40,7 +40,10 @@ describe("schema: definition parsing", () => {
             denied: [],
           },
         },
-        memory: { namespace: "/shared/product/", sharedReadOnly: ["shared/x", "shared/x"] },
+        memory: {
+          namespace: "/shared/product/",
+          sharedReadOnly: ["shared/x", "shared/x"],
+        },
         tools: { allow: ["bash", "bash"], deny: [] },
       },
       1,
@@ -62,7 +65,9 @@ describe("schema: definition parsing", () => {
 
 describe("schema: semantic validation", () => {
   it("accepts a coherent domain", () => {
-    expect(errorsOf(validateDomainDefinition(domainOf("payments")))).toEqual([]);
+    expect(errorsOf(validateDomainDefinition(domainOf("payments")))).toEqual(
+      [],
+    );
   });
 
   it("rejects a malformed id and a reserved id", () => {
@@ -71,12 +76,16 @@ describe("schema: semantic validation", () => {
         .filter((issue) => issue.severity === "error")
         .map((issue) => issue.field),
     ).toContain("id");
-    expect(errorsOf(validateDomainDefinition(domainOf("shared")))[0]?.field).toBe("id");
+    expect(
+      errorsOf(validateDomainDefinition(domainOf("shared")))[0]?.field,
+    ).toBe("id");
   });
 
   it("requires a name", () => {
     const definition = domainOf("alpha", { name: "   " });
-    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe("name");
+    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe(
+      "name",
+    );
   });
 
   it("refuses a template sequence in custom instructions", () => {
@@ -99,7 +108,9 @@ describe("schema: semantic validation", () => {
         },
       },
     });
-    const fields = errorsOf(validateDomainDefinition(definition)).map((issue) => issue.field);
+    const fields = errorsOf(validateDomainDefinition(definition)).map(
+      (issue) => issue.field,
+    );
     expect(fields).toContain("scope.filesystem.primary");
     expect(fields).toContain("scope.filesystem.sharedReadOnly");
     expect(fields).toContain("scope.filesystem.denied");
@@ -123,31 +134,51 @@ describe("schema: semantic validation", () => {
   });
 
   it("rejects a malformed memory namespace", () => {
-    const definition = domainOf("alpha", { memory: { namespace: "Domain Alpha", sharedReadOnly: [] } });
-    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe("memory.namespace");
+    const definition = domainOf("alpha", {
+      memory: { namespace: "Domain Alpha", sharedReadOnly: [] },
+    });
+    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe(
+      "memory.namespace",
+    );
   });
 
   it("rejects a tool that is both allowed and denied", () => {
     const definition = domainOf("alpha", {
       tools: { allow: ["bash"], deny: ["bash"] },
     });
-    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe("tools.deny");
+    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe(
+      "tools.deny",
+    );
   });
 
   it("rejects a non-integer delegation cap", () => {
     const definition = domainOf("alpha", {
-      delegation: { ...domainOf("alpha").delegation, maxDepth: -1, maxParallel: 0 },
+      delegation: {
+        ...domainOf("alpha").delegation,
+        maxDepth: -1,
+        maxParallel: 0,
+      },
     });
-    const fields = errorsOf(validateDomainDefinition(definition)).map((issue) => issue.field);
+    const fields = errorsOf(validateDomainDefinition(definition)).map(
+      (issue) => issue.field,
+    );
     expect(fields).toContain("delegation.maxDepth");
     expect(fields).toContain("delegation.maxParallel");
   });
 
   it("requires a route when the model does not inherit", () => {
     const definition = domainOf("alpha", {
-      model: { inherit: false, provider: "", model: "", reasoningEffort: "", maxTokens: 0 },
+      model: {
+        inherit: false,
+        provider: "",
+        model: "",
+        reasoningEffort: "",
+        maxTokens: 0,
+      },
     });
-    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe("model");
+    expect(errorsOf(validateDomainDefinition(definition))[0]?.field).toBe(
+      "model",
+    );
   });
 
   it("throws a typed error for an invalid definition", () => {
@@ -187,7 +218,10 @@ describe("schema: helpers", () => {
           denied: ["d/**"],
         },
       },
-      memory: { namespace: "domain/payments", sharedReadOnly: ["shared/product"] },
+      memory: {
+        namespace: "domain/payments",
+        sharedReadOnly: ["shared/product"],
+      },
       tools: { allow: ["bash", "domain_delegate"], deny: [] },
     });
     const summary = summarizeDomain(definition, 2);

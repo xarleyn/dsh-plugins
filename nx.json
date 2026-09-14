@@ -1,9 +1,7 @@
 {
   "$schema": "node_modules/nx/schemas/nx-schema.json",
   "namedInputs": {
-    "default": [
-      "{projectRoot}/**/*"
-    ],
+    "default": ["{projectRoot}/**/*"],
     "production": [
       "default",
       "!{projectRoot}/tests/**/*",
@@ -11,16 +9,10 @@
     ]
   },
   "release": {
-    "projects": [
-      "plugins/*",
-      "packages/plugin-log"
-    ],
+    "projects": ["plugins/*", "packages/plugin-log"],
     "projectsRelationship": "independent",
     "versionPlans": {
-      "ignorePatternsForPlanCheck": [
-        "**/CHANGELOG.md",
-        "**/package.json"
-      ]
+      "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
     },
     "version": {
       "updateDependents": "always"
@@ -38,49 +30,27 @@
   },
   "targetDefaults": {
     "build": {
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "production",
-        "^production"
-      ],
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"],
       "cache": true
     },
     "test": {
-      "dependsOn": [
-        "build"
-      ],
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "dependsOn": ["build"],
+      "inputs": ["default", "^production"],
       "cache": true
     },
     "typecheck": {
-      "dependsOn": [
-        "^build"
-      ],
-      "inputs": [
-        "default",
-        "^production"
-      ],
+      "dependsOn": ["^build"],
+      "inputs": ["default", "^production"],
       "cache": true
     },
     "lint": {
-      "inputs": [
-        "default"
-      ],
+      "inputs": ["default"],
       "cache": true
     },
     "verify": {
-      "dependsOn": [
-        "build"
-      ],
-      "inputs": [
-        "production",
-        "^production"
-      ],
+      "dependsOn": ["build"],
+      "inputs": ["production", "^production"],
       "cache": true
     }
   },

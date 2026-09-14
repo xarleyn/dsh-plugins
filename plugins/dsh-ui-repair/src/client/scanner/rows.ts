@@ -5,11 +5,7 @@ import {
   matches,
 } from "../dom.js";
 import { dominantPosition } from "../geometry.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 const ROW_SELECTOR =
   "button,a,li,[role='menuitem'],[role='tab'],[data-dsh-ui-repair-row]";
@@ -72,7 +68,8 @@ export function scanRowAlignment(
         ) / 100,
       );
       for (const measurement of horizontalOutliers) {
-        const delta = Math.round((dominantX.center - measurement.x) * 100) / 100;
+        const delta =
+          Math.round((dominantX.center - measurement.x) * 100) / 100;
         const issue: RepairIssue = {
           id: createId("R003", measurement.row),
           ruleId: "R003",

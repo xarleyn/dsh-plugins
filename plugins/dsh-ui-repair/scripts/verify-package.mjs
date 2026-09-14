@@ -12,7 +12,10 @@ assert.deepEqual(manifest.dsh?.client?.inject, [
   "@deepseek-ai/dsh-client-ui-settings-plugins",
 ]);
 for (const exportPath of [".", "./client", "./types", "./package.json"]) {
-  assert.ok(Object.hasOwn(manifest.exports, exportPath), `missing export ${exportPath}`);
+  assert.ok(
+    Object.hasOwn(manifest.exports, exportPath),
+    `missing export ${exportPath}`,
+  );
 }
 for (const file of [
   "cordis.patch.yml",
@@ -23,7 +26,11 @@ for (const file of [
   assert.ok(manifest.files.includes(file), `${file} is not published`);
   await access(new URL(`../${file}`, import.meta.url));
 }
-for (const builtFile of ["lib/index.js", "lib/client.js", "lib/types/index.d.ts"]) {
+for (const builtFile of [
+  "lib/index.js",
+  "lib/client.js",
+  "lib/types/index.d.ts",
+]) {
   await access(new URL(`../${builtFile}`, import.meta.url));
 }
 

@@ -32,20 +32,26 @@ const LEVEL_TINT: Record<PluginLogRecordLevel, string> = {
   info: "color:var(--dsw-alias-label-secondary)",
   warn: "color:var(--dsw-alias-state-warn-label)",
   error: "color:var(--dsw-alias-state-error-primary)",
-  fatal: "color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-error)",
+  fatal:
+    "color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-error)",
 };
 
 /** One ink rule per level, for the line's severity token. */
 function levelRules(): string {
   return (Object.keys(LEVEL_INK) as PluginLogRecordLevel[])
-    .map((level) => `.plu-log-level[data-plu-level=${level}]{${LEVEL_INK[level]}}`)
+    .map(
+      (level) => `.plu-log-level[data-plu-level=${level}]{${LEVEL_INK[level]}}`,
+    )
     .join("");
 }
 
 /** One ink rule per level, for an enabled chip. */
 function chipRules(): string {
   return (Object.keys(LEVEL_TINT) as PluginLogRecordLevel[])
-    .map((level) => `.plu-log-chip[data-plu-level=${level}][data-plu-level-on]{${LEVEL_TINT[level]};border-color:currentColor}`)
+    .map(
+      (level) =>
+        `.plu-log-chip[data-plu-level=${level}][data-plu-level-on]{${LEVEL_TINT[level]};border-color:currentColor}`,
+    )
     .join("");
 }
 

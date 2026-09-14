@@ -1,7 +1,4 @@
-import type {
-  DomainDegradationCode,
-  DomainErrorCode,
-} from "../types.js";
+import type { DomainDegradationCode, DomainErrorCode } from "../types.js";
 
 /** Typed domain failure. Every expected refusal carries a stable code. */
 export class DomainExpertsError extends Error {
@@ -12,16 +9,24 @@ export class DomainExpertsError extends Error {
   constructor(
     code: DomainErrorCode,
     message: string,
-    options: { readonly refs?: readonly string[]; readonly cause?: unknown } = {},
+    options: {
+      readonly refs?: readonly string[];
+      readonly cause?: unknown;
+    } = {},
   ) {
-    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+    super(
+      message,
+      options.cause === undefined ? undefined : { cause: options.cause },
+    );
     this.name = "DomainExpertsError";
     this.code = code;
     this.refs = options.refs ?? [];
   }
 }
 
-export function isDomainExpertsError(value: unknown): value is DomainExpertsError {
+export function isDomainExpertsError(
+  value: unknown,
+): value is DomainExpertsError {
   return value instanceof DomainExpertsError;
 }
 
@@ -41,7 +46,10 @@ export function errorMessageOf(error: unknown): string {
 }
 
 /** Map any thrown value onto a `HumanError`-shaped envelope field pair. */
-export function failureEnvelope(error: unknown): { code: string; message: string } {
+export function failureEnvelope(error: unknown): {
+  code: string;
+  message: string;
+} {
   return { code: errorCodeOf(error), message: errorMessageOf(error) };
 }
 
