@@ -142,6 +142,11 @@ describe("QA content width", () => {
       expect(root.style.getPropertyValue("--dsh-qa-content-width")).toBe(
         "920px",
       );
+      // The column itself rides along: the stylesheet caps the assistant bleed
+      // by the gutter this pair describes.
+      expect(root.style.getPropertyValue("--dsh-qa-column-width")).toBe(
+        "1440px",
+      );
 
       // 1_600px exceeds the removed 900px cap and stops at the column budget.
       handlers.current?.onDrag(1_600);

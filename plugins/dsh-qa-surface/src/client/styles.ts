@@ -1,3 +1,5 @@
+import { QA_BLEED_MAX_WIDTH } from "./components/QaWidthHandle.js";
+
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
  * source of every hard-coded color in this file. The object is emitted once as
@@ -247,7 +249,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-header__tabs span{position:relative;padding:0 0 11px;color:var(--dsh-qa-accent);font-size:13px;font-weight:500;line-height:16px}
 .dsh-qa-header__tabs span::after{content:"";position:absolute;right:0;bottom:1px;left:0;height:2px;border-radius:2px;background:var(--dsh-qa-accent)}
 .dsh-qa-transcript{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
-.dsh-qa-transcript__inner{width:100%;max-width:var(--dsh-qa-content-width);min-height:100%;margin:0 auto;padding:18px 16px 42px}
+.dsh-qa-transcript__inner{--dsh-qa-side-space:max(0px,calc((var(--dsh-qa-column-width,0px) - var(--dsh-qa-content-width))/2));--dsh-qa-bleed:min(${QA_BLEED_MAX_WIDTH}px,var(--dsh-qa-side-space));width:100%;max-width:var(--dsh-qa-content-width);min-height:100%;margin:0 auto;padding:18px 16px 42px}
 .dsh-qa-width-handle{position:absolute;z-index:8;top:0;bottom:0;width:max(0px,min(40px,calc((100% - var(--dsh-qa-content-width)) / 2 - 48px)));cursor:col-resize;touch-action:none;user-select:none}
 .dsh-qa-width-handle[data-side="left"]{right:calc(50% + var(--dsh-qa-content-width) / 2 + 24px)}
 .dsh-qa-width-handle[data-side="right"]{left:calc(50% + var(--dsh-qa-content-width) / 2 + 24px)}
@@ -425,12 +427,12 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-message__content ol{margin:0 0 14px;padding-left:22px}
 .dsh-qa-message__content ol li,.dsh-qa-message__content ul li{margin:0 0 4px}
 .dsh-qa-message__content hr{border:0;border-top:1px solid var(--dsw-alias-border-l2);margin:16px 0}
-.dsh-qa-md-table{overflow-x:auto;margin:0 0 14px}
-.dsh-qa-md-table table{border-collapse:collapse;width:auto;min-width:calc(100% - var(--dsh-qa-bleed,0px)*2);font-size:14px}
-.dsh-qa-md-table th,.dsh-qa-md-table td{border:1px solid var(--dsw-alias-border-l2);padding:6px 10px;vertical-align:top}
+.dsh-qa-md-table{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;margin:0 0 14px}
+.dsh-qa-md-table table{border-collapse:collapse;width:max-content;font-size:14px}
+.dsh-qa-md-table th,.dsh-qa-md-table td{max-width:max(160px,calc(var(--dsh-qa-content-width,920px)*0.35));border:1px solid var(--dsw-alias-border-l2);padding:6px 10px;vertical-align:top;overflow-wrap:anywhere}
 .dsh-qa-md-table thead th{background:var(--dsw-alias-bg-layer-2);font-weight:600}
 .dsh-qa-md-table tbody tr:nth-child(even){background:var(--dsw-alias-bg-layer-2)}
-.dsh-qa-message--assistant .dsh-qa-message__content pre,.dsh-qa-message--assistant .dsh-qa-md-table{--dsh-qa-bleed:min(72px,max(0px,(100vw - 100%)/2 - 28px));width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
+.dsh-qa-message--assistant .dsh-qa-message__content pre{width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
 .dsh-qa-message__content blockquote{border-left:3px solid var(--dsw-alias-border-l2);padding-left:12px;color:var(--dsw-alias-label-secondary)}
 .dsh-qa-message__cursor{display:inline-block;width:7px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--dsw-alias-label-secondary);animation:dsh-qa-blink 1s steps(2,start) infinite}
 @keyframes dsh-qa-blink{50%{opacity:0}}
@@ -571,7 +573,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-composer__action:disabled{opacity:.4;cursor:default}
 .dsh-qa-composer__action:focus-visible,.dsh-qa-error button:focus-visible,.dsh-qa-header__reset:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
 @media (hover:hover){.dsh-qa-message__actions .dsh-qa-message__meta{opacity:0;transition:opacity 80ms ease}.dsh-qa-message:hover .dsh-qa-message__actions .dsh-qa-message__meta,.dsh-qa-message:focus-within .dsh-qa-message__actions .dsh-qa-message__meta,.dsh-qa-message__actions[data-persistent] .dsh-qa-message__meta{opacity:1}}.dsh-qa-message__actions[data-persistent] .dsh-qa-message__meta{opacity:1}
-@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__mode{font-size:12px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
+@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__mode{font-size:12px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{--dsh-qa-bleed:0px;max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
 @media (max-height:480px) and (orientation:landscape){.dsh-qa-header__inner{padding-top:6px}.dsh-qa-header__tabs{display:none}.dsh-qa-transcript__inner{padding-top:12px}.dsh-qa-footer{padding-top:12px}.dsh-qa-composer{min-height:72px;gap:4px;padding-top:8px}}
 @media (prefers-reduced-motion:reduce){.dsh-qa-message__cursor,.dsh-qa-work__spinner,.dsh-qa-work-item__spinner{animation:none}.dsh-qa-work__chevron{transition:none}.dsh-qa-rail__frame,.dsh-qa-rail__pos,.dsh-qa-rail__mark::before,.dsh-qa-rail__mark--busy::before,.dsh-qa-rail__preview{transition:none;animation:none}}
 `;

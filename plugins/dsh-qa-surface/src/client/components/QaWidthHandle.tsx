@@ -16,6 +16,21 @@ import {
  */
 export const QA_CONTENT_EDGE_BUDGET = 176;
 
+/**
+ * Band between the text column edge and the handle strip: the transcript keeps
+ * 16px of side padding and the strip's inner edge sits 24px outside the content
+ * box. A bled block that grows past this band slides under the 40px drag
+ * target, so the stylesheet holds the bleed inside it.
+ */
+export const QA_HANDLE_FREE_BAND = 40;
+
+/**
+ * Ceiling for the assistant bleed (fenced code blocks) per side. Eight pixels
+ * short of the free band, so both the strip and its glow stay on empty gutter
+ * at every width; the stylesheet caps it once more by the live side gutter.
+ */
+export const QA_BLEED_MAX_WIDTH = QA_HANDLE_FREE_BAND - 8;
+
 const QA_ADAPTIVE_MIN_WIDTH = 680;
 const QA_ADAPTIVE_MAX_WIDTH = 920;
 
@@ -173,15 +188,18 @@ export function useQaContentWidth({
   storageKey,
   minContentWidth,
 }: UseQaContentWidthOptions) {
+  /**
+   * Publish both numbers the layout needs: the resolved content width and the
+   * column it sits in. The stylesheet derives the side gutter from the pair and
+   * caps the assistant bleed with it, which keeps bled blocks off the handle.
+   */
   const publish = useCallback(() => {
     const element = root.current;
     if (element === null) return;
+    const column = element.offsetWidth;
     const preference = readQaContentWidth(storage, storageKey);
-    const width = resolveQaContentWidth(
-      element.offsetWidth,
-      preference,
-      minContentWidth,
-    );
+    const width = resolveQaContentWidth(column, preference, minContentWidth);
+    element.style.setProperty("--dsh-qa-column-width", `${column}px`);
     element.style.setProperty("--dsh-qa-content-width", `${width}px`);
   }, [minContentWidth, root, storage, storageKey]);
 
