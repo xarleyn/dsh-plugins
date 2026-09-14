@@ -41,6 +41,7 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
     workflow,
     /NX_PROJECT: \$\{\{ matrix\.project \}\}\s+run: pnpm nx run-many -t lint typecheck test build verify --projects="\$NX_PROJECT" --output-style=static/u,
   );
+  assert.match(workflow, /- name: Check formatting\s+run: pnpm format/u);
   assert.match(
     workflow,
     /- name: Verify plugin logging contract\s+run: pnpm verify:logging/u,

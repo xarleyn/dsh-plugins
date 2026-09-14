@@ -49,6 +49,9 @@ jobs:
       - name: Lint repository tooling
         run: pnpm lint:workspace
 
+      - name: Check formatting
+        run: pnpm format
+
       - name: Verify plugin logging contract
         run: pnpm verify:logging
 
