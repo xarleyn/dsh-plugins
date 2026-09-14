@@ -26,6 +26,7 @@ import type {
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
+  QaSkillApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SURFACE_STYLES } from "./styles.js";
@@ -36,6 +37,11 @@ import type {
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaSkillDocument,
+  QaSkillDraftInput,
+  QaSkillRemoval,
+  QaSkillSummary,
+  QaSkillToolDescriptor,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
@@ -161,6 +167,32 @@ interface QaPolicyRemote extends QaAccountsApi {
   accountsListOwnership(
     token: string,
   ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;
+  skillsList(
+    token: string,
+  ): Promise<RemoteResult<{ readonly skills: readonly QaSkillSummary[] }>>;
+  skillsGet(
+    token: string,
+    name: string,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsCreate(
+    token: string,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsUpdate(
+    token: string,
+    name: string,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  skillsRemove(
+    token: string,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  skillsTools(
+    token: string,
+  ): Promise<
+    RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
+  >;
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
@@ -231,6 +263,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             requestId,
           ) as unknown as ReturnType<QaQuestionApi["cancelQuestion"]>,
+      };
+      // Personal skills: the token rides every call, and the Host answers with
+      // the caller's own storage. The section simply does not exist on a page
+      // whose deployment cannot host one.
+      const skillApi: QaSkillApi = {
+        skillsList: (token) => policyRemote.skillsList(token),
+        skillsGet: (token, name) => policyRemote.skillsGet(token, name),
+        skillsCreate: (token, input) => policyRemote.skillsCreate(token, input),
+        skillsUpdate: (token, name, input) =>
+          policyRemote.skillsUpdate(token, name, input),
+        skillsRemove: (token, name, expectedRevision) =>
+          policyRemote.skillsRemove(token, name, expectedRevision),
+        skillsTools: (token) => policyRemote.skillsTools(token),
       };
       const approvalApi: QaApprovalApi = {
         pendingApprovals: (token, sessionId) =>
@@ -417,6 +462,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               createSession: (token: string) =>
                 policyRemote.createSession(token),
               sourceApi,
+              skillApi,
               approvalApi,
               questionApi,
               accounts,

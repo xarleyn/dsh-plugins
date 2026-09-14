@@ -137,7 +137,8 @@ export class QaSurface extends TypertRemoteService {
     this.accountRemotes = createQaAccountRemotes({
       getConfig: () => this.getConfig(),
       logger: this.logger,
-    });    this.personalSkills = new QaPersonalSkillsHost({
+    });
+    this.personalSkills = new QaPersonalSkillsHost({
       ctx,
       getConfig: () => this.getConfig(),
       logger: this.logger,
