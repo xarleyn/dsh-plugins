@@ -38,4 +38,12 @@ paint, and the guard lifts it in the same synchronous block that takes the
 page over (`data-dsh-qa-boot="done"`), with a fail-open timeout so a
 deployment whose plugin never loads still reaches the harness.
 
+The browser tab is part of the same picture: while the surface owns the
+route, the guard swaps the favicon to the deployment's `branding.logoUrl`
+(the same logo the sidebar and the auth gate render) and restores the host's
+own icons when the route is left. On proxy-fronted deployments,
+`DSH_QA_FAVICON_URL` pins the icon from the first paint, before any bundle
+loads.
+
+
 

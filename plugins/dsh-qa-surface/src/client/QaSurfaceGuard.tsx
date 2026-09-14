@@ -8,6 +8,7 @@ import type {
   QaRouteController,
   QaRouteSnapshot,
 } from "./QaRouteController.js";
+import type { QaConfigController } from "./QaConfigController.js";
 import { QaSurface, type QaSurfaceProps } from "./QaSurface.js";
 
 /** Fallback route read when the face failed to assemble: keep the page masked. */
@@ -48,6 +49,23 @@ export function QaSurfaceGuard(props: QaSurfaceProps): ReactNode {
 
   useEffect(() => {
     if (!active) return;
+    // While the surface owns the page, the tab carries the deployment's
+    // brand — the same logo the sidebar and the auth gate render. The host's
+    // own icon links come back when the route is left (or the plugin
+    // unloads): they are removed and restored, not fought over.
+    const config = props.config as QaConfigController | undefined;
+    const logoUrl = config?.getSnapshot().config.branding.logoUrl ?? null;
+    const hostIcons = Array.from(
+      document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]'),
+    );
+    if (logoUrl !== null) {
+      for (const icon of hostIcons) icon.remove();
+      const link = document.createElement("link");
+      link.rel = "icon";
+      link.href = logoUrl;
+      link.dataset.dshQaSurface = "favicon";
+      document.head.append(link);
+    }
     const previousBodyOverflow = document.body.style.overflow;
     const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.dataset.dshQaSurface = "active";
@@ -59,11 +77,13 @@ export function QaSurfaceGuard(props: QaSurfaceProps): ReactNode {
     document.body.style.overflow = "hidden";
     document.documentElement.style.overflow = "hidden";
     return () => {
+      document.querySelector('link[data-dsh-qa-surface="favicon"]')?.remove();
+      for (const icon of hostIcons.reverse()) document.head.prepend(icon);
       delete document.body.dataset.dshQaSurface;
       document.body.style.overflow = previousBodyOverflow;
       document.documentElement.style.overflow = previousHtmlOverflow;
     };
-  }, [active]);
+  }, [active, props.config]);
 
   // Off-route the host shell is the page again (the mask attribute lifts);
   // unmounting the subtree also gives a crashed surface a fresh boundary on
