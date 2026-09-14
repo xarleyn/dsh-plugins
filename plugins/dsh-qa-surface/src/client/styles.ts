@@ -165,6 +165,7 @@ body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-she
 .dsh-qa-crash__reload:hover{background:var(--dsh-qa-accent-hover)}
 .dsh-qa-crash__reload:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
 .dsh-qa-modal{${QA_BRAND_TOKENS};position:fixed;inset:0;z-index:2147483600;display:grid;place-items:center;padding:24px;background:var(--dsh-qa-overlay)}
+.dsh-qa-modal *{box-sizing:border-box}
 .dsh-qa-modal__panel{display:flex;flex-direction:column;width:min(560px,100%);max-height:min(640px,calc(100vh - 48px));border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 18px 48px var(--dsh-qa-overlay);overflow:hidden}
 .dsh-qa-modal__panel--wide{width:min(720px,100%)}
 .dsh-qa-modal__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;padding:16px 18px 12px;border-bottom:1px solid var(--dsw-alias-border-l2)}
