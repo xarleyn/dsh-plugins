@@ -27,6 +27,14 @@ Session and Agent Loop.
   migration of the browser's existing chats, a `qa-accounts` management CLI
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
+- gives each account a `Настройки` dialog — profile, general, and **personal
+  skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  directory (`accounts.skills`), edited with a catalog, an invocation-flag
+  form, a Markdown body, a tool picker over the deployment's registry, and a
+  preview of the exact file a save writes. Skills reach the model through a
+  provider this plugin registers instead of the filesystem one, so no account
+  can see another's, and `allowed-tools` is stored as declared but never
+  grants anything the session does not already allow;
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;

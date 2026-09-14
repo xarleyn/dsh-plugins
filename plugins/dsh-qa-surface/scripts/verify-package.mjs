@@ -14,6 +14,10 @@ const required = [
   "lib/typert.host.js",
   "lib/typert.remote-client.js",
   "lib/typert.remote-client.d.ts",
+  "lib/personal-skills/index.js",
+  "lib/personal-skills/service.js",
+  "lib/personal-skills/provider.js",
+  "lib/personal-skills/skill-file.js",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
   "scripts/repair-session-events.mjs",
@@ -120,6 +124,49 @@ assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
+// Personal skills ride the same namespace: the browser names a skill, and the
+// account token behind the call decides which storage that name resolves in.
+for (const method of [
+  "skillsList",
+  "skillsGet",
+  "skillsCreate",
+  "skillsUpdate",
+  "skillsRemove",
+  "skillsTools",
+]) {
+  assert.match(remote, new RegExp(`qaSurface/${method}`, "u"));
+}
+// The provider itself lives in its own module: the Host service registers it
+// through `ctx.inject`, so the entry only wires it.
+const skillsHost = await readFile(
+  new URL("lib/personal-skills/host.js", root),
+  "utf8",
+);
+const skillsProvider = await readFile(
+  new URL("lib/personal-skills/provider.js", root),
+  "utf8",
+);
+const skillsService = await readFile(
+  new URL("lib/personal-skills/service.js", root),
+  "utf8",
+);
+const skillsFile = await readFile(
+  new URL("lib/personal-skills/skill-file.js", root),
+  "utf8",
+);
+assert.match(skillsHost, /registerProvider/u);
+assert.match(skillsHost, /\.inject\(\["skills"\]/u);
+assert.match(skillsProvider, /qa-user-skills/u);
+assert.match(skillsProvider, /kind:\s*"directory"/u);
+// Storage boundary: the account's own directory, a rename-based write, and a
+// revision the caller has to echo back.
+assert.match(skillsService, /prepareQaUserWorkspace/u);
+assert.match(skillsService, /renameSync/u);
+assert.match(skillsService, /skill-conflict/u);
+assert.match(skillsService, /skills-trash|\.trash/u);
+assert.match(skillsFile, /disable-model-invocation/u);
+assert.match(skillsFile, /allowed-tools/u);
+assert.doesNotMatch(skillsFile, /require\(/u);
 
 const repair = await readFile(
   new URL("scripts/repair-session-events.mjs", root),
@@ -231,6 +278,31 @@ assert.match(client, /qa-card-notice/u);
 // deployment can test a provider that reports facts instead of documents.
 assert.match(client, /Проверять источники из отчёта/u);
 assert.match(client, /registerSettingsCard|slots\.register/u);
+
+// The settings dialog: one shell for the profile, the general page and the
+// skills editor, with the legacy profile classes gone.
+assert.match(client, /dsh-qa-modal__panel--settings/u);
+assert.match(client, /dsh-qa-settings__nav/u);
+assert.match(client, /role:\s*"tablist"|"tablist"/u);
+assert.match(client, /Открыть настройки/u);
+assert.doesNotMatch(client, /dsh-qa-profile/u);
+assert.doesNotMatch(client, /Открыть профиль/u);
+assert.match(client, /У вас пока нет навыков\./u);
+assert.match(client, /Принести первый навык|Создать первый навык/u);
+assert.match(client, /dsh-qa-settings__row-button/u);
+assert.match(client, /dsh-qa-toolpicker/u);
+assert.match(client, /Недоступные в этой конфигурации/u);
+assert.match(
+  client,
+  /Они не предоставляют дополнительных разрешений\./u,
+  "the tool list must state that it grants nothing",
+);
+assert.match(client, /Предпросмотр SKILL\.md/u);
+assert.match(client, /disable-model-invocation|whenToUse/u);
+assert.match(client, /Перезагрузить текущую версию/u);
+assert.match(client, /Его можно будет восстановить вручную из корзины\./u);
+assert.match(client, /Сохраняемые поля frontmatter/u);
+assert.match(client, /dsh-qa-settings__code/u);
 
 const capabilityPolicy = JSON.parse(
   await readFile(new URL("capability-policy.json", root), "utf8"),
