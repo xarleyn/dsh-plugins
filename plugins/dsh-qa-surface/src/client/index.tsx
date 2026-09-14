@@ -52,6 +52,8 @@ import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
+import { QaSurfacePanelRegistry } from "./panels/registry.js";
+import type {} from "./panels/contract.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -222,6 +224,14 @@ export const inject = [
 
 /** Register the route-aware, full-frame QA entry in the additive overlay slot. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  const panels = new QaSurfacePanelRegistry();
+  ctx.effect(() => {
+    const removeService = ctx.provide("qaSurfacePanels", panels);
+    return () => {
+      panels.dispose();
+      void removeService();
+    };
+  }, "dsh-qa-surface: panel service");
   const remote = ctx.remote as QaClientRemote;
   const disposeRemote = await remote.$mount(qaSurfaceRemote);
   await ctx.inject(
@@ -458,6 +468,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             name: "shell.overlay",
             id: "dsh-qa-surface",
             order: -10_000,
+            children: {
+              "qa.surface.panel": { kind: "keyed", scope: "root" },
+            },
             inject: (): QaSurfaceFace => {
               try {
                 return {
@@ -477,6 +490,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   approvalApi,
                   questionApi,
                   accounts,
+                  panels,
                   // The upload service is optional on the page: a deployment that
                   // does not serve it keeps images, and a staged file refuses the
                   // send with a message instead of losing the draft. Read through
@@ -512,3 +526,10 @@ export { QaAccountsController } from "./QaAccountsController.js";
 export { QaRouteController, matchesQaRoute } from "./QaRouteController.js";
 export { QaSessionController } from "./QaSessionController.js";
 export { projectTranscript } from "./QaTranscriptAdapter.js";
+export type {
+  QaSurfacePanelDefinition,
+  QaSurfacePanelOpenOptions,
+  QaSurfacePanelOwnerProps,
+  QaSurfacePanelPresentation,
+  QaSurfacePanels,
+} from "./panels/contract.js";

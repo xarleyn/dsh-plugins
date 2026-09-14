@@ -27,6 +27,10 @@
       "types": "./lib/types/client/index.d.ts",
       "default": "./lib/client.js"
     },
+    "./client/panels": {
+      "types": "./lib/types/client/panels/index.d.ts",
+      "default": "./lib/client/panels/index.js"
+    },
     "./remote": {
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
@@ -81,7 +85,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "verify:package": "node scripts/verify-package.mjs",
-    "verify": "pnpm run verify:package",
+    "verify": "pnpm run verify:package && pnpm run verify:consumer",
+    "verify:consumer": "tsc -p scripts/fixtures/tsconfig.json --noEmit",
     "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
     "e2e:browser": "node scripts/smoke-packed-dsh.mjs --browser",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",

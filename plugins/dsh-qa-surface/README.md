@@ -487,6 +487,65 @@ transcript shows and image thumbnails resolved from the session's asset
 repository; each group jumps back to its message. Below 600px the rail goes
 full-bleed. The agents drawer keeps its own header drawer for now.
 
+### Panel extensions
+
+QA Surface can host optional feature panels without importing those features.
+The shell owns the launcher, side-by-side/fullscreen layout, resizing and
+generic close chrome; an extension owns its feature state and controls. No
+panel is shown, and no launcher space is reserved, when no extension is
+installed.
+
+An external client plugin uses two registrations. Metadata and navigation go
+through the `qaSurfacePanels` service; the React body is registered separately
+in the keyed `qa.surface.panel` slot under the same implementation id:
+
+```ts
+import type { Context } from "@deepseek-ai/cordis"
+import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots"
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client"
+import { QA_SURFACE_PANEL_SLOT } from "@yadsh/dsh-qa-surface/client/panels"
+
+const id = "@example/dsh-qa-browser"
+
+function BrowserPanel(props: PropsRuntime<typeof QA_SURFACE_PANEL_SLOT>) {
+  // panelId, panelKind, sessionId, visible, presentation, params,
+  // actions and a registration-lifetime AbortSignal arrive in props.
+  return null
+}
+
+export const inject = ["slots", "qaSurfacePanels"]
+
+export function apply(ctx: Context) {
+  ctx.effect(() => ctx.qaSurfacePanels.register({
+    id,
+    kind: "browser",
+    title: () => "Browser",
+    icon: "browser",
+    order: 100,
+    keepMounted: true,
+  }))
+
+  ctx.slots.inject(QA_SURFACE_PANEL_SLOT, () =>
+    ctx.slots.register(
+      { name: QA_SURFACE_PANEL_SLOT, key: id },
+      BrowserPanel,
+    ),
+  )
+
+  ctx.qaSurfacePanels.open("browser", {
+    reason: "extension",
+    focus: false,
+  })
+}
+```
+
+The extension should declare both `slots` and `qaSurfacePanels` in its client
+`inject` list instead of polling for load order. `keepMounted: true` preserves
+local/continuous UI state while another panel is active; hidden retained bodies
+are removed from keyboard navigation. Presentation state is browser-local and
+never enters the DSH Session log. Browser processes, tools, security policy and
+artifacts remain the responsibility of the Browser plugin, not QA Surface.
+
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
 lockdown allow-list; the preset must mount them. Launches then render as

@@ -21,6 +21,9 @@ const required = [
   "lib/personal-skills/skill-format.js",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
+  "lib/client/panels/index.js",
+  "lib/types/client/panels/index.d.ts",
+  "lib/types/client/panels/contract.d.ts",
   "scripts/repair-session-events.mjs",
   "cordis.patch.yml",
   "compatibility.json",
@@ -49,6 +52,14 @@ assert.equal(
   "./scripts/repair-session-events.mjs",
 );
 assert.equal(manifest.exports["./client"].default, "./lib/client.js");
+assert.equal(
+  manifest.exports["./client/panels"].default,
+  "./lib/client/panels/index.js",
+);
+assert.equal(
+  manifest.exports["./client/panels"].types,
+  "./lib/types/client/panels/index.d.ts",
+);
 assert.equal(
   manifest.exports["./remote"].default,
   "./lib/typert.remote-client.js",
@@ -192,6 +203,11 @@ assert.match(
 );
 assert.doesNotMatch(client, /__DSH_QA_VERSION__/u);
 assert.match(client, /shell\.overlay/u);
+assert.match(client, /qaSurfacePanels/u);
+assert.match(client, /qa\.surface\.panel/u);
+assert.match(client, /dsh-qa-extension-panel/u);
+assert.match(client, /dsh-qa-panel-launcher/u);
+assert.doesNotMatch(client, /playwright|BrowserPanel|browser process/u);
 assert.match(client, /id:\s*"dsh-qa-surface"/u);
 assert.match(client, /settings\.onboarding/u);
 assert.match(client, /"welcome-notice"/u);

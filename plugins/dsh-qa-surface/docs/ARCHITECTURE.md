@@ -1,5 +1,25 @@
 # Architecture
 
+## QA panel extension boundary
+
+The `/qa` overlay declares one root-scoped keyed child slot,
+`qa.surface.panel`. Optional client plugins register static metadata through
+the `qaSurfacePanels` Cordis service and register their React body in that slot
+under the same implementation id. This keeps metadata serializable and keeps
+React implementations on the UI composition path.
+
+`dsh-qa-surface` owns only presentation: one active panel, launcher ordering,
+side-width reservation and resizing, narrow-screen fullscreen behavior,
+generic header/close actions, focus restoration, retained hidden-body
+inertness, and an extension error boundary. Extensions own feature state,
+controls, persistence and Host capabilities. Panel presentation is client
+state and never writes Session events.
+
+Registration lifetime is deterministic. Removing metadata closes an active
+panel and aborts its owner signal; removing the keyed body makes the shell show
+a controlled unavailable state. Neither path recreates or mutates the active
+DSH Session.
+
 The Host half validates the Loader configuration, registers the `qa-surface`
 settings namespace and owns one narrow GET/HEAD route for the configured QA
 path. Published DSH releases return 404 for unknown frontend paths, so the

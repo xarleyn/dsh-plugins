@@ -4,6 +4,7 @@
  * rendering — the badge counts move with the session state anyway, so
  * reference guards would never pay off here.
  */
+import type { ReactNode } from "react";
 
 function modeLabel(agentPreset: string | null): string {
   if (agentPreset === null) return "Режим вопросов";
@@ -68,6 +69,7 @@ export interface QaHeaderProps {
   readonly fileCount: number;
   readonly filesOpen: boolean;
   readonly onOpenFiles: () => void;
+  readonly panelLauncher?: ReactNode;
   readonly showReset: boolean;
   readonly resetDisabled: boolean;
   readonly onReset: () => void;
@@ -90,6 +92,7 @@ export function QaHeader({
   fileCount,
   filesOpen,
   onOpenFiles,
+  panelLauncher,
   showReset,
   resetDisabled,
   onReset,
@@ -185,6 +188,7 @@ export function QaHeader({
               Новый чат
             </button>
           ) : null}
+          {panelLauncher}
         </div>
         <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
           <span aria-current="page">Чат</span>
