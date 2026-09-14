@@ -79,6 +79,7 @@ const configSchema = z.object({
         .max(1600)
         .default(D.ui.minContentWidth),
       showSessionList: z.boolean().default(D.ui.showSessionList),
+      subagentCodenames: z.boolean().default(D.ui.subagentCodenames),
     })
     .default({ ...D.ui }),
   suggestedQuestions: z.array(z.string()).default([...D.suggestedQuestions]),

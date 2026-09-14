@@ -132,7 +132,9 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
       (a.notice === undefined) === (b.notice === undefined) &&
       (a.notice === undefined ||
         b.notice === undefined ||
-        (a.notice.title === b.notice.title && a.notice.body === b.notice.body))
+        (a.notice.title === b.notice.title &&
+          a.notice.body === b.notice.body &&
+          a.notice.meta === b.notice.meta))
     );
   }
   return false;
@@ -297,6 +299,9 @@ export const QaMessage = memo(
             </svg>
           </summary>
           <div className="dsh-qa-notice__body">
+            {message.notice.meta === undefined ? null : (
+              <p className="dsh-qa-notice__meta">{message.notice.meta}</p>
+            )}
             {message.notice.body === "" ? (
               <p>Без итогового сообщения.</p>
             ) : renderMarkdown ? (

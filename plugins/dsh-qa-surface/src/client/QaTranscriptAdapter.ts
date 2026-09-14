@@ -14,7 +14,7 @@ import type {
   QaWorkItem,
 } from "../types.js";
 import { chatLegacyOf } from "./turn-sources.js";
-import { parseSettlement } from "./settlement.js";
+import { parseSettlement, settlementView } from "./settlement.js";
 import { retryWorkCopy, turnErrorCopy } from "./failure-copy.js";
 import {
   flattenToolOutput,
@@ -425,6 +425,13 @@ export function projectTranscript(
     readonly running?: boolean;
     readonly showToolActivity?: boolean;
     readonly showReasoning?: boolean;
+    /**
+     * The chat's subagent display names keyed by session id, read from the
+     * host list snapshot; settlement notices prefer them over the raw ids.
+     */
+    readonly subagentNames?: Readonly<Record<string, string>>;
+    /** Sign settlement titles with deterministic codenames. */
+    readonly subagentCodenames?: boolean;
   } = {},
 ): readonly QaMessage[] {
   const legacy = chatLegacyOf(snapshot);
@@ -463,19 +470,26 @@ export function projectTranscript(
       if (!label.toLowerCase().startsWith("subagent")) continue;
       const text = visibleContentText(node.content);
       if (text.trim() === "") continue;
-      const notice = parseSettlement(text);
+      const settled = parseSettlement(text);
+      const view =
+        settled === undefined
+          ? undefined
+          : settlementView(settled, {
+              nameOf: (id) => options.subagentNames?.[id],
+              codenames: options.subagentCodenames === true,
+            });
       output.push({
         order: node.seq,
         message: {
           id: `context:${node.seq}`,
           role: "system",
           text:
-            notice === undefined
+            view === undefined
               ? text.replace(/\s+/gu, " ").trim().slice(0, 280)
-              : notice.title,
+              : view.title,
           status: "info",
           timestamp: node.time,
-          ...(notice === undefined ? {} : { notice }),
+          ...(view === undefined ? {} : { notice: view }),
         },
       });
     } else if (node.kind === "turn-error") {

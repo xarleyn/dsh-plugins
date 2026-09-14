@@ -43,6 +43,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       renderMarkdown: true,
       minContentWidth: 650,
       showSessionList: false,
+      subagentCodenames: true,
     }),
     suggestedQuestions: Object.freeze([
       "Что ты умеешь?",

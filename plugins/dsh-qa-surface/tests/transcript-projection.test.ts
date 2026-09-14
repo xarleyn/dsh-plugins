@@ -6,6 +6,18 @@ import {
 } from "../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "./helpers/conversation-fakes.js";
 
+/** One host-injected settlement context node, labeled like the host does. */
+const settlementNode = (seq: number, text: string): ConversationNode =>
+  ({
+    kind: "context",
+    seq,
+    time: seq * 10,
+    content: [{ type: "text", text }],
+    source: {},
+    provenance: { role: "context", label: "subagent-settled" },
+    form: null,
+  }) as ConversationNode;
+
 describe("transcript projection", () => {
   it("keeps user and assistant text while removing hidden content by default", () => {
     const messages = projectTranscript(
@@ -652,6 +664,78 @@ describe("transcript projection", () => {
     });
     expect(JSON.stringify(messages)).not.toContain("skill list");
     expect(JSON.stringify(messages)).not.toContain("will do no further work");
+  });
+
+  it("signs a settlement with the subagent's readable name", () => {
+    const id = "b5b84a41-5597-4ddb-8cb6-9a2fa90517ad";
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            settlementNode(
+              1,
+              `Background subagent ${id} finished and will do no further work unless you send it more.Its closing message:**Done**`,
+            ),
+          ] as ConversationNode[],
+        }),
+      ),
+      { subagentNames: { [id]: "Сверка  отчётов" } },
+    );
+    expect(messages[0]).toMatchObject({
+      role: "system",
+      text: "Субагент «Сверка отчётов» завершён",
+      notice: {
+        title: "Субагент «Сверка отчётов» завершён",
+        body: "**Done**",
+        meta: "Идентификатор: b5b84a41",
+      },
+    });
+  });
+
+  it("signs a settlement with a codename and keeps the task in the meta", () => {
+    const id = "eaa454a4-0000-4ddb-8cb6-9a2fa90517ad";
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [settlementNode(1, `Background subagent ${id} failed.`)],
+        }),
+      ),
+      {
+        subagentCodenames: true,
+        subagentNames: { [id]: "Собрать статистику" },
+      },
+    );
+    const notice =
+      messages[0]?.role === "system" ? messages[0].notice : undefined;
+    expect(notice?.title).toMatch(/^Субагент «.+» завершился ошибкой$/u);
+    expect(notice?.title).not.toContain("Собрать статистику");
+    expect(notice?.meta).toContain("Задача: Собрать статистику");
+    expect(notice?.meta).toContain("Идентификатор: eaa454a4");
+  });
+
+  it("keeps the short-id title when nothing readable is known", () => {
+    const id = "1f7e77cd-0000-4ddb-8cb6-9a2fa90517ad";
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            settlementNode(
+              1,
+              `Background subagent ${id} finished. Its closing message:ok`,
+            ),
+          ] as ConversationNode[],
+        }),
+      ),
+      { subagentNames: { [id]: id } },
+    );
+    expect(messages[0]).toMatchObject({
+      role: "system",
+      text: "Субагент 1f7e77cd завершён",
+      notice: { title: "Субагент 1f7e77cd завершён" },
+    });
+    const notice =
+      messages[0]?.role === "system" ? messages[0].notice : undefined;
+    expect(notice?.meta).toBeUndefined();
   });
 
   it("renders host-scheduled model retries as work rows without provider internals", () => {

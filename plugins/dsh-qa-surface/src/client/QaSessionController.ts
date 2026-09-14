@@ -40,6 +40,7 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
+import { readableSubagentName } from "./settlement.js";
 import { projectBoundSessionState } from "./project-session-state.js";
 import { projectTurnSources } from "./turn-sources.js";
 
@@ -986,6 +987,7 @@ export class QaSessionController {
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       config: this.config,
+      subagentNames: this.subagentNames(),
     } as const;
     let projected = projectBoundSessionState(projectionInput);
     const pending = this.pendingSubmission;
@@ -1013,6 +1015,32 @@ export class QaSessionController {
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
+  }
+
+  /**
+   * Display names of the known subagent sessions keyed by session id, for
+   * settlement notices to sign with. The durable catalogs carry each
+   * delegation's description verbatim; a child the host listed without a
+   * catalog falls back to its own list title. Tolerates a host bundle older
+   * than either field: an absent snapshot piece just contributes no names.
+   */
+  private subagentNames(): Record<string, string> {
+    const names: Record<string, string> = {};
+    const list = this.sessions.list.getSnapshot();
+    for (const catalog of Object.values(list.subagentsByParent ?? {})) {
+      for (const entry of catalog?.entries ?? []) {
+        if (entry.kind !== "child") continue;
+        const name = readableSubagentName(entry.label, entry.id);
+        if (name !== undefined) names[entry.id] = name;
+      }
+    }
+    for (const summary of Object.values(list.byId ?? {})) {
+      if (summary.origin !== "subagent" || names[summary.id] !== undefined)
+        continue;
+      const name = readableSubagentName(summary.displayTitle, summary.id);
+      if (name !== undefined) names[summary.id] = name;
+    }
+    return names;
   }
 
   private fail(message: string, error: unknown): void {

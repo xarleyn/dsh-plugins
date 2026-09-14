@@ -570,6 +570,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-notice[open] .dsh-qa-notice__chevron{transform:rotate(90deg)}
 .dsh-qa-notice__body{padding:2px 12px 10px 32px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-notice__body p{margin:0}
+.dsh-qa-notice__meta{margin:0 0 6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsh-qa-work{width:100%;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:22px}
 .dsh-qa-work__toggle{display:flex;align-items:center;gap:7px;min-height:30px;margin:0;padding:3px 5px 3px 0;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
 .dsh-qa-work__toggle:hover{color:var(--dsw-alias-label-primary)}

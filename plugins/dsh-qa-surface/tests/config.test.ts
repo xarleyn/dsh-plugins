@@ -196,6 +196,13 @@ describe("qa surface config", () => {
     ).toBe(true);
   });
 
+  it("signs subagent notices with codenames by default and allows opting out", () => {
+    expect(resolveConfig().ui.subagentCodenames).toBe(true);
+    expect(
+      resolveConfig({ ui: { subagentCodenames: false } }).ui.subagentCodenames,
+    ).toBe(false);
+  });
+
   it("resolves the transcript width floor and rejects values outside it", () => {
     expect(resolveConfig().ui.minContentWidth).toBe(650);
     expect(
