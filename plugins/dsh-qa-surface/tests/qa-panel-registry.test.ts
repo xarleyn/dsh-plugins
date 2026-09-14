@@ -4,7 +4,11 @@ import { QaSurfacePanelRegistry } from "../src/client/panels/registry.js";
 function definition(
   id: string,
   kind = id,
-  options: { readonly title?: string; readonly order?: number; readonly userVisible?: boolean } = {},
+  options: {
+    readonly title?: string;
+    readonly order?: number;
+    readonly userVisible?: boolean;
+  } = {},
 ) {
   return {
     id,
@@ -30,7 +34,11 @@ describe("QaSurfacePanelRegistry", () => {
     );
     panels.register(definition("alpha", "alpha", { title: "Alpha", order: 0 }));
 
-    expect(panels.list().map(({ id }) => id)).toEqual(["alpha", "beta", "zulu"]);
+    expect(panels.list().map(({ id }) => id)).toEqual([
+      "alpha",
+      "beta",
+      "zulu",
+    ]);
     expect(changed).toHaveBeenCalledTimes(3);
     removeBeta();
     removeBeta();
@@ -41,18 +49,28 @@ describe("QaSurfacePanelRegistry", () => {
 
   it("rejects invalid and duplicate identities", () => {
     const panels = new QaSurfacePanelRegistry();
-    expect(() => panels.register(definition(" "))).toThrow(/id must not be empty/u);
-    expect(() => panels.register(definition("id", " "))).toThrow(/kind must not be empty/u);
+    expect(() => panels.register(definition(" "))).toThrow(
+      /id must not be empty/u,
+    );
+    expect(() => panels.register(definition("id", " "))).toThrow(
+      /kind must not be empty/u,
+    );
     panels.register(definition("one", "alpha"));
-    expect(() => panels.register(definition("one", "beta"))).toThrow(/duplicate id/u);
-    expect(() => panels.register(definition("two", "alpha"))).toThrow(/duplicate kind/u);
+    expect(() => panels.register(definition("one", "beta"))).toThrow(
+      /duplicate id/u,
+    );
+    expect(() => panels.register(definition("two", "alpha"))).toThrow(
+      /duplicate kind/u,
+    );
   });
 
   it("opens, updates params, toggles and ignores unknown kinds", () => {
     const panels = new QaSurfacePanelRegistry();
     panels.register(definition("one", "alpha"));
     expect(panels.open("missing")).toBe(false);
-    expect(panels.open("alpha", { focus: false, params: { value: 1 } })).toBe(true);
+    expect(panels.open("alpha", { focus: false, params: { value: 1 } })).toBe(
+      true,
+    );
     expect(panels.getActiveKind()).toBe("alpha");
     expect(panels.getSnapshot()).toMatchObject({
       activeKind: "alpha",

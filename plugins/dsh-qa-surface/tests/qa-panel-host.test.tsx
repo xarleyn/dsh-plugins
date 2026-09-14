@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 
 import { useState, type ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QaPanelHost,
@@ -18,10 +24,17 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1200 });
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    value: 1200,
+  });
 });
 
-function StatefulPanel({ panelKind, sessionId, params }: QaSurfacePanelOwnerProps) {
+function StatefulPanel({
+  panelKind,
+  sessionId,
+  params,
+}: QaSurfacePanelOwnerProps) {
   const [value, setValue] = useState("");
   return (
     <label>
@@ -67,20 +80,28 @@ describe("QA panel extension shell", () => {
       <div>
         <QaPanelLauncher panels={panels} />
         <div>
-          <QaPanelHost panels={panels} sessionId="session-a" renderSlot={slotRenderer()} />
+          <QaPanelHost
+            panels={panels}
+            sessionId="session-a"
+            renderSlot={slotRenderer()}
+          />
         </div>
       </div>,
     );
     expect(screen.queryByRole("navigation", { name: "Панели QA" })).toBeNull();
     act(() => registerFixtures(panels));
-    expect(screen.getAllByRole("button", { name: /Открыть панель/u })).toHaveLength(2);
+    expect(
+      screen.getAllByRole("button", { name: /Открыть панель/u }),
+    ).toHaveLength(2);
 
     act(() => void panels.open("alpha", { focus: false, params: { tab: 2 } }));
     const aside = screen.getByRole("complementary", { name: "Панель: Alpha" });
     expect(aside.dataset.presentation).toBe("side");
     expect(aside.style.width).toMatch(/px$/u);
     expect(screen.getByText(/session-a.*"tab":2/u)).toBeTruthy();
-    expect(view.container.querySelector(".dsh-qa-extension-panel__resizer")).toBeTruthy();
+    expect(
+      view.container.querySelector(".dsh-qa-extension-panel__resizer"),
+    ).toBeTruthy();
   });
 
   it("omits hidden metadata from launchers but still allows programmatic open", () => {
@@ -94,12 +115,18 @@ describe("QA panel extension shell", () => {
     render(
       <div>
         <QaPanelLauncher panels={panels} />
-        <QaPanelHost panels={panels} sessionId="session-a" renderSlot={slotRenderer()} />
+        <QaPanelHost
+          panels={panels}
+          sessionId="session-a"
+          renderSlot={slotRenderer()}
+        />
       </div>,
     );
     expect(screen.queryByRole("navigation", { name: "Панели QA" })).toBeNull();
     act(() => void panels.open("hidden", { focus: false }));
-    expect(screen.getByRole("complementary", { name: "Панель: Hidden" })).toBeTruthy();
+    expect(
+      screen.getByRole("complementary", { name: "Панель: Hidden" }),
+    ).toBeTruthy();
   });
 
   it("renders a controlled diagnostic when metadata has no keyed body", () => {
@@ -113,10 +140,16 @@ describe("QA panel extension shell", () => {
     ) => options.fallback) as QaPanelHostProps["renderSlot"];
     render(
       <div>
-        <QaPanelHost panels={panels} sessionId="session-a" renderSlot={missingSlot} />
+        <QaPanelHost
+          panels={panels}
+          sessionId="session-a"
+          renderSlot={missingSlot}
+        />
       </div>,
     );
-    expect(screen.getByRole("status").textContent).toMatch(/missing.*недоступна/u);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /missing.*недоступна/u,
+    );
   });
 
   it("keeps opted-in bodies mounted and releases ordinary inactive bodies", () => {
@@ -124,23 +157,33 @@ describe("QA panel extension shell", () => {
     registerFixtures(panels);
     render(
       <div>
-        <QaPanelHost panels={panels} sessionId="session-a" renderSlot={slotRenderer()} />
+        <QaPanelHost
+          panels={panels}
+          sessionId="session-a"
+          renderSlot={slotRenderer()}
+        />
       </div>,
     );
     act(() => void panels.open("alpha", { focus: false }));
-    fireEvent.change(screen.getByLabelText("alpha state"), { target: { value: "kept" } });
+    fireEvent.change(screen.getByLabelText("alpha state"), {
+      target: { value: "kept" },
+    });
     act(() => void panels.open("beta", { focus: false }));
     expect(
       screen
         .getByDisplayValue("kept")
         .closest<HTMLElement>(".dsh-qa-extension-panel__body")?.hidden,
     ).toBe(true);
-    fireEvent.change(screen.getByLabelText("beta state"), { target: { value: "released" } });
+    fireEvent.change(screen.getByLabelText("beta state"), {
+      target: { value: "released" },
+    });
     act(() => void panels.open("alpha", { focus: false }));
     expect(screen.getByDisplayValue("kept")).toBeTruthy();
     expect(screen.queryByDisplayValue("released")).toBeNull();
     act(() => void panels.open("beta", { focus: false }));
-    expect((screen.getByLabelText("beta state") as HTMLInputElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("beta state") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("updates the session prop without remounting a retained body", () => {
@@ -149,13 +192,23 @@ describe("QA panel extension shell", () => {
     panels.open("alpha", { focus: false });
     const view = render(
       <div>
-        <QaPanelHost panels={panels} sessionId="session-a" renderSlot={slotRenderer()} />
+        <QaPanelHost
+          panels={panels}
+          sessionId="session-a"
+          renderSlot={slotRenderer()}
+        />
       </div>,
     );
-    fireEvent.change(screen.getByLabelText("alpha state"), { target: { value: "local" } });
+    fireEvent.change(screen.getByLabelText("alpha state"), {
+      target: { value: "local" },
+    });
     view.rerender(
       <div>
-        <QaPanelHost panels={panels} sessionId="session-b" renderSlot={slotRenderer()} />
+        <QaPanelHost
+          panels={panels}
+          sessionId="session-b"
+          renderSlot={slotRenderer()}
+        />
       </div>,
     );
     expect(screen.getByText(/alpha:session-b/u)).toBeTruthy();
@@ -163,13 +216,20 @@ describe("QA panel extension shell", () => {
   });
 
   it("uses fullscreen presentation on narrow screens and Escape returns to chat", () => {
-    Object.defineProperty(window, "innerWidth", { configurable: true, value: 500 });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 500,
+    });
     const panels = new QaSurfacePanelRegistry();
     registerFixtures(panels);
     panels.open("alpha", { focus: false });
     render(
       <div>
-        <QaPanelHost panels={panels} sessionId={null} renderSlot={slotRenderer()} />
+        <QaPanelHost
+          panels={panels}
+          sessionId={null}
+          renderSlot={slotRenderer()}
+        />
       </div>,
     );
     const aside = screen.getByRole("complementary", { name: "Панель: Alpha" });
@@ -193,7 +253,9 @@ describe("QA panel extension shell", () => {
         <QaPanelHost
           panels={panels}
           sessionId="session-a"
-          renderSlot={slotRenderer(() => <Crash />)}
+          renderSlot={slotRenderer(() => (
+            <Crash />
+          ))}
         />
       </div>,
     );

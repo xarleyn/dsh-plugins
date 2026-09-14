@@ -823,165 +823,165 @@ export function QaSurface(props: QaSurfaceProps) {
                 } as CSSProperties
               }
             >
-            <div
-              ref={transcript}
-              className="dsh-qa-transcript"
-              onScroll={(event) => {
-                const element = event.currentTarget;
-                nearBottom.current = isNearBottom(element);
-                scheduleActiveTurnSync();
-              }}
-            >
-              {empty ? null : (
-                <QaTurnRail
-                  items={railItems}
-                  activeTurn={activeTurn}
-                  busyTurn={busyTurn}
-                  scrollerRef={transcript}
-                  onNavigate={handleTurnNavigate}
-                />
-              )}
-              <div className="dsh-qa-transcript__inner">
-                {empty ? (
-                  <section
-                    className="dsh-qa-welcome"
-                    aria-labelledby="dsh-qa-welcome-title"
-                  >
-                    <h2 id="dsh-qa-welcome-title">
-                      {config.branding.welcomeMessage}
-                    </h2>
-                    {config.branding.subtitle === "" ? null : (
-                      <p>{config.branding.subtitle}</p>
-                    )}
-                  </section>
-                ) : (
-                  visibleMessages.map((message, index) => {
-                    const group =
-                      message.role === "user"
-                        ? view.groupByPromptId.get(message.id)
-                        : undefined;
-                    const isLast = index === visibleMessages.length - 1;
-                    return (
-                      <div
-                        key={message.id}
-                        className="dsh-qa-message-slot"
-                        data-dsh-qa-turn-anchor={
-                          message.role === "user" ? message.id : undefined
-                        }
-                      >
-                        <QaMessage
-                          message={message}
-                          renderMarkdown={config.ui.renderMarkdown}
-                          showTimestamp={config.ui.showTimestamps}
-                          stateKey={messageStateKey}
-                          thinkingPhrases={config.thinkingPhrases}
-                          resolveImage={resolveImage}
-                          onRegenerate={
-                            isLast &&
-                            message.role === "assistant" &&
-                            message.status === "committed" &&
-                            controller !== undefined
-                              ? handleRegenerate
-                              : undefined
+              <div
+                ref={transcript}
+                className="dsh-qa-transcript"
+                onScroll={(event) => {
+                  const element = event.currentTarget;
+                  nearBottom.current = isNearBottom(element);
+                  scheduleActiveTurnSync();
+                }}
+              >
+                {empty ? null : (
+                  <QaTurnRail
+                    items={railItems}
+                    activeTurn={activeTurn}
+                    busyTurn={busyTurn}
+                    scrollerRef={transcript}
+                    onNavigate={handleTurnNavigate}
+                  />
+                )}
+                <div className="dsh-qa-transcript__inner">
+                  {empty ? (
+                    <section
+                      className="dsh-qa-welcome"
+                      aria-labelledby="dsh-qa-welcome-title"
+                    >
+                      <h2 id="dsh-qa-welcome-title">
+                        {config.branding.welcomeMessage}
+                      </h2>
+                      {config.branding.subtitle === "" ? null : (
+                        <p>{config.branding.subtitle}</p>
+                      )}
+                    </section>
+                  ) : (
+                    visibleMessages.map((message, index) => {
+                      const group =
+                        message.role === "user"
+                          ? view.groupByPromptId.get(message.id)
+                          : undefined;
+                      const isLast = index === visibleMessages.length - 1;
+                      return (
+                        <div
+                          key={message.id}
+                          className="dsh-qa-message-slot"
+                          data-dsh-qa-turn-anchor={
+                            message.role === "user" ? message.id : undefined
                           }
-                          onOpenSources={
-                            config.sources.enabled &&
-                            config.sources.display.footer
-                              ? rail.openSources
-                              : undefined
-                          }
-                          onSourceDetail={
-                            config.sources.enabled
-                              ? rail.openSourceDetail
-                              : undefined
-                          }
-                        />
-                        {group !== undefined && group.turns.length > 1 ? (
-                          <VariantSwitcher
-                            count={group.turns.length}
-                            offset={variantOffsets[group.groupId] ?? 0}
-                            onStep={(step) =>
-                              setVariantOffsets((offsets) => ({
-                                ...offsets,
-                                [group.groupId]: step,
-                              }))
+                        >
+                          <QaMessage
+                            message={message}
+                            renderMarkdown={config.ui.renderMarkdown}
+                            showTimestamp={config.ui.showTimestamps}
+                            stateKey={messageStateKey}
+                            thinkingPhrases={config.thinkingPhrases}
+                            resolveImage={resolveImage}
+                            onRegenerate={
+                              isLast &&
+                              message.role === "assistant" &&
+                              message.status === "committed" &&
+                              controller !== undefined
+                                ? handleRegenerate
+                                : undefined
+                            }
+                            onOpenSources={
+                              config.sources.enabled &&
+                              config.sources.display.footer
+                                ? rail.openSources
+                                : undefined
+                            }
+                            onSourceDetail={
+                              config.sources.enabled
+                                ? rail.openSourceDetail
+                                : undefined
                             }
                           />
-                        ) : null}
-                      </div>
-                    );
-                  })
-                )}
-                {state.pendingMessage === null ? null : (
-                  <div className="dsh-qa-message-slot">
-                    <QaMessage
-                      message={state.pendingMessage}
-                      renderMarkdown={false}
-                      showTimestamp={false}
-                      thinkingPhrases={config.thinkingPhrases}
-                    />
-                  </div>
-                )}
-                {state.error === null ? null : (
-                  <div className="dsh-qa-error" role="alert">
-                    <span>{state.error}</span>
-                    {state.phase === "error" ? (
-                      <button
-                        type="button"
-                        onClick={() => void controller?.ensureSession()}
-                      >
-                        Повторить
-                      </button>
-                    ) : null}
-                  </div>
-                )}
+                          {group !== undefined && group.turns.length > 1 ? (
+                            <VariantSwitcher
+                              count={group.turns.length}
+                              offset={variantOffsets[group.groupId] ?? 0}
+                              onStep={(step) =>
+                                setVariantOffsets((offsets) => ({
+                                  ...offsets,
+                                  [group.groupId]: step,
+                                }))
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                  {state.pendingMessage === null ? null : (
+                    <div className="dsh-qa-message-slot">
+                      <QaMessage
+                        message={state.pendingMessage}
+                        renderMarkdown={false}
+                        showTimestamp={false}
+                        thinkingPhrases={config.thinkingPhrases}
+                      />
+                    </div>
+                  )}
+                  {state.error === null ? null : (
+                    <div className="dsh-qa-error" role="alert">
+                      <span>{state.error}</span>
+                      {state.phase === "error" ? (
+                        <button
+                          type="button"
+                          onClick={() => void controller?.ensureSession()}
+                        >
+                          Повторить
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            <footer className="dsh-qa-footer">
-              <div className="dsh-qa-footer__inner">
-                <QaApproval
-                  approvals={state.approvals}
-                  onAnswer={handleAnswerApproval}
-                />
-                <QaQuestions
-                  questions={state.questions}
-                  onAnswer={handleAnswerQuestion}
-                  onCancel={handleCancelQuestion}
-                />
-                {/* Keyed by chat: the composer's draft text is chat-local, so a
+              <footer className="dsh-qa-footer">
+                <div className="dsh-qa-footer__inner">
+                  <QaApproval
+                    approvals={state.approvals}
+                    onAnswer={handleAnswerApproval}
+                  />
+                  <QaQuestions
+                    questions={state.questions}
+                    onAnswer={handleAnswerQuestion}
+                    onCancel={handleCancelQuestion}
+                  />
+                  {/* Keyed by chat: the composer's draft text is chat-local, so a
                   switch remounts it empty instead of carrying text across. */}
-                <QaComposer
-                  key={state.sessionId ?? "draft"}
-                  placeholder={config.branding.placeholder}
-                  quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
-                  canSend={state.canSend}
-                  canStop={state.canStop}
-                  running={state.phase === "running"}
-                  showStop={config.ui.showStop}
-                  status={status}
-                  attachments={pendingAttachments}
-                  limits={limits}
-                  onAttachmentsChange={setPendingAttachments}
-                  onSend={handleSend}
-                  onStop={handleStop}
-                />
-                {config.branding.disclaimer === "" ? null : (
-                  <p className="dsh-qa-footer__disclaimer">
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="8" cy="8" r="5.75" />
-                      <path d="M8 7.25v3.5m0-5.25v.5" />
-                    </svg>
-                    {config.branding.disclaimer}
-                  </p>
-                )}
-              </div>
-            </footer>
-            {!empty
-              ? (["left", "right"] as const).map((side) => (
-                  <QaWidthHandle key={side} side={side} {...widthHandlers} />
-                ))
-              : null}
+                  <QaComposer
+                    key={state.sessionId ?? "draft"}
+                    placeholder={config.branding.placeholder}
+                    quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
+                    canSend={state.canSend}
+                    canStop={state.canStop}
+                    running={state.phase === "running"}
+                    showStop={config.ui.showStop}
+                    status={status}
+                    attachments={pendingAttachments}
+                    limits={limits}
+                    onAttachmentsChange={setPendingAttachments}
+                    onSend={handleSend}
+                    onStop={handleStop}
+                  />
+                  {config.branding.disclaimer === "" ? null : (
+                    <p className="dsh-qa-footer__disclaimer">
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="5.75" />
+                        <path d="M8 7.25v3.5m0-5.25v.5" />
+                      </svg>
+                      {config.branding.disclaimer}
+                    </p>
+                  )}
+                </div>
+              </footer>
+              {!empty
+                ? (["left", "right"] as const).map((side) => (
+                    <QaWidthHandle key={side} side={side} {...widthHandlers} />
+                  ))
+                : null}
             </div>
             <QaPanelHost
               panels={props.panels}
