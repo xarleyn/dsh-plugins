@@ -17,6 +17,11 @@ import {
 import { ConfigSchema, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
+import {
+  createQaPersonalSkillRemotes,
+  QaPersonalSkillsHost,
+} from "./personal-skills/index.js";
+import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
 import { QaApprovalGate } from "./approvals.js";
 import { QaAttestationError } from "./attestation.js";
 import { applyDocumentsEnvOverrides } from "./documents/config.js";
@@ -52,6 +57,11 @@ import type {
   QaQuestionAnswerItem,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaSkillDocument,
+  QaSkillDraftInput,
+  QaSkillRemoval,
+  QaSkillSummary,
+  QaSkillToolDescriptor,
   QaSourceFilePreview,
   QaWhoamiResult,
 } from "./types.js";
@@ -99,6 +109,10 @@ export class QaSurface extends TypertRemoteService {
   private readonly notes: QaPromptNotes;
   /** Account-remote bodies; the wire signatures stay on this class. */
   private readonly accountRemotes: QaAccountRemotes;
+  /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
+  private readonly personalSkills: QaPersonalSkillsHost;
+  /** Personal-skill remote bodies; the wire signatures stay on this class. */
+  private readonly skillRemotes: QaPersonalSkillRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
@@ -123,6 +137,16 @@ export class QaSurface extends TypertRemoteService {
     this.accountRemotes = createQaAccountRemotes({
       getConfig: () => this.getConfig(),
       logger: this.logger,
+    });    this.personalSkills = new QaPersonalSkillsHost({
+      ctx,
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+    });
+    this.skillRemotes = createQaPersonalSkillRemotes({
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+      skills: this.personalSkills.service,
+      accounts: this.accountRemotes,
     });
     this.admission = new QaPolicyAdmission(
       ctx,
@@ -208,6 +232,10 @@ export class QaSurface extends TypertRemoteService {
       "dsh-qa-surface.provenance",
     );
     ctx.effect(() => () => this.notes.dispose(), "dsh-qa-surface.prompt-notes");
+    ctx.effect(
+      () => () => this.personalSkills.dispose(),
+      "dsh-qa-surface.personal-skills",
+    );
     ctx.effect(
       () => () => {
         this.documents?.dispose();
@@ -566,6 +594,58 @@ export class QaSurface extends TypertRemoteService {
     } catch {
       throw new Error("Source preview is unavailable.");
     }
+  }
+
+  /** Every personal skill of the token's account, sorted by name. */
+  @Remote("skillsList")
+  skillsList(token: string): { readonly skills: readonly QaSkillSummary[] } {
+    return this.skillRemotes.list(token);
+  }
+
+  /** One personal skill with the body, its preserved frontmatter and revision. */
+  @Remote("skillsGet")
+  skillsGet(token: string, name: string): QaSkillDocument {
+    return this.skillRemotes.get(token, name);
+  }
+
+  /** Create one skill directory below the account's own workspace. */
+  @Remote("skillsCreate")
+  skillsCreate(token: string, input: QaSkillDraftInput): QaSkillDocument {
+    return this.skillRemotes.create(token, input);
+  }
+
+  /**
+   * Replace one skill. `expectedRevision` is the revision the editor read; a
+   * mismatch is refused rather than overwriting an edit made elsewhere.
+   */
+  @Remote("skillsUpdate")
+  skillsUpdate(
+    token: string,
+    name: string,
+    input: QaSkillDraftInput,
+  ): QaSkillDocument {
+    return this.skillRemotes.update(token, name, input);
+  }
+
+  /** Remove one skill into the account's own trash directory. */
+  @Remote("skillsRemove")
+  skillsRemove(
+    token: string,
+    name: string,
+    expectedRevision: string | null,
+  ): QaSkillRemoval {
+    return this.skillRemotes.remove(token, name, expectedRevision);
+  }
+
+  /**
+   * The tool catalog the picker offers, with availability computed against
+   * this deployment's QA scope. Declaring a tool here never grants it.
+   */
+  @Remote("skillsTools")
+  skillsTools(token: string): {
+    readonly tools: readonly QaSkillToolDescriptor[];
+  } {
+    return this.skillRemotes.tools(token);
   }
 
   private refreshRoute(): void {

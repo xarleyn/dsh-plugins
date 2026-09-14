@@ -102,6 +102,113 @@ export interface QaOwnershipEntry {
   readonly claimedAt: string;
 }
 
+/**
+ * Why one skill draft cannot be saved, or why it saves with a caveat. Codes
+ * stay stable on the wire; the browser owns the Russian copy.
+ */
+export type QaSkillDiagnosticCode =
+  | "name-required"
+  | "name-invalid"
+  | "name-mismatch"
+  | "description-required"
+  | "description-too-long"
+  | "when-to-use-too-long"
+  | "field-type-invalid"
+  | "invocation-never"
+  | "invocation-invalid"
+  | "invocation-legacy-key"
+  | "allowed-tools-invalid"
+  | "tool-name-invalid"
+  | "tool-unavailable"
+  | "tools-too-many"
+  | "file-too-large"
+  | "frontmatter-missing"
+  | "skill-file-missing"
+  | "frontmatter-invalid"
+  | "unknown-field"
+  | "resource-unsupported";
+
+/** One finding about a skill file or an editor draft. */
+export interface QaSkillDiagnostic {
+  readonly code: QaSkillDiagnosticCode;
+  readonly severity: "error" | "warning";
+  /** The editor field the message belongs to, or null for a file-wide one. */
+  readonly field: string | null;
+  /** The offending value: a tool name, a frontmatter key, a limit. */
+  readonly detail: string | null;
+}
+
+/**
+ * A JSON-representable frontmatter value. The editor receives the preserved
+ * foreign fields verbatim over the Host bridge, which carries JSON only, so
+ * the parser drops anything a YAML document can hold but JSON cannot.
+ */
+export type QaSkillJsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly QaSkillJsonValue[]
+  | { readonly [key: string]: QaSkillJsonValue };
+
+/** One personal skill as the catalog list renders it. */
+export interface QaSkillSummary {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse: string | null;
+  readonly modelInvocable: boolean;
+  readonly userInvocable: boolean;
+  /** Declared tools, in canonical order; unknown ones included. */
+  readonly allowedTools: readonly string[];
+  /** Declared tools the current QA scope cannot use; still stored as declared. */
+  readonly unavailableTools: readonly string[];
+  /** Entries in the skill directory besides SKILL.md (references, assets, …). */
+  readonly resourceCount: number;
+  readonly valid: boolean;
+  readonly diagnostics: readonly QaSkillDiagnostic[];
+  readonly updatedAt: string | null;
+  /** sha256 of the stored bytes; an update must echo the revision it read. */
+  readonly revision: string;
+}
+
+/** One personal skill with everything the editor needs. */
+export interface QaSkillDocument extends QaSkillSummary {
+  readonly body: string;
+  /** Frontmatter the editor preserves but does not own. */
+  readonly extraFrontmatter: Readonly<Record<string, QaSkillJsonValue>>;
+  /** Absolute SKILL.md path; rendered read-only for advanced users. */
+  readonly sourcePath: string;
+  /** The canonical file the serializer writes, built from the parsed content. */
+  readonly preview: string;
+}
+
+/** One tool the picker can offer, with this deployment's availability. */
+export interface QaSkillToolDescriptor {
+  readonly name: string;
+  readonly description: string;
+  /** False when the QA session's own scope cannot use the tool. */
+  readonly available: boolean;
+}
+
+/** The editor's save payload. */
+export interface QaSkillDraftInput {
+  readonly name: string;
+  readonly description: string;
+  readonly whenToUse: string | null;
+  readonly modelInvocable: boolean;
+  readonly userInvocable: boolean;
+  readonly allowedTools: readonly string[];
+  readonly body: string;
+  /** Echo of the revision the editor read; a stale one is refused. */
+  readonly expectedRevision: string | null;
+}
+
+/** What one delete did: v1 keeps the directory recoverable. */
+export interface QaSkillRemoval {
+  readonly name: string;
+  readonly trashed: boolean;
+}
+
 export interface QaSourcesConfig {
   readonly enabled?: boolean;
   readonly collect?: {
@@ -234,6 +341,20 @@ export interface QaSurfaceConfig {
      * The child directory is not registered as a separate DSH workspace.
      */
     readonly perUserWorkspace?: boolean;
+    /**
+     * Personal Skills: the user's own `.dsh/skills` below their QA workspace,
+     * surfaced through a skill provider this plugin owns.
+     */
+    readonly skills?: {
+      readonly enabled?: boolean;
+      /** Directory below the personal root; relative, never escaping it. */
+      readonly relativeRoot?: string;
+      /** Follow manual file edits and refresh the DSH catalog. */
+      readonly watch?: boolean;
+      readonly maxSkillBytes?: number;
+      /** Reserved for the resource editor; v1 edits SKILL.md only. */
+      readonly allowResourceEditing?: boolean;
+    };
     /** Self-declared profile: storage, the owner's form, and prompt injection. */
     readonly profile?: {
       readonly enabled?: boolean;
@@ -357,6 +478,18 @@ export interface ResolvedQaSurfaceConfig {
       readonly inject: boolean;
       readonly identities: readonly QaAccountIdentityField[];
       readonly instructionsMaxLength: number;
+    };
+    /**
+     * Personal Skills. Resolution turns the flag off on any deployment that
+     * cannot give every account its own directory: the storage root is the
+     * account's own workspace, so there is no safe shared fallback.
+     */
+    skills: {
+      readonly enabled: boolean;
+      readonly relativeRoot: string;
+      readonly watch: boolean;
+      readonly maxSkillBytes: number;
+      readonly allowResourceEditing: boolean;
     };
   };
   readonly entry: {

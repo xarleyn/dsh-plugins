@@ -364,6 +364,14 @@ describe("qa surface config", () => {
         identities: [],
         instructionsMaxLength: 2_000,
       },
+      // No accounts means no per-account directory to store skills in.
+      skills: {
+        enabled: false,
+        relativeRoot: ".dsh/skills",
+        watch: true,
+        maxSkillBytes: 262_144,
+        allowResourceEditing: false,
+      },
     });
     expect(resolveConfig().entry).toEqual({
       redirectNonLoopback: true,
@@ -446,6 +454,13 @@ describe("qa surface config", () => {
           inject: true,
           identities: [],
           instructionsMaxLength: 2_000,
+        },
+        skills: {
+          enabled: false,
+          relativeRoot: ".dsh/skills",
+          watch: true,
+          maxSkillBytes: 262_144,
+          allowResourceEditing: false,
         },
       },
     );
