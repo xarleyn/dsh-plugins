@@ -73,11 +73,12 @@
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "verify:compatibility": "node scripts/verify-compatibility.mjs",
     "verify:package": "node scripts/verify-package.mjs",
-    "verify": "npm run verify:client && npm run verify:compatibility && npm run verify:package",
-    "check": "npm run build && npm test && npm run verify",
+    "verify": "pnpm run verify:client && pnpm run verify:compatibility && pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
     "release:prepare": "node scripts/prepare-release.mjs",
-    "prepublishOnly": "npm run check"
+    "prepack": "pnpm run build && pnpm run verify",
+    "prepublishOnly": "pnpm run check"
   },
   "dsh": {
     "bundle": {

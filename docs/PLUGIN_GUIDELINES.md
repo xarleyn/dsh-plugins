@@ -325,10 +325,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
-    "verify": "pnpm run test:package",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepack": "pnpm run build"
+    "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
   },
   "keywords": [
     "deepseek",
@@ -510,13 +510,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ### 6.3 Definition of Done (локально)
 
 ```bash
-pnpm nx <plugin>:lint typecheck test build   # или pnpm affected:check
-pnpm verify --filter <plugin>                # package-гейты
-pnpm deps:check                              # границы §27
-pnpm tarball:verify plugins/<name>           # тарбол + чистая установка
+pnpm --filter <plugin> check                        # все package-local гейты
+pnpm deps:check                                     # границы §27
+pnpm tarball:verify:packages plugins/<name>         # тарбол + чистая установка
 ```
 
-CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
+CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build/verify`,
 `pnpm release:check` и tarball-verify затронутых пакетов. Всё это должно
 проходить локально до PR.
 

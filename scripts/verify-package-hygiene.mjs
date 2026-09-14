@@ -47,8 +47,78 @@ const RELEASE_TYPE_ALIASES = new Map([
   ["fix!", "major"],
 ]);
 
+const REQUIRED_PLUGIN_SCRIPTS = [
+  "lint",
+  "typecheck",
+  "build",
+  "verify:package",
+  "verify",
+  "check",
+  "prepack",
+];
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
+}
+
+/**
+ * Keep package-local commands composable by Nx and pnpm. Formatting is a
+ * repository concern, while every plugin check runs all of its declared code
+ * gates before the build/package verification steps.
+ */
+export function validateWorkspaceScripts(directory, { plugin = false } = {}) {
+  const manifest = readJson(path.join(directory, "package.json"));
+  const scripts = manifest.scripts ?? {};
+  const errors = [];
+
+  for (const [name, command] of Object.entries(scripts)) {
+    if (typeof command !== "string") continue;
+    if (/(?:^|\s|&&|\|\|)npm(?:\s|$)/u.test(command)) {
+      errors.push(`scripts.${name} must use pnpm, not npm`);
+    }
+
+    for (const match of command.matchAll(
+      /\b(?:pnpm|npm) run (?<target>[a-z0-9:_-]+)/giu,
+    )) {
+      const target = match.groups?.target;
+      if (target && typeof scripts[target] !== "string") {
+        errors.push(`scripts.${name} calls missing local script "${target}"`);
+      }
+    }
+  }
+
+  if (!plugin) return errors;
+
+  for (const name of REQUIRED_PLUGIN_SCRIPTS) {
+    if (typeof scripts[name] !== "string") {
+      errors.push(`scripts.${name} is required for every plugin`);
+    }
+  }
+
+  const expectedCheck = [
+    "pnpm run lint",
+    "pnpm run typecheck",
+    ...(typeof scripts.test === "string" ? ["pnpm run test"] : []),
+    "pnpm run build",
+    "pnpm run verify",
+  ].join(" && ");
+  if (typeof scripts.check === "string" && scripts.check !== expectedCheck) {
+    errors.push(`scripts.check must equal "${expectedCheck}"`);
+  }
+  if (
+    typeof scripts.verify === "string" &&
+    !scripts.verify.includes("pnpm run verify:package")
+  ) {
+    errors.push('scripts.verify must include "pnpm run verify:package"');
+  }
+  if (
+    typeof scripts.prepack === "string" &&
+    !scripts.prepack.includes("pnpm run build")
+  ) {
+    errors.push('scripts.prepack must include "pnpm run build"');
+  }
+
+  return errors;
 }
 
 export function validatePublishablePlugin(directory) {
@@ -332,6 +402,11 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
       const directory = path.join(groupRoot, entry.name);
       if (!existsSync(path.join(directory, "package.json"))) continue;
       const manifest = readJson(path.join(directory, "package.json"));
+      for (const error of validateWorkspaceScripts(directory, {
+        plugin: group === "plugins",
+      })) {
+        failures.push(`${manifest.name}: ${error}`);
+      }
       if (manifest.private === true) continue;
       verified += 1;
       const errors = [

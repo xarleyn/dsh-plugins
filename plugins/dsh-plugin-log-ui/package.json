@@ -83,7 +83,8 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "verify": "node scripts/verify-package.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "prepack": "pnpm run build && pnpm run verify"
   },

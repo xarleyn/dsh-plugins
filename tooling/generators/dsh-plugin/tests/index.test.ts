@@ -59,11 +59,12 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.scripts).toMatchObject({
       build: "tsc -p tsconfig.build.json && tsdown",
       check:
-        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify:package",
+        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
       lint: "eslint src tests scripts",
       test: "vitest run",
       typecheck: "tsc --noEmit",
-      prepack: "pnpm run build",
+      verify: "pnpm run verify:package",
+      prepack: "pnpm run build && pnpm run verify",
     });
     expect(packageJson.dependencies).not.toHaveProperty(
       "@yadsh/dsh-plugin-kit",
@@ -134,7 +135,10 @@ describe("dsh-plugin generator", () => {
       "node scripts/verify-client-bundle.mjs",
     );
     expect(packageJson.scripts.check).toBe(
-      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify:package && pnpm run verify:client",
+      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify",
+    );
+    expect(packageJson.scripts.verify).toBe(
+      "pnpm run verify:package && pnpm run verify:client",
     );
     expect(packageJson.scripts.test).toBeUndefined();
     expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
