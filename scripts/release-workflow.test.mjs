@@ -20,10 +20,7 @@ import {
   readReleaseRows,
   unpublishedPackagesMessage,
 } from "./verify-package-publication.mjs";
-import {
-  buildWaveNotes,
-  changelogSection,
-} from "./wave-release-notes.mjs";
+import { buildWaveNotes, changelogSection } from "./wave-release-notes.mjs";
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -466,7 +463,10 @@ describe("package publication gate", () => {
       ["@yadsh/dsh-new"],
     );
     const message = unpublishedPackagesMessage(unpublished);
-    assert.match(message, /@yadsh\/dsh-new@0\.1\.0\s+\(yadsh-dsh-new-0\.1\.0\.tgz\)/u);
+    assert.match(
+      message,
+      /@yadsh\/dsh-new@0\.1\.0\s+\(yadsh-dsh-new-0\.1\.0\.tgz\)/u,
+    );
     assert.match(message, /npm publish \.\/<tarball>\.tgz --access public/u);
     assert.match(message, /Trusted Publisher/u);
     assert.match(message, /version plans are still intact/u);
@@ -476,11 +476,15 @@ describe("package publication gate", () => {
     const respond = (status, ok) => async () => ({ status, ok });
 
     assert.equal(
-      await isPackagePublished("@yadsh/dsh-any", { fetchImpl: respond(404, false) }),
+      await isPackagePublished("@yadsh/dsh-any", {
+        fetchImpl: respond(404, false),
+      }),
       false,
     );
     assert.equal(
-      await isPackagePublished("@yadsh/dsh-any", { fetchImpl: respond(200, true) }),
+      await isPackagePublished("@yadsh/dsh-any", {
+        fetchImpl: respond(200, true),
+      }),
       true,
     );
     await assert.rejects(
@@ -498,7 +502,10 @@ describe("package publication gate", () => {
         : { status: 404, ok: false };
     };
 
-    assert.equal(await isPackagePublished("@yadsh/dsh-new", { fetchImpl }), true);
+    assert.equal(
+      await isPackagePublished("@yadsh/dsh-new", { fetchImpl }),
+      true,
+    );
     assert.equal(seen.length, 2, "the version document must settle a 404");
     assert.match(seen[1], /\/latest$/u);
 
@@ -564,7 +571,12 @@ describe("wave release notes", () => {
       "- Older entry.",
       "",
     ]);
-    writeChangelog(root, "plugins/dsh-b", ["## 0.2.0", "", "- No date heading.", ""]);
+    writeChangelog(root, "plugins/dsh-b", [
+      "## 0.2.0",
+      "",
+      "- No date heading.",
+      "",
+    ]);
 
     const tsv = path.join(root, "release-packages.tsv");
     writeFileSync(
@@ -667,7 +679,11 @@ describe("version plan gate", () => {
   test("the gate requires at least one plan", () => {
     const rejected = runGate(createFixture());
 
-    assert.notEqual(rejected.status, 0, "a planless release must fail the gate");
+    assert.notEqual(
+      rejected.status,
+      0,
+      "a planless release must fail the gate",
+    );
     assert.match(
       `${rejected.stdout}\n${rejected.stderr}`,
       /at least one version plan file is required/u,

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { ChannelQuarantine, PassThroughMonitor, ReleasedTail } from "../../src/stream/quarantine.js";
+import {
+  ChannelQuarantine,
+  PassThroughMonitor,
+  ReleasedTail,
+} from "../../src/stream/quarantine.js";
 
 const options = {
   checkEveryChars: 16,
@@ -22,7 +26,10 @@ describe("ChannelQuarantine", () => {
     expect(quarantine.append("x".repeat(16), 0)).toBe("check");
     quarantine.markChecked(0);
     expect(quarantine.append("y", 100)).toBe("buffer");
-    const slow = new ChannelQuarantine({ ...options, minCheckIntervalMs: 1_000 });
+    const slow = new ChannelQuarantine({
+      ...options,
+      minCheckIntervalMs: 1_000,
+    });
     expect(slow.append("y".repeat(16), 0)).toBe("check");
     slow.markChecked(0);
     expect(slow.append("y".repeat(16), 500)).toBe("buffer");
@@ -60,7 +67,11 @@ describe("ChannelQuarantine", () => {
 
 describe("PassThroughMonitor", () => {
   it("detects check thresholds for observe/interrupt modes", () => {
-    const monitor = new PassThroughMonitor({ checkEveryChars: 10, lookbehindChars: 20, minCheckIntervalMs: 0 });
+    const monitor = new PassThroughMonitor({
+      checkEveryChars: 10,
+      lookbehindChars: 20,
+      minCheckIntervalMs: 0,
+    });
     expect(monitor.append("abc", 0)).toBe("monitor");
     expect(monitor.append("defghijklm", 0)).toBe("check");
     monitor.markChecked(0);
@@ -68,8 +79,13 @@ describe("PassThroughMonitor", () => {
   });
 
   it("caps its recent window", () => {
-    const monitor = new PassThroughMonitor({ checkEveryChars: 10, lookbehindChars: 20, minCheckIntervalMs: 0 });
-    for (let index = 0; index < 50; index += 1) monitor.append("x".repeat(50), index);
+    const monitor = new PassThroughMonitor({
+      checkEveryChars: 10,
+      lookbehindChars: 20,
+      minCheckIntervalMs: 0,
+    });
+    for (let index = 0; index < 50; index += 1)
+      monitor.append("x".repeat(50), index);
     expect(monitor.windowText().length).toBeLessThanOrEqual(20 + 10 * 2);
   });
 });

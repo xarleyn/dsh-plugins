@@ -5,11 +5,7 @@ import {
   matches,
 } from "../dom.js";
 import { dominantPosition } from "../geometry.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 const ROW_SELECTOR =
   "button,a,li,[role='menuitem'],[role='tab'],[data-dsh-ui-repair-row]";
@@ -45,9 +41,11 @@ function measureGap(row: HTMLElement): GapMeasurement | undefined {
   const explicitLabel = row.querySelector(
     "[data-dsh-ui-repair-label]",
   ) as HTMLElement | null;
-  const label = explicitLabel ?? Array.from(row.children).find(
-    (child) => child !== icon && (child.textContent?.trim().length ?? 0) > 0,
-  ) as HTMLElement | undefined;
+  const label =
+    explicitLabel ??
+    (Array.from(row.children).find(
+      (child) => child !== icon && (child.textContent?.trim().length ?? 0) > 0,
+    ) as HTMLElement | undefined);
   if (label === undefined || label === null) return undefined;
   const iconRect = icon.getBoundingClientRect();
   const labelRect = label.getBoundingClientRect();
@@ -108,9 +106,8 @@ export function scanGapConsistency(
         id: createId("R010", measurement.row),
         ruleId: "R010",
         kind: "inconsistent-gap",
-        severity: Math.abs(measurement.gap - dominant.center) >= 4
-          ? "medium"
-          : "low",
+        severity:
+          Math.abs(measurement.gap - dominant.center) >= 4 ? "medium" : "low",
         confidence,
         ...(plugin === undefined ? {} : { plugin }),
         root: describeElement(root),

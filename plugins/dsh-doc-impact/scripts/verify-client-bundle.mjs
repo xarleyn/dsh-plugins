@@ -11,40 +11,83 @@
 import { readFile } from "node:fs/promises";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
-const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
+const client = await readFile(
+  new URL("../lib/client.js", import.meta.url),
+  "utf8",
+);
 
 function expectAbsent(needle, why) {
   if (client.includes(needle)) {
-    throw new Error(`client bundle must not contain ${JSON.stringify(needle)} (${why})`);
+    throw new Error(
+      `client bundle must not contain ${JSON.stringify(needle)} (${why})`,
+    );
   }
 }
 
 function expectPresent(needle, why) {
   if (!client.includes(needle)) {
-    throw new Error(`client bundle is missing ${JSON.stringify(needle)} (${why})`);
+    throw new Error(
+      `client bundle is missing ${JSON.stringify(needle)} (${why})`,
+    );
   }
 }
 
-expectPresent('id: "@yadsh/dsh-doc-impact"', "the ModuleLoader factory id keys the served bundle");
-expectPresent('"settings.plugin.item"', "the card must register into the shared Plugin Configuration slot");
-expectPresent('key: SETTINGS_NS', "the card must claim the doc-impact settings namespace");
-expectPresent('namespace: SETTINGS_NS', "the form must bind the doc-impact settings scope");
-expectPresent('resetField', "every field needs the composition-layer reset action");
+expectPresent(
+  'id: "@yadsh/dsh-doc-impact"',
+  "the ModuleLoader factory id keys the served bundle",
+);
+expectPresent(
+  '"settings.plugin.item"',
+  "the card must register into the shared Plugin Configuration slot",
+);
+expectPresent(
+  "key: SETTINGS_NS",
+  "the card must claim the doc-impact settings namespace",
+);
+expectPresent(
+  "namespace: SETTINGS_NS",
+  "the form must bind the doc-impact settings scope",
+);
+expectPresent(
+  "resetField",
+  "every field needs the composition-layer reset action",
+);
 expectPresent('"unsaved"', "the header must carry the unsaved-changes badge");
-expectPresent('dsh-plugin-card__name', "custom cards must share the standard card shell");
-expectPresent('m3.5 5.25 3.5 3.5 3.5-3.5', "the header must use the standard SVG chevron");
+expectPresent(
+  "dsh-plugin-card__name",
+  "custom cards must share the standard card shell",
+);
+expectPresent(
+  "m3.5 5.25 3.5 3.5 3.5-3.5",
+  "the header must use the standard SVG chevron",
+);
 verifyPluginCardContract(client, {
   legacyPatterns: [/ddi_card/u],
 });
-expectAbsent('ddi_card', "the outer card shell must use the shared class contract");
-expectAbsent('▾', "font-dependent disclosure glyphs must not replace the SVG chevron");
+expectAbsent(
+  "ddi_card",
+  "the outer card shell must use the shared class contract",
+);
+expectAbsent(
+  "▾",
+  "font-dependent disclosure glyphs must not replace the SVG chevron",
+);
 
 // The bundle runs in the browser and may only require what the ModuleLoader
 // page provides; anything @deepseek-ai would drag host internals into it.
-expectAbsent('require("@deepseek-ai', "client code must not require host packages");
-expectAbsent("require('@deepseek-ai", "client code must not require host packages");
+expectAbsent(
+  'require("@deepseek-ai',
+  "client code must not require host packages",
+);
+expectAbsent(
+  "require('@deepseek-ai",
+  "client code must not require host packages",
+);
 
 // Settings content must stay local: no network calls, no storage beyond the
 // settings scope contract.
 expectAbsent("fetch(", "the settings card must not perform network requests");
-expectAbsent("localStorage", "settings live in the host settings document, not local storage");
+expectAbsent(
+  "localStorage",
+  "settings live in the host settings document, not local storage",
+);

@@ -1,22 +1,22 @@
 /** Unit tests for config resolution and clamping (SPEC §10). */
 
-import path from 'node:path';
+import path from "node:path";
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from "vitest";
 
 import {
   GIT_READONLY_DEFAULTS,
   GitReadonlyConfigSchema,
   resolveGitReadonlyConfig,
-} from '../src/config.js';
+} from "../src/config.js";
 
-describe('resolveGitReadonlyConfig', () => {
-  it('returns safe defaults for empty input', () => {
+describe("resolveGitReadonlyConfig", () => {
+  it("returns safe defaults for empty input", () => {
     expect(resolveGitReadonlyConfig(undefined)).toEqual(GIT_READONLY_DEFAULTS);
     expect(resolveGitReadonlyConfig({})).toEqual(GIT_READONLY_DEFAULTS);
   });
 
-  it('clamps limits into the safe corridor', () => {
+  it("clamps limits into the safe corridor", () => {
     const resolved = resolveGitReadonlyConfig({
       timeoutMs: 1,
       history: { defaultLimit: 0, maxLimit: 100_000 },
@@ -30,28 +30,28 @@ describe('resolveGitReadonlyConfig', () => {
     expect(resolved.patchBytes).toBe(1_048_576);
   });
 
-  it('floors fractional numbers and falls back on garbage', () => {
+  it("floors fractional numbers and falls back on garbage", () => {
     const resolved = resolveGitReadonlyConfig({
       timeoutMs: 2_500.9,
-      gitPath: '  ',
+      gitPath: "  ",
     });
     expect(resolved.timeoutMs).toBe(2_500);
     expect(resolved.gitPath).toBe(GIT_READONLY_DEFAULTS.gitPath);
   });
 
-  it('honours in-range configuration', () => {
-    const repositoryRoot = path.resolve('configured-repository');
+  it("honours in-range configuration", () => {
+    const repositoryRoot = path.resolve("configured-repository");
     const resolved = resolveGitReadonlyConfig({
       enabled: false,
-      gitPath: 'C:/Program Files/Git/bin/git.exe',
-      repositoryRoots: [`  ${repositoryRoot}  `, repositoryRoot, ''],
+      gitPath: "C:/Program Files/Git/bin/git.exe",
+      repositoryRoots: [`  ${repositoryRoot}  `, repositoryRoot, ""],
       timeoutMs: 20_000,
       history: { defaultLimit: 10, maxLimit: 50 },
       blame: { maxLines: 50 },
       patchBytes: 65_536,
     });
     expect(resolved.enabled).toBe(false);
-    expect(resolved.gitPath).toBe('C:/Program Files/Git/bin/git.exe');
+    expect(resolved.gitPath).toBe("C:/Program Files/Git/bin/git.exe");
     expect(resolved.repositoryRoots).toEqual([repositoryRoot]);
     expect(resolved.historyDefaultLimit).toBe(10);
     expect(resolved.historyMaxLimit).toBe(50);
@@ -59,15 +59,15 @@ describe('resolveGitReadonlyConfig', () => {
     expect(resolved.patchBytes).toBe(65_536);
   });
 
-  it('rejects relative repository roots', () => {
-    expect(() => resolveGitReadonlyConfig({ repositoryRoots: ['../code'] })).toThrow(
-      /absolute/u,
-    );
+  it("rejects relative repository roots", () => {
+    expect(() =>
+      resolveGitReadonlyConfig({ repositoryRoots: ["../code"] }),
+    ).toThrow(/absolute/u);
   });
 });
 
-describe('GitReadonlyConfigSchema', () => {
-  it('exposes the same defaults through the Schemastery contract', () => {
+describe("GitReadonlyConfigSchema", () => {
+  it("exposes the same defaults through the Schemastery contract", () => {
     const resolved = GitReadonlyConfigSchema({});
     expect(resolveGitReadonlyConfig(resolved)).toEqual(GIT_READONLY_DEFAULTS);
   });

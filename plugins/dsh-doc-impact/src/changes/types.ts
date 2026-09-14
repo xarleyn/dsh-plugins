@@ -1,7 +1,7 @@
-import type { FileSelector } from '../config/types.js';
+import type { FileSelector } from "../config/types.js";
 
 /** Workspace-relative POSIX path of one file whose state changed during a turn. */
-export type FileChangeType = 'added' | 'modified' | 'deleted';
+export type FileChangeType = "added" | "modified" | "deleted";
 
 export interface FileChange {
   readonly path: string;
@@ -23,7 +23,7 @@ export interface FileSnapshot {
  */
 export interface TurnBaseline {
   readonly cwd: string;
-  readonly kind: 'git' | 'filesystem';
+  readonly kind: "git" | "filesystem";
   /** HEAD commit at baseline; `undefined` for non-git workspaces or unborn branches. */
   readonly head?: string;
   /** Content-hash state of every path that was already dirty at baseline. */
@@ -47,7 +47,7 @@ export interface FileEnumerator {
 }
 
 export interface ChangeDetector extends FileEnumerator {
-  readonly kind: 'git' | 'filesystem';
+  readonly kind: "git" | "filesystem";
   captureBaseline(cwd: string): Promise<TurnBaseline>;
   computeChanges(cwd: string, baseline: TurnBaseline): Promise<ChangeDiff>;
 }

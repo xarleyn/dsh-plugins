@@ -49,17 +49,27 @@ function truncate(text: string): string {
 function renderValue(value: unknown, depth: number): string {
   if (value === null || value === undefined) return String(value);
   if (typeof value === "string") return truncate(value);
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint"
+  ) {
     return String(value);
   }
-  if (value instanceof Error) return truncate(`${value.name}: ${value.message}`);
-  if (depth >= LOG_FIELD_DEPTH_LIMIT) return Array.isArray(value) ? "[…]" : "{…}";
+  if (value instanceof Error)
+    return truncate(`${value.name}: ${value.message}`);
+  if (depth >= LOG_FIELD_DEPTH_LIMIT)
+    return Array.isArray(value) ? "[…]" : "{…}";
   if (Array.isArray(value)) {
-    return truncate(`[${value.map((item) => renderValue(item, depth + 1)).join(", ")}]`);
+    return truncate(
+      `[${value.map((item) => renderValue(item, depth + 1)).join(", ")}]`,
+    );
   }
   if (typeof value === "object") {
     const entries = Object.entries(value as Record<string, unknown>);
-    const rendered = entries.map(([key, item]) => `${key}: ${renderValue(item, depth + 1)}`);
+    const rendered = entries.map(
+      ([key, item]) => `${key}: ${renderValue(item, depth + 1)}`,
+    );
     return truncate(`{${rendered.join(", ")}}`);
   }
   // Functions and symbols: say what it was, nothing more.
@@ -71,11 +81,15 @@ function renderValue(value: unknown, depth: number): string {
  * @param fields - the caller's fields, as the logger received them.
  * @returns short key/value pairs, capped in count.
  */
-export function renderFields(fields: Readonly<Record<string, unknown>>): readonly PluginLogField[] {
+export function renderFields(
+  fields: Readonly<Record<string, unknown>>,
+): readonly PluginLogField[] {
   const entries = Object.entries(fields);
   const rendered: PluginLogField[] = entries
     .slice(0, LOG_FIELD_LIMIT)
-    .map(([key, value]) => Object.freeze({ key, value: renderValue(value, 0) }));
+    .map(([key, value]) =>
+      Object.freeze({ key, value: renderValue(value, 0) }),
+    );
   if (entries.length > LOG_FIELD_LIMIT) {
     rendered.push(
       Object.freeze({
@@ -154,14 +168,20 @@ export class PluginLogBuffer {
     const first = this.firstSeq;
     const oldest = this.records[0]?.seq ?? this.lastSeq + 1;
     const start = Math.max(from, oldest);
-    const records = this.records.filter((record) => record.seq >= start).slice(0, size);
+    const records = this.records
+      .filter((record) => record.seq >= start)
+      .slice(0, size);
     // Before the first record this buffer ever held there is nothing to have
     // lost; from anywhere at or past it, every sequence below `oldest` was
     // evicted before the reader could see it.
-    const dropped = first === undefined ? 0 : Math.max(0, oldest - Math.max(from, first));
-    const next = records.length > 0
-      ? records[records.length - 1]!.seq + 1
-      : (first === undefined ? from : start);
+    const dropped =
+      first === undefined ? 0 : Math.max(0, oldest - Math.max(from, first));
+    const next =
+      records.length > 0
+        ? records[records.length - 1]!.seq + 1
+        : first === undefined
+          ? from
+          : start;
     return Object.freeze({
       records: Object.freeze(records),
       cursor: next,

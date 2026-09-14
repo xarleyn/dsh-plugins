@@ -4,7 +4,15 @@
  * classifier disclosure, and the status projection the Remote feeds it.
  */
 
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -140,13 +148,16 @@ const Card = SafetyGateCard as unknown as (props: {
   inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
 }) => ReactElement;
 
-async function renderCard(options: {
-  snapshot?: Partial<ScopeSnapshot>;
-  mutate?: (ops: unknown) => Promise<void>;
-  inspect?: () => Promise<{ ok: true; value: SafetyGateInspect }>;
-} = {}) {
+async function renderCard(
+  options: {
+    snapshot?: Partial<ScopeSnapshot>;
+    mutate?: (ops: unknown) => Promise<void>;
+    inspect?: () => Promise<{ ok: true; value: SafetyGateInspect }>;
+  } = {},
+) {
   const { scope } = makeScope(options.snapshot, options.mutate);
-  const inspect = options.inspect ?? (async () => ({ ok: true, value: INSPECT }));
+  const inspect =
+    options.inspect ?? (async () => ({ ok: true, value: INSPECT }));
   let result: ReturnType<typeof render> | undefined;
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
@@ -158,7 +169,9 @@ async function renderCard(options: {
 }
 
 function openCard(): void {
-  fireEvent.click(screen.getByRole("button", { name: /Show settings: Model Safety Gate/u }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /Show settings: Model Safety Gate/u }),
+  );
 }
 
 afterEach(async () => {
@@ -177,25 +190,42 @@ describe("Safety Gate card", () => {
     expect(card).not.toBeNull();
     expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
     expect(screen.getByText("Model Safety Gate")).toBeTruthy();
-    expect(container.querySelector(".dsh-plugin-card__badge")?.textContent).toBe("Warn");
+    expect(
+      container.querySelector(".dsh-plugin-card__badge")?.textContent,
+    ).toBe("Warn");
     expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
   });
 
   it("renders nothing when the settings namespace is unavailable", async () => {
-    const { container } = await renderCard({ snapshot: { status: "unavailable", value: undefined } });
+    const { container } = await renderCard({
+      snapshot: { status: "unavailable", value: undefined },
+    });
     expect(container.innerHTML).toBe("");
   });
 
   it("opens into the configuration and status sections", async () => {
     await renderCard();
     openCard();
-    for (const title of ["Status", "Gate", "Input guard", "Output stream", "Tools and results", "Classifier", "Audit", "Recent verdicts", "Advanced"]) {
-      expect(screen.getByRole("heading", { name: new RegExp(title, "u") })).toBeTruthy();
+    for (const title of [
+      "Status",
+      "Gate",
+      "Input guard",
+      "Output stream",
+      "Tools and results",
+      "Classifier",
+      "Audit",
+      "Recent verdicts",
+      "Advanced",
+    ]) {
+      expect(
+        screen.getByRole("heading", { name: new RegExp(title, "u") }),
+      ).toBeTruthy();
     }
     await waitFor(() => {
       // The status projection arrives from the Remote after the first poll.
-      expect(screen.getByText(/Average classifier latency/u).textContent)
-        .toContain("50.0 ms"); // 300 ms over 6 classifier calls
+      expect(
+        screen.getByText(/Average classifier latency/u).textContent,
+      ).toContain("50.0 ms"); // 300 ms over 6 classifier calls
     });
     expect(screen.getByRole("button", { name: /Hide settings/u })).toBeTruthy();
   });
@@ -205,10 +235,16 @@ describe("Safety Gate card", () => {
     await renderCard({ mutate });
     openCard();
 
-    const gate = screen.getByRole("heading", { name: /^Gate/u }).closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", { name: /Gate enabled/u });
+    const gate = screen
+      .getByRole("heading", { name: /^Gate/u })
+      .closest("section");
+    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
+      name: /Gate enabled/u,
+    });
     fireEvent.click(enabled);
-    expect(mutate).toHaveBeenCalledWith([{ op: "set", path: ["enabled"], value: false }]);
+    expect(mutate).toHaveBeenCalledWith([
+      { op: "set", path: ["enabled"], value: false },
+    ]);
   });
 
   it("states that the classifier is remote, and where it sends content", async () => {
@@ -216,18 +252,26 @@ describe("Safety Gate card", () => {
       snapshot: {
         value: {
           ...CONFIG,
-          classifier: { ...CONFIG.classifier, backend: "openai-compatible", baseURL: "https://moderator.example/v1" },
+          classifier: {
+            ...CONFIG.classifier,
+            backend: "openai-compatible",
+            baseURL: "https://moderator.example/v1",
+          },
         },
       },
     });
     openCard();
-    const notice = screen.getByText(/Safety classifier is remote/u).closest(".msg-notice");
+    const notice = screen
+      .getByText(/Safety classifier is remote/u)
+      .closest(".msg-notice");
     expect(notice?.textContent).toContain("https://moderator.example/v1");
   });
 
   it("warns when raw content logging is switched on", async () => {
     await renderCard({
-      snapshot: { value: { ...CONFIG, audit: { enabled: true, includeRawContent: true } } },
+      snapshot: {
+        value: { ...CONFIG, audit: { enabled: true, includeRawContent: true } },
+      },
     });
     openCard();
     expect(screen.getByText(/Raw content is on/u)).toBeTruthy();
@@ -235,7 +279,10 @@ describe("Safety Gate card", () => {
 
   it("offers a reset for the fields the user layer overrides", async () => {
     const mutate = vi.fn(() => Promise.resolve());
-    await renderCard({ snapshot: { user: { mode: "enforce", output: { mode: "observe" } } }, mutate });
+    await renderCard({
+      snapshot: { user: { mode: "enforce", output: { mode: "observe" } } },
+      mutate,
+    });
     openCard();
 
     expect(screen.getAllByText("modified").length).toBeGreaterThan(0);
@@ -249,16 +296,24 @@ describe("Safety Gate card", () => {
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
     openCard();
-    const gate = screen.getByRole("heading", { name: /^Gate/u }).closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", { name: /Gate enabled/u });
+    const gate = screen
+      .getByRole("heading", { name: /^Gate/u })
+      .closest("section");
+    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
+      name: /Gate enabled/u,
+    });
     expect((enabled as HTMLInputElement).disabled).toBe(true);
   });
 
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
     openCard();
-    expect(screen.getByText(/Loading the Safety Gate configuration/u)).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: /Recent verdicts/u })).toBeNull();
+    expect(
+      screen.getByText(/Loading the Safety Gate configuration/u),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: /Recent verdicts/u }),
+    ).toBeNull();
   });
 
   it("surfaces recent verdicts with their decision and channel", async () => {

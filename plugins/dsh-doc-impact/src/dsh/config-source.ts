@@ -1,12 +1,14 @@
-import { readFile, stat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { parse } from 'yaml';
-import { ConfigError } from '../config/errors.js';
-import { parseConfig } from '../config/loader.js';
-import type { EngineLogger, EngineWorkspaceConfig } from '../engine/runtime.js';
-import type { DocImpactPluginConfig } from './plugin-config.js';
+import { readFile, stat } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { parse } from "yaml";
+import { ConfigError } from "../config/errors.js";
+import { parseConfig } from "../config/loader.js";
+import type { EngineLogger, EngineWorkspaceConfig } from "../engine/runtime.js";
+import type { DocImpactPluginConfig } from "./plugin-config.js";
 
-export type WorkspaceConfigSource = (cwd: string) => Promise<EngineWorkspaceConfig | undefined>;
+export type WorkspaceConfigSource = (
+  cwd: string,
+) => Promise<EngineWorkspaceConfig | undefined>;
 
 interface CacheEntry {
   mtimeMs: number;
@@ -16,17 +18,20 @@ interface CacheEntry {
 }
 
 function localOverridePath(configFile: string): string {
-  return join(dirname(configFile), 'doc-impact.local.yml');
+  return join(dirname(configFile), "doc-impact.local.yml");
 }
 
 interface LocalOverrides {
   disabledRules: string[];
 }
 
-async function readLocalOverrides(path: string, logger: EngineLogger | undefined): Promise<LocalOverrides> {
+async function readLocalOverrides(
+  path: string,
+  logger: EngineLogger | undefined,
+): Promise<LocalOverrides> {
   let raw: string;
   try {
-    raw = await readFile(path, 'utf8');
+    raw = await readFile(path, "utf8");
   } catch {
     return { disabledRules: [] };
   }
@@ -34,8 +39,8 @@ async function readLocalOverrides(path: string, logger: EngineLogger | undefined
     // JSON is a YAML subset, so JSON override files parse here as well.
     const parsed: unknown = parse(raw);
     const list = (parsed as { disabledRules?: unknown } | null)?.disabledRules;
-    if (!Array.isArray(list) || list.some((item) => typeof item !== 'string')) {
-      throw new ConfigError('disabledRules must be an array of rule IDs');
+    if (!Array.isArray(list) || list.some((item) => typeof item !== "string")) {
+      throw new ConfigError("disabledRules must be an array of rule IDs");
     }
     return { disabledRules: list as string[] };
   } catch (error) {
@@ -69,9 +74,11 @@ export function createWorkspaceConfigSource(
     cache.set(key, entry);
   };
 
-  return async function load(cwd: string): Promise<EngineWorkspaceConfig | undefined> {
+  return async function load(
+    cwd: string,
+  ): Promise<EngineWorkspaceConfig | undefined> {
     const plugin = getPluginConfig();
-    const configPath = join(cwd, ...plugin.configFile.split('/'));
+    const configPath = join(cwd, ...plugin.configFile.split("/"));
     let info;
     try {
       info = await stat(configPath);
@@ -82,14 +89,21 @@ export function createWorkspaceConfigSource(
 
     const cacheKey = `${cwd}\0${plugin.configFile}`;
     const cached = cache.get(cacheKey);
-    if (cached !== undefined && cached.mtimeMs === info.mtimeMs && cached.size === info.size) {
-      return 'error' in cached.outcome ? undefined : cached.outcome;
+    if (
+      cached !== undefined &&
+      cached.mtimeMs === info.mtimeMs &&
+      cached.size === info.size
+    ) {
+      return "error" in cached.outcome ? undefined : cached.outcome;
     }
 
     try {
-      const source = await readFile(configPath, 'utf8');
+      const source = await readFile(configPath, "utf8");
       const config = parseConfig(source, { mode: plugin.defaultsMode });
-      const overrides = await readLocalOverrides(localOverridePath(configPath), logger);
+      const overrides = await readLocalOverrides(
+        localOverridePath(configPath),
+        logger,
+      );
       const disabled = new Set(overrides.disabledRules);
       const effective = {
         ...config,
@@ -108,8 +122,14 @@ export function createWorkspaceConfigSource(
       return outcome;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger?.error?.(`workspace config rejected, plugin inert until it is fixed\n${message}`);
-      remember(cacheKey, { mtimeMs: info.mtimeMs, size: info.size, outcome: { error: message } });
+      logger?.error?.(
+        `workspace config rejected, plugin inert until it is fixed\n${message}`,
+      );
+      remember(cacheKey, {
+        mtimeMs: info.mtimeMs,
+        size: info.size,
+        outcome: { error: message },
+      });
       return undefined;
     }
   };

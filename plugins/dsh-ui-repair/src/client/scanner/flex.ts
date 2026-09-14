@@ -1,13 +1,5 @@
-import {
-  collectElements,
-  describeElement,
-  inferPlugin,
-} from "../dom.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import { collectElements, describeElement, inferPlugin } from "../dom.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 function computedStyle(element: HTMLElement): CSSStyleDeclaration | undefined {
   try {
@@ -92,10 +84,7 @@ export function scanFlexConstraints(
       });
     }
 
-    if (
-      isFlexOrGrid(parentStyle.display) &&
-      style.minWidth !== "0px"
-    ) {
+    if (isFlexOrGrid(parentStyle.display) && style.minWidth !== "0px") {
       const explicit = element.hasAttribute(
         "data-dsh-ui-repair-min-width-zero",
       );

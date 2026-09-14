@@ -11,7 +11,7 @@ async function filesUnder(directory) {
   const files = [];
   for (const entry of entries) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...await filesUnder(path));
+    if (entry.isDirectory()) files.push(...(await filesUnder(path)));
     else files.push(path);
   }
   return files;
@@ -23,11 +23,15 @@ const pluginDirectories = (await readdir(pluginsRoot, { withFileTypes: true }))
   .sort();
 
 const checked = [];
-const sharedLoggerImport = /(?:from\s+|import\s*\()\s*["']@yadsh\/dsh-plugin-log["']/u;
+const sharedLoggerImport =
+  /(?:from\s+|import\s*\()\s*["']@yadsh\/dsh-plugin-log["']/u;
 for (const directory of pluginDirectories) {
   let manifestText;
   try {
-    manifestText = await readFile(new URL(`../plugins/${directory}/package.json`, import.meta.url), "utf8");
+    manifestText = await readFile(
+      new URL(`../plugins/${directory}/package.json`, import.meta.url),
+      "utf8",
+    );
   } catch (error) {
     if (error?.code === "ENOENT") continue;
     throw error;
@@ -41,11 +45,15 @@ for (const directory of pluginDirectories) {
   );
 
   const sourceRoot = join(pluginsRoot, directory, "src");
-  const sourceFiles = (await filesUnder(sourceRoot)).filter((path) => /\.[cm]?[jt]sx?$/u.test(path));
-  const sources = await Promise.all(sourceFiles.map(async (path) => ({
-    path,
-    text: await readFile(path, "utf8"),
-  })));
+  const sourceFiles = (await filesUnder(sourceRoot)).filter((path) =>
+    /\.[cm]?[jt]sx?$/u.test(path),
+  );
+  const sources = await Promise.all(
+    sourceFiles.map(async (path) => ({
+      path,
+      text: await readFile(path, "utf8"),
+    })),
+  );
   assert.ok(
     sources.some(({ text }) => sharedLoggerImport.test(text)),
     `${manifest.name} host source must initialize shared logging`,

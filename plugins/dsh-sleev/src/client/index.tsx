@@ -218,103 +218,103 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
       }
     >
       {!state.writable ? (
-            <p className="dsh-sleev-read-only" role="status">
-              {props.t("readOnly")}
-            </p>
-          ) : null}
+        <p className="dsh-sleev-read-only" role="status">
+          {props.t("readOnly")}
+        </p>
+      ) : null}
 
-          <SettingsField
-            id="sleev-routes"
-            label={props.t("routes")}
-            hint={props.t("routesHint")}
-            {...common("routes")}
-          >
-            <textarea
-              id="sleev-routes"
-              className="dsh-sleev-input"
-              value={state.routes.text}
-              disabled={!state.writable}
-              onChange={edit("routes")}
-            />
-          </SettingsField>
+      <SettingsField
+        id="sleev-routes"
+        label={props.t("routes")}
+        hint={props.t("routesHint")}
+        {...common("routes")}
+      >
+        <textarea
+          id="sleev-routes"
+          className="dsh-sleev-input"
+          value={state.routes.text}
+          disabled={!state.writable}
+          onChange={edit("routes")}
+        />
+      </SettingsField>
 
-          <SettingsField
-            id="sleev-route-prefixes"
-            label={props.t("routePrefixes")}
-            hint={props.t("routePrefixesHint")}
-            {...common("routePrefixes")}
-          >
-            <textarea
-              id="sleev-route-prefixes"
-              className="dsh-sleev-input"
-              value={state.routePrefixes.text}
-              disabled={!state.writable}
-              onChange={edit("routePrefixes")}
-            />
-          </SettingsField>
+      <SettingsField
+        id="sleev-route-prefixes"
+        label={props.t("routePrefixes")}
+        hint={props.t("routePrefixesHint")}
+        {...common("routePrefixes")}
+      >
+        <textarea
+          id="sleev-route-prefixes"
+          className="dsh-sleev-input"
+          value={state.routePrefixes.text}
+          disabled={!state.writable}
+          onChange={edit("routePrefixes")}
+        />
+      </SettingsField>
 
-          <SettingsField
-            id="sleev-max-recent-calls"
-            label={props.t("maxRecentCalls")}
-            hint={props.t("maxRecentCallsHint")}
-            invalidLabel={props.t("invalidNumber")}
-            {...common("maxRecentCalls")}
-          >
-            <input
-              id="sleev-max-recent-calls"
-              className="dsh-sleev-input"
-              type="number"
-              min={1}
-              step={1}
-              value={state.maxRecentCalls.text}
-              disabled={!state.writable}
-              aria-invalid={state.maxRecentCalls.invalid}
-              onChange={edit("maxRecentCalls")}
-            />
-          </SettingsField>
+      <SettingsField
+        id="sleev-max-recent-calls"
+        label={props.t("maxRecentCalls")}
+        hint={props.t("maxRecentCallsHint")}
+        invalidLabel={props.t("invalidNumber")}
+        {...common("maxRecentCalls")}
+      >
+        <input
+          id="sleev-max-recent-calls"
+          className="dsh-sleev-input"
+          type="number"
+          min={1}
+          step={1}
+          value={state.maxRecentCalls.text}
+          disabled={!state.writable}
+          aria-invalid={state.maxRecentCalls.invalid}
+          onChange={edit("maxRecentCalls")}
+        />
+      </SettingsField>
 
-          <SettingsField
-            id="sleev-log-level"
-            label={props.t("logLevel")}
-            hint={props.t("logLevelHint")}
-            {...common("logLevel")}
-          >
-            <select
-              id="sleev-log-level"
-              className="dsh-sleev-input"
-              value={state.logLevel.text}
-              disabled={!state.writable}
-              onChange={edit("logLevel")}
-            >
-              <option value="off">{props.t("logOff")}</option>
-              <option value="info">{props.t("logInfo")}</option>
-              <option value="debug">{props.t("logDebug")}</option>
-            </select>
-          </SettingsField>
+      <SettingsField
+        id="sleev-log-level"
+        label={props.t("logLevel")}
+        hint={props.t("logLevelHint")}
+        {...common("logLevel")}
+      >
+        <select
+          id="sleev-log-level"
+          className="dsh-sleev-input"
+          value={state.logLevel.text}
+          disabled={!state.writable}
+          onChange={edit("logLevel")}
+        >
+          <option value="off">{props.t("logOff")}</option>
+          <option value="info">{props.t("logInfo")}</option>
+          <option value="debug">{props.t("logDebug")}</option>
+        </select>
+      </SettingsField>
 
-          <div className="dsh-sleev-footer">
-            {state.failed ? (
-              <p className="dsh-sleev-save-error" role="status">
-                {props.t("saveFailed")}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              className="dsh-sleev-button dsh-sleev-discard"
-              disabled={!state.dirty || state.saving}
-              onClick={props.discard}
-            >
-              {props.t("discard")}
-            </button>
-            <button
-              type="button"
-              className="dsh-sleev-button dsh-sleev-save"
-              disabled={blocked}
-              onClick={props.save}
-            >
-              {props.t(state.saving ? "saving" : "save")}
-            </button>
-          </div>
+      <div className="dsh-sleev-footer">
+        {state.failed ? (
+          <p className="dsh-sleev-save-error" role="status">
+            {props.t("saveFailed")}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          className="dsh-sleev-button dsh-sleev-discard"
+          disabled={!state.dirty || state.saving}
+          onClick={props.discard}
+        >
+          {props.t("discard")}
+        </button>
+        <button
+          type="button"
+          className="dsh-sleev-button dsh-sleev-save"
+          disabled={blocked}
+          onClick={props.save}
+        >
+          {props.t(state.saving ? "saving" : "save")}
+        </button>
+      </div>
     </CardShell>
   );
 }
@@ -338,12 +338,15 @@ export function apply(ctx: ClientContext): void {
     ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
   );
   ctx.slots.inject("settings.plugin.item", () => {
-    const unregister = registerSettingsSlot({ slots: ctx.slots }, {
-      key: SETTINGS_NAMESPACE,
-      locale: LOCALE_NAMESPACE,
-      component: SleevSettingsCard,
-      inject: () => controller.inject(),
-    });
+    const unregister = registerSettingsSlot(
+      { slots: ctx.slots },
+      {
+        key: SETTINGS_NAMESPACE,
+        locale: LOCALE_NAMESPACE,
+        component: SleevSettingsCard,
+        inject: () => controller.inject(),
+      },
+    );
     return () => {
       controller.dispose();
       unregister();

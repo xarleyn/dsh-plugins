@@ -94,9 +94,7 @@ export function findManifestDrift(repoRoot = process.cwd()) {
       );
     }
   }
-  if (
-    JSON.stringify(existing.plugins) !== JSON.stringify(expected.plugins)
-  ) {
+  if (JSON.stringify(existing.plugins) !== JSON.stringify(expected.plugins)) {
     errors.push(
       `${MANIFEST_FILE} is out of date with the workspace manifests; ` +
         'run "pnpm plugins:manifest"',

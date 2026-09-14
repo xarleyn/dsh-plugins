@@ -94,7 +94,10 @@ function scopeSection(input: PersonaInput): string {
   const byClass = (resourceClass: ResolvedResourceEntry["class"]): string[] =>
     input.resources
       .filter((entry) => entry.class === resourceClass)
-      .map((entry) => `${entry.path}${entry.enforcement === "enforced" ? "" : " (preference only)"}`);
+      .map(
+        (entry) =>
+          `${entry.path}${entry.enforcement === "enforced" ? "" : " (preference only)"}`,
+      );
 
   const primary = byClass("primary");
   if (primary.length > 0) {
@@ -110,14 +113,26 @@ function scopeSection(input: PersonaInput): string {
   }
   const denied = byClass("denied");
   if (denied.length > 0) {
-    lines.push("", "Outside this domain — do not use:", ...denied.map((path) => `- ${path}`));
+    lines.push(
+      "",
+      "Outside this domain — do not use:",
+      ...denied.map((path) => `- ${path}`),
+    );
   }
   const knowledge = input.definition.scope.documentation;
   if (knowledge.include.length > 0) {
-    lines.push("", "Knowledge sources to prefer:", ...knowledge.include.map((p) => `- ${p}`));
+    lines.push(
+      "",
+      "Knowledge sources to prefer:",
+      ...knowledge.include.map((p) => `- ${p}`),
+    );
   }
   if (knowledge.exclude.length > 0) {
-    lines.push("", "Knowledge sources to avoid:", ...knowledge.exclude.map((p) => `- ${p}`));
+    lines.push(
+      "",
+      "Knowledge sources to avoid:",
+      ...knowledge.exclude.map((p) => `- ${p}`),
+    );
   }
   if (lines.length === 0) {
     // The section is always present: an expert with no configured scope should
@@ -152,9 +167,13 @@ function memorySection(
 
 function delegationSection(input: PersonaInput): string {
   const { delegation, definition, callerDomain, depth } = input;
-  const lines: string[] = [`Delegation depth: ${String(depth)} of at most ${String(delegation.maxDepth)}.`];
+  const lines: string[] = [
+    `Delegation depth: ${String(depth)} of at most ${String(delegation.maxDepth)}.`,
+  ];
   if (callerDomain !== null) {
-    lines.push(`You were asked by the "${callerDomain}" expert; answer within your own domain.`);
+    lines.push(
+      `You were asked by the "${callerDomain}" expert; answer within your own domain.`,
+    );
   }
   if (!delegation.allowCrossDomain || delegation.mode === "disabled") {
     lines.push(
@@ -162,7 +181,10 @@ function delegationSection(input: PersonaInput): string {
     );
     return lines.join("\n");
   }
-  const targets = delegation.targets.length > 0 ? delegation.targets.join(", ") : "any other domain";
+  const targets =
+    delegation.targets.length > 0
+      ? delegation.targets.join(", ")
+      : "any other domain";
   lines.push(
     `Cross-domain mode: ${delegation.mode}. You may ask another domain's expert with the domain_delegate tool (targets: ${targets}).`,
   );
@@ -176,7 +198,9 @@ function delegationSection(input: PersonaInput): string {
     );
   }
   if (delegation.targets.includes(definition.id)) {
-    lines.push("You are listed as a target of your own delegation; ignore that entry.");
+    lines.push(
+      "You are listed as a target of your own delegation; ignore that entry.",
+    );
   }
   return lines.join("\n");
 }
@@ -187,10 +211,14 @@ function taskSection(input: PersonaInput): string {
   const lines: string[] = [];
   switch (request.mode) {
     case "investigate":
-      lines.push("Investigate the following and report the root cause with evidence.");
+      lines.push(
+        "Investigate the following and report the root cause with evidence.",
+      );
       break;
     case "review":
-      lines.push("Review the following and report deviations, risks and open questions.");
+      lines.push(
+        "Review the following and report deviations, risks and open questions.",
+      );
       break;
     case "answer":
       lines.push("Answer the following question with evidence.");
@@ -207,7 +235,9 @@ function taskSection(input: PersonaInput): string {
 }
 
 function clamp(value: string): string {
-  return value.length > MAX_TASK_LENGTH ? `${value.slice(0, MAX_TASK_LENGTH)}…` : value;
+  return value.length > MAX_TASK_LENGTH
+    ? `${value.slice(0, MAX_TASK_LENGTH)}…`
+    : value;
 }
 
 /**
@@ -215,7 +245,9 @@ function clamp(value: string): string {
  * first, so a child that also narrates its reasoning still yields findings.
  */
 export const ANSWER_FORMAT = [
-  "Finish with one fenced code block tagged `" + EXPERT_RESULT_MARKER + "` containing JSON:",
+  "Finish with one fenced code block tagged `" +
+    EXPERT_RESULT_MARKER +
+    "` containing JSON:",
   "",
   "```" + EXPERT_RESULT_MARKER,
   '{ "summary": "one paragraph",',

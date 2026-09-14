@@ -11,7 +11,9 @@ import path from "node:path";
 import url from "node:url";
 import ts from "typescript";
 
-const ROOT = process.env.DSH_DEPS_ROOT ?? url.fileURLToPath(new URL("../", import.meta.url));
+const ROOT =
+  process.env.DSH_DEPS_ROOT ??
+  url.fileURLToPath(new URL("../", import.meta.url));
 
 const violations = [];
 
@@ -20,8 +22,14 @@ function violation(rule, message) {
 }
 
 const CODE_EXT = new Set([
-  ".ts", ".tsx", ".mts", ".cts",
-  ".js", ".jsx", ".mjs", ".cjs",
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
 ]);
 const SCAN_DIRS = ["src", "test", "tests"];
 const DEP_FIELDS = [
@@ -111,7 +119,11 @@ for (const m of members) {
 // ---------------------------------------------------------------------------
 if (testKit) {
   for (const m of members) {
-    for (const field of ["dependencies", "peerDependencies", "optionalDependencies"]) {
+    for (const field of [
+      "dependencies",
+      "peerDependencies",
+      "optionalDependencies",
+    ]) {
       if ((m.pkg[field] ?? {})[testKit.name]) {
         violation(
           "§27.4",
@@ -144,16 +156,11 @@ for (const m of members) {
 // Phantom workspace deps: declared '@yadsh/...'-style names that are not
 // workspace members at all
 // ---------------------------------------------------------------------------
-const workspaceScopes = new Set(
-  members.map((m) => `${m.name.split("/")[0]}/`),
-);
+const workspaceScopes = new Set(members.map((m) => `${m.name.split("/")[0]}/`));
 for (const m of members) {
   for (const field of DEP_FIELDS) {
     for (const name of Object.keys(m.pkg[field] ?? {})) {
-      if (
-        workspaceScopes.has(`${name.split("/")[0]}/`) &&
-        !byName.has(name)
-      ) {
+      if (workspaceScopes.has(`${name.split("/")[0]}/`) && !byName.has(name)) {
         violation(
           "manifest",
           `'${m.name}' declares '${name}' in ${field}, but no such workspace ` +
@@ -380,7 +387,9 @@ for (const m of members) {
       const root = rootOfSpecifier(spec);
       if (root === m.name) continue; // self-reference through own exports is fine
 
-      const declaredIn = DEP_FIELDS.filter((field) => (m.pkg[field] ?? {})[root]);
+      const declaredIn = DEP_FIELDS.filter(
+        (field) => (m.pkg[field] ?? {})[root],
+      );
       if (declaredIn.length === 0) {
         violation(
           "§27.6",

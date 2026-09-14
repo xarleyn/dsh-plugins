@@ -40,12 +40,16 @@ describe("manifest schema (SPEC §14)", () => {
       sessionSeq: null,
       now: "2026-08-29T20:00:00.000Z",
     });
-    expect(parseManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest);
+    expect(parseManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(
+      manifest,
+    );
   });
 
   it("rejects malformed documents with KV_MANIFEST_INVALID", () => {
     expect(() => parseManifest(null)).toThrowError(/JSON object/);
-    expect(() => parseManifest({ schemaVersion: 2 })).toThrowError(/schemaVersion/);
+    expect(() => parseManifest({ schemaVersion: 2 })).toThrowError(
+      /schemaVersion/,
+    );
     expect(() => parseManifest({ schemaVersion: 1 })).toThrowError(/sessionId/);
     const base = createManifest({
       identity: identity(),
@@ -54,8 +58,12 @@ describe("manifest schema (SPEC §14)", () => {
       sessionSeq: null,
       now: "2026-08-29T20:00:00.000Z",
     });
-    expect(() => parseManifest({ ...base, state: "weird" })).toThrowError(/state/);
-    expect(() => parseManifest({ ...base, savedAt: undefined, createdAt: 5 })).toThrowError(/createdAt/);
+    expect(() => parseManifest({ ...base, state: "weird" })).toThrowError(
+      /state/,
+    );
+    expect(() =>
+      parseManifest({ ...base, savedAt: undefined, createdAt: 5 }),
+    ).toThrowError(/createdAt/);
   });
 });
 
@@ -93,7 +101,12 @@ describe("snapshot repository (SPEC §39-§40)", () => {
       bytes: null,
       now: "2026-08-29T20:00:00.000Z",
     });
-    const sessionsDir = join(repository.root, "instances", identity().serverInstanceKey, "sessions");
+    const sessionsDir = join(
+      repository.root,
+      "instances",
+      identity().serverInstanceKey,
+      "sessions",
+    );
     const files = await readdir(sessionsDir);
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/\.json$/);
@@ -168,8 +181,16 @@ describe("snapshot repository (SPEC §39-§40)", () => {
       bytes: null,
       now: "2026-08-29T20:00:00.000Z",
     });
-    await repository.markInvalid(identity("session-b"), "EXPLICIT", "2026-08-29T21:00:00.000Z");
-    await expect(repository.counts()).resolves.toEqual({ known: 2, valid: 1, invalid: 1 });
+    await repository.markInvalid(
+      identity("session-b"),
+      "EXPLICIT",
+      "2026-08-29T21:00:00.000Z",
+    );
+    await expect(repository.counts()).resolves.toEqual({
+      known: 2,
+      valid: 1,
+      invalid: 1,
+    });
   });
 
   it("invalidates and removes all manifests of a session across routes", async () => {
@@ -180,7 +201,11 @@ describe("snapshot repository (SPEC §39-§40)", () => {
       baseURL: "http://127.0.0.1:8080",
       runtimeKey: null,
     });
-    for (const entry of [identity("session-a"), coderIdentity, identity("session-z")]) {
+    for (const entry of [
+      identity("session-a"),
+      coderIdentity,
+      identity("session-z"),
+    ]) {
       await repository.put({
         identity: entry,
         slotId: 0,
@@ -195,14 +220,18 @@ describe("snapshot repository (SPEC §39-§40)", () => {
       "EXPLICIT",
       "2026-08-29T21:00:00.000Z",
     );
-    expect((await repository.load(identity("session-a")))?.state).toBe("invalid");
+    expect((await repository.load(identity("session-a")))?.state).toBe(
+      "invalid",
+    );
     expect((await repository.load(coderIdentity))?.state).toBe("invalid");
     expect((await repository.load(identity("session-z")))?.state).toBe("ready");
 
     await repository.removeSession("session-a");
     await expect(repository.load(identity("session-a"))).resolves.toBeNull();
     await expect(repository.load(coderIdentity)).resolves.toBeNull();
-    await expect(repository.load(identity("session-z"))).resolves.not.toBeNull();
+    await expect(
+      repository.load(identity("session-z")),
+    ).resolves.not.toBeNull();
   });
 
   it("reports metadata IO problems as typed errors", async () => {
@@ -215,12 +244,19 @@ describe("snapshot repository (SPEC §39-§40)", () => {
       bytes: null,
       now: "2026-08-29T20:00:00.000Z",
     });
-    const sessionsDir = join(repository.root, "instances", identity().serverInstanceKey, "sessions");
+    const sessionsDir = join(
+      repository.root,
+      "instances",
+      identity().serverInstanceKey,
+      "sessions",
+    );
     const files = await readdir(sessionsDir);
     const manifestPath = join(sessionsDir, files[0] as string);
     await readFile(manifestPath, "utf8");
     const { writeFile } = await import("node:fs/promises");
     await writeFile(manifestPath, "{not json", "utf8");
-    await expect(repository.load(identity())).rejects.toBeInstanceOf(KvMetadataIoError);
+    await expect(repository.load(identity())).rejects.toBeInstanceOf(
+      KvMetadataIoError,
+    );
   });
 });

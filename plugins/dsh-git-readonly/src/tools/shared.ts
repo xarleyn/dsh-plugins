@@ -4,11 +4,11 @@
  * through the structured results; log records never carry content.
  */
 
-import { GitToolError } from '../errors.js';
-import type { ResolvedGitReadonlyConfig } from '../config.js';
-import type { GitRunner } from '../git/repo.js';
-import { runGit } from '../git/runner.js';
-import type { PluginLoggerLike } from '../logging.js';
+import { GitToolError } from "../errors.js";
+import type { ResolvedGitReadonlyConfig } from "../config.js";
+import type { GitRunner } from "../git/repo.js";
+import { runGit } from "../git/runner.js";
+import type { PluginLoggerLike } from "../logging.js";
 
 export interface GitToolDeps {
   readonly config: ResolvedGitReadonlyConfig;
@@ -23,14 +23,14 @@ export interface GitToolDeps {
 export function repositoryParameter(config: ResolvedGitReadonlyConfig) {
   const configuredRoots =
     config.repositoryRoots.length === 0
-      ? 'No additional repository roots are configured.'
-      : `Configured repository roots: ${config.repositoryRoots.join(', ')}.`;
+      ? "No additional repository roots are configured."
+      : `Configured repository roots: ${config.repositoryRoots.join(", ")}.`;
   return {
-    type: 'string' as const,
+    type: "string" as const,
     description:
-      'Repository directory. Relative paths start at the session directory and must remain ' +
-      'inside it or a configured repository root. When omitted, the session repository is used; ' +
-      'if the session directory is not a repository and exactly one repository root is configured, ' +
+      "Repository directory. Relative paths start at the session directory and must remain " +
+      "inside it or a configured repository root. When omitted, the session repository is used; " +
+      "if the session directory is not a repository and exactly one repository root is configured, " +
       `that root is used automatically. ${configuredRoots}`,
   };
 }
@@ -43,8 +43,8 @@ export function createBoundRunner(deps: GitToolDeps): GitRunner {
       program: deps.program ?? deps.config.gitPath,
       programPrefixArgs: deps.programPrefixArgs,
     });
-    deps.logger.debug('git.run', {
-      subcommand: argv[0] ?? '',
+    deps.logger.debug("git.run", {
+      subcommand: argv[0] ?? "",
       exitCode: result.exitCode,
       truncated: result.truncated,
       timedOut: result.timedOut,
@@ -55,7 +55,7 @@ export function createBoundRunner(deps: GitToolDeps): GitRunner {
 
 function stderrTail(stderr: string): string {
   const tail = stderr.trim();
-  if (tail === '') return 'git produced no error output';
+  if (tail === "") return "git produced no error output";
   return tail.length > 1_000 ? `…${tail.slice(-1_000)}` : tail;
 }
 
@@ -65,12 +65,21 @@ function stderrTail(stderr: string): string {
  * A result killed at the byte cap is not a failure — the partial output is
  * the expected truncation behavior and is flagged by `truncated`.
  */
-export function expectGitOk(result: Awaited<ReturnType<typeof runGit>>, context: string): void {
+export function expectGitOk(
+  result: Awaited<ReturnType<typeof runGit>>,
+  context: string,
+): void {
   if (result.timedOut) {
-    throw new GitToolError('git-timeout', `${context} exceeded the configured time budget`);
+    throw new GitToolError(
+      "git-timeout",
+      `${context} exceeded the configured time budget`,
+    );
   }
   if (result.truncated) return;
   if (result.exitCode !== 0) {
-    throw new GitToolError('git-failed', `${context} failed: ${stderrTail(result.stderr)}`);
+    throw new GitToolError(
+      "git-failed",
+      `${context} failed: ${stderrTail(result.stderr)}`,
+    );
   }
 }

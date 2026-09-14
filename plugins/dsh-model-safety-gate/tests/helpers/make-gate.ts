@@ -1,9 +1,22 @@
-import { SafetyClassifierService, type ClassifierTransport } from "../../src/classifier/service.js";
-import { SafetyMetrics, type SafetyMetricsSnapshot } from "../../src/audit/metrics.js";
-import { resolveSafetyGateConfig, type ModelSafetyGateConfig } from "../../src/config.js";
+import {
+  SafetyClassifierService,
+  type ClassifierTransport,
+} from "../../src/classifier/service.js";
+import {
+  SafetyMetrics,
+  type SafetyMetricsSnapshot,
+} from "../../src/audit/metrics.js";
+import {
+  resolveSafetyGateConfig,
+  type ModelSafetyGateConfig,
+} from "../../src/config.js";
 import { CheckPipeline } from "../../src/pipeline.js";
 import { SafetyScanner } from "../../src/rules/scanner.js";
-import { SAFETY_EVENT_TYPES, type SafetyAuditEvent, type SafetyEventType } from "../../src/audit/events.js";
+import {
+  SAFETY_EVENT_TYPES,
+  type SafetyAuditEvent,
+  type SafetyEventType,
+} from "../../src/audit/events.js";
 import { VERDICT_VERSION, type SafetyVerdict } from "../../src/types.js";
 
 export interface TestGate {
@@ -24,8 +37,16 @@ export interface MakeGateOptions {
   readonly transport?: ClassifierTransport | null;
 }
 
-export function fakeVerdict(decision: SafetyVerdict["decision"] = "allow"): SafetyVerdict {
-  return { version: VERDICT_VERSION, decision, confidence: 0.8, categories: [], summary: "fake" };
+export function fakeVerdict(
+  decision: SafetyVerdict["decision"] = "allow",
+): SafetyVerdict {
+  return {
+    version: VERDICT_VERSION,
+    decision,
+    confidence: 0.8,
+    categories: [],
+    summary: "fake",
+  };
 }
 
 export function makeTestGate(options: MakeGateOptions = {}): TestGate {
@@ -44,7 +65,9 @@ export function makeTestGate(options: MakeGateOptions = {}): TestGate {
       classifierCalls.count += 1;
       classifierCalls.contents.push(request.prompt);
       if (options.transportDelayMs !== undefined) {
-        await new Promise((resolve) => setTimeout(resolve, options.transportDelayMs));
+        await new Promise((resolve) =>
+          setTimeout(resolve, options.transportDelayMs),
+        );
       }
       const verdict = options.verdict ?? fakeVerdict("allow");
       return {
@@ -72,7 +95,10 @@ export function makeTestGate(options: MakeGateOptions = {}): TestGate {
         });
 
   const pipeline = new CheckPipeline({
-    scanner: new SafetyScanner({ maxScanChars: config.maxScanChars, customBlockPatterns: config.customBlockPatterns }),
+    scanner: new SafetyScanner({
+      maxScanChars: config.maxScanChars,
+      customBlockPatterns: config.customBlockPatterns,
+    }),
     classifier,
     config,
     metrics,

@@ -16,13 +16,16 @@ const client: UserConfig = {
   sourcemap: true,
   clean: false,
   deps: {
-    neverBundle: (specifier) => specifier === "react" || specifier === "react/jsx-runtime",
-    alwaysBundle: (specifier) => specifier !== "react" && specifier !== "react/jsx-runtime",
+    neverBundle: (specifier) =>
+      specifier === "react" || specifier === "react/jsx-runtime",
+    alwaysBundle: (specifier) =>
+      specifier !== "react" && specifier !== "react/jsx-runtime",
   },
   outputOptions: {
     entryFileNames: "client.js",
     sourcemapExcludeSources: false,
-    banner: 'window.__ModuleLoader__.load({ id: "@yadsh/dsh-model-safety-gate", factory: (require) => {',
+    banner:
+      'window.__ModuleLoader__.load({ id: "@yadsh/dsh-model-safety-gate", factory: (require) => {',
     intro: "var module = { exports: {} }; var exports = module.exports;",
     footer: "return module.exports; } });",
   },

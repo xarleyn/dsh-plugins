@@ -15,7 +15,11 @@ export { previewLog } from "./log.js";
 export { previewHtml } from "./html.js";
 export type { PreviewOptions } from "./options.js";
 
-export function buildPreviewBody(kind: Exclude<CasKind, "binary">, value: string, options: PreviewOptions): string {
+export function buildPreviewBody(
+  kind: Exclude<CasKind, "binary">,
+  value: string,
+  options: PreviewOptions,
+): string {
   if (kind === "log") return previewLog(value, options).body;
   if (kind === "html") return previewHtml(value, options).body;
   return previewText(value, options).body;

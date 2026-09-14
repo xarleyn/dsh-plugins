@@ -32,15 +32,11 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
       ? typeof document === "undefined"
         ? undefined
         : document
-      : options.document ?? undefined;
+      : (options.document ?? undefined);
   if (candidateDocument === undefined || candidateDocument.body === null) {
     return () => undefined;
   }
-  const {
-    document: _document,
-    logger,
-    ...config
-  } = options;
+  const { document: _document, logger, ...config } = options;
   const runtime = new UIRepairRuntime(candidateDocument, config, logger);
   const scope = ctx.settingsScope.bind<UIRepairPluginConfig>({
     namespace: "ui-repair",

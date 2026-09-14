@@ -63,9 +63,13 @@ export interface ClassifierPromptInput {
  * container: the closing tag is neutralized inside the payload itself.
  */
 export function buildClassifierPrompt(input: ClassifierPromptInput): string {
-  const sanitized = input.content.slice(0, input.maxPayloadChars).replace(/<\/untrusted>/gi, "<\\/untrusted>");
+  const sanitized = input.content
+    .slice(0, input.maxPayloadChars)
+    .replace(/<\/untrusted>/gi, "<\\/untrusted>");
   const channel = CHANNEL_LABEL[input.channel];
-  const toolLine = input.toolName ? `\n<tool-name>${escapeXml(input.toolName)}</tool-name>` : "";
+  const toolLine = input.toolName
+    ? `\n<tool-name>${escapeXml(input.toolName)}</tool-name>`
+    : "";
   return [
     "<policy>",
     "Classify the untrusted content for one decision plus categories.",
@@ -92,5 +96,7 @@ export function buildClassifierPrompt(input: ClassifierPromptInput): string {
 }
 
 function escapeXml(value: string): string {
-  return value.replace(/[<>&]/g, (char) => (char === "<" ? "&lt;" : char === ">" ? "&gt;" : "&amp;"));
+  return value.replace(/[<>&]/g, (char) =>
+    char === "<" ? "&lt;" : char === ">" ? "&gt;" : "&amp;",
+  );
 }

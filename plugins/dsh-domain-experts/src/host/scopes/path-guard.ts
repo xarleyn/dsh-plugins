@@ -82,16 +82,19 @@ export function globMatches(pattern: string, path: string): boolean {
 
 /** Why a candidate path was refused. */
 export type PathRefusal =
-  | "empty"
-  | "absolute"
-  | "escape"
-  | "nul-byte"
-  | "denied"
-  | "outside-scope";
+  "empty" | "absolute" | "escape" | "nul-byte" | "denied" | "outside-scope";
 
 export type PathDecision =
-  | { readonly allowed: true; readonly class: ResourceClass; readonly matchedBy: string }
-  | { readonly allowed: false; readonly reason: PathRefusal; readonly matchedBy: string };
+  | {
+      readonly allowed: true;
+      readonly class: ResourceClass;
+      readonly matchedBy: string;
+    }
+  | {
+      readonly allowed: false;
+      readonly reason: PathRefusal;
+      readonly matchedBy: string;
+    };
 
 export interface PathRules {
   readonly primary: readonly string[];
@@ -104,7 +107,8 @@ export function refusalFor(candidate: string): PathRefusal | null {
   const trimmed = candidate.trim();
   if (trimmed === "") return "empty";
   if (trimmed.includes("\0")) return "nul-byte";
-  if (trimmed.startsWith("/") || /^[A-Za-z]:[/\\]/u.test(trimmed)) return "absolute";
+  if (trimmed.startsWith("/") || /^[A-Za-z]:[/\\]/u.test(trimmed))
+    return "absolute";
   const segments = normalizePath(trimmed).split("/");
   if (segments.includes("..")) return "escape";
   return null;
@@ -119,7 +123,8 @@ export function refusalFor(candidate: string): PathRefusal | null {
  */
 export function decidePath(rules: PathRules, candidate: string): PathDecision {
   const refusal = refusalFor(candidate);
-  if (refusal !== null) return { allowed: false, reason: refusal, matchedBy: "" };
+  if (refusal !== null)
+    return { allowed: false, reason: refusal, matchedBy: "" };
   const path = normalizePath(candidate);
 
   for (const pattern of rules.denied) {
@@ -149,16 +154,23 @@ export function pathRulesOf(filesystem: FilesystemScopeConfig): PathRules {
 }
 
 /** Allowed roots a consumer can hand to a path-aware worker. */
-export function allowedRootsOf(filesystem: FilesystemScopeConfig): readonly string[] {
+export function allowedRootsOf(
+  filesystem: FilesystemScopeConfig,
+): readonly string[] {
   return [...filesystem.primary, ...filesystem.sharedReadOnly];
 }
 
 /** Read-only roots; a consumer must not let a worker write below these. */
-export function readOnlyRootsOf(filesystem: FilesystemScopeConfig): readonly string[] {
+export function readOnlyRootsOf(
+  filesystem: FilesystemScopeConfig,
+): readonly string[] {
   return [...filesystem.sharedReadOnly];
 }
 
-export function isWriteAllowed(filesystem: FilesystemScopeConfig, candidate: string): boolean {
+export function isWriteAllowed(
+  filesystem: FilesystemScopeConfig,
+  candidate: string,
+): boolean {
   const decision = decidePath(pathRulesOf(filesystem), candidate);
   return decision.allowed && decision.class === "primary";
 }

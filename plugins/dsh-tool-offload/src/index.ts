@@ -12,7 +12,11 @@
 
 import { ToolOffloadService } from "./service.js";
 
-export { ToolOffloadService, type ToolOffloadServiceDeps, type ToolOffloadStats } from "./service.js";
+export {
+  ToolOffloadService,
+  type ToolOffloadServiceDeps,
+  type ToolOffloadStats,
+} from "./service.js";
 export {
   TOOL_OFFLOAD_DEFAULTS,
   ToolOffloadConfigSchema,
@@ -26,10 +30,21 @@ export {
 export { OffloadError, type OffloadErrorCode } from "./errors.js";
 export { BUNDLED_PROMPT_PROFILES } from "./prompts/profiles.js";
 export { matchesAnyTool, matchesToolPattern } from "./routing/matcher.js";
-export { decideRoute, type OffloadSkipReason, type RouteDecision } from "./routing/policy.js";
-export { inspectResult, serializeArgs, type OffloadCandidate } from "./routing/inspect-result.js";
+export {
+  decideRoute,
+  type OffloadSkipReason,
+  type RouteDecision,
+} from "./routing/policy.js";
+export {
+  inspectResult,
+  serializeArgs,
+  type OffloadCandidate,
+} from "./routing/inspect-result.js";
 export { extractParentTask } from "./context/parent-context.js";
-export { buildWorkerPrompt, type WorkerPayloadInput } from "./worker/payload.js";
+export {
+  buildWorkerPrompt,
+  type WorkerPayloadInput,
+} from "./worker/payload.js";
 export {
   WORKER_LABEL_PREFIX,
   createSubagentRunner,
@@ -39,12 +54,30 @@ export {
   type WorkerRunRequest,
   type WorkerRunnerLike,
 } from "./worker/runner.js";
-export { validateWorkerOutput, type WorkerValidation } from "./worker/validate.js";
+export {
+  validateWorkerOutput,
+  type WorkerValidation,
+} from "./worker/validate.js";
 export { buildFallbackText, type FallbackMode } from "./fallback/fallback.js";
-export { deriveOffloadMetrics, OffloadCounters, type OffloadCounterSnapshot, type OffloadDerivedMetrics } from "./telemetry/counters.js";
-export { OFFLOAD_ANNOTATION_MARKER, createPostExecuteListener, type ToolOffloadListener } from "./integration/post-execute.js";
+export {
+  deriveOffloadMetrics,
+  OffloadCounters,
+  type OffloadCounterSnapshot,
+  type OffloadDerivedMetrics,
+} from "./telemetry/counters.js";
+export {
+  OFFLOAD_ANNOTATION_MARKER,
+  createPostExecuteListener,
+  type ToolOffloadListener,
+} from "./integration/post-execute.js";
 export { Semaphore, KeyedLimiter } from "./utils/semaphore.js";
-export { byteLength, estimateTokens, sanitizeBoundaryTags, truncateHead, truncateMiddle } from "./utils/text.js";
+export {
+  byteLength,
+  estimateTokens,
+  sanitizeBoundaryTags,
+  truncateHead,
+  truncateMiddle,
+} from "./utils/text.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {

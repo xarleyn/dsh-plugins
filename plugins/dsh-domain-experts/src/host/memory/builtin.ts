@@ -53,7 +53,9 @@ export function createBuiltinMemoryProvider(
         // re-parsed here.
         namespaces.add(record[1].namespace);
       }
-      return [...namespaces].sort((left, right) => left.localeCompare(right, "en"));
+      return [...namespaces].sort((left, right) =>
+        left.localeCompare(right, "en"),
+      );
     },
 
     async retrieve(query: MemoryQuery): Promise<readonly MemoryRecord[]> {
@@ -103,7 +105,9 @@ export function createBuiltinMemoryProvider(
           trimmedText.length > MAX_TEXT_LENGTH
             ? `${trimmedText.slice(0, MAX_TEXT_LENGTH)}…`
             : trimmedText,
-        tags: [...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== ""))],
+        tags: [
+          ...new Set(tags.map((tag) => tag.trim()).filter((tag) => tag !== "")),
+        ],
         createdAt: existing?.createdAt ?? timestamp,
         updatedAt: timestamp,
       };
@@ -112,12 +116,16 @@ export function createBuiltinMemoryProvider(
     },
 
     async forget(namespace: string, key: string): Promise<boolean> {
-      return table.delete(memoryKeyOf(normalizeNamespace(namespace), key.trim()));
+      return table.delete(
+        memoryKeyOf(normalizeNamespace(namespace), key.trim()),
+      );
     },
 
     async clear(namespace: string): Promise<number> {
       const target = normalizeNamespace(namespace);
-      const doomed = recordsIn(target).map((record) => memoryKeyOf(target, record.key));
+      const doomed = recordsIn(target).map((record) =>
+        memoryKeyOf(target, record.key),
+      );
       let removed = 0;
       for (const key of doomed) {
         if (await table.delete(key)) removed += 1;
@@ -140,7 +148,8 @@ function tokenize(query: string): readonly string[] {
 }
 
 function countHits(record: MemoryRecord, terms: readonly string[]): number {
-  const haystack = `${record.key}\n${record.text}\n${record.tags.join(" ")}`.toLowerCase();
+  const haystack =
+    `${record.key}\n${record.text}\n${record.tags.join(" ")}`.toLowerCase();
   let hits = 0;
   for (const term of terms) if (haystack.includes(term)) hits += 1;
   return hits;

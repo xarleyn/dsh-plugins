@@ -1,25 +1,25 @@
-import { describe, expect, it, vi } from 'vitest'
-import { bindSettingsExternalStore } from '@yadsh/dsh-plugin-kit/client'
+import { describe, expect, it, vi } from "vitest";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 
-describe('settings external store binding', () => {
-  it('preserves the SettingsScope receiver for React callbacks', () => {
-    const listener = vi.fn()
-    const unsubscribe = vi.fn()
+describe("settings external store binding", () => {
+  it("preserves the SettingsScope receiver for React callbacks", () => {
+    const listener = vi.fn();
+    const unsubscribe = vi.fn();
     const scope = {
-      value: { status: 'ready' },
+      value: { status: "ready" },
       subscribe(callback: () => void) {
-        expect(this).toBe(scope)
-        expect(callback).toBe(listener)
-        return unsubscribe
+        expect(this).toBe(scope);
+        expect(callback).toBe(listener);
+        return unsubscribe;
       },
       getSnapshot() {
-        expect(this).toBe(scope)
-        return this.value
+        expect(this).toBe(scope);
+        return this.value;
       },
-    }
-    const store = bindSettingsExternalStore(scope)
+    };
+    const store = bindSettingsExternalStore(scope);
 
-    expect(store.getSnapshot()).toBe(scope.value)
-    expect(store.subscribe(listener)).toBe(unsubscribe)
-  })
-})
+    expect(store.getSnapshot()).toBe(scope.value);
+    expect(store.subscribe(listener)).toBe(unsubscribe);
+  });
+});

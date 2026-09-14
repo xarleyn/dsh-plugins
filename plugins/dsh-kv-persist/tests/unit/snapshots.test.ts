@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { snapshotFilename, assertPluginGeneratedFilename } from "../../src/snapshots/naming.js";
-import { buildSnapshotIdentity, isIdentityCompatible, deriveServerInstanceKey } from "../../src/snapshots/fingerprint.js";
+import {
+  snapshotFilename,
+  assertPluginGeneratedFilename,
+} from "../../src/snapshots/naming.js";
+import {
+  buildSnapshotIdentity,
+  isIdentityCompatible,
+  deriveServerInstanceKey,
+} from "../../src/snapshots/fingerprint.js";
 import { KvInvariantError } from "../../src/errors.js";
 
 function identity(sessionId = "session-a", model = "qwen-test") {
@@ -38,11 +45,21 @@ describe("snapshot filenames (SPEC §16, §44, Invariant 9)", () => {
   });
 
   it("guard rejects non-plugin shapes including traversal attempts", () => {
-    expect(() => assertPluginGeneratedFilename(snapshotFilename(identity()))).not.toThrow();
-    expect(() => assertPluginGeneratedFilename("../../etc/passwd")).toThrowError(KvInvariantError);
-    expect(() => assertPluginGeneratedFilename("C:\\whatever.bin")).toThrowError(KvInvariantError);
-    expect(() => assertPluginGeneratedFilename("session-a.bin")).toThrowError(KvInvariantError);
-    expect(() => assertPluginGeneratedFilename("../../../foo.bin")).toThrowError(KvInvariantError);
+    expect(() =>
+      assertPluginGeneratedFilename(snapshotFilename(identity())),
+    ).not.toThrow();
+    expect(() =>
+      assertPluginGeneratedFilename("../../etc/passwd"),
+    ).toThrowError(KvInvariantError);
+    expect(() =>
+      assertPluginGeneratedFilename("C:\\whatever.bin"),
+    ).toThrowError(KvInvariantError);
+    expect(() => assertPluginGeneratedFilename("session-a.bin")).toThrowError(
+      KvInvariantError,
+    );
+    expect(() =>
+      assertPluginGeneratedFilename("../../../foo.bin"),
+    ).toThrowError(KvInvariantError);
   });
 });
 

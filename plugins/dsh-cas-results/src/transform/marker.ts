@@ -11,7 +11,9 @@ import type { CasKind } from "../cas/types.js";
 export const CAS_MARKER_PREFIX = "[dsh-cas-results:";
 
 export function isCasMarkerText(value: string): boolean {
-  return value.startsWith(CAS_MARKER_PREFIX) || value.startsWith("[dsh-cas-results]");
+  return (
+    value.startsWith(CAS_MARKER_PREFIX) || value.startsWith("[dsh-cas-results]")
+  );
 }
 
 /** Fixed-precision byte formatting; deterministic across sessions. */
@@ -56,12 +58,17 @@ export function formatRetrieveHint(ref: string): string {
 }
 
 /** Marker-only representation used for binary payloads (SPEC §18). */
-export function buildBinaryMarker(input: Omit<MarkerHeaderInput, "previewBytes">): string {
+export function buildBinaryMarker(
+  input: Omit<MarkerHeaderInput, "previewBytes">,
+): string {
   const header = formatMarkerHeader({ ...input, previewBytes: 0 });
   return `${header}\n${formatRetrieveHint(input.ref)}`;
 }
 
 /** Human-readable offload summary used by logs and stats messages. */
-export function formatOffloadSummary(sizeBytes: number, previewBytes: number): string {
+export function formatOffloadSummary(
+  sizeBytes: number,
+  previewBytes: number,
+): string {
   return `${formatBytes(sizeBytes)} → ${formatBytes(previewBytes)} preview`;
 }

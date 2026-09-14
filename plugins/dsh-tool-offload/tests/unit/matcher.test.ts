@@ -4,7 +4,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { matchesAnyTool, matchesToolPattern } from "../../src/routing/matcher.js";
+import {
+  matchesAnyTool,
+  matchesToolPattern,
+} from "../../src/routing/matcher.js";
 
 describe("matchesToolPattern", () => {
   it("matches exact names case-sensitively", () => {

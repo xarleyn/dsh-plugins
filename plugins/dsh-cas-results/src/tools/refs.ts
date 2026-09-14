@@ -12,34 +12,56 @@ export interface RefArgs {
 export function readRefArg(args: unknown): string {
   const ref = (args as RefArgs).ref;
   if (typeof ref !== "string") {
-    throw new CasError("CAS_INVALID_ARGUMENT", "the \"ref\" argument is required and must be a sha256:... reference");
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      'the "ref" argument is required and must be a sha256:... reference',
+    );
   }
   return parseCasRef(ref);
 }
 
-export function readOptionalInteger(args: Record<string, unknown>, name: string): number | undefined {
+export function readOptionalInteger(
+  args: Record<string, unknown>,
+  name: string,
+): number | undefined {
   const value = args[name];
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isInteger(value)) {
-    throw new CasError("CAS_INVALID_ARGUMENT", `argument "${name}" must be an integer`);
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `argument "${name}" must be an integer`,
+    );
   }
   return value;
 }
 
-export function readOptionalBoolean(args: Record<string, unknown>, name: string): boolean | undefined {
+export function readOptionalBoolean(
+  args: Record<string, unknown>,
+  name: string,
+): boolean | undefined {
   const value = args[name];
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") {
-    throw new CasError("CAS_INVALID_ARGUMENT", `argument "${name}" must be a boolean`);
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `argument "${name}" must be a boolean`,
+    );
   }
   return value;
 }
 
-export function readOptionalString<T extends string>(args: Record<string, unknown>, name: string, allowed: readonly T[]): T | undefined {
+export function readOptionalString<T extends string>(
+  args: Record<string, unknown>,
+  name: string,
+  allowed: readonly T[],
+): T | undefined {
   const value = args[name];
   if (value === undefined) return undefined;
   if (typeof value !== "string" || !allowed.includes(value as T)) {
-    throw new CasError("CAS_INVALID_ARGUMENT", `argument "${name}" must be one of: ${allowed.join(", ")}`);
+    throw new CasError(
+      "CAS_INVALID_ARGUMENT",
+      `argument "${name}" must be one of: ${allowed.join(", ")}`,
+    );
   }
   return value as T;
 }

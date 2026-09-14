@@ -9,8 +9,14 @@ import {
 export type ScopePathVisibility = "content" | "navigation" | "denied";
 export type ScopedFilesystemOperation = "read" | "write" | "list" | "search";
 
-function samePath(left: string, right: string, caseSensitive: boolean): boolean {
-  return caseSensitive ? left === right : left.toLowerCase() === right.toLowerCase();
+function samePath(
+  left: string,
+  right: string,
+  caseSensitive: boolean,
+): boolean {
+  return caseSensitive
+    ? left === right
+    : left.toLowerCase() === right.toLowerCase();
 }
 
 export function classifyScopePath(
@@ -21,9 +27,14 @@ export function classifyScopePath(
   if (scope.mode === "full") return "content";
   // Scope narrows only the session workspace. OS/user paths outside it remain
   // governed by the ordinary DSH permission policy (see the spec non-goals).
-  if (!isLexicallyUnder(target, scope.workspaceRoot, caseSensitive)) return "content";
-  if (scope.roots.some((root) => isLexicallyUnder(target, root, caseSensitive))) return "content";
-  if (scope.navigationRoots.some((root) => samePath(target, root, caseSensitive))) return "navigation";
+  if (!isLexicallyUnder(target, scope.workspaceRoot, caseSensitive))
+    return "content";
+  if (scope.roots.some((root) => isLexicallyUnder(target, root, caseSensitive)))
+    return "content";
+  if (
+    scope.navigationRoots.some((root) => samePath(target, root, caseSensitive))
+  )
+    return "navigation";
   return "denied";
 }
 
@@ -34,7 +45,9 @@ export function assertScopeAccess(
   caseSensitive = process.platform !== "win32",
 ): ScopePathVisibility {
   const visibility = classifyScopePath(scope, target, caseSensitive);
-  const allowed = visibility === "content" || operation === "list" && visibility === "navigation";
+  const allowed =
+    visibility === "content" ||
+    (operation === "list" && visibility === "navigation");
   if (!allowed) {
     throw new SessionScopeError(
       SESSION_SCOPE_ERROR.DENIED,
@@ -49,9 +62,10 @@ function entryLeadsToContent(
   scope: EffectiveSessionScope,
   caseSensitive: boolean,
 ): boolean {
-  return scope.roots.some((root) =>
-    isLexicallyUnder(root, entry.path, caseSensitive)
-    || isLexicallyUnder(entry.path, root, caseSensitive)
+  return scope.roots.some(
+    (root) =>
+      isLexicallyUnder(root, entry.path, caseSensitive) ||
+      isLexicallyUnder(entry.path, root, caseSensitive),
   );
 }
 
@@ -61,14 +75,22 @@ export function filterScopeDirectoryListing(
   listing: DirectoryListing,
   caseSensitive = process.platform !== "win32",
 ): DirectoryListing {
-  const visibility = assertScopeAccess(scope, listing.path, "list", caseSensitive);
+  const visibility = assertScopeAccess(
+    scope,
+    listing.path,
+    "list",
+    caseSensitive,
+  );
   if (scope.mode === "full" || visibility === "content") return listing;
   return {
     ...listing,
-    crumbs: listing.crumbs.filter((crumb) =>
-      classifyScopePath(scope, crumb.path, caseSensitive) !== "denied"
+    crumbs: listing.crumbs.filter(
+      (crumb) =>
+        classifyScopePath(scope, crumb.path, caseSensitive) !== "denied",
     ),
-    entries: listing.entries.filter((entry) => entryLeadsToContent(entry, scope, caseSensitive)),
+    entries: listing.entries.filter((entry) =>
+      entryLeadsToContent(entry, scope, caseSensitive),
+    ),
   };
 }
 
@@ -82,13 +104,27 @@ export function scopedSearchRoots(
   caseSensitive = process.platform !== "win32",
 ): string[] {
   if (scope.mode === "full") return [requestedRoot];
-  const insideWorkspace = isLexicallyUnder(requestedRoot, scope.workspaceRoot, caseSensitive);
-  const containsWorkspace = isLexicallyUnder(scope.workspaceRoot, requestedRoot, caseSensitive);
+  const insideWorkspace = isLexicallyUnder(
+    requestedRoot,
+    scope.workspaceRoot,
+    caseSensitive,
+  );
+  const containsWorkspace = isLexicallyUnder(
+    scope.workspaceRoot,
+    requestedRoot,
+    caseSensitive,
+  );
   if (!insideWorkspace && !containsWorkspace) return [requestedRoot];
-  if (scope.roots.some((root) => isLexicallyUnder(requestedRoot, root, caseSensitive))) {
+  if (
+    scope.roots.some((root) =>
+      isLexicallyUnder(requestedRoot, root, caseSensitive),
+    )
+  ) {
     return [requestedRoot];
   }
-  const roots = scope.roots.filter((root) => isLexicallyUnder(root, requestedRoot, caseSensitive));
+  const roots = scope.roots.filter((root) =>
+    isLexicallyUnder(root, requestedRoot, caseSensitive),
+  );
   if (roots.length === 0) {
     throw new SessionScopeError(
       SESSION_SCOPE_ERROR.DENIED,

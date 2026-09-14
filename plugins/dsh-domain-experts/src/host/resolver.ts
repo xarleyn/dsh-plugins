@@ -118,7 +118,10 @@ export async function resolveExpert(
     const output = await provider.apply({
       ...fixtures,
       config,
-      enforcedBy: dependencies.workers.enforcersOf(selectedWorkers, provider.id),
+      enforcedBy: dependencies.workers.enforcersOf(
+        selectedWorkers,
+        provider.id,
+      ),
     });
     resources.push(...output.resources);
     if (output.external !== "") external[provider.id] = output.external;
@@ -126,7 +129,12 @@ export async function resolveExpert(
 
   for (const id of Object.keys(definition.scope.providers)) {
     if (dependencies.scopeProviders.get(id) !== undefined) continue;
-    providers.push(dependencies.scopeProviders.entryOf(id, definition.scope.providers[id] ?? ""));
+    providers.push(
+      dependencies.scopeProviders.entryOf(
+        id,
+        definition.scope.providers[id] ?? "",
+      ),
+    );
     degradations.push(
       degradation(
         "SCOPE_PROVIDER_MISSING",
@@ -148,7 +156,9 @@ export async function resolveExpert(
   }
 
   const memory = memoryEntries(definition);
-  const memoryProvider = dependencies.memoryProviders.get(dependencies.memoryProviderId);
+  const memoryProvider = dependencies.memoryProviders.get(
+    dependencies.memoryProviderId,
+  );
   if (memoryProvider === undefined) {
     degradations.push(
       degradation(
@@ -159,7 +169,12 @@ export async function resolveExpert(
     );
   }
 
-  const tools = toolEntries(definition, dependencies, selectedWorkers, degradations);
+  const tools = toolEntries(
+    definition,
+    dependencies,
+    selectedWorkers,
+    degradations,
+  );
   const toolFilter = {
     allow: filterNamesOf(tools),
     deny: [...definition.tools.deny],
@@ -183,7 +198,8 @@ export async function resolveExpert(
     },
     external,
     memory: {
-      namespace: memory.find((entry) => entry.access === "read-write")?.namespace ??
+      namespace:
+        memory.find((entry) => entry.access === "read-write")?.namespace ??
         defaultMemoryNamespace(definition.id),
       sharedNamespaces: memory
         .filter((entry) => entry.access === "read-only")
@@ -241,10 +257,13 @@ function hasFilesystemScope(definition: DomainDefinition): boolean {
  * namespaces read-only, and — only in `direct-read` mode — the foreign
  * namespaces it explicitly listed.
  */
-export function memoryEntries(definition: DomainDefinition): readonly ResolvedMemoryEntry[] {
-  const own = definition.memory.namespace.trim() === ""
-    ? defaultMemoryNamespace(definition.id)
-    : definition.memory.namespace;
+export function memoryEntries(
+  definition: DomainDefinition,
+): readonly ResolvedMemoryEntry[] {
+  const own =
+    definition.memory.namespace.trim() === ""
+      ? defaultMemoryNamespace(definition.id)
+      : definition.memory.namespace;
   const entries: ResolvedMemoryEntry[] = [
     {
       namespace: own,
@@ -256,7 +275,8 @@ export function memoryEntries(definition: DomainDefinition): readonly ResolvedMe
   ];
   const readOnly = new Set(definition.memory.sharedReadOnly);
   if (definition.delegation.crossDomainMode === "direct-read") {
-    for (const namespace of definition.delegation.directRead) readOnly.add(namespace);
+    for (const namespace of definition.delegation.directRead)
+      readOnly.add(namespace);
   }
   for (const namespace of readOnly) {
     if (namespace === own) continue;
@@ -265,10 +285,11 @@ export function memoryEntries(definition: DomainDefinition): readonly ResolvedMe
       access: "read-only",
       enforcement: "enforced",
       provider: "namespace",
-      note: definition.delegation.directRead.includes(namespace) &&
+      note:
+        definition.delegation.directRead.includes(namespace) &&
         !definition.memory.sharedReadOnly.includes(namespace)
-        ? "Direct cross-domain read explicitly configured for this expert."
-        : "Shared namespace; writes are refused.",
+          ? "Direct cross-domain read explicitly configured for this expert."
+          : "Shared namespace; writes are refused.",
     });
   }
   return entries;
@@ -312,7 +333,9 @@ function toolEntries(
         kind: "worker",
         available: true,
         note: `${worker.title}${
-          worker.enforces.length > 0 ? `; enforces ${worker.enforces.join(", ")}` : ""
+          worker.enforces.length > 0
+            ? `; enforces ${worker.enforces.join(", ")}`
+            : ""
         }`,
       });
       continue;
@@ -348,7 +371,9 @@ function toolEntries(
         "WORKER_UNAVAILABLE",
         `Worker${unavailable.length > 1 ? "s" : ""} ${unavailable
           .map((id) => `"${id}"`)
-          .join(", ")} ${unavailable.length > 1 ? "are" : "is"} configured without a tool binding and cannot be selected.`,
+          .join(
+            ", ",
+          )} ${unavailable.length > 1 ? "are" : "is"} configured without a tool binding and cannot be selected.`,
         unavailable,
       ),
     );
@@ -373,17 +398,23 @@ function toolEntries(
         "TOOL_UNVERIFIED",
         `Tool${unverified.length > 1 ? "s" : ""} ${unverified
           .map((name) => `"${name}"`)
-          .join(", ")} ${unverified.length > 1 ? "are" : "is"} not a registered worker; the name is passed to the harness as-is.`,
+          .join(
+            ", ",
+          )} ${unverified.length > 1 ? "are" : "is"} not a registered worker; the name is passed to the harness as-is.`,
         unverified,
       ),
     );
   }
 
-  return [...entries.values()].sort((left, right) => left.name.localeCompare(right.name, "en"));
+  return [...entries.values()].sort((left, right) =>
+    left.name.localeCompare(right.name, "en"),
+  );
 }
 
 /** Tool names that may reach the runtime's tool filter. */
-export function filterNamesOf(entries: readonly ResolvedToolEntry[]): readonly string[] {
+export function filterNamesOf(
+  entries: readonly ResolvedToolEntry[],
+): readonly string[] {
   const names = new Set<string>();
   for (const entry of entries) {
     if (!entry.available) continue;
@@ -410,8 +441,10 @@ function delegationSummary(
   for (const domain of dependencies.domains.list()) {
     if (domain.id === definition.id) continue;
     if (!domain.enabled) continue;
-    if (definition.delegation.targets.length > 0 &&
-      !definition.delegation.targets.includes(domain.id)) {
+    if (
+      definition.delegation.targets.length > 0 &&
+      !definition.delegation.targets.includes(domain.id)
+    ) {
       continue;
     }
     peers.push({
@@ -426,7 +459,9 @@ function delegationSummary(
         "DELEGATION_TARGET_MISSING",
         `Delegation target${missing.length > 1 ? "s" : ""} ${missing
           .map((id) => `"${id}"`)
-          .join(", ")} ${missing.length > 1 ? "are" : "is"} missing or disabled.`,
+          .join(
+            ", ",
+          )} ${missing.length > 1 ? "are" : "is"} missing or disabled.`,
         missing,
       ),
     );
@@ -449,7 +484,8 @@ async function recall(
   request: DomainExpertRequest,
 ): Promise<readonly MemoryRecord[]> {
   const query = `${request.task} ${request.context}`.trim();
-  if (provider === undefined || query === "" || request === PREVIEW_REQUEST) return [];
+  if (provider === undefined || query === "" || request === PREVIEW_REQUEST)
+    return [];
   const namespaces = entries.map((entry) => entry.namespace);
   if (namespaces.length === 0) return [];
   try {
@@ -466,7 +502,8 @@ async function recall(
 
 /** Normalize a mode from untrusted input (tool args, imports). */
 export function normalizeExpertMode(value: unknown): ExpertMode {
-  return typeof value === "string" && (EXPERT_MODES as readonly string[]).includes(value)
+  return typeof value === "string" &&
+    (EXPERT_MODES as readonly string[]).includes(value)
     ? (value as ExpertMode)
     : "investigate";
 }

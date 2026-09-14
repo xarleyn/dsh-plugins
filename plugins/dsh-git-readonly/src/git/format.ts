@@ -7,24 +7,37 @@
  * appear inside it (e.g. newlines in a commit body).
  */
 
-export const UNIT_SEP = '\x1f';
+export const UNIT_SEP = "\x1f";
 
 /** oid, shortOid, author, authoredAt (ISO), subject, decorations. */
-export const HISTORY_FORMAT = ['%H', '%h', '%an', '%aI', '%s', '%d'].join(UNIT_SEP);
+export const HISTORY_FORMAT = ["%H", "%h", "%an", "%aI", "%s", "%d"].join(
+  UNIT_SEP,
+);
 
 /** oid, shortOid, author, authoredAt (ISO), subject, parents, body. */
-export const SHOW_META_FORMAT = ['%H', '%h', '%an', '%aI', '%s', '%P', '%b'].join(UNIT_SEP);
+export const SHOW_META_FORMAT = [
+  "%H",
+  "%h",
+  "%an",
+  "%aI",
+  "%s",
+  "%P",
+  "%b",
+].join(UNIT_SEP);
 
 /**
  * Split one `--format` record. Fields before `fixedCount` must not contain
  * the separator; the last field is the remainder of the record.
  */
-export function parseFormatRecord(record: string, fixedCount: number): string[] {
+export function parseFormatRecord(
+  record: string,
+  fixedCount: number,
+): string[] {
   const parts = record.split(UNIT_SEP);
   if (parts.length <= fixedCount) {
     const padded = [...parts];
-    while (padded.length < fixedCount) padded.push('');
-    padded.push('');
+    while (padded.length < fixedCount) padded.push("");
+    padded.push("");
     return padded;
   }
   const head = parts.slice(0, fixedCount);
@@ -35,13 +48,18 @@ export function parseFormatRecord(record: string, fixedCount: number): string[] 
 /** Parse a `%d` decoration string into ref entries (without parens/tag prefix). */
 export function parseDecorations(decorations: string): string[] {
   const trimmed = decorations.trim();
-  if (trimmed === '') return [];
-  const inner = trimmed.startsWith('(') && trimmed.endsWith(')') ? trimmed.slice(1, -1) : trimmed;
+  if (trimmed === "") return [];
+  const inner =
+    trimmed.startsWith("(") && trimmed.endsWith(")")
+      ? trimmed.slice(1, -1)
+      : trimmed;
   return inner
-    .split(',')
+    .split(",")
     .map((entry) => entry.trim())
-    .filter((entry) => entry !== '')
-    .map((entry) => (entry.startsWith('tag: ') ? entry.slice('tag: '.length) : entry));
+    .filter((entry) => entry !== "")
+    .map((entry) =>
+      entry.startsWith("tag: ") ? entry.slice("tag: ".length) : entry,
+    );
 }
 
 export interface NumstatFile {
@@ -54,20 +72,20 @@ export interface NumstatFile {
 /** Parse `--numstat` output into structured file rows. */
 export function parseNumstat(stdout: string): NumstatFile[] {
   const files: NumstatFile[] = [];
-  for (const line of stdout.split('\n')) {
-    const trimmed = line.replace(/\r$/, '');
-    if (trimmed === '') continue;
-    const tabIndex1 = trimmed.indexOf('\t');
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.replace(/\r$/, "");
+    if (trimmed === "") continue;
+    const tabIndex1 = trimmed.indexOf("\t");
     if (tabIndex1 < 0) continue;
-    const tabIndex2 = trimmed.indexOf('\t', tabIndex1 + 1);
+    const tabIndex2 = trimmed.indexOf("\t", tabIndex1 + 1);
     if (tabIndex2 < 0) continue;
     const additions = trimmed.slice(0, tabIndex1);
     const deletions = trimmed.slice(tabIndex1 + 1, tabIndex2);
     const path = trimmed.slice(tabIndex2 + 1);
     files.push({
       path,
-      additions: additions === '-' ? undefined : Number.parseInt(additions, 10),
-      deletions: deletions === '-' ? undefined : Number.parseInt(deletions, 10),
+      additions: additions === "-" ? undefined : Number.parseInt(additions, 10),
+      deletions: deletions === "-" ? undefined : Number.parseInt(deletions, 10),
     });
   }
   return files;
@@ -100,22 +118,22 @@ export function parsePorcelainBlame(stdout: string): BlameLine[] {
 
   let current: { oid: string; finalLine: number } | undefined;
 
-  for (const rawLine of stdout.split('\n')) {
-    const line = rawLine.replace(/\r$/, '');
-    if (line.startsWith('\t')) {
+  for (const rawLine of stdout.split("\n")) {
+    const line = rawLine.replace(/\r$/, "");
+    if (line.startsWith("\t")) {
       if (current === undefined) continue;
       const meta = commitMeta.get(current.oid);
       lines.push({
         line: current.finalLine,
         oid: current.oid,
-        author: meta?.author ?? '',
-        authoredAt: meta?.authoredAt ?? '',
-        summary: meta?.summary ?? '',
+        author: meta?.author ?? "",
+        authoredAt: meta?.authoredAt ?? "",
+        summary: meta?.summary ?? "",
         content: line.slice(1),
       });
       continue;
     }
-    if (line === '') continue;
+    if (line === "") continue;
 
     const match = /^([0-9a-f]{40,64}) (\d+) (\d+)(?: \d+)?$/.exec(line);
     if (match) {
@@ -123,7 +141,7 @@ export function parsePorcelainBlame(stdout: string): BlameLine[] {
       const finalLine = Number.parseInt(match[3] as string, 10);
       current = { oid, finalLine };
       if (!commitMeta.has(oid)) {
-        commitMeta.set(oid, { author: '', authoredAt: '', summary: '' });
+        commitMeta.set(oid, { author: "", authoredAt: "", summary: "" });
       }
       continue;
     }
@@ -131,15 +149,15 @@ export function parsePorcelainBlame(stdout: string): BlameLine[] {
     if (current === undefined) continue;
     const meta = commitMeta.get(current.oid);
     if (meta === undefined) continue;
-    if (line.startsWith('author ')) {
-      meta.author = line.slice('author '.length);
-    } else if (line.startsWith('author-time ')) {
-      const epoch = Number.parseInt(line.slice('author-time '.length), 10);
+    if (line.startsWith("author ")) {
+      meta.author = line.slice("author ".length);
+    } else if (line.startsWith("author-time ")) {
+      const epoch = Number.parseInt(line.slice("author-time ".length), 10);
       if (Number.isFinite(epoch)) {
         meta.authoredAt = new Date(epoch * 1000).toISOString();
       }
-    } else if (line.startsWith('summary ')) {
-      meta.summary = line.slice('summary '.length);
+    } else if (line.startsWith("summary ")) {
+      meta.summary = line.slice("summary ".length);
     }
   }
 

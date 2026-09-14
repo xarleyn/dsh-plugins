@@ -14,7 +14,11 @@
  */
 
 import { Context, Service } from "@deepseek-ai/cordis";
-import { createHostLoggerSink, getPluginLogger, type PluginLogger } from "@yadsh/dsh-plugin-log";
+import {
+  createHostLoggerSink,
+  getPluginLogger,
+  type PluginLogger,
+} from "@yadsh/dsh-plugin-log";
 
 import {
   ToolOffloadConfigSchema,
@@ -22,11 +26,22 @@ import {
   type ResolvedToolOffloadConfig,
   type ToolOffloadConfig,
 } from "./config.js";
-import { createPostExecuteListener, type ToolOffloadListener } from "./integration/post-execute.js";
+import {
+  createPostExecuteListener,
+  type ToolOffloadListener,
+} from "./integration/post-execute.js";
 import type { PluginLoggerLike } from "./logging.js";
-import { deriveOffloadMetrics, OffloadCounters, type OffloadCounterSnapshot } from "./telemetry/counters.js";
+import {
+  deriveOffloadMetrics,
+  OffloadCounters,
+  type OffloadCounterSnapshot,
+} from "./telemetry/counters.js";
 import { KeyedLimiter, Semaphore } from "./utils/semaphore.js";
-import { createSubagentRunner, type SubagentsServiceLike, type WorkerRunnerLike } from "./worker/runner.js";
+import {
+  createSubagentRunner,
+  type SubagentsServiceLike,
+  type WorkerRunnerLike,
+} from "./worker/runner.js";
 
 /** Overridable internals for tests (fake runner, silent logger). */
 export interface ToolOffloadServiceDeps {
@@ -67,12 +82,18 @@ export class ToolOffloadService extends Service {
   private readonly agentGate: KeyedLimiter;
   private disposed = false;
 
-  constructor(ctx: Context, config: ToolOffloadConfig = {}, deps: ToolOffloadServiceDeps = {}) {
+  constructor(
+    ctx: Context,
+    config: ToolOffloadConfig = {},
+    deps: ToolOffloadServiceDeps = {},
+  ) {
     super(ctx, "toolOffload");
     this.config = resolveToolOffloadConfig(config);
     this.counters = deps.counters ?? new OffloadCounters();
     this.globalGate = new Semaphore(this.config.concurrency.maxWorkersGlobal);
-    this.agentGate = new KeyedLimiter(this.config.concurrency.maxWorkersPerAgent);
+    this.agentGate = new KeyedLimiter(
+      this.config.concurrency.maxWorkersPerAgent,
+    );
     this.logger =
       deps.logger ??
       (getPluginLogger({

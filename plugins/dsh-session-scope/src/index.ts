@@ -36,10 +36,7 @@ import {
   setScope,
   type ScopeCapabilities,
 } from "./host-api.js";
-import {
-  SESSION_SCOPE_EVENT,
-  effectiveSessionScope,
-} from "./session-scope.js";
+import { SESSION_SCOPE_EVENT, effectiveSessionScope } from "./session-scope.js";
 import { renderSessionScopeContext } from "./scope-context.js";
 import { SessionScopeReadService } from "./scope-remote.js";
 import { initializeDelegatedSessionScope } from "./scope-delegation.js";
@@ -115,7 +112,10 @@ export const inject = [
  * @param fallback - `ctx.sandboxPolicy.workspaceRoot`.
  * @returns the workspace root for the session.
  */
-function workspaceRootOf(session: { header?: { cwd?: string } } | undefined, fallback: string): string {
+function workspaceRootOf(
+  session: { header?: { cwd?: string } } | undefined,
+  fallback: string,
+): string {
   const cwd = session?.header?.cwd;
   return typeof cwd === "string" && cwd.length > 0 ? cwd : fallback;
 }
@@ -142,15 +142,20 @@ function patchResolve(service: SandboxPolicyServiceLike): Disposer {
         // The workspace is an ORDINARY member of the selection: it is writable
         // exactly when it is in the list. With no recorded selection the default
         // is workspace-writable.
-        const roots = selection.workspace && !selection.roots.includes(resolved.workspaceRoot)
-          ? [resolved.workspaceRoot, ...selection.roots]
-          : selection.roots;
+        const roots =
+          selection.workspace &&
+          !selection.roots.includes(resolved.workspaceRoot)
+            ? [resolved.workspaceRoot, ...selection.roots]
+            : selection.roots;
         patched = { ...resolved, extraWritableRoots: roots };
       }
     }
     return session === void 0
       ? patched
-      : attachSessionScopePolicy(patched, getScope(session, resolved.workspaceRoot));
+      : attachSessionScopePolicy(
+          patched,
+          getScope(session, resolved.workspaceRoot),
+        );
   };
   return () => {
     service.resolve = original;
@@ -180,7 +185,9 @@ function patchPolicyContext(
     const session = context.agent?.session;
     if (session === void 0) return "";
     const policy = resolvePolicy({ session });
-    return policy.mode === MODE ? renderSelectedPolicyText(policy) : originalText(context);
+    return policy.mode === MODE
+      ? renderSelectedPolicyText(policy)
+      : originalText(context);
   };
   return () => {
     entry.text = originalText;
@@ -236,32 +243,51 @@ function patchConfine(
   provider: SandboxProviderLike | undefined,
   scopeRuntime: SessionScopeRuntime,
 ): Disposer {
-  if (provider === void 0 || typeof provider.confine !== "function") return () => {};
+  if (provider === void 0 || typeof provider.confine !== "function")
+    return () => {};
   const original = provider.confine.bind(provider);
   provider.confine = (argv, policy) => {
     const runtimeSession = scopeRuntime.currentSession();
-    const scope = sessionScopeFromPolicy(policy)
-      ?? (runtimeSession === void 0 ? void 0 : getScope(runtimeSession, policy.workspaceRoot));
+    const scope =
+      sessionScopeFromPolicy(policy) ??
+      (runtimeSession === void 0
+        ? void 0
+        : getScope(runtimeSession, policy.workspaceRoot));
     if (scope?.mode === "isolated") {
       if (policy.mode !== "read-only" && policy.mode !== "workspace-write") {
-        throw new Error("SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope requires read-only or workspace-write permission");
+        throw new Error(
+          "SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope requires read-only or workspace-write permission",
+        );
       }
       const execution = scopeRuntime.currentExecution();
-      const args: Record<string, unknown> = execution?.arguments !== null && typeof execution?.arguments === "object"
-        ? execution.arguments as Record<string, unknown>
-        : {};
-      const requestedWorkdir = execution?.name === "bash"
-        ? args.workdir
-        : execution?.name === "terminal_open" ? args.cwd : void 0;
-      const workdir = typeof requestedWorkdir === "string" ? requestedWorkdir : undefined;
-      return confineIsolatedBwrap(original(argv, policy), policy, scope, workdir);
+      const args: Record<string, unknown> =
+        execution?.arguments !== null &&
+        typeof execution?.arguments === "object"
+          ? (execution.arguments as Record<string, unknown>)
+          : {};
+      const requestedWorkdir =
+        execution?.name === "bash"
+          ? args.workdir
+          : execution?.name === "terminal_open"
+            ? args.cwd
+            : void 0;
+      const workdir =
+        typeof requestedWorkdir === "string" ? requestedWorkdir : undefined;
+      return confineIsolatedBwrap(
+        original(argv, policy),
+        policy,
+        scope,
+        workdir,
+      );
     }
     if (policy.mode !== MODE) return original(argv, policy);
     const extra = (policy.extraWritableRoots ?? []).filter(
       (root) => typeof root === "string" && root.length > 0,
     );
     const base = original(argv, { ...policy, mode: "read-only" });
-    return augmentConfinedArgv(base, extra, tempWritableRoots()) as ReturnType<SandboxProviderLike["confine"]>;
+    return augmentConfinedArgv(base, extra, tempWritableRoots()) as ReturnType<
+      SandboxProviderLike["confine"]
+    >;
   };
   return () => {
     provider.confine = original;
@@ -279,7 +305,8 @@ const workspaceScopeSchema: ParseSchemaLike<WorkspaceScopeProjectionState> = {
       ? record.roots.filter((root): root is string => typeof root === "string")
       : [];
     return {
-      workspaceRoot: typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
+      workspaceRoot:
+        typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
       roots,
       workspace: record.workspace !== false,
     };
@@ -293,13 +320,23 @@ const sessionScopeStateSchema: ParseSchemaLike<SessionScopeProjectionState> = {
       throw new TypeError("session-scope projection must be an object");
     }
     const record = value as Record<string, unknown>;
-    const mode = record.mode === "focused" || record.mode === "isolated" ? record.mode : "full";
+    const mode =
+      record.mode === "focused" || record.mode === "isolated"
+        ? record.mode
+        : "full";
     return {
       mode,
-      workspaceRoot: typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
-      roots: Array.isArray(record.roots) ? record.roots.filter((root): root is string => typeof root === "string") : [],
+      workspaceRoot:
+        typeof record.workspaceRoot === "string" ? record.workspaceRoot : "",
+      roots: Array.isArray(record.roots)
+        ? record.roots.filter(
+            (root): root is string => typeof root === "string",
+          )
+        : [],
       navigationRoots: Array.isArray(record.navigationRoots)
-        ? record.navigationRoots.filter((root): root is string => typeof root === "string")
+        ? record.navigationRoots.filter(
+            (root): root is string => typeof root === "string",
+          )
         : [],
       hasSnapshot: record.hasSnapshot === true,
     };
@@ -311,15 +348,17 @@ const sessionScopeViewSchema: ParseSchemaLike<SessionScopeProjectionView> = {
     const state = sessionScopeStateSchema.parse(value);
     const { hasSnapshot: _hasSnapshot, ...view } = state;
     const record = value as Record<string, unknown>;
-    const capabilities = record.capabilities !== null && typeof record.capabilities === "object"
-      ? record.capabilities as Record<string, unknown>
-      : undefined;
+    const capabilities =
+      record.capabilities !== null && typeof record.capabilities === "object"
+        ? (record.capabilities as Record<string, unknown>)
+        : undefined;
     return {
       ...view,
       capabilities: {
         focused: capabilities?.focused === true,
         isolated: capabilities?.isolated === true,
-        isolatedBackend: capabilities?.isolatedBackend === "bwrap" ? "bwrap" : null,
+        isolatedBackend:
+          capabilities?.isolatedBackend === "bwrap" ? "bwrap" : null,
       },
     };
   },
@@ -342,54 +381,94 @@ function handleScope(
 
   switch (verb) {
     case "":
-      return { kind: "success", text: "scope: verbs: full | focused | isolated" };
+      return {
+        kind: "success",
+        text: "scope: verbs: full | focused | isolated",
+      };
     case "full": {
-      if (processActivity.hasActive(invocation.agent, {
-        terminals: ctx.get("terminals"),
-        jobs: ctx.get("jobs"),
-      })) {
-        return { kind: "error", text: `${SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE}.` };
+      if (
+        processActivity.hasActive(invocation.agent, {
+          terminals: ctx.get("terminals"),
+          jobs: ctx.get("jobs"),
+        })
+      ) {
+        return {
+          kind: "error",
+          text: `${SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE}.`,
+        };
       }
-      const event = setScope(session, { mode: "full", roots: [], source: "command" }, fallbackWorkspaceRoot);
+      const event = setScope(
+        session,
+        { mode: "full", roots: [], source: "command" },
+        fallbackWorkspaceRoot,
+      );
       return { kind: "success", text: JSON.stringify(event) };
     }
     case "focused":
     case "isolated": {
-      if (processActivity.hasActive(invocation.agent, {
-        terminals: ctx.get("terminals"),
-        jobs: ctx.get("jobs"),
-      })) {
-        return { kind: "error", text: `${SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE}.` };
+      if (
+        processActivity.hasActive(invocation.agent, {
+          terminals: ctx.get("terminals"),
+          jobs: ctx.get("jobs"),
+        })
+      ) {
+        return {
+          kind: "error",
+          text: `${SESSION_SCOPE_PROCESS_ACTIVE_MESSAGE}.`,
+        };
       }
       if (verb === "isolated" && !capabilities.isolated) {
-        return { kind: "error", text: "SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope is unavailable on this host." };
+        return {
+          kind: "error",
+          text: "SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope is unavailable on this host.",
+        };
       }
-      if (verb === "isolated" && ctx.sandboxPolicy.resolve({ session }).mode === "danger-full-access") {
-        return { kind: "error", text: "SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope is incompatible with danger-full-access permission." };
+      if (
+        verb === "isolated" &&
+        ctx.sandboxPolicy.resolve({ session }).mode === "danger-full-access"
+      ) {
+        return {
+          kind: "error",
+          text: "SESSION_SCOPE_ISOLATION_UNAVAILABLE: isolated scope is incompatible with danger-full-access permission.",
+        };
       }
       let roots = current.roots;
       if (rest !== "") {
         try {
           roots = JSON.parse(rest);
         } catch {
-          return { kind: "error", text: `scope: "${verb}" expects an optional JSON array of directory paths` };
+          return {
+            kind: "error",
+            text: `scope: "${verb}" expects an optional JSON array of directory paths`,
+          };
         }
       }
       try {
-        const event = setScope(session, { mode: verb, roots, source: "command" }, fallbackWorkspaceRoot);
+        const event = setScope(
+          session,
+          { mode: verb, roots, source: "command" },
+          fallbackWorkspaceRoot,
+        );
         return { kind: "success", text: JSON.stringify(event) };
       } catch (error) {
-        const code = error !== null
-          && typeof error === "object"
-          && "code" in error
-          && typeof error.code === "string"
-          ? `${error.code}: `
-          : "";
-        return { kind: "error", text: `${code}${error instanceof Error ? error.message : String(error)}` };
+        const code =
+          error !== null &&
+          typeof error === "object" &&
+          "code" in error &&
+          typeof error.code === "string"
+            ? `${error.code}: `
+            : "";
+        return {
+          kind: "error",
+          text: `${code}${error instanceof Error ? error.message : String(error)}`,
+        };
       }
     }
     default:
-      return { kind: "error", text: `scope: unknown verb "${verb}" (verbs: full | focused | isolated)` };
+      return {
+        kind: "error",
+        text: `scope: unknown verb "${verb}" (verbs: full | focused | isolated)`,
+      };
   }
 }
 
@@ -411,11 +490,15 @@ async function handleWorkspaceScope(
   const space = raw.indexOf(" ");
   const verb = space === -1 ? raw : raw.slice(0, space);
   const rest = space === -1 ? "" : raw.slice(space + 1).trim();
-  const workspaceRoot = workspaceRootOf(session, ctx.sandboxPolicy.workspaceRoot);
+  const workspaceRoot = workspaceRootOf(
+    session,
+    ctx.sandboxPolicy.workspaceRoot,
+  );
   const selection = selectionOf(session.snapshotEvents());
-  const effectiveRoots = selection.workspace && !selection.roots.includes(workspaceRoot)
-    ? [workspaceRoot, ...selection.roots]
-    : selection.roots;
+  const effectiveRoots =
+    selection.workspace && !selection.roots.includes(workspaceRoot)
+      ? [workspaceRoot, ...selection.roots]
+      : selection.roots;
   // The workspace root is an ordinary member of the selection: the recorded
   // `workspace` marker is derived from the roots themselves.
   const appendSelection = (nextRoots: string[]): void => {
@@ -436,7 +519,10 @@ async function handleWorkspaceScope(
       try {
         parsed = JSON.parse(rest);
       } catch {
-        return { kind: "error", text: "workspace-scope: \"set\" expects a JSON array of absolute directory paths (the workspace root included when it should be writable)" };
+        return {
+          kind: "error",
+          text: 'workspace-scope: "set" expects a JSON array of absolute directory paths (the workspace root included when it should be writable)',
+        };
       }
       try {
         // Array form: the FULL selection — the workspace root included when
@@ -445,13 +531,23 @@ async function handleWorkspaceScope(
         let rootInput;
         if (Array.isArray(parsed)) {
           rootInput = parsed;
-        } else if (parsed !== null && typeof parsed === "object" && Array.isArray(parsed.roots)) {
+        } else if (
+          parsed !== null &&
+          typeof parsed === "object" &&
+          Array.isArray(parsed.roots)
+        ) {
           const rawRoots = normalizeRoots(parsed.roots, canonicalPath);
-          rootInput = parsed.workspace === false
-            ? rawRoots.filter((root) => root !== workspaceRoot)
-            : rawRoots.includes(workspaceRoot) ? rawRoots : [workspaceRoot, ...rawRoots];
+          rootInput =
+            parsed.workspace === false
+              ? rawRoots.filter((root) => root !== workspaceRoot)
+              : rawRoots.includes(workspaceRoot)
+                ? rawRoots
+                : [workspaceRoot, ...rawRoots];
         } else {
-          return { kind: "error", text: "workspace-scope: \"set\" expects a JSON array of absolute directory paths (the workspace root included when it should be writable)" };
+          return {
+            kind: "error",
+            text: 'workspace-scope: "set" expects a JSON array of absolute directory paths (the workspace root included when it should be writable)',
+          };
         }
         const normalized = normalizeRoots(rootInput, canonicalPath);
         appendSelection(normalized);
@@ -460,20 +556,32 @@ async function handleWorkspaceScope(
           text: `workspace-scope: ${normalized.length} root(s) selected${normalized.includes(workspaceRoot) ? ", workspace writable" : ", workspace read-only"}`,
         };
       } catch (error) {
-        return { kind: "error", text: error instanceof Error ? error.message : String(error) };
+        return {
+          kind: "error",
+          text: error instanceof Error ? error.message : String(error),
+        };
       }
     }
     case "clear":
       appendSelection([]);
-      return { kind: "success", text: "workspace-scope: selection cleared (workspace read-only)" };
+      return {
+        kind: "success",
+        text: "workspace-scope: selection cleared (workspace read-only)",
+      };
     case "info":
       return {
         kind: "success",
         text: JSON.stringify({ workspaceRoot, roots: effectiveRoots }),
       };
     case "list": {
-      if (rest === "" || !rest.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(rest)) {
-        return { kind: "error", text: "workspace-scope: \"list\" expects an absolute directory path" };
+      if (
+        rest === "" ||
+        (!rest.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(rest))
+      ) {
+        return {
+          kind: "error",
+          text: 'workspace-scope: "list" expects an absolute directory path',
+        };
       }
       try {
         return {
@@ -508,14 +616,21 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
     pluginId: "dsh-session-scope",
     consoleSink: createHostLoggerSink(ctx.logger ?? console),
   });
-  const resolvePolicy: ResolvePolicyLike = (request = {}) => ctx.sandboxPolicy.resolve(request);
+  const resolvePolicy: ResolvePolicyLike = (request = {}) =>
+    ctx.sandboxPolicy.resolve(request);
   const processActivity = new SessionScopeProcessActivity();
   const toolAdapters = new ScopeToolAdapterRegistry();
   const fallbackWorkspaceRoot = ctx.sandboxPolicy.workspaceRoot;
   const scopeRuntime = new SessionScopeRuntime(fallbackWorkspaceRoot);
   const provider = ctx.get("sandbox");
-  const isolatedBackendReady = detectBwrapIsolation(provider, fallbackWorkspaceRoot);
-  const scopeCapabilities = getScopeCapabilities(process.platform, isolatedBackendReady);
+  const isolatedBackendReady = detectBwrapIsolation(
+    provider,
+    fallbackWorkspaceRoot,
+  );
+  const scopeCapabilities = getScopeCapabilities(
+    process.platform,
+    isolatedBackendReady,
+  );
   logger.info("plugin.ready", {
     focused: scopeCapabilities.focused,
     isolated: scopeCapabilities.isolated,
@@ -536,17 +651,27 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
   // 2. The prompt contribution: render the new mode instead of throwing.
   const systemPrompt = ctx.get("systemPrompt");
   if (systemPrompt !== void 0 && sandboxPolicy !== void 0) {
-    disposers.push(patchPolicyContext(systemPrompt, (request) => sandboxPolicy.resolve(request)));
+    disposers.push(
+      patchPolicyContext(systemPrompt, (request) =>
+        sandboxPolicy.resolve(request),
+      ),
+    );
   }
   if (systemPrompt !== void 0 && typeof systemPrompt.context === "function") {
-    disposers.push(systemPrompt.context({
-      name: "session:scope",
-      order: 50,
-      text: (context) => {
-        const session = context.scope?.session ?? context.agent?.session;
-        return session === void 0 ? "" : renderSessionScopeContext(getScope(session, fallbackWorkspaceRoot));
-      },
-    }));
+    disposers.push(
+      systemPrompt.context({
+        name: "session:scope",
+        order: 50,
+        text: (context) => {
+          const session = context.scope?.session ?? context.agent?.session;
+          return session === void 0
+            ? ""
+            : renderSessionScopeContext(
+                getScope(session, fallbackWorkspaceRoot),
+              );
+        },
+      }),
+    );
   }
 
   // 3. The fs fence: contain writes under workspace + selected roots.
@@ -560,41 +685,62 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
   // agent/pre-step rather than inside a filesystem tool. Run every downstream
   // pre-step contributor under the same per-session filesystem carrier; the
   // prepended listener must remain outermost so later plugins cannot escape it.
-  disposers.push(ctx.on(
-    "agent/pre-step",
-    ({ agent }, next) => scopeRuntime.run(agent?.session, next),
-    { global: true, prepend: true },
-  ));
+  disposers.push(
+    ctx.on(
+      "agent/pre-step",
+      ({ agent }, next) => scopeRuntime.run(agent?.session, next),
+      { global: true, prepend: true },
+    ),
+  );
 
   // The final tool guard cannot be widened by later permission listeners. The
   // around stage carries the calling session through async filesystem work so
   // concurrent sessions never share scope state.
   ctx.inject<ToolContextLike>(["tools"], (toolCtx) => {
     let searchSplitterActive = false;
-    disposers.push(toolCtx.tools.guard((execution: HostToolExecution) => {
-      const session = execution.agent?.session;
-      if (processActivity.isProcessTool(execution.name) && execution.agent !== void 0) {
-        processActivity.ensureFence(execution.agent, {
-          terminals: ctx.get("terminals"),
-          jobs: ctx.get("jobs"),
-        });
-      }
-      const sandboxMode = session === void 0 ? void 0 : resolvePolicy({ session }).mode;
-      return guardScopeToolExecution(execution, toolAdapters, fallbackWorkspaceRoot, {
-        splitBroadSearches: searchSplitterActive,
-        isolatedBackendReady,
-        sandboxMode,
-      });
-    }));
-    const disposeSearchSplitter = toolCtx.on("tools/execute", (execution: HostToolExecution, next) => processActivity.run(
-      execution.agent,
-      execution.name,
-      () => scopeRuntime.run(
-        execution.agent?.session,
-        () => dispatchScopedSearchExecution(execution, toolCtx.tools, next, fallbackWorkspaceRoot),
-        execution,
-      ),
-    ));
+    disposers.push(
+      toolCtx.tools.guard((execution: HostToolExecution) => {
+        const session = execution.agent?.session;
+        if (
+          processActivity.isProcessTool(execution.name) &&
+          execution.agent !== void 0
+        ) {
+          processActivity.ensureFence(execution.agent, {
+            terminals: ctx.get("terminals"),
+            jobs: ctx.get("jobs"),
+          });
+        }
+        const sandboxMode =
+          session === void 0 ? void 0 : resolvePolicy({ session }).mode;
+        return guardScopeToolExecution(
+          execution,
+          toolAdapters,
+          fallbackWorkspaceRoot,
+          {
+            splitBroadSearches: searchSplitterActive,
+            isolatedBackendReady,
+            sandboxMode,
+          },
+        );
+      }),
+    );
+    const disposeSearchSplitter = toolCtx.on(
+      "tools/execute",
+      (execution: HostToolExecution, next) =>
+        processActivity.run(execution.agent, execution.name, () =>
+          scopeRuntime.run(
+            execution.agent?.session,
+            () =>
+              dispatchScopedSearchExecution(
+                execution,
+                toolCtx.tools,
+                next,
+                fallbackWorkspaceRoot,
+              ),
+            execution,
+          ),
+        ),
+    );
     searchSplitterActive = true;
     disposers.push(() => {
       // Disable the guard exception before removing the matching dispatcher.
@@ -636,18 +782,26 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
   // their event prefix directly through the session seed.
   const sessions = ctx.get("sessions");
   if (sessions !== void 0) {
-    disposers.push(ctx.on("session/created", (session) => {
-      initializeDelegatedSessionScope(session, (id) => sessions.get(id));
-    }, { global: true }));
+    disposers.push(
+      ctx.on(
+        "session/created",
+        (session) => {
+          initializeDelegatedSessionScope(session, (id) => sessions.get(id));
+        },
+        { global: true },
+      ),
+    );
   }
 
   // 7. Independent scope command plus the legacy compatibility command.
   ctx.inject<CommandContextLike>(["commands"], (commandCtx) => {
     commandCtx.commands.register({
       name: "scope",
-      description: "Manage the independent workspace visibility scope for this session",
+      description:
+        "Manage the independent workspace visibility scope for this session",
       input: { hint: "<full|focused|isolated>" },
-      handler: (invocation) => handleScope(invocation, ctx, scopeCapabilities, processActivity),
+      handler: (invocation) =>
+        handleScope(invocation, ctx, scopeCapabilities, processActivity),
     });
     commandCtx.commands.register({
       name: "workspace-scope",
@@ -657,7 +811,10 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
     });
   });
   ctx.inject<ProjectionContextLike>(["sessionProjections"], (projectionCtx) => {
-    projectionCtx.sessionProjections.register<SessionScopeProjectionState, SessionScopeProjectionView>({
+    projectionCtx.sessionProjections.register<
+      SessionScopeProjectionState,
+      SessionScopeProjectionView
+    >({
       key: "session-scope",
       stateSchema: sessionScopeStateSchema,
       init: () => ({
@@ -671,7 +828,10 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
         if (event.type === SESSION_SCOPE_EVENT) {
           return {
             ...effectiveSessionScope([event], {
-              cwd: typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : undefined,
+              cwd:
+                typeof event.data?.workspaceRoot === "string"
+                  ? event.data.workspaceRoot
+                  : undefined,
             }),
             hasSnapshot: true,
           };
@@ -679,7 +839,10 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
         if (event.type === SELECTION_EVENT && !state.hasSnapshot) {
           return {
             ...effectiveSessionScope([event], {
-              cwd: typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : undefined,
+              cwd:
+                typeof event.data?.workspaceRoot === "string"
+                  ? event.data.workspaceRoot
+                  : undefined,
             }),
             hasSnapshot: false,
           };
@@ -695,19 +858,29 @@ export function apply(ctx: HostContextLike): () => Promise<void> {
       },
       stateVersion: 1,
     });
-    projectionCtx.sessionProjections.register<WorkspaceScopeProjectionState, WorkspaceScopeProjectionState>({
+    projectionCtx.sessionProjections.register<
+      WorkspaceScopeProjectionState,
+      WorkspaceScopeProjectionState
+    >({
       key: "workspace-scope",
       stateSchema: workspaceScopeSchema,
       init: () => ({ workspaceRoot: "", roots: [], workspace: true }),
       apply: (state, event) => {
         if (event.type !== SELECTION_EVENT) return state;
-        const workspaceRoot = typeof event.data?.workspaceRoot === "string" ? event.data.workspaceRoot : state.workspaceRoot;
+        const workspaceRoot =
+          typeof event.data?.workspaceRoot === "string"
+            ? event.data.workspaceRoot
+            : state.workspaceRoot;
         const workspace = event.data?.workspace !== false;
         return {
           workspaceRoot,
           // Normalize so the folded roots ARE the writable set: the session
           // workspace root is a member exactly when the workspace is writable.
-          roots: normalizeSelectionRoots(event.data?.roots, workspaceRoot, workspace),
+          roots: normalizeSelectionRoots(
+            event.data?.roots,
+            workspaceRoot,
+            workspace,
+          ),
           workspace,
         };
       },

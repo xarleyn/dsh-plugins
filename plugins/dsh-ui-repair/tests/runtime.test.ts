@@ -95,9 +95,9 @@ describe("UIRepairRuntime", () => {
 
     expect(repairId).toBeDefined();
     expect(getComputedStyle(panel).overflowY).toBe("auto");
-    expect(getComputedStyle(document.querySelector("#neighbor")!).overflowY).not.toBe(
-      "auto",
-    );
+    expect(
+      getComputedStyle(document.querySelector("#neighbor")!).overflowY,
+    ).not.toBe("auto");
     expect(runtime.getHistory()[0]).toMatchObject({
       repairId,
       status: "verified",
@@ -300,8 +300,9 @@ describe("UIRepairRuntime", () => {
       suggestedCss: { width: "16px", height: "16px" },
     });
     expect(report.applied).toContain(issue?.id);
-    expect(runtime.getHistory().find(({ repairId }) => repairId === issue?.id))
-      .toMatchObject({ status: "verified" });
+    expect(
+      runtime.getHistory().find(({ repairId }) => repairId === issue?.id),
+    ).toMatchObject({ status: "verified" });
   });
 
   it("repairs explicit flex-shrink and min-width constraints", async () => {
@@ -338,10 +339,12 @@ describe("UIRepairRuntime", () => {
     expect(report.applied).toEqual(
       expect.arrayContaining([shrink?.id, minWidth?.id]),
     );
-    expect(getComputedStyle(document.querySelector("#no-shrink")!).flexShrink)
-      .toBe("0");
-    expect(getComputedStyle(document.querySelector("#min-zero")!).minWidth)
-      .toBe("0px");
+    expect(
+      getComputedStyle(document.querySelector("#no-shrink")!).flexShrink,
+    ).toBe("0");
+    expect(
+      getComputedStyle(document.querySelector("#min-zero")!).minWidth,
+    ).toBe("0px");
   });
 
   it("keeps ambiguous horizontal and flex ownership diagnosis-only", async () => {
@@ -373,8 +376,9 @@ describe("UIRepairRuntime", () => {
       "R008",
       "R009",
     ]);
-    expect(relevant.every(({ suggestedCss }) => suggestedCss === undefined))
-      .toBe(true);
+    expect(
+      relevant.every(({ suggestedCss }) => suggestedCss === undefined),
+    ).toBe(true);
     expect(report.applied).toEqual([]);
   });
 
@@ -494,10 +498,11 @@ describe("UIRepairRuntime", () => {
     }
     const horizontalOutlier = document.querySelector("#x-out") as HTMLElement;
     vi.spyOn(horizontalOutlier, "getBoundingClientRect").mockImplementation(
-      () => rowRect(
-        horizontalOutlier.hasAttribute("data-dsh-ui-repair-target") ? 10 : 16,
-        32,
-      ),
+      () =>
+        rowRect(
+          horizontalOutlier.hasAttribute("data-dsh-ui-repair-target") ? 10 : 16,
+          32,
+        ),
     );
     for (const id of ["h-a", "h-b"]) {
       vi.spyOn(
