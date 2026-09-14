@@ -11,6 +11,7 @@
       "sessions.binding",
       "settingsScope",
       "settings.onboarding list-slot shadowing",
+      "keyed child slots with owner props",
       "webServer.register",
       "typert.remote",
       "agentPresets.composedPreset",
@@ -27,6 +28,11 @@
       "skills.registerProvider",
       "skills.change"
     ]
+  },
+  "qaSurfacePanelExtensions": {
+    "version": 1,
+    "service": "qaSurfacePanels",
+    "bodySlot": "qa.surface.panel"
   },
   "node": "^22.19.0 || >=24.0.0"
 }

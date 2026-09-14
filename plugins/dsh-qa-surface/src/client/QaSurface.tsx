@@ -12,6 +12,7 @@ import {
 import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   InjectFace,
+  PropsRenderSlots,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
@@ -83,6 +84,9 @@ import { useTranscriptView } from "./use-transcript-view.js";
 import { useSessionUiState } from "./use-session-ui-state.js";
 import { useRightRail } from "./use-right-rail.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
+import { QaPanelHost } from "./panels/PanelHost.js";
+import { QaPanelLauncher } from "./panels/PanelLauncher.js";
+import type { QaSurfacePanelRegistry } from "./panels/registry.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -122,9 +126,12 @@ export interface QaSurfaceFace {
   readonly fileUpload?: () => QaFileUpload | undefined;
   /** Present when the deployment mounts the QA account gate. */
   readonly accounts?: QaAccountsController;
+  /** Global client-only panel metadata and presentation navigation. */
+  readonly panels: QaSurfacePanelRegistry;
 }
 
 export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
+  PropsRenderSlots<"qa.surface.panel"> &
   InjectFace<QaSurfaceFace>;
 
 function focusable(root: HTMLElement): HTMLElement[] {
@@ -797,6 +804,7 @@ export function QaSurface(props: QaSurfaceProps) {
               fileCount={attachmentCount}
               filesOpen={rail.railOpen && rail.railTab === "files"}
               onOpenFiles={() => rail.openTab("files")}
+              panelLauncher={<QaPanelLauncher panels={props.panels} />}
               showReset={showResetButton}
               resetDisabled={
                 controller === undefined || state.phase === "creating"
@@ -805,15 +813,16 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          <div
-            ref={chat}
-            className="dsh-qa-chat"
-            style={
-              {
-                "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
-              } as CSSProperties
-            }
-          >
+          <div className="dsh-qa-workspace">
+            <div
+              ref={chat}
+              className="dsh-qa-chat"
+              style={
+                {
+                  "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
+                } as CSSProperties
+              }
+            >
             <div
               ref={transcript}
               className="dsh-qa-transcript"
@@ -973,6 +982,12 @@ export function QaSurface(props: QaSurfaceProps) {
                   <QaWidthHandle key={side} side={side} {...widthHandlers} />
                 ))
               : null}
+            </div>
+            <QaPanelHost
+              panels={props.panels}
+              sessionId={state.sessionId}
+              renderSlot={props.renderSlot}
+            />
           </div>
         </div>
         {agentsOpen && agentRows.length > 0 ? (
