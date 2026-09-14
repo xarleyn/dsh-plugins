@@ -6,6 +6,7 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../../types.js";
 import type { QaBoundSourceApi } from "../types.js";
+import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
 
 const KIND_LABELS: Readonly<Record<QaSource["kind"], string>> = {
@@ -152,7 +153,7 @@ function QaSourceDetail({
   readonly onBack: () => void;
 }) {
   const [preview, setPreview] = useState<QaSourceFilePreview | null>(null);
-  const [previewError, setPreviewError] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [mode, setMode] = useState<"rendered" | "raw">("raw");
   const external =
     source.uri?.match(/^https?:\/\//iu)?.[0] === undefined
@@ -168,7 +169,7 @@ function QaSourceDetail({
   useEffect(() => {
     let alive = true;
     setPreview(null);
-    setPreviewError(false);
+    setPreviewError(null);
     if (
       source.path === undefined ||
       sessionId === null ||
@@ -179,7 +180,7 @@ function QaSourceDetail({
       (result) => {
         if (!alive) return;
         if (!result.ok) {
-          setPreviewError(true);
+          setPreviewError(sourcePreviewFailureCopy(result.error));
           return;
         }
         setPreview(result.value);
@@ -191,7 +192,8 @@ function QaSourceDetail({
             : "raw",
         );
       },
-      () => alive && setPreviewError(true),
+      (failure: unknown) =>
+        alive && setPreviewError(sourcePreviewFailureCopy(failure)),
     );
     return () => {
       alive = false;
@@ -258,11 +260,8 @@ function QaSourceDetail({
         {source.path !== undefined && preview === null && !previewError ? (
           <p className="dsh-qa-sourcedetail__empty">Открываю источник…</p>
         ) : null}
-        {previewError ? (
-          <p className="dsh-qa-sourcedetail__empty">
-            Не удалось открыть источник. Возможно, файл был перемещён или больше
-            недоступен.
-          </p>
+        {previewError !== null ? (
+          <p className="dsh-qa-sourcedetail__empty">{previewError}</p>
         ) : null}
         {preview !== null ? (
           <>

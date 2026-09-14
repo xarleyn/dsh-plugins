@@ -103,6 +103,55 @@ describe("sources panel", () => {
     expect(readSourceFile).toHaveBeenCalledWith("root", "docs/guide.md");
   });
 
+  it("names the readable directories when the Host refuses the path", async () => {
+    const config = resolveConfig().sources;
+    const readSourceFile = vi.fn(async () => ({
+      ok: false as const,
+      error: new Error(
+        "QA source preview refused the request (reason: outside-roots)",
+      ),
+    }));
+    render(
+      <QaSourcesPanel
+        sources={[fileSource]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /guide\.md/u }));
+    await waitFor(() =>
+      expect(screen.getByText(/вне каталогов, доступных/u)).toBeTruthy(),
+    );
+    expect(screen.queryByText(/был перемещён/u)).toBeNull();
+  });
+
+  it("still reports a moved file as moved", async () => {
+    const config = resolveConfig().sources;
+    const readSourceFile = vi.fn(async () => ({
+      ok: false as const,
+      error: new Error(
+        "QA source preview refused the request (reason: unavailable)",
+      ),
+    }));
+    render(
+      <QaSourcesPanel
+        sources={[fileSource]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /guide\.md/u }));
+    await waitFor(() =>
+      expect(screen.getByText(/был перемещён/u)).toBeTruthy(),
+    );
+  });
+
   it("offers the way back to the whole-chat list only while pinned", () => {
     const config = resolveConfig().sources;
     const onShowAll = vi.fn();

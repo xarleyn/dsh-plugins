@@ -359,10 +359,12 @@ ignorable; it does not delete them. Each changed session file is backed up as
 `*.pre-plugin-event-repair.bak` before atomic replacement.
 
 Local file cards open a source-scoped, read-only preview after Host-side real
-path validation against the attested session root. Markdown opens rendered by
-default with an HTML-free renderer and offers `Rendered / Raw`; raw mode jumps
-to recorded line ranges. The endpoint cannot browse or write files and refuses
-paths that are not evidence in the canonical bundle.
+path validation against the roots the QA read policy opens: the chat's own
+directory, the configured shared read-only directories, and the attachment
+store. Markdown opens rendered by default with an HTML-free renderer and offers
+`Rendered / Raw`; raw mode jumps to recorded line ranges. The endpoint cannot
+browse or write files and refuses paths that are not evidence in the canonical
+bundle.
 
 Observable local subagents are inherited recursively. The internal
 `qa_report_sources` tool covers opaque delegated providers and is admitted as
