@@ -46,7 +46,8 @@ through OIDC.
 3. Commit the generated Markdown plan with the implementation.
 4. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
 5. Open a PR. CI checks that every publishable package whose commits no release
-   tag covers yet is named by a plan.
+   tag covers yet is named by a plan. A pull request into a `dsh-v*` release
+   branch runs the same checks as one into `main`.
 
 A plan file must open with its `---` front-matter fence. Nx silently ignores a
 plan it cannot parse, so the release gate and `pnpm verify:packages` reject such

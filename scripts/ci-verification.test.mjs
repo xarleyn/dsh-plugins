@@ -79,6 +79,24 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   assert.match(workflow, /name: Verify affected projects\s+if: always\(\)/u);
 });
 
+test("the PR workflow also builds pull requests that target a release branch", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /pull_request:\s+branches: \[main, 'dsh-v\*'\]/u,
+    "a pull request into a dsh-v* branch must run the same checks as main",
+  );
+  assert.match(
+    workflow,
+    /push:\s+branches: \[main\]/u,
+    "direct pushes stay limited to main",
+  );
+});
+
 test("the CI matrix marks only publishable projects for tarball verification", () => {
   const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
   const script = fileURLToPath(
