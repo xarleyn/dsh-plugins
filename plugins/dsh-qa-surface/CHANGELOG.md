@@ -2,6 +2,13 @@
 
 ### 🚀 Features
 
+- Show an optimistic user bubble immediately after Send, including local image
+  previews and file handles, while session creation, policy admission and the
+  Host's pre-loop preparation are still pending. The bubble carries an animated
+  «Подготавливаю ответ…» status, reconciles with the durable user message without
+  duplication, and disappears on a refused send while the composer keeps its
+  draft.
+
 - Answer a composed tool gate's `ask` in the QA view. `interaction.approvals` ([570d010](https://github.com/xarleyn/dsh-plugins/commit/570d010))
   now takes `blocked` (default) or `interactive`: an interactive deployment parks
   the call on the Host, lists it over the composer with the gate's own reason and

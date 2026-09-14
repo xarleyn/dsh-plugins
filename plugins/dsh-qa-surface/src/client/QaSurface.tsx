@@ -474,7 +474,7 @@ export function QaSurface(props: QaSurfaceProps) {
       element.scrollTop = element.scrollHeight;
     }
     scheduleActiveTurnSync();
-  }, [state.messages, scheduleActiveTurnSync]);
+  }, [state.messages, state.pendingMessage, scheduleActiveTurnSync]);
 
   // The composer hint repeats the work list's phrase, so both advance in step
   // off the same turn start.
@@ -494,7 +494,7 @@ export function QaSurface(props: QaSurfaceProps) {
     config.thinkingPhrases,
   );
   const status = statusText(state, runningPhrase);
-  const empty = state.messages.length === 0;
+  const empty = state.messages.length === 0 && state.pendingMessage === null;
   const conversationTitle = titleFromMessages(state);
   const showSidebar = config.ui.showSessionList && controller !== undefined;
   const allowNewChat =
@@ -881,6 +881,16 @@ export function QaSurface(props: QaSurfaceProps) {
                       </div>
                     );
                   })
+                )}
+                {state.pendingMessage === null ? null : (
+                  <div className="dsh-qa-message-slot">
+                    <QaMessage
+                      message={state.pendingMessage}
+                      renderMarkdown={false}
+                      showTimestamp={false}
+                      thinkingPhrases={config.thinkingPhrases}
+                    />
+                  </div>
                 )}
                 {state.error === null ? null : (
                   <div className="dsh-qa-error" role="alert">

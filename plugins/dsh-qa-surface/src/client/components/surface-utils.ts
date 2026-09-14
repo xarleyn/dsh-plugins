@@ -11,6 +11,7 @@ export function statusText(
   state: QaSessionState,
   runningPhrase: string | null,
 ): string | null {
+  if (state.pendingMessage !== null) return "Подготавливаю ответ…";
   if (state.phase === "creating") return "Подключаюсь…";
   if (state.phase === "reconnecting")
     return "Связь потерялась. Подключаюсь снова…";

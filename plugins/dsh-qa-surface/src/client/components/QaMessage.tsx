@@ -15,10 +15,18 @@ function QaAttachedImage({
   resolve,
 }: {
   readonly image: QaImageView;
-  readonly resolve: (attachmentId: string) => Promise<string>;
+  readonly resolve?: (attachmentId: string) => Promise<string>;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(image.previewUrl ?? null);
   useEffect(() => {
+    if (image.previewUrl !== undefined) {
+      setUrl(image.previewUrl);
+      return;
+    }
+    if (resolve === undefined) {
+      setUrl("");
+      return;
+    }
     let alive = true;
     // Deduplication and revocation live in the controller's per-chat asset
     // repository; this effect only projects one resolution.
@@ -33,7 +41,7 @@ function QaAttachedImage({
     return () => {
       alive = false;
     };
-  }, [image.attachmentId, resolve]);
+  }, [image.attachmentId, image.previewUrl, resolve]);
   if (url === null) {
     return <span className="dsh-qa-message__image" data-state="loading" />;
   }
@@ -160,7 +168,8 @@ function sameImages(
   return a.every(
     (image, index) =>
       image.attachmentId === (b[index] as QaImageView).attachmentId &&
-      image.mediaType === (b[index] as QaImageView).mediaType,
+      image.mediaType === (b[index] as QaImageView).mediaType &&
+      image.previewUrl === (b[index] as QaImageView).previewUrl,
   );
 }
 
@@ -358,7 +367,9 @@ export const QaMessage = memo(
         </span>
       );
     const showActions =
-      message.role !== "system" && message.status !== "streaming";
+      message.role !== "system" &&
+      message.status !== "streaming" &&
+      message.status !== "pending";
     return (
       <article
         className={`dsh-qa-message dsh-qa-message--${message.role}`}
@@ -386,15 +397,13 @@ export const QaMessage = memo(
           ) : null}
           {message.role === "user" && message.images !== undefined ? (
             <div className="dsh-qa-message__images">
-              {message.images.map((image) =>
-                resolveImage === undefined ? null : (
-                  <QaAttachedImage
-                    key={image.attachmentId}
-                    image={image}
-                    resolve={resolveImage}
-                  />
-                ),
-              )}
+              {message.images.map((image) => (
+                <QaAttachedImage
+                  key={image.attachmentId}
+                  image={image}
+                  resolve={resolveImage}
+                />
+              ))}
             </div>
           ) : null}
           {message.role === "assistant" && renderMarkdown ? (
@@ -410,6 +419,15 @@ export const QaMessage = memo(
             <span className="dsh-qa-message__cursor" aria-hidden="true" />
           ) : null}
         </div>
+        {message.role === "user" && message.status === "pending" ? (
+          <span className="dsh-qa-message__pending" role="status">
+            <span
+              className="dsh-qa-message__pending-spinner"
+              aria-hidden="true"
+            />
+            Подготавливаю ответ…
+          </span>
+        ) : null}
         {message.role === "assistant" &&
         onOpenSources !== undefined &&
         message.sources !== undefined &&

@@ -103,6 +103,7 @@ export function projectBoundSessionState(
     phase,
     sessionId: input.sessionId,
     messages,
+    pendingMessage: null,
     error,
     canSend: input.connected && phase === "ready" && input.policyReady,
     canStop: input.connected && snapshot.running && config.ui.showStop,

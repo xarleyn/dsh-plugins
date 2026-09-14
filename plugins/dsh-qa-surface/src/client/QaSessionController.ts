@@ -9,6 +9,7 @@ import { qaStorageNamespace } from "../shared/session-key.js";
 import type {
   QaAttachmentDraft,
   QaFileDraft,
+  QaPendingUserMessage,
   QaSessionState,
   QaSubagentView,
   ResolvedQaSurfaceConfig,
@@ -105,6 +106,15 @@ const CONFIGURATION_ERROR = "Настройки помощника недост�
  */
 const PENDING_POLL_MS = 1_000;
 
+interface PendingSubmission {
+  readonly message: QaPendingUserMessage;
+  /** Number of durable user rows present before this send started. */
+  baselineUserCount: number;
+  accepted: boolean;
+  /** Lets a completed Host turn retire the optimistic row even if Chat lagged. */
+  sawRunning: boolean;
+}
+
 /**
  * The only module that couples QA behavior to DSH Session/client APIs. It owns
  * the chat lifecycle state machine; the observable wait, browser-local chat
@@ -138,6 +148,8 @@ export class QaSessionController {
   private materializing: Promise<boolean> | undefined;
   private operationError: string | null = null;
   private admissionPending = false;
+  private pendingSubmission: PendingSubmission | undefined;
+  private pendingSequence = 0;
   private policyReady = false;
   private drafting = false;
   /** The chat session to return to when a subagent view closes. */
@@ -228,55 +240,69 @@ export class QaSessionController {
       this.publish();
       return false;
     }
-    if (this.session === undefined) {
-      // A draft chat materializes its session only now: nothing was created
-      // when the user pressed "New chat", so the first prompt pays for it.
-      if (!this.drafting || this.materializing !== undefined) return false;
-      if (!(await this.materializeDraft()) || this.session === undefined) {
-        return false;
-      }
-    }
     this.operationError = null;
-    const step = await this.attestPolicy();
-    if (step.kind === "stale") {
-      // The user moved to another chat while the proof was pending; that
-      // binding attests through its own flow and must not receive a prompt
-      // meant for the old one.
-      return false;
-    }
-    let attestedId = step.kind === "ok" ? step.sessionId : null;
-    if (attestedId === null) {
-      attestedId = await this.recoverForSend();
-      if (attestedId === null) return false;
-    }
-    // Nothing can interleave between the last await and here, so matching the
-    // attested id proves the prompt rides exactly the session it proved.
-    const target = this.session;
-    if (
-      this.disposed ||
-      target === undefined ||
-      String(target.sessionId) !== attestedId
-    ) {
-      return false;
-    }
-    let receipts = new Map<string, string>();
-    if (files.length > 0) {
-      const outcome = await stageQaFiles(this.fileUpload(), target, files);
-      if (outcome.kind !== "ok") {
-        if (this.session === target) {
-          this.operationError =
-            outcome.kind === "unavailable"
-              ? "Вложения недоступны на этом сервере."
-              : "Не удалось приложить файл.";
-          this.publish();
+    // Regeneration rides a hidden marker and must never leak it into the UI.
+    const submission =
+      prompt === QA_REGENERATE_MARKER
+        ? undefined
+        : this.beginSubmission(prompt, attachments);
+    let accepted = false;
+    let target: SessionFace | undefined;
+    try {
+      if (this.session === undefined) {
+        // A draft chat materializes its session only now: nothing was created
+        // when the user pressed "New chat", so the first prompt pays for it.
+        if (!this.drafting || this.materializing !== undefined) return false;
+        if (!(await this.materializeDraft()) || this.session === undefined) {
+          return false;
         }
+      }
+      const step = await this.attestPolicy();
+      if (step.kind === "stale") {
+        // The user moved to another chat while the proof was pending; that
+        // binding attests through its own flow and must not receive a prompt
+        // meant for the old one.
         return false;
       }
-      receipts = outcome.receipts;
-    }
-    this.admissionPending = true;
-    this.publish();
-    try {
+      let attestedId = step.kind === "ok" ? step.sessionId : null;
+      if (attestedId === null) {
+        attestedId = await this.recoverForSend();
+        if (attestedId === null) return false;
+      }
+      // Nothing can interleave between the last await and here, so matching the
+      // attested id proves the prompt rides exactly the session it proved.
+      target = this.session;
+      if (
+        this.disposed ||
+        target === undefined ||
+        String(target.sessionId) !== attestedId
+      ) {
+        return false;
+      }
+      if (submission !== undefined && this.pendingSubmission === submission) {
+        // Recovery may have replaced the original chat with a fresh session;
+        // reconcile against the actual prompt target, not the abandoned one.
+        submission.baselineUserCount = this.state.messages.filter(
+          (message) => message.role === "user",
+        ).length;
+      }
+      let receipts = new Map<string, string>();
+      if (files.length > 0) {
+        const outcome = await stageQaFiles(this.fileUpload(), target, files);
+        if (outcome.kind !== "ok") {
+          if (this.session === target) {
+            this.operationError =
+              outcome.kind === "unavailable"
+                ? "Вложения недоступны на этом сервере."
+                : "Не удалось приложить файл.";
+            this.publish();
+          }
+          return false;
+        }
+        receipts = outcome.receipts;
+      }
+      this.admissionPending = true;
+      this.publish();
       const content = buildQaPromptContent(prompt, attachments, receipts);
       const result = await target.prompt(content, "queue");
       if (this.session !== target) return false;
@@ -285,6 +311,10 @@ export class QaSessionController {
         this.operationError = "Не удалось отправить сообщение.";
         this.publish();
         return false;
+      }
+      accepted = true;
+      if (submission !== undefined && this.pendingSubmission === submission) {
+        submission.accepted = true;
       }
       this.publish();
       return true;
@@ -296,7 +326,64 @@ export class QaSessionController {
         this.publish();
       }
       return false;
+    } finally {
+      if (
+        !accepted &&
+        submission !== undefined &&
+        this.pendingSubmission === submission
+      ) {
+        this.pendingSubmission = undefined;
+        this.publish();
+      }
     }
+  }
+
+  /** Publish a browser-only copy before any network or Host admission awaits. */
+  private beginSubmission(
+    text: string,
+    attachments: readonly QaAttachmentDraft[],
+  ): PendingSubmission {
+    const submission: PendingSubmission = {
+      message: {
+        id: `pending:${++this.pendingSequence}`,
+        role: "user",
+        text,
+        status: "pending",
+        timestamp: Date.now(),
+        images: attachments.flatMap((attachment) =>
+          attachment.kind === "image"
+            ? [
+                {
+                  attachmentId: attachment.id,
+                  mediaType: attachment.mediaType,
+                  // The composer revokes its blob URL after send succeeds;
+                  // the optimistic row may outlive that hand-off.
+                  previewUrl: `data:${attachment.mediaType};base64,${attachment.data}`,
+                },
+              ]
+            : [],
+        ),
+        files: attachments.flatMap((attachment) =>
+          attachment.kind === "file"
+            ? [
+                {
+                  attachmentId: attachment.id,
+                  name: attachment.name,
+                  bytes: attachment.bytes,
+                },
+              ]
+            : [],
+        ),
+      },
+      baselineUserCount: this.state.messages.filter(
+        (message) => message.role === "user",
+      ).length,
+      accepted: false,
+      sawRunning: false,
+    };
+    this.pendingSubmission = submission;
+    this.publish();
+    return submission;
   }
 
   /**
@@ -347,6 +434,7 @@ export class QaSessionController {
       }
     }
     this.drafting = true;
+    this.pendingSubmission = undefined;
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
@@ -416,6 +504,7 @@ export class QaSessionController {
       return;
     const operation = ++this.generation;
     this.drafting = false;
+    this.pendingSubmission = undefined;
     this.viewingSubagent = null;
     this.unbind();
     this.operationError = null;
@@ -471,6 +560,7 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.drafting = false;
+    this.pendingSubmission = undefined;
     this.viewingSubagent = { id, title };
     this.unbind();
     this.operationError = null;
@@ -836,7 +926,9 @@ export class QaSessionController {
     if (this.drafting && this.session === undefined) {
       // Draft state: an empty writable composer without a bound session. The
       // session list is untouched — nothing exists until the first send.
-      const materializing = this.materializing !== undefined;
+      const materializing =
+        this.materializing !== undefined ||
+        this.pendingSubmission !== undefined;
       this.state = {
         ...QA_SESSION_IDLE_STATE,
         phase: materializing
@@ -846,6 +938,7 @@ export class QaSessionController {
             : "idle",
         error: this.operationError,
         canSend: connected && !materializing,
+        pendingMessage: this.pendingSubmission?.message ?? null,
         chatsRevision: this.chatsRevision,
       };
       this.emit();
@@ -875,7 +968,7 @@ export class QaSessionController {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
     this.syncPendingPolling(snapshot.running === true);
-    this.state = projectBoundSessionState({
+    const projectionInput = {
       connected,
       sessionId,
       sessionSnapshot: snapshot,
@@ -888,11 +981,37 @@ export class QaSessionController {
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
       policyReady: this.policyReady,
-      admissionPending: this.admissionPending,
+      admissionPending:
+        this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       config: this.config,
-    });
+    } as const;
+    let projected = projectBoundSessionState(projectionInput);
+    const pending = this.pendingSubmission;
+    if (pending !== undefined) {
+      if (snapshot.running) pending.sawRunning = true;
+      const committedUserCount = projected.messages.filter(
+        (message) => message.role === "user",
+      ).length;
+      if (
+        committedUserCount > pending.baselineUserCount ||
+        (pending.accepted && pending.sawRunning && !snapshot.running)
+      ) {
+        this.pendingSubmission = undefined;
+        // The first projection was intentionally busy while the optimistic
+        // row existed. Recompute once so the same notification can restore
+        // ready/sendable state when that row is retired.
+        projected = projectBoundSessionState({
+          ...projectionInput,
+          admissionPending: this.admissionPending,
+        });
+      }
+    }
+    this.state = {
+      ...projected,
+      pendingMessage: this.pendingSubmission?.message ?? null,
+    };
     this.emit();
   }
 

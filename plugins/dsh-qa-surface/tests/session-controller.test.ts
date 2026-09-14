@@ -8,6 +8,11 @@ import {
   sessionFace,
   conversationBinding,
 } from "./helpers/session-fakes.js";
+import { legacy, snapshot } from "./helpers/conversation-fakes.js";
+import type {
+  ConversationNode,
+  ConversationSnapshot,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 
 describe("QA session controller", () => {
@@ -225,6 +230,75 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("shows an optimistic user message while send admission is pending", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+
+    let releaseAttestation!: (
+      value: Awaited<ReturnType<typeof world.secureSession>>,
+    ) => void;
+    world.secureSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseAttestation = resolve;
+        }),
+    );
+
+    const pendingImage: QaImageDraft = {
+      kind: "image",
+      id: "draft-image",
+      mediaType: "image/png",
+      name: "shot.png",
+      data: "AAAA",
+      previewUrl: "blob:composer-preview",
+    };
+    const sending = controller.send(" Долгий вопрос ", [pendingImage]);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "running",
+      canSend: false,
+      pendingMessage: {
+        role: "user",
+        text: "Долгий вопрос",
+        status: "pending",
+        images: [
+          {
+            attachmentId: "draft-image",
+            previewUrl: "data:image/png;base64,AAAA",
+          },
+        ],
+      },
+    });
+
+    releaseAttestation({
+      ok: true,
+      value: {
+        sessionId: "saved",
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    expect(await sending).toBe(true);
+
+    const saved = world.faces.get("saved");
+    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
+    expect(controller.getSnapshot().pendingMessage).not.toBeNull();
+    saved?.source.set({ ...saved.source.getSnapshot(), running: false });
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    controller.dispose();
+  });
+
   it("stages attached files and cites their receipts in the prompt", async () => {
     const world = harness(["saved"]);
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
@@ -306,6 +380,7 @@ describe("QA session controller", () => {
     expect(await controller.send("hello", [note])).toBe(false);
     expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     expect(controller.getSnapshot().error).toMatch(/Не удалось приложить/u);
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
     controller.dispose();
   });
 
@@ -477,6 +552,30 @@ describe("QA session controller", () => {
       [{ type: "text", text: "hello" }],
       "queue",
     );
+    const replacement = world.bindings.get("created-2");
+    replacement?.snapshot.set(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "user",
+              seq: 1,
+              time: 10,
+              source: {},
+              content: [{ type: "text", text: "hello" }],
+            },
+          ] as ConversationNode[],
+        }),
+      ) as ConversationSnapshot,
+    );
+    const chatTarget = replacement?.target.mock.results[0]?.value;
+    chatTarget?.set(undefined);
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user"),
+    ).toHaveLength(1);
     controller.dispose();
   });
 

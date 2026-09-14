@@ -176,6 +176,37 @@ describe("QA message", () => {
     expect(document.querySelector(".dsh-qa-message__byline")).toBeNull();
   });
 
+  it("renders an optimistic bubble with explicit preparation feedback", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "pending:1",
+          role: "user",
+          text: "Долгий вопрос",
+          status: "pending",
+          images: [
+            {
+              attachmentId: "draft-image",
+              mediaType: "image/png",
+              previewUrl: "blob:preview",
+            },
+          ],
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+
+    expect(screen.getByText("Долгий вопрос")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain(
+      "Подготавливаю ответ",
+    );
+    expect(document.querySelector("img")?.getAttribute("src")).toBe(
+      "blob:preview",
+    );
+    expect(document.querySelector(".dsh-qa-message__actions")).toBeNull();
+  });
+
   it("renders a sent file attachment as a badged handle", () => {
     render(
       <QaMessage
