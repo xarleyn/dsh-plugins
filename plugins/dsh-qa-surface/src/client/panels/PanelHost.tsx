@@ -62,7 +62,8 @@ class PanelErrorBoundary extends Component<
     if (this.state.failed) {
       return (
         <div className="dsh-qa-extension-panel__fallback" role="alert">
-          Панель «{this.props.definition.kind}» недоступна (id: {this.props.definition.id}).
+          Панель «{this.props.definition.kind}» недоступна (id:{" "}
+          {this.props.definition.id}).
         </div>
       );
     }
@@ -70,7 +71,11 @@ class PanelErrorBoundary extends Component<
   }
 }
 
-function MissingPanel({ definition }: { readonly definition: QaSurfacePanelDefinition }) {
+function MissingPanel({
+  definition,
+}: {
+  readonly definition: QaSurfacePanelDefinition;
+}) {
   return (
     <div className="dsh-qa-extension-panel__fallback" role="status">
       Панель «{definition.kind}» недоступна (id: {definition.id}).
@@ -129,7 +134,11 @@ export interface QaPanelHostProps {
   readonly renderSlot: RenderPanelSlot;
 }
 
-export function QaPanelHost({ panels, sessionId, renderSlot }: QaPanelHostProps) {
+export function QaPanelHost({
+  panels,
+  sessionId,
+  renderSlot,
+}: QaPanelHostProps) {
   const snapshot = useSyncExternalStore(
     panels.subscribe,
     panels.getSnapshot,
@@ -150,11 +159,16 @@ export function QaPanelHost({ panels, sessionId, renderSlot }: QaPanelHostProps)
   const presentation: QaSurfacePanelPresentation =
     available < QA_PANEL_MOBILE_BREAKPOINT_PX ? "fullscreen" : "side";
   const [width, setWidth] = useState(() =>
-    clampQaPanelWidth(window.innerWidth * QA_PANEL_DEFAULT_RATIO, window.innerWidth),
+    clampQaPanelWidth(
+      window.innerWidth * QA_PANEL_DEFAULT_RATIO,
+      window.innerWidth,
+    ),
   );
 
   if (active !== undefined) mounted.current.add(active.id);
-  const liveIds = new Set(snapshot.definitions.map((definition) => definition.id));
+  const liveIds = new Set(
+    snapshot.definitions.map((definition) => definition.id),
+  );
   for (const id of mounted.current) {
     if (!liveIds.has(id)) mounted.current.delete(id);
   }
@@ -185,7 +199,10 @@ export function QaPanelHost({ panels, sessionId, renderSlot }: QaPanelHostProps)
       const target = previousFocus.current;
       restoreFrame = requestAnimationFrame(() => {
         if (target?.isConnected) target.focus();
-        else document.querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")?.focus();
+        else
+          document
+            .querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")
+            ?.focus();
       });
       previousFocus.current = null;
     }
@@ -306,7 +323,10 @@ export function QaPanelHost({ panels, sessionId, renderSlot }: QaPanelHostProps)
         <div className="dsh-qa-extension-panel__bodies">
           {snapshot.definitions.map((definition) => {
             const visible = definition.kind === snapshot.activeKind;
-            if (!visible && (!definition.keepMounted || !mounted.current.has(definition.id))) {
+            if (
+              !visible &&
+              (!definition.keepMounted || !mounted.current.has(definition.id))
+            ) {
               return null;
             }
             const signal = panels.signal(definition.kind);

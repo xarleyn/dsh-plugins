@@ -24,7 +24,9 @@ function PanelIcon({ token }: { readonly token: string | undefined }) {
     case "terminal":
       return <path d="m3.5 5 2.5 2.5L3.5 10M7.5 10h5" />;
     default:
-      return <path d="M5.5 2.75h5v2.5h2.5v5h-2.5v2.5h-5v-2.5H3v-5h2.5zM6.5 6.25h3v3h-3z" />;
+      return (
+        <path d="M5.5 2.75h5v2.5h2.5v5h-2.5v2.5h-5v-2.5H3v-5h2.5zM6.5 6.25h3v3h-3z" />
+      );
   }
 }
 
