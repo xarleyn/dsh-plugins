@@ -1,3 +1,15 @@
+## 0.2.1 (2026-09-14)
+
+### 🩹 Fixes
+
+- Keep tool-call checks strictly observational in audit mode. Findings are still ([d50922f](https://github.com/xarleyn/dsh-plugins/commit/d50922f))
+  scanned and recorded, but accumulated turn risk can no longer turn an audited
+  tool call into an approval request or denial.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-13)
 
 ### 🚀 Features
