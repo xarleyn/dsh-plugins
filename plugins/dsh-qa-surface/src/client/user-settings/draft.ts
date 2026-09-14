@@ -1,25 +1,25 @@
 import {
-  QA_SKILL_FILE_MAX_BYTES,
-  serializeSkillFile,
-  skillFileBytes,
   skillNameProblem,
   validateSkillDraft,
-  type QaSkillFileDraft,
-} from "../../personal-skills/skill-file.js";
+} from "../../personal-skills/skill-format.js";
 import { pluralRu } from "../settings/format.js";
 import type {
   QaSkillDiagnostic,
   QaSkillDocument,
   QaSkillDraftInput,
-  QaSkillJsonValue,
   QaSkillSummary,
 } from "../../types.js";
 
 /**
- * The editor's draft: a plain, mutable-shaped snapshot of one skill, plus
- * every pure helper the pages share. Nothing here talks to the Host, so the
- * same projection feeds the live preview, the local validation and the save
- * payload — the editor cannot show one thing and write another.
+ * The editor's draft: a plain, mutable-shaped snapshot of one skill, plus the
+ * pure helpers the pages share.
+ *
+ * This module holds no serializer on purpose. The Host owns the file format;
+ * the editor checks the subset of rules it can check by itself — the name
+ * grammar, the required fields, the declared tools — and asks the Host for the
+ * rest: the exact file, the operator's size limit, the preserved frontmatter.
+ * A YAML library's Node build carries `require` calls the browser module
+ * loader cannot answer, so the format's YAML half stays on the Host.
  */
 export interface QaSkillDraft {
   readonly name: string;
@@ -99,46 +99,20 @@ export function draftIsDirty(
   );
 }
 
-function toFileDraft(
-  draft: QaSkillDraft,
-  extraFrontmatter: Readonly<Record<string, QaSkillJsonValue>>,
-): QaSkillFileDraft {
-  const whenToUse = draft.whenToUse.trim();
-  return {
-    name: draft.name.trim(),
-    description: draft.description,
-    whenToUse: whenToUse === "" ? null : whenToUse,
-    modelInvocable: draft.modelInvocable,
-    userInvocable: draft.userInvocable,
-    allowedTools: draft.allowedTools,
-    extraFrontmatter,
-    body: draft.body,
-  };
-}
-
-/** The exact file a Save would write, built by the serializer the Host uses. */
-export function draftPreview(
-  draft: QaSkillDraft,
-  extraFrontmatter: Readonly<Record<string, QaSkillJsonValue>>,
-): string {
-  return serializeSkillFile(toFileDraft(draft, extraFrontmatter));
-}
-
 export interface QaSkillDraftDiagnostics {
   readonly availableTools: readonly string[];
-  readonly maxBytes?: number;
 }
 
 /**
- * Validate the draft the way the Host will, so the editor's messages appear
- * while typing instead of after a round trip. The Host stays the authority.
+ * The rules the editor checks by itself, so typing is answered immediately.
+ * The size limit, the preserved frontmatter and the serialized file are the
+ * Host's business and arrive from it; the Host also re-checks all of this on
+ * every write, so nothing here is the authority.
  */
 export function draftDiagnostics(
   draft: QaSkillDraft,
-  extraFrontmatter: Readonly<Record<string, QaSkillJsonValue>>,
   options: QaSkillDraftDiagnostics,
 ): readonly QaSkillDiagnostic[] {
-  const text = draftPreview(draft, extraFrontmatter);
   return validateSkillDraft({
     name: draft.name.trim(),
     description: draft.description,
@@ -146,10 +120,7 @@ export function draftDiagnostics(
     modelInvocable: draft.modelInvocable,
     userInvocable: draft.userInvocable,
     allowedTools: draft.allowedTools,
-    sizeBytes: skillFileBytes(text),
-    maxBytes: options.maxBytes ?? QA_SKILL_FILE_MAX_BYTES,
     availableTools: options.availableTools,
-    extraFieldNames: Object.keys(extraFrontmatter),
   });
 }
 

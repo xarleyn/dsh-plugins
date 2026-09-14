@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   QA_SKILL_DESCRIPTION_MAX,
   QA_SKILL_WHEN_TO_USE_MAX,
-} from "../../personal-skills/skill-file.js";
+} from "../../personal-skills/skill-format.js";
 import { QaModal } from "../components/QaModal.js";
 import type {
   QaSkillDiagnostic,
@@ -22,7 +22,6 @@ import {
   draftHasContent,
   draftIsDirty,
   draftIsSavable,
-  draftPreview,
   draftDiagnostics,
   draftInput,
   emptyDraft,
@@ -41,11 +40,24 @@ import { QaSkillToolPicker } from "./SkillToolPicker.js";
 
 const FORM_ID = "dsh-qa-settings-skill-form";
 
+/** What the Host last answered about the draft being edited. */
+export interface QaSkillValidationState {
+  /** The file a save would write, as the Host's serializer renders it. */
+  readonly preview: string;
+  readonly diagnostics: readonly QaSkillDiagnostic[];
+  /** True while a newer draft is on its way to the Host. */
+  readonly pending: boolean;
+}
+
 export interface QaSkillEditorProps {
   /** `create` starts from an empty draft; `edit` from the loaded document. */
   readonly mode: "create" | "edit";
   /** Absent while a fresh skill is being created. */
   readonly document: QaSkillDocument | null;
+  /** The Host's answer for the current draft. */
+  readonly validation: QaSkillValidationState;
+  /** Report the draft so the page can ask the Host about it. */
+  readonly onDraftChange: (input: QaSkillDraftInput) => void;
   readonly tools: readonly QaSkillToolDescriptor[];
   readonly toolsError: string | null;
   readonly saving: boolean;
@@ -61,9 +73,13 @@ export interface QaSkillEditorProps {
 
 /**
  * One skill's editor. It never wraps itself in a nested modal — the settings
- * dialog's own content area is the page — and the preview is produced by the
- * same serializer and validator the Host uses, so what the panel shows is
- * exactly what a Save writes.
+ * dialog's own content area is the page.
+ *
+ * Two validators run: this component checks the rules it can check instantly,
+ * and the Host answers with the authoritative set plus the exact file a save
+ * would write. Both are shown, and a save is only offered when neither has an
+ * error — the Host still refuses on write, because a stale answer is always
+ * possible between a keystroke and a round trip.
  */
 export function QaSkillEditor(props: QaSkillEditorProps) {
   const { document } = props;
@@ -94,16 +110,22 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
   // session can reach nothing: only a loaded catalog may call a tool missing.
   const catalogKnown = props.tools.length > 0;
   const diagnostics = useMemo(
-    () => draftDiagnostics(draft, extraFrontmatter, { availableTools }),
-    [draft, extraFrontmatter, availableTools],
+    () => draftDiagnostics(draft, { availableTools }),
+    [draft, availableTools],
   );
-  const blocking = diagnostics.filter((entry) => entry.severity === "error");
+  // The Host's set is the authority, but it describes a slightly older draft:
+  // while a newer one is in flight its errors are held back so a just-fixed
+  // problem cannot keep the button disabled.
+  const blocking = mergeDiagnostics(
+    diagnostics,
+    props.validation.pending ? [] : props.validation.diagnostics,
+  ).filter((entry) => entry.severity === "error");
+  const onDraftChange = props.onDraftChange;
+  useEffect(() => {
+    onDraftChange(draftInput(draft, document?.revision ?? null));
+  }, [draft, document, onDraftChange]);
   const changed =
     document === null ? draftHasContent(draft) : draftIsDirty(draft, document);
-  const preview = useMemo(
-    () => draftPreview(draft, extraFrontmatter),
-    [draft, extraFrontmatter],
-  );
   const update = (patch: Partial<QaSkillDraft>) =>
     setDraft((current) => ({ ...current, ...patch }));
   const back = () => {
@@ -284,7 +306,11 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         />
       </QaSettingsField>
       <SkillDiagnostics
-        diagnostics={mergeDiagnostics(storedDiagnostics, diagnostics)}
+        diagnostics={mergeDiagnostics(
+          storedDiagnostics,
+          diagnostics,
+          props.validation.diagnostics,
+        )}
       />
       <QaSettingsSection title="Дополнительно">
         <QaSettingsButton
@@ -310,9 +336,12 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
             )}
             <div>
               <p className="dsh-qa-settings__field-hint">
-                Предпросмотр SKILL.md:
+                Предпросмотр SKILL.md
+                {props.validation.pending ? " (проверка…)" : ""}:
               </p>
-              <pre className="dsh-qa-settings__preview">{preview}</pre>
+              <pre className="dsh-qa-settings__preview">
+                {props.validation.preview}
+              </pre>
             </div>
           </div>
         ) : null}

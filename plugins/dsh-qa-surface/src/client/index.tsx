@@ -42,6 +42,7 @@ import type {
   QaSkillRemoval,
   QaSkillSummary,
   QaSkillToolDescriptor,
+  QaSkillValidation,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
@@ -193,6 +194,11 @@ interface QaPolicyRemote extends QaAccountsApi {
   ): Promise<
     RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
   >;
+  skillsValidate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
@@ -276,6 +282,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         skillsRemove: (token, name, expectedRevision) =>
           policyRemote.skillsRemove(token, name, expectedRevision),
         skillsTools: (token) => policyRemote.skillsTools(token),
+        skillsValidate: (token, name, input) =>
+          policyRemote.skillsValidate(token, name, input),
       };
       const approvalApi: QaApprovalApi = {
         pendingApprovals: (token, sessionId) =>

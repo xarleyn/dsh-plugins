@@ -6,6 +6,7 @@ import type {
   QaSkillRemoval,
   QaSkillSummary,
   QaSkillToolDescriptor,
+  QaSkillValidation,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { QaPersonalSkillError } from "./errors.js";
@@ -35,7 +36,17 @@ export interface QaPersonalSkillRemotes {
     name: string,
     expectedRevision: string | null,
   ): QaSkillRemoval;
+  validate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): QaSkillValidation;
   tools(token: string): { readonly tools: readonly QaSkillToolDescriptor[] };
+  validate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): QaSkillValidation;
 }
 
 export function createQaPersonalSkillRemotes(options: {
@@ -87,5 +98,7 @@ export function createQaPersonalSkillRemotes(options: {
       run(() => ({
         tools: skills.tools(contextOf(token)),
       })),
+    validate: (token, name, input) =>
+      run(() => skills.validate(contextOf(token), name, input), input.name),
   };
 }

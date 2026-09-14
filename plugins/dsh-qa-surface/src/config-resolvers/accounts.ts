@@ -8,7 +8,7 @@ import {
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
   skillRelativeRootProblem,
-} from "../personal-skills/skill-file.js";
+} from "../personal-skills/skill-format.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";

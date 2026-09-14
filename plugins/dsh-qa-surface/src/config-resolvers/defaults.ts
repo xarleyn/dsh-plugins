@@ -4,7 +4,7 @@ import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
 import {
   QA_SKILL_DEFAULT_RELATIVE_ROOT,
   QA_SKILL_FILE_MAX_BYTES,
-} from "../personal-skills/skill-file.js";
+} from "../personal-skills/skill-format.js";
 import { DEFAULT_THINKING_PHRASES } from "../thinking-phrases.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 

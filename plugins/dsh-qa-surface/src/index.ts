@@ -62,6 +62,7 @@ import type {
   QaSkillRemoval,
   QaSkillSummary,
   QaSkillToolDescriptor,
+  QaSkillValidation,
   QaSourceFilePreview,
   QaWhoamiResult,
 } from "./types.js";
@@ -636,6 +637,19 @@ export class QaSurface extends TypertRemoteService {
     expectedRevision: string | null,
   ): QaSkillRemoval {
     return this.skillRemotes.remove(token, name, expectedRevision);
+  }
+
+  /**
+   * Check an unsaved draft: the file a save would write and the diagnostics
+   * for it. `name` names the stored skill being edited, or null to create one.
+   */
+  @Remote("skillsValidate")
+  skillsValidate(
+    token: string,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): QaSkillValidation {
+    return this.skillRemotes.validate(token, name, input);
   }
 
   /**

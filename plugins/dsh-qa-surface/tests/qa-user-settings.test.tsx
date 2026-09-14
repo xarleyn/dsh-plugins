@@ -107,6 +107,10 @@ function skillApi(
         { name: "write", description: "Write a file", available: false },
       ],
     }),
+    validate: async () => ({
+      ok: true,
+      value: { preview: "", diagnostics: [] },
+    }),
   };
   return {
     api,

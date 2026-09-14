@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   QaSkillDocument,
   QaSkillDraftInput,
@@ -7,8 +7,17 @@ import type {
 } from "../../types.js";
 import type { QaBoundSkillApi } from "../types.js";
 import { QaSkillCatalog } from "./SkillCatalog.js";
-import { QaSkillEditor } from "./SkillEditor.js";
+import { QaSkillEditor, type QaSkillValidationState } from "./SkillEditor.js";
 import { isSkillConflict, skillFailureCopy } from "./copy.js";
+
+/** How long typing settles before the Host is asked about the draft. */
+const VALIDATION_DEBOUNCE_MS = 350;
+
+const NO_VALIDATION: QaSkillValidationState = {
+  preview: "",
+  diagnostics: [],
+  pending: false,
+};
 
 export interface QaSkillsSettingsPageProps {
   /** The token-bound skill API the surface hands to this page. */
@@ -41,6 +50,9 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
   const [editorError, setEditorError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<QaSkillDraftInput | null>(null);
+  const [validation, setValidation] =
+    useState<QaSkillValidationState>(NO_VALIDATION);
 
   const loadTools = useCallback(async () => {
     const result = await api.tools();
@@ -87,8 +99,39 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
     void loadTools();
   }, [loadList, loadTools]);
 
+  // The editor reports every draft; the Host is asked once typing settles, and
+  // a late answer for a superseded draft is dropped.
+  const validateRequest = useRef(0);
+  const storedName = view.kind === "edit" ? view.name : null;
+  const reportDraft = useCallback((input: QaSkillDraftInput) => {
+    setDraft(input);
+  }, []);
+  useEffect(() => {
+    if (draft === null) return;
+    const request = validateRequest.current + 1;
+    validateRequest.current = request;
+    setValidation((current) => ({ ...current, pending: true }));
+    const timer = setTimeout(() => {
+      void api.validate(storedName, draft).then((result) => {
+        if (request !== validateRequest.current) return;
+        if (!result.ok) {
+          setValidation({ preview: "", diagnostics: [], pending: false });
+          return;
+        }
+        setValidation({
+          preview: result.value.preview,
+          diagnostics: result.value.diagnostics,
+          pending: false,
+        });
+      });
+    }, VALIDATION_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [api, draft, storedName]);
+
   const openSkill = (name: string) => {
     setDocument(null);
+    setDraft(null);
+    setValidation(NO_VALIDATION);
     setEditorError(null);
     setView({ kind: "edit", name });
     void loadDocument(name);
@@ -130,6 +173,8 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
         onOpen={openSkill}
         onCreate={() => {
           setDocument(null);
+          setDraft(null);
+          setValidation(NO_VALIDATION);
           setEditorError(null);
           setConflict(false);
           setView({ kind: "create" });
@@ -149,6 +194,8 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
       key={view.kind === "edit" ? view.name : "create"}
       mode={view.kind === "edit" ? "edit" : "create"}
       document={document}
+      validation={validation}
+      onDraftChange={reportDraft}
       tools={tools}
       toolsError={toolsError}
       saving={saving}
@@ -156,6 +203,8 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
       conflict={conflict}
       onBack={() => {
         setDocument(null);
+        setDraft(null);
+        setValidation(NO_VALIDATION);
         setEditorError(null);
         setView({ kind: "catalog" });
         void loadList();
