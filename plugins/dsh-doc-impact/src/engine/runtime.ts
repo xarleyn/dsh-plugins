@@ -1,16 +1,25 @@
-import type { ChangeDetectionMode, DocImpactConfig, FileSelector, Scope } from '../config/types.js';
-import { createDetector } from '../changes/detector.js';
-import type { ChangeDetector, FileChange, TurnBaseline } from '../changes/types.js';
-import { matchImpacts } from '../graph/matcher.js';
-import { autoResolveImpact, resolveImpact } from '../impact/resolution.js';
-import type { Impact, ResolveImpactInput } from '../impact/types.js';
-import { ImpactState } from '../impact/state.js';
-import type { Attribution } from './reminder.js';
-import { buildLimitMessage, buildReminderMessage } from './reminder.js';
+import type {
+  ChangeDetectionMode,
+  DocImpactConfig,
+  FileSelector,
+  Scope,
+} from "../config/types.js";
+import { createDetector } from "../changes/detector.js";
+import type {
+  ChangeDetector,
+  FileChange,
+  TurnBaseline,
+} from "../changes/types.js";
+import { matchImpacts } from "../graph/matcher.js";
+import { autoResolveImpact, resolveImpact } from "../impact/resolution.js";
+import type { Impact, ResolveImpactInput } from "../impact/types.js";
+import { ImpactState } from "../impact/state.js";
+import type { Attribution } from "./reminder.js";
+import { buildLimitMessage, buildReminderMessage } from "./reminder.js";
 
 export interface EngineSafety {
   maxReminderRounds: number;
-  onLimit: 'allow' | 'warn' | 'error';
+  onLimit: "allow" | "warn" | "error";
 }
 
 export interface EngineWorkspaceConfig {
@@ -75,7 +84,7 @@ function allSelectors(config: DocImpactConfig): FileSelector[] {
 }
 
 function runtimeKey(sessionId: string, turn: number, scope: Scope): string {
-  return scope === 'session' ? sessionId : `${sessionId}@${turn}`;
+  return scope === "session" ? sessionId : `${sessionId}@${turn}`;
 }
 
 /**
@@ -108,7 +117,11 @@ export class DocImpactEngine {
    * session). Deduplicated per key; the DSH adapter awaits this from the
    * turn's first pre-step, so it always precedes the agent's mutations.
    */
-  async ensureBaseline(sessionId: string, cwd: string, turn: number): Promise<void> {
+  async ensureBaseline(
+    sessionId: string,
+    cwd: string,
+    turn: number,
+  ): Promise<void> {
     const workspace = await this.#options.configProvider(cwd);
     if (workspace === undefined || workspace.config.rules.length === 0) return;
 
@@ -140,15 +153,20 @@ export class DocImpactEngine {
       if (selectors.length === 0) return;
 
       const detectorOptions = { selectors, maxFiles: maxSnapshotFiles };
-      const detector = this.#options.detectorFactory !== undefined
-        ? await this.#options.detectorFactory(mode, cwd, detectorOptions)
-        : await createDetector(mode, cwd, detectorOptions);
+      const detector =
+        this.#options.detectorFactory !== undefined
+          ? await this.#options.detectorFactory(mode, cwd, detectorOptions)
+          : await createDetector(mode, cwd, detectorOptions);
       const baseline = await detector.captureBaseline(cwd);
       if (baseline.degraded) {
-        this.#warn(`baseline snapshot exceeded ${maxSnapshotFiles} files; results degrade gracefully`);
+        this.#warn(
+          `baseline snapshot exceeded ${maxSnapshotFiles} files; results degrade gracefully`,
+        );
       }
       if (workspace.debug) {
-        this.#log(`baseline captured for ${sessionId} turn ${turn} (${baseline.kind}, ${baseline.files.size} dirty path(s))`);
+        this.#log(
+          `baseline captured for ${sessionId} turn ${turn} (${baseline.kind}, ${baseline.files.size} dirty path(s))`,
+        );
       }
 
       const runtime: Runtime = {
@@ -164,11 +182,17 @@ export class DocImpactEngine {
       };
       this.#runtimes.set(key, runtime);
     } catch (error) {
-      this.#warn(`baseline capture failed; impact checks stay inert for this turn (${String(error)})`);
+      this.#warn(
+        `baseline capture failed; impact checks stay inert for this turn (${String(error)})`,
+      );
     }
   }
 
-  async #runtimeFor(sessionId: string, cwd: string, turn: number): Promise<Runtime | undefined> {
+  async #runtimeFor(
+    sessionId: string,
+    cwd: string,
+    turn: number,
+  ): Promise<Runtime | undefined> {
     const workspace = await this.#options.configProvider(cwd);
     if (workspace === undefined) return undefined;
     const key = runtimeKey(sessionId, turn, workspace.config.defaults.scope);
@@ -189,13 +213,22 @@ export class DocImpactEngine {
     turn: number,
     options: { dryRun?: boolean } = {},
   ): Promise<StopDecision> {
-    const idle: StopDecision = { steer: undefined, pending: [], changed: [], knownFiles: new Set<string>(), degraded: false };
+    const idle: StopDecision = {
+      steer: undefined,
+      pending: [],
+      changed: [],
+      knownFiles: new Set<string>(),
+      degraded: false,
+    };
     const runtime = await this.#runtimeFor(sessionId, cwd, turn);
     if (runtime === undefined) return idle;
 
     try {
       const diff = await runtime.detector.computeChanges(cwd, runtime.baseline);
-      if (diff.degraded) this.#warn('change detection exceeded maxSnapshotFiles; results may be partial');
+      if (diff.degraded)
+        this.#warn(
+          "change detection exceeded maxSnapshotFiles; results may be partial",
+        );
 
       const changedPaths = diff.changes.map((change) => change.path);
       const knownFiles = new Set<string>([
@@ -205,7 +238,9 @@ export class DocImpactEngine {
 
       const workspace = await this.#options.configProvider(cwd);
       if (workspace === undefined) return idle;
-      const impacts = matchImpacts(workspace.config, changedPaths, { knownFiles });
+      const impacts = matchImpacts(workspace.config, changedPaths, {
+        knownFiles,
+      });
       runtime.state.reconcile(impacts);
 
       // Automatic resolution (SPEC §31): a pending impact whose target changed
@@ -214,7 +249,9 @@ export class DocImpactEngine {
         const satisfied = autoResolveImpact(impact, changedPaths);
         if (satisfied.status !== impact.status) {
           runtime.state.update(satisfied);
-          this.#log(`auto-resolved impact for rule ${impact.ruleId}: target updated (${impact.targetFiles.join(', ') || 'no targets'})`);
+          this.#log(
+            `auto-resolved impact for rule ${impact.ruleId}: target updated (${impact.targetFiles.join(", ") || "no targets"})`,
+          );
         }
       }
 
@@ -223,31 +260,52 @@ export class DocImpactEngine {
 
       const pending = runtime.state.pending();
       if (workspace.debug) {
-        this.#log(`stop check: ${diff.changes.length} changed path(s), ${pending.length} pending impact(s)`);
+        this.#log(
+          `stop check: ${diff.changes.length} changed path(s), ${pending.length} pending impact(s)`,
+        );
       }
 
       if (options.dryRun === true) {
-        return { steer: undefined, pending, changed: diff.changes, knownFiles, degraded: diff.degraded };
+        return {
+          steer: undefined,
+          pending,
+          changed: diff.changes,
+          knownFiles,
+          degraded: diff.degraded,
+        };
       }
 
-      const steerables = pending.filter((impact) => runtime.state.shouldRemind(impact));
+      const steerables = pending.filter((impact) =>
+        runtime.state.shouldRemind(impact),
+      );
       for (const impact of steerables) runtime.state.recordReminder(impact);
 
       // Impacts still steerable this round are not limit-exhausted yet; only
       // the rest may trigger the one-shot onLimit handling (SPEC §34).
       const steerableIds = new Set(steerables.map((impact) => impact.id));
-      const exhausted = pending.filter((impact) => !steerableIds.has(impact.id));
+      const exhausted = pending.filter(
+        (impact) => !steerableIds.has(impact.id),
+      );
       let limitSteer: string | undefined;
       for (const impact of exhausted) {
         if (runtime.limitNoticed.has(impact.id)) continue;
         runtime.limitNoticed.add(impact.id);
-        if (runtime.safety.onLimit === 'allow') {
-          this.#log(`reminder limit reached for rule ${impact.ruleId}; allowing stop (onLimit: allow)`);
-        } else if (runtime.safety.onLimit === 'warn') {
-          this.#warn(`reminder limit reached for impact ${impact.ruleId}; allowing stop`);
-        } else if (runtime.safety.onLimit === 'error') {
-          this.#options.logger?.error?.(`reminder limit reached for rule ${impact.ruleId}`);
-          limitSteer ??= buildLimitMessage(exhausted, runtime.safety.maxReminderRounds);
+        if (runtime.safety.onLimit === "allow") {
+          this.#log(
+            `reminder limit reached for rule ${impact.ruleId}; allowing stop (onLimit: allow)`,
+          );
+        } else if (runtime.safety.onLimit === "warn") {
+          this.#warn(
+            `reminder limit reached for impact ${impact.ruleId}; allowing stop`,
+          );
+        } else if (runtime.safety.onLimit === "error") {
+          this.#options.logger?.error?.(
+            `reminder limit reached for rule ${impact.ruleId}`,
+          );
+          limitSteer ??= buildLimitMessage(
+            exhausted,
+            runtime.safety.maxReminderRounds,
+          );
         }
       }
 
@@ -260,18 +318,26 @@ export class DocImpactEngine {
         try {
           concurrent = this.#options.concurrentAgents?.(cwd) ?? 1;
         } catch (error) {
-          this.#warn(`attribution probe failed; assuming a single agent (${String(error)})`);
+          this.#warn(
+            `attribution probe failed; assuming a single agent (${String(error)})`,
+          );
         }
-        const attribution: Attribution = concurrent > 1 ? 'uncertain' : 'own';
+        const attribution: Attribution = concurrent > 1 ? "uncertain" : "own";
         steer = buildReminderMessage(steerables, knownFiles, attribution);
         this.#log(
-          `reminder sent: ${steerables.length} impact(s), rules: ${steerables.map((impact) => impact.ruleId).join(', ')}, attribution: ${attribution}`,
+          `reminder sent: ${steerables.length} impact(s), rules: ${steerables.map((impact) => impact.ruleId).join(", ")}, attribution: ${attribution}`,
         );
       } else if (limitSteer !== undefined) {
         steer = limitSteer;
       }
 
-      return { steer, pending, changed: diff.changes, knownFiles, degraded: diff.degraded };
+      return {
+        steer,
+        pending,
+        changed: diff.changes,
+        knownFiles,
+        degraded: diff.degraded,
+      };
     } catch (error) {
       this.#warn(`stop check failed; failing open (${String(error)})`);
       return idle;
@@ -279,12 +345,20 @@ export class DocImpactEngine {
   }
 
   /** `/doc-impact check`: compute impacts now without touching reminder state. */
-  async check(sessionId: string, cwd: string, turn: number): Promise<StopDecision> {
+  async check(
+    sessionId: string,
+    cwd: string,
+    turn: number,
+  ): Promise<StopDecision> {
     return this.evaluateStop(sessionId, cwd, turn, { dryRun: true });
   }
 
   /** `/doc-impact changed`: the current agent-attributed file delta. */
-  async changedFiles(sessionId: string, cwd: string, turn: number): Promise<FileChange[]> {
+  async changedFiles(
+    sessionId: string,
+    cwd: string,
+    turn: number,
+  ): Promise<FileChange[]> {
     const runtime = await this.#runtimeFor(sessionId, cwd, turn);
     if (runtime === undefined) return [];
     const diff = await runtime.detector.computeChanges(cwd, runtime.baseline);
@@ -292,7 +366,11 @@ export class DocImpactEngine {
     return diff.changes;
   }
 
-  async status(sessionId: string, cwd: string, turn: number): Promise<{ pending: Impact[]; resolved: Impact[] }> {
+  async status(
+    sessionId: string,
+    cwd: string,
+    turn: number,
+  ): Promise<{ pending: Impact[]; resolved: Impact[] }> {
     const workspace = await this.#options.configProvider(cwd);
     if (workspace === undefined) return { pending: [], resolved: [] };
     const key = runtimeKey(sessionId, turn, workspace.config.defaults.scope);
@@ -301,7 +379,9 @@ export class DocImpactEngine {
     const pending = runtime.state.pending();
     return {
       pending,
-      resolved: runtime.state.all().filter((impact) => impact.status !== 'pending'),
+      resolved: runtime.state
+        .all()
+        .filter((impact) => impact.status !== "pending"),
     };
   }
 
@@ -313,21 +393,28 @@ export class DocImpactEngine {
     input: ResolveImpactInput,
   ): Promise<ResolveOutcome> {
     const runtime = await this.#runtimeFor(sessionId, cwd, turn);
-    if (runtime === undefined) throw new Error('no pending documentation impacts (no active baseline)');
+    if (runtime === undefined)
+      throw new Error("no pending documentation impacts (no active baseline)");
 
     // Fresh delta, so an update made moments ago is visible immediately.
     const diff = await runtime.detector.computeChanges(cwd, runtime.baseline);
     const changedPaths = diff.changes.map((change) => change.path);
 
-    const targets = runtime.state.pending().filter((impact) => impact.ruleId === input.ruleId);
+    const targets = runtime.state
+      .pending()
+      .filter((impact) => impact.ruleId === input.ruleId);
     if (targets.length === 0) {
-      throw new Error(`no pending impact for rule ${JSON.stringify(input.ruleId)} (already resolved or never triggered)`);
+      throw new Error(
+        `no pending impact for rule ${JSON.stringify(input.ruleId)} (already resolved or never triggered)`,
+      );
     }
 
     for (const impact of targets) {
       runtime.state.update(resolveImpact(impact, input, changedPaths));
     }
-    this.#log(`resolved ${targets.length} impact(s) for rule ${input.ruleId} as ${input.status}`);
+    this.#log(
+      `resolved ${targets.length} impact(s) for rule ${input.ruleId} as ${input.status}`,
+    );
     return { resolved: targets.length, remaining: runtime.state.pending() };
   }
 
@@ -338,7 +425,8 @@ export class DocImpactEngine {
 
   disposeSession(sessionId: string): void {
     for (const key of [...this.#runtimes.keys()]) {
-      if (key === sessionId || key.startsWith(`${sessionId}@`)) this.#runtimes.delete(key);
+      if (key === sessionId || key.startsWith(`${sessionId}@`))
+        this.#runtimes.delete(key);
     }
   }
 }

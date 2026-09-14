@@ -4,12 +4,13 @@ import { discoverBash } from "./run-bash.mjs";
 
 function windowsDiscovery({ env = {}, existing = [], path = {} } = {}) {
   const existingPaths = new Set(existing);
-  return () => discoverBash({
-    platform: "win32",
-    env,
-    exists: (candidate) => existingPaths.has(candidate),
-    findOnPath: (executable) => path[executable] ?? [],
-  });
+  return () =>
+    discoverBash({
+      platform: "win32",
+      env,
+      exists: (candidate) => existingPaths.has(candidate),
+      findOnPath: (executable) => path[executable] ?? [],
+    });
 }
 
 describe("discoverBash", () => {
@@ -41,7 +42,8 @@ describe("discoverBash", () => {
 
   it("derives Git Bash from a git.exe found on PATH", () => {
     const git = "C:\\Users\\dev\\scoop\\apps\\git\\current\\cmd\\git.exe";
-    const bash = "C:\\Users\\dev\\scoop\\apps\\git\\current\\usr\\bin\\bash.exe";
+    const bash =
+      "C:\\Users\\dev\\scoop\\apps\\git\\current\\usr\\bin\\bash.exe";
     const discover = windowsDiscovery({
       existing: [bash],
       path: { "git.exe": [git] },
@@ -71,10 +73,22 @@ describe("discoverBash", () => {
 
     assert.throws(discover, (error) => {
       assert.match(error.message, /Git Bash is required/u);
-      assert.match(error.message, /DSH_BASH_PATH: D:\\missing\\bash\.exe \(not found\)/u);
-      assert.match(error.message, /PATH \(where\.exe bash\.exe\).*not an MSYS Git Bash path/u);
-      assert.match(error.message, /PATH \(where\.exe git\.exe\): C:\\portable\\cmd\\git\.exe/u);
-      assert.match(error.message, /D:\\Programs\\Git\\usr\\bin\\bash\.exe \(not found\)/u);
+      assert.match(
+        error.message,
+        /DSH_BASH_PATH: D:\\missing\\bash\.exe \(not found\)/u,
+      );
+      assert.match(
+        error.message,
+        /PATH \(where\.exe bash\.exe\).*not an MSYS Git Bash path/u,
+      );
+      assert.match(
+        error.message,
+        /PATH \(where\.exe git\.exe\): C:\\portable\\cmd\\git\.exe/u,
+      );
+      assert.match(
+        error.message,
+        /D:\\Programs\\Git\\usr\\bin\\bash\.exe \(not found\)/u,
+      );
       assert.match(error.message, /Set DSH_BASH_PATH/u);
       return true;
     });

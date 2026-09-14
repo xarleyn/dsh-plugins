@@ -23,7 +23,10 @@ export interface HtmlPreview {
   readonly body: string;
 }
 
-export function previewHtml(value: string, options: PreviewOptions): HtmlPreview {
+export function previewHtml(
+  value: string,
+  options: PreviewOptions,
+): HtmlPreview {
   const title = TITLE_PATTERN.exec(value)?.[1]?.trim() ?? "";
   const text = htmlToText(value);
   const half = Math.floor(options.maxChars / 2);
@@ -35,7 +38,10 @@ export function previewHtml(value: string, options: PreviewOptions): HtmlPreview
   if (title !== "") header.push(`title: ${title}`);
   const parts: string[] = [header.join("\n")];
   if (head !== "") parts.push(head.trim());
-  if (omittedChars > 0) parts.push(`[dsh-cas-results: ${formatOmitted(omittedChars)} characters of markup omitted]`);
+  if (omittedChars > 0)
+    parts.push(
+      `[dsh-cas-results: ${formatOmitted(omittedChars)} characters of markup omitted]`,
+    );
   if (tail !== "") parts.push(tail.trim());
   return { body: parts.join("\n\n") };
 }
@@ -45,9 +51,15 @@ export function htmlToText(value: string): string {
   return value
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(script|style|noscript|svg)\b[\s\S]*?<\/\1\s*>/gi, " ")
-    .replace(/<(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article|\/header|\/footer)\s*\/?>/gi, "\n")
+    .replace(
+      /<(?:br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article|\/header|\/footer)\s*\/?>/gi,
+      "\n",
+    )
     .replace(/<[^>]+>/g, " ")
-    .replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);/g, (entity) => ENTITIES[entity] ?? entity)
+    .replace(
+      /&(?:amp|lt|gt|quot|#39|apos|nbsp);/g,
+      (entity) => ENTITIES[entity] ?? entity,
+    )
     .replace(/[ \t]+/g, " ")
     .replace(/\n\s*\n\s*/g, "\n")
     .trim();

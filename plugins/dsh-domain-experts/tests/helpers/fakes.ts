@@ -127,7 +127,9 @@ export function agentOf(options: {
         createdAt: options.createdAt ?? 1_000,
         isSeeded: false,
         ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-        ...(options.depth === undefined ? {} : { delegationDepth: options.depth }),
+        ...(options.depth === undefined
+          ? {}
+          : { delegationDepth: options.depth }),
         ...(options.origin === undefined ? {} : { origin: options.origin }),
       },
     },
@@ -157,7 +159,9 @@ export interface FakeSubagents extends SubagentsFace {
 }
 
 /** A subagent runtime stand-in that records what it was asked to do. */
-export function fakeSubagents(options: FakeSubagentsOptions = {}): FakeSubagents {
+export function fakeSubagents(
+  options: FakeSubagentsOptions = {},
+): FakeSubagents {
   const started: StartedRun[] = [];
   const continued: { readonly label: string }[] = [];
   const disposed: string[] = [];
@@ -176,13 +180,19 @@ export function fakeSubagents(options: FakeSubagentsOptions = {}): FakeSubagents
         start: () => Promise.reject(new Error("not used")),
       } as unknown as SubagentProvider;
     },
-    start(providerName: string, request: SubagentStartRequest): Promise<SubagentRun> {
-      if (options.failWith !== undefined) return Promise.reject(options.failWith);
+    start(
+      providerName: string,
+      request: SubagentStartRequest,
+    ): Promise<SubagentRun> {
+      if (options.failWith !== undefined)
+        return Promise.reject(options.failWith);
       started.push({ provider: providerName, request });
       const result = {
         output: [{ type: "text", text: options.text ?? "plain answer" }],
         stopReason: options.stopReason ?? "completed",
-        ...(options.diagnostic === undefined ? {} : { diagnostic: options.diagnostic }),
+        ...(options.diagnostic === undefined
+          ? {}
+          : { diagnostic: options.diagnostic }),
       };
       return Promise.resolve({
         id: runId,

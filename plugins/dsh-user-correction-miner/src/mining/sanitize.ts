@@ -7,7 +7,10 @@ const SECRET_PATTERNS: readonly RegExp[] = [
 ];
 
 export function redactSecrets(text: string): string {
-  return SECRET_PATTERNS.reduce((current, pattern) => current.replace(pattern, "[REDACTED]"), text);
+  return SECRET_PATTERNS.reduce(
+    (current, pattern) => current.replace(pattern, "[REDACTED]"),
+    text,
+  );
 }
 
 export function boundText(text: string, maxChars: number): string {

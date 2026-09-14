@@ -25,19 +25,25 @@ export function apply(
   const entryConfig = structuredClone(config);
   let source = (): UIRepairPluginConfig => entryConfig;
   ctx.inject(["settings"], (settingsCtx) => {
-    settingsCtx.settings.installSection(ctx, UI_REPAIR_SETTINGS_NAMESPACE, ConfigSchema, entryConfig, {
-      setSource: (current) => {
-        source = current;
+    settingsCtx.settings.installSection(
+      ctx,
+      UI_REPAIR_SETTINGS_NAMESPACE,
+      ConfigSchema,
+      entryConfig,
+      {
+        setSource: (current) => {
+          source = current;
+        },
+        onChange: () => {
+          const resolved = resolvePluginConfig(source());
+          logger.info("config.changed", {
+            enabled: resolved.enabled,
+            mode: resolved.mode,
+            ignoreRules: resolved.ignore.length,
+          });
+        },
       },
-      onChange: () => {
-        const resolved = resolvePluginConfig(source());
-        logger.info("config.changed", {
-          enabled: resolved.enabled,
-          mode: resolved.mode,
-          ignoreRules: resolved.ignore.length,
-        });
-      },
-    });
+    );
   });
   const resolved = resolvePluginConfig(config);
   logger.info("plugin.ready", {

@@ -11,11 +11,10 @@ describe("scanSession", () => {
       userEvent(3, "Спасибо"),
       userEvent(4, "Не запускай сейчас тесты."),
     ];
-    const result = scanSession(
-      { session: header(), events },
-      1,
-      { maxContextEvents: 20, maxContextBytes: 32_768 },
-    );
+    const result = scanSession({ session: header(), events }, 1, {
+      maxContextEvents: 20,
+      maxContextBytes: 32_768,
+    });
     expect(result.eventsScanned).toBe(3);
     expect(result.evidence.map((item) => item.userEventSeq)).toEqual([2, 4]);
     expect(result.evidence[1]?.likelyOneOff).toBe(true);
@@ -24,11 +23,10 @@ describe("scanSession", () => {
 
   it("represents an empty log without inventing a negative event sequence", () => {
     expect(
-      scanSession(
-        { session: header(), events: [] },
-        -1,
-        { maxContextEvents: 20, maxContextBytes: 32_768 },
-      ).capturedThroughSeq,
+      scanSession({ session: header(), events: [] }, -1, {
+        maxContextEvents: 20,
+        maxContextBytes: 32_768,
+      }).capturedThroughSeq,
     ).toBeNull();
   });
 });

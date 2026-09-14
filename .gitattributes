@@ -1,2 +1,13 @@
-# Ensure shell scripts always use LF endings so they run on Linux CI runners
-*.sh text eol=lf
+# Text files live as LF in the repository and in every checkout: the release
+# flow and the test fixtures run on Linux runners, and a working tree that
+# disagrees with the index is invisible to `git status` until something stages
+# it. Shell scripts keep the same ending they had under the previous rule.
+* text=auto eol=lf
+
+# Image assets are bytes, not text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary

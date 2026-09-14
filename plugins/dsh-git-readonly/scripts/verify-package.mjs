@@ -15,7 +15,10 @@ const manifest = JSON.parse(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 
 // Manifest identity.
 assert.equal(manifest.name, "@yadsh/dsh-git-readonly");
@@ -25,7 +28,10 @@ assert.equal(manifest.engines.node, compatibility.node);
 
 // Exports: exhaustive public surface.
 for (const exportPath of [".", "./package.json"]) {
-  assert.ok(Object.hasOwn(manifest.exports, exportPath), `package export is missing: ${exportPath}`);
+  assert.ok(
+    Object.hasOwn(manifest.exports, exportPath),
+    `package export is missing: ${exportPath}`,
+  );
 }
 
 // DSH bundle metadata points at the packaged patch; no client surface.
@@ -44,7 +50,9 @@ assert.match(patch, /name: "@yadsh\/dsh-git-readonly"/u);
 assert.ok(compatibility.deepseekHarness?.range?.length > 0);
 assert.ok(Array.isArray(compatibility.deepseekHarness?.testedReleases));
 assert.ok(
-  compatibility.deepseekHarness?.requiredHostFeatures?.includes("tools/register"),
+  compatibility.deepseekHarness?.requiredHostFeatures?.includes(
+    "tools/register",
+  ),
   "compatibility.json must declare the tools/register host feature",
 );
 
@@ -59,7 +67,12 @@ for (const required of [
   assert.ok(manifest.files.includes(required), `files is missing: ${required}`);
 }
 
-for (const path of ["../lib/index.js", "../lib/index.d.ts", "../README.md", "../LICENSE"]) {
+for (const path of [
+  "../lib/index.js",
+  "../lib/index.d.ts",
+  "../README.md",
+  "../LICENSE",
+]) {
   await access(new URL(path, import.meta.url));
 }
 
@@ -67,8 +80,17 @@ for (const path of ["../lib/index.js", "../lib/index.d.ts", "../README.md", "../
 // tool (deployment allow-lists are built from this list) and must document
 // the read-only security model; SPEC.md is the product contract.
 const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
-for (const toolName of ["dsh_git_context", "dsh_git_history", "dsh_git_show", "dsh_git_blame"]) {
-  assert.match(readme, new RegExp(toolName, "u"), `README must document ${toolName}`);
+for (const toolName of [
+  "dsh_git_context",
+  "dsh_git_history",
+  "dsh_git_show",
+  "dsh_git_blame",
+]) {
+  assert.match(
+    readme,
+    new RegExp(toolName, "u"),
+    `README must document ${toolName}`,
+  );
 }
 assert.match(readme, /## Security model/u);
 const spec = await readFile(new URL("../SPEC.md", import.meta.url), "utf8");

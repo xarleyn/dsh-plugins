@@ -47,6 +47,8 @@ export function domainsTableOf(storage: DomainExpertsStorage): DomainTable {
   return storage.table(DOMAINS_TABLE);
 }
 
-export function memoryTableOf(storage: DomainExpertsStorage): MemoryRecordTable {
+export function memoryTableOf(
+  storage: DomainExpertsStorage,
+): MemoryRecordTable {
   return storage.table(MEMORY_TABLE);
 }

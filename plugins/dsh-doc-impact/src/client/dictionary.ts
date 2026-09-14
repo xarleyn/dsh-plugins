@@ -32,7 +32,7 @@ export const DICT: Record<string, Record<string, string>> = {
     maxSnapshotFilesLabel: "快照文件上限",
     maxSnapshotFilesHint: "基线快照的最大文件数，超出后降级运行。",
     debugLabel: "调试日志",
-    debugHint: "输出基线、变更与提醒的调试信息。"
+    debugHint: "输出基线、变更与提醒的调试信息。",
   },
   en: {
     cardTitle: "Doc Impact",
@@ -54,22 +54,24 @@ export const DICT: Record<string, Record<string, string>> = {
     enabledLabel: "Enabled",
     enabledHint: "When off the plugin stays fully silent and checks nothing.",
     configFileLabel: "Workspace config path",
-    configFileHint: "Relative to the session working directory; .dsh/doc-impact.yml by default.",
+    configFileHint:
+      "Relative to the session working directory; .dsh/doc-impact.yml by default.",
     modeLabel: "Default mode",
     modeHint: "Used by workspace rules that do not declare an explicit mode.",
     maxReminderRoundsLabel: "Max reminder rounds",
     maxReminderRoundsHint: "Steer limit for the same impact in strict modes.",
     onLimitLabel: "On limit",
-    onLimitHint: "allow finishes silently; warn logs; error sends a final notice.",
+    onLimitHint:
+      "allow finishes silently; warn logs; error sends a final notice.",
     maxSnapshotFilesLabel: "Max snapshot files",
-    maxSnapshotFilesHint: "Baseline snapshot cap; detection degrades gracefully beyond it.",
+    maxSnapshotFilesHint:
+      "Baseline snapshot cap; detection degrades gracefully beyond it.",
     debugLabel: "Debug logging",
-    debugHint: "Log baselines, change detection, and reminders."
-  }
+    debugHint: "Log baselines, change detection, and reminders.",
+  },
 };
 
 export function fallbackT(key: string): string {
   const zh = DICT.zh![key];
   return zh === undefined ? key : zh;
 }
-

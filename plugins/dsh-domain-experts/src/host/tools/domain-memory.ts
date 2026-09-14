@@ -13,8 +13,16 @@ const RECORD_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    namespace: { type: "string", required: true, description: "Owning namespace." },
-    key: { type: "string", required: true, description: "Record key inside the namespace." },
+    namespace: {
+      type: "string",
+      required: true,
+      description: "Owning namespace.",
+    },
+    key: {
+      type: "string",
+      required: true,
+      description: "Record key inside the namespace.",
+    },
     text: { type: "string", required: true, description: "Recorded text." },
     tags: {
       type: "array",
@@ -22,7 +30,11 @@ const RECORD_SCHEMA = {
       description: "Free-form tags.",
       items: { type: "string" },
     },
-    updatedAt: { type: "integer", required: true, description: "Last write, epoch ms." },
+    updatedAt: {
+      type: "integer",
+      required: true,
+      description: "Last write, epoch ms.",
+    },
   },
 } as const;
 
@@ -44,7 +56,8 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
         type: "string",
         required: true,
         enum: ["read", "write", "forget", "list"],
-        description: "read searches, write stores, forget deletes one key, list shows namespaces.",
+        description:
+          "read searches, write stores, forget deletes one key, list shows namespaces.",
       },
       key: {
         type: "string",
@@ -61,20 +74,29 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
       },
       namespace: {
         type: "string",
-        description: "Optional namespace to read from; refused when it is not one of yours.",
+        description:
+          "Optional namespace to read from; refused when it is not one of yours.",
       },
-      limit: { type: "integer", description: "Maximum records to return on read or list." },
+      limit: {
+        type: "integer",
+        description: "Maximum records to return on read or list.",
+      },
     },
     output: {
       schema: {
         type: "object",
         additionalProperties: false,
         properties: {
-          action: { type: "string", required: true, description: "Echo of the requested action." },
+          action: {
+            type: "string",
+            required: true,
+            description: "Echo of the requested action.",
+          },
           namespaces: {
             type: "array",
             required: true,
-            description: "Namespaces this expert may use, with their access mode.",
+            description:
+              "Namespaces this expert may use, with their access mode.",
             items: { type: "string" },
           },
           records: {
@@ -83,14 +105,26 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
             description: "Records returned by the call.",
             items: RECORD_SCHEMA,
           },
-          affected: { type: "integer", required: true, description: "Records written or removed." },
-          message: { type: "string", required: true, description: "Human-readable outcome." },
+          affected: {
+            type: "integer",
+            required: true,
+            description: "Records written or removed.",
+          },
+          message: {
+            type: "string",
+            required: true,
+            description: "Human-readable outcome.",
+          },
         },
       },
       render: (_args, value) => {
         const lines = [value.message];
         if (value.namespaces.length > 0) {
-          lines.push("", "Namespaces:", ...value.namespaces.map((item) => `- ${item}`));
+          lines.push(
+            "",
+            "Namespaces:",
+            ...value.namespaces.map((item) => `- ${item}`),
+          );
         }
         if (value.records.length > 0) {
           lines.push("", "Records:");
@@ -114,10 +148,13 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
         }
         const definition = dependencies.requireDefinition(active.domainId);
         const entries = memoryEntries(definition);
-        const namespaces = entries.map((entry) =>
-          `${entry.namespace} (${entry.access === "read-write" ? "read/write" : "read-only"})`,
+        const namespaces = entries.map(
+          (entry) =>
+            `${entry.namespace} (${entry.access === "read-write" ? "read/write" : "read-only"})`,
         );
-        const writable = entries.find((entry) => entry.access === "read-write")?.namespace ?? "";
+        const writable =
+          entries.find((entry) => entry.access === "read-write")?.namespace ??
+          "";
         const readable = entries.map((entry) => entry.namespace);
         const provider = dependencies.memory();
         const limit = clampLimit(args.limit);
@@ -140,9 +177,10 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
             };
           }
           case "read": {
-            const target = args.namespace === undefined || args.namespace === ""
-              ? readable
-              : [requireNamespace(args.namespace, readable)];
+            const target =
+              args.namespace === undefined || args.namespace === ""
+                ? readable
+                : [requireNamespace(args.namespace, readable)];
             const records = await provider.retrieve({
               namespaces: target,
               query: (args.text ?? "").trim(),
@@ -220,7 +258,10 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
   });
 }
 
-function requireNamespace(requested: string, readable: readonly string[]): string {
+function requireNamespace(
+  requested: string,
+  readable: readonly string[],
+): string {
   const normalized = requested.trim().replace(/^\/+|\/+$/gu, "");
   if (!readable.includes(normalized)) {
     throw new DomainExpertsError(

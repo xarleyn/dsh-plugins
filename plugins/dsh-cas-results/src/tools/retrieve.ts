@@ -14,7 +14,12 @@ import { CasError } from "../cas/errors.js";
 import type { CasStore } from "../cas/types.js";
 import type { ResolvedCasResultsConfig } from "../config.js";
 import { CasCounters } from "../observability/counters.js";
-import { missingObjectMessage, readOptionalInteger, readOptionalString, readRefArg } from "./refs.js";
+import {
+  missingObjectMessage,
+  readOptionalInteger,
+  readOptionalString,
+  readRefArg,
+} from "./refs.js";
 
 const ENCODINGS = ["auto", "utf8", "base64", "hex"] as const;
 type Encoding = (typeof ENCODINGS)[number];
@@ -38,17 +43,23 @@ export function createRetrieveTool(deps: RetrieveDeps) {
       ref: {
         type: "string",
         required: true,
-        description: 'Content reference from the offload marker, e.g. "sha256:ab12...".',
+        description:
+          'Content reference from the offload marker, e.g. "sha256:ab12...".',
       },
-      offset: { type: "integer", description: "Byte offset to start reading from. Default: 0." },
+      offset: {
+        type: "integer",
+        description: "Byte offset to start reading from. Default: 0.",
+      },
       limit: {
         type: "integer",
-        description: "Maximum bytes to return. Default and hard maximum come from the plugin configuration.",
+        description:
+          "Maximum bytes to return. Default and hard maximum come from the plugin configuration.",
       },
       encoding: {
         type: "string",
         enum: [...ENCODINGS],
-        description: 'Response encoding. "auto" uses utf8 for text and base64 for binary payloads.',
+        description:
+          'Response encoding. "auto" uses utf8 for text and base64 for binary payloads.',
       },
     },
     output: {
@@ -77,9 +88,18 @@ export function createRetrieveTool(deps: RetrieveDeps) {
         ];
         const footer: string[] = [];
         if (value.truncated) {
-          footer.push("", "More available.", `Call dsh_cas_retrieve with offset=${value.offset + value.returnedBytes}.`);
+          footer.push(
+            "",
+            "More available.",
+            `Call dsh_cas_retrieve with offset=${value.offset + value.returnedBytes}.`,
+          );
         }
-        return [{ type: "text", text: `${header.join("\n")}${value.content}${footer.join("\n")}` }];
+        return [
+          {
+            type: "text",
+            text: `${header.join("\n")}${value.content}${footer.join("\n")}`,
+          },
+        ];
       },
     },
     async execute(args: unknown) {
@@ -87,19 +107,35 @@ export function createRetrieveTool(deps: RetrieveDeps) {
       const hash = readRefArg(query);
       const config = readConfig();
       const requestedLimit = readOptionalInteger(query, "limit");
-      const limit = Math.min(requestedLimit ?? config.retrieval.defaultBytes, config.retrieval.maxBytes);
+      const limit = Math.min(
+        requestedLimit ?? config.retrieval.defaultBytes,
+        config.retrieval.maxBytes,
+      );
       const offset = Math.max(readOptionalInteger(query, "offset") ?? 0, 0);
-      const requestedEncoding = readOptionalString(query, "encoding", ENCODINGS) ?? "auto";
+      const requestedEncoding =
+        readOptionalString(query, "encoding", ENCODINGS) ?? "auto";
 
-      const read = await store.read(hash, { offset, limit }).catch((error: unknown) => {
-        if (error instanceof CasError && error.code === "CAS_OBJECT_MISSING") {
-          throw new CasError("CAS_OBJECT_MISSING", missingObjectMessage(`sha256:${hash}`));
-        }
-        throw error;
-      });
+      const read = await store
+        .read(hash, { offset, limit })
+        .catch((error: unknown) => {
+          if (
+            error instanceof CasError &&
+            error.code === "CAS_OBJECT_MISSING"
+          ) {
+            throw new CasError(
+              "CAS_OBJECT_MISSING",
+              missingObjectMessage(`sha256:${hash}`),
+            );
+          }
+          throw error;
+        });
 
       const encoding: Exclude<Encoding, "auto"> =
-        requestedEncoding === "auto" ? (read.encoding === "binary" ? "base64" : "utf8") : requestedEncoding;
+        requestedEncoding === "auto"
+          ? read.encoding === "binary"
+            ? "base64"
+            : "utf8"
+          : requestedEncoding;
       const content = encodePayload(read.bytes, encoding);
       counters.increment("retrievalCalls");
       counters.increment("retrievalBytes", read.bytes.length);
@@ -118,7 +154,10 @@ export function createRetrieveTool(deps: RetrieveDeps) {
   });
 }
 
-function encodePayload(bytes: Uint8Array, encoding: Exclude<Encoding, "auto">): string {
+function encodePayload(
+  bytes: Uint8Array,
+  encoding: Exclude<Encoding, "auto">,
+): string {
   const buffer = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (encoding === "base64") return buffer.toString("base64");
   if (encoding === "hex") return buffer.toString("hex");

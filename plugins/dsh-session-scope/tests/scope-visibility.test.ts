@@ -8,7 +8,10 @@ import {
   filterScopeDirectoryListing,
   scopedSearchRoots,
 } from "../src/scope-visibility.js";
-import { SESSION_SCOPE_ERROR, type EffectiveSessionScope } from "../src/session-scope.js";
+import {
+  SESSION_SCOPE_ERROR,
+  type EffectiveSessionScope,
+} from "../src/session-scope.js";
 
 const workspace = `${sep}workspace`;
 const apps = `${workspace}${sep}apps`;
@@ -25,10 +28,16 @@ const focused: EffectiveSessionScope = {
 
 describe("path visibility", () => {
   test("distinguishes content, navigation, and denied paths", () => {
-    expect(classifyScopePath(focused, `${projectA}${sep}visible.txt`)).toBe("content");
+    expect(classifyScopePath(focused, `${projectA}${sep}visible.txt`)).toBe(
+      "content",
+    );
     expect(classifyScopePath(focused, workspace)).toBe("navigation");
-    expect(classifyScopePath(focused, `${projectB}${sep}hidden.txt`)).toBe("denied");
-    expect(classifyScopePath(focused, `${external}${sep}user-skill.md`)).toBe("content");
+    expect(classifyScopePath(focused, `${projectB}${sep}hidden.txt`)).toBe(
+      "denied",
+    );
+    expect(classifyScopePath(focused, `${external}${sep}user-skill.md`)).toBe(
+      "content",
+    );
   });
 
   test("allows navigation only for listing", () => {
@@ -42,7 +51,12 @@ describe("path visibility", () => {
   });
 
   test("full scope bypasses path filtering", () => {
-    const full: EffectiveSessionScope = { ...focused, mode: "full", roots: [], navigationRoots: [] };
+    const full: EffectiveSessionScope = {
+      ...focused,
+      mode: "full",
+      roots: [],
+      navigationRoots: [],
+    };
     expect(classifyScopePath(full, projectB)).toBe("content");
     expect(assertScopeAccess(full, projectB, "write")).toBe("content");
   });
@@ -64,9 +78,11 @@ describe("observation filtering", () => {
       truncated: false,
     };
 
-    expect(filterScopeDirectoryListing(focused, listing).entries.map((entry) => entry.name)).toEqual([
-      "project-a",
-    ]);
+    expect(
+      filterScopeDirectoryListing(focused, listing).entries.map(
+        (entry) => entry.name,
+      ),
+    ).toEqual(["project-a"]);
   });
 
   test("keeps ordinary listings once inside a content root", () => {
@@ -82,7 +98,9 @@ describe("observation filtering", () => {
 
   test("splits workspace searches into selected content roots", () => {
     expect(scopedSearchRoots(focused, workspace)).toEqual([projectA]);
-    expect(scopedSearchRoots(focused, `${projectA}${sep}src`)).toEqual([`${projectA}${sep}src`]);
+    expect(scopedSearchRoots(focused, `${projectA}${sep}src`)).toEqual([
+      `${projectA}${sep}src`,
+    ]);
     expect(() => scopedSearchRoots(focused, projectB)).toThrowError(
       expect.objectContaining({ code: SESSION_SCOPE_ERROR.DENIED }),
     );

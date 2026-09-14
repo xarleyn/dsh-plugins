@@ -27,9 +27,15 @@ export interface DomainExpertsRemote {
   listDomains(): Promise<RemoteResult<DomainListResult>>;
   getDomain(domainId: string): Promise<RemoteResult<DomainGetResult>>;
   draftDomain(domainId: string): Promise<RemoteResult<DomainWriteResult>>;
-  inspectDraft(definition: DomainDefinition): Promise<RemoteResult<DraftInspectionResult>>;
-  createDomain(definition: DomainDefinition): Promise<RemoteResult<DomainWriteResult>>;
-  updateDomain(definition: DomainDefinition): Promise<RemoteResult<DomainWriteResult>>;
+  inspectDraft(
+    definition: DomainDefinition,
+  ): Promise<RemoteResult<DraftInspectionResult>>;
+  createDomain(
+    definition: DomainDefinition,
+  ): Promise<RemoteResult<DomainWriteResult>>;
+  updateDomain(
+    definition: DomainDefinition,
+  ): Promise<RemoteResult<DomainWriteResult>>;
   setDomainEnabled(
     domainId: string,
     enabled: boolean,
@@ -42,7 +48,10 @@ export interface DomainExpertsRemote {
     namespace: string,
     limit: number,
   ): Promise<RemoteResult<MemoryInspectResult>>;
-  clearMemory(domainId: string, namespace: string): Promise<RemoteResult<MemoryClearResult>>;
+  clearMemory(
+    domainId: string,
+    namespace: string,
+  ): Promise<RemoteResult<MemoryClearResult>>;
   testExpert(
     domainId: string,
     task: string,
@@ -63,11 +72,13 @@ export interface Envelope {
   readonly message: string;
 }
 
-export type ApiOutcome<T> = { readonly ok: true; readonly data: T } | {
-  readonly ok: false;
-  readonly code: string;
-  readonly message: string;
-};
+export type ApiOutcome<T> =
+  | { readonly ok: true; readonly data: T }
+  | {
+      readonly ok: false;
+      readonly code: string;
+      readonly message: string;
+    };
 
 /**
  * Collapse the two result layers into one outcome.
@@ -76,7 +87,9 @@ export type ApiOutcome<T> = { readonly ok: true; readonly data: T } | {
  * throws for a domain refusal, so both are folded into `{ok:false}` with the
  * most specific code available. The UI shows the code, not a stack trace.
  */
-export function toOutcome<T extends Envelope>(result: RemoteResult<T>): ApiOutcome<T> {
+export function toOutcome<T extends Envelope>(
+  result: RemoteResult<T>,
+): ApiOutcome<T> {
   if (!result.ok) {
     const carrier = result.error as { code?: string; message?: string };
     return {
@@ -86,7 +99,11 @@ export function toOutcome<T extends Envelope>(result: RemoteResult<T>): ApiOutco
     };
   }
   if (!result.value.ok) {
-    return { ok: false, code: result.value.code, message: result.value.message };
+    return {
+      ok: false,
+      code: result.value.code,
+      message: result.value.message,
+    };
   }
   return { ok: true, data: result.value };
 }

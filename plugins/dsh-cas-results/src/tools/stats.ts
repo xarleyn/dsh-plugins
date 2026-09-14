@@ -18,7 +18,8 @@ export function createStatsTool(deps: StatsDeps) {
   const { store, counters } = deps;
   return defineTool({
     name: "dsh_cas_stats",
-    description: "Report dsh-cas-results storage statistics: object counts, byte totals, dedup and context reduction.",
+    description:
+      "Report dsh-cas-results storage statistics: object counts, byte totals, dedup and context reduction.",
     parameters: {},
     output: {
       schema: {

@@ -50,7 +50,9 @@ export const ConfigSchema: z<Config> = z.object({
   enabled: z
     .boolean()
     .default(true)
-    .description("Register the agent-facing tools and serve the management UI."),
+    .description(
+      "Register the agent-facing tools and serve the management UI.",
+    ),
   subagentProvider: z
     .string()
     .default(DEFAULT_SUBAGENT_PROVIDER)
@@ -68,7 +70,9 @@ export const ConfigSchema: z<Config> = z.object({
   defaultCrossDomainMode: z
     .string()
     .default("expert-only")
-    .description("Cross-domain mode pre-filled on new domains: disabled, expert-only or direct-read."),
+    .description(
+      "Cross-domain mode pre-filled on new domains: disabled, expert-only or direct-read.",
+    ),
   defaultMemoryProvider: z
     .string()
     .default(DEFAULT_MEMORY_PROVIDER)
@@ -80,7 +84,9 @@ export const ConfigSchema: z<Config> = z.object({
   auditLimit: z
     .natural()
     .default(200)
-    .description("Execution audit entries kept in memory and mirrored to the log."),
+    .description(
+      "Execution audit entries kept in memory and mirrored to the log.",
+    ),
 });
 
 /**
@@ -104,21 +110,28 @@ export function resolveConfig(entry: Config = {}): ResolvedConfig {
   const defaultMaxDepth = coerceNonNegative(entry.defaultMaxDepth, 3);
   const defaultMaxParallel = coerceNonNegative(entry.defaultMaxParallel, 3);
   const provider = (entry.subagentProvider ?? DEFAULT_SUBAGENT_PROVIDER).trim();
-  const memoryProvider = (entry.defaultMemoryProvider ?? DEFAULT_MEMORY_PROVIDER).trim();
+  const memoryProvider = (
+    entry.defaultMemoryProvider ?? DEFAULT_MEMORY_PROVIDER
+  ).trim();
   return {
     enabled: entry.enabled ?? true,
     subagentProvider: provider === "" ? DEFAULT_SUBAGENT_PROVIDER : provider,
     defaultMaxDepth,
     defaultMaxParallel,
     defaultCrossDomainMode: mode as CrossDomainMode,
-    defaultMemoryProvider: memoryProvider === "" ? DEFAULT_MEMORY_PROVIDER : memoryProvider,
+    defaultMemoryProvider:
+      memoryProvider === "" ? DEFAULT_MEMORY_PROVIDER : memoryProvider,
     recallLimit,
     auditLimit: Math.max(1, auditLimit),
   };
 }
 
-function coerceNonNegative(value: number | undefined, fallback: number): number {
-  if (value === undefined || !Number.isFinite(value) || value < 0) return fallback;
+function coerceNonNegative(
+  value: number | undefined,
+  fallback: number,
+): number {
+  if (value === undefined || !Number.isFinite(value) || value < 0)
+    return fallback;
   return Math.trunc(value);
 }
 

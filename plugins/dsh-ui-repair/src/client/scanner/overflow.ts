@@ -1,13 +1,5 @@
-import {
-  collectElements,
-  describeElement,
-  inferPlugin,
-} from "../dom.js";
-import type {
-  RepairCandidate,
-  RepairIssue,
-  UIRepairConfig,
-} from "../types.js";
+import { collectElements, describeElement, inferPlugin } from "../dom.js";
+import type { RepairCandidate, RepairIssue, UIRepairConfig } from "../types.js";
 
 function computedStyle(element: HTMLElement): CSSStyleDeclaration | undefined {
   try {
@@ -103,7 +95,8 @@ export function scanOverflow(
         target: element,
         verify: () => {
           const after = computedStyle(element);
-          const afterVerticalExcess = element.scrollHeight - element.clientHeight;
+          const afterVerticalExcess =
+            element.scrollHeight - element.clientHeight;
           const ok =
             after !== undefined &&
             scrollEnabled(after.overflowX) &&
@@ -142,7 +135,7 @@ export function scanOverflow(
     const parentDisplay =
       element.parentElement === null
         ? ""
-        : computedStyle(element.parentElement)?.display ?? "";
+        : (computedStyle(element.parentElement)?.display ?? "");
     const suggestedCss: Record<string, string> = { "overflow-y": "auto" };
     if (parentDisplay.includes("flex") || parentDisplay.includes("grid")) {
       suggestedCss["min-height"] = "0px";

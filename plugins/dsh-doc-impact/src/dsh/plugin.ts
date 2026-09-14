@@ -1,24 +1,27 @@
-import { DocImpactEngine } from '../engine/runtime.js';
-import type { EngineWorkspaceConfig } from '../engine/runtime.js';
-import type { ImpactRule } from '../config/types.js';
-import { createWorkspaceConfigSource } from './config-source.js';
-import { resolvePluginConfig, type DocImpactPluginConfig } from './plugin-config.js';
-import { createEngineFileLogger } from './engine-logger.js';
-import { registerLifecycle } from './lifecycle.js';
-import { bootstrapSettings } from './settings.js';
-import { createResolveTool, createStatusTool } from './tools.js';
-import { createDocImpactCommand } from './commands.js';
+import { DocImpactEngine } from "../engine/runtime.js";
+import type { EngineWorkspaceConfig } from "../engine/runtime.js";
+import type { ImpactRule } from "../config/types.js";
+import { createWorkspaceConfigSource } from "./config-source.js";
+import {
+  resolvePluginConfig,
+  type DocImpactPluginConfig,
+} from "./plugin-config.js";
+import { createEngineFileLogger } from "./engine-logger.js";
+import { registerLifecycle } from "./lifecycle.js";
+import { bootstrapSettings } from "./settings.js";
+import { createResolveTool, createStatusTool } from "./tools.js";
+import { createDocImpactCommand } from "./commands.js";
 
-export const name = 'doc-impact';
+export const name = "doc-impact";
 
 /** The tools service is required; agents, commands, and the web UI are optional services. */
-export const inject = ['tools'] as const;
+export const inject = ["tools"] as const;
 
 /** Structural view of the `agents` service the attribution probe consumes. */
 export interface AgentsServiceLike {
   list(): readonly {
     readonly id: string;
-    readonly status: 'idle' | 'running';
+    readonly status: "idle" | "running";
     readonly session: { readonly header?: { readonly cwd?: string } };
   }[];
 }
@@ -31,7 +34,10 @@ export interface CommandRegistryLike {
 export interface PluginContext {
   on(event: string, listener: (...args: never[]) => unknown): unknown;
   /** Callback receives the injected-service host; declare its shape at the callsite. */
-  inject<TContext>(services: readonly string[], callback: (ctx: TContext) => void): unknown;
+  inject<TContext>(
+    services: readonly string[],
+    callback: (ctx: TContext) => void,
+  ): unknown;
   get(service: string): unknown;
   tools: {
     register(definition: unknown): () => void;
@@ -55,7 +61,10 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   try {
     entryConfig = resolvePluginConfig(rawConfig);
   } catch (error) {
-    ctx.logger.error('dsh-doc-impact: invalid plugin config, plugin disabled\n%s', error);
+    ctx.logger.error(
+      "dsh-doc-impact: invalid plugin config, plugin disabled\n%s",
+      error,
+    );
     return;
   }
 
@@ -71,10 +80,13 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   void bootstrapSettings(ctx, rawConfig, entryConfig, (read) => {
     readConfig = read;
   }).catch((error: unknown) => {
-    logger.warn('dsh-doc-impact: settings bootstrap failed (%s)', error);
+    logger.warn("dsh-doc-impact: settings bootstrap failed (%s)", error);
   });
 
-  const loadWorkspaceConfig = createWorkspaceConfigSource(() => readConfig(), engineLogger);
+  const loadWorkspaceConfig = createWorkspaceConfigSource(
+    () => readConfig(),
+    engineLogger,
+  );
   // The attribution probe (SPEC §49) asks the `agents` service how many agents
   // run in the same workspace. The service stays optional and is captured
   // softly, so the plugin loads (and stays inert in attribution) on hosts that
@@ -82,20 +94,25 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   // `cannot get property "agents" without inject`, which used to fail every
   // stop check open right before the reminder was built.
   let agents: AgentsServiceLike | undefined;
-  ctx.inject(['agents'], (agentsCtx: { agents?: AgentsServiceLike }) => {
+  ctx.inject(["agents"], (agentsCtx: { agents?: AgentsServiceLike }) => {
     agents = agentsCtx.agents;
   });
   const engine = new DocImpactEngine({
-    configProvider: async (cwd: string): Promise<EngineWorkspaceConfig | undefined> => {
+    configProvider: async (
+      cwd: string,
+    ): Promise<EngineWorkspaceConfig | undefined> => {
       const config = readConfig();
       if (!config.enabled) return undefined;
       return loadWorkspaceConfig(cwd);
     },
     logger: engineLogger,
     concurrentAgents: (cwd: string): number =>
-      agents?.list().filter(
-        (agent) => agent.status === 'running' && agent.session.header?.cwd === cwd,
-      ).length ?? 1,
+      agents
+        ?.list()
+        .filter(
+          (agent) =>
+            agent.status === "running" && agent.session.header?.cwd === cwd,
+        ).length ?? 1,
   });
 
   registerLifecycle(ctx, engine);
@@ -110,9 +127,12 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   };
 
   const command = createDocImpactCommand(engine, { rulesFor });
-  ctx.inject(['commands'], (commandCtx: CommandRegistryLike) => {
+  ctx.inject(["commands"], (commandCtx: CommandRegistryLike) => {
     commandCtx.commands.register(command);
   });
 
-  ctx.logger.info('dsh-doc-impact: active (workspace config: %s)', entryConfig.configFile);
+  ctx.logger.info(
+    "dsh-doc-impact: active (workspace config: %s)",
+    entryConfig.configFile,
+  );
 }

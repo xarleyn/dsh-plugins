@@ -19,21 +19,33 @@ import type { DomainExpertsRemote } from "../src/client/remote.js";
 const ENVELOPE = { ok: true, code: "", message: "" };
 
 /** The plugin's declared activation dependencies, read from the module. */
-const CLIENT_INJECT: readonly string[] = (clientModule as { inject: readonly string[] }).inject;
+const CLIENT_INJECT: readonly string[] = (
+  clientModule as { inject: readonly string[] }
+).inject;
 
 function remoteStub(): DomainExpertsRemote {
   return {
-    listDomains: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, domains: [] } }),
-    getDomain: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
-    draftDomain: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
+    listDomains: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, domains: [] } }),
+    getDomain: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
+    draftDomain: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
     inspectDraft: () =>
-      Promise.resolve({ ok: true, value: { ...ENVELOPE, definition: null, issues: [] } }),
-    createDomain: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
-    updateDomain: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
+      Promise.resolve({
+        ok: true,
+        value: { ...ENVELOPE, definition: null, issues: [] },
+      }),
+    createDomain: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
+    updateDomain: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
     setDomainEnabled: () =>
       Promise.resolve({ ok: true, value: { ...ENVELOPE, domain: null } }),
-    deleteDomain: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, deleted: false } }),
-    resolveScope: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, profile: null } }),
+    deleteDomain: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, deleted: false } }),
+    resolveScope: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, profile: null } }),
     catalog: () =>
       Promise.resolve({
         ok: true,
@@ -47,10 +59,16 @@ function remoteStub(): DomainExpertsRemote {
         },
       }),
     inspectMemory: () =>
-      Promise.resolve({ ok: true, value: { ...ENVELOPE, namespaces: [], records: [] } }),
-    clearMemory: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, cleared: 0 } }),
-    testExpert: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, result: null } }),
-    recentAudits: () => Promise.resolve({ ok: true, value: { ...ENVELOPE, entries: [] } }),
+      Promise.resolve({
+        ok: true,
+        value: { ...ENVELOPE, namespaces: [], records: [] },
+      }),
+    clearMemory: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, cleared: 0 } }),
+    testExpert: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, result: null } }),
+    recentAudits: () =>
+      Promise.resolve({ ok: true, value: { ...ENVELOPE, entries: [] } }),
   } as unknown as DomainExpertsRemote;
 }
 

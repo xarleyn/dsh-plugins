@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { PluginLogRecordLevel, PluginLogRecordView } from "../src/types.js";
+import type {
+  PluginLogRecordLevel,
+  PluginLogRecordView,
+} from "../src/types.js";
 import {
   LOG_PANEL_LEVELS,
   appendRecords,
@@ -47,19 +50,34 @@ describe("line formatting", () => {
 
   it("joins plugin and module into one scope, and omits an absent module", () => {
     expect(formatScope(view(1))).toBe("dsh-sample");
-    expect(formatScope(view(1, { module: "worker" }))).toBe("dsh-sample/worker");
+    expect(formatScope(view(1, { module: "worker" }))).toBe(
+      "dsh-sample/worker",
+    );
   });
 
   it("renders clock, level, scope, event and fields as one line", () => {
-    expect(formatRecord(view(1, { level: "warn", fields: [{ key: "attempt", value: "2" }] })))
-      .toBe("10:02:03.456 WARN  [dsh-sample] event.1 attempt=2");
+    expect(
+      formatRecord(
+        view(1, { level: "warn", fields: [{ key: "attempt", value: "2" }] }),
+      ),
+    ).toBe("10:02:03.456 WARN  [dsh-sample] event.1 attempt=2");
   });
 });
 
 describe("filtering", () => {
   it("keeps the records whose level is enabled", () => {
-    expect(matchesFilter(view(1, { level: "debug" }), filter({ levels: new Set(["info"]) }))).toBe(false);
-    expect(matchesFilter(view(1, { level: "info" }), filter({ levels: new Set(["info"]) }))).toBe(true);
+    expect(
+      matchesFilter(
+        view(1, { level: "debug" }),
+        filter({ levels: new Set(["info"]) }),
+      ),
+    ).toBe(false);
+    expect(
+      matchesFilter(
+        view(1, { level: "info" }),
+        filter({ levels: new Set(["info"]) }),
+      ),
+    ).toBe(true);
   });
 
   it("matches the rendered line case-insensitively, fields included", () => {
@@ -70,7 +88,9 @@ describe("filtering", () => {
     });
     expect(matchesFilter(record, filter({ query: "KV.SESSION" }))).toBe(true);
     expect(matchesFilter(record, filter({ query: "a1b2c3" }))).toBe(true);
-    expect(matchesFilter(record, filter({ query: "nothing-like-this" }))).toBe(false);
+    expect(matchesFilter(record, filter({ query: "nothing-like-this" }))).toBe(
+      false,
+    );
   });
 
   it("keeps one source exactly, and every source by default", () => {
@@ -86,23 +106,50 @@ describe("filtering", () => {
   });
 
   it("combines the three filters", () => {
-    const record = view(1, { level: "warn", pluginId: "dsh-sleev", event: "sleev.gap" });
-    expect(matchesFilter(record, { levels: new Set(["warn"]), query: "gap", source: "dsh-sleev" })).toBe(true);
-    expect(matchesFilter(record, { levels: new Set(["info"]), query: "gap", source: "dsh-sleev" })).toBe(false);
-    expect(matchesFilter(record, { levels: new Set(["warn"]), query: "gap", source: "dsh-other" })).toBe(false);
+    const record = view(1, {
+      level: "warn",
+      pluginId: "dsh-sleev",
+      event: "sleev.gap",
+    });
+    expect(
+      matchesFilter(record, {
+        levels: new Set(["warn"]),
+        query: "gap",
+        source: "dsh-sleev",
+      }),
+    ).toBe(true);
+    expect(
+      matchesFilter(record, {
+        levels: new Set(["info"]),
+        query: "gap",
+        source: "dsh-sleev",
+      }),
+    ).toBe(false);
+    expect(
+      matchesFilter(record, {
+        levels: new Set(["warn"]),
+        query: "gap",
+        source: "dsh-other",
+      }),
+    ).toBe(false);
   });
 
   it("returns the window untouched when no filter is set, and trims the query", () => {
     const records = [view(1), view(2)];
     expect(filterRecords(records, filter())).toBe(records);
     expect(filterRecords(records, filter({ query: "  " }))).toBe(records);
-    expect(filterRecords(records, filter({ levels: new Set(["warn"]) }))).toEqual([]);
+    expect(
+      filterRecords(records, filter({ levels: new Set(["warn"]) })),
+    ).toEqual([]);
   });
 });
 
 describe("mergeSources", () => {
   it("lists the window's plugins, the registered ones, and the selection, sorted", () => {
-    const records = [view(1, { pluginId: "dsh-sleev" }), view(2, { pluginId: "dsh-tool-offload" })];
+    const records = [
+      view(1, { pluginId: "dsh-sleev" }),
+      view(2, { pluginId: "dsh-tool-offload" }),
+    ];
     expect(mergeSources(records, ["dsh-cas-results"], "")).toEqual([
       "dsh-cas-results",
       "dsh-sleev",
@@ -111,7 +158,10 @@ describe("mergeSources", () => {
   });
 
   it("keeps a selected source an option after its lines scroll away", () => {
-    expect(mergeSources([], ["dsh-sleev"], "dsh-gone")).toEqual(["dsh-gone", "dsh-sleev"]);
+    expect(mergeSources([], ["dsh-sleev"], "dsh-gone")).toEqual([
+      "dsh-gone",
+      "dsh-sleev",
+    ]);
     // The "every source" value is not a plugin id and never becomes an option.
     expect(mergeSources([], [], "")).toEqual([]);
   });
@@ -120,20 +170,30 @@ describe("mergeSources", () => {
 describe("appendRecords", () => {
   it("appends new sequences and ignores ones already in the window", () => {
     const window = [view(1), view(2)];
-    expect(appendRecords(window, [view(2), view(3)]).map((item) => item.seq)).toEqual([1, 2, 3]);
+    expect(
+      appendRecords(window, [view(2), view(3)]).map((item) => item.seq),
+    ).toEqual([1, 2, 3]);
     expect(appendRecords(window, [])).toBe(window);
     expect(appendRecords(window, [view(1)])).toBe(window);
   });
 
   it("drops the oldest once the window is full", () => {
     const window = [view(1), view(2)];
-    expect(appendRecords(window, [view(3)], 2).map((item) => item.seq)).toEqual([2, 3]);
+    expect(appendRecords(window, [view(3)], 2).map((item) => item.seq)).toEqual(
+      [2, 3],
+    );
   });
 });
 
 describe("createLogTailReader", () => {
   it("passes a settled read through and turns a failure into text", async () => {
-    const value = { records: [view(1)], cursor: 2, dropped: 0, buffered: 1, capacity: 10 };
+    const value = {
+      records: [view(1)],
+      cursor: 2,
+      dropped: 0,
+      buffered: 1,
+      capacity: 10,
+    };
     const reader = createLogTailReader({
       tail: (cursor, limit) => {
         expect([cursor, limit]).toEqual([0, 500]);
@@ -143,15 +203,25 @@ describe("createLogTailReader", () => {
     expect(await reader(0, 500)).toEqual({ ok: true, value });
 
     const failing = createLogTailReader({
-      tail: () => Promise.resolve({ ok: false as const, error: { message: "stream unavailable" } as never }),
+      tail: () =>
+        Promise.resolve({
+          ok: false as const,
+          error: { message: "stream unavailable" } as never,
+        }),
     });
-    expect(await failing(0, 500)).toEqual({ ok: false, message: "stream unavailable" });
+    expect(await failing(0, 500)).toEqual({
+      ok: false,
+      message: "stream unavailable",
+    });
   });
 
   it("reports a thrown transport error instead of rejecting", async () => {
     const reader = createLogTailReader({
       tail: () => Promise.reject(new Error("socket closed")),
     });
-    expect(await reader(0, 500)).toEqual({ ok: false, message: "socket closed" });
+    expect(await reader(0, 500)).toEqual({
+      ok: false,
+      message: "socket closed",
+    });
   });
 });

@@ -127,7 +127,9 @@ describe("single-slot coordinator: leases and queueing (SPEC §72-§74)", () => 
       await expect(iteratorA.next()).rejects.toThrowError("stream failed");
       const streamB = await streamBPromise;
       await expect(consume(streamB)).resolves.toHaveLength(2);
-      expect(harness.coordinator.getSessionState("session-a")?.dirtyRevision).toBe(0);
+      expect(
+        harness.coordinator.getSessionState("session-a")?.dirtyRevision,
+      ).toBe(0);
       expect(harness.coordinator.slot.ownerSessionId).toBe("session-b");
     } finally {
       failA.resolve();
@@ -154,15 +156,19 @@ describe("single-slot coordinator: leases and queueing (SPEC §72-§74)", () => 
       let checkpointSettled = false;
       let restoreSettled = false;
       let invalidateSettled = false;
-      const checkpoint = harness.coordinator.checkpoint("session-a", "manual").then(() => {
-        checkpointSettled = true;
-      });
+      const checkpoint = harness.coordinator
+        .checkpoint("session-a", "manual")
+        .then(() => {
+          checkpointSettled = true;
+        });
       const restore = harness.coordinator.restoreNow("session-a").then(() => {
         restoreSettled = true;
       });
-      const invalidate = harness.coordinator.invalidate("session-a").then(() => {
-        invalidateSettled = true;
-      });
+      const invalidate = harness.coordinator
+        .invalidate("session-a")
+        .then(() => {
+          invalidateSettled = true;
+        });
 
       await sleep(35);
       expect(checkpointSettled).toBe(false);

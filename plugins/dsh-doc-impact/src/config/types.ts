@@ -1,25 +1,25 @@
 export const DIRECTIONS = [
-  'code-to-docs',
-  'docs-to-code',
-  'bidirectional',
+  "code-to-docs",
+  "docs-to-code",
+  "bidirectional",
 ] as const;
 
 export const RELATIONS = [
-  'documents',
-  'specification',
-  'synchronized',
-  'related',
+  "documents",
+  "specification",
+  "synchronized",
+  "related",
 ] as const;
 
 export const RESOLUTION_MODES = [
-  'remind',
-  'require-review',
-  'require-resolution',
-  'require-update',
+  "remind",
+  "require-review",
+  "require-resolution",
+  "require-update",
 ] as const;
 
-export const SCOPES = ['turn', 'session'] as const;
-export const CHANGE_DETECTION_MODES = ['auto', 'git', 'filesystem'] as const;
+export const SCOPES = ["turn", "session"] as const;
+export const CHANGE_DETECTION_MODES = ["auto", "git", "filesystem"] as const;
 
 export type Direction = (typeof DIRECTIONS)[number];
 export type Relation = (typeof RELATIONS)[number];

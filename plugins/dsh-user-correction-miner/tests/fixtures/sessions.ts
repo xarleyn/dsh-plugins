@@ -1,6 +1,9 @@
 import type { SessionEvent, SessionHeader } from "@deepseek-ai/dsh-session";
 
-export function header(id = "session-1", cwd = "C:\\work\\project"): SessionHeader {
+export function header(
+  id = "session-1",
+  cwd = "C:\\work\\project",
+): SessionHeader {
   return {
     version: 3,
     id,
@@ -24,7 +27,9 @@ export function userEvent(
       role: "user",
       content: [{ type: "text", text }],
       source:
-        source === "user" ? { kind: "user" } : { kind: "plugin", plugin: "fixture" },
+        source === "user"
+          ? { kind: "user" }
+          : { kind: "plugin", plugin: "fixture" },
     },
     surfaceOp: "append",
   } as unknown as SessionEvent;
@@ -49,7 +54,11 @@ export function assistantEvent(seq: number, text: string): SessionEvent {
   } as unknown as SessionEvent;
 }
 
-export function toolCallEvent(seq: number, name: string, args: string): SessionEvent {
+export function toolCallEvent(
+  seq: number,
+  name: string,
+  args: string,
+): SessionEvent {
   return {
     type: "tool/call",
     seq,

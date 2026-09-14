@@ -9,7 +9,7 @@
  */
 
 /** The body kinds this provider decodes. */
-export type FetchableKind = 'html' | 'text'
+export type FetchableKind = "html" | "text";
 
 /**
  * Classify a response `Content-Type` into a decodable body kind, or `undefined`
@@ -17,12 +17,20 @@ export type FetchableKind = 'html' | 'text'
  * are `html`; other `text/*` plus a few structured text types are `text`.
  * @param contentType - the raw `Content-Type` header, or `null` when absent.
  */
-export function classifyContentType(contentType: string | null): FetchableKind | undefined {
-  const mime = (contentType ?? '').replace(/;.*$/su, '').trim().toLowerCase()
-  if (mime === 'text/html' || mime === 'application/xhtml+xml') return 'html'
-  if (mime.startsWith('text/')) return 'text'
-  if (mime === 'application/json' || mime === 'application/xml' || mime.endsWith('+json') || mime.endsWith('+xml')) return 'text'
-  return undefined
+export function classifyContentType(
+  contentType: string | null,
+): FetchableKind | undefined {
+  const mime = (contentType ?? "").replace(/;.*$/su, "").trim().toLowerCase();
+  if (mime === "text/html" || mime === "application/xhtml+xml") return "html";
+  if (mime.startsWith("text/")) return "text";
+  if (
+    mime === "application/json" ||
+    mime === "application/xml" ||
+    mime.endsWith("+json") ||
+    mime.endsWith("+xml")
+  )
+    return "text";
+  return undefined;
 }
 
 /**
@@ -30,8 +38,8 @@ export function classifyContentType(contentType: string | null): FetchableKind |
  * or `undefined` when absent.
  */
 export function parseCharset(contentType: string | null): string | undefined {
-  const match = /;\s*charset\s*=\s*"?([^";]+)"?/iu.exec(contentType ?? '')
-  return match?.[1]?.trim().toLowerCase()
+  const match = /;\s*charset\s*=\s*"?([^";]+)"?/iu.exec(contentType ?? "");
+  return match?.[1]?.trim().toLowerCase();
 }
 
 /**
@@ -39,6 +47,6 @@ export function parseCharset(contentType: string | null): string | undefined {
  * none is declared. Throws when the label is not one `TextDecoder` recognizes.
  */
 export function decoderForCharset(charset: string | undefined): TextDecoder {
-  if (charset === undefined) return new TextDecoder('utf-8')
-  return new TextDecoder(charset)
+  if (charset === undefined) return new TextDecoder("utf-8");
+  return new TextDecoder(charset);
 }

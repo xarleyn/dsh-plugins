@@ -17,11 +17,18 @@ export const CANONICAL_SHELL_RULES = [
 
 export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   for (const rule of CANONICAL_SHELL_RULES) {
-    assert.ok(client.includes(rule), `client bundle must contain canonical shell rule ${rule}`);
+    assert.ok(
+      client.includes(rule),
+      `client bundle must contain canonical shell rule ${rule}`,
+    );
   }
 
   assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
-  assert.doesNotMatch(client, /[\u2304\u25be]/u, "font glyphs must not be used as disclosure chevrons");
+  assert.doesNotMatch(
+    client,
+    /[\u2304\u25be]/u,
+    "font glyphs must not be used as disclosure chevrons",
+  );
   assert.doesNotMatch(
     client,
     /--dsw-alias-border-label-dimmed/u,
@@ -29,6 +36,10 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   );
 
   for (const pattern of legacyPatterns) {
-    assert.doesNotMatch(client, pattern, `client bundle still contains legacy shell ${pattern}`);
+    assert.doesNotMatch(
+      client,
+      pattern,
+      `client bundle still contains legacy shell ${pattern}`,
+    );
   }
 }

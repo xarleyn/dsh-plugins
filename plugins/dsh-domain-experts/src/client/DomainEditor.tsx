@@ -72,7 +72,8 @@ export function DomainEditor(props: EditorProps) {
   const [tab, setTab] = useState<TabId>("General");
   const { draft, onChange, issues } = props;
   const fieldIssue = (field: string): string | undefined =>
-    issues.find((issue) => issue.field === field && issue.severity === "error")?.message;
+    issues.find((issue) => issue.field === field && issue.severity === "error")
+      ?.message;
 
   return (
     <div className="dx-panel">
@@ -107,7 +108,11 @@ export function DomainEditor(props: EditorProps) {
         <ul className="dx-issues">
           {issues.map((issue, index) => (
             <li
-              className={issue.severity === "error" ? "dx-issue dx-issue--error" : "dx-issue dx-issue--warning"}
+              className={
+                issue.severity === "error"
+                  ? "dx-issue dx-issue--error"
+                  : "dx-issue dx-issue--warning"
+              }
               key={`${issue.field}-${String(index)}`}
             >
               <strong>{issue.field}</strong> {issue.message}
@@ -117,12 +122,18 @@ export function DomainEditor(props: EditorProps) {
       ) : null}
 
       {tab === "General" ? (
-        <Section title="Identity" note="Id and colour are presentation and identity only; the core never interprets them.">
+        <Section
+          title="Identity"
+          note="Id and colour are presentation and identity only; the core never interprets them."
+        >
           <TextInput
             label="Id"
             value={draft.id}
             invalid={fieldIssue("id") !== undefined}
-            hint={fieldIssue("id") ?? "Lowercase letters, digits and dashes. Used by domain_expert."}
+            hint={
+              fieldIssue("id") ??
+              "Lowercase letters, digits and dashes. Used by domain_expert."
+            }
             onChange={(id) => {
               onChange({ ...draft, id });
             }}
@@ -213,7 +224,10 @@ export function DomainEditor(props: EditorProps) {
             onChange={(primary) => {
               onChange({
                 ...draft,
-                scope: { ...draft.scope, filesystem: { ...draft.scope.filesystem, primary } },
+                scope: {
+                  ...draft.scope,
+                  filesystem: { ...draft.scope.filesystem, primary },
+                },
               });
             }}
           />
@@ -225,7 +239,10 @@ export function DomainEditor(props: EditorProps) {
             onChange={(sharedReadOnly) => {
               onChange({
                 ...draft,
-                scope: { ...draft.scope, filesystem: { ...draft.scope.filesystem, sharedReadOnly } },
+                scope: {
+                  ...draft.scope,
+                  filesystem: { ...draft.scope.filesystem, sharedReadOnly },
+                },
               });
             }}
           />
@@ -237,7 +254,10 @@ export function DomainEditor(props: EditorProps) {
             onChange={(denied) => {
               onChange({
                 ...draft,
-                scope: { ...draft.scope, filesystem: { ...draft.scope.filesystem, denied } },
+                scope: {
+                  ...draft.scope,
+                  filesystem: { ...draft.scope.filesystem, denied },
+                },
               });
             }}
           />
@@ -270,7 +290,9 @@ export function DomainEditor(props: EditorProps) {
           />
           <p className="dx-section-note">
             Registered scope providers:{" "}
-            {props.catalog.scopeProviders.map((provider) => provider.id).join(", ") || "none"}
+            {props.catalog.scopeProviders
+              .map((provider) => provider.id)
+              .join(", ") || "none"}
           </p>
         </Section>
       ) : null}
@@ -284,7 +306,10 @@ export function DomainEditor(props: EditorProps) {
             label="Private namespace"
             value={draft.memory.namespace}
             invalid={fieldIssue("memory.namespace") !== undefined}
-            hint={fieldIssue("memory.namespace") ?? "Lowercase segments joined by '/'."}
+            hint={
+              fieldIssue("memory.namespace") ??
+              "Lowercase segments joined by '/'."
+            }
             onChange={(namespace) => {
               onChange({ ...draft, memory: { ...draft.memory, namespace } });
             }}
@@ -294,7 +319,10 @@ export function DomainEditor(props: EditorProps) {
             placeholder="shared/product"
             values={draft.memory.sharedReadOnly}
             onChange={(sharedReadOnly) => {
-              onChange({ ...draft, memory: { ...draft.memory, sharedReadOnly } });
+              onChange({
+                ...draft,
+                memory: { ...draft.memory, sharedReadOnly },
+              });
             }}
           />
           <div className="dx-actions">
@@ -311,7 +339,11 @@ export function DomainEditor(props: EditorProps) {
             <button
               type="button"
               className="dx-button dx-button--danger"
-              disabled={props.busy || props.isNew || draft.memory.namespace.trim() === ""}
+              disabled={
+                props.busy ||
+                props.isNew ||
+                draft.memory.namespace.trim() === ""
+              }
               onClick={props.onClearMemory}
             >
               Clear private namespace
@@ -342,7 +374,10 @@ export function DomainEditor(props: EditorProps) {
               </table>
               <ul className="dx-log">
                 {props.memory.result.records.map((record) => (
-                  <li className="dx-log-item" key={`${record.namespace}/${record.key}`}>
+                  <li
+                    className="dx-log-item"
+                    key={`${record.namespace}/${record.key}`}
+                  >
                     <span className="dx-mono">
                       {record.namespace}/{record.key}
                     </span>{" "}
@@ -360,7 +395,11 @@ export function DomainEditor(props: EditorProps) {
           draft={draft}
           onChange={onChange}
           catalog={props.catalog}
-          infrastructure={props.profile?.tools.filter((tool) => tool.kind === "infrastructure") ?? []}
+          infrastructure={
+            props.profile?.tools.filter(
+              (tool) => tool.kind === "infrastructure",
+            ) ?? []
+          }
         />
       ) : null}
 
@@ -373,18 +412,27 @@ export function DomainEditor(props: EditorProps) {
             checked={draft.delegation.allowCrossDomain}
             label="Allow this expert to reach other domains"
             onChange={(allowCrossDomain) => {
-              onChange({ ...draft, delegation: { ...draft.delegation, allowCrossDomain } });
+              onChange({
+                ...draft,
+                delegation: { ...draft.delegation, allowCrossDomain },
+              });
             }}
           />
           <Select
             label="Cross-domain mode"
             value={draft.delegation.crossDomainMode}
-            options={CROSS_DOMAIN_MODES.map((mode) => ({ value: mode, label: mode }))}
+            options={CROSS_DOMAIN_MODES.map((mode) => ({
+              value: mode,
+              label: mode,
+            }))}
             hint="expert-only is the recommended default: ask the owning expert, never read its resources."
             onChange={(value) => {
               onChange({
                 ...draft,
-                delegation: { ...draft.delegation, crossDomainMode: value as CrossDomainMode },
+                delegation: {
+                  ...draft.delegation,
+                  crossDomainMode: value as CrossDomainMode,
+                },
               });
             }}
           />
@@ -394,7 +442,10 @@ export function DomainEditor(props: EditorProps) {
             placeholder="inventory"
             values={draft.delegation.targets}
             onChange={(targets) => {
-              onChange({ ...draft, delegation: { ...draft.delegation, targets } });
+              onChange({
+                ...draft,
+                delegation: { ...draft.delegation, targets },
+              });
             }}
           />
           <div className="dx-row">
@@ -406,7 +457,10 @@ export function DomainEditor(props: EditorProps) {
               onChange={(value) => {
                 onChange({
                   ...draft,
-                  delegation: { ...draft.delegation, maxDepth: toInt(value, 0) },
+                  delegation: {
+                    ...draft.delegation,
+                    maxDepth: toInt(value, 0),
+                  },
                 });
               }}
             />
@@ -418,7 +472,10 @@ export function DomainEditor(props: EditorProps) {
               onChange={(value) => {
                 onChange({
                   ...draft,
-                  delegation: { ...draft.delegation, maxParallel: toInt(value, 1) },
+                  delegation: {
+                    ...draft.delegation,
+                    maxParallel: toInt(value, 1),
+                  },
                 });
               }}
             />
@@ -430,7 +487,10 @@ export function DomainEditor(props: EditorProps) {
               placeholder="domain/inventory"
               values={draft.delegation.directRead}
               onChange={(directRead) => {
-                onChange({ ...draft, delegation: { ...draft.delegation, directRead } });
+                onChange({
+                  ...draft,
+                  delegation: { ...draft.delegation, directRead },
+                });
               }}
             />
           ) : null}
@@ -473,7 +533,10 @@ export function DomainEditor(props: EditorProps) {
                   value={draft.model.reasoningEffort}
                   hint="Provider-specific identifier; leave empty to inherit."
                   onChange={(reasoningEffort) => {
-                    onChange({ ...draft, model: { ...draft.model, reasoningEffort } });
+                    onChange({
+                      ...draft,
+                      model: { ...draft.model, reasoningEffort },
+                    });
                   }}
                 />
                 <TextInput
@@ -482,7 +545,10 @@ export function DomainEditor(props: EditorProps) {
                   value={String(draft.model.maxTokens)}
                   hint="0 means no override."
                   onChange={(value) => {
-                    onChange({ ...draft, model: { ...draft.model, maxTokens: toInt(value, 0) } });
+                    onChange({
+                      ...draft,
+                      model: { ...draft.model, maxTokens: toInt(value, 0) },
+                    });
                   }}
                 />
               </div>
@@ -515,7 +581,12 @@ export function DomainEditor(props: EditorProps) {
         >
           {props.isNew ? "Create domain" : "Save"}
         </button>
-        <button type="button" className="dx-button" disabled={props.busy} onClick={props.onCancel}>
+        <button
+          type="button"
+          className="dx-button"
+          disabled={props.busy}
+          onClick={props.onCancel}
+        >
           Close
         </button>
         {props.isNew ? null : (
@@ -531,8 +602,12 @@ export function DomainEditor(props: EditorProps) {
         <StatusLine tone={props.status.tone}>{props.status.text}</StatusLine>
       </div>
 
-      {props.profileError === "" ? null : <StatusLine tone="error">{props.profileError}</StatusLine>}
-      {props.profile === null ? null : <ScopeInspector profile={props.profile} />}
+      {props.profileError === "" ? null : (
+        <StatusLine tone="error">{props.profileError}</StatusLine>
+      )}
+      {props.profile === null ? null : (
+        <ScopeInspector profile={props.profile} />
+      )}
     </div>
   );
 }
@@ -546,7 +621,10 @@ function ToolsSection({
   readonly draft: DomainDefinition;
   readonly onChange: (next: DomainDefinition) => void;
   readonly catalog: CatalogInfo;
-  readonly infrastructure: readonly { readonly name: string; readonly note: string }[];
+  readonly infrastructure: readonly {
+    readonly name: string;
+    readonly note: string;
+  }[];
 }) {
   const allow = new Set(draft.tools.allow);
   const toggle = (name: string, on: boolean): void => {
@@ -564,8 +642,16 @@ function ToolsSection({
           ? `worker; enforces ${worker.enforces.join(", ")}`
           : "worker",
     })),
-    ...catalog.tools.map((tool) => ({ name: tool.name, title: tool.name, note: "plugin tool" })),
-    ...infrastructure.map((tool) => ({ name: tool.name, title: tool.name, note: "infrastructure" })),
+    ...catalog.tools.map((tool) => ({
+      name: tool.name,
+      title: tool.name,
+      note: "plugin tool",
+    })),
+    ...infrastructure.map((tool) => ({
+      name: tool.name,
+      title: tool.name,
+      note: "infrastructure",
+    })),
   ];
   const seen = new Set<string>();
   const unique = options.filter((option) => {
@@ -580,7 +666,9 @@ function ToolsSection({
       note="Only these global tools stay visible to the expert. Everything else disappears from its view and refuses to execute."
     >
       {unique.length === 0 ? (
-        <p className="dx-empty">No workers or plugin tools are registered in this deployment.</p>
+        <p className="dx-empty">
+          No workers or plugin tools are registered in this deployment.
+        </p>
       ) : (
         unique.map((option) => (
           <Toggle
@@ -619,7 +707,8 @@ function ToolsSection({
           onChange({ ...draft, tools: { ...draft.tools, deny } });
         }}
       />
-      {draft.tools.deny.length > 0 && draft.tools.allow.some((n) => draft.tools.deny.includes(n)) ? (
+      {draft.tools.deny.length > 0 &&
+      draft.tools.allow.some((n) => draft.tools.deny.includes(n)) ? (
         <StatusLine tone="error">
           A tool cannot be both allowed and denied; remove one of the entries.
         </StatusLine>
@@ -641,16 +730,13 @@ function TestTab({
   readonly onChange: (next: DomainDefinition) => void;
   readonly onRunTest: (task: string) => void;
 }) {
-  const [task, setTask] = useState("Explain how this domain's main flow works.");
+  const [task, setTask] = useState(
+    "Explain how this domain's main flow works.",
+  );
   const [mode, setMode] = useState<ExpertMode>("investigate");
   return (
     <>
-      <TextArea
-        label="Task"
-        value={task}
-        rows={3}
-        onChange={setTask}
-      />
+      <TextArea label="Task" value={task} rows={3} onChange={setTask} />
       <Select
         label="Mode"
         value={mode}
@@ -672,7 +758,9 @@ function TestTab({
           {test.running ? "Running…" : "Run test"}
         </button>
       </div>
-      {test.error === "" ? null : <StatusLine tone="error">{test.error}</StatusLine>}
+      {test.error === "" ? null : (
+        <StatusLine tone="error">{test.error}</StatusLine>
+      )}
       {test.summary === "" ? null : (
         <>
           <StatusLine>status {test.status}</StatusLine>

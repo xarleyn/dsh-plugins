@@ -17,11 +17,7 @@ assert.deepEqual(packageJson.dsh?.client?.inject, [
   "@deepseek-ai/dsh-client-locale",
 ]);
 
-for (const publishedFile of [
-  "cordis.patch.yml",
-  "README.md",
-  "LICENSE",
-]) {
+for (const publishedFile of ["cordis.patch.yml", "README.md", "LICENSE"]) {
   assert.ok(
     packageJson.files.includes(publishedFile),
     `published file is missing from package.json: ${publishedFile}`,

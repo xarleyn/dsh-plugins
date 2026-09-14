@@ -24,7 +24,9 @@ export interface GuardContentBlock {
 
 /** Structural subset of the `agent/pre-step` payload. */
 export interface PreStepPayload {
-  readonly messages: ReadonlyArray<{ readonly content: ReadonlyArray<GuardContentBlock> }>;
+  readonly messages: ReadonlyArray<{
+    readonly content: ReadonlyArray<GuardContentBlock>;
+  }>;
   readonly turn: number;
   readonly step: number;
   readonly sessionId?: string;
@@ -44,7 +46,8 @@ export function extractMessagesText(payload: PreStepPayload): string {
   const parts: string[] = [];
   for (const message of payload.messages) {
     for (const block of message.content) {
-      if (block.type === "text" && typeof block.text === "string") parts.push(block.text);
+      if (block.type === "text" && typeof block.text === "string")
+        parts.push(block.text);
     }
   }
   return parts.join("\n");
@@ -87,10 +90,7 @@ export function createInputGuard(deps: InputGuardDeps): PreStepListener {
       step: payload.step ?? null,
     });
 
-    const decision = applyGateMode(
-      result.decision,
-      deps.config.mode,
-    );
+    const decision = applyGateMode(result.decision, deps.config.mode);
 
     if (decision === "block") {
       // The sanitized verdict is already published by the pipeline audit
