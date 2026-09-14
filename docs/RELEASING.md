@@ -53,15 +53,16 @@ plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
 a file instead of letting the run release nothing.
 
 `pnpm release:check` is the same command locally and in CI
-(`scripts/check-release-plans.mjs`). The check reads each publishable release project against its own last release
-tag and asks for a plan only when commits no tag covers have landed since.
-Comparing every project against the default branch instead would report an
-already-published release as unreleased and demand plans the release has
-consumed. A project that never shipped has no tag, so its whole change against
-the base counts. Uncommitted work is reported as pending rather than judged,
-because the release reads commits too. The check ignores the files Nx ignores
-for this decision, so a release commit that only rewrites versions and
-changelogs needs no further plan.
+(`scripts/check-release-plans.mjs`). The check reads each publishable release
+project against the newest release tag its history can reach — the
+`release/<date>` tag the workflow creates once per release run — and asks for a
+plan only when commits no tag covers have landed since. Comparing every project
+against the default branch instead would report an already-published release as
+unreleased and demand plans the release has consumed. A project that never
+shipped has no tag, so its whole change against the base counts. Uncommitted
+work is reported as pending rather than judged, because the release reads
+commits too. The check ignores the files Nx ignores for this decision, so a
+release commit that only rewrites versions and changelogs needs no further plan.
 
 ## Maintainer flow
 
@@ -73,15 +74,16 @@ changelogs needs no further plan.
 
 `create_github_releases` defaults to `true`. Set it to `false` for a routine
 package update or hotfix that should still receive a release commit, changelog,
-tag, workflow artifact, and npm publication, but should not create a
-per-package GitHub Release.
+wave tag, workflow artifact, and npm publication, but should not create the
+GitHub Release.
 
-The live workflow asks Nx to create the release commit, project changelogs,
-and per-package tags without publishing. It then runs all validation and
-tarball installation gates, checks that every selected package already exists
-on npm, and publishes the versioned projects through npm OIDC. Only once npm
-has every version does it push the release commit and tags and create one
-GitHub Release per package with its `.tgz` attached.
+The live workflow asks Nx to create the release commit and project changelogs
+without publishing or tagging. It then runs all validation and tarball
+installation gates, checks that every selected package already exists on npm,
+and publishes the versioned projects through npm OIDC. Only once npm has every
+version does it tag the release wave with one `release/<date>` tag, push the
+release commit and the tag, and create one GitHub Release for the whole wave,
+with every `.tgz` attached and each package's changelog entry in the notes.
 
 The order is the point: the branch never advances to a state the registry does
 not already reflect. A release that fails at any step before the push leaves
@@ -93,14 +95,14 @@ tags afterwards.
 
 The workflow releases whatever ref it was dispatched on, so a branch can
 produce test versions without touching `main`. That release consumes the
-branch's version plans, exactly like a release on `main` — plans and tags move
-only once npm has every version:
+branch's version plans, exactly like a release on `main` — plans and the wave
+tag move only once npm has every version:
 
 - The released projects stop needing a plan, because the check reads each
-  project against its own last release tag: the tag now covers the commits the
-  plan was written for.
-- Keep adding a plan for anything you change after that release. What the tag
-  covers is the work it released, not the work that follows it.
+  project against the wave tag the release created: it covers the commits the
+  plans were written for.
+- Keep adding a plan for anything you change after that release. What the wave
+  tag covers is the work it released, not the work that follows it.
 - A later release from the same branch needs a fresh plan, since the workflow
   requires at least one parseable plan before it will version anything.
 
@@ -124,20 +126,22 @@ needs an explicit decision:
 
 - If the **Push release commit and tags** step failed, rerun the workflow
   without changing the branch. The versions are already on npm and skipped; the
-  release commit and tags are recreated identically and pushed. Changing the
+  release commit and the wave tag are recreated and pushed. Changing the
   branch first would let a package whose version npm already has keep a fixed
   source unpublished, because the skip assumes the tarball matches what was
   published.
-- If **Create per-package GitHub Releases** failed, rerun with
+- If **Create the release-wave GitHub Release** failed, rerun with
   `publish_only=true` and `create_github_releases=true`: already published npm
-  versions are skipped, while missing GitHub Releases are created from their
-  existing tags and freshly verified tarballs. A single missing release can
-  also be fixed with `gh release create` on the package tag and the
-  corresponding workflow artifact.
-- `publish_only=true` publishes tagged versions and nothing else: it packs the
-  branch it runs on, so run it while the branch still carries the release
-  commit of those tags, not after further work has been merged. `git diff` the
-  tag against the branch first when in doubt.
+  versions are skipped, and the missing release is created from the wave tag
+  on the pushed release commit with freshly verified tarballs. A single
+  missing tarball can also be attached with `gh release upload` on the wave
+  tag.
+- `publish_only=true` publishes the versions of an already-pushed release
+  commit and nothing else: it packs the branch it runs on, so run it while the
+  branch still carries that release commit — its wave tag, or, for a release
+  made before the wave scheme, every package's per-project tag — not after
+  further work has been merged. `git diff` the tag against the branch first
+  when in doubt.
 
 Publication is not ready until npm Trusted Publishers have been configured
 externally for the `@yadsh` packages.
