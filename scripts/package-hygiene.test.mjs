@@ -14,6 +14,7 @@ import {
   validatePublishedContent,
   validatePublishablePlugin,
   validateVersionPlan,
+  validateWorkspaceScripts,
 } from "./verify-package-hygiene.mjs";
 
 function writeJson(file, value) {
@@ -215,6 +216,71 @@ async function workspaceFixture({ plugins = {}, packages = {} } = {}) {
   }
   return root;
 }
+
+test("accepts the canonical plugin script pipeline", async () => {
+  const root = await workspaceFixture({
+    plugins: {
+      "dsh-fixture": {
+        name: "@yadsh/dsh-fixture",
+        scripts: {
+          lint: "eslint src tests scripts",
+          typecheck: "tsc --noEmit",
+          test: "vitest run",
+          build: "tsc -p tsconfig.build.json",
+          "verify:package": "node scripts/verify-package.mjs",
+          verify: "pnpm run verify:package",
+          check:
+            "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+          prepack: "pnpm run build && pnpm run verify",
+        },
+      },
+    },
+  });
+  const directory = path.join(root, "plugins", "dsh-fixture");
+  try {
+    assert.deepEqual(validateWorkspaceScripts(directory, { plugin: true }), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects stale package-manager and missing-script references", async () => {
+  const root = await workspaceFixture({
+    plugins: {
+      "dsh-fixture": {
+        name: "@yadsh/dsh-fixture",
+        scripts: {
+          lint: "eslint src tests scripts",
+          typecheck: "tsc --noEmit",
+          test: "vitest run",
+          build: "npm run clean && tsc -p tsconfig.build.json",
+          "verify:package": "node scripts/verify-package.mjs",
+          verify: "pnpm run verify:package",
+          check:
+            "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+          prepack: "tsc -p tsconfig.build.json",
+        },
+      },
+    },
+  });
+  const directory = path.join(root, "plugins", "dsh-fixture");
+  try {
+    const errors = validateWorkspaceScripts(directory, { plugin: true });
+    assert.ok(errors.some((error) => error.includes("use pnpm, not npm")));
+    assert.ok(
+      errors.some((error) => error.includes('missing local script "clean"')),
+    );
+    assert.ok(
+      errors.some((error) => error.includes('missing local script "format"')),
+    );
+    assert.ok(
+      errors.some((error) => error.includes("scripts.check must equal")),
+    );
+    assert.ok(errors.some((error) => error.includes("scripts.prepack")));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 /** Builds a `root/plugins/dsh-fixture` with a README the gate can scan. */
 async function readmeFixture({ files, readme = "", name = "dsh-fixture" }) {

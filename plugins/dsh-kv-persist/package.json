@@ -53,8 +53,9 @@
     "test": "vitest run",
     "test:llama": "vitest run tests/integration/llama-server.test.ts",
     "verify:package": "node scripts/verify-package.mjs",
-    "verify": "npm run verify:package",
-    "check": "npm run typecheck && npm test && npm run build && npm run verify"
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
   },
   "publishConfig": {
     "access": "public",

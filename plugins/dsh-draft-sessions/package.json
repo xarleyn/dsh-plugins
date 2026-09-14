@@ -65,11 +65,11 @@
     "test:coverage": "vitest run --coverage",
     "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
     "e2e:browser": "node scripts/smoke-packed-dsh.mjs --browser",
-    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
-    "verify": "pnpm run test:package",
+    "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
+    "verify": "pnpm run verify:package",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepack": "tsdown && tsc -p tsconfig.build.json",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [

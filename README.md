@@ -67,7 +67,7 @@ pnpm deps:check
 pnpm tarball:verify
 ```
 
-Nx runs project-local `lint`, `typecheck`, `test`, and `build` scripts and caches
+Nx runs project-local `lint`, `typecheck`, `test`, `build`, and `verify` scripts and caches
 their outputs. The dependency check enforces workspace boundaries, while the
 tarball check packs every public package, validates its manifest and exported
 files, and installs it in a clean consumer project.

@@ -54,7 +54,7 @@ pnpm typecheck
 | `pnpm format:write` | Rewrite files that fail the formatting check |
 | `pnpm deps:check` | Enforce workspace dependency boundaries |
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
-| `pnpm affected:check` | Run lint/typecheck/test/build on affected packages only |
+| `pnpm affected:check` | Run lint/typecheck/test/build/verify on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
 | `pnpm release:check` | Check that unreleased commit ranges have version plans |
 
@@ -160,12 +160,12 @@ pnpm nx build my-capability
 
 2. **Verify tarball verification passes** (for publishable packages):
    ```bash
-   bash scripts/tarball-verify.sh plugins/your-plugin
+   pnpm tarball:verify:packages plugins/your-plugin
    ```
 
 3. **Check dependency rules:**
    ```bash
-   bash scripts/check-dependencies.sh
+   pnpm deps:check
    ```
 
 ### Dependency Rules (SPEC §27)

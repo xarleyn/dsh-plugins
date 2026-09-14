@@ -112,15 +112,19 @@ export default async function generatePlugin(
     scripts["verify:client"] = "node scripts/verify-client-bundle.mjs";
   }
 
+  scripts.verify = [
+    "pnpm run verify:package",
+    ...(options.client ? ["pnpm run verify:client"] : []),
+  ].join(" && ");
+
   scripts.check = [
     "pnpm run lint",
     "pnpm run typecheck",
     ...(withTests ? ["pnpm run test"] : []),
     "pnpm run build",
-    "pnpm run verify:package",
-    ...(options.client ? ["pnpm run verify:client"] : []),
+    "pnpm run verify",
   ].join(" && ");
-  scripts.prepack = "pnpm run build";
+  scripts.prepack = "pnpm run build && pnpm run verify";
 
   tree.write(
     `${projectRoot}/package.json`,
