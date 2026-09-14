@@ -2695,3 +2695,154 @@ package.
   chrome-less panel.
 - `verify-package.mjs` asserts the rail classes and tab labels in the built
   bundle.
+
+---
+
+## 47. Personal skills (user-owned `SKILL.md`)
+
+### 47.1 Motivation
+
+The QA surface gave a visitor a profile and nothing else they own. Everything
+that shapes an answer — the preset, the tools, the model — belongs to the
+deployment. A skill is the first artifact a user can author themselves, and it
+is also the one artifact the harness already defines: `SKILL.md` in a
+directory, discovered by a provider, invoked by the model or by `/name`.
+
+This section records the implementation. It follows the same principle as the
+rest of the plugin: reuse the native mechanism and add no second runtime.
+
+### 47.2 Storage
+
+```text
+<registered workspace>/.qa-users/<account UUID>/.dsh/skills/<name>/SKILL.md
+<registered workspace>/.qa-users/<account UUID>/.dsh/skills-trash/<name>-<stamp>/
+```
+
+- The root is derived, never accepted from the browser: the account token
+  resolves the account, `accounts.perUserWorkspace` resolves its directory, and
+  `accounts.skills.relativeRoot` (relative only, validated at config time)
+  names the subdirectory. Every path is canonicalized and re-checked to be
+  inside the account's root; a symlinked directory is refused rather than
+  followed.
+- The harness's own `dsh-skill-filesystem` provider is not used: it resolves
+  the project root through the nearest `.git`, which for an account directory
+  inside a larger checkout climbs above the account and mixes users. The
+  plugin registers `qa-user-skills` instead, which reads exactly one place and
+  only for a cwd that matches the `.qa-users/<uuid>` layout.
+- Writes go through a temporary file and a rename. Nothing writes `SKILL.md`
+  in pieces.
+
+### 47.3 Format and preservation
+
+The format lives in two modules, split by what the browser can carry:
+
+- `src/personal-skills/skill-format.ts` — the rules that need no YAML: the
+  name grammar, the declared-tool list, the draft limits, the relative-root
+  rules. This is what the browser imports.
+- `src/personal-skills/skill-file.ts` — the parser and the serializer, which
+  the Host alone loads. A YAML library ships a Node build beside its browser
+  one, and that build's `require("process")` is not something the DSH client
+  module loader can answer: bundling it into the page stops the whole surface
+  from mounting. `verify-package.mjs` now rejects any Node builtin require in
+  the client bundle so the split cannot quietly regress.
+
+The consequence for the editor is one round trip: `skillsValidate` returns the
+file a save would write and the authoritative diagnostics, both produced by
+the serializer the save uses. The editor still checks the rules it can check
+alone on every keystroke, and the preview panel shows the Host's answer byte
+for byte — frontmatter preserved verbatim, which is the same source the write
+merges from.
+
+- Fields the editor owns: `name`, `description`, `whenToUse`, `user-invocable`,
+  `disable-model-invocation`, `allowed-tools`.
+- Everything else in the frontmatter is preserved verbatim, in document order,
+  and re-emitted after the known fields (`license`, `compatibility`,
+  `metadata`, vendor fields). Values a JSON bridge cannot carry are reported
+  rather than dropped in silence.
+- `allowed-tools` is written in the canonical space-separated form and read
+  tolerantly (an array is accepted and normalized). Duplicates collapse.
+- Read failures carry the reason the harness would give: absent frontmatter, a
+  malformed mapping, a name outside `^[a-z0-9]+(?:-[a-z0-9]+)*$`, an empty
+  description, a legacy invocation key the shipped parser throws on. A file
+  the harness would refuse never reaches the model catalog; it stays open in
+  the editor with that reason attached.
+
+### 47.4 Tool declaration is not a grant
+
+`allowed-tools` is stored as declared and never widens the session. The
+effective set is the intersection of what the QA scope allows with what the
+skill declares; a declared tool the scope excludes is reported as unavailable
+and kept in the file, so an imported skill stays repairable. The picker lists
+the deployment's registry with availability computed from
+`lockdown.toolPolicy.allow`, groups the unavailable entries separately, and
+states in the editor that the list grants nothing.
+
+Runtime enforcement (restricting an active skill's turn to the intersection)
+is deliberately **not** implemented: the harness exposes no reliable
+active-skill lifecycle seam for a plugin, and emulating it through the prompt
+would be a promise the code does not keep. The UI therefore never claims to
+enforce anything.
+
+### 47.5 Host surface
+
+- `src/personal-skills/service.ts` — `QaPersonalSkills`: list, get, create,
+  update (rename included, resources moved with the directory), remove (into
+  the trash), tools, validate, and the discovery reads. Revision is
+  `sha256(file bytes)`; an update compares the revision the editor read and
+  refuses a stale one.
+- `src/personal-skills/provider.ts` — the `qa-user-skills` provider
+  (`ctx.skills.registerProvider`), rank 50 so a personal skill wins a
+  same-named duplicate inside the QA scope, `source: "qa-user"`.
+- `src/personal-skills/host.ts` — registers the provider through
+  `ctx.inject(["skills"])`, so a deployment without the skills service keeps
+  the editor working and publishes nothing.
+- `src/personal-skills/watcher.ts` — a lazy, bounded `fs.watch` per storage
+  root (LRU, 16 roots, 250 ms coalescing, `unref`-ed timer), for files edited
+  outside the editor. The registry caches candidate lists, not definitions:
+  an edited body is visible to the next load immediately, while a new or
+  renamed skill needs an invalidation, which a save through the service always
+  performs.
+- Remotes on the `qaSurface` namespace: `skillsList`, `skillsGet`,
+  `skillsCreate`, `skillsUpdate`, `skillsRemove`, `skillsTools`,
+  `skillsValidate`. Each takes the account token as its first argument and
+  answers with the shared `(reason: <code>)` marker on refusal.
+- Audit lines: `skill.create`, `skill.update`, `skill.delete`,
+  `skill.validation-failed`, `skill.provider.invalidate-failed`. The account
+  id is hashed and skill bodies never reach the log; a storage success whose
+  catalog refresh failed is logged as its own event.
+
+### 47.6 Settings dialog
+
+The separate profile modal is replaced by one `Настройки` dialog: a section
+list (`Профиль`, `Общие`, `Навыки`) inside the shared dialog shell. On a
+narrow viewport the same tablist turns into a horizontal strip instead of a
+second navigation screen. Each page renders its own actions, so the dialog
+needs no per-section footer, and nested dialogs (the tool picker, the delete
+confirmation) own Escape through a small open-dialog stack in `QaModal`.
+
+### 47.7 Verification
+
+- `tests/personal-skills.test.ts`: name grammar, frontmatter round trip
+  (quoting, Unicode, foreign-field preservation), tool-list normalization,
+  draft validation, path traversal and symlink escapes, service CRUD,
+  conflict, rename with resources, trash, per-account isolation, the operator
+  limit, and the reason-marker refusals.
+- `tests/personal-skills-provider.test.ts`: the provider against the real
+  `SkillRegistry` — visibility per cwd and per account, invocation flags,
+  refresh after a save, a hand edit, removal, skipped malformed files, and the
+  watcher's coalescing and bound.
+- `tests/qa-user-settings.test.tsx`, `tests/qa-skills.test.tsx`: the dialog
+  sections and profile migration, the catalog (empty, search, warnings,
+  failures), the editor (seeding, blocking validation, save payload, preview,
+  exit guard, delete confirmation, conflict reload) and the tool picker.
+- The packed-DSH browser pass mounts the built bundle in a real browser; it is
+  what caught the YAML bundling above, and it reports the page console when the
+  surface never appears. It runs the default read-only composition, so accounts
+  — and with them the settings dialog — are not exercised live yet.
+- `tests/qa-styles.test.ts`: every `--dsh-qa-*` reference is declared, the
+  dialog rules use themed aliases with no hard-coded colors, and the legacy
+  profile classes are gone.
+- `verify-package.mjs`: the six remote ids, the provider module and its
+  `ctx.inject(["skills"])` registration, the storage primitives in the built
+  service, the dialog classes in the built bundle, and the absence of the old
+  profile shell.

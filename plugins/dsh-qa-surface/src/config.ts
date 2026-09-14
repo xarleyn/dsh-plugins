@@ -13,6 +13,11 @@ import {
   QA_PROFILE_INSTRUCTIONS_MAX_MAX,
   QA_PROFILE_INSTRUCTIONS_MAX_MIN,
 } from "./profile.js";
+import {
+  QA_SKILL_ENABLED_BY_DEFAULT,
+  QA_SKILL_MAX_BYTES_MAX,
+  QA_SKILL_MAX_BYTES_MIN,
+} from "./personal-skills/skill-format.js";
 import type { QaSurfaceConfig } from "./types.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
@@ -181,6 +186,25 @@ const configSchema = z.object({
           ...D.accounts.profile,
           identities: [...D.accounts.profile.identities],
         }),
+      skills: z
+        .object({
+          enabled: z.boolean().default(QA_SKILL_ENABLED_BY_DEFAULT),
+          relativeRoot: z.string().default(D.accounts.skills.relativeRoot),
+          watch: z.boolean().default(D.accounts.skills.watch),
+          maxSkillBytes: z
+            .number()
+            .step(1)
+            .min(QA_SKILL_MAX_BYTES_MIN)
+            .max(QA_SKILL_MAX_BYTES_MAX)
+            .default(D.accounts.skills.maxSkillBytes),
+          allowResourceEditing: z
+            .boolean()
+            .default(D.accounts.skills.allowResourceEditing),
+        })
+        .default({
+          ...D.accounts.skills,
+          enabled: QA_SKILL_ENABLED_BY_DEFAULT,
+        }),
     })
     .default({
       ...D.accounts,
@@ -188,6 +212,7 @@ const configSchema = z.object({
         ...D.accounts.profile,
         identities: [...D.accounts.profile.identities],
       },
+      skills: { ...D.accounts.skills, enabled: QA_SKILL_ENABLED_BY_DEFAULT },
     }),
   entry: z
     .object({
