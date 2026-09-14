@@ -1,5 +1,8 @@
 import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
 import {
   CardShell,
   bindSettingsExternalStore,
@@ -178,7 +181,9 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 }
               >
                 {REPAIR_MODES.map((mode) => (
-                  <option key={mode} value={mode}>{mode}</option>
+                  <option key={mode} value={mode}>
+                    {mode}
+                  </option>
                 ))}
               </select>
             </label>
@@ -256,14 +261,28 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             </button>
           </div>
           {report === undefined ? (
-            <p className="uir-muted">No completed scan in this browser session.</p>
+            <p className="uir-muted">
+              No completed scan in this browser session.
+            </p>
           ) : (
             <>
               <div className="uir-report">
-                <span className="uir-metric"><strong>{report.issues.length}</strong><span>issues</span></span>
-                <span className="uir-metric"><strong>{report.applied.length}</strong><span>applied</span></span>
-                <span className="uir-metric"><strong>{report.ignored.length}</strong><span>ignored</span></span>
-                <span className="uir-metric"><strong>{report.rolledBack.length}</strong><span>rolled back</span></span>
+                <span className="uir-metric">
+                  <strong>{report.issues.length}</strong>
+                  <span>issues</span>
+                </span>
+                <span className="uir-metric">
+                  <strong>{report.applied.length}</strong>
+                  <span>applied</span>
+                </span>
+                <span className="uir-metric">
+                  <strong>{report.ignored.length}</strong>
+                  <span>ignored</span>
+                </span>
+                <span className="uir-metric">
+                  <strong>{report.rolledBack.length}</strong>
+                  <span>rolled back</span>
+                </span>
               </div>
               <ul className="uir-issues">
                 {report.issues.slice(0, 5).map((issue) => (
@@ -271,7 +290,9 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                     <div className="uir-issue-summary">
                       <span className="uir-rule">{issue.ruleId}</span>
                       <span className="uir-target">{issue.target}</span>
-                      <span className="uir-confidence">{Math.round(issue.confidence * 100)}%</span>
+                      <span className="uir-confidence">
+                        {Math.round(issue.confidence * 100)}%
+                      </span>
                     </div>
                     {issue.suggestedCss === undefined ? null : (
                       <code className="uir-suggestion">
@@ -293,16 +314,22 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                             }
                             onClick={() => void applyIssue(issue)}
                           >
-                            {pendingRepair === issue.id ? "Applying..." : "Apply"}
+                            {pendingRepair === issue.id
+                              ? "Applying..."
+                              : "Apply"}
                           </button>
                         )}
                         <button
                           className="uir-button"
                           type="button"
-                          disabled={!writable || report.ignored.includes(issue.id)}
+                          disabled={
+                            !writable || report.ignored.includes(issue.id)
+                          }
                           onClick={() => ignoreIssue(issue)}
                         >
-                          {report.ignored.includes(issue.id) ? "Ignored" : "Ignore"}
+                          {report.ignored.includes(issue.id)
+                            ? "Ignored"
+                            : "Ignore"}
                         </button>
                       </div>
                     )}
@@ -310,7 +337,9 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 ))}
               </ul>
               {repairError === undefined ? null : (
-                <p className="uir-error" role="status">{repairError}</p>
+                <p className="uir-error" role="status">
+                  {repairError}
+                </p>
               )}
             </>
           )}
@@ -319,12 +348,19 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
         <section className="uir-section">
           <h3 className="uir-section-title">Ignored selectors</h3>
           <p className="uir-muted">
-            Matching diagnoses remain visible but are never applied automatically.
+            Matching diagnoses remain visible but are never applied
+            automatically.
           </p>
           <ul className="uir-ignore-list">
             {config.ignore.map((rule, index) => (
-              <li className="uir-ignore-item" key={`${rule.plugin ?? ""}:${rule.rule ?? ""}:${rule.selector ?? ""}:${index}`}>
-                <code>{rule.selector ?? [rule.plugin, rule.rule].filter(Boolean).join(" / ")}</code>
+              <li
+                className="uir-ignore-item"
+                key={`${rule.plugin ?? ""}:${rule.rule ?? ""}:${rule.selector ?? ""}:${index}`}
+              >
+                <code>
+                  {rule.selector ??
+                    [rule.plugin, rule.rule].filter(Boolean).join(" / ")}
+                </code>
                 <button
                   className="uir-button"
                   type="button"
@@ -355,7 +391,9 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             </button>
           </div>
           {selectorError === undefined ? null : (
-            <p className="uir-error" role="alert">{selectorError}</p>
+            <p className="uir-error" role="alert">
+              {selectorError}
+            </p>
           )}
         </section>
       </div>

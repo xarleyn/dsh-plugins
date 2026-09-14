@@ -60,14 +60,20 @@ describe("card formatting", () => {
     expect(shortHash("abc")).toBe("abc");
     expect(shortHash(undefined)).toBe("—");
     expect(joinList([])).toBe("—");
-    expect(joinList(["jailbreak", "secret_leak"])).toBe("jailbreak, secret_leak");
+    expect(joinList(["jailbreak", "secret_leak"])).toBe(
+      "jailbreak, secret_leak",
+    );
   });
 
   it("parses drafts without inventing values", () => {
     expect(parseNumberDraft(" 1536 ")).toBe(1_536);
     expect(parseNumberDraft("")).toBeNull();
     expect(parseNumberDraft("nope")).toBeNull();
-    expect(parseListDraft("bash, write\nedit")).toEqual(["bash", "write", "edit"]);
+    expect(parseListDraft("bash, write\nedit")).toEqual([
+      "bash",
+      "write",
+      "edit",
+    ]);
     expect(parseListDraft("  ")).toEqual([]);
   });
 
@@ -83,8 +89,9 @@ describe("card formatting", () => {
   });
 
   it("names the remote classifier endpoint for the privacy notice", () => {
-    expect(describeEndpoint("openai-compatible", "https://moderator.example/v1"))
-      .toBe("https://moderator.example/v1");
+    expect(
+      describeEndpoint("openai-compatible", "https://moderator.example/v1"),
+    ).toBe("https://moderator.example/v1");
     expect(describeEndpoint("none", "")).toBe("no classifier endpoint");
     expect(describeEndpoint("dsh", "")).toBe("the configured endpoint");
   });

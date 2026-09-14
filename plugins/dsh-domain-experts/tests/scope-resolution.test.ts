@@ -6,9 +6,17 @@ import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
 import { resolveExpert } from "../src/host/resolver.js";
 import { createFilesystemProvider } from "../src/host/scopes/filesystem.js";
 import { ScopeProviderRegistry } from "../src/host/scopes/registry.js";
-import { WorkerRegistry, type DomainWorker } from "../src/host/workers/registry.js";
+import {
+  WorkerRegistry,
+  type DomainWorker,
+} from "../src/host/workers/registry.js";
 import type { DomainDefinition } from "../src/types.js";
-import { domainOf, domainTableOf, fixedClock, memoryRecordTableOf } from "./helpers/fakes.js";
+import {
+  domainOf,
+  domainTableOf,
+  fixedClock,
+  memoryRecordTableOf,
+} from "./helpers/fakes.js";
 
 const CODE_WORKER: DomainWorker = {
   id: "code_worker",
@@ -27,7 +35,10 @@ const PAYMENTS = domainOf("payments", {
       sharedReadOnly: ["packages/common/**"],
       denied: ["services/inventory/**"],
     },
-    documentation: { include: ["docs/payments/**"], exclude: ["docs/legacy/**"] },
+    documentation: {
+      include: ["docs/payments/**"],
+      exclude: ["docs/legacy/**"],
+    },
     providers: {},
   },
   memory: { namespace: "domain/payments", sharedReadOnly: ["shared/product"] },
@@ -45,13 +56,17 @@ interface Fixture {
 function fixtureOf(definitions: readonly DomainDefinition[]): Fixture {
   const clock = fixedClock();
   const domains = new DomainRegistry(
-    domainTableOf(definitions.map((definition) => [definition.id, definition] as const)),
+    domainTableOf(
+      definitions.map((definition) => [definition.id, definition] as const),
+    ),
     clock,
   );
   const scopeProviders = new ScopeProviderRegistry();
   scopeProviders.register(createFilesystemProvider());
   const memoryProviders = new MemoryProviderRegistry();
-  memoryProviders.register(createBuiltinMemoryProvider(memoryRecordTableOf(), clock));
+  memoryProviders.register(
+    createBuiltinMemoryProvider(memoryRecordTableOf(), clock),
+  );
   const workers = new WorkerRegistry();
   return {
     dependencies: {
@@ -87,7 +102,9 @@ describe("scope resolution: filesystem resources", () => {
   it("lists the three resource classes", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const profile = await resolve(fixture, PAYMENTS);
-    expect(profile.resources.map((resource) => [resource.class, resource.path])).toEqual([
+    expect(
+      profile.resources.map((resource) => [resource.class, resource.path]),
+    ).toEqual([
       ["primary", "services/payments/**"],
       ["shared", "packages/common/**"],
       ["denied", "services/inventory/**"],
@@ -97,15 +114,26 @@ describe("scope resolution: filesystem resources", () => {
   it("reports advisory enforcement while no worker applies the scope", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const profile = await resolve(fixture, PAYMENTS);
-    expect(profile.resources.every((resource) => resource.enforcement === "advisory")).toBe(true);
-    expect(profile.providers[0]).toMatchObject({ id: "filesystem", registered: true });
+    expect(
+      profile.resources.every(
+        (resource) => resource.enforcement === "advisory",
+      ),
+    ).toBe(true);
+    expect(profile.providers[0]).toMatchObject({
+      id: "filesystem",
+      registered: true,
+    });
   });
 
   it("reports enforced as soon as a selected worker claims it", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     fixture.workers.register(CODE_WORKER);
     const profile = await resolve(fixture, PAYMENTS);
-    expect(profile.resources.every((resource) => resource.enforcement === "enforced")).toBe(true);
+    expect(
+      profile.resources.every(
+        (resource) => resource.enforcement === "enforced",
+      ),
+    ).toBe(true);
     expect(profile.resources[0]?.enforcedBy).toEqual(["code_worker"]);
   });
 
@@ -118,7 +146,11 @@ describe("scope resolution: filesystem resources", () => {
     ]);
     fixture.workers.register(CODE_WORKER);
     const profile = await resolve(fixture, fixture.domains.require("payments"));
-    expect(profile.resources.every((resource) => resource.enforcement === "advisory")).toBe(true);
+    expect(
+      profile.resources.every(
+        (resource) => resource.enforcement === "advisory",
+      ),
+    ).toBe(true);
   });
 
   it("carries the knowledge scope into the resolved scope", async () => {
@@ -135,7 +167,9 @@ describe("scope resolution: memory namespaces", () => {
   it("grants read/write on the private namespace and read-only on shared ones", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const profile = await resolve(fixture, PAYMENTS);
-    expect(profile.memory.map((entry) => [entry.namespace, entry.access])).toEqual([
+    expect(
+      profile.memory.map((entry) => [entry.namespace, entry.access]),
+    ).toEqual([
       ["domain/payments", "read-write"],
       ["shared/product", "read-only"],
     ]);
@@ -162,7 +196,10 @@ describe("scope resolution: memory namespaces", () => {
       "domain/inventory",
     ]);
 
-    const expertOnly = { ...base, delegation: { ...base.delegation, crossDomainMode: "expert-only" } };
+    const expertOnly = {
+      ...base,
+      delegation: { ...base.delegation, crossDomainMode: "expert-only" },
+    };
     const second = await resolve(fixture, expertOnly as DomainDefinition);
     expect(second.memory.map((entry) => entry.namespace)).toEqual([
       "domain/payments",
@@ -176,7 +213,9 @@ describe("scope resolution: memory namespaces", () => {
       { ...fixture.dependencies, memoryProviderId: "openviking" },
       { definition: PAYMENTS, workspaceDir: "", callerDomain: null, depth: 1 },
     );
-    expect(profile.degradations.map((item) => item.code)).toContain("MEMORY_PROVIDER_MISSING");
+    expect(profile.degradations.map((item) => item.code)).toContain(
+      "MEMORY_PROVIDER_MISSING",
+    );
   });
 });
 
@@ -199,15 +238,21 @@ describe("scope resolution: tools", () => {
     const profile = await resolve(fixture, definition);
     expect(profile.toolFilter.allow).toContain("domain_expert");
     expect(profile.toolFilter.allow).not.toContain("domain_delegate");
-    expect(profile.tools.find((tool) => tool.name === "domain_delegate")?.note).toContain("Alias");
+    expect(
+      profile.tools.find((tool) => tool.name === "domain_delegate")?.note,
+    ).toContain("Alias");
   });
 
   it("flags an unverifiable tool name but keeps it in the filter", async () => {
-    const definition = domainOf("payments", { tools: { allow: ["bash"], deny: [] } });
+    const definition = domainOf("payments", {
+      tools: { allow: ["bash"], deny: [] },
+    });
     const fixture = fixtureOf([definition]);
     const profile = await resolve(fixture, definition);
     expect(profile.toolFilter.allow).toContain("bash");
-    expect(profile.degradations.map((item) => item.code)).toContain("TOOL_UNVERIFIED");
+    expect(profile.degradations.map((item) => item.code)).toContain(
+      "TOOL_UNVERIFIED",
+    );
   });
 
   it("removes a denied tool from the filter and the visible list", async () => {
@@ -223,7 +268,9 @@ describe("scope resolution: tools", () => {
   });
 
   it("reports a worker that has no tool binding as unavailable", async () => {
-    const definition = domainOf("payments", { tools: { allow: ["jira_worker"], deny: [] } });
+    const definition = domainOf("payments", {
+      tools: { allow: ["jira_worker"], deny: [] },
+    });
     const fixture = fixtureOf([definition]);
     fixture.workers.register({
       id: "jira_worker",
@@ -233,8 +280,12 @@ describe("scope resolution: tools", () => {
       tool: "",
     });
     const profile = await resolve(fixture, definition);
-    expect(profile.tools.find((tool) => tool.name === "jira_worker")?.available).toBe(false);
-    expect(profile.degradations.map((item) => item.code)).toContain("WORKER_UNAVAILABLE");
+    expect(
+      profile.tools.find((tool) => tool.name === "jira_worker")?.available,
+    ).toBe(false);
+    expect(profile.degradations.map((item) => item.code)).toContain(
+      "WORKER_UNAVAILABLE",
+    );
   });
 });
 
@@ -248,7 +299,9 @@ describe("scope resolution: degradation", () => {
     });
     const fixture = fixtureOf([definition]);
     const profile = await resolve(fixture, definition);
-    expect(profile.degradations.map((item) => item.code)).toContain("SCOPE_PROVIDER_MISSING");
+    expect(profile.degradations.map((item) => item.code)).toContain(
+      "SCOPE_PROVIDER_MISSING",
+    );
     const jira = profile.providers.find((provider) => provider.id === "jira");
     expect(jira).toMatchObject({ registered: false, enforcement: "advisory" });
   });
@@ -265,11 +318,14 @@ describe("scope resolution: degradation", () => {
       builtin: false,
       validate: () => undefined,
       describe: () => "1 space",
-      apply: () => Promise.resolve({ resources: [], external: '{"spaces":["PAY"]}' }),
+      apply: () =>
+        Promise.resolve({ resources: [], external: '{"spaces":["PAY"]}' }),
     });
     const profile = await resolve(fixture, definition);
     expect(profile.scope.external["wiki"]).toBe('{"spaces":["PAY"]}');
-    expect(profile.providers.find((provider) => provider.id === "wiki")?.registered).toBe(true);
+    expect(
+      profile.providers.find((provider) => provider.id === "wiki")?.registered,
+    ).toBe(true);
   });
 
   it("degrades a provider that refuses its own configuration", async () => {
@@ -289,7 +345,9 @@ describe("scope resolution: degradation", () => {
       apply: () => Promise.resolve({ resources: [], external: "" }),
     });
     const profile = await resolve(fixture, definition);
-    const degradation = profile.degradations.find((item) => item.code === "SCOPE_PROVIDER_MISSING");
+    const degradation = profile.degradations.find(
+      (item) => item.code === "SCOPE_PROVIDER_MISSING",
+    );
     expect(degradation?.message).toContain("expected a JSON document");
   });
 });
@@ -302,7 +360,9 @@ describe("scope resolution: delegation", () => {
       domainOf("platform", { name: "Platform", enabled: false }),
     ]);
     const profile = await resolve(fixture, PAYMENTS);
-    expect(profile.delegation.peers.map((peer) => peer.domainId)).toEqual(["inventory"]);
+    expect(profile.delegation.peers.map((peer) => peer.domainId)).toEqual([
+      "inventory",
+    ]);
     expect(profile.delegation.mode).toBe("expert-only");
   });
 
@@ -311,9 +371,15 @@ describe("scope resolution: delegation", () => {
       ...PAYMENTS,
       delegation: { ...PAYMENTS.delegation, targets: ["inventory"] },
     });
-    const fixture = fixtureOf([definition, domainOf("inventory"), domainOf("platform")]);
+    const fixture = fixtureOf([
+      definition,
+      domainOf("inventory"),
+      domainOf("platform"),
+    ]);
     const profile = await resolve(fixture, definition);
-    expect(profile.delegation.peers.map((peer) => peer.domainId)).toEqual(["inventory"]);
+    expect(profile.delegation.peers.map((peer) => peer.domainId)).toEqual([
+      "inventory",
+    ]);
   });
 
   it("degrades a target that is missing or disabled", async () => {
@@ -323,7 +389,9 @@ describe("scope resolution: delegation", () => {
     });
     const fixture = fixtureOf([definition]);
     const profile = await resolve(fixture, definition);
-    expect(profile.degradations.map((item) => item.code)).toContain("DELEGATION_TARGET_MISSING");
+    expect(profile.degradations.map((item) => item.code)).toContain(
+      "DELEGATION_TARGET_MISSING",
+    );
   });
 
   it("reports the mode as disabled when cross-domain access is off", async () => {
@@ -350,32 +418,46 @@ describe("scope resolution: persona wiring", () => {
     const profile = await resolve(fixture, PAYMENTS, "inventory", 2);
     expect(profile.persona).toContain('asked by the "inventory" expert');
     expect(profile.persona).toContain("Delegation depth: 2 of at most 3");
-    expect(profile.basePolicy.startsWith("You are the designated expert")).toBe(true);
+    expect(profile.basePolicy.startsWith("You are the designated expert")).toBe(
+      true,
+    );
   });
 
   it("recalls memory into the persona for a real task", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const provider = fixture.memoryProviders.require("builtin");
-    await provider.remember("domain/payments", "cutoff", "The settlement cutoff is 14:00.");
-    const profile = await resolveExpert(fixture.dependencies, {
-      definition: PAYMENTS,
-      workspaceDir: "",
-      callerDomain: null,
-      depth: 1,
-    }, {
-      task: "When does settlement close?",
-      context: "",
-      output: "",
-      mode: "answer",
-      background: false,
-    });
+    await provider.remember(
+      "domain/payments",
+      "cutoff",
+      "The settlement cutoff is 14:00.",
+    );
+    const profile = await resolveExpert(
+      fixture.dependencies,
+      {
+        definition: PAYMENTS,
+        workspaceDir: "",
+        callerDomain: null,
+        depth: 1,
+      },
+      {
+        task: "When does settlement close?",
+        context: "",
+        output: "",
+        mode: "answer",
+        background: false,
+      },
+    );
     expect(profile.persona).toContain("The settlement cutoff is 14:00.");
   });
 
   it("does not recall memory for the preview profile", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const provider = fixture.memoryProviders.require("builtin");
-    await provider.remember("domain/payments", "cutoff", "The settlement cutoff is 14:00.");
+    await provider.remember(
+      "domain/payments",
+      "cutoff",
+      "The settlement cutoff is 14:00.",
+    );
     const profile = await resolve(fixture, PAYMENTS);
     expect(profile.persona).not.toContain("The settlement cutoff is 14:00.");
     expect(profile.persona).toContain("preview");

@@ -7,23 +7,23 @@
  * the hardening CLI flags neutralize; this list closes the ambient half.
  */
 export const REMOVED_ENV_KEYS: readonly string[] = [
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_INDEX_FILE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_NAMESPACE',
-  'GIT_EXTERNAL_DIFF',
-  'GIT_DIFF_OPTS',
-  'GIT_CONFIG_COUNT',
-  'GIT_CONFIG_PARAMETERS',
-  'GIT_CONFIG_SYSTEM',
-  'GIT_CONFIG_GLOBAL',
-  'GIT_ASKPASS',
-  'GIT_SSH',
-  'GIT_SSH_COMMAND',
-  'GIT_PROXY_COMMAND',
-  'GIT_PAGER',
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_NAMESPACE",
+  "GIT_EXTERNAL_DIFF",
+  "GIT_DIFF_OPTS",
+  "GIT_CONFIG_COUNT",
+  "GIT_CONFIG_PARAMETERS",
+  "GIT_CONFIG_SYSTEM",
+  "GIT_CONFIG_GLOBAL",
+  "GIT_ASKPASS",
+  "GIT_SSH",
+  "GIT_SSH_COMMAND",
+  "GIT_PROXY_COMMAND",
+  "GIT_PAGER",
 ];
 
 /**
@@ -38,16 +38,18 @@ export const REMOVED_ENV_KEYS: readonly string[] = [
  *   output regardless of the host locale.
  */
 export const FORCED_ENV_VALUES: Readonly<Record<string, string>> = {
-  LC_ALL: 'C',
-  GIT_OPTIONAL_LOCKS: '0',
-  GIT_TERMINAL_PROMPT: '0',
-  GIT_CONFIG_NOSYSTEM: '1',
-  GIT_PAGER: 'cat',
-  PAGER: 'cat',
+  LC_ALL: "C",
+  GIT_OPTIONAL_LOCKS: "0",
+  GIT_TERMINAL_PROMPT: "0",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_PAGER: "cat",
+  PAGER: "cat",
 };
 
 /** Build the environment for one git invocation from the parent environment. */
-export function buildGitEnv(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function buildGitEnv(
+  base: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
   const removed = new Set<string>(REMOVED_ENV_KEYS);
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(base)) {

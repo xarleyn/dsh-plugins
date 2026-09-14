@@ -16,7 +16,12 @@ function providerOf() {
 describe("builtin memory: writes", () => {
   it("stores a record under its namespace and key", async () => {
     const { table, provider } = providerOf();
-    const record = await provider.remember("domain/payments", "cutoff", "The 14:00 batch is the cutoff.", ["settlement"]);
+    const record = await provider.remember(
+      "domain/payments",
+      "cutoff",
+      "The 14:00 batch is the cutoff.",
+      ["settlement"],
+    );
     expect(record.namespace).toBe("domain/payments");
     expect(record.key).toBe("cutoff");
     expect(record.tags).toEqual(["settlement"]);
@@ -26,7 +31,11 @@ describe("builtin memory: writes", () => {
   it("keeps createdAt across a rewrite and advances updatedAt", async () => {
     const { provider } = providerOf();
     const first = await provider.remember("domain/payments", "cutoff", "first");
-    const second = await provider.remember("domain/payments", "cutoff", "second");
+    const second = await provider.remember(
+      "domain/payments",
+      "cutoff",
+      "second",
+    );
     expect(second.createdAt).toBe(first.createdAt);
     expect(second.updatedAt).toBeGreaterThan(first.updatedAt);
     expect(second.text).toBe("second");
@@ -34,17 +43,22 @@ describe("builtin memory: writes", () => {
 
   it("refuses an empty key or empty text", async () => {
     const { provider } = providerOf();
-    await expect(provider.remember("domain/payments", "  ", "text")).rejects.toThrowError(
-      /non-empty key/u,
-    );
-    await expect(provider.remember("domain/payments", "key", "   ")).rejects.toThrowError(
-      /non-empty text/u,
-    );
+    await expect(
+      provider.remember("domain/payments", "  ", "text"),
+    ).rejects.toThrowError(/non-empty key/u);
+    await expect(
+      provider.remember("domain/payments", "key", "   "),
+    ).rejects.toThrowError(/non-empty text/u);
   });
 
   it("deduplicates tags and drops blanks", async () => {
     const { provider } = providerOf();
-    const record = await provider.remember("domain/payments", "k", "t", ["a", "a", " ", "b"]);
+    const record = await provider.remember("domain/payments", "k", "t", [
+      "a",
+      "a",
+      " ",
+      "b",
+    ]);
     expect(record.tags).toEqual(["a", "b"]);
   });
 });
@@ -52,8 +66,16 @@ describe("builtin memory: writes", () => {
 describe("builtin memory: namespace isolation", () => {
   it("never returns a record from another namespace", async () => {
     const { provider } = providerOf();
-    await provider.remember("domain/payments", "shared-looking", "payments only");
-    await provider.remember("domain/inventory", "inventory-secret", "inventory only");
+    await provider.remember(
+      "domain/payments",
+      "shared-looking",
+      "payments only",
+    );
+    await provider.remember(
+      "domain/inventory",
+      "inventory-secret",
+      "inventory only",
+    );
 
     const payments = await provider.inspect("domain/payments");
     expect(payments.map((record) => record.key)).toEqual(["shared-looking"]);
@@ -69,7 +91,9 @@ describe("builtin memory: namespace isolation", () => {
   it("refuses to delete a record through a foreign namespace key", async () => {
     const { provider } = providerOf();
     await provider.remember("domain/inventory", "secret", "not yours");
-    await expect(provider.forget("domain/payments", "secret")).resolves.toBe(false);
+    await expect(provider.forget("domain/payments", "secret")).resolves.toBe(
+      false,
+    );
     expect(await provider.inspect("domain/inventory")).toHaveLength(1);
   });
 
@@ -87,7 +111,10 @@ describe("builtin memory: namespace isolation", () => {
     const { provider } = providerOf();
     await provider.remember("shared/product", "glossary", "terms");
     await provider.remember("domain/payments", "cutoff", "14:00");
-    expect(provider.listNamespaces()).toEqual(["domain/payments", "shared/product"]);
+    expect(provider.listNamespaces()).toEqual([
+      "domain/payments",
+      "shared/product",
+    ]);
   });
 });
 
@@ -95,7 +122,11 @@ describe("builtin memory: retrieval", () => {
   it("ranks by term hits then recency", async () => {
     const { provider } = providerOf();
     await provider.remember("domain/payments", "one", "settlement batch");
-    await provider.remember("domain/payments", "two", "settlement batch timeout");
+    await provider.remember(
+      "domain/payments",
+      "two",
+      "settlement batch timeout",
+    );
     const found = await provider.retrieve({
       namespaces: ["domain/payments"],
       query: "settlement batch timeout",
@@ -106,7 +137,9 @@ describe("builtin memory: retrieval", () => {
 
   it("searches tags as well as text", async () => {
     const { provider } = providerOf();
-    await provider.remember("domain/payments", "k", "unrelated", ["settlement"]);
+    await provider.remember("domain/payments", "k", "unrelated", [
+      "settlement",
+    ]);
     const found = await provider.retrieve({
       namespaces: ["domain/payments"],
       query: "settlement",
@@ -156,9 +189,15 @@ describe("builtin memory: retrieval", () => {
 describe("memory provider registry", () => {
   it("reports the built-in provider", () => {
     const registry = new MemoryProviderRegistry();
-    const dispose = registry.register(createBuiltinMemoryProvider(memoryRecordTableOf()));
+    const dispose = registry.register(
+      createBuiltinMemoryProvider(memoryRecordTableOf()),
+    );
     expect(registry.info()).toEqual([
-      { id: BUILTIN_MEMORY_PROVIDER_ID, title: "Built-in storage", builtin: true },
+      {
+        id: BUILTIN_MEMORY_PROVIDER_ID,
+        title: "Built-in storage",
+        builtin: true,
+      },
     ]);
     dispose();
     expect(registry.list()).toEqual([]);
@@ -167,11 +206,14 @@ describe("memory provider registry", () => {
   it("refuses a duplicate id and a malformed id", () => {
     const registry = new MemoryProviderRegistry();
     registry.register(createBuiltinMemoryProvider(memoryRecordTableOf()));
-    expect(() => registry.register(createBuiltinMemoryProvider(memoryRecordTableOf()))).toThrowError(
-      /already registered/u,
-    );
     expect(() =>
-      registry.register({ ...createBuiltinMemoryProvider(memoryRecordTableOf()), id: "Bad Id" }),
+      registry.register(createBuiltinMemoryProvider(memoryRecordTableOf())),
+    ).toThrowError(/already registered/u);
+    expect(() =>
+      registry.register({
+        ...createBuiltinMemoryProvider(memoryRecordTableOf()),
+        id: "Bad Id",
+      }),
     ).toThrowError(/must match/u);
   });
 

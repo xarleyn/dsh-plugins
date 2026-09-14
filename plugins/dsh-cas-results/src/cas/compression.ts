@@ -17,7 +17,15 @@ const gunzip = promisify(gunzipCallback);
 export type CompressionMode = "none" | "gzip" | "auto";
 
 /** Media types whose payloads are already compressed; `auto` stores them raw. */
-const COMPRESSED_MEDIA_PREFIXES = ["image/", "video/", "audio/", "application/zip", "application/gzip", "application/x-gzip", "application/pdf"] as const;
+const COMPRESSED_MEDIA_PREFIXES = [
+  "image/",
+  "video/",
+  "audio/",
+  "application/zip",
+  "application/gzip",
+  "application/x-gzip",
+  "application/pdf",
+] as const;
 
 export function isPreCompressedMedia(mediaType: string): boolean {
   const lower = mediaType.toLowerCase();
@@ -25,28 +33,44 @@ export function isPreCompressedMedia(mediaType: string): boolean {
 }
 
 /** Resolve the codec for a new object without considering content (fast path). */
-export function resolveCodec(mode: CompressionMode, kind: CasKind, mediaType: string): StorageCodec {
+export function resolveCodec(
+  mode: CompressionMode,
+  kind: CasKind,
+  mediaType: string,
+): StorageCodec {
   if (mode === "none") return "none";
   if (mode === "gzip") return "gzip";
   if (kind === "binary" && isPreCompressedMedia(mediaType)) return "none";
   return "gzip";
 }
 
-export async function compressPayload(bytes: Uint8Array, codec: StorageCodec): Promise<Uint8Array> {
+export async function compressPayload(
+  bytes: Uint8Array,
+  codec: StorageCodec,
+): Promise<Uint8Array> {
   if (codec === "none") return bytes;
   try {
     return new Uint8Array(await gzip(bytes));
   } catch (error) {
-    throw new CasError("CAS_STORE_IO", `gzip compression failed: ${String(error)}`);
+    throw new CasError(
+      "CAS_STORE_IO",
+      `gzip compression failed: ${String(error)}`,
+    );
   }
 }
 
-export async function decompressPayload(bytes: Uint8Array, codec: StorageCodec): Promise<Uint8Array> {
+export async function decompressPayload(
+  bytes: Uint8Array,
+  codec: StorageCodec,
+): Promise<Uint8Array> {
   if (codec === "none") return bytes;
   try {
     return new Uint8Array(await gunzip(bytes));
   } catch (error) {
-    throw new CasError("CAS_INTEGRITY_FAILED", `stored blob failed to decompress: ${String(error)}`);
+    throw new CasError(
+      "CAS_INTEGRITY_FAILED",
+      `stored blob failed to decompress: ${String(error)}`,
+    );
   }
 }
 

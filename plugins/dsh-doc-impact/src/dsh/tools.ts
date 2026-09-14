@@ -1,14 +1,14 @@
-import { defineTool } from '@deepseek-ai/dsh-tools';
-import type { ToolRunContext } from '@deepseek-ai/dsh-tools';
-import type { Impact } from '../impact/types.js';
-import type { ResolveImpactInput } from '../impact/types.js';
+import { defineTool } from "@deepseek-ai/dsh-tools";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
+import type { Impact } from "../impact/types.js";
+import type { ResolveImpactInput } from "../impact/types.js";
 
 /** Execution context handed to tool bodies, derived from the host tool contract. */
-type ToolExec = Pick<ToolRunContext, 'agent'>;
+type ToolExec = Pick<ToolRunContext, "agent">;
 
-type ToolAgent = NonNullable<ToolExec['agent']>;
+type ToolAgent = NonNullable<ToolExec["agent"]>;
 
-type ToolSession = ToolAgent['session'];
+type ToolSession = ToolAgent["session"];
 
 interface EngineFacade {
   resolve(
@@ -31,11 +31,13 @@ export interface ToolContext {
 function requireAgent(exec: ToolExec): ToolAgent {
   const agent = exec.agent;
   if (agent === undefined) {
-    throw new Error('doc_impact tools require a calling agent');
+    throw new Error("doc_impact tools require a calling agent");
   }
   const cwd = agent.session.header.cwd;
-  if (typeof cwd !== 'string' || cwd === '') {
-    throw new Error('this session has no working directory; doc-impact is not active');
+  if (typeof cwd !== "string" || cwd === "") {
+    throw new Error(
+      "this session has no working directory; doc-impact is not active",
+    );
   }
   return agent;
 }
@@ -43,9 +45,9 @@ function requireAgent(exec: ToolExec): ToolAgent {
 function currentTurn(session: ToolSession): number {
   let turn = 0;
   for (const event of session.snapshotEvents()) {
-    if (event.type === 'turn/start') {
+    if (event.type === "turn/start") {
       const value = (event.data as { turn?: unknown }).turn;
-      if (typeof value === 'number') turn = value;
+      if (typeof value === "number") turn = value;
     }
   }
   return turn;
@@ -54,52 +56,60 @@ function currentTurn(session: ToolSession): number {
 /** Explicit resolution for strict modes (SPEC §29-§30). */
 export function createResolveTool({ engine }: ToolContext) {
   return defineTool({
-    name: 'doc_impact_resolve',
+    name: "doc_impact_resolve",
     description: [
-      'Resolve a pending documentation impact detected by dsh-doc-impact.',
-      'Call after reviewing (or updating) the linked documents named in the reminder.',
+      "Resolve a pending documentation impact detected by dsh-doc-impact.",
+      "Call after reviewing (or updating) the linked documents named in the reminder.",
       'status "reviewed-current": the document is already accurate after your review;',
       'status "updated": you changed the target document(s);',
       'status "not-applicable": requires a non-empty reason explaining why the link does not apply.',
-    ].join(' '),
+    ].join(" "),
     parameters: {
       ruleId: {
-        type: 'string',
+        type: "string",
         required: true,
-        description: 'The id of the triggered rule, as named in the documentation impact reminder.',
+        description:
+          "The id of the triggered rule, as named in the documentation impact reminder.",
       },
       status: {
-        type: 'string',
+        type: "string",
         required: true,
-        enum: ['reviewed-current', 'updated', 'not-applicable'],
-        description: 'The resolution being claimed for the impact.',
+        enum: ["reviewed-current", "updated", "not-applicable"],
+        description: "The resolution being claimed for the impact.",
       },
       reason: {
-        type: 'string',
-        description: 'Required for "not-applicable": why this rule does not apply to the current change.',
+        type: "string",
+        description:
+          'Required for "not-applicable": why this rule does not apply to the current change.',
       },
     },
     output: {
       schema: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          resolved: { type: 'integer', required: true },
-          remainingCount: { type: 'integer', required: true },
+          resolved: { type: "integer", required: true },
+          remainingCount: { type: "integer", required: true },
           remaining: {
-            type: 'array',
+            type: "array",
             required: true,
             items: {
-              type: 'object',
+              type: "object",
               additionalProperties: false,
               properties: {
-                ruleId: { type: 'string', required: true },
+                ruleId: { type: "string", required: true },
                 status: {
-                  type: 'string',
+                  type: "string",
                   required: true,
-                  enum: ['pending', 'updated', 'reviewed-current', 'not-applicable', 'superseded'],
+                  enum: [
+                    "pending",
+                    "updated",
+                    "reviewed-current",
+                    "not-applicable",
+                    "superseded",
+                  ],
                 },
-                targetFiles: { type: 'array', items: { type: 'string' } },
+                targetFiles: { type: "array", items: { type: "string" } },
               },
             },
           },
@@ -107,31 +117,42 @@ export function createResolveTool({ engine }: ToolContext) {
       },
       render: (_args, value) => [
         {
-          type: 'text',
+          type: "text",
           text:
             `Resolved ${value.resolved} impact(s); ${value.remainingCount} pending impact(s) remain.` +
             (value.remainingCount > 0
-              ? '\nStill pending:\n' + value.remaining.map((impact: { ruleId: string }) => `- ${impact.ruleId}`).join('\n')
-              : '\nAll documentation impacts are resolved; you may finish the task.'),
+              ? "\nStill pending:\n" +
+                value.remaining
+                  .map((impact: { ruleId: string }) => `- ${impact.ruleId}`)
+                  .join("\n")
+              : "\nAll documentation impacts are resolved; you may finish the task."),
         },
       ],
     },
     async execute(args: unknown, exec: ToolExec) {
       const input = args as {
         ruleId: string;
-        status: ResolveImpactInput['status'];
+        status: ResolveImpactInput["status"];
         reason?: string;
       };
-      if (input.status === 'not-applicable' && (input.reason === undefined || input.reason.trim() === '')) {
+      if (
+        input.status === "not-applicable" &&
+        (input.reason === undefined || input.reason.trim() === "")
+      ) {
         throw new Error('status "not-applicable" requires a non-empty reason');
       }
       const agent = requireAgent(exec);
       const cwd = agent.session.header.cwd as string;
-      const outcome = await engine.resolve(String(agent.id), cwd, currentTurn(agent.session), {
-        ruleId: input.ruleId,
-        status: input.status,
-        ...(input.reason === undefined ? {} : { reason: input.reason }),
-      });
+      const outcome = await engine.resolve(
+        String(agent.id),
+        cwd,
+        currentTurn(agent.session),
+        {
+          ruleId: input.ruleId,
+          status: input.status,
+          ...(input.reason === undefined ? {} : { reason: input.reason }),
+        },
+      );
       return {
         resolved: outcome.resolved,
         remainingCount: outcome.remaining.length,
@@ -148,24 +169,31 @@ export function createResolveTool({ engine }: ToolContext) {
 /** Read-only status helper (SPEC §42); the reminder already carries the essentials. */
 export function createStatusTool({ engine }: ToolContext) {
   return defineTool({
-    name: 'doc_impact_status',
-    description: 'Report documentation impacts currently tracked for this agent by dsh-doc-impact.',
+    name: "doc_impact_status",
+    description:
+      "Report documentation impacts currently tracked for this agent by dsh-doc-impact.",
     parameters: {},
     output: {
       schema: {
-        type: 'object',
+        type: "object",
         additionalProperties: false,
         properties: {
-          pending: { type: 'array', required: true, items: { type: 'string' } },
-          resolved: { type: 'array', required: true, items: { type: 'string' } },
+          pending: { type: "array", required: true, items: { type: "string" } },
+          resolved: {
+            type: "array",
+            required: true,
+            items: { type: "string" },
+          },
         },
       },
       render: (_args, value) => [
         {
-          type: 'text',
+          type: "text",
           text:
             `Documentation impacts — pending: ${value.pending.length}, resolved: ${value.resolved.length}.` +
-            (value.pending.length > 0 ? '\nPending:\n' + value.pending.join('\n') : ''),
+            (value.pending.length > 0
+              ? "\nPending:\n" + value.pending.join("\n")
+              : ""),
         },
       ],
     },
@@ -174,7 +202,8 @@ export function createStatusTool({ engine }: ToolContext) {
       const cwd = agent.session.header.cwd as string;
       const turn = currentTurn(agent.session);
       const status = await engine.status(String(agent.id), cwd, turn);
-      const label = (impact: Impact): string => `${impact.ruleId} [${impact.status}] → ${impact.targetFiles.join(', ')}`;
+      const label = (impact: Impact): string =>
+        `${impact.ruleId} [${impact.status}] → ${impact.targetFiles.join(", ")}`;
       return {
         pending: status.pending.map(label),
         resolved: status.resolved.map(label),

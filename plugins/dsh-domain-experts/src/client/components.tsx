@@ -191,7 +191,10 @@ export function Select({
   readonly value: string;
   readonly onChange: (next: string) => void;
   readonly label: string;
-  readonly options: readonly { readonly value: string; readonly label: string }[];
+  readonly options: readonly {
+    readonly value: string;
+    readonly label: string;
+  }[];
   readonly hint?: string;
 }) {
   return (
@@ -239,16 +242,27 @@ export function StatusLine({
   readonly children: ReactNode;
 }) {
   return (
-    <p className={tone === "error" ? "dx-status dx-status--error" : "dx-status"} role="status">
+    <p
+      className={tone === "error" ? "dx-status dx-status--error" : "dx-status"}
+      role="status"
+    >
       {children}
     </p>
   );
 }
 
-export function EnforcementChip({ enforcement }: { readonly enforcement: string }) {
+export function EnforcementChip({
+  enforcement,
+}: {
+  readonly enforcement: string;
+}) {
   const enforced = enforcement === "enforced";
   return (
-    <span className={enforced ? "dx-chip dx-chip--enforced" : "dx-chip dx-chip--advisory"}>
+    <span
+      className={
+        enforced ? "dx-chip dx-chip--enforced" : "dx-chip dx-chip--advisory"
+      }
+    >
       {enforced ? "enforced" : "advisory"}
     </span>
   );

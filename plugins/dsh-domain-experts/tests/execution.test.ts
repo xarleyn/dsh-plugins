@@ -36,7 +36,11 @@ const REQUEST = {
 const PAYMENTS = domainOf("payments", {
   scope: {
     ...domainOf("payments").scope,
-    filesystem: { primary: ["services/payments/**"], sharedReadOnly: [], denied: [] },
+    filesystem: {
+      primary: ["services/payments/**"],
+      sharedReadOnly: [],
+      denied: [],
+    },
   },
 });
 
@@ -57,11 +61,16 @@ function harnessOf(
   const tracker = new RunTracker();
   const audits = new AuditRing(50);
   const log: RecordedLog = { events: [] };
-  const domains = new DomainRegistry(domainTableOf([[definition.id, definition]]), clock);
+  const domains = new DomainRegistry(
+    domainTableOf([[definition.id, definition]]),
+    clock,
+  );
   const scopeProviders = new ScopeProviderRegistry();
   scopeProviders.register(createFilesystemProvider());
   const memoryProviders = new MemoryProviderRegistry();
-  memoryProviders.register(createBuiltinMemoryProvider(memoryRecordTableOf(), clock));
+  memoryProviders.register(
+    createBuiltinMemoryProvider(memoryRecordTableOf(), clock),
+  );
   return {
     subagents,
     tracker,
@@ -97,7 +106,11 @@ async function run(
   } = {},
 ) {
   return await runExpert(harness.dependencies, {
-    parent: agentOf({ id: options.id ?? "session-1", cwd: "/repo", ...(options.depth === undefined ? {} : { depth: options.depth }) }),
+    parent: agentOf({
+      id: options.id ?? "session-1",
+      cwd: "/repo",
+      ...(options.depth === undefined ? {} : { depth: options.depth }),
+    }),
     definition,
     request: { ...REQUEST, background: options.background ?? false },
     signal: new AbortController().signal,
@@ -113,7 +126,9 @@ describe("execution: composition handed to the runtime", () => {
     expect(started?.provider).toBe("spawn");
     expect(started?.request.label).toBe("domain-expert:payments");
     expect(started?.request.persona).toContain("You are the designated expert");
-    expect(started?.request.persona).toContain("Investigate the settlement status.");
+    expect(started?.request.persona).toContain(
+      "Investigate the settlement status.",
+    );
     expect(started?.request.toolFilter?.allow).toContain("domain_expert");
     expect(started?.request.maxDepth).toBe(3);
     expect(started?.request.prompt[0]).toEqual({
@@ -131,7 +146,13 @@ describe("execution: composition handed to the runtime", () => {
   it("sends model options when the domain pins a route", async () => {
     const pinned = domainOf("payments", {
       ...PAYMENTS,
-      model: { inherit: false, provider: "deepseek", model: "chat", reasoningEffort: "high", maxTokens: 4096 },
+      model: {
+        inherit: false,
+        provider: "deepseek",
+        model: "chat",
+        reasoningEffort: "high",
+        maxTokens: 4096,
+      },
     });
     const harness = harnessOf(pinned);
     await run(harness, pinned);
@@ -180,7 +201,9 @@ describe("execution: results and bookkeeping", () => {
       background: false,
     });
     expect(JSON.stringify(entries[0])).not.toContain("settlement status");
-    expect(harness.log.events.map((event) => event.event)).toContain("domain-expert/run");
+    expect(harness.log.events.map((event) => event.event)).toContain(
+      "domain-expert/run",
+    );
   });
 
   it("extends the delegation path for a delegated run", async () => {
@@ -197,8 +220,13 @@ describe("execution: results and bookkeeping", () => {
     });
     const target = domainOf("inventory");
     await run(harness, target, { callerDomain: "payments", depth: 1 });
-    expect(harness.audits.recent()[0]?.delegatePath).toEqual(["payments", "inventory"]);
-    expect(harness.log.events.map((event) => event.event)).toContain("domain-expert/delegation");
+    expect(harness.audits.recent()[0]?.delegatePath).toEqual([
+      "payments",
+      "inventory",
+    ]);
+    expect(harness.log.events.map((event) => event.event)).toContain(
+      "domain-expert/delegation",
+    );
   });
 
   it("maps a stop reason onto the result status", async () => {
@@ -234,7 +262,9 @@ describe("execution: background runs", () => {
 
   it("refuses a background run when the provider cannot start continuable children", async () => {
     const harness = harnessOf(PAYMENTS, { continuable: false });
-    await expect(run(harness, PAYMENTS, { background: true })).rejects.toMatchObject({
+    await expect(
+      run(harness, PAYMENTS, { background: true }),
+    ).rejects.toMatchObject({
       code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
     });
   });
@@ -243,7 +273,9 @@ describe("execution: background runs", () => {
 describe("execution: refusals", () => {
   it("refuses a missing provider", async () => {
     const harness = harnessOf(PAYMENTS, { name: "acp" });
-    await expect(run(harness)).rejects.toMatchObject({ code: "SUBAGENT_PROVIDER_MISSING" });
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "SUBAGENT_PROVIDER_MISSING",
+    });
   });
 
   it("refuses a provider that cannot compose a persona", async () => {
@@ -265,7 +297,13 @@ describe("execution: refusals", () => {
   it("refuses a pinned model on a provider without agent options", async () => {
     const pinned = domainOf("payments", {
       ...PAYMENTS,
-      model: { inherit: false, provider: "deepseek", model: "chat", reasoningEffort: "", maxTokens: 0 },
+      model: {
+        inherit: false,
+        provider: "deepseek",
+        model: "chat",
+        reasoningEffort: "",
+        maxTokens: 0,
+      },
     });
     const harness = harnessOf(pinned, {
       capabilities: {
@@ -306,7 +344,9 @@ describe("execution: refusals", () => {
 
   it("re-labels an unknown tool name as a worker problem", async () => {
     const harness = harnessOf(PAYMENTS, {
-      failWith: new Error('tools.restrict() names unknown global tool "bash"; known global tools: x'),
+      failWith: new Error(
+        'tools.restrict() names unknown global tool "bash"; known global tools: x',
+      ),
     });
     const error = await run(harness).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(DomainExpertsError);
@@ -314,7 +354,9 @@ describe("execution: refusals", () => {
   });
 
   it("lets an unrelated infrastructure fault through unchanged", async () => {
-    const harness = harnessOf(PAYMENTS, { failWith: new Error("disk on fire") });
+    const harness = harnessOf(PAYMENTS, {
+      failWith: new Error("disk on fire"),
+    });
     await expect(run(harness)).rejects.toThrowError("disk on fire");
   });
 });

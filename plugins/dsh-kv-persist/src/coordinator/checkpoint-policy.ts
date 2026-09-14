@@ -29,7 +29,10 @@ export class CheckpointPolicy {
   }
 
   /** True when the trigger is enabled and the session actually needs a save. */
-  shouldCheckpoint(runtime: SessionRuntime | undefined, trigger: CheckpointTrigger): boolean {
+  shouldCheckpoint(
+    runtime: SessionRuntime | undefined,
+    trigger: CheckpointTrigger,
+  ): boolean {
     if (runtime === undefined) return false;
     if (!isDirty(runtime)) return false;
     switch (trigger) {
@@ -40,7 +43,9 @@ export class CheckpointPolicy {
       case "session-flush":
         return this.#config.checkpoint.onSessionFlush;
       case "session-disposed":
-        return this.#config.checkpoint.onSwitch || this.#config.checkpoint.onShutdown;
+        return (
+          this.#config.checkpoint.onSwitch || this.#config.checkpoint.onShutdown
+        );
       case "turn-end":
         return this.#config.checkpoint.onTurnEnd;
       case "shutdown":

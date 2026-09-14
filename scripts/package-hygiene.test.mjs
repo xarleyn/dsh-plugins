@@ -334,7 +334,8 @@ test("rejects a repository that points somewhere else", async () => {
   }
 });
 
-test("catalogs publishable packages and skips private ones", async () => {  const root = await workspaceFixture({
+test("catalogs publishable packages and skips private ones", async () => {
+  const root = await workspaceFixture({
     plugins: {
       "dsh-b": packageManifest("dsh-b", {
         dsh: { client: { platform: "web" } },
@@ -416,10 +417,7 @@ test("fails on a catalog entry for a package that no longer exists", async () =>
       npm: "@yadsh/dsh-removed",
       path: "plugins/dsh-removed",
     });
-    writeFileSync(
-      path.join(root, "plugins.json"),
-      serializeManifest(manifest),
-    );
+    writeFileSync(path.join(root, "plugins.json"), serializeManifest(manifest));
     assert.ok(
       findManifestDrift(root).some((error) => error.includes("out of date")),
     );

@@ -3,9 +3,15 @@
 import { describe, expect, it } from "vitest";
 
 import { CasError } from "../../src/cas/errors.js";
-import { formatCasRef, parseCasRef, sha256Hex, CAS_REF_PATTERN } from "../../src/cas/hash.js";
+import {
+  formatCasRef,
+  parseCasRef,
+  sha256Hex,
+  CAS_REF_PATTERN,
+} from "../../src/cas/hash.js";
 
-const VALID_HASH = "ac78199a1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b";
+const VALID_HASH =
+  "ac78199a1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b";
 
 describe("sha256Hex", () => {
   it("produces the known digest of the empty payload", () => {

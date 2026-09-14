@@ -22,7 +22,9 @@ export function delegationVerdictOf(
       message: `Caller domain "${callerDomainId}" no longer exists.`,
     };
   }
-  const mode = caller.delegation.allowCrossDomain ? caller.delegation.crossDomainMode : "disabled";
+  const mode = caller.delegation.allowCrossDomain
+    ? caller.delegation.crossDomainMode
+    : "disabled";
   const targets = [...caller.delegation.targets];
 
   if (mode === "disabled") {
@@ -61,6 +63,9 @@ export function delegationVerdictOf(
 }
 
 /** Parallel-run admission for one calling session. */
-export function parallelBudgetOf(active: number, limit: number): ParallelBudget {
+export function parallelBudgetOf(
+  active: number,
+  limit: number,
+): ParallelBudget {
   return { exceeded: limit > 0 && active >= limit, limit, active };
 }

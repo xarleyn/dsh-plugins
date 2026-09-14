@@ -4,7 +4,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { deriveOffloadMetrics, OffloadCounters } from "../../src/telemetry/counters.js";
+import {
+  deriveOffloadMetrics,
+  OffloadCounters,
+} from "../../src/telemetry/counters.js";
 
 describe("OffloadCounters", () => {
   it("accumulates numeric fields and dimensions", () => {
@@ -21,7 +24,8 @@ describe("OffloadCounters", () => {
 
   it("caps runaway dimension keys with an other bucket", () => {
     const counters = new OffloadCounters();
-    for (let index = 0; index < 200; index += 1) counters.recordReason(`reason-${index}`);
+    for (let index = 0; index < 200; index += 1)
+      counters.recordReason(`reason-${index}`);
     const snapshot = counters.snapshot();
     expect(Object.keys(snapshot.reasons).length).toBeLessThanOrEqual(128);
     expect(snapshot.reasons.other).toBe(200 - 127);
@@ -56,6 +60,11 @@ describe("deriveOffloadMetrics (SPEC §34)", () => {
 
   it("stays zero-safe with no data", () => {
     const derived = deriveOffloadMetrics(new OffloadCounters().snapshot());
-    expect(derived).toEqual({ reductionRatio: 0, avgDurationMs: 0, completionRate: 0, estimatedTokensSaved: 0 });
+    expect(derived).toEqual({
+      reductionRatio: 0,
+      avgDurationMs: 0,
+      completionRate: 0,
+      estimatedTokensSaved: 0,
+    });
   });
 });

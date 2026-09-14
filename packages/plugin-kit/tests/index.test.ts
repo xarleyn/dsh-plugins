@@ -79,13 +79,13 @@ describe("hasCompatibleMajor", () => {
 
 describe("validateConfig", () => {
   it("should return empty object for undefined optional fields", () => {
-    const result = validateConfig(
-      {},
-      { name: "string", count: "number" } as Record<
-        keyof { name?: string; count?: number },
-        "string" | "number" | "boolean" | "object"
-      >,
-    );
+    const result = validateConfig({}, {
+      name: "string",
+      count: "number",
+    } as Record<
+      keyof { name?: string; count?: number },
+      "string" | "number" | "boolean" | "object"
+    >);
 
     expect(result).toEqual({});
   });
@@ -128,10 +128,10 @@ describe("validateConfig", () => {
 
   it("should reject null for object fields", () => {
     expect(() =>
-      validateConfig(
-        { meta: null },
-        { meta: "object" } as Record<keyof { meta?: object }, "object">,
-      ),
+      validateConfig({ meta: null }, { meta: "object" } as Record<
+        keyof { meta?: object },
+        "object"
+      >),
     ).toThrow('Invalid type for "meta": expected object, got null');
   });
 

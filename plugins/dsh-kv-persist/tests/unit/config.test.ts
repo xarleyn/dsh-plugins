@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { KV_PERSIST_DEFAULTS, isManagedProvider, resolveKvPersistConfig } from "../../src/config.js";
+import {
+  KV_PERSIST_DEFAULTS,
+  isManagedProvider,
+  resolveKvPersistConfig,
+} from "../../src/config.js";
 import { compatibilityVersion } from "../../src/snapshots/fingerprint.js";
 
 describe("resolveKvPersistConfig", () => {
@@ -25,7 +29,9 @@ describe("resolveKvPersistConfig", () => {
   });
 
   it("strips trailing slashes from baseURL", () => {
-    const config = resolveKvPersistConfig({ backend: { baseURL: "http://h:1/" } });
+    const config = resolveKvPersistConfig({
+      backend: { baseURL: "http://h:1/" },
+    });
     expect(config.baseURL).toBe("http://h:1");
   });
 
@@ -37,19 +43,25 @@ describe("resolveKvPersistConfig", () => {
   });
 
   it("rejects managed-slots in v0.1 (SPEC §8, §68)", () => {
-    expect(() => resolveKvPersistConfig({ mode: "managed-slots" })).toThrowError(/managed-slots/);
+    expect(() =>
+      resolveKvPersistConfig({ mode: "managed-slots" }),
+    ).toThrowError(/managed-slots/);
   });
 
   it("rejects non-integer or negative numeric options", () => {
     expect(() => resolveKvPersistConfig({ slotId: -1 })).toThrowError(/slotId/);
-    expect(() => resolveKvPersistConfig({ checkpoint: { idleMs: 1.5 } })).toThrowError(/idleMs/);
-    expect(() => resolveKvPersistConfig({ failure: { maxConsecutiveFailures: 0 } })).toThrowError(
-      /maxConsecutiveFailures/,
-    );
+    expect(() =>
+      resolveKvPersistConfig({ checkpoint: { idleMs: 1.5 } }),
+    ).toThrowError(/idleMs/);
+    expect(() =>
+      resolveKvPersistConfig({ failure: { maxConsecutiveFailures: 0 } }),
+    ).toThrowError(/maxConsecutiveFailures/);
   });
 
   it("filters blank managed providers (SPEC §37)", () => {
-    const config = resolveKvPersistConfig({ providers: ["local-qwen", "", "local-coder"] });
+    const config = resolveKvPersistConfig({
+      providers: ["local-qwen", "", "local-coder"],
+    });
     expect(config.providers).toEqual(["local-qwen", "local-coder"]);
   });
 
@@ -63,26 +75,58 @@ describe("resolveKvPersistConfig", () => {
 
 describe("compatibilityVersion (SPEC §15)", () => {
   it("is stable for identical inputs", () => {
-    const a = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt", model: "m" });
-    const b = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt", model: "m" });
+    const a = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt",
+      model: "m",
+    });
+    const b = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt",
+      model: "m",
+    });
     expect(a).toBe(b);
   });
 
   it("changes when the runtimeKey escape hatch changes", () => {
-    const a = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt-1", model: "m" });
-    const b = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt-2", model: "m" });
+    const a = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt-1",
+      model: "m",
+    });
+    const b = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt-2",
+      model: "m",
+    });
     expect(a).not.toBe(b);
   });
 
   it("changes when the model changes", () => {
-    const a = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt", model: "m1" });
-    const b = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "rt", model: "m2" });
+    const a = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt",
+      model: "m1",
+    });
+    const b = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "rt",
+      model: "m2",
+    });
     expect(a).not.toBe(b);
   });
 
   it("treats a missing runtimeKey like the empty key", () => {
-    const a = compatibilityVersion({ backend: "llama.cpp", runtimeKey: null, model: "m" });
-    const b = compatibilityVersion({ backend: "llama.cpp", runtimeKey: "", model: "m" });
+    const a = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: null,
+      model: "m",
+    });
+    const b = compatibilityVersion({
+      backend: "llama.cpp",
+      runtimeKey: "",
+      model: "m",
+    });
     expect(a).toBe(b);
   });
 });

@@ -15,24 +15,33 @@ const required = [
   "cordis.patch.yml",
 ];
 
-await Promise.all(required.map(async (path) => {
-  const details = await stat(new URL(path, root));
-  assert(details.isFile(), `${path} must be a file`);
-}));
+await Promise.all(
+  required.map(async (path) => {
+    const details = await stat(new URL(path, root));
+    assert(details.isFile(), `${path} must be a file`);
+  }),
+);
 
 assert.equal(name, "plugin-log-ui");
 assert.equal(PluginLogUi.name, "PluginLogUi");
 assert.equal(resolveConfig().format, "text");
 
-const manifest = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
+const manifest = JSON.parse(
+  await readFile(new URL("package.json", root), "utf8"),
+);
 assert.equal(manifest.name, "@yadsh/dsh-plugin-log-ui");
 assert.equal(manifest.exports["./client"].default, "./lib/client.js");
-assert.equal(manifest.exports["./remote"].default, "./lib/typert.remote-client.js");
+assert.equal(
+  manifest.exports["./remote"].default,
+  "./lib/typert.remote-client.js",
+);
 assert.equal(manifest.dsh.client.platform, "web");
 // The panel lives in the right Sidebar, so that package is an activation
 // dependency of the client half and must be requested from the host.
 assert.ok(
-  manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-ui-sidebar-right"),
+  manifest.dsh.client.inject.includes(
+    "@deepseek-ai/dsh-client-ui-sidebar-right",
+  ),
   "dsh.client.inject must request the right Sidebar package",
 );
 assert.equal(
@@ -41,7 +50,9 @@ assert.equal(
   "the right Sidebar package must be a peer dependency",
 );
 
-const compatibility = JSON.parse(await readFile(new URL("compatibility.json", root), "utf8"));
+const compatibility = JSON.parse(
+  await readFile(new URL("compatibility.json", root), "utf8"),
+);
 for (const feature of ["sidebar.right.pane.tab", "sidebarRightTabs"]) {
   assert.ok(
     compatibility.deepseekHarness.requiredClientFeatures.includes(feature),
@@ -54,7 +65,10 @@ assert.match(patch, /id:\s*dsh-plugin-log-ui/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-plugin-log-ui"/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
-assert.match(client, /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-plugin-log-ui"/u);
+assert.match(
+  client,
+  /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-plugin-log-ui"/u,
+);
 assert.match(client, /settings\.plugin\.item/u);
 assert.match(client, /key:\s*SETTINGS_NAMESPACE/u);
 assert.match(client, /pluginLogUi/u);
@@ -77,7 +91,10 @@ assert.doesNotMatch(client, /⌄/u);
  */
 const PANEL_ID = "@yadsh/dsh-plugin-log-ui/panel";
 assert.match(client, /sidebarRightTabs/u);
-assert.ok(client.includes(`const LOG_PANEL_ID = "${PANEL_ID}"`), "the bundle must carry the panel's id");
+assert.ok(
+  client.includes(`const LOG_PANEL_ID = "${PANEL_ID}"`),
+  "the bundle must carry the panel's id",
+);
 assert.match(client, /id:\s*LOG_PANEL_ID/u);
 assert.match(client, /const LOG_PANEL_KIND = "plugin-log"/u);
 assert.match(client, /kind:\s*LOG_PANEL_KIND/u);
@@ -115,13 +132,22 @@ for (const level of ["trace", "debug", "info", "warn", "error", "fatal"]) {
 }
 // The source filter: a select over the registered consumers, with the
 // every-source option its value space is written against.
-assert.ok(client.includes("plu-log-source"), "the panel must offer the source filter");
-assert.ok(client.includes("All sources"), "the source filter needs its every-source option");
+assert.ok(
+  client.includes("plu-log-source"),
+  "the panel must offer the source filter",
+);
+assert.ok(
+  client.includes("All sources"),
+  "the source filter needs its every-source option",
+);
 // Two sheets, two style keys. `injectCardStyles` is idempotent per key, so one
 // key for both sheets leaves the second injected nowhere — the card rendered
 // unstyled and nothing failed. The pair is asserted, and the runtime half (both
 // tags really reaching the document) is a test in tests/client-panel.test.ts.
-assert.ok(client.includes('const CARD_STYLE_KEY = "dsh-plugin-log-ui"'), "the card sheet key");
+assert.ok(
+  client.includes('const CARD_STYLE_KEY = "dsh-plugin-log-ui"'),
+  "the card sheet key",
+);
 assert.ok(
   client.includes("const PANEL_STYLE_KEY = `${CARD_STYLE_KEY}/panel`"),
   "the panel sheet must have its own key",

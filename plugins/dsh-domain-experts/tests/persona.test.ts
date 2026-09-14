@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ANSWER_FORMAT, BASE_POLICY, composePersona } from "../src/host/persona.js";
+import {
+  ANSWER_FORMAT,
+  BASE_POLICY,
+  composePersona,
+} from "../src/host/persona.js";
 import type { ResolvedExpertProfile } from "../src/types.js";
 import { domainOf } from "./helpers/fakes.js";
 
@@ -31,7 +35,13 @@ function compose(
     definition,
     resources: extras.resources ?? [],
     memory: extras.memory ?? [
-      { namespace: "domain/payments", access: "read-write", enforcement: "enforced", provider: "namespace", note: "" },
+      {
+        namespace: "domain/payments",
+        access: "read-write",
+        enforcement: "enforced",
+        provider: "namespace",
+        note: "",
+      },
     ],
     memorySnippets: extras.snippets ?? [],
     delegation: extras.delegation ?? {
@@ -56,14 +66,18 @@ describe("persona: composition", () => {
   });
 
   it("appends custom instructions without letting them replace the policy", () => {
-    const persona = compose({ persona: { instructions: "Always cite the ledger table." } });
+    const persona = compose({
+      persona: { instructions: "Always cite the ledger table." },
+    });
     expect(persona).toContain("## Domain-specific instructions");
     expect(persona).toContain("Always cite the ledger table.");
     expect(persona).toContain(BASE_POLICY);
   });
 
   it("orders the sections the design asks for", () => {
-    const persona = compose({ description: "Payment processing and settlement." });
+    const persona = compose({
+      description: "Payment processing and settlement.",
+    });
     const order = [
       "## Domain",
       "## Scope",
@@ -77,13 +91,37 @@ describe("persona: composition", () => {
   });
 
   it("renders the three resource classes and marks advisory entries", () => {
-    const persona = compose({}, {
-      resources: [
-        { path: "services/payments/**", class: "primary", enforcement: "enforced", enforcedBy: ["code_worker"], provider: "filesystem", note: "" },
-        { path: "packages/common/**", class: "shared", enforcement: "advisory", enforcedBy: [], provider: "filesystem", note: "" },
-        { path: "services/inventory/**", class: "denied", enforcement: "advisory", enforcedBy: [], provider: "filesystem", note: "" },
-      ],
-    });
+    const persona = compose(
+      {},
+      {
+        resources: [
+          {
+            path: "services/payments/**",
+            class: "primary",
+            enforcement: "enforced",
+            enforcedBy: ["code_worker"],
+            provider: "filesystem",
+            note: "",
+          },
+          {
+            path: "packages/common/**",
+            class: "shared",
+            enforcement: "advisory",
+            enforcedBy: [],
+            provider: "filesystem",
+            note: "",
+          },
+          {
+            path: "services/inventory/**",
+            class: "denied",
+            enforcement: "advisory",
+            enforcedBy: [],
+            provider: "filesystem",
+            note: "",
+          },
+        ],
+      },
+    );
     expect(persona).toContain("Owned by this domain:");
     expect(persona).toContain("- services/payments/**");
     expect(persona).toContain("- packages/common/** (preference only)");
@@ -91,18 +129,21 @@ describe("persona: composition", () => {
   });
 
   it("includes recalled memory with its namespace and key", () => {
-    const persona = compose({}, {
-      snippets: [
-        {
-          namespace: "domain/payments",
-          key: "batch-cutoff",
-          text: "The 14:00 batch is the settlement cutoff.",
-          tags: [],
-          createdAt: 1,
-          updatedAt: 2,
-        },
-      ],
-    });
+    const persona = compose(
+      {},
+      {
+        snippets: [
+          {
+            namespace: "domain/payments",
+            key: "batch-cutoff",
+            text: "The 14:00 batch is the settlement cutoff.",
+            tags: [],
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        ],
+      },
+    );
     expect(persona).toContain("Notes recorded earlier");
     expect(persona).toContain("[domain/payments/batch-cutoff]");
   });
@@ -115,32 +156,40 @@ describe("persona: composition", () => {
   });
 
   it("states the refusal when cross-domain access is disabled", () => {
-    const persona = compose({}, {
-      delegation: {
-        mode: "disabled",
-        allowCrossDomain: false,
-        targets: [],
-        maxDepth: 3,
-        maxParallel: 3,
-        peers: [],
+    const persona = compose(
+      {},
+      {
+        delegation: {
+          mode: "disabled",
+          allowCrossDomain: false,
+          targets: [],
+          maxDepth: 3,
+          maxParallel: 3,
+          peers: [],
+        },
       },
-    });
+    );
     expect(persona).toContain("Cross-domain access is disabled for you");
   });
 
   it("mentions direct cross-domain reads only in direct-read mode", () => {
     const limited = compose();
-    expect(limited).not.toContain("foreign memory namespaces explicitly configured");
-    const direct = compose({}, {
-      delegation: {
-        mode: "direct-read",
-        allowCrossDomain: true,
-        targets: [],
-        maxDepth: 3,
-        maxParallel: 3,
-        peers: [],
+    expect(limited).not.toContain(
+      "foreign memory namespaces explicitly configured",
+    );
+    const direct = compose(
+      {},
+      {
+        delegation: {
+          mode: "direct-read",
+          allowCrossDomain: true,
+          targets: [],
+          maxDepth: 3,
+          maxParallel: 3,
+          peers: [],
+        },
       },
-    });
+    );
     expect(direct).toContain("foreign memory namespaces explicitly configured");
   });
 
@@ -164,7 +213,7 @@ describe("persona: composition", () => {
       depth: 2,
     });
     expect(review).toContain("Review the following");
-    expect(review).toContain("asked by the \"inventory\" expert");
+    expect(review).toContain('asked by the "inventory" expert');
   });
 
   it("never emits a template sequence", () => {
@@ -174,9 +223,9 @@ describe("persona: composition", () => {
   });
 
   it("refuses to compose from instructions that carry a template sequence", () => {
-    expect(() => compose({ persona: { instructions: "Use {{secret}}" } })).toThrowError(
-      /template sequence/u,
-    );
+    expect(() =>
+      compose({ persona: { instructions: "Use {{secret}}" } }),
+    ).toThrowError(/template sequence/u);
   });
 
   it("clamps an oversized task", () => {

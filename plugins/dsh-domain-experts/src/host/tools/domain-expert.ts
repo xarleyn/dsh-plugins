@@ -15,7 +15,11 @@ const FINDING_SCHEMA = {
   type: "object",
   additionalProperties: false,
   properties: {
-    claim: { type: "string", required: true, description: "One asserted fact." },
+    claim: {
+      type: "string",
+      required: true,
+      description: "One asserted fact.",
+    },
     evidence: {
       type: "array",
       required: true,
@@ -56,11 +60,13 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
       },
       context: {
         type: "string",
-        description: "Facts the expert cannot discover on its own, such as the calling issue or prior findings.",
+        description:
+          "Facts the expert cannot discover on its own, such as the calling issue or prior findings.",
       },
       output: {
         type: "string",
-        description: "What the answer should contain, for example 'root cause and evidence'.",
+        description:
+          "What the answer should contain, for example 'root cause and evidence'.",
       },
       mode: {
         type: "string",
@@ -78,14 +84,27 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
         type: "object",
         additionalProperties: false,
         properties: {
-          domain: { type: "string", required: true, description: "Domain that answered." },
-          expert: { type: "string", required: true, description: "Display name of the domain." },
+          domain: {
+            type: "string",
+            required: true,
+            description: "Domain that answered.",
+          },
+          expert: {
+            type: "string",
+            required: true,
+            description: "Display name of the domain.",
+          },
           status: {
             type: "string",
             required: true,
-            description: "completed, aborted, error, max-tokens, refusal or delegated.",
+            description:
+              "completed, aborted, error, max-tokens, refusal or delegated.",
           },
-          summary: { type: "string", required: true, description: "One-paragraph answer." },
+          summary: {
+            type: "string",
+            required: true,
+            description: "One-paragraph answer.",
+          },
           findings: {
             type: "array",
             required: true,
@@ -110,17 +129,27 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
             description: "Suggested next questions.",
             items: { type: "string" },
           },
-          diagnostic: { type: "string", required: true, description: "Failure detail, when any." },
+          diagnostic: {
+            type: "string",
+            required: true,
+            description: "Failure detail, when any.",
+          },
           childSessionId: {
             type: "string",
             required: true,
-            description: "Session of the expert child that produced this answer.",
+            description:
+              "Session of the expert child that produced this answer.",
           },
-          durationMs: { type: "integer", required: true, description: "Wall-clock duration." },
+          durationMs: {
+            type: "integer",
+            required: true,
+            description: "Wall-clock duration.",
+          },
           structured: {
             type: "boolean",
             required: true,
-            description: "Whether the child returned the structured answer block.",
+            description:
+              "Whether the child returned the structured answer block.",
           },
         },
       },
@@ -132,18 +161,32 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
         ];
         if (value.findings.length > 0) {
           lines.push("", "Findings:");
-          for (const finding of value.findings) lines.push(formatFinding(finding));
+          for (const finding of value.findings)
+            lines.push(formatFinding(finding));
         }
         if (value.conflicts.length > 0) {
-          lines.push("", "Conflicts:", ...value.conflicts.map((item) => `- ${item}`));
+          lines.push(
+            "",
+            "Conflicts:",
+            ...value.conflicts.map((item) => `- ${item}`),
+          );
         }
         if (value.assumptions.length > 0) {
-          lines.push("", "Assumptions:", ...value.assumptions.map((item) => `- ${item}`));
+          lines.push(
+            "",
+            "Assumptions:",
+            ...value.assumptions.map((item) => `- ${item}`),
+          );
         }
         if (value.followUps.length > 0) {
-          lines.push("", "Follow-ups:", ...value.followUps.map((item) => `- ${item}`));
+          lines.push(
+            "",
+            "Follow-ups:",
+            ...value.followUps.map((item) => `- ${item}`),
+          );
         }
-        if (value.diagnostic !== "") lines.push("", `Diagnostic: ${value.diagnostic}`);
+        if (value.diagnostic !== "")
+          lines.push("", `Diagnostic: ${value.diagnostic}`);
         return [{ type: "text", text: lines.join("\n") }];
       },
     },
@@ -163,7 +206,10 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
               { refs: [definition.id] },
             );
           }
-          const verdict = dependencies.delegationVerdict(callerDomain, definition.id);
+          const verdict = dependencies.delegationVerdict(
+            callerDomain,
+            definition.id,
+          );
           if (!verdict.allowed) {
             throw new DomainExpertsError("DELEGATION_DENIED", verdict.message, {
               refs: [callerDomain, definition.id],
@@ -228,6 +274,7 @@ function formatFinding(finding: {
   readonly evidence: readonly string[];
   readonly confidence: string;
 }): string {
-  const evidence = finding.evidence.length > 0 ? ` (${finding.evidence.join("; ")})` : "";
+  const evidence =
+    finding.evidence.length > 0 ? ` (${finding.evidence.join("; ")})` : "";
   return `- [${finding.confidence}] ${finding.claim}${evidence}`;
 }

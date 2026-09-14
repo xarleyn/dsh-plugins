@@ -13,18 +13,18 @@
  *   timeout hits, with the truncation surfaced to the caller.
  */
 
-import { spawn } from 'node:child_process';
+import { spawn } from "node:child_process";
 
-import { GitToolError } from '../errors.js';
-import { buildGitEnv } from './env.js';
+import { GitToolError } from "../errors.js";
+import { buildGitEnv } from "./env.js";
 
 /** Hardening arguments prepended to every git invocation. */
 export const GIT_HARDENING_PREFIX: readonly string[] = [
-  '--no-pager',
-  '-c',
-  'core.fsmonitor=false',
-  '-c',
-  'core.quotepath=false',
+  "--no-pager",
+  "-c",
+  "core.fsmonitor=false",
+  "-c",
+  "core.quotepath=false",
 ];
 
 export interface GitRunOptions {
@@ -61,8 +61,11 @@ export interface GitRunResult {
 const DEFAULT_STDERR_MAX_BYTES = 16 * 1024;
 const KILL_ESCALATION_MS = 500;
 
-export async function runGit(argv: readonly string[], options: GitRunOptions): Promise<GitRunResult> {
-  const program = options.program ?? 'git';
+export async function runGit(
+  argv: readonly string[],
+  options: GitRunOptions,
+): Promise<GitRunResult> {
+  const program = options.program ?? "git";
   const args = [
     ...(options.programPrefixArgs ?? []),
     ...GIT_HARDENING_PREFIX,
@@ -75,13 +78,13 @@ export async function runGit(argv: readonly string[], options: GitRunOptions): P
       child = spawn(program, [...args], {
         cwd: options.cwd,
         env: buildGitEnv(),
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
     } catch (error) {
       reject(
         new GitToolError(
-          'git-failed',
+          "git-failed",
           `git executable "${program}" could not be spawned: ${(error as Error).message}`,
         ),
       );
@@ -96,27 +99,34 @@ export async function runGit(argv: readonly string[], options: GitRunOptions): P
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     const stdoutCap = Math.max(1, Math.floor(options.maxBytes));
-    const stderrCap = Math.max(1, Math.floor(options.stderrMaxBytes ?? DEFAULT_STDERR_MAX_BYTES));
+    const stderrCap = Math.max(
+      1,
+      Math.floor(options.stderrMaxBytes ?? DEFAULT_STDERR_MAX_BYTES),
+    );
 
     const kill = () => {
       if (child.exitCode !== null || child.signalCode !== null) return;
       child.kill();
       const escalation = setTimeout(() => {
-        if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill("SIGKILL");
       }, KILL_ESCALATION_MS);
       escalation.unref?.();
     };
 
-    const timer = setTimeout(() => {
-      timedOut = true;
-      kill();
-    }, Math.max(1, Math.floor(options.timeoutMs)));
+    const timer = setTimeout(
+      () => {
+        timedOut = true;
+        kill();
+      },
+      Math.max(1, Math.floor(options.timeoutMs)),
+    );
     timer.unref?.();
 
     const onAbort = () => kill();
-    options.signal?.addEventListener('abort', onAbort, { once: true });
+    options.signal?.addEventListener("abort", onAbort, { once: true });
 
-    child.stdout?.on('data', (chunk: Buffer) => {
+    child.stdout?.on("data", (chunk: Buffer) => {
       if (stdoutBytes >= stdoutCap) {
         truncated = true;
         kill();
@@ -134,7 +144,7 @@ export async function runGit(argv: readonly string[], options: GitRunOptions): P
       stdoutBytes += chunk.length;
     });
 
-    child.stderr?.on('data', (chunk: Buffer) => {
+    child.stderr?.on("data", (chunk: Buffer) => {
       if (stderrBytes >= stderrCap) return;
       const remaining = stderrCap - stderrBytes;
       if (chunk.length > remaining) {
@@ -150,30 +160,30 @@ export async function runGit(argv: readonly string[], options: GitRunOptions): P
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      options.signal?.removeEventListener('abort', onAbort);
+      options.signal?.removeEventListener("abort", onAbort);
       resolve({
-        stdout: Buffer.concat(stdoutChunks).toString('utf8'),
-        stderr: Buffer.concat(stderrChunks).toString('utf8'),
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: Buffer.concat(stderrChunks).toString("utf8"),
         exitCode,
         truncated,
         timedOut,
       });
     };
 
-    child.on('error', (error) => {
+    child.on("error", (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      options.signal?.removeEventListener('abort', onAbort);
+      options.signal?.removeEventListener("abort", onAbort);
       reject(
         new GitToolError(
-          'git-failed',
+          "git-failed",
           `git executable "${program}" could not be spawned: ${error.message}`,
         ),
       );
     });
 
-    child.on('close', (code) => {
+    child.on("close", (code) => {
       finish(code);
     });
   });

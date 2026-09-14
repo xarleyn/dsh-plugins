@@ -17,7 +17,8 @@ export const SECRET_RULES: readonly InjectionRule[] = [
     category: "secret_leak",
     severity: "block",
     confidence: 0.95,
-    source: "-----BEGIN\\s+(?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED)\\s+)?PRIVATE\\s+KEY(?:\\s+BLOCK)?-----",
+    source:
+      "-----BEGIN\\s+(?:(?:RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED)\\s+)?PRIVATE\\s+KEY(?:\\s+BLOCK)?-----",
   },
   {
     id: "secret.anthropic_key",
@@ -38,7 +39,8 @@ export const SECRET_RULES: readonly InjectionRule[] = [
     category: "secret_leak",
     severity: "warn",
     confidence: 0.9,
-    source: "\\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}\\b|\\bgithub_pat_[A-Za-z0-9_]{20,}\\b",
+    source:
+      "\\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}\\b|\\bgithub_pat_[A-Za-z0-9_]{20,}\\b",
   },
   {
     id: "secret.aws_access_key",
@@ -73,7 +75,8 @@ export const SECRET_RULES: readonly InjectionRule[] = [
     category: "secret_leak",
     severity: "warn",
     confidence: 0.7,
-    source: "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{5,}\\b",
+    source:
+      "\\beyJ[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{8,}\\.[A-Za-z0-9_-]{5,}\\b",
   },
   {
     id: "secret.telegram_bot_token",
@@ -87,7 +90,8 @@ export const SECRET_RULES: readonly InjectionRule[] = [
     category: "credential_exfiltration",
     severity: "warn",
     confidence: 0.5,
-    source: "\\b(?:api[_-]?key|apikey|secret|access[_-]?token|refresh[_-]?token|password|passwd|client[_-]?secret|авт[оa]?р[иi]?зац[иi][яi]|пароль|токен)\\b\\s*[:=]\\s*[\"'][A-Za-z0-9+/=_.-]{16,}[\"']",
+    source:
+      "\\b(?:api[_-]?key|apikey|secret|access[_-]?token|refresh[_-]?token|password|passwd|client[_-]?secret|авт[оa]?р[иi]?зац[иi][яi]|пароль|токен)\\b\\s*[:=]\\s*[\"'][A-Za-z0-9+/=_.-]{16,}[\"']",
   },
 ] as const;
 
@@ -137,7 +141,8 @@ export function findHighEntropyTokens(
     if (token.length < minLength) continue;
     const hasLetters = /[a-z]/.test(token) && /[A-Z]/.test(token);
     const hasDigits = /[0-9]/.test(token);
-    if (!hasDigits || (!hasLetters && !/[_+/=-]/.test(token.slice(4)))) continue;
+    if (!hasDigits || (!hasLetters && !/[_+/=-]/.test(token.slice(4))))
+      continue;
     const entropy = shannonEntropy(token);
     if (entropy < minEntropy) continue;
     findings.push({

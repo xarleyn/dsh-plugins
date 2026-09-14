@@ -14,13 +14,18 @@ import {
 import { DomainExpertsError } from "./errors.js";
 
 /** Memory namespace grammar: lowercase segments, no escapes, no empties. */
-const MEMORY_NAMESPACE_PATTERN = /^[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*$/u;
+const MEMORY_NAMESPACE_PATTERN =
+  /^[a-z0-9][a-z0-9_-]*(?:\/[a-z0-9][a-z0-9_-]*)*$/u;
 
 /** Paths are workspace-relative patterns; absolute paths and `..` escape. */
 const SEGMENT_ESCAPE_PATTERN = /(^|[/\\])\.\.([/\\]|$)/u;
 const WINDOWS_ABSOLUTE_PATTERN = /^[A-Za-z]:[/\\]/u;
 
-const crossDomainModeSchema = z.enum(["disabled", "expert-only", "direct-read"]);
+const crossDomainModeSchema = z.enum([
+  "disabled",
+  "expert-only",
+  "direct-read",
+]);
 
 /**
  * Structural record schema. Record schemas in a storage domain are zod, not
@@ -157,7 +162,11 @@ export function validateDomainDefinition(
   }
   for (const shared of definition.memory.sharedReadOnly) {
     if (!MEMORY_NAMESPACE_PATTERN.test(shared)) {
-      push("error", "memory.sharedReadOnly", `Shared namespace "${shared}" is malformed.`);
+      push(
+        "error",
+        "memory.sharedReadOnly",
+        `Shared namespace "${shared}" is malformed.`,
+      );
     } else if (shared === namespace) {
       push(
         "warning",
@@ -166,24 +175,38 @@ export function validateDomainDefinition(
       );
     }
   }
-  if (new Set(definition.memory.sharedReadOnly).size !== definition.memory.sharedReadOnly.length) {
-    push("warning", "memory.sharedReadOnly", "Duplicate shared namespaces are collapsed on save.");
+  if (
+    new Set(definition.memory.sharedReadOnly).size !==
+    definition.memory.sharedReadOnly.length
+  ) {
+    push(
+      "warning",
+      "memory.sharedReadOnly",
+      "Duplicate shared namespaces are collapsed on save.",
+    );
   }
 
   for (const [field, paths] of [
     ["scope.filesystem.primary", definition.scope.filesystem.primary],
-    ["scope.filesystem.sharedReadOnly", definition.scope.filesystem.sharedReadOnly],
+    [
+      "scope.filesystem.sharedReadOnly",
+      definition.scope.filesystem.sharedReadOnly,
+    ],
     ["scope.filesystem.denied", definition.scope.filesystem.denied],
   ] as const) {
     for (const path of paths) {
       const reason = pathProblem(path);
-      if (reason !== null) push("error", field, `Path "${path}" is invalid: ${reason}`);
+      if (reason !== null)
+        push("error", field, `Path "${path}" is invalid: ${reason}`);
     }
   }
   const denied = new Set(definition.scope.filesystem.denied);
   for (const [field, paths] of [
     ["scope.filesystem.primary", definition.scope.filesystem.primary],
-    ["scope.filesystem.sharedReadOnly", definition.scope.filesystem.sharedReadOnly],
+    [
+      "scope.filesystem.sharedReadOnly",
+      definition.scope.filesystem.sharedReadOnly,
+    ],
   ] as const) {
     for (const path of paths) {
       if (denied.has(path)) {
@@ -212,21 +235,35 @@ export function validateDomainDefinition(
       "Cross-domain access is enabled but its mode is disabled; no delegation will be allowed.",
     );
   }
-  if (!definition.delegation.allowCrossDomain && definition.delegation.crossDomainMode !== "disabled") {
+  if (
+    !definition.delegation.allowCrossDomain &&
+    definition.delegation.crossDomainMode !== "disabled"
+  ) {
     push(
       "warning",
       "delegation.allowCrossDomain",
       "Cross-domain access is off, so the selected mode is unused.",
     );
   }
-  if (!Number.isSafeInteger(definition.delegation.maxDepth) || definition.delegation.maxDepth < 0) {
-    push("error", "delegation.maxDepth", "Max delegation depth must be a non-negative integer.");
+  if (
+    !Number.isSafeInteger(definition.delegation.maxDepth) ||
+    definition.delegation.maxDepth < 0
+  ) {
+    push(
+      "error",
+      "delegation.maxDepth",
+      "Max delegation depth must be a non-negative integer.",
+    );
   }
   if (
     !Number.isSafeInteger(definition.delegation.maxParallel) ||
     definition.delegation.maxParallel < 1
   ) {
-    push("error", "delegation.maxParallel", "Max parallel experts must be at least 1.");
+    push(
+      "error",
+      "delegation.maxParallel",
+      "Max parallel experts must be at least 1.",
+    );
   }
   if (
     !definition.model.inherit &&
@@ -240,13 +277,19 @@ export function validateDomainDefinition(
     );
   }
   if (definition.model.maxTokens < 0) {
-    push("error", "model.maxTokens", "Max tokens must be a non-negative integer.");
+    push(
+      "error",
+      "model.maxTokens",
+      "Max tokens must be a non-negative integer.",
+    );
   }
 
   return issues;
 }
 
-export function errorsOf(issues: readonly ValidationIssue[]): readonly ValidationIssue[] {
+export function errorsOf(
+  issues: readonly ValidationIssue[],
+): readonly ValidationIssue[] {
   return issues.filter((issue) => issue.severity === "error");
 }
 
@@ -261,7 +304,8 @@ export function pathProblem(path: string): string | null {
   if (trimmed.startsWith("/") || WINDOWS_ABSOLUTE_PATTERN.test(trimmed)) {
     return "absolute paths are outside the workspace";
   }
-  if (SEGMENT_ESCAPE_PATTERN.test(trimmed)) return '".." segments escape the workspace';
+  if (SEGMENT_ESCAPE_PATTERN.test(trimmed))
+    return '".." segments escape the workspace';
   if (trimmed.includes("\0")) return "NUL byte";
   return null;
 }
@@ -278,10 +322,16 @@ export function normalizePath(path: string): string {
 
 /** Canonical form of a memory namespace. */
 export function normalizeNamespace(namespace: string): string {
-  return namespace.trim().replace(/^\/+|\/+$/gu, "").replace(/\/{2,}/gu, "/");
+  return namespace
+    .trim()
+    .replace(/^\/+|\/+$/gu, "")
+    .replace(/\/{2,}/gu, "/");
 }
 
-function normalizeList(values: readonly string[], normalize: (v: string) => string): string[] {
+function normalizeList(
+  values: readonly string[],
+  normalize: (v: string) => string,
+): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const value of values) {
@@ -300,7 +350,8 @@ function normalizeList(values: readonly string[], normalize: (v: string) => stri
 export function normalizeDomainDefinition(
   definition: DomainDefinition,
 ): DomainDefinition {
-  const namespace = normalizeNamespace(definition.memory.namespace) ||
+  const namespace =
+    normalizeNamespace(definition.memory.namespace) ||
     defaultMemoryNamespace(definition.id);
   return {
     ...definition,
@@ -310,21 +361,42 @@ export function normalizeDomainDefinition(
     persona: { instructions: definition.persona.instructions.trim() },
     scope: {
       filesystem: {
-        primary: normalizeList(definition.scope.filesystem.primary, normalizePath),
-        sharedReadOnly: normalizeList(definition.scope.filesystem.sharedReadOnly, normalizePath),
-        denied: normalizeList(definition.scope.filesystem.denied, normalizePath),
+        primary: normalizeList(
+          definition.scope.filesystem.primary,
+          normalizePath,
+        ),
+        sharedReadOnly: normalizeList(
+          definition.scope.filesystem.sharedReadOnly,
+          normalizePath,
+        ),
+        denied: normalizeList(
+          definition.scope.filesystem.denied,
+          normalizePath,
+        ),
       },
       documentation: {
-        include: normalizeList(definition.scope.documentation.include, normalizePath),
-        exclude: normalizeList(definition.scope.documentation.exclude, normalizePath),
+        include: normalizeList(
+          definition.scope.documentation.include,
+          normalizePath,
+        ),
+        exclude: normalizeList(
+          definition.scope.documentation.exclude,
+          normalizePath,
+        ),
       },
       providers: Object.fromEntries(
-        Object.entries(definition.scope.providers).map(([key, value]) => [key.trim(), value]),
+        Object.entries(definition.scope.providers).map(([key, value]) => [
+          key.trim(),
+          value,
+        ]),
       ),
     },
     memory: {
       namespace,
-      sharedReadOnly: normalizeList(definition.memory.sharedReadOnly, normalizeNamespace),
+      sharedReadOnly: normalizeList(
+        definition.memory.sharedReadOnly,
+        normalizeNamespace,
+      ),
     },
     tools: {
       allow: normalizeList(definition.tools.allow, (value) => value.trim()),
@@ -332,11 +404,18 @@ export function normalizeDomainDefinition(
     },
     delegation: {
       ...definition.delegation,
-      crossDomainMode: CROSS_DOMAIN_MODES.includes(definition.delegation.crossDomainMode)
+      crossDomainMode: CROSS_DOMAIN_MODES.includes(
+        definition.delegation.crossDomainMode,
+      )
         ? definition.delegation.crossDomainMode
         : "expert-only",
-      targets: normalizeList(definition.delegation.targets, (value) => value.trim()),
-      directRead: normalizeList(definition.delegation.directRead, normalizeNamespace),
+      targets: normalizeList(definition.delegation.targets, (value) =>
+        value.trim(),
+      ),
+      directRead: normalizeList(
+        definition.delegation.directRead,
+        normalizeNamespace,
+      ),
     },
     model: {
       inherit: definition.model.inherit,
@@ -353,7 +432,10 @@ export function normalizeDomainDefinition(
  * canonical record. Structural problems fail loudly; semantic problems are the
  * caller's to reject with {@link validateDomainDefinition}.
  */
-export function parseDomainDefinition(input: unknown, now: number): DomainDefinition {
+export function parseDomainDefinition(
+  input: unknown,
+  now: number,
+): DomainDefinition {
   const record = asRecord(input);
   const id = typeof record["id"] === "string" ? record["id"] : "";
   const draft = emptyDomainDraft(id, now);
@@ -369,20 +451,31 @@ export function parseDomainDefinition(input: unknown, now: number): DomainDefini
     },
     scope: {
       filesystem: {
-        primary: stringList(asRecord(asRecord(record["scope"])["filesystem"])["primary"]),
+        primary: stringList(
+          asRecord(asRecord(record["scope"])["filesystem"])["primary"],
+        ),
         sharedReadOnly: stringList(
           asRecord(asRecord(record["scope"])["filesystem"])["sharedReadOnly"],
         ),
-        denied: stringList(asRecord(asRecord(record["scope"])["filesystem"])["denied"]),
+        denied: stringList(
+          asRecord(asRecord(record["scope"])["filesystem"])["denied"],
+        ),
       },
       documentation: {
-        include: stringList(asRecord(asRecord(record["scope"])["documentation"])["include"]),
-        exclude: stringList(asRecord(asRecord(record["scope"])["documentation"])["exclude"]),
+        include: stringList(
+          asRecord(asRecord(record["scope"])["documentation"])["include"],
+        ),
+        exclude: stringList(
+          asRecord(asRecord(record["scope"])["documentation"])["exclude"],
+        ),
       },
       providers: stringMap(asRecord(record["scope"])["providers"]),
     },
     memory: {
-      namespace: stringOr(asRecord(record["memory"])["namespace"], defaultMemoryNamespace(id)),
+      namespace: stringOr(
+        asRecord(record["memory"])["namespace"],
+        defaultMemoryNamespace(id),
+      ),
       sharedReadOnly: stringList(asRecord(record["memory"])["sharedReadOnly"]),
     },
     tools: {
@@ -394,7 +487,9 @@ export function parseDomainDefinition(input: unknown, now: number): DomainDefini
         asRecord(record["delegation"])["allowCrossDomain"],
         true,
       ),
-      crossDomainMode: modeOr(asRecord(record["delegation"])["crossDomainMode"]),
+      crossDomainMode: modeOr(
+        asRecord(record["delegation"])["crossDomainMode"],
+      ),
       targets: stringList(asRecord(record["delegation"])["targets"]),
       directRead: stringList(asRecord(record["delegation"])["directRead"]),
       maxDepth: intOr(asRecord(record["delegation"])["maxDepth"], 3),
@@ -404,7 +499,10 @@ export function parseDomainDefinition(input: unknown, now: number): DomainDefini
       inherit: booleanOr(asRecord(record["model"])["inherit"], true),
       provider: stringOr(asRecord(record["model"])["provider"], ""),
       model: stringOr(asRecord(record["model"])["model"], ""),
-      reasoningEffort: stringOr(asRecord(record["model"])["reasoningEffort"], ""),
+      reasoningEffort: stringOr(
+        asRecord(record["model"])["reasoningEffort"],
+        "",
+      ),
       maxTokens: intOr(asRecord(record["model"])["maxTokens"], 0),
     },
     createdAt: intOr(record["createdAt"], now),
@@ -470,7 +568,9 @@ function booleanOr(value: unknown, fallback: boolean): boolean {
 }
 
 function intOr(value: unknown, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? Math.trunc(value) : fallback;
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.trunc(value)
+    : fallback;
 }
 
 function stringList(value: unknown): string[] {
@@ -487,8 +587,11 @@ function stringMap(value: unknown): Record<string, string> {
   return out;
 }
 
-function modeOr(value: unknown): DomainDefinition["delegation"]["crossDomainMode"] {
-  return typeof value === "string" && (CROSS_DOMAIN_MODES as readonly string[]).includes(value)
+function modeOr(
+  value: unknown,
+): DomainDefinition["delegation"]["crossDomainMode"] {
+  return typeof value === "string" &&
+    (CROSS_DOMAIN_MODES as readonly string[]).includes(value)
     ? (value as DomainDefinition["delegation"]["crossDomainMode"])
     : "expert-only";
 }

@@ -8,7 +8,11 @@
  * above are additionally mirrored to the host context logger.
  */
 
-import { createHostLoggerSink, getPluginLogger, type HostLoggerLike } from "@yadsh/dsh-plugin-log";
+import {
+  createHostLoggerSink,
+  getPluginLogger,
+  type HostLoggerLike,
+} from "@yadsh/dsh-plugin-log";
 import { sha256Hex } from "../snapshots/fingerprint.js";
 
 export interface KvPersistLogger {
@@ -32,12 +36,16 @@ export function abbreviateSessionId(sessionId: string): string {
 /** Fields that must be abbreviated before formatting. */
 const SENSITIVE_FIELDS = new Set(["sessionId"]);
 
-function prepareFields(fields: Record<string, unknown> | undefined): Record<string, unknown> {
+function prepareFields(
+  fields: Record<string, unknown> | undefined,
+): Record<string, unknown> {
   if (fields === undefined) return {};
   const prepared: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(fields)) {
     prepared[key] =
-      SENSITIVE_FIELDS.has(key) && typeof value === "string" ? abbreviateSessionId(value) : value;
+      SENSITIVE_FIELDS.has(key) && typeof value === "string"
+        ? abbreviateSessionId(value)
+        : value;
   }
   return prepared;
 }
@@ -48,7 +56,10 @@ function prepareFields(fields: Record<string, unknown> | undefined): Record<stri
  * logger as the console mirror for `warn`+ records. Sensitive fields are
  * abbreviated here, before any record leaves the plugin (SPEC §45).
  */
-export function createKvPersistLogger(host: HostLoggerLike, level: KvPersistLogLevel): KvPersistLogger {
+export function createKvPersistLogger(
+  host: HostLoggerLike,
+  level: KvPersistLogLevel,
+): KvPersistLogger {
   const shared = getPluginLogger({
     pluginId: "dsh-kv-persist",
     level: level === "off" ? "silent" : level,

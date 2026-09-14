@@ -227,6 +227,9 @@ importers:
       nx:
         specifier: catalog:tooling
         version: 22.7.8(@swc-node/register@1.12.1(@swc/core@1.16.1)(@swc/types@0.1.28)(typescript@5.9.3))(@swc/core@1.16.1)
+      prettier:
+        specifier: catalog:tooling
+        version: 3.9.6
       typescript:
         specifier: catalog:tooling
         version: 5.9.3
@@ -590,9 +593,6 @@ importers:
       playwright:
         specifier: catalog:tooling
         version: 1.62.1
-      prettier:
-        specifier: catalog:tooling
-        version: 3.9.6
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
@@ -695,9 +695,6 @@ importers:
       jsdom:
         specifier: catalog:tooling
         version: 26.1.0
-      prettier:
-        specifier: catalog:tooling
-        version: 3.9.6
       tsdown:
         specifier: catalog:tooling
         version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.22.4)(typescript@7.0.2)
@@ -1074,9 +1071,6 @@ importers:
       playwright:
         specifier: catalog:tooling
         version: 1.62.1
-      prettier:
-        specifier: catalog:tooling
-        version: 3.9.6
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
@@ -1199,9 +1193,6 @@ importers:
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
-      prettier:
-        specifier: catalog:tooling
-        version: 3.9.6
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1

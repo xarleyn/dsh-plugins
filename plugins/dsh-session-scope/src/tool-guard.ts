@@ -59,7 +59,7 @@ const ISOLATION_DANGER_REASON = `${SESSION_SCOPE_ERROR.ISOLATION_UNAVAILABLE}: I
 
 function record(value: unknown): Record<string, unknown> | undefined {
   return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : undefined;
 }
 
@@ -71,7 +71,9 @@ function stringField(value: unknown, name: string): string | undefined {
 function singlePathAdapter(
   name: string,
   field: string,
-  operation: ScopedFilesystemOperation | ((args: Record<string, unknown>) => ScopedFilesystemOperation),
+  operation:
+    | ScopedFilesystemOperation
+    | ((args: Record<string, unknown>) => ScopedFilesystemOperation),
 ): ScopeToolAdapter {
   return {
     name,
@@ -79,7 +81,13 @@ function singlePathAdapter(
       const args = record(value);
       const path = stringField(value, field);
       if (args === undefined || path === undefined) return [];
-      return [{ path, operation: typeof operation === "function" ? operation(args) : operation }];
+      return [
+        {
+          path,
+          operation:
+            typeof operation === "function" ? operation(args) : operation,
+        },
+      ];
     },
   };
 }
@@ -96,15 +104,19 @@ function searchPathAdapter(name: string): ScopeToolAdapter {
   };
 }
 
-export const DEFAULT_TOOL_ADAPTERS: readonly ScopeToolAdapter[] = Object.freeze([
-  singlePathAdapter("read", "file_path", "read"),
-  singlePathAdapter("read_image", "file_path", "read"),
-  singlePathAdapter("write", "file_path", "write"),
-  singlePathAdapter("edit", "file_path", "write"),
-  searchPathAdapter("glob"),
-  searchPathAdapter("grep"),
-  singlePathAdapter("str_replace_editor", "path", (args) => args.command === "view" ? "list" : "write"),
-]);
+export const DEFAULT_TOOL_ADAPTERS: readonly ScopeToolAdapter[] = Object.freeze(
+  [
+    singlePathAdapter("read", "file_path", "read"),
+    singlePathAdapter("read_image", "file_path", "read"),
+    singlePathAdapter("write", "file_path", "write"),
+    singlePathAdapter("edit", "file_path", "write"),
+    searchPathAdapter("glob"),
+    searchPathAdapter("grep"),
+    singlePathAdapter("str_replace_editor", "path", (args) =>
+      args.command === "view" ? "list" : "write",
+    ),
+  ],
+);
 
 export class ScopeToolAdapterRegistry {
   private readonly adapters = new Map<string, ScopeToolAdapter>();
@@ -115,16 +127,21 @@ export class ScopeToolAdapterRegistry {
 
   register(adapter: ScopeToolAdapter): () => void {
     if (!adapter.name || this.adapters.has(adapter.name)) {
-      throw new Error(`session-scope tool adapter already registered: ${adapter.name}`);
+      throw new Error(
+        `session-scope tool adapter already registered: ${adapter.name}`,
+      );
     }
     this.adapters.set(adapter.name, adapter);
     return () => {
-      if (this.adapters.get(adapter.name) === adapter) this.adapters.delete(adapter.name);
+      if (this.adapters.get(adapter.name) === adapter)
+        this.adapters.delete(adapter.name);
     };
   }
 
   requests(execution: ScopeToolExecution): ToolPathRequest[] {
-    return this.adapters.get(execution.name)?.extractPaths(execution.arguments) ?? [];
+    return (
+      this.adapters.get(execution.name)?.extractPaths(execution.arguments) ?? []
+    );
   }
 }
 
@@ -134,23 +151,33 @@ function absoluteToolPath(
   sessionWorkspaceRoot?: string,
 ): string {
   const target = isAbsolute(path) ? path : resolve(scope.workspaceRoot, path);
-  const workspaceSpellings = [scope.workspaceRoot, sessionWorkspaceRoot]
-    .filter((root): root is string => typeof root === "string" && root.length > 0);
-  const originatedInsideWorkspace = workspaceSpellings.some((root) => isLexicallyUnder(target, root));
+  const workspaceSpellings = [scope.workspaceRoot, sessionWorkspaceRoot].filter(
+    (root): root is string => typeof root === "string" && root.length > 0,
+  );
+  const originatedInsideWorkspace = workspaceSpellings.some((root) =>
+    isLexicallyUnder(target, root),
+  );
   const canonicalTarget = canonicalPath(target);
-  const aliasMappedTarget = sessionWorkspaceRoot
-    && !samePath(sessionWorkspaceRoot, scope.workspaceRoot)
-    && isLexicallyUnder(target, sessionWorkspaceRoot)
-    ? resolve(scope.workspaceRoot, relative(sessionWorkspaceRoot, target))
-    : undefined;
+  const aliasMappedTarget =
+    sessionWorkspaceRoot &&
+    !samePath(sessionWorkspaceRoot, scope.workspaceRoot) &&
+    isLexicallyUnder(target, sessionWorkspaceRoot)
+      ? resolve(scope.workspaceRoot, relative(sessionWorkspaceRoot, target))
+      : undefined;
   const identityTarget = !samePath(canonicalTarget, target)
     ? canonicalTarget
-    : aliasMappedTarget ?? canonicalTarget;
+    : (aliasMappedTarget ?? canonicalTarget);
 
   // A path lexically inside the session workspace which resolves outside it
   // is a symlink/alias escape, not an ordinary external host path.
-  if (originatedInsideWorkspace && !isLexicallyUnder(identityTarget, scope.workspaceRoot)) {
-    throw new SessionScopeError(SESSION_SCOPE_ERROR.SYMLINK_ESCAPE, "Path resolves outside the session workspace.");
+  if (
+    originatedInsideWorkspace &&
+    !isLexicallyUnder(identityTarget, scope.workspaceRoot)
+  ) {
+    throw new SessionScopeError(
+      SESSION_SCOPE_ERROR.SYMLINK_ESCAPE,
+      "Path resolves outside the session workspace.",
+    );
   }
   // Missing targets cannot be realpathed, so identityTarget may instead be
   // mapped from a session-header alias (notably a Windows 8.3 path).
@@ -175,28 +202,44 @@ export function guardScopeToolExecution(
   if (execution.name === "lsp") return DENIAL_REASON;
   try {
     for (const request of adapters.requests(execution)) {
-      const target = absoluteToolPath(request.path, scope, sessionWorkspaceRoot);
+      const target = absoluteToolPath(
+        request.path,
+        scope,
+        sessionWorkspaceRoot,
+      );
       if (
-        request.operation === "search"
-        && options.splitBroadSearches === true
-        && (execution.name === "glob" || execution.name === "grep")
+        request.operation === "search" &&
+        options.splitBroadSearches === true &&
+        (execution.name === "glob" || execution.name === "grep")
       ) {
         scopedSearchRoots(scope, target);
       } else {
         assertScopeAccess(scope, target, request.operation);
       }
     }
-    if (scope.mode === "isolated" && (execution.name === "bash" || execution.name === "terminal_open")) {
-      if (options.isolatedBackendReady !== true) return ISOLATION_UNAVAILABLE_REASON;
+    if (
+      scope.mode === "isolated" &&
+      (execution.name === "bash" || execution.name === "terminal_open")
+    ) {
+      if (options.isolatedBackendReady !== true)
+        return ISOLATION_UNAVAILABLE_REASON;
       const args = record(execution.arguments);
-      if (options.sandboxMode === "danger-full-access" || stringField(args, "sandbox_permissions") === "danger-full-access") {
+      if (
+        options.sandboxMode === "danger-full-access" ||
+        stringField(args, "sandbox_permissions") === "danger-full-access"
+      ) {
         return ISOLATION_DANGER_REASON;
       }
       const field = execution.name === "bash" ? "workdir" : "cwd";
       const requestedWorkingDirectory = stringField(args, field);
       if (requestedWorkingDirectory !== undefined) {
-        const target = absoluteToolPath(requestedWorkingDirectory, scope, sessionWorkspaceRoot);
-        if (!samePath(target, scope.workspaceRoot)) assertScopeAccess(scope, target, "list");
+        const target = absoluteToolPath(
+          requestedWorkingDirectory,
+          scope,
+          sessionWorkspaceRoot,
+        );
+        if (!samePath(target, scope.workspaceRoot))
+          assertScopeAccess(scope, target, "list");
       }
     }
     return undefined;
@@ -281,7 +324,11 @@ export async function dispatchScopedSearchExecution(
   if (scope.mode === "full") return next();
 
   const requestedPath = typeof args.path === "string" ? args.path : ".";
-  const requestedRoot = absoluteToolPath(requestedPath, scope, session.header?.cwd);
+  const requestedRoot = absoluteToolPath(
+    requestedPath,
+    scope,
+    session.header?.cwd,
+  );
   const roots = scopedSearchRoots(scope, requestedRoot);
   if (roots.length === 1 && samePath(roots[0]!, requestedRoot)) return next();
 

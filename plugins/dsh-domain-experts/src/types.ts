@@ -144,7 +144,7 @@ export interface DomainDefinition {
   readonly updatedAt: number;
 }
 
-/** Lightweight list projection for the domain list screen. */export interface DomainSummary {
+/** Lightweight list projection for the domain list screen. */ export interface DomainSummary {
   readonly id: string;
   readonly name: string;
   readonly description: string;

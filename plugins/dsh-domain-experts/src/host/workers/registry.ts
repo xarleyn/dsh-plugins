@@ -43,7 +43,8 @@ export class WorkerRegistry {
     return () => {
       if (!active) return;
       active = false;
-      if (this.workers.get(worker.id) === worker) this.workers.delete(worker.id);
+      if (this.workers.get(worker.id) === worker)
+        this.workers.delete(worker.id);
     };
   }
 
@@ -71,13 +72,21 @@ export class WorkerRegistry {
    * Selected workers among the configured tool names. A worker counts as
    * selected when the domain allows either its id or its tool name.
    */
-  selectedFor(allow: readonly string[], deny: readonly string[]): readonly DomainWorker[] {
+  selectedFor(
+    allow: readonly string[],
+    deny: readonly string[],
+  ): readonly DomainWorker[] {
     const allowed = new Set(allow);
     const denied = new Set(deny);
     return this.list().filter((worker) => {
-      const selected = allowed.has(worker.id) || (worker.tool !== "" && allowed.has(worker.tool));
+      const selected =
+        allowed.has(worker.id) ||
+        (worker.tool !== "" && allowed.has(worker.tool));
       if (!selected) return false;
-      return !denied.has(worker.id) && (worker.tool === "" || !denied.has(worker.tool));
+      return (
+        !denied.has(worker.id) &&
+        (worker.tool === "" || !denied.has(worker.tool))
+      );
     });
   }
 
@@ -91,7 +100,10 @@ export class WorkerRegistry {
   }
 
   /** Worker ids backing the enforced providers, for the inspector's evidence. */
-  enforcersOf(selected: readonly DomainWorker[], providerId: string): readonly string[] {
+  enforcersOf(
+    selected: readonly DomainWorker[],
+    providerId: string,
+  ): readonly string[] {
     return selected
       .filter((worker) => worker.enforces.includes(providerId))
       .map((worker) => (worker.tool !== "" ? worker.tool : worker.id));

@@ -6,19 +6,31 @@ import { decodeBase64Candidate } from "../../src/transform/base64.js";
 import { sha256Hex } from "../../src/cas/hash.js";
 import { TINY_PNG_BYTES } from "../fixtures/store-fixtures.js";
 
-function options(overrides: Partial<Parameters<typeof decodeBase64Candidate>[1]> = {}) {
-  return { enabled: true, minChars: 64, requireStrongDetection: true, ...overrides };
+function options(
+  overrides: Partial<Parameters<typeof decodeBase64Candidate>[1]> = {},
+) {
+  return {
+    enabled: true,
+    minChars: 64,
+    requireStrongDetection: true,
+    ...overrides,
+  };
 }
 
 const PNG_RAW = Buffer.from(TINY_PNG_BYTES).toString("base64");
 
 describe("decodeBase64Candidate", () => {
   it("decodes a data URI with a media type", () => {
-    const decoded = decodeBase64Candidate(`data:image/png;base64,${PNG_RAW}`, options());
+    const decoded = decodeBase64Candidate(
+      `data:image/png;base64,${PNG_RAW}`,
+      options(),
+    );
     expect(decoded).not.toBeNull();
     expect(decoded?.mediaType).toBe("image/png");
     expect(decoded?.fromDataUri).toBe(true);
-    expect(Buffer.from(decoded?.bytes ?? []).equals(Buffer.from(TINY_PNG_BYTES))).toBe(true);
+    expect(
+      Buffer.from(decoded?.bytes ?? []).equals(Buffer.from(TINY_PNG_BYTES)),
+    ).toBe(true);
   });
 
   it("decodes a raw base64 payload with binary evidence", () => {
@@ -41,7 +53,8 @@ describe("decodeBase64Candidate", () => {
     // 8192 chars of pseudo-random base64-alphabet text that decodes to
     // text-like bytes; strong detection must refuse it.
     let state = 987654321;
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const chars =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let candidate = "";
     while (candidate.length < 8192) {
       state = (state * 1103515245 + 12345) % 2147483648;
@@ -62,26 +75,53 @@ describe("decodeBase64Candidate", () => {
     // Length not a multiple of four.
     expect(decodeBase64Candidate(`${PNG_RAW}a`, options())).toBeNull();
     // Invalid alphabet.
-    expect(decodeBase64Candidate(`${PNG_RAW.slice(0, -1)}!`, options())).toBeNull();
+    expect(
+      decodeBase64Candidate(`${PNG_RAW.slice(0, -1)}!`, options()),
+    ).toBeNull();
     // Misplaced padding.
-    expect(decodeBase64Candidate(`${PNG_RAW.slice(0, 20)}=${PNG_RAW.slice(21)}`, options())).toBeNull();
+    expect(
+      decodeBase64Candidate(
+        `${PNG_RAW.slice(0, 20)}=${PNG_RAW.slice(21)}`,
+        options(),
+      ),
+    ).toBeNull();
     // Empty decode.
     expect(decodeBase64Candidate("====", options())).toBeNull();
   });
 
   it("ignores short candidates even when valid", () => {
     const short = Buffer.from(TINY_PNG_BYTES).toString("base64").slice(0, 32);
-    expect(decodeBase64Candidate(short, options({ minChars: 8192 }))).toBeNull();
+    expect(
+      decodeBase64Candidate(short, options({ minChars: 8192 })),
+    ).toBeNull();
   });
 
   it("respects the enabled flag", () => {
-    expect(decodeBase64Candidate(`data:image/png;base64,${PNG_RAW}`, options({ enabled: false }))).toBeNull();
+    expect(
+      decodeBase64Candidate(
+        `data:image/png;base64,${PNG_RAW}`,
+        options({ enabled: false }),
+      ),
+    ).toBeNull();
   });
 
   it("refuses weak raw candidates when strong detection is required", () => {
     // Text-like bytes that re-encode canonically; weak mode accepts, strong refuses.
-    const weakPayload = Buffer.from("just some repeated textual content. ".repeat(200), "utf8").toString("base64");
-    expect(decodeBase64Candidate(weakPayload, options({ requireStrongDetection: false }))).not.toBeNull();
-    expect(decodeBase64Candidate(weakPayload, options({ requireStrongDetection: true }))).toBeNull();
+    const weakPayload = Buffer.from(
+      "just some repeated textual content. ".repeat(200),
+      "utf8",
+    ).toString("base64");
+    expect(
+      decodeBase64Candidate(
+        weakPayload,
+        options({ requireStrongDetection: false }),
+      ),
+    ).not.toBeNull();
+    expect(
+      decodeBase64Candidate(
+        weakPayload,
+        options({ requireStrongDetection: true }),
+      ),
+    ).toBeNull();
   });
 });

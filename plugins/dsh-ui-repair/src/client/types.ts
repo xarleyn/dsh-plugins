@@ -47,10 +47,7 @@ export interface RepairVerification {
 }
 
 export type RepairHistoryStatus =
-  | "applied"
-  | "verified"
-  | "rolled-back"
-  | "verification-failed";
+  "applied" | "verified" | "rolled-back" | "verification-failed";
 
 export interface RepairHistoryEntry {
   readonly repairId: string;

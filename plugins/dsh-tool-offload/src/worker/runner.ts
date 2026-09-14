@@ -14,7 +14,10 @@
  * timeout path, so no child agent outlives the tool call (SPEC §22).
  */
 
-import type { SubagentRun, SubagentStartRequest } from "@deepseek-ai/dsh-subagent";
+import type {
+  SubagentRun,
+  SubagentStartRequest,
+} from "@deepseek-ai/dsh-subagent";
 import type { ToolExecution } from "@deepseek-ai/dsh-tools";
 
 import type { ResolvedWorkerProfile } from "../config.js";
@@ -40,7 +43,11 @@ export interface WorkerRunRequest {
 }
 
 export type WorkerOutcome =
-  | { readonly kind: "completed"; readonly outputText: string; readonly stopReason: string }
+  | {
+      readonly kind: "completed";
+      readonly outputText: string;
+      readonly stopReason: string;
+    }
   | { readonly kind: "aborted" }
   | { readonly kind: "timeout" }
   | { readonly kind: "unavailable"; readonly detail: string }
@@ -53,7 +60,9 @@ export interface WorkerRunnerLike {
 /** Label prefix marking worker children of this plugin (SPEC §25). */
 export const WORKER_LABEL_PREFIX = "dsh-tool-offload:";
 
-export function createSubagentRunner(subagents: SubagentsServiceLike): WorkerRunnerLike {
+export function createSubagentRunner(
+  subagents: SubagentsServiceLike,
+): WorkerRunnerLike {
   return {
     async run(request: WorkerRunRequest): Promise<WorkerOutcome> {
       const provider = subagents.getProvider(request.profile.subagentProvider);
@@ -74,11 +83,17 @@ export function createSubagentRunner(subagents: SubagentsServiceLike): WorkerRun
       // The worker timeout is bounded twice: the merged signal cancels the
       // child's turn work, and the belt-and-braces race below guarantees the
       // post-execute seam settles even if the runtime never resolves.
-      const signal = AbortSignal.any([request.signal, AbortSignal.timeout(request.profile.timeoutMs)]);
+      const signal = AbortSignal.any([
+        request.signal,
+        AbortSignal.timeout(request.profile.timeoutMs),
+      ]);
       const agentOptions: SubagentStartRequest["agentOptions"] = {};
-      if (request.profile.provider !== null) agentOptions.provider = request.profile.provider;
-      if (request.profile.model !== null) agentOptions.model = request.profile.model;
-      if (request.profile.maxTokens !== null) agentOptions.maxTokens = request.profile.maxTokens;
+      if (request.profile.provider !== null)
+        agentOptions.provider = request.profile.provider;
+      if (request.profile.model !== null)
+        agentOptions.model = request.profile.model;
+      if (request.profile.maxTokens !== null)
+        agentOptions.maxTokens = request.profile.maxTokens;
 
       let run: SubagentRun;
       try {
@@ -99,23 +114,34 @@ export function createSubagentRunner(subagents: SubagentsServiceLike): WorkerRun
         const result = await Promise.race([
           run.result,
           new Promise<never>((_, reject) => {
-            timer = setTimeout(() => reject(new Error("worker-timeout-belt")), request.profile.timeoutMs);
+            timer = setTimeout(
+              () => reject(new Error("worker-timeout-belt")),
+              request.profile.timeoutMs,
+            );
             timer.unref?.();
           }),
         ]);
         const outputText = joinTextBlocks(result.output);
         if (result.stopReason === "completed") {
-          return { kind: "completed", outputText, stopReason: result.stopReason };
+          return {
+            kind: "completed",
+            outputText,
+            stopReason: result.stopReason,
+          };
         }
         if (result.stopReason === "aborted") {
-          return request.signal.aborted ? { kind: "aborted" } : { kind: "timeout" };
+          return request.signal.aborted
+            ? { kind: "aborted" }
+            : { kind: "timeout" };
         }
         return {
           kind: "failed",
           detail: `worker stopped with reason "${String(result.stopReason)}"${result.diagnostic ? `: ${result.diagnostic}` : ""}`,
         };
       } catch {
-        return request.signal.aborted ? { kind: "aborted" } : { kind: "timeout" };
+        return request.signal.aborted
+          ? { kind: "aborted" }
+          : { kind: "timeout" };
       } finally {
         if (timer !== undefined) clearTimeout(timer);
         await run.dispose();
@@ -124,9 +150,15 @@ export function createSubagentRunner(subagents: SubagentsServiceLike): WorkerRun
   };
 }
 
-function mapStartupFailure(request: WorkerRunRequest, error: unknown): WorkerOutcome {
+function mapStartupFailure(
+  request: WorkerRunRequest,
+  error: unknown,
+): WorkerOutcome {
   if (request.signal.aborted) return { kind: "aborted" };
-  return { kind: "failed", detail: error instanceof Error ? error.message : String(error) };
+  return {
+    kind: "failed",
+    detail: error instanceof Error ? error.message : String(error),
+  };
 }
 
 interface TextBlockLike {
@@ -138,7 +170,8 @@ export function joinTextBlocks(output: readonly unknown[]): string {
   const parts: string[] = [];
   for (const block of output) {
     const record = block as TextBlockLike;
-    if (record?.type === "text" && typeof record.text === "string") parts.push(record.text);
+    if (record?.type === "text" && typeof record.text === "string")
+      parts.push(record.text);
   }
   return parts.join("\n").trim();
 }

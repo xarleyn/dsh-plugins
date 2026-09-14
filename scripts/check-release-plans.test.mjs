@@ -47,7 +47,10 @@ function writePackage(root, directory, name, version, extra = {}) {
     version,
     ...extra,
   });
-  writeFileSync(path.join(root, directory, "index.js"), "export const x = 1;\n");
+  writeFileSync(
+    path.join(root, directory, "index.js"),
+    "export const x = 1;\n",
+  );
 }
 
 function editSource(root, directory, contents) {
@@ -228,7 +231,10 @@ describe("version plan gate", () => {
     const { root, base } = createFixture();
     const manifestPath = path.join(root, "plugins/dsh-alpha/package.json");
     writeJson(manifestPath, { name: "@fixture/dsh-alpha", version: "1.1.0" });
-    writeFileSync(path.join(root, "plugins/dsh-alpha/CHANGELOG.md"), "# 1.1.0\n");
+    writeFileSync(
+      path.join(root, "plugins/dsh-alpha/CHANGELOG.md"),
+      "# 1.1.0\n",
+    );
     commit(root, "chore(release): publish");
     git(root, "tag", "@fixture/dsh-alpha@1.1.0");
 
@@ -268,7 +274,10 @@ describe("version plan gate", () => {
     const result = check(root, base);
 
     assert.equal(result.status, 0, result.output);
-    assert.match(result.output, /1 path\(s\) under release projects are uncommitted/u);
+    assert.match(
+      result.output,
+      /1 path\(s\) under release projects are uncommitted/u,
+    );
   });
 
   test("a plan without the front-matter fence does not cover the change", () => {

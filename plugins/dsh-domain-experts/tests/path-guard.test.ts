@@ -18,13 +18,21 @@ const RULES = {
 describe("path-guard: glob compilation", () => {
   it("matches a directory and everything below a trailing /**", () => {
     expect(globMatches("services/payments/**", "services/payments")).toBe(true);
-    expect(globMatches("services/payments/**", "services/payments/api/handler.ts")).toBe(true);
-    expect(globMatches("services/payments/**", "services/payments-other/x.ts")).toBe(false);
+    expect(
+      globMatches("services/payments/**", "services/payments/api/handler.ts"),
+    ).toBe(true);
+    expect(
+      globMatches("services/payments/**", "services/payments-other/x.ts"),
+    ).toBe(false);
   });
 
   it("treats * as a single-segment wildcard", () => {
-    expect(globMatches("services/*/index.ts", "services/payments/index.ts")).toBe(true);
-    expect(globMatches("services/*/index.ts", "services/payments/api/index.ts")).toBe(false);
+    expect(
+      globMatches("services/*/index.ts", "services/payments/index.ts"),
+    ).toBe(true);
+    expect(
+      globMatches("services/*/index.ts", "services/payments/api/index.ts"),
+    ).toBe(false);
   });
 
   it("treats ? as one character inside a segment", () => {
@@ -33,13 +41,19 @@ describe("path-guard: glob compilation", () => {
   });
 
   it("spans segments with /**/ and may match zero of them", () => {
-    expect(globMatches("services/**/handler.ts", "services/handler.ts")).toBe(true);
-    expect(globMatches("services/**/handler.ts", "services/payments/api/handler.ts")).toBe(true);
+    expect(globMatches("services/**/handler.ts", "services/handler.ts")).toBe(
+      true,
+    );
+    expect(
+      globMatches("services/**/handler.ts", "services/payments/api/handler.ts"),
+    ).toBe(true);
   });
 
   it("matches an exact pattern only at that path", () => {
     expect(globMatches("services/payments", "services/payments")).toBe(true);
-    expect(globMatches("services/payments", "services/payments/api.ts")).toBe(false);
+    expect(globMatches("services/payments", "services/payments/api.ts")).toBe(
+      false,
+    );
   });
 
   it("does not treat regex metacharacters as patterns", () => {
@@ -91,10 +105,17 @@ describe("path-guard: decision", () => {
   });
 
   it("lets a denial win over an allow", () => {
-    const rules = { primary: ["services/**"], sharedReadOnly: [], denied: ["services/inventory/**"] };
+    const rules = {
+      primary: ["services/**"],
+      sharedReadOnly: [],
+      denied: ["services/inventory/**"],
+    };
     const decision = decidePath(rules, "services/inventory/stock.ts");
     expect(decision.allowed).toBe(false);
-    expect(decision).toMatchObject({ reason: "denied", matchedBy: "services/inventory/**" });
+    expect(decision).toMatchObject({
+      reason: "denied",
+      matchedBy: "services/inventory/**",
+    });
   });
 
   it("refuses a path no rule classifies", () => {
@@ -108,7 +129,9 @@ describe("path-guard: decision", () => {
   });
 
   it("refuses an absolute path", () => {
-    expect(decidePath(RULES, "/workspace/services/payments/x.ts")).toMatchObject({
+    expect(
+      decidePath(RULES, "/workspace/services/payments/x.ts"),
+    ).toMatchObject({
       allowed: false,
       reason: "absolute",
     });
@@ -126,7 +149,11 @@ describe("path-guard: decision", () => {
   });
 
   it("derives rules from a filesystem config", () => {
-    const rules = pathRulesOf({ primary: ["a/**"], sharedReadOnly: ["b/**"], denied: [] });
+    const rules = pathRulesOf({
+      primary: ["a/**"],
+      sharedReadOnly: ["b/**"],
+      denied: [],
+    });
     expect(rules.primary).toEqual(["a/**"]);
     expect(rules.sharedReadOnly).toEqual(["b/**"]);
   });

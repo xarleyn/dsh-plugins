@@ -12,7 +12,10 @@ import {
 } from "../src/log-buffer.js";
 
 /** One bus record, with the sequence a reader resumes from. */
-function record(seq: number, fields: Record<string, unknown> = {}): PluginLogRecord {
+function record(
+  seq: number,
+  fields: Record<string, unknown> = {},
+): PluginLogRecord {
   return Object.freeze({
     seq,
     time: 1_700_000_000_000 + seq,
@@ -26,15 +29,17 @@ function record(seq: number, fields: Record<string, unknown> = {}): PluginLogRec
 
 describe("renderFields", () => {
   it("renders primitives, nested values and errors as text", () => {
-    expect(renderFields({
-      text: "plain",
-      count: 3,
-      ok: true,
-      missing: null,
-      nothing: undefined,
-      nested: { attempt: 2, tags: ["a", "b"] },
-      failure: new Error("boom"),
-    })).toEqual([
+    expect(
+      renderFields({
+        text: "plain",
+        count: 3,
+        ok: true,
+        missing: null,
+        nothing: undefined,
+        nested: { attempt: 2, tags: ["a", "b"] },
+        failure: new Error("boom"),
+      }),
+    ).toEqual([
       { key: "text", value: "plain" },
       { key: "count", value: "3" },
       { key: "ok", value: "true" },
@@ -52,17 +57,23 @@ describe("renderFields", () => {
     // A cycle is the same case: bounded depth is what makes the render return.
     const cyclic: Record<string, unknown> = { name: "loop" };
     cyclic["self"] = cyclic;
-    expect(renderFields({ cyclic })[0]?.value)
-      .toBe("{name: loop, self: {name: loop, self: {name: loop, self: {…}}}}");
+    expect(renderFields({ cyclic })[0]?.value).toBe(
+      "{name: loop, self: {name: loop, self: {name: loop, self: {…}}}}",
+    );
   });
 
   it("cuts a long value and summarizes surplus fields", () => {
-    const long = renderFields({ text: "x".repeat(LOG_FIELD_VALUE_LIMIT + 50) })[0]?.value ?? "";
+    const long =
+      renderFields({ text: "x".repeat(LOG_FIELD_VALUE_LIMIT + 50) })[0]
+        ?.value ?? "";
     expect(long.length).toBe(LOG_FIELD_VALUE_LIMIT);
     expect(long.endsWith("…")).toBe(true);
 
     const many = Object.fromEntries(
-      Array.from({ length: LOG_FIELD_LIMIT + 3 }, (_, index) => [`k${index}`, index]),
+      Array.from({ length: LOG_FIELD_LIMIT + 3 }, (_, index) => [
+        `k${index}`,
+        index,
+      ]),
     );
     const fields = renderFields(many);
     expect(fields).toHaveLength(LOG_FIELD_LIMIT + 1);
@@ -73,7 +84,9 @@ describe("renderFields", () => {
 describe("toRecordView", () => {
   it("turns an absent module into the empty scope segment", () => {
     expect(toRecordView(record(1)).module).toBe("");
-    expect(toRecordView({ ...record(1), module: "worker" }).module).toBe("worker");
+    expect(toRecordView({ ...record(1), module: "worker" }).module).toBe(
+      "worker",
+    );
   });
 });
 
@@ -94,7 +107,11 @@ describe("PluginLogBuffer", () => {
 
   it("leaves a cursor ahead of the stream alone until those records arrive", () => {
     const buffer = new PluginLogBuffer();
-    expect(buffer.read(0, 10)).toMatchObject({ records: [], cursor: 0, dropped: 0 });
+    expect(buffer.read(0, 10)).toMatchObject({
+      records: [],
+      cursor: 0,
+      dropped: 0,
+    });
     buffer.append(record(1));
     expect(buffer.read(0, 10).records.map((item) => item.seq)).toEqual([1]);
     // A reader that already saw sequence 1 asks for what follows it.

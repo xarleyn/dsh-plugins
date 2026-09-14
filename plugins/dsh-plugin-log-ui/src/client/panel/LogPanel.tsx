@@ -40,19 +40,26 @@ export interface LogPanelInjected {
 }
 
 /** The panel's composed props: the tab it draws and its read face. */
-export type LogPanelProps = PropsRuntime<"sidebar.right.pane.tab"> & LogPanelInjected;
+export type LogPanelProps = PropsRuntime<"sidebar.right.pane.tab"> &
+  LogPanelInjected;
 
 /** Distance from the bottom still counted as "at the bottom", in px. */
 const STICKY_THRESHOLD = 24;
 
 /** The event and its fields, as one run of text after the scope. */
 function messageOf(record: PluginLogRecordView): string {
-  const fields = record.fields.map((field) => `${field.key}=${field.value}`).join(" ");
+  const fields = record.fields
+    .map((field) => `${field.key}=${field.value}`)
+    .join(" ");
   return fields === "" ? record.event : `${record.event} ${fields}`;
 }
 
 /** The panel's body. */
-export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNode {
+export function LogPanel({
+  read,
+  sources,
+  useTabInfo,
+}: LogPanelProps): ReactNode {
   const { tab } = useTabInfo();
   const [records, setRecords] = useState<readonly PluginLogRecordView[]>([]);
   const [levels, setLevels] = useState<ReadonlySet<PluginLogRecordLevel>>(
@@ -88,7 +95,9 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
       // the cursor it was asked about, and the reader wants the running total.
       if (value.dropped > 0) setDropped((current) => current + value.dropped);
       setError(null);
-      setRecords((current) => appendRecords(current, value.records, LOG_PANEL_CAPACITY));
+      setRecords((current) =>
+        appendRecords(current, value.records, LOG_PANEL_CAPACITY),
+      );
     } finally {
       reading.current = false;
     }
@@ -99,8 +108,12 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
     // the column is collapsed or another tab holds the pane.
     if (!tab.visible || paused) return undefined;
     void poll();
-    const timer = setInterval(() => { void poll(); }, LOG_PANEL_POLL_MS);
-    return () => { clearInterval(timer); };
+    const timer = setInterval(() => {
+      void poll();
+    }, LOG_PANEL_POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
   }, [poll, paused, tab.visible]);
 
   // The registered consumers are asked for once per visible stint, not per poll:
@@ -119,8 +132,14 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
     };
   }, [sources, tab.visible]);
 
-  const filter = useMemo(() => ({ levels, query, source }), [levels, query, source]);
-  const visible = useMemo(() => filterRecords(records, filter), [filter, records]);
+  const filter = useMemo(
+    () => ({ levels, query, source }),
+    [levels, query, source],
+  );
+  const visible = useMemo(
+    () => filterRecords(records, filter),
+    [filter, records],
+  );
   const sourceOptions = useMemo(
     () => mergeSources(records, registered, source),
     [records, registered, source],
@@ -160,7 +179,9 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
               data-plu-level={level}
               data-plu-level-on={levels.has(level) || undefined}
               aria-pressed={levels.has(level)}
-              onClick={() => { toggleLevel(level); }}
+              onClick={() => {
+                toggleLevel(level);
+              }}
             >
               {level}
             </button>
@@ -172,7 +193,9 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
             className="plu-log-action"
             aria-pressed={paused}
             title={paused ? "Resume live output" : "Pause live output"}
-            onClick={() => { setPaused((current) => !current); }}
+            onClick={() => {
+              setPaused((current) => !current);
+            }}
           >
             {paused ? "Resume" : "Pause"}
           </button>
@@ -181,7 +204,9 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
             className="plu-log-action"
             aria-pressed={follow}
             title="Keep the newest line in view"
-            onClick={() => { setFollow(true); }}
+            onClick={() => {
+              setFollow(true);
+            }}
           >
             Follow
           </button>
@@ -197,11 +222,15 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
           value={source}
           aria-label="Filter by source plugin"
           title="Show one plugin's lines"
-          onChange={(event) => { setSource(event.currentTarget.value); }}
+          onChange={(event) => {
+            setSource(event.currentTarget.value);
+          }}
         >
           <option value={ALL_SOURCES}>All sources</option>
           {sourceOptions.map((pluginId) => (
-            <option value={pluginId} key={pluginId}>{pluginId}</option>
+            <option value={pluginId} key={pluginId}>
+              {pluginId}
+            </option>
           ))}
         </select>
         <input
@@ -210,7 +239,9 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
           value={query}
           placeholder="Filter text"
           aria-label="Filter log text"
-          onChange={(event) => { setQuery(event.currentTarget.value); }}
+          onChange={(event) => {
+            setQuery(event.currentTarget.value);
+          }}
         />
         <span className="plu-log-count">
           {visible.length === records.length
@@ -220,14 +251,22 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
         </span>
       </div>
 
-      {error !== null ? <p className="plu-log-note" role="status">{error}</p> : null}
-      {dropped > 0 ? (
-        <p className="plu-log-note plu-log-note--drop" role="status">
-          {dropped} record{dropped === 1 ? "" : "s"} dropped before this panel could read them.
+      {error !== null ? (
+        <p className="plu-log-note" role="status">
+          {error}
         </p>
       ) : null}
-      {hostBuffered >= LOG_PANEL_CAPACITY && records.length === LOG_PANEL_CAPACITY ? (
-        <p className="plu-log-note">Showing the newest {LOG_PANEL_CAPACITY} lines.</p>
+      {dropped > 0 ? (
+        <p className="plu-log-note plu-log-note--drop" role="status">
+          {dropped} record{dropped === 1 ? "" : "s"} dropped before this panel
+          could read them.
+        </p>
+      ) : null}
+      {hostBuffered >= LOG_PANEL_CAPACITY &&
+      records.length === LOG_PANEL_CAPACITY ? (
+        <p className="plu-log-note">
+          Showing the newest {LOG_PANEL_CAPACITY} lines.
+        </p>
       ) : null}
 
       <div
@@ -239,7 +278,8 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
           const element = body.current;
           if (element === null) return;
           const atBottom =
-            element.scrollHeight - element.scrollTop - element.clientHeight <= STICKY_THRESHOLD;
+            element.scrollHeight - element.scrollTop - element.clientHeight <=
+            STICKY_THRESHOLD;
           setFollow(atBottom);
         }}
       >
@@ -251,7 +291,11 @@ export function LogPanel({ read, sources, useTabInfo }: LogPanelProps): ReactNod
           </p>
         ) : (
           visible.map((record) => (
-            <div className="plu-log-line" key={record.seq} data-plu-level={record.level}>
+            <div
+              className="plu-log-line"
+              key={record.seq}
+              data-plu-level={record.level}
+            >
               <span className="plu-log-time">{formatTime(record.time)}</span>{" "}
               <span className="plu-log-level" data-plu-level={record.level}>
                 {record.level.toUpperCase()}

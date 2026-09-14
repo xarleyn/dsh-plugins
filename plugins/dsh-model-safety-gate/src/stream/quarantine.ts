@@ -60,7 +60,11 @@ export class ChannelQuarantine {
     if (this.pendingChars > this.options.maxBufferedChars) return "overflow";
     if (this.classifierRunning) return "buffer";
     if (this.charsSinceCheck < this.options.checkEveryChars) return "buffer";
-    if (now - this.lastCheckAt < this.options.minCheckIntervalMs && this.checksStarted > 0) return "buffer";
+    if (
+      now - this.lastCheckAt < this.options.minCheckIntervalMs &&
+      this.checksStarted > 0
+    )
+      return "buffer";
     return "check";
   }
 
@@ -73,7 +77,8 @@ export class ChannelQuarantine {
     const lookbehind = releasedTail.slice(-this.options.lookbehindChars);
     const pending = this.pending.join("");
     const windowBudget = this.options.windowChars;
-    if (lookbehind.length + pending.length <= windowBudget) return lookbehind + pending;
+    if (lookbehind.length + pending.length <= windowBudget)
+      return lookbehind + pending;
     const pendingFrom = Math.max(0, pending.length - windowBudget);
     const pendingSlice = pending.slice(pendingFrom);
     const remaining = windowBudget - pendingSlice.length;
@@ -120,9 +125,10 @@ export class ReleasedTail {
   constructor(private readonly lookbehindChars: number) {}
 
   append(text: string): void {
-    this.text = this.text.length + text.length > this.lookbehindChars * 4
-      ? (this.text + text).slice(-this.lookbehindChars)
-      : this.text + text;
+    this.text =
+      this.text.length + text.length > this.lookbehindChars * 4
+        ? (this.text + text).slice(-this.lookbehindChars)
+        : this.text + text;
   }
 
   tail(): string {
@@ -162,7 +168,11 @@ export class PassThroughMonitor {
       this.recentChars -= dropped.length;
     }
     if (this.charsSinceCheck < this.options.checkEveryChars) return "monitor";
-    if (this.checksStarted > 0 && now - this.lastCheckAt < this.options.minCheckIntervalMs) return "monitor";
+    if (
+      this.checksStarted > 0 &&
+      now - this.lastCheckAt < this.options.minCheckIntervalMs
+    )
+      return "monitor";
     return "check";
   }
 
@@ -179,6 +189,10 @@ export class PassThroughMonitor {
 
   /** Recent text for the check: lookbehind context plus current tail. */
   windowText(): string {
-    return this.recent.join("").slice(-(this.options.lookbehindChars + this.options.checkEveryChars * 2));
+    return this.recent
+      .join("")
+      .slice(
+        -(this.options.lookbehindChars + this.options.checkEveryChars * 2),
+      );
   }
 }

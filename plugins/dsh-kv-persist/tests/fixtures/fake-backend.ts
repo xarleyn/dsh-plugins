@@ -88,19 +88,30 @@ export class FakeKvBackend implements KvPersistenceBackend {
 
   async probe(): Promise<BackendCapabilities> {
     this.probeCount += 1;
-    if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
-    return { kind: this.kind, slotsAvailable: true, slotIds: [...this.#slots.keys()], serverVersion: null };
+    if (this.#unavailable)
+      throw new KvBackendUnavailableError("fake backend unavailable");
+    return {
+      kind: this.kind,
+      slotsAvailable: true,
+      slotIds: [...this.#slots.keys()],
+      serverVersion: null,
+    };
   }
 
   async inspectSlots(): Promise<readonly BackendSlot[]> {
-    if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
+    if (this.#unavailable)
+      throw new KvBackendUnavailableError("fake backend unavailable");
     return [...this.#slots.keys()].map((id) => ({ id }));
   }
 
-  async saveSlot(slotId: number, snapshotKey: string): Promise<BackendSaveResult> {
+  async saveSlot(
+    slotId: number,
+    snapshotKey: string,
+  ): Promise<BackendSaveResult> {
     this.saveCount += 1;
     this.events.push(`save:${slotId}`);
-    if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
+    if (this.#unavailable)
+      throw new KvBackendUnavailableError("fake backend unavailable");
     if (this.#failNextSave > 0) {
       this.#failNextSave -= 1;
       throw new KvSaveFailedError("injected save failure");
@@ -110,17 +121,23 @@ export class FakeKvBackend implements KvPersistenceBackend {
     return { success: true, bytes: 1024 };
   }
 
-  async restoreSlot(slotId: number, snapshotKey: string): Promise<BackendRestoreResult> {
+  async restoreSlot(
+    slotId: number,
+    snapshotKey: string,
+  ): Promise<BackendRestoreResult> {
     this.restoreCount += 1;
     this.events.push(`restore:${slotId}`);
-    if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
+    if (this.#unavailable)
+      throw new KvBackendUnavailableError("fake backend unavailable");
     if (this.#failNextRestore > 0) {
       this.#failNextRestore -= 1;
       throw new KvRestoreFailedError("injected restore failure");
     }
     if (this.#restoreDelayMs > 0) await sleep(this.#restoreDelayMs);
     if (!this.#snapshots.has(snapshotKey)) {
-      throw new KvRestoreFailedError(`snapshot ${snapshotKey} missing on server`);
+      throw new KvRestoreFailedError(
+        `snapshot ${snapshotKey} missing on server`,
+      );
     }
     if (this.#snapshots.get(snapshotKey) === "corrupt") {
       throw new KvRestoreFailedError(`snapshot ${snapshotKey} is corrupt`);
@@ -132,7 +149,8 @@ export class FakeKvBackend implements KvPersistenceBackend {
   async eraseSlot(slotId: number): Promise<BackendEraseResult> {
     this.eraseCount += 1;
     this.events.push(`erase:${slotId}`);
-    if (this.#unavailable) throw new KvBackendUnavailableError("fake backend unavailable");
+    if (this.#unavailable)
+      throw new KvBackendUnavailableError("fake backend unavailable");
     this.#slots.set(slotId, null);
     return { success: true };
   }

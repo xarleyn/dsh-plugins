@@ -15,12 +15,14 @@ export function createInfoTool(deps: InfoDeps) {
   const { store } = deps;
   return defineTool({
     name: "dsh_cas_info",
-    description: "Report stored metadata (size, type, timestamps, reuse count) for an offloaded tool result.",
+    description:
+      "Report stored metadata (size, type, timestamps, reuse count) for an offloaded tool result.",
     parameters: {
       ref: {
         type: "string",
         required: true,
-        description: 'Content reference from the offload marker, e.g. "sha256:ab12...".',
+        description:
+          'Content reference from the offload marker, e.g. "sha256:ab12...".',
       },
     },
     output: {
@@ -42,9 +44,7 @@ export function createInfoTool(deps: InfoDeps) {
           firstTool: { type: "string", required: true },
         },
       },
-      render: (_args, value) => [
-        { type: "text", text: value.message },
-      ],
+      render: (_args, value) => [{ type: "text", text: value.message }],
     },
     async execute(args: unknown) {
       const hash = readRefArg(args);
@@ -76,7 +76,9 @@ export function createInfoTool(deps: InfoDeps) {
           `created: ${metadata.createdAt}`,
           `last accessed: ${metadata.lastAccessedAt}`,
           `reuse count (hits): ${metadata.hits}`,
-          metadata.firstTool === null ? "first tool: unknown" : `first tool: ${metadata.firstTool}`,
+          metadata.firstTool === null
+            ? "first tool: unknown"
+            : `first tool: ${metadata.firstTool}`,
         ].join("\n"),
         size: metadata.size,
         storedSize: metadata.storedSize,

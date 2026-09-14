@@ -1,8 +1,8 @@
-import type { ChangeDetectionMode } from '../config/types.js';
-import { isGitWorktree } from './git.js';
-import { createGitDetector } from './git-detector.js';
-import { createFilesystemDetector } from './filesystem-detector.js';
-import type { ChangeDetector, DetectorOptions } from './types.js';
+import type { ChangeDetectionMode } from "../config/types.js";
+import { isGitWorktree } from "./git.js";
+import { createGitDetector } from "./git-detector.js";
+import { createFilesystemDetector } from "./filesystem-detector.js";
+import type { ChangeDetector, DetectorOptions } from "./types.js";
 
 export { createGitDetector, createFilesystemDetector };
 
@@ -17,6 +17,7 @@ export async function createDetector(
   cwd: string,
   options: DetectorOptions,
 ): Promise<ChangeDetector> {
-  if (mode !== 'filesystem' && (await isGitWorktree(cwd))) return createGitDetector(options);
+  if (mode !== "filesystem" && (await isGitWorktree(cwd)))
+    return createGitDetector(options);
   return createFilesystemDetector(options);
 }

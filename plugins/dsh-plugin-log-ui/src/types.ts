@@ -1,11 +1,5 @@
 export type ManagedPluginLogLevel =
-  | "trace"
-  | "debug"
-  | "info"
-  | "warn"
-  | "error"
-  | "fatal"
-  | "silent";
+  "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
 
 export type ManagedPluginLogFormat = "json" | "text";
 
@@ -51,12 +45,7 @@ export interface PluginLogUiService {
 
 /** Severity a record carries. `silent` never appears: that level emits nothing. */
 export type PluginLogRecordLevel =
-  | "trace"
-  | "debug"
-  | "info"
-  | "warn"
-  | "error"
-  | "fatal";
+  "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
 /**
  * One event field, rendered for display by the host.

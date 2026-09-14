@@ -17,7 +17,10 @@ export function isOwnToolName(toolName: string): boolean {
   return toolName.startsWith(OWN_TOOL_PREFIX);
 }
 
-export function isToolExcluded(config: ResolvedCasResultsConfig, toolName: string): boolean {
+export function isToolExcluded(
+  config: ResolvedCasResultsConfig,
+  toolName: string,
+): boolean {
   return config.excludeTools.includes(toolName);
 }
 
@@ -25,7 +28,10 @@ export function isToolExcluded(config: ResolvedCasResultsConfig, toolName: strin
  * Resolve the effective policy for one tool. Returns `null` when the tool
  * must pass through untouched.
  */
-export function resolveToolPolicy(config: ResolvedCasResultsConfig, toolName: string): TransformPolicy | null {
+export function resolveToolPolicy(
+  config: ResolvedCasResultsConfig,
+  toolName: string,
+): TransformPolicy | null {
   if (isOwnToolName(toolName) || isToolExcluded(config, toolName)) return null;
   const override = config.tools[toolName];
   if (override?.disabled === true) return null;
