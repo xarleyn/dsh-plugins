@@ -1,0 +1,6 @@
+# Generated files are not prettier input. `nx release` writes every package's
+# CHANGELOG.md and regenerates it on each release, so checking its format is a
+# treadmill — the same reason every package ignores its lib/ build output.
+# Each package repeats this ignore because prettier resolves ignore patterns
+# from the working directory that `pnpm run format` runs in and never walks up.
+CHANGELOG.md
