@@ -3,72 +3,89 @@ import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/se
 import { useCallback, useEffect, useState } from "react";
 import type {
   IntegrationCapability,
+  IntegrationInstanceSummary,
   IntegrationSummary,
   PolicyPatch,
 } from "../types.js";
 import { dateTime, failureCopy } from "./copy.js";
 
-export interface IntegrationsRemote {
-  describe(): Promise<
-    RemoteResult<{
-      readonly enabled: boolean;
-      /** Ids of the providers this deployment mounted, in card order. */
-      readonly providers: readonly string[];
-    }>
-  >;
-  getBitrix24(token: string): Promise<RemoteResult<IntegrationSummary>>;
-  putBitrix24Credential(
+export interface GitlabRemote {
+  gitlabInstances(
     token: string,
-    input: { readonly token: string },
+  ): Promise<RemoteResult<readonly IntegrationInstanceSummary[]>>;
+  getGitlab(token: string): Promise<RemoteResult<IntegrationSummary>>;
+  putGitlabCredential(
+    token: string,
+    input: { readonly instanceId: string; readonly token: string },
   ): Promise<RemoteResult<IntegrationSummary>>;
-  testBitrix24(token: string): Promise<RemoteResult<IntegrationSummary>>;
-  patchBitrix24Policy(
+  testGitlab(token: string): Promise<RemoteResult<IntegrationSummary>>;
+  patchGitlabPolicy(
     token: string,
     patch: PolicyPatch,
   ): Promise<RemoteResult<IntegrationSummary>>;
-  disconnectBitrix24(token: string): Promise<RemoteResult<boolean>>;
+  disconnectGitlab(token: string): Promise<RemoteResult<boolean>>;
 }
 
 const ERROR_COPY: Readonly<Record<string, string>> = {
   PrincipalNotResolved: "Сессия истекла. Войдите заново.",
-  InvalidCredential: "Проверьте URL входящего вебхука Bitrix24.",
-  ProviderPermissionDenied: "Bitrix24 не разрешил это действие.",
-  ProviderUnavailable: "Bitrix24 сейчас недоступен. Попробуйте позже.",
+  InvalidCredential: "Проверьте personal access token и выбранный инстанс.",
+  ProviderPermissionDenied:
+    "GitLab не разрешил это действие: проверьте права токена.",
+  ProviderUnavailable: "GitLab сейчас недоступен. Попробуйте позже.",
   IntegrationNotConnected: "Интеграция не подключена.",
-  CredentialExpired: "Срок действия подключения истёк. Замените токен.",
-  CredentialRevoked: "Подключение больше не действует. Замените токен.",
+  CredentialExpired: "Срок действия токена истёк. Создайте новый токен.",
+  CredentialRevoked: "GitLab отклонил токен. Создайте новый и замените его.",
+  ResourceNotFound: "GitLab не нашёл ресурс или токен его не видит.",
+  RateLimited: "Слишком много запросов. Попробуйте позже.",
+  ResultTooLarge: "Ответ GitLab слишком большой для одного запроса.",
 };
 
-function copyFor(error: unknown): string {
-  return failureCopy(ERROR_COPY, error);
-}
-
-export function createBitrix24Card(remote: IntegrationsRemote) {
-  return function Bitrix24Card({ token }: QaUserSettingsSectionProps) {
+export function createGitlabCard(remote: GitlabRemote) {
+  return function GitlabCard({ token }: QaUserSettingsSectionProps) {
+    const [instances, setInstances] = useState<
+      readonly IntegrationInstanceSummary[]
+    >([]);
     const [summary, setSummary] = useState<IntegrationSummary>();
+    const [instanceId, setInstanceId] = useState("");
     const [credential, setCredential] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [replace, setReplace] = useState(false);
     const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
-    const accept = useCallback((result: RemoteResult<IntegrationSummary>) => {
-      if (result.ok) {
-        setSummary(result.value);
-        setError(null);
-        return true;
-      }
-      setError(copyFor(result.error));
-      return false;
+    const fail = useCallback((cause: unknown) => {
+      setError(failureCopy(ERROR_COPY, cause));
     }, []);
+
+    const accept = useCallback(
+      (result: RemoteResult<IntegrationSummary>) => {
+        if (result.ok) {
+          setSummary(result.value);
+          setError(null);
+          return true;
+        }
+        fail(result.error);
+        return false;
+      },
+      [fail],
+    );
 
     const load = useCallback(async () => {
       try {
-        accept(await remote.getBitrix24(token));
+        const list = await remote.gitlabInstances(token);
+        if (list.ok) {
+          setInstances(list.value);
+          setInstanceId(
+            list.value.length === 1 ? (list.value[0]?.id ?? "") : "",
+          );
+        } else {
+          fail(list.error);
+        }
+        accept(await remote.getGitlab(token));
       } catch (cause) {
-        setError(copyFor(cause));
+        fail(cause);
       }
-    }, [accept, token]);
+    }, [accept, fail, token]);
 
     useEffect(() => {
       void load();
@@ -78,14 +95,17 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
       setBusy(true);
       try {
         const saved = accept(
-          await remote.putBitrix24Credential(token, { token: credential }),
+          await remote.putGitlabCredential(token, {
+            instanceId,
+            token: credential,
+          }),
         );
         if (saved) {
           setCredential("");
           setReplace(false);
         }
       } catch (cause) {
-        setError(copyFor(cause));
+        fail(cause);
       } finally {
         setBusy(false);
       }
@@ -94,28 +114,28 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
     const test = async () => {
       setBusy(true);
       try {
-        accept(await remote.testBitrix24(token));
+        accept(await remote.testGitlab(token));
       } catch (cause) {
-        setError(copyFor(cause));
+        fail(cause);
       } finally {
         setBusy(false);
       }
     };
 
     const patch = async (
-      operation: IntegrationCapability,
+      capability: IntegrationCapability,
       allowed: boolean,
     ) => {
       setBusy(true);
       try {
         accept(
-          await remote.patchBitrix24Policy(token, {
-            operation,
+          await remote.patchGitlabPolicy(token, {
+            operation: capability,
             mode: allowed ? "allow" : "deny",
           }),
         );
       } catch (cause) {
-        setError(copyFor(cause));
+        fail(cause);
       } finally {
         setBusy(false);
       }
@@ -124,16 +144,16 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
     const disconnect = async () => {
       setBusy(true);
       try {
-        const result = await remote.disconnectBitrix24(token);
+        const result = await remote.disconnectGitlab(token);
         if (result.ok) {
           setSummary(undefined);
           setConfirmDisconnect(false);
           await load();
         } else {
-          setError(copyFor(result.error));
+          fail(result.error);
         }
       } catch (cause) {
-        setError(copyFor(cause));
+        fail(cause);
       } finally {
         setBusy(false);
       }
@@ -142,6 +162,8 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
     const connected =
       summary?.status !== "not_connected" && summary !== undefined;
     const showCredential = !connected || replace;
+    const configured = instances.length > 0;
+    const needsChoice = configured && instances.length > 1;
     return (
       <article className="dsh-qa-integrations__card">
         {error === null ? null : (
@@ -151,9 +173,9 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
         )}
         <div className="dsh-qa-integrations__card-head">
           <div>
-            <h3 className="dsh-qa-integrations__provider">Bitrix24</h3>
+            <h3 className="dsh-qa-integrations__provider">GitLab</h3>
             <p className="dsh-qa-integrations__portal">
-              {summary?.portal ?? "CRM и чаты вашей компании"}
+              {summary?.portal ?? "Issues, merge requests и CI вашего GitLab"}
             </p>
           </div>
           <span
@@ -170,7 +192,7 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
         {connected ? (
           <div className="dsh-qa-integrations__section">
             <strong>
-              {summary.externalAccountName ?? "Пользователь Bitrix24"}
+              {summary.externalAccountName ?? "Пользователь GitLab"}
             </strong>
             <span className="dsh-qa-integrations__muted">
               Последняя успешная проверка: {dateTime(summary.lastValidatedAt)}
@@ -181,10 +203,32 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
           </div>
         ) : null}
 
-        {showCredential ? (
+        {showCredential && configured ? (
           <div className="dsh-qa-integrations__section">
+            {needsChoice ? (
+              <label className="dsh-qa-integrations__field">
+                Инстанс GitLab
+                <select
+                  className="dsh-qa-integrations__input"
+                  value={instanceId}
+                  disabled={busy}
+                  onChange={(event) => setInstanceId(event.currentTarget.value)}
+                >
+                  <option value="">Выберите инстанс</option>
+                  {instances.map((instance) => (
+                    <option key={instance.id} value={instance.id}>
+                      {instance.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="dsh-qa-integrations__muted">
+                Инстанс: {instances[0]?.label ?? ""}
+              </span>
+            )}
             <label className="dsh-qa-integrations__field">
-              URL входящего вебхука Bitrix24
+              Personal access token GitLab
               <input
                 className="dsh-qa-integrations__input"
                 type="password"
@@ -192,18 +236,24 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
                 value={credential}
                 disabled={busy}
                 onChange={(event) => setCredential(event.currentTarget.value)}
-                placeholder="https://company.bitrix24.ru/rest/…"
+                placeholder="glpat-…"
               />
             </label>
             <p className="dsh-qa-integrations__hint">
               Токен хранится в зашифрованном виде и после сохранения больше не
-              отображается.
+              отображается. Хватит read-scope: <code>read_api</code> (или{" "}
+              <code>read_user</code> для профиля и <code>read_repository</code>{" "}
+              для кода).
             </p>
             <div className="dsh-qa-integrations__actions">
               <button
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
-                disabled={busy || credential.trim() === ""}
+                disabled={
+                  busy ||
+                  credential.trim() === "" ||
+                  (needsChoice && instanceId === "")
+                }
                 onClick={() => void save()}
               >
                 Сохранить и проверить
@@ -223,6 +273,12 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
               ) : null}
             </div>
           </div>
+        ) : null}
+
+        {!configured ? (
+          <p className="dsh-qa-integrations__hint">
+            Оператор не настроил ни одного инстанса GitLab, подключать нечего.
+          </p>
         ) : null}
 
         {connected && !showCredential ? (
@@ -255,7 +311,7 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
                         className="dsh-qa-integrations__muted"
                         title={info.hint}
                       >
-                        {granted ? "Доступно" : "Нет разрешения Bitrix24"}
+                        {granted ? "Доступно" : "Нет в правах токена"}
                       </span>
                     </div>
                   );
@@ -263,15 +319,8 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
               )}
               <div className="dsh-qa-integrations__permission">
                 <label>
-                  <input type="checkbox" disabled /> Отправлять сообщения
-                </label>
-                <span className="dsh-qa-integrations__muted">
-                  Появится позже
-                </span>
-              </div>
-              <div className="dsh-qa-integrations__permission">
-                <label>
-                  <input type="checkbox" disabled /> Изменять CRM
+                  <input type="checkbox" disabled /> Комментарии, задачи и MR на
+                  запись
                 </label>
                 <span className="dsh-qa-integrations__muted">
                   Появится позже
@@ -308,9 +357,9 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
               <div
                 className="dsh-qa-integrations__notice"
                 role="alertdialog"
-                aria-label="Подтверждение отключения Bitrix24"
+                aria-label="Подтверждение отключения GitLab"
               >
-                Отключить Bitrix24 и удалить сохранённый токен?
+                Отключить GitLab и удалить сохранённый токен?
                 <div className="dsh-qa-integrations__actions">
                   <button
                     className="dsh-qa-integrations__button dsh-qa-integrations__button--danger"

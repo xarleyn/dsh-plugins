@@ -61,9 +61,25 @@ export interface IntegrationProviderSummary {
   readonly capabilities: readonly IntegrationCapability[];
 }
 
+/**
+ * One external service instance the operator configured, as shown in the
+ * connect form. It carries no secret and no endpoint the user picked: the
+ * client offers this list and the host resolves the address from its own config.
+ */
+export interface IntegrationInstanceSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly baseUrl: string;
+}
+
 export interface CredentialInput {
   /** Write-only credential; never appears in a response. */
   readonly token: string;
+  /**
+   * Non-secret choices made next to the secret in the connect form, such as
+   * which configured instance the token belongs to. Operator-facing only.
+   */
+  readonly options?: Readonly<Record<string, string>>;
 }
 
 export interface PolicyPatch {

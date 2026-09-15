@@ -2,7 +2,7 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
-  createBitrix24Page,
+  createBitrix24Card,
   type IntegrationsRemote,
 } from "../src/client/bitrix24.js";
 // The page renders whatever the host declares, so the fixture reuses the
@@ -38,11 +38,14 @@ const connected: IntegrationSummary = {
   lastValidatedAt: "2026-09-15T06:00:00.000Z",
 };
 
-describe("Integrations settings page", () => {
+describe("Integrations Bitrix24 card", () => {
   it("keeps manual credentials write-only", async () => {
     const writes: string[] = [];
     const remote: IntegrationsRemote = {
-      describe: async () => ({ ok: true, value: { enabled: true } }),
+      describe: async () => ({
+        ok: true,
+        value: { enabled: true, providers: ["bitrix24", "gitlab"] },
+      }),
       getBitrix24: async () => ({ ok: true, value: disconnected }),
       putBitrix24Credential: async (_token, input) => {
         writes.push(input.token);
@@ -52,7 +55,7 @@ describe("Integrations settings page", () => {
       patchBitrix24Policy: async () => ({ ok: true, value: connected }),
       disconnectBitrix24: async () => ({ ok: true, value: true }),
     };
-    const Page = createBitrix24Page(remote);
+    const Page = createBitrix24Card(remote);
     const { container } = render(<Page token="qa-account-token" />);
     const input = await screen.findByLabelText(
       "URL входящего вебхука Bitrix24",
@@ -78,7 +81,10 @@ describe("Integrations settings page", () => {
   it("shows one row per capability and disables the ones Bitrix24 withheld", async () => {
     const patched: string[] = [];
     const remote: IntegrationsRemote = {
-      describe: async () => ({ ok: true, value: { enabled: true } }),
+      describe: async () => ({
+        ok: true,
+        value: { enabled: true, providers: ["bitrix24", "gitlab"] },
+      }),
       getBitrix24: async () => ({
         ok: true,
         value: {
@@ -98,7 +104,7 @@ describe("Integrations settings page", () => {
       },
       disconnectBitrix24: async () => ({ ok: true, value: true }),
     };
-    const Page = createBitrix24Page(remote);
+    const Page = createBitrix24Card(remote);
     const { container } = render(<Page token="qa-account-token" />);
 
     const crm = await screen.findByLabelText("Читать CRM");

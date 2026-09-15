@@ -22,6 +22,13 @@ src/
       transport.ts     HTTP-граница: разбор credential, таймаут, лимит размера
       config.ts        срез конфига и дефолты включённости
       tools.ts         model-visible тулы провайдера
+    gitlab/
+      index.ts         GitlabProvider: validate / execute / parseCredential
+      catalog.ts       возможности (capability ↔ scope) и операции (operation ↔ POST-путь)
+      operations.ts    путь+query запроса, валидация refs и путей, проекции ответов
+      transport.ts     HTTP-граница: инстанс из конфига, PRIVATE-TOKEN, повторы, лимит размера
+      config.ts        список инстансов (SSRF-граница) и операции
+      tools.ts         model-visible тулы провайдера
 ```
 
 ## Что должен реализовать новый провайдер (gitlab, teamcity, …)
@@ -33,6 +40,10 @@ src/
    внешнего API. Всё, что пишет (`*.add`, `*.delete`, произвольный REST),
    в каталог не попадает: сначала для этого нужен confirmation-фреймворк.
 2. `providers/<id>/config.ts` — схема среза `providers.<id>` в YAML и дефолты.
+   Если провайдер ходит не на один фиксированный хост, а на инстансы, список
+   инстансов объявляет оператор: адрес никогда не приходит из тула. GitLab
+   канонизирует `baseUrl` при загрузке конфига и падает на ошибке оператора, а
+   не выбрасывает инстанс молча.
 3. `providers/<id>/index.ts` — класс с `IntegrationProvider`:
    - `parseCredential(raw)` — валидация и нормализация того, что ввёл оператор,
      без возврата секрета наружу;
@@ -46,6 +57,9 @@ src/
 4. `providers/<id>/tools.ts` — тулы через `createToolKit({ broker, principalForSession, provider })`.
    Имя тула = префикс провайдера (`gitlab_…`), описание — про read-only.
    Ни один тул не принимает пользователя, credential или integration id.
+   Если подключение выбирает инстанс (GitLab), выбор живёт в форме
+   подключения: `parseCredential(raw, options)` получает `instanceId` от
+   операторского RPC, а не от модели, и запоминает его в credential.
 5. Композиция — три строки: срез в `src/config.ts`, `providers.register(...)`
    в `src/index.ts`, `create<Id>Tools(...)` в `src/tools.ts`.
 
@@ -58,3 +72,6 @@ src/
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
+- В каталоге GitLab пути сверяются с allow-list читающих эндпоинтов, а
+  `transport.ts` обязан слать `GET`, `redirect: "error"` и токен только в
+  заголовке `PRIVATE-TOKEN`.

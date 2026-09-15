@@ -1,5 +1,6 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { BITRIX_OPERATIONS } from "../src/providers/bitrix24/catalog.js";
+import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
 /** Minimal valid arguments per tool, so the sweep reaches the executor. */
@@ -47,6 +48,29 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   bitrix_get_drives: {},
   bitrix_get_storage_items: { storageId: 1 },
   bitrix_get_folder_items: { folderId: 1 },
+  gitlab_connection_get: {},
+  gitlab_projects_list: {},
+  gitlab_project_get: { project: 12 },
+  gitlab_repository_tree: { project: 12 },
+  gitlab_repository_file_get: { project: 12, path: "README.md" },
+  gitlab_commits_list: { project: 12 },
+  gitlab_commit_get: { project: 12, sha: "0123456789" },
+  gitlab_compare: { project: 12, from: "main", to: "release" },
+  gitlab_search: { query: "timeout", scope: "projects" },
+  gitlab_issues_list: {},
+  gitlab_issue_get: { project: 12, iid: 5 },
+  gitlab_issue_notes_list: { project: 12, iid: 5 },
+  gitlab_merge_requests_list: {},
+  gitlab_merge_request_get: { project: 12, iid: 7 },
+  gitlab_merge_request_changes_get: { project: 12, iid: 7 },
+  gitlab_merge_request_discussions_list: { project: 12, iid: 7 },
+  gitlab_merge_request_approvals_get: { project: 12, iid: 7 },
+  gitlab_merge_request_pipelines_list: { project: 12, iid: 7 },
+  gitlab_pipelines_list: { project: 12 },
+  gitlab_pipeline_get: { project: 12, pipelineId: 3 },
+  gitlab_pipeline_jobs_list: { project: 12, pipelineId: 3 },
+  gitlab_job_get: { project: 12, jobId: 4 },
+  gitlab_job_log_get: { project: 12, jobId: 4 },
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -57,7 +81,7 @@ function buildTools(options: { readonly owned: boolean }) {
       request: { readonly operation: string },
     ) => {
       operations.push(`${principal.userId}:${request.operation}`);
-      return { provider: "bitrix24", operation: request.operation, data: {} };
+      return { provider: "acme", operation: request.operation, data: {} };
     },
   };
   const tools = createIntegrationTools({
@@ -114,7 +138,10 @@ describe("model-visible integration tools", () => {
     const called = operations.map((entry) => entry.split(":")[1] as string);
     expect(called).toHaveLength(tools.length);
     for (const operation of called) {
-      expect(BITRIX_OPERATIONS[operation], operation).toBeDefined();
+      expect(
+        BITRIX_OPERATIONS[operation] ?? GITLAB_OPERATIONS[operation],
+        operation,
+      ).toBeDefined();
     }
     expect(operations.every((entry) => entry.startsWith("alice:"))).toBe(true);
   });

@@ -5,6 +5,10 @@ import {
   createBitrix24Tools,
   BITRIX24_TOOL_NAMES,
 } from "./providers/bitrix24/tools.js";
+import {
+  createGitlabTools,
+  GITLAB_TOOL_NAMES,
+} from "./providers/gitlab/tools.js";
 
 export interface IntegrationToolOptions {
   readonly broker: IntegrationBroker;
@@ -18,11 +22,14 @@ export interface IntegrationToolOptions {
  * QA surface admits exactly these names as principal-scoped, so this list is the
  * single place where the tool surface is declared.
  */
-export const INTEGRATION_TOOL_NAMES = [...BITRIX24_TOOL_NAMES] as const;
+export const INTEGRATION_TOOL_NAMES = [
+  ...BITRIX24_TOOL_NAMES,
+  ...GITLAB_TOOL_NAMES,
+] as const;
 
 /** Provider tool modules, composed into one registration list. */
 export function createIntegrationTools(
   options: IntegrationToolOptions,
 ): readonly ToolDefinition[] {
-  return [...createBitrix24Tools(options)];
+  return [...createBitrix24Tools(options), ...createGitlabTools(options)];
 }
