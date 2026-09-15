@@ -88,6 +88,31 @@ prompt section, and applies the same allow-list when content is loaded. Policy
 IDs for temporarily absent plugins are preserved, but only capabilities found
 in the live scoped registries enter an effective policy.
 
+Skill routing adds one indirection on top of that allow-list. A role's tools
+are split into `always` and `skillGrantable`; the second class is a ceiling,
+and `QaAgentToolGrants` owns the agent's scoped restriction so that activating
+a skill can widen it. The same object answers the admission guard, which is why
+model visibility and execution authorization cannot drift apart. A grant is
+applied by attempting the restriction swap: a tool the registry refuses is
+dropped from the grant and reported, instead of breaking the session.
+
+Skill metadata is read from `metadata['qa-surface']` through `ctx.skills.get()`
+— the summaries in a catalog snapshot do not carry it — and normalized into a
+fail-closed descriptor whose complaints (`unknown subrole`, unsupported
+version) travel to the administration surface. Audience resolution unions
+declared and administrator-managed assignments, then subtracts explicit
+withdrawals, so a contradictory pair of edits can only narrow access. The
+`available_skills` section lists the resolved model-facing set.
+
+Activation happens on both entry points: the shadow `skill` tool activates
+before it returns instructions, and a prepended agent-scoped `agent/pre-step`
+listener activates for a typed `/name` after the standard consumer appended its
+injection — and can still withdraw it. Loading instructions and granting tools
+is one operation, so a skill is never handed instructions it has no tools to
+follow. Attempts are recorded on the session ownership record for review; no
+custom session event is emitted, because an unknown event type would make the
+whole session log unreadable.
+
 An indexed historical chat whose immutable preset, workspace or model no
 longer matches may keep its already-open transcript binding in compatibility
 read-only mode. It never receives a successful proof, and the projection and

@@ -693,6 +693,62 @@ catalog and rejects direct out-of-policy loads with `SKILL_NOT_AVAILABLE`.
 The browser selector is hidden for a single assigned role. Switching roles
 after a meaningful turn requires confirmation and creates a new conversation.
 
+### Tools that arrive with a skill
+
+A role's tools are split into two classes. `always` tools are visible from the
+first model step. `skillGrantable` tools are a ceiling, not a grant: they stay
+out of the model's tool list until an activated skill requires them, which
+keeps a large catalog such as browser automation out of every step of every
+conversation. An older flat `tools: []` list is read as `always`, so an
+upgraded deployment never hands out more than it did before.
+
+### Skills declare their own audience
+
+A skill describes itself inside the ordinary `metadata` block of its
+`SKILL.md`, so the file stays a valid Agent Skill outside a QA deployment and
+no upstream schema is forked:
+
+```yaml
+---
+name: browser-research
+description: Research websites through browser automation
+
+metadata:
+  qa-surface:
+    version: 1
+    audience:
+      type: subroles        # or: type: common
+      include: [analyst, presales]
+    tools:
+      requires: [browser_open, browser_click]
+      grant:
+        lifecycle: session  # the only lifecycle in v1
+        requireAll: true
+---
+```
+
+The audience decides visibility; the role ceiling decides what a skill may ever
+receive. A load intersects the two, so a skill cannot widen its own access. A
+skill that declares nothing stays `Unassigned` until an administrator assigns
+it, which is safer than treating every new skill as Common.
+
+Loading the instructions and widening the toolset is one operation. A strict
+skill (`requireAll: true`) refuses to activate when one of its tools is
+unavailable, and a best-effort skill activates with a visible warning that
+names what it did not receive. The model's `skill` call and a typed
+`/skill-name` activate the same grant; a `/name` naming a skill outside the
+subrole is withdrawn before the step is assembled. Grants last for the current
+agent, and several loaded skills union their tools — activating a second skill
+never revokes what the first one still holds.
+
+Administrators edit assignments as an overlay, never by rewriting `SKILL.md`: a
+role can be added to or withdrawn from a declared audience, a skill can be
+forced on for every role or disabled outright, and the Skills page shows the
+declared audience next to the effective one with a
+`Healthy`/`Degraded`/`Blocked` state. Every activation is recorded on the
+session record with the requested, granted and denied tools, so a later review
+can see what a conversation actually gained.
+
 ## Security and deployment
 
 `/qa` is a presentation boundary, not an authentication boundary. Protect it

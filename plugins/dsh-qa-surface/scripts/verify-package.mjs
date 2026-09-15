@@ -11,7 +11,9 @@ const required = [
   "lib/access/role-repository.js",
   "lib/access/capability-catalog.js",
   "lib/access/service.js",
+  "lib/access/skill-metadata.js",
   "lib/enforcement/skill-policy.js",
+  "lib/enforcement/tool-grants.js",
   "lib/host-route.js",
   "lib/navigation-marker.js",
   "lib/client.js",
@@ -127,6 +129,19 @@ const navigationMarker = await readFile(
   new URL("lib/navigation-marker.js", root),
   "utf8",
 );
+// Skill routing: what a SKILL.md declares, and what it actually receives.
+const skillMetadata = await readFile(
+  new URL("lib/access/skill-metadata.js", root),
+  "utf8",
+);
+const toolGrants = await readFile(
+  new URL("lib/enforcement/tool-grants.js", root),
+  "utf8",
+);
+const skillPolicy = await readFile(
+  new URL("lib/enforcement/skill-policy.js", root),
+  "utf8",
+);
 const provenanceHost = await readFile(
   new URL("lib/provenance/host-store.js", root),
   "utf8",
@@ -149,6 +164,10 @@ assert.match(admission, /\.tools\.guard/u);
 assert.match(admission, /qaToolPolicyPlan/u);
 assert.match(admission, /allow:\s*policy\.allow/u);
 assert.match(admission, /installQaSkillPolicy/u);
+// The capability policy owns the scoped restriction, so activating a skill can
+// widen the toolset; the guard reads the same live set.
+assert.match(admission, /createGrants/u);
+assert.match(admission, /effectiveTools\(\)/u);
 assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
@@ -162,9 +181,36 @@ for (const method of [
   "accessDeleteSubrole",
   "accessUpdateCommon",
   "accessUpdateAssignment",
+  "accessUpdateSkillOverride",
+  "accessSkillActivations",
 ]) {
   assert.match(remote, new RegExp(`qaSurface/${method}`, "u"));
 }
+// Skill routing metadata is read from the skill file and never rewritten.
+assert.match(skillMetadata, /"qa-surface"/u);
+assert.match(skillMetadata, /unknown subrole/u);
+assert.match(skillMetadata, /audience lists no known subrole/u);
+assert.match(skillMetadata, /unsupported qa-surface metadata version/u);
+assert.doesNotMatch(skillMetadata, /writeFileSync|SKILL\.md/u);
+// A grant intersects the role ceiling and is reported when it cannot be given.
+assert.match(toolGrants, /restrict\(\{ allow/u);
+assert.match(toolGrants, /effectiveTools/u);
+assert.match(toolGrants, /cannot be activated because required tool/u);
+assert.match(toolGrants, /Unavailable required tools/u);
+// No skill activation may be recorded as a custom session event: an unknown
+// event type makes the session log unreadable for every consumer.
+assert.doesNotMatch(
+  `${toolGrants}\n${skillMetadata}`,
+  /session\.append|\.append\(/u,
+);
+// Both activation paths — the model's `skill` call and a typed `/name` — end
+// in the same grant, and the gesture listener must run outermost to still be
+// able to withdraw an injection the standard consumer appended.
+assert.match(skillPolicy, /agent\/pre-step/u);
+assert.match(skillPolicy, /prepend:\s*true/u);
+assert.match(skillPolicy, /skill-invocation/u);
+assert.match(skillPolicy, /grants\.activate/u);
+assert.match(skillPolicy, /SKILL_NOT_AVAILABLE/u);
 // Personal skills ride the same namespace: the browser names a skill, and the
 // account token behind the call decides which storage that name resolves in.
 for (const method of [
@@ -254,6 +300,11 @@ assert.match(client, /dsh-qa-role-selector/u);
 assert.match(client, /dsh-qa-admin-preview/u);
 assert.match(client, /Общие возможности/u);
 assert.match(client, /Фактический доступ/u);
+assert.match(client, /При активации навыка/u);
+assert.match(client, /Объявлено навыком/u);
+assert.match(client, /accessUpdateSkillOverride/u);
+assert.match(client, /accessSkillActivations/u);
+assert.match(client, /Заблокирован/u);
 assert.match(client, /Настройки помощника недоступны\./u);
 assert.match(client, /dsh-qa-surface:v1|:v1:/u);
 assert.match(client, /dsh-qa-sidebar/u);

@@ -546,6 +546,77 @@ skill catalog/loader. A newly installed capability is therefore unavailable
 until explicitly selected. Missing capability IDs remain in the policy file
 and appear with a warning in the editor.
 
+Tools are listed in two classes per role (and per Common layer):
+
+```yaml
+common:
+  tools:
+    always: [web_search]          # visible from the first model step
+    skillGrantable: [browser_open] # only after a skill that requires it loads
+```
+
+A flat `tools: [web_search]` from an older policy file is read as `always`.
+`skillGrantable` is a ceiling: an activated skill receives the intersection of
+its own requirements with it, and never anything else.
+
+A skill declares its audience and requirements in its own frontmatter:
+
+```yaml
+---
+name: browser-research
+description: Research websites through browser automation
+
+metadata:
+  qa-surface:
+    version: 1
+    audience:
+      type: common            # every enabled subrole
+      # or:
+      # type: subroles
+      # include: [analyst, presales]
+    tools:
+      requires: [browser_open, browser_click]
+      grant:
+        lifecycle: session    # the only lifecycle supported in v1
+        requireAll: false     # true = refuse activation without every tool
+---
+```
+
+Reading rules:
+
+- A skill with no `metadata.qa-surface` block is `Unassigned`: no subrole gets
+  it automatically. An administrator assigns it on the «Навыки» page.
+- `include` names immutable subrole ids, not display names; an unknown id is
+  reported and ignored, and the rest of the list keeps working.
+- An unsupported `version` or `lifecycle` is reported and the block is not
+  applied, so a future schema cannot silently widen access.
+- Assignments made in the UI are stored as an overlay in the policy file. The
+  `SKILL.md` is never rewritten, so a skill that lives in Git, arrives from a
+  plugin, or is read-only keeps working.
+- Activation is what grants tools, not visibility: seeing a skill in the
+  catalog changes nothing. Both the model's `skill` call and a typed
+  `/skill-name` activate the same grant, and a `/name` for a skill outside the
+  subrole is withdrawn.
+- `requireAll: true` refuses the load when one required tool is unavailable; a
+  best-effort skill loads with a warning that names the missing tools.
+
+Skill activation history is recorded per session in
+`$DSH_HOME/qa-accounts.json` (`skillActivations`), capped at the 100 most
+recent attempts.
+
+Known limitation: the `/` autocomplete menu is served by the standard DSH skill
+catalog, which filters by invocation policy and knows nothing about subrole
+audiences. A skill outside the subrole can therefore still be *offered*, but
+selecting it has no effect: the injected instructions are withdrawn before the
+step is assembled and no tool grant is activated. Hiding it from the menu needs
+a catalog filter upstream.
+
+The default migration creates one enabled `general` subrole and assigns users
+only that role. Administrators do not implicitly receive all QA capabilities;
+use `Preview as role` for a real-policy test session. If a user has more than
+one assigned role, the header shows a selector. Changing it after conversation
+content exists requires confirmation and starts a new session.
+
 Policy definitions and the compact audit trail are stored atomically in
 `$DSH_HOME/qa-capability-policies.json`. User assignments and the selected
 subrole/capability snapshot remain in `$DSH_HOME/qa-accounts.json`. Do not edit

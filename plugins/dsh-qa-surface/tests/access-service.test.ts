@@ -86,7 +86,10 @@ describe("QA access service", () => {
       id: "analyst",
       name: "Analyst",
       enabled: true,
-      capabilities: { tools: ["analytics"], skills: ["data-analysis"] },
+      capabilities: {
+        tools: { always: ["analytics"], skillGrantable: [] },
+        skills: ["data-analysis"],
+      },
     });
     expect(service.current(admin.token).subroles.map(({ id }) => id)).toEqual([
       "general",
@@ -96,7 +99,10 @@ describe("QA access service", () => {
         id: "sales",
         name: "Sales",
         enabled: true,
-        capabilities: { tools: [], skills: [] },
+        capabilities: {
+          tools: { always: [], skillGrantable: [] },
+          skills: [],
+        },
       }),
     ).toThrow(QaAccountsError);
     await expect(service.adminSnapshot(user.token)).rejects.toThrow(
@@ -110,7 +116,10 @@ describe("QA access service", () => {
       id: "developer",
       name: "Developer",
       enabled: true,
-      capabilities: { tools: ["git"], skills: [] },
+      capabilities: {
+        tools: { always: ["git"], skillGrantable: [] },
+        skills: [],
+      },
     });
     expect(() =>
       service.reserveSession(
@@ -132,12 +141,12 @@ describe("QA access service", () => {
       name: "Analyst",
       enabled: true,
       capabilities: {
-        tools: ["analytics", "missing_tool"],
+        tools: { always: ["analytics", "missing_tool"], skillGrantable: [] },
         skills: ["data-analysis", "missing-skill"],
       },
     });
     service.updateCommon(admin.token, {
-      tools: ["search"],
+      tools: { always: ["search"], skillGrantable: [] },
       skills: ["company"],
     });
     service.updateAssignment(admin.token, user.user.id, {
@@ -166,7 +175,10 @@ describe("QA access service", () => {
       ...role,
       capabilities: {
         ...role.capabilities,
-        tools: [...role.capabilities.tools, "new_tool"],
+        tools: {
+          ...role.capabilities.tools,
+          always: [...role.capabilities.tools.always, "new_tool"],
+        },
       },
     });
     const sameSession = await service.policyForSession(
@@ -194,7 +206,10 @@ describe("QA access service", () => {
       id: "support",
       name: "Support",
       enabled: true,
-      capabilities: { tools: [], skills: [] },
+      capabilities: {
+        tools: { always: [], skillGrantable: [] },
+        skills: [],
+      },
     });
     const snapshot = await service.adminSnapshot(admin.token);
     expect(snapshot.audit.at(-1)).toMatchObject({
@@ -202,5 +217,83 @@ describe("QA access service", () => {
       action: "subrole.created",
       targetId: "support",
     });
+  });
+
+  it("stores a skill overlay and clears it again", async () => {
+    const { service, admin } = harness();
+    service.createSubrole(admin.token, {
+      id: "support",
+      name: "Support",
+      enabled: true,
+      capabilities: {
+        tools: { always: [], skillGrantable: [] },
+        skills: [],
+      },
+    });
+    const applied = service.updateSkillOverride(admin.token, {
+      skillName: "company",
+      addToSubroles: ["support"],
+      forceCommon: true,
+    });
+    expect(applied).toEqual([
+      {
+        skillName: "company",
+        addToSubroles: ["support"],
+        forceCommon: true,
+      },
+    ]);
+    expect(service.roles.snapshot().skillOverrides).toHaveLength(1);
+    expect(service.roles.audit().at(-1)).toMatchObject({
+      action: "skill.assignment-updated",
+      targetId: "company",
+    });
+
+    const cleared = service.updateSkillOverride(admin.token, {
+      skillName: "company",
+    });
+    expect(cleared).toEqual([]);
+    expect(service.roles.snapshot().skillOverrides).toEqual([]);
+  });
+
+  it("reports skill rows and per-session activations to an admin", async () => {
+    const { service, accounts, admin, user } = harness();
+    service.updateAssignment(admin.token, user.user.id, {
+      allowedSubroles: ["general"],
+      defaultSubrole: "general",
+    });
+    service.reserveSession(user.token, "session-skills", null, false);
+    const snapshot = await service.adminSnapshot(admin.token);
+    expect(snapshot.skills.map(({ name }) => name)).toContain("company");
+    // The skill declares no audience of its own, so it stays unassigned
+    // until an administrator assigns it.
+    expect(
+      snapshot.skills.find(({ name }) => name === "company"),
+    ).toMatchObject({
+      health: "unassigned",
+      visibleTo: [],
+      disabled: false,
+      overridden: false,
+    });
+    expect(snapshot.config.skillOverrides).toEqual([]);
+
+    accounts.recordSkillActivation(
+      "session-skills",
+      {
+        timestamp: "2026-09-15T00:00:00.000Z",
+        skillName: "company",
+        origin: "model",
+        outcome: "activated",
+        requestedTools: ["browser_open"],
+        grantedTools: ["browser_open"],
+        deniedTools: [],
+      },
+      100,
+    );
+    expect(
+      service.skillActivations(admin.token, "session-skills"),
+    ).toHaveLength(1);
+    expect(() =>
+      service.skillActivations(user.token, "session-skills"),
+    ).toThrow(QaAccountsError);
   });
 });
