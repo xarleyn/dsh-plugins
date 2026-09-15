@@ -1,6 +1,6 @@
 # SPEC / PLAN: User Integrations & Secure Credentials for `qa-surface`
 
-Status: Draft for implementation
+Status: Phases 1–2 implemented (read-only Bitrix24 catalog); phases 3+ pending
 Primary use case: per-user Bitrix24 access from DSH agents
 Designed to be reusable for Jira, Confluence, GitLab, generic MCP and other user-scoped integrations.
 
@@ -636,14 +636,60 @@ Internal ids should only be returned if the UI genuinely needs them; prefer prov
 
 Register stable DSH tools through `dsh-qa-integrations`.
 
-MVP Bitrix tool set:
+MVP Bitrix tool set (read-only, implemented):
 
 ```text
-bitrix_search_crm
-bitrix_get_crm_item
-bitrix_search_chats
-bitrix_get_chat_messages
+# CRM
+bitrix_search_crm                 # crm.item.list
+bitrix_get_crm_item               # crm.item.get
+bitrix_get_crm_fields             # crm.item.fields
+bitrix_get_crm_funnels            # crm.category.list
+bitrix_get_crm_statuses           # crm.status.list
+bitrix_get_crm_activities         # crm.activity.list
+bitrix_get_crm_activity           # crm.activity.get
+bitrix_get_crm_timeline           # crm.timeline.comment.list
+bitrix_get_crm_stage_history      # crm.stagehistory.list
+bitrix_get_crm_product_rows       # crm.item.productrow.list
+bitrix_find_crm_duplicates        # crm.duplicate.findbycomm
+
+# Employees and company structure
+bitrix_get_current_user           # user.current
+bitrix_search_users               # user.get (NAME_SEARCH / EMAIL / UF_DEPARTMENT)
+bitrix_get_departments            # department.get
+
+# Chats and open lines
+bitrix_search_chats               # im.search.chat.list
+bitrix_get_chat_messages          # im.dialog.messages.get
+bitrix_search_chat_messages       # im.dialog.messages.search
+bitrix_get_recent_chats           # im.recent.get
+bitrix_search_chat_users          # im.search.user.list
+bitrix_get_openline_dialog        # imopenlines.dialog.get
+bitrix_get_openline_history       # imopenlines.session.history.get
+
+# Tasks, calendar, drive
+bitrix_search_tasks               # tasks.task.list
+bitrix_get_task                   # tasks.task.get
+bitrix_get_calendar_events        # calendar.event.get
+bitrix_get_calendar_accessibility # calendar.accessibility.get
+bitrix_search_files               # disk.file.search
+bitrix_get_file                   # disk.file.get
 ```
+
+Two Bitrix24 docs ambiguities are resolved deliberately and must stay resolved
+unless someone can test against a live portal:
+
+- `user.search` is not called. Its parameter table wants `FIND` inside
+  `FILTER`, every example puts filter keys at the top level, and a silently
+  ignored filter would answer with the wrong page. `user.get` with
+  `FILTER.NAME_SEARCH` is documented in one shape and gives the same search.
+- `tasks.task.list` is called at the classic address, not REST 3.0. REST 3.0
+  moved to `/rest/api/...` and documents "в REST 3.0 для задач поддержана
+  фильтрация по полю id", which cannot express "my open tasks".
+
+List operations answer with `{ items, pagination: { start, next, total } }`
+regardless of the shape Bitrix uses (`result.items`, `result.tasks`, a bare
+array, `result.productRows`), and id-keyed bundles (open-line history, calendar
+accessibility) are projected into ordered arrays.
 
 Possible later write tools:
 
@@ -732,12 +778,23 @@ This allows using official MCP capabilities where convenient while filling missi
 
 ### Capability model
 
-Start with:
+Implemented read capabilities, one per Bitrix24 webhook scope:
 
 ```text
-crm.read
-chat.read
+crm.read        <- crm
+chat.read       <- im
+openlines.read  <- imopenlines
+user.read       <- user_brief | user_basic | user
+department.read <- department
+tasks.read      <- task
+calendar.read   <- calendar
+disk.read       <- disk
 ```
+
+A capability is offered only when the operator switch is on AND the connected
+webhook reports the scope (`scope` method, read on connect and on every
+connection test). Granting a new scope in Bitrix24 therefore shows up as a
+detected-but-disabled capability that the user enables themselves.
 
 Later:
 
@@ -778,6 +835,12 @@ Suggested default policy:
 ```text
 crm.read             allow
 chat.read            allow
+openlines.read       allow
+user.read            allow
+department.read      allow
+tasks.read           allow
+calendar.read        allow
+disk.read            allow
 chat.send            deny        # MVP
 crm.comment          deny        # MVP
 crm.update           deny        # MVP
