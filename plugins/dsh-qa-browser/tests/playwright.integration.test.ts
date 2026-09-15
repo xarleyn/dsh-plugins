@@ -63,6 +63,35 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       const result = await manager.navigate("integration-session", tabId, {
         url: `http://127.0.0.1:${address.port}/`,
       });
+      manager.acquireHumanControl("integration-session", "panel-e2e");
+      await expect(
+        manager.history("integration-session", tabId, "reload"),
+      ).rejects.toMatchObject({ code: "BROWSER_HUMAN_CONTROL_ACTIVE" });
+      await manager.humanPointer("integration-session", tabId, "panel-e2e", {
+        action: "click",
+        x: 10,
+        y: 10,
+      });
+      await manager.humanKey(
+        "integration-session",
+        tabId,
+        "panel-e2e",
+        "Tab",
+      );
+      await manager.humanText(
+        "integration-session",
+        tabId,
+        "panel-e2e",
+        "human@example.test",
+      );
+      await manager.humanScroll(
+        "integration-session",
+        tabId,
+        "panel-e2e",
+        0,
+        80,
+      );
+      manager.releaseHumanControl("integration-session", "panel-e2e");
       const snapshot = await manager.snapshot("integration-session", tabId);
       const ref = (name: string) =>
         snapshot.lines.find((line) => line.name === name)?.ref;

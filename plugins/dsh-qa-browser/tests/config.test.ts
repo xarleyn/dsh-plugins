@@ -17,6 +17,7 @@ describe("resolveQaBrowserConfig", () => {
         idleTimeoutMinutes: 0,
       },
       session: { maxTabs: 500 },
+      humanControl: { leaseSeconds: 999 },
       security: {
         network: {
           allowedSchemes: ["HTTPS:", "https", " http "],
@@ -33,6 +34,11 @@ describe("resolveQaBrowserConfig", () => {
       idleTimeoutMs: 60_000,
     });
     expect(config.session.maxTabs).toBe(32);
+    expect(config.humanControl).toEqual({
+      enabled: true,
+      leaseSeconds: 300,
+      leaseMs: 300_000,
+    });
     expect(config.security.network.allowedSchemes).toEqual(["https", "http"]);
     expect(config.security.network.allowHosts).toEqual(["localhost"]);
     expect(config.security.network.dshOrigins).toEqual(["https://dsh.example"]);

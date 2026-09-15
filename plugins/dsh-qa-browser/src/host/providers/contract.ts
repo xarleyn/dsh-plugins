@@ -59,6 +59,15 @@ export interface BrowserPageHandle {
   ): Promise<void>;
   setValue(locator: LocatorPlan, value: BrowserFormValue): Promise<void>;
   press(key: string): Promise<void>;
+  insertText(text: string): Promise<void>;
+  pointer(request: {
+    readonly action: "move" | "click" | "down" | "up";
+    readonly x: number;
+    readonly y: number;
+    readonly button?: "left" | "middle" | "right";
+    readonly clickCount?: 1 | 2;
+  }): Promise<void>;
+  wheel(deltaX: number, deltaY: number): Promise<void>;
   hover(locator: LocatorPlan): Promise<void>;
   scroll(deltaY: number, locator?: LocatorPlan): Promise<void>;
   wait(

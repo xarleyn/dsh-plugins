@@ -381,6 +381,38 @@ class PlaywrightPageHandle implements BrowserPageHandle {
     await this.page.keyboard.press(key);
   }
 
+  async insertText(text: string): Promise<void> {
+    await this.page.keyboard.insertText(text);
+  }
+
+  async pointer(
+    request: Parameters<BrowserPageHandle["pointer"]>[0],
+  ): Promise<void> {
+    const button = request.button ?? "left";
+    switch (request.action) {
+      case "move":
+        await this.page.mouse.move(request.x, request.y);
+        return;
+      case "down":
+        await this.page.mouse.move(request.x, request.y);
+        await this.page.mouse.down({ button });
+        return;
+      case "up":
+        await this.page.mouse.move(request.x, request.y);
+        await this.page.mouse.up({ button });
+        return;
+      case "click":
+        await this.page.mouse.click(request.x, request.y, {
+          button,
+          clickCount: request.clickCount ?? 1,
+        });
+    }
+  }
+
+  async wheel(deltaX: number, deltaY: number): Promise<void> {
+    await this.page.mouse.wheel(deltaX, deltaY);
+  }
+
   async hover(locator: LocatorPlan): Promise<void> {
     await (await this.resolved(locator)).hover();
   }

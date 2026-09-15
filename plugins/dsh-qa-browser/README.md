@@ -19,6 +19,8 @@ The implemented foundation provides:
 - a native `browser_screenshot` result backed by durable DSH attachments;
 - a separate QA Surface panel client with tabs, URL/status, bounded on-demand
   PNG frames, error states and non-focus-stealing activity reveal;
+- explicit same-tab human takeover with a Host-enforced lease, source-viewport
+  pointer mapping, keyboard/paste, scrolling and agent/human arbitration;
 - authenticated panel remotes that ask QA Surface to authorize every session;
 - server-side scheme, host, DNS, private-network and metadata-endpoint policy;
 - agent-disposal, idle-eviction and plugin-shutdown cleanup.
@@ -60,6 +62,9 @@ Playwright Chromium explicitly in the deployment image, or set an absolute
     ui:
       autoRevealOnAgentActivity: true
       focusOnAutoReveal: false
+    humanControl:
+      enabled: true
+      leaseSeconds: 30
     security:
       network:
         allowedSchemes: [http, https]
@@ -86,6 +91,11 @@ subrequest on the Host.
 The QA panel uses the existing DSH Remote transport and QA bearer credential.
 It never embeds the target page in an iframe, persists the credential, or opens
 a second server. Frames are rejected above 5 MiB.
+
+Human control is explicit and temporary. While the panel owns the lease,
+mutating agent Browser tools fail with `BROWSER_HUMAN_CONTROL_ACTIVE`, while
+snapshots and screenshots remain readable. Hiding or closing the panel releases
+the lease; a lost client expires automatically.
 
 For a containerized Harness, see the
 [Docker deployment guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-browser/docs/DOCKER.md).
