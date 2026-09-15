@@ -249,7 +249,14 @@ export async function testRule(
       redirectCount: metrics.redirectCount ?? 0,
       authApplied: rule.source.auth.type !== "none",
       ...credentialStateFields(credentialStateView),
-      ...(rule.adapter.type === "none" ? {} : { adapter: rule.adapter.type }),
+      ...(rule.adapter.type === "none"
+        ? {}
+        : {
+            adapter:
+              rule.adapter.type === "confluence"
+                ? `confluence:${rule.adapter.cleanup}`
+                : rule.adapter.type,
+          }),
       outcome: "ok",
       preview: sanitizePreview(result.body.content, PREVIEW_CHARS),
       truncated: result.truncated,

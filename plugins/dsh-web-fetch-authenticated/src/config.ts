@@ -21,7 +21,9 @@ import type {
   ResolvedRule,
   RedirectPolicy,
   RuleMatch,
+  CleanupLevel,
 } from "./types.js";
+import { CLEANUP_LEVELS } from "./types.js";
 import { validateRule } from "./rule-validation.js";
 
 export const DEFAULT_LIMITS: Readonly<Required<FetchLimits>> = Object.freeze({
@@ -108,6 +110,7 @@ const ruleSchema = z.object({
     jiraFlavor: z.union(["server", "cloud"] as const),
     includeComments: z.boolean(),
     includeLinks: z.boolean(),
+    cleanup: z.union([...CLEANUP_LEVELS]),
   }) as z<AdapterConfig>,
 });
 
@@ -148,12 +151,16 @@ function resolveLimits(
   };
 }
 
+/** Cleanup level applied when a rule does not name one. */
+export const DEFAULT_CLEANUP_LEVEL = "balanced" satisfies CleanupLevel;
+
 function resolveAdapter(adapter: AdapterConfig | undefined): ResolvedAdapter {
   return Object.freeze({
     type: adapter?.type ?? "none",
     jiraFlavor: adapter?.jiraFlavor ?? "server",
     includeComments: adapter?.includeComments ?? false,
     includeLinks: adapter?.includeLinks ?? false,
+    cleanup: adapter?.cleanup ?? DEFAULT_CLEANUP_LEVEL,
   });
 }
 

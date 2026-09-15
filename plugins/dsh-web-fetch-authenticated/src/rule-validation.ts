@@ -15,6 +15,7 @@ import type {
   NetworkPolicy,
   RedirectPolicy,
 } from "./types.js";
+import { CLEANUP_LEVELS } from "./types.js";
 import { isCidr } from "./policy/network.js";
 import {
   compilePathPattern,
@@ -200,6 +201,12 @@ function validateAdapter(
   const flavor = adapter.jiraFlavor;
   if (flavor !== undefined && flavor !== "server" && flavor !== "cloud") {
     errors.push(`${label}: adapter.jiraFlavor must be "server" or "cloud"`);
+  }
+  const cleanup = adapter.cleanup;
+  if (cleanup !== undefined && !CLEANUP_LEVELS.includes(cleanup)) {
+    errors.push(
+      `${label}: adapter.cleanup must be one of ${CLEANUP_LEVELS.map((level) => `"${level}"`).join(", ")}`,
+    );
   }
   for (const field of ["includeComments", "includeLinks"] as const) {
     const value = adapter[field];
@@ -389,9 +396,10 @@ export function validateConfig(config: WebFetchAuthConfig): ConfigValidation {
     for (let b = a + 1; b < rules.length; b += 1) {
       const ruleB = rules[b];
       if (ruleB === undefined || ruleB.enabled === false) continue;
-      if (rulesOverlap(ruleA, ruleB)) {
+      const shared = sharedScope(ruleA, ruleB);
+      if (shared !== undefined) {
         warnings.push(
-          `rules "${ruleA.id}" and "${ruleB.id}" may match the same URLs; a request will fail with AUTH_FETCH_AMBIGUOUS_MATCH`,
+          `rules "${ruleA.id}" and "${ruleB.id}" may match the same URLs on ${shared}; a request there fails with AUTH_FETCH_AMBIGUOUS_MATCH — narrow one rule with allowPaths/denyPaths instead`,
         );
       }
     }
@@ -421,33 +429,45 @@ function isValidOrigin(value: unknown): value is string {
   }
 }
 
-/** Whether two enabled rules can ever accept the same URL (coarse over-approximation). */
-function rulesOverlap(
+/** Schemes a match section accepts; an omitted/empty list means the https default. */
+function schemesOf(match: AuthenticatedFetchRule["match"]): string[] {
+  return match.schemes === undefined || match.schemes.length === 0
+    ? ["https"]
+    : match.schemes;
+}
+
+/**
+ * Human-readable description of the scope two enabled rules share, or
+ * `undefined` when they can never accept the same URL. Coarse by design
+ * (SPEC §24): deny/allow path globs are not intersectable without a concrete
+ * URL, so a shared host is reported as a warning rather than a hard error.
+ */
+function sharedScope(
   a: AuthenticatedFetchRule,
   b: AuthenticatedFetchRule,
-): boolean {
-  const schemesOf = (match: typeof a.match): string[] =>
-    match.schemes === undefined || match.schemes.length === 0
-      ? ["https"]
-      : match.schemes;
-  const schemesA = schemesOf(a.match);
+): string | undefined {
   const schemesB = schemesOf(b.match);
-  if (!schemesA.some((scheme) => schemesB.includes(scheme))) return false;
-  const hostsA = a.match.hosts.map(normalizeHost);
+  const sharedSchemes = schemesOf(a.match).filter((scheme) =>
+    schemesB.includes(scheme),
+  );
+  if (sharedSchemes.length === 0) return undefined;
   const hostsB = b.match.hosts.map(normalizeHost);
-  if (!hostsA.some((host) => hostsB.includes(host))) return false;
-  const portsA = a.match.ports;
-  const portsB = b.match.ports;
-  if (
-    portsA !== undefined &&
-    portsA.length > 0 &&
-    portsB !== undefined &&
-    portsB.length > 0
-  ) {
-    if (!portsA.some((port) => portsB.includes(port))) return false;
-  }
-  // Path sets: when either rule allows every path, they overlap; otherwise the
-  // deny/allow globs are not precisely intersectable without the URL, so the
-  // check stays coarse and reports a warning instead of a hard error.
-  return true;
+  const sharedHosts = a.match.hosts
+    .map(normalizeHost)
+    .filter((host) => hostsB.includes(host));
+  if (sharedHosts.length === 0) return undefined;
+  const portsA = a.match.ports ?? [];
+  const portsB = b.match.ports ?? [];
+  // A rule without ports accepts every port, so the constrained side is the
+  // shared set; only two constrained, disjoint port lists rule an overlap out.
+  const sharedPorts =
+    portsA.length === 0
+      ? portsB
+      : portsB.length === 0
+        ? portsA
+        : portsA.filter((port) => portsB.includes(port));
+  if (portsA.length > 0 && portsB.length > 0 && sharedPorts.length === 0)
+    return undefined;
+  const ports = sharedPorts.length > 0 ? `:${sharedPorts.join("|")}` : "";
+  return `${sharedSchemes.join("/")}://${sharedHosts.join(", ")}${ports}`;
 }

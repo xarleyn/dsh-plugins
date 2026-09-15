@@ -15,7 +15,7 @@ import { authenticatedFetch } from "../transport/fetch.js";
 import type { SecretResolver, TransportGlobals } from "../transport/fetch.js";
 import * as errors from "../errors.js";
 import { fetchIssueMarkdown } from "./jira.js";
-import { fetchPageMarkdown } from "./confluence.js";
+import { extractPageRef, fetchPageMarkdown } from "./confluence.js";
 
 /** Everything an adapter run needs; mirrors the transport options minus metrics. */
 export interface AdapterRequestContext {
@@ -95,8 +95,9 @@ function adapterApplies(adapter: ResolvedAdapter, url: URL): boolean {
       url.pathname,
     );
   }
-  // Confluence: any `/pages/<digits>/...` or `/display/<SPACE>/<title>` path.
-  return /(?:^|\/)(?:pages\/\d+|display\/[^/]+\/\S)/iu.test(url.pathname);
+  // Confluence: exactly the URLs the page-reference reader can map — asking
+  // the reader itself keeps the route and the conversion from drifting apart.
+  return extractPageRef(url.pathname, url.searchParams) !== undefined;
 }
 
 function isJsonBody(kind: "html" | "text"): boolean {

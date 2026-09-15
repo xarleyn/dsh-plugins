@@ -813,6 +813,10 @@ Content adapter:
 
 With Jira-specific fields shown only when selected.
 
+The Confluence adapter serves every page URL form Confluence itself produces: `/pages/<id>/…`, `/display/<SPACE>/<Title>`, and the link in the address bar and in "copy link" — `<context>/pages/viewpage.action?pageId=<id>`, with its legacy `?spaceKey=<key>&title=<title>` variant. A URL form the adapter cannot map falls through to raw HTTP/HTML, so a page reached through an unrecognized link arrives as the full wiki page (header, menus, breadcrumbs, footer) rather than as normalized text: the recognized forms are the contract, and the adapter's URL reader is the single place that defines them.
+
+A Confluence storage body carries page chrome beside the prose, and how much of it a caller wants to see is a preference, not a constant. The Confluence adapter therefore takes a per-rule `cleanup` level — `off` (keep every marker), `balanced` (default: drop navigation/aggregation macros, keep links, media, and emoticons), `strict` (readable content only) — and renders the readable content identically at every level. The level is edited in the rule editor beside the adapter type and stored under `adapter.cleanup`.
+
 ---
 
 ## 16. Rule routing vs provider routing

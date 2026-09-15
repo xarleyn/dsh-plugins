@@ -24,8 +24,11 @@ import {
   type NetworkDraft,
 } from "./format.js";
 import { validateRule } from "../rule-validation.js";
+import { CLEANUP_LEVELS } from "../types.js";
 import type {
+  AdapterConfig,
   AuthType,
+  CleanupLevel,
   DiagnoseReport,
   ProviderStatusReport,
   RedirectMode,
@@ -278,6 +281,20 @@ export function GlobalSection({
 
 // ---- Rule draft plumbing ----
 
+/** Cleanup-level labels, keyed by the level list the host validates against. */
+const CLEANUP_LABELS: Readonly<Record<CleanupLevel, string>> = Object.freeze({
+  off: "No trimming (keep every marker)",
+  balanced: "Trim chrome (keep links and attachments)",
+  strict: "Content only (readable text alone)",
+});
+
+/** Rule-row badge: the adapter, plus the cleanup level when it is not the default. */
+function adapterSummary(adapter: AdapterConfig): string {
+  if (adapter.type !== "confluence" || adapter.cleanup === undefined)
+    return adapter.type;
+  return `${adapter.type}:${adapter.cleanup}`;
+}
+
 interface RuleDraft {
   id: string;
   name: string;
@@ -300,6 +317,7 @@ interface RuleDraft {
   jiraFlavor: "server" | "cloud";
   includeComments: boolean;
   includeLinks: boolean;
+  cleanup: CleanupLevel;
   network: NetworkDraft;
   redirectMode: RedirectMode;
   maxRedirects: string;
@@ -334,6 +352,7 @@ function ruleToDraft(rule: AuthenticatedFetchRule): RuleDraft {
     jiraFlavor: adapter?.jiraFlavor ?? "server",
     includeComments: adapter?.includeComments ?? false,
     includeLinks: adapter?.includeLinks ?? false,
+    cleanup: adapter?.cleanup ?? "balanced",
     network: networkToDraft(rule.networkPolicy),
     redirectMode: rule.redirects?.mode ?? "same-origin",
     maxRedirects:
@@ -377,6 +396,7 @@ function emptyDraft(): RuleDraft {
     jiraFlavor: "server",
     includeComments: false,
     includeLinks: false,
+    cleanup: "balanced",
     network: networkToDraft(undefined),
     redirectMode: "same-origin",
     maxRedirects: "",
@@ -460,7 +480,10 @@ function draftToRule(draft: RuleDraft): {
             ...(draft.includeComments ? { includeComments: true } : {}),
             ...(draft.includeLinks ? { includeLinks: true } : {}),
           }
-        : { type: "confluence" };
+        : {
+            type: "confluence",
+            ...(draft.cleanup !== "balanced" ? { cleanup: draft.cleanup } : {}),
+          };
   }
   if (draft.description.trim().length > 0)
     rule.description = draft.description.trim();
@@ -879,6 +902,25 @@ function RuleEditor({
             </select>
           </Field>
         )}
+        {draft.adapterType === "confluence" && (
+          <Field label="Page cleanup">
+            <select
+              className="wfa-control"
+              value={draft.cleanup}
+              onChange={(event) => {
+                patch({
+                  cleanup: event.target.value as CleanupLevel,
+                });
+              }}
+            >
+              {CLEANUP_LEVELS.map((level) => (
+                <option key={level} value={level}>
+                  {CLEANUP_LABELS[level]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
       </div>
       {draft.adapterType === "jira" && (
         <div className="wfa-checks">
@@ -909,10 +951,19 @@ function RuleEditor({
           Recognized URLs (
           {draft.adapterType === "jira"
             ? "/browse/ISSUE-KEY"
-            : "/pages/<id>, /display/SPACE/Title"}
+            : "/pages/<id>, /pages/viewpage.action?pageId=<id>, /display/SPACE/Title"}
           ) are fetched from the product REST API with the same credentials and
           policy and returned as clean Markdown text; everything else falls back
           to raw HTTP/HTML.
+          {draft.adapterType === "confluence" && (
+            <>
+              {" "}
+              Page cleanup decides how much of the page's own chrome survives:
+              {" “No trimming”"} keeps every macro/attachment marker,
+              {" “Trim chrome”"} drops navigation macros but keeps links and
+              attachments, {"“Content only”"} keeps the readable text alone.
+            </>
+          )}
         </p>
       )}
 
@@ -1370,7 +1421,7 @@ export function RulesSection({
                 </Pill>
                 <Pill tone="warn">{authSummary(rule.auth)}</Pill>
                 {rule.adapter !== undefined && rule.adapter.type !== "none" && (
-                  <Pill tone="ok">{rule.adapter.type}</Pill>
+                  <Pill tone="ok">{adapterSummary(rule.adapter)}</Pill>
                 )}
               </span>
               <span className="wfa-actions">
