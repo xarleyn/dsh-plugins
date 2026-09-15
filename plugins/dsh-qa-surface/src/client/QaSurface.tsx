@@ -986,6 +986,7 @@ export function QaSurface(props: QaSurfaceProps) {
             <QaPanelHost
               panels={props.panels}
               sessionId={state.sessionId}
+              qaToken={accounts?.token() ?? ""}
               renderSlot={props.renderSlot}
             />
           </div>
