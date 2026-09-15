@@ -86,10 +86,11 @@ function render(
 }
 
 describe("document tool definitions", () => {
-  test("registers exactly the four semantic tools", () => {
+  test("registers exactly the five semantic tools", () => {
     expect(DOCUMENT_TOOL_NAMES).toEqual([
       "document_create",
       "document_to_markdown",
+      "document_from_url",
       "document_convert",
       "document_inspect",
     ]);

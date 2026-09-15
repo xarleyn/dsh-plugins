@@ -1,5 +1,5 @@
 /**
- * The four agent-facing document tools (§8–§11, §34) and their registration.
+ * The five agent-facing document tools (§8–§11, §34) and their registration.
  *
  * Registration is explicit and returns its disposers: the host may register
  * them globally (the default) or an agent scope may register the same
@@ -13,6 +13,10 @@ import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import type { DocumentRuntime } from "../runtime.js";
 import { createDocumentConvertTool, DOCUMENT_CONVERT_TOOL } from "./convert.js";
 import { createDocumentCreateTool, DOCUMENT_CREATE_TOOL } from "./create.js";
+import {
+  createDocumentFromUrlTool,
+  DOCUMENT_FROM_URL_TOOL,
+} from "./from-url.js";
 import { createDocumentInspectTool, DOCUMENT_INSPECT_TOOL } from "./inspect.js";
 import {
   createDocumentToMarkdownTool,
@@ -23,6 +27,7 @@ import {
 export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   DOCUMENT_CREATE_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
+  DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_INSPECT_TOOL,
 ];
@@ -30,6 +35,7 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
 export {
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_CREATE_TOOL,
+  DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_INSPECT_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
 };
@@ -40,6 +46,7 @@ export function createDocumentTools(options: {
   return [
     createDocumentCreateTool(options),
     createDocumentToMarkdownTool(options),
+    createDocumentFromUrlTool(options),
     createDocumentConvertTool(options),
     createDocumentInspectTool(options),
   ];

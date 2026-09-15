@@ -39,6 +39,7 @@ export {
   DOCUMENT_TOOL_NAMES,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_CREATE_TOOL,
+  DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_INSPECT_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
   type DocumentToolRegistry,
@@ -51,6 +52,7 @@ export {
 export { documentCapabilities, documentHealth } from "./capabilities.js";
 export { ArtifactStore, sha256Hex, sha256OfFile } from "./artifacts/store.js";
 export { createArtifactId, createUlid, isArtifactId } from "./artifacts/ids.js";
+export { fromUrl, normalizeSourceUrl } from "./orchestrator/fetch-document.js";
 export {
   MANIFEST_FILE,
   MANIFEST_SCHEMA_VERSION,
@@ -78,6 +80,7 @@ export {
 } from "./orchestrator/scope.js";
 export {
   silentDocumentLogger,
+  type DocumentFetchSource,
   type DocumentLogger,
 } from "./orchestrator/runtime-deps.js";
 export {
@@ -117,6 +120,7 @@ import {
   type QaDocumentsConfig,
 } from "./config.js";
 import type { DocumentLogger } from "./orchestrator/runtime-deps.js";
+import type { DocumentFetchSource } from "./orchestrator/runtime-deps.js";
 import type { ProviderSeams } from "./providers/registry.js";
 import { DocumentRuntime } from "./runtime.js";
 import {
@@ -131,6 +135,12 @@ export interface InstallDocumentSubsystemOptions {
   /** The host tool registry (`ctx.tools`). */
   readonly register: DocumentToolRegistry["register"];
   readonly seams?: ProviderSeams;
+  /**
+   * Retrieval for `document_from_url`, resolving the web provider at call time.
+   * Omitted when the deployment has no web provider; that tool then answers
+   * BACKEND_UNAVAILABLE instead of pretending the source is unreachable.
+   */
+  readonly fetchSource?: DocumentFetchSource;
   /** Environment overrides are applied by the caller, which owns the process. */
   readonly now?: () => Date;
 }
@@ -160,6 +170,9 @@ export function installDocumentSubsystem(
     logger: options.logger,
     ...(options.seams === undefined ? {} : { seams: options.seams }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.fetchSource === undefined
+      ? {}
+      : { fetchSource: options.fetchSource }),
   });
   const disposeTools = registerDocumentTools(
     { register: options.register },

@@ -29,7 +29,9 @@ import {
 } from "./attestation.js";
 import { applyDocumentsEnvOverrides } from "./documents/config.js";
 import {
+  DocumentError,
   installDocumentSubsystem,
+  type DocumentFetchSource,
   type DocumentSubsystem,
 } from "./documents/index.js";
 import { QaQuestionGate } from "./questions.js";
@@ -76,6 +78,19 @@ import type {
   QaWhoamiResult,
   QaPrincipal,
 } from "./types.js";
+
+/**
+ * The slice of the harness web service this plugin uses. A deployment may
+ * install no web provider at all, and the service arrives from a package this
+ * plugin does not link, so the injected context is read structurally instead of
+ * through a dependency the package would have to carry everywhere.
+ */
+interface WebFetchSeam {
+  fetch(
+    request: { readonly url: string },
+    signal?: AbortSignal,
+  ): Promise<Awaited<ReturnType<DocumentFetchSource>>>;
+}
 
 export const name = "qa-surface";
 export const inject = [
@@ -143,6 +158,12 @@ export class QaSurface extends TypertRemoteService {
   private readonly integrationPrincipals = new QaIntegrationPrincipalBindings();
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
+  /**
+   * The web fetch service, resolved by inject. Only the fetch seam of it is
+   * used, and only for `document_from_url`; absent until a deployment supplies
+   * a web provider.
+   */
+  private web: WebFetchSeam | undefined;
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
   /**
@@ -336,6 +357,19 @@ export class QaSurface extends TypertRemoteService {
           this.webServer = undefined;
         },
         "dsh-qa-surface.navigation-route",
+      );
+    });
+    // The web provider (and with it the fetch rules, credentials and address
+    // policy) is optional: `document_from_url` answers BACKEND_UNAVAILABLE when
+    // no deployment supplies one. The reference is resolved per call, so a
+    // provider that arrives late is picked up without rebuilding the tools.
+    ctx.inject(["web"], (webContext) => {
+      this.web = (webContext as unknown as { web?: WebFetchSeam }).web;
+      webContext.effect(
+        () => () => {
+          this.web = undefined;
+        },
+        "dsh-qa-surface.web-fetch-source",
       );
     });
     this.logger.info("plugin.ready", {
@@ -820,6 +854,15 @@ export class QaSurface extends TypertRemoteService {
       ),
       logger: this.logger,
       register: (definition) => this.ctx.tools.register(definition),
+      fetchSource: async (url, signal) => {
+        const web = this.web;
+        if (web === undefined)
+          throw new DocumentError(
+            "BACKEND_UNAVAILABLE",
+            "this deployment has no web fetch provider, so online sources cannot be read",
+          );
+        return await web.fetch({ url }, signal);
+      },
     });
   }
 }
