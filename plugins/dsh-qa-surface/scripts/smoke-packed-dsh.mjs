@@ -70,6 +70,121 @@ async function authenticateBrowser(port, authority, token) {
 }
 
 /**
+ * A bad deployment preset must fail before SessionController.create. This is
+ * the production failure mode that used to leave a dead chat behind and hide
+ * the actionable reason behind the generic createSession wrapper.
+ */
+async function runPermissionPreflightPass({ dshBin, dshEnv, root }) {
+  const patchPath = join(root, "bad-permission.patch.yml");
+  await writeFile(
+    patchPath,
+    `- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      qa-read-only:
+        sandbox: read-only
+        approval: never
+      qa-read-only-bad:
+        sandbox: read-only
+        approval: ask
+- id: dsh-qa-surface
+  config:
+    enabled: true
+    session:
+      agentPreset: minimal
+    lockdown:
+      enabled: true
+      sandboxMode: read-only
+      approvalPolicy: never
+      permissionPreset: qa-read-only-bad
+      allowSessionReset: false
+      toolPolicy:
+        mode: allow-list
+        allow: []
+`,
+  );
+  const port = await freePort();
+  const origin = `http://127.0.0.1:${port}`;
+  const log = [];
+  let badHost;
+  try {
+    badHost = spawn(
+      process.execPath,
+      [
+        dshBin,
+        "web",
+        "--patch",
+        patchPath,
+        "--no-open",
+        "--port",
+        String(port),
+      ],
+      {
+        cwd: workspacePath,
+        env: dshEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    );
+    badHost.stdout.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
+    badHost.stderr.setEncoding("utf8").on("data", (chunk) => log.push(chunk));
+    const token = await waitFor(
+      () => launchToken(log),
+      "preflight launch token",
+    );
+    const cookie = await authenticateBrowser(port, `127.0.0.1:${port}`, token);
+    const before = await rpc(
+      origin,
+      "session/list",
+      { args: { _request: {} } },
+      cookie,
+    );
+    let refusal = "";
+    try {
+      await rpc(
+        origin,
+        "qaSurface/createSession",
+        { args: { token: "" } },
+        cookie,
+      );
+    } catch (error) {
+      refusal = String(error);
+    }
+    if (!refusal.includes("(reason: permission-preset)")) {
+      throw new Error(
+        `permission preflight did not preserve its reason: ${refusal || "request succeeded"}`,
+      );
+    }
+    const after = await rpc(
+      origin,
+      "session/list",
+      { args: { _request: {} } },
+      cookie,
+    );
+    if (after.items.length !== before.items.length) {
+      throw new Error(
+        `permission preflight created a dead Host session: before=${before.items.length} after=${after.items.length}`,
+      );
+    }
+    console.log("packed DSH QA smoke: permission preflight refusal passed");
+  } catch (error) {
+    hostLog.push(...log);
+    throw error;
+  } finally {
+    await stopProcess(badHost);
+  }
+}
+
+/**
  * LAN pass: boot a second host through the shipped deployment overlay
  * (all-interfaces bind) and speak to it with the Host header a LAN browser
  * would send. The browser-trust fence derives trusted authorities from the
@@ -382,6 +497,38 @@ async function runBrowserPass({
     const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
     const send = page.getByRole("button", { name: "Отправить", exact: true });
     await send.waitFor();
+    const compatibility = page.locator(".dsh-qa-compatibility");
+    await compatibility.waitFor({ timeout: 15_000 });
+    if (await prompt.isEnabled()) {
+      throw new Error("historical incompatible Session left Send enabled");
+    }
+    if (
+      !(await compatibility.innerText()).includes("открыт только для чтения")
+    ) {
+      throw new Error("historical Session did not explain compatibility mode");
+    }
+    const historicalSession = await page.evaluate(() =>
+      globalThis.localStorage.getItem("dsh-qa-surface.session:v1:/qa:session"),
+    );
+    if (historicalSession !== incompatibleSession.sessionId) {
+      throw new Error(
+        `historical incompatible Session was silently replaced: persisted=${JSON.stringify(historicalSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
+      );
+    }
+    // Simulate choosing New chat without exposing a reset button in this
+    // deliberately fixed smoke profile. The incompatible history remains on
+    // the Host; a reload with no active-id hint must create and attest a new
+    // Session under the current deployment composition.
+    await page.evaluate(() =>
+      globalThis.localStorage.removeItem(
+        "dsh-qa-surface.session:v1:/qa:session",
+      ),
+    );
+    await page.reload();
+    await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    await page
+      .getByRole("heading", { name: "Чем могу помочь?", exact: true })
+      .waitFor();
     try {
       await waitFor(
         () => prompt.isEnabled(),
@@ -673,6 +820,12 @@ try {
   );
   if (!composed.stdout.includes("dsh-qa-surface"))
     throw new Error("plugin is absent from web profile");
+
+  await runPermissionPreflightPass({
+    dshBin,
+    dshEnv,
+    root: temporaryRoot,
+  });
 
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;

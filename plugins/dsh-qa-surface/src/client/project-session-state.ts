@@ -27,6 +27,8 @@ export interface QaBoundProjectionInput {
   readonly questions: readonly QaPendingQuestion[];
   readonly operationError: string | null;
   readonly policyReady: boolean;
+  /** Historical binding retained for transcript access after policy drift. */
+  readonly compatibilityReadOnly?: boolean;
   readonly admissionPending: boolean;
   readonly chatsRevision: number;
   readonly viewingSubagent: QaSubagentView | null;
@@ -66,14 +68,15 @@ export function projectBoundSessionState(
       ? "error"
       : snapshot.openState !== "open"
         ? "creating"
-        : snapshot.running || input.admissionPending
+        : (snapshot.running || input.admissionPending) &&
+            input.compatibilityReadOnly !== true
           ? "running"
           : "ready";
   const sourcesByTurn = new Map(
     input.sourceBundles.map((bundle) => [bundle.turn, bundle] as const),
   );
   const messages = projectTranscript(input.conversationSnapshot, {
-    running: snapshot.running,
+    running: snapshot.running === true && input.compatibilityReadOnly !== true,
     showToolActivity: config.ui.showToolActivity,
     showReasoning: config.ui.showReasoning,
     subagentNames: input.subagentNames,
@@ -112,8 +115,13 @@ export function projectBoundSessionState(
     messages,
     pendingMessage: null,
     error,
+    compatibilityReadOnly: input.compatibilityReadOnly === true,
     canSend: input.connected && phase === "ready" && input.policyReady,
-    canStop: input.connected && snapshot.running && config.ui.showStop,
+    canStop:
+      input.connected &&
+      snapshot.running &&
+      config.ui.showStop &&
+      input.compatibilityReadOnly !== true,
     chatsRevision: input.chatsRevision,
     sources:
       latest === undefined
@@ -127,7 +135,7 @@ export function projectBoundSessionState(
     sourcesComplete: latest?.complete ?? true,
     incompleteSourceOrigins: latest?.incompleteOrigins,
     viewingSubagent: input.viewingSubagent,
-    approvals: input.approvals,
-    questions: input.questions,
+    approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
+    questions: input.compatibilityReadOnly === true ? [] : input.questions,
   };
 }

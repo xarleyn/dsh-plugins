@@ -23,6 +23,11 @@ interface UserWorkspaceAccess {
   sharedReadOnlyRoots: readonly string[];
 }
 
+interface QaDeploymentPins {
+  readonly pinnedWorkspace?: { readonly path: string };
+  readonly permission?: { readonly sandbox: string; readonly approval: string };
+}
+
 /**
  * The accounts half of admission, resolved per call by the entry (accounts
  * may be toggled at runtime). A gate must either accept the token/session
@@ -133,6 +138,16 @@ export class QaPolicyAdmission {
   }
 
   /**
+   * Validate deployment-owned facts before a Host session is materialized.
+   * Agent-scoped facts (preset composition and tools) remain in secureSession,
+   * but a missing Workspace or mismatched permission preset must not leave a
+   * newly-created, permanently unusable chat behind.
+   */
+  preflightDeployment(): void {
+    this.deploymentPins(this.config());
+  }
+
+  /**
    * The mounted attachment store's verbatim root, when the backend exposes
    * one. It sits outside every workspace, so the per-user fence would
    * otherwise deny the model the exact file an upload produced and the prompt
@@ -215,8 +230,9 @@ export class QaPolicyAdmission {
       }
     }
     const agent = await this.liveAgent(sessionId);
-    this.attested.add(sessionId);
+    const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {
+      this.attested.add(sessionId);
       return {
         sessionId,
         enabled: false,
@@ -232,19 +248,7 @@ export class QaPolicyAdmission {
     }
 
     const expectedWorkspace = config.session.workspaceId;
-    const pinnedWorkspace =
-      expectedWorkspace === null
-        ? undefined
-        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
-    // A pin that resolves to nothing would refuse the cwd comparison anyway,
-    // but the precise reason saves an operator a round trip: the surface
-    // stays closed until the workspace exists or the id is fixed.
-    if (expectedWorkspace !== null && pinnedWorkspace === undefined) {
-      throw new QaAttestationError(
-        "workspace-unavailable",
-        `workspace ${expectedWorkspace} is not registered`,
-      );
-    }
+    const pinnedWorkspace = pins.pinnedWorkspace;
     let expectedUserRoot: string | undefined;
     if (config.accounts.perUserWorkspace) {
       if (sessionOwner === undefined || pinnedWorkspace === undefined) {
@@ -302,18 +306,7 @@ export class QaPolicyAdmission {
       );
     }
 
-    const permission = this.ctx.permissionPresets.resolve(
-      lockdown.permissionPreset,
-    );
-    if (
-      permission.sandbox !== lockdown.sandboxMode ||
-      permission.approval !== lockdown.approvalPolicy
-    ) {
-      throw new QaAttestationError(
-        "permission-preset",
-        `permission preset ${lockdown.permissionPreset} does not resolve to ${lockdown.sandboxMode}/never`,
-      );
-    }
+    const permission = pins.permission!;
 
     const currentPermission = this.ctx.permissionPresets.current(agent.session);
     // History check over the model-visible surface: `user/message` is a
@@ -415,6 +408,7 @@ export class QaPolicyAdmission {
       this.workspaceAccess.delete(sessionId);
     }
 
+    this.attested.add(sessionId);
     this.logger.debug("lockdown.attested", {
       sessionId,
       permissionPreset: lockdown.permissionPreset,
@@ -434,6 +428,47 @@ export class QaPolicyAdmission {
       // not an operator-configured QA tool grant.
       toolAllowList: lockdown.toolPolicy.allow,
     };
+  }
+
+  /** Resolve the deployment facts shared by creation and full attestation. */
+  private deploymentPins(config: ResolvedQaSurfaceConfig): QaDeploymentPins {
+    if (!config.lockdown.enabled) return {};
+
+    const expectedWorkspace = config.session.workspaceId;
+    const pinnedWorkspace =
+      expectedWorkspace === null
+        ? undefined
+        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
+    if (expectedWorkspace !== null && pinnedWorkspace === undefined) {
+      throw new QaAttestationError(
+        "workspace-unavailable",
+        `workspace ${expectedWorkspace} is not registered`,
+      );
+    }
+
+    let permission: QaDeploymentPins["permission"];
+    try {
+      permission = this.ctx.permissionPresets.resolve(
+        config.lockdown.permissionPreset,
+      );
+    } catch (error) {
+      throw new QaAttestationError(
+        "permission-preset",
+        `permission preset ${config.lockdown.permissionPreset} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (
+      permission.sandbox !== config.lockdown.sandboxMode ||
+      permission.approval !== config.lockdown.approvalPolicy
+    ) {
+      throw new QaAttestationError(
+        "permission-preset",
+        `permission preset ${config.lockdown.permissionPreset} does not resolve to ${config.lockdown.sandboxMode}/${config.lockdown.approvalPolicy}`,
+      );
+    }
+    return pinnedWorkspace === undefined
+      ? { permission }
+      : { pinnedWorkspace, permission };
   }
 
   /**

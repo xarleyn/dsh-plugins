@@ -604,6 +604,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-work-tool__body section>span{display:block;padding:7px 10px 0;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:600;line-height:18px;text-transform:uppercase;letter-spacing:.04em}
 .dsh-qa-work-tool__body pre{max-height:260px;overflow:auto;margin:0;padding:7px 10px 10px;color:var(--dsw-alias-label-secondary);background:transparent;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:19px;white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-error{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px auto;padding:10px 12px;border:1px solid var(--dsh-qa-error);border-radius:10px;color:var(--dsw-alias-label-primary);font-size:13px}
+.dsh-qa-compatibility{margin:16px auto;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:19px}
 .dsh-qa-error button{border:0;background:transparent;color:var(--dsh-qa-accent);font:inherit;font-weight:600;cursor:pointer}
 .dsh-qa-approvals{display:flex;flex-direction:column;gap:8px;width:100%;margin-bottom:10px}
 .dsh-qa-approval{padding:12px 14px;border:1px solid var(--dsh-qa-warning30);border-radius:12px;background:var(--dsh-qa-warning10)}

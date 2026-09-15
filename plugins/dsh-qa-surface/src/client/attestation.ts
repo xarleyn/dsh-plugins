@@ -10,10 +10,23 @@ const ATTESTATION_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
  * reason class and an operator hint.
  */
 export class QaPolicyAttestationError extends Error {
-  constructor() {
+  constructor(readonly reason: string | null = null) {
     super("QA session policy could not be attested.");
     this.name = "QaPolicyAttestationError";
   }
+}
+
+/**
+ * Refusals that classify an existing chat as belonging to an older deployment
+ * composition. Keeping only its transcript is safe: policyReady stays false,
+ * so no prompt, cancel, approval or question reaches the Host.
+ */
+export function canOpenAsCompatibilityReadOnly(reason: string | null): boolean {
+  return (
+    reason === "composition-mismatch" ||
+    reason === "agent-unavailable" ||
+    reason === "adoption-refused"
+  );
 }
 
 /**
@@ -47,7 +60,7 @@ export function attestationHint(reason: string | null): string {
     return "The session's agent preset, workspace or model no longer matches the deployment QA config.";
   }
   if (reason === "permission-preset") {
-    return "The configured permission preset did not resolve to the pinned sandbox/approval policy.";
+    return "The configured permission preset did not resolve to the pinned sandbox/approval policy. Keep approval=never even when interaction.approvals is interactive; QA parks composed tool-gate requests itself.";
   }
   if (reason === "adoption-refused") {
     return "This browser tried to adopt a session created outside the current QA policy.";

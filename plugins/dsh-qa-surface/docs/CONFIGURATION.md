@@ -127,6 +127,14 @@ browser console additionally prints one line with a stable coarse reason code
 `adoption-refused`, `agent-unavailable`, `proof-mismatch` or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
 
+An existing indexed chat rejected as `composition-mismatch`,
+`agent-unavailable` or `adoption-refused` is retained as a historical
+read-only transcript. This compatibility path never marks the session
+attested: Send, stop, approvals and questions remain disabled, while New chat
+creates a session from the current deployment configuration. Other refusals
+(including authentication, ownership, permission-preset and unknown-tool
+failures) remain fail-closed errors.
+
 `agent-unavailable` means the Host could not put a live agent behind the chat:
 attestation resumes a session the Host has not materialized in this process —
 DSH builds an agent on demand, so a chat restored from an earlier Host run has a
@@ -395,6 +403,13 @@ bind and every prompt.
 
 `interaction.approvals` decides what happens to a tool call a composed plugin
 gate (a safety classifier, a hook rule) answers with `ask`:
+
+This is separate from the permission preset's approval policy. Even in
+`interactive` mode, the preset named by `lockdown.permissionPreset` must
+resolve to `approval: never`; the QA gate parks a composed `ask` before the
+native approval service, and `never` remains the fail-closed backstop. A preset
+with `approval: ask` is rejected during deployment preflight before a Host
+session is created.
 
 - `blocked` (default) — enforced on the attested agent before the approval
   service runs. If any composed policy asks for approval, the QA pre-execute
