@@ -101,6 +101,16 @@ export type AdapterType = "none" | "jira" | "confluence";
 /** Which Jira REST dialect to speak (SPEC §15.2: Server/DC/Cloud differ). */
 export type JiraFlavor = "server" | "cloud";
 
+/**
+ * How aggressively a content adapter trims page chrome out of the normalized
+ * text (SPEC §15.2). `off` keeps every auxiliary marker, `balanced` drops
+ * navigation and aggregation macros but keeps links and media, `strict`
+ * leaves nothing but the readable content.
+ */
+export const CLEANUP_LEVELS = ["off", "balanced", "strict"] as const;
+
+export type CleanupLevel = (typeof CLEANUP_LEVELS)[number];
+
 export interface AdapterConfig {
   readonly type: AdapterType;
   /** Jira only: REST API flavor. Default `server` (REST v2, wiki-markup bodies). */
@@ -109,6 +119,12 @@ export interface AdapterConfig {
   readonly includeComments?: boolean;
   /** Jira only: include issue links (blocks/duplicates/…) in the text. Default `false`. */
   readonly includeLinks?: boolean;
+  /**
+   * Confluence only: how much page chrome the storage→Markdown conversion
+   * keeps. Default `balanced`. Jira bodies are already normalized, so the
+   * level has no effect there.
+   */
+  readonly cleanup?: CleanupLevel;
 }
 
 /** Fully resolved adapter settings of a rule (defaults applied). */
@@ -117,6 +133,7 @@ export interface ResolvedAdapter {
   readonly jiraFlavor: JiraFlavor;
   readonly includeComments: boolean;
   readonly includeLinks: boolean;
+  readonly cleanup: CleanupLevel;
 }
 
 /** Match section of a rule (SPEC §7/§9): exact hosts, glob paths. */

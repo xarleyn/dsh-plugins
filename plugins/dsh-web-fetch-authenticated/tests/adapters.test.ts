@@ -63,6 +63,7 @@ function adapterSettings(
     jiraFlavor: "server",
     includeComments: false,
     includeLinks: false,
+    cleanup: "balanced",
     ...overrides,
   };
 }
@@ -319,6 +320,33 @@ describe("confluence recognition and REST URLs", () => {
     expect(extractPageRef("/login")).toBeUndefined();
   });
 
+  test("view-page links (the address Confluence hands out) are recognized", () => {
+    // The URL in the browser bar and in every "copy link" action.
+    expect(
+      extractPageRef(
+        "/wiki/pages/viewpage.action",
+        new URLSearchParams("pageId=112996462"),
+      ),
+    ).toEqual({ id: "112996462" });
+    // Its legacy title form, which Confluence still emits in old links.
+    expect(
+      extractPageRef(
+        "/pages/viewpage.action",
+        new URLSearchParams(
+          "spaceKey=SD&title=%D0%A0%D0%B5%D0%B3%D0%BB%D0%B0%D0%BC%D0%B5%D0%BD%D1%82+%D0%BF%D0%BE+Git",
+        ),
+      ),
+    ).toEqual({ spaceKey: "SD", title: "Регламент по Git" });
+    // Nothing usable in the query, and a non-view-page path carrying a stray
+    // pageId, both stay unrecognized: they fall through to raw HTTP/HTML.
+    expect(
+      extractPageRef("/wiki/pages/viewpage.action", new URLSearchParams("")),
+    ).toBeUndefined();
+    expect(
+      extractPageRef("/browse/abc", new URLSearchParams("pageId=7")),
+    ).toBeUndefined();
+  });
+
   test("REST prefix follows the /wiki (Cloud) convention", () => {
     expect(restPrefix("/wiki/spaces/DEV/pages/1/T")).toBe("/wiki/rest/api");
     expect(restPrefix("/display/DEV/T")).toBe("/rest/api");
@@ -363,14 +391,45 @@ describe("confluence storage → markdown", () => {
     expect(md).toContain("[link](https://x)");
   });
 
-  test("code macros render fenced with their language; unknown macros leave a placeholder", () => {
+  test("code macros render fenced with their language; status badges keep their label", () => {
     const storage = [
       '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">js</ac:parameter><ac:plain-text-body><![CDATA[let a = 1;]]></ac:plain-text-body></ac:structured-macro>',
       '<ac:structured-macro ac:name="status"><ac:parameter ac:name="title">Green</ac:parameter></ac:structured-macro>',
     ].join("\n");
     const md = storageToMarkdown(storage);
     expect(md).toContain("```js\nlet a = 1;\n```");
-    expect(md).toContain("[macro: status");
+    expect(md).toContain("**Green**");
+  });
+
+  test("layout macros unwrap instead of swallowing the content they wrap", () => {
+    const storage = [
+      '<ac:structured-macro ac:name="section"><ac:rich-text-body>',
+      "<h2>Deploy</h2><p>Steps follow.</p><ul><li>one</li><li>two</li></ul>",
+      "</ac:rich-text-body></ac:structured-macro>",
+    ].join("");
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("## Deploy");
+    expect(md).toContain("Steps follow.");
+    // The paragraph structure inside the macro survives instead of collapsing
+    // into a single placeholder line.
+    expect(md).toContain("- one\n- two");
+    expect(md).not.toContain("[macro: section");
+  });
+
+  test("callouts, task lists, and unknown macro bodies convert", () => {
+    const storage = [
+      '<ac:structured-macro ac:name="info"><ac:rich-text-body><p>Restart first.</p></ac:rich-text-body></ac:structured-macro>',
+      "<ac:task-list>",
+      "<ac:task><ac:task-status>complete</ac:task-status><ac:task-body>Stop traffic</ac:task-body></ac:task>",
+      "<ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>Drain queues</ac:task-body></ac:task>",
+      "</ac:task-list>",
+      '<ac:structured-macro ac:name="mystery"><ac:parameter ac:name="foo">bar</ac:parameter><ac:rich-text-body><p>Payload text</p></ac:rich-text-body></ac:structured-macro>',
+    ].join("\n");
+    const md = storageToMarkdown(storage);
+    expect(md).toContain("> Restart first.");
+    expect(md).toContain("- [x] Stop traffic");
+    expect(md).toContain("- [ ] Drain queues");
+    expect(md).toContain("Payload text");
   });
 
   test("ac:link renders the link body or the referenced page title", () => {
@@ -382,6 +441,76 @@ describe("confluence storage → markdown", () => {
       '<ac:link><ri:page ri:content-title="Other Page"/></ac:link>',
     );
     expect(withRef).toContain("Other Page");
+  });
+
+  test("a user mention keeps a placeholder instead of vanishing", () => {
+    const md = storageToMarkdown(
+      '<p>Reviewed by <ac:link><ri:user ri:account-id="5b10a"/></ac:link></p>',
+    );
+    expect(md).toContain("Reviewed by @user");
+  });
+
+  test("list items and table rows stay adjacent within their block", () => {
+    const md = storageToMarkdown(
+      [
+        "<ul><li>one</li><li>two</li></ul>",
+        "<table><tbody><tr><th>H</th></tr><tr><td>v</td></tr></tbody></table>",
+      ].join("\n"),
+    );
+    // A blank line between items would make the list loose and split the table.
+    expect(md).toContain("- one\n- two");
+    expect(md).toContain("| H |\n| --- |\n| v |");
+  });
+
+  test("cleanup levels trim page chrome without touching the content", () => {
+    const storage = [
+      "<h1>Runbook</h1>",
+      '<p>State: <ac:structured-macro ac:name="status"><ac:parameter ac:name="title">Approved</ac:parameter></ac:structured-macro></p>',
+      '<ac:structured-macro ac:name="toc"/>',
+      '<ac:structured-macro ac:name="children"><ac:parameter ac:name="depth">2</ac:parameter></ac:structured-macro>',
+      '<ac:structured-macro ac:name="include"><ri:page ri:content-title="Common Steps"/></ac:structured-macro>',
+      '<p><ac:image><ri:attachment ri:filename="schema.png"/></ac:image></p>',
+      '<p>Mood <ac:emoticon ac:name="smile"/> at the end</p>',
+      '<ac:structured-macro ac:name="mystery"><ac:parameter ac:name="foo">bar</ac:parameter></ac:structured-macro>',
+    ].join("\n");
+    const off = storageToMarkdown(storage, "off");
+    const balanced = storageToMarkdown(storage, "balanced");
+    const strict = storageToMarkdown(storage, "strict");
+
+    // Every level keeps the readable content.
+    for (const md of [off, balanced, strict]) {
+      expect(md).toContain("# Runbook");
+      expect(md).toContain("**Approved**");
+      expect(md).toContain("at the end");
+    }
+
+    // `off`: nothing is trimmed, parameters included.
+    expect(off).toContain("_[macro: toc]_");
+    expect(off).toContain("_[macro: children — 2]_");
+    expect(off).toContain("_[includes: Common Steps]_");
+    expect(off).toContain("_[schema.png]_");
+    expect(off).toContain("smile");
+    expect(off).toContain("_[macro: mystery — bar]_");
+
+    // `balanced`: navigation and parameters go, links, media and emoticons stay.
+    expect(balanced).not.toContain("[macro: toc");
+    expect(balanced).not.toContain("[macro: children");
+    expect(balanced).toContain("_[includes: Common Steps]_");
+    expect(balanced).toContain("_[schema.png]_");
+    expect(balanced).toContain("smile");
+    expect(balanced).toContain("_[macro: mystery]_");
+    expect(balanced).not.toContain("bar");
+
+    // `strict`: only the content is left, with no marker of any kind.
+    expect(strict).not.toContain("_[");
+    expect(strict).not.toContain("schema.png");
+    expect(strict).not.toContain("smile");
+    expect(strict).not.toContain("Common Steps");
+    expect(strict).not.toContain("mystery");
+  });
+
+  test("the default level is balanced", () => {
+    expect(storageToMarkdown('<ac:structured-macro ac:name="toc"/>')).toBe("");
   });
 });
 
@@ -421,6 +550,21 @@ describe("confluence page normalization", () => {
     expect(markdown).toContain("# Runbook");
   });
 
+  test("a view-page link fetches the REST content, keeping the context path", async () => {
+    const { markdown } = await fetchPageMarkdown(
+      new URL(
+        "https://jira.corp/wiki/pages/viewpage.action?pageId=112996462&src=quick-create",
+      ),
+      adapterSettings({ type: "confluence" }),
+      async (url) => {
+        expect(url.pathname).toBe("/wiki/rest/api/content/112996462");
+        return { statusCode: 200, data: pagePayload };
+      },
+    );
+    expect(markdown).toContain("# Runbook");
+    expect(markdown).toContain("Hello world");
+  });
+
   test("non-2xx REST responses stay results with a short note", async () => {
     const { statusCode, markdown } = await fetchPageMarkdown(
       new URL("https://w.corp/pages/7"),
@@ -444,6 +588,61 @@ describe("adapter seam", () => {
       context(adapterSettings()),
     );
     expect(unmapped).toBeUndefined();
+  });
+
+  test("a view-page link is served from the REST API, not passed through raw", async () => {
+    // The adapter reads the rule's char limit after the REST hop, so the seam
+    // context carries a resolved rule (the provider always supplies one).
+    const rule = {
+      adapter: adapterSettings({ type: "confluence" }),
+      source: { id: "r" },
+      limits: { maxBodyChars: 100_000 },
+    } as unknown as ResolvedRule;
+    const result = await applyAdapter(
+      new URL("https://jira.corp/wiki/pages/viewpage.action?pageId=112996462"),
+      {
+        rule,
+        rules: [rule],
+        globals: { maxUrlLength: 2048, userAgent: "test" },
+        resolveSecrets: async () => ({}),
+      },
+      async (restUrl) => {
+        expect(restUrl.pathname).toBe("/wiki/rest/api/content/112996462");
+        return {
+          url: restUrl.toString(),
+          statusCode: 200,
+          body: {
+            kind: "text",
+            content: JSON.stringify({
+              title: "Регламент по работе с Git",
+              space: { name: "SD" },
+              version: { when: "2022-01-21T00:00:00.000Z" },
+              body: {
+                storage: {
+                  value:
+                    "<h2>Принятая схема ветвления</h2><p>Одна основная ветка.</p>" +
+                    '<ac:structured-macro ac:name="toc"/>',
+                },
+              },
+            }),
+          },
+          truncated: false,
+        };
+      },
+    );
+    // Page metadata plus the converted body: no wiki chrome, no macro marker.
+    expect(result?.body.content).toBe(
+      [
+        "# Регламент по работе с Git",
+        "",
+        "- Space: SD",
+        "- Updated: 2022-01-21",
+        "",
+        "## Принятая схема ветвления",
+        "",
+        "Одна основная ветка.",
+      ].join("\n"),
+    );
   });
 
   test("rejects non-JSON REST bodies with a structured error", async () => {
@@ -574,6 +773,90 @@ describe("provider end-to-end with a Jira adapter over a fixture", () => {
     expect(result.body.kind).toBe("html");
     expect(result.body.content).toContain("hello");
   });
+
+  test("a Confluence rule serves the page with its configured cleanup level", async () => {
+    const storage =
+      '<h1>Runbook</h1><ac:structured-macro ac:name="toc"/><p><ac:image><ri:attachment ri:filename="schema.png"/></ac:image></p>';
+    server = await startFixture(
+      {},
+      {
+        body: JSON.stringify({
+          id: "7",
+          title: "Runbook",
+          space: { name: "Operations" },
+          body: { storage: { value: storage } },
+        }),
+      },
+    );
+    const ruleFor = (cleanup: "balanced" | "strict"): AuthenticatedFetchRule =>
+      fixtureRule(server!.origin, {
+        adapter: { type: "confluence", cleanup },
+        match: {
+          schemes: ["http"],
+          hosts: ["127.0.0.1"],
+          ports: [server!.port],
+          allowPaths: ["/pages/**", "/rest/api/**"],
+        },
+      });
+    const providerFor = (
+      rule: AuthenticatedFetchRule,
+    ): AuthenticatedFetchProvider =>
+      new AuthenticatedFetchProvider({
+        configSource: () => configWith([rule]),
+        credentials: fakeCredentials({ TEST_TOKEN: "secret" }),
+        logger: silentLogger(),
+      });
+
+    const balanced = await providerFor(ruleFor("balanced")).fetch({
+      url: `${server.origin}/pages/7`,
+    });
+    expect(balanced.body.content).toContain("# Runbook");
+    expect(balanced.body.content).toContain("_[schema.png]_");
+    expect(balanced.body.content).not.toContain("[macro: toc");
+
+    const strict = await providerFor(ruleFor("strict")).fetch({
+      url: `${server.origin}/pages/7`,
+    });
+    expect(strict.body.content).toContain("# Runbook");
+    expect(strict.body.content).not.toContain("_[");
+  });
+
+  test("a Server view-page link under a context path is served end to end", async () => {
+    server = await startFixture(
+      {},
+      {
+        body: JSON.stringify({
+          id: "112996462",
+          title: "Регламент по работе с Git",
+          space: { name: "SD" },
+          body: { storage: { value: "<p>Одна основная ветка.</p>" } },
+        }),
+      },
+    );
+    const rule: AuthenticatedFetchRule = fixtureRule(server.origin, {
+      adapter: { type: "confluence" },
+      match: {
+        schemes: ["http"],
+        hosts: ["127.0.0.1"],
+        ports: [server.port],
+        allowPaths: ["/wiki/**"],
+      },
+    });
+    const provider = new AuthenticatedFetchProvider({
+      configSource: () => configWith([rule]),
+      credentials: fakeCredentials({ TEST_TOKEN: "secret" }),
+      logger: silentLogger(),
+    });
+    const result = await provider.fetch({
+      url: `${server.origin}/wiki/pages/viewpage.action?pageId=112996462`,
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.body.content).toContain("# Регламент по работе с Git");
+    expect(result.body.content).toContain("Одна основная ветка.");
+    expect(server.requests.map((request) => request.url)).toEqual([
+      "/wiki/rest/api/content/112996462?expand=body.storage%2Cspace%2Cversion",
+    ]);
+  });
 });
 
 describe("adapter configuration", () => {
@@ -586,6 +869,7 @@ describe("adapter configuration", () => {
       jiraFlavor: "server",
       includeComments: false,
       includeLinks: false,
+      cleanup: "balanced",
     });
   });
 
@@ -602,7 +886,27 @@ describe("adapter configuration", () => {
       jiraFlavor: "server",
       includeComments: true,
       includeLinks: false,
+      cleanup: "balanced",
     });
+  });
+
+  test("a confluence rule carries its cleanup level into the adapter settings", () => {
+    const config = resolveConfig(
+      configWith([
+        fixtureRule("http://127.0.0.1:1", {
+          adapter: { type: "confluence", cleanup: "strict" },
+        }),
+      ]),
+    );
+    expect(config.rules[0]?.adapter.cleanup).toBe("strict");
+    expect(
+      validateRule(
+        fixtureRule("http://127.0.0.1:1", {
+          adapter: { type: "confluence", cleanup: "aggressive" as never },
+        }),
+        0,
+      ).some((error) => error.includes("adapter.cleanup")),
+    ).toBe(true);
   });
 
   test("unknown adapter types and flavors are rejected", () => {

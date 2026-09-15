@@ -137,18 +137,46 @@ Confluence. Unrecognized URLs fall back to raw HTTP/HTML.
   `includeComments` and `includeLinks` add comments and issue links (off by
   default).
 - **Confluence** — `/pages/<id>/…` (Server and Cloud, including `/wiki/…`
-  paths) fetch directly; `/display/<SPACE>/<Title>` resolves via the title
-  lookup. Storage-format XHTML becomes Markdown: headings, lists, tables,
-  links, entities, code/noformat/panel/expand macros (unknown macros leave a
-  visible placeholder instead of vanishing).
+  paths), the page links Confluence itself hands out
+  (`/pages/viewpage.action?pageId=<id>`, plus the legacy
+  `?spaceKey=<KEY>&title=<Title>` form), and `/display/<SPACE>/<Title>`
+  (resolved through the title lookup). Storage-format XHTML becomes Markdown:
+  headings, paragraphs, lists (task lists become `- [x]` checkboxes), tables,
+  code/noformat fences, panel/info/note/warning/tip callouts, status badges,
+  links and entities. Layout macros (`section`, `column`, `div`) are unwrapped
+  so the content they wrap keeps its block structure.
 
-Configured in the rule editor ("Content adapter") or declaratively:
+### Confluence cleanup levels
+
+A Confluence storage body carries page chrome beside the prose. `adapter.cleanup`
+decides how much of it reaches the model; the readable content is rendered
+identically at every level.
+
+| Level | Navigation macros¹ | Unknown macros | Attachments/images | Emoticons | Inline links, page links, callouts, tasks |
+| --- | --- | --- | --- | --- | --- |
+| `off` | `_[macro: toc — 2]_` | name + parameters | `_[file.png]_` | name | kept |
+| `balanced` (default) | dropped | `_[macro: name]_` | `_[file.png]_` | name | kept |
+| `strict` | dropped | body only, no marker | dropped | dropped | kept |
+
+¹ A table of contents, child-page list, attachment list, search widget, and the
+like: macros that aggregate or navigate instead of carrying content. Cross-page
+includes still leave `_[includes: Page]_` at `off`/`balanced`, because that
+reference is the only trace of the missing text.
+
+Configured in the rule editor ("Content adapter" → "Page cleanup") or
+declaratively:
 
 ```yaml
 adapter:
   type: jira
   jiraFlavor: server
   includeComments: true
+```
+
+```yaml
+adapter:
+  type: confluence
+  cleanup: strict
 ```
 
 Non-2xx REST responses stay results (the seam never throws for status codes):

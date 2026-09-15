@@ -248,6 +248,48 @@ describe("rule matching fails closed", () => {
       provider.fetch({ url: "http://127.0.0.1:1/open" }),
     );
   });
+
+  test("rules sharing a host but split by allowPaths stay unambiguous", () => {
+    // The configuration warning for a shared host is an over-approximation:
+    // path globs are what decide the router at request time (SPEC §24).
+    const rules = [
+      fixtureRule("http://127.0.0.1:1", {
+        id: "browse",
+        match: {
+          schemes: ["http"],
+          hosts: ["127.0.0.1"],
+          ports: [1],
+          allowPaths: ["/browse/**"],
+        },
+      }),
+      fixtureRule("http://127.0.0.1:1", {
+        id: "wiki",
+        match: {
+          schemes: ["http"],
+          hosts: ["127.0.0.1"],
+          ports: [1],
+          allowPaths: ["/wiki/**"],
+        },
+      }),
+    ];
+    const { warnings } = validateConfig(configWith(rules));
+    expect(
+      warnings.some((text) => text.includes("AUTH_FETCH_AMBIGUOUS_MATCH")),
+    ).toBe(true);
+    const resolved = resolveConfig(configWith(rules));
+    expect(
+      matchRules(
+        resolved.rules,
+        validateFetchUrl("http://127.0.0.1:1/wiki/x", 2048),
+      ).map((rule) => rule.source.id),
+    ).toEqual(["wiki"]);
+    expect(
+      matchRules(
+        resolved.rules,
+        validateFetchUrl("http://127.0.0.1:1/browse/x", 2048),
+      ).map((rule) => rule.source.id),
+    ).toEqual(["browse"]);
+  });
 });
 
 describe("configuration validation", () => {
@@ -275,6 +317,34 @@ describe("configuration validation", () => {
     });
     const { errors } = validateConfig(configWith([rule]));
     expect(errors.some((error) => error.includes("CIDR"))).toBe(true);
+  });
+
+  test("an ambiguity warning names the shared scope", () => {
+    const { warnings } = validateConfig(
+      configWith([
+        fixtureRule("http://127.0.0.1:1", { id: "a" }),
+        fixtureRule("http://127.0.0.1:1", { id: "b" }),
+      ]),
+    );
+    const warning = warnings.find((text) =>
+      text.includes("AUTH_FETCH_AMBIGUOUS_MATCH"),
+    );
+    expect(warning).toBeDefined();
+    // The message has to say WHERE the two rules collide: same hosts, same port.
+    expect(warning).toContain("127.0.0.1");
+    expect(warning).toContain(":1");
+  });
+
+  test("disjoint ports on a shared host are not reported as ambiguous", () => {
+    const { warnings } = validateConfig(
+      configWith([
+        fixtureRule("http://127.0.0.1:1", { id: "a" }),
+        fixtureRule("http://127.0.0.1:2", { id: "b" }),
+      ]),
+    );
+    expect(
+      warnings.some((text) => text.includes("AUTH_FETCH_AMBIGUOUS_MATCH")),
+    ).toBe(false);
   });
 });
 
