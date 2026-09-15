@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-openviking-memory",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "OpenViking memory integration for DeepSeek Harness with configurable automatic context injection; derived from the official OpenViking DSH plugin.",
   "repository": {
     "type": "git",

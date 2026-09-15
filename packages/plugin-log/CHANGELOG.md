@@ -1,3 +1,16 @@
+## 0.3.1 (2026-09-15)
+
+### 🩹 Fixes
+
+- Reformat the package with the repository's shared Prettier configuration. The ([ddba2dd](https://github.com/xarleyn/dsh-plugins/commit/ddba2dd))
+  config now lives in the repository root instead of inside four packages, and
+  this sweep brings every package to it. Formatting only — no behavior and no API
+  change beyond the reformatted sources in the published tarball.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-09-13)
 
 ### 🚀 Features
