@@ -30,13 +30,6 @@ import {
   QaAttestationError,
   qaAttestationFailureMessage,
 } from "./attestation.js";
-import { applyDocumentsEnvOverrides } from "./documents/config.js";
-import {
-  DocumentError,
-  installDocumentSubsystem,
-  type DocumentFetchSource,
-  type DocumentSubsystem,
-} from "./documents/index.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -111,19 +104,6 @@ import type {
   QaUserQuery,
 } from "./types.js";
 
-/**
- * The slice of the harness web service this plugin uses. A deployment may
- * install no web provider at all, and the service arrives from a package this
- * plugin does not link, so the injected context is read structurally instead of
- * through a dependency the package would have to carry everywhere.
- */
-interface WebFetchSeam {
-  fetch(
-    request: { readonly url: string },
-    signal?: AbortSignal,
-  ): Promise<Awaited<ReturnType<DocumentFetchSource>>>;
-}
-
 export const name = "qa-surface";
 export const inject = [
   "agents",
@@ -197,21 +177,8 @@ export class QaSurface extends TypertRemoteService {
   private readonly integrationPrincipals = new QaIntegrationPrincipalBindings();
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
-  /**
-   * The web fetch service, resolved by inject. Only the fetch seam of it is
-   * used, and only for `document_from_url`; absent until a deployment supplies
-   * a web provider.
-   */
-  private web: WebFetchSeam | undefined;
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
-  /**
-   * The document subsystem: its own runtime and the four tool registrations.
-   * Rebuilt when the document configuration changes and torn down while the
-   * subsystem or the whole surface is disabled.
-   */
-  private documents: DocumentSubsystem | undefined;
-  private documentsKey: string | undefined;
   /**
    * The quality store opens its file on first use, so a deployment that never
    * opens the admin console never grows one.
@@ -354,17 +321,7 @@ export class QaSurface extends TypertRemoteService {
       () => () => this.personalSkills.dispose(),
       "dsh-qa-surface.personal-skills",
     );
-    ctx.effect(
-      () => () => {
-        this.documents?.dispose();
-        this.documents = undefined;
-        this.documentsKey = undefined;
-      },
-      "dsh-qa-surface.documents",
-    );
-    // Registered here rather than from the settings callback alone, so a
-    // deployment that never opens the settings page still gets the tools.
-    this.refreshDocuments();
+    this.warnDocumentsMoved();
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
@@ -394,12 +351,11 @@ export class QaSurface extends TypertRemoteService {
           onChange: () => {
             const config = this.getConfig();
             this.refreshRoute();
-            this.refreshDocuments();
+            this.warnDocumentsMoved();
             this.logger.info("config.updated", {
               enabled: config.enabled,
               route: config.route.path,
               sessionPolicy: config.session.policy,
-              documents: config.documents.enabled,
             });
           },
           validate: (value) => {
@@ -419,19 +375,6 @@ export class QaSurface extends TypertRemoteService {
           this.webServer = undefined;
         },
         "dsh-qa-surface.navigation-route",
-      );
-    });
-    // The web provider (and with it the fetch rules, credentials and address
-    // policy) is optional: `document_from_url` answers BACKEND_UNAVAILABLE when
-    // no deployment supplies one. The reference is resolved per call, so a
-    // provider that arrives late is picked up without rebuilding the tools.
-    ctx.inject(["web"], (webContext) => {
-      this.web = (webContext as unknown as { web?: WebFetchSeam }).web;
-      webContext.effect(
-        () => () => {
-          this.web = undefined;
-        },
-        "dsh-qa-surface.web-fetch-source",
       );
     });
     this.logger.info("plugin.ready", {
@@ -1159,37 +1102,21 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /**
-   * Install, rebuild or tear down the document subsystem. The raw entry is
-   * resolved with the documented environment overrides applied, so a
-   * deployment can point `QA_DOCLING_BASE_URL` at its own service without
-   * touching the settings namespace; the settings layer stays authoritative
-   * for everything it declares.
+   * The document pipeline moved out of this plugin into `@yadsh/dsh-documents`.
+   * A deployment whose profile still carries the old `documents` section would
+   * otherwise lose its Docling endpoint and artifact root silently, so the
+   * leftover section is reported once per configuration change instead.
    */
-  private refreshDocuments(): void {
-    const config = this.getConfig();
-    const enabled = config.enabled && config.documents.enabled;
-    const key = enabled ? JSON.stringify(config.documents) : undefined;
-    if (key === this.documentsKey) return;
-    this.documents?.dispose();
-    this.documents = undefined;
-    this.documentsKey = key;
-    if (key === undefined) return;
-    this.documents = installDocumentSubsystem(this.ctx, {
-      config: applyDocumentsEnvOverrides(
-        this.source().documents ?? {},
-        process.env,
-      ),
-      logger: this.logger,
-      register: (definition) => this.ctx.tools.register(definition),
-      fetchSource: async (url, signal) => {
-        const web = this.web;
-        if (web === undefined)
-          throw new DocumentError(
-            "BACKEND_UNAVAILABLE",
-            "this deployment has no web fetch provider, so online sources cannot be read",
-          );
-        return await web.fetch({ url }, signal);
-      },
+  private warnDocumentsMoved(): void {
+    // The section is no longer part of this plugin's schema, so it is read off
+    // the raw entry: unknown keys survive schema parsing on purpose.
+    const legacy = (this.source() as { documents?: Record<string, unknown> })
+      .documents;
+    if (legacy === undefined || Object.keys(legacy).length === 0) return;
+    this.logger.warn("documents.moved", {
+      plugin: "@yadsh/dsh-documents",
+      message:
+        "the documents section moved to the @yadsh/dsh-documents plugin; the copy under qa-surface is ignored",
     });
   }
 }
@@ -1207,7 +1134,6 @@ export { entryRedirectRow, entryRedirectScript } from "./entry-redirect.js";
 export { registerQaNavigationRoute } from "./host-route.js";
 export { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
-export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";
 export { QaAccessService } from "./access/service.js";
 export { QaRoleRepository } from "./access/role-repository.js";

@@ -234,7 +234,6 @@ describe("QA Surface card", () => {
       "Аккаунты",
       "Источники",
       "Вложения",
-      "Документы",
       "Встраивание",
     ]) {
       expect(section(title)).toBeTruthy();

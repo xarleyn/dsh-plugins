@@ -1,6 +1,5 @@
 import { resolveAccounts } from "./config-resolvers/accounts.js";
 import { resolveAttachments } from "./config-resolvers/attachments.js";
-import { resolveDocumentsConfig } from "./documents/config.js";
 import {
   normalizeRoutePath,
   resolveBasics,
@@ -51,7 +50,6 @@ export function resolveConfig(
     entry: basics.entry,
     sources,
     attachments,
-    documents: resolveDocumentsConfig(input.documents),
     tools,
   });
 }

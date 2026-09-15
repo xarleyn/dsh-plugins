@@ -434,99 +434,33 @@ remains an independent fail-closed backstop for asks that reach the approval
 service directly, and the tool allow-list, workspace fence and read-only sandbox
 still run on the resolved call.
 
-## Documents
+## Documents (moved to its own plugin)
 
-`documents` configures the document pipeline that backs the five agent tools
-`document_create`, `document_to_markdown`, `document_from_url`,
-`document_convert` and `document_inspect`. Markdown is the canonical source: the
-agent writes Markdown, the pipeline renders DOCX and/or PDF from it, it can read
-either format back out as Markdown, and `document_from_url` stores the text of an
-online source — a wiki attachment, a document behind an authenticated fetch
-provider — as an artifact. The full design is in
-[`document-pipeline.md`](./specs/document-pipeline.md).
+The document pipeline — `document_create`, `document_to_markdown`,
+`document_from_url`, `document_convert`, `document_inspect`, its backends,
+limits, templates, artifact store and retention sweep — now lives in
+[`@yadsh/dsh-documents`](../../dsh-documents/README.md). Nothing about a QA
+chat changed: the tool names are identical, so an existing `lockdown.toolPolicy.allow`
+entry keeps working, and the artifact layout is unchanged
+(`<session workspace>/.qa/artifacts/documents/<id>`). The pipeline was never
+QA-specific — it reads the calling session's working directory and registers
+plain agent tools — and it is now configurable, and usable, without the QA
+surface.
 
-The tools are registered by the plugin, not by a preset, so they exist in the
-Host as soon as `documents.enabled` is true (the default). They become visible
-to a QA chat only when the deployment opts in:
+Two operational consequences:
 
-```yaml
-# profile settings of the QA deployment
-lockdown:
-  toolPolicy:
-    allow:
-      - document_create
-      - document_to_markdown
-      - document_from_url
-      - document_convert
-      - document_inspect
-```
+- the settings moved from the `qa-surface` namespace to the new plugin's
+  `documents` namespace (its own card: Settings → Plugins → Документы), and the
+  environment variables from `QA_DOCUMENTS_*`/`QA_DOCLING_*`/`QA_PANDOC_*` to
+  `DSH_DOCUMENTS_*`;
+- the new plugin must be present in the deployment profile for the tool names
+  to exist in a session's catalog. A leftover `documents:` section under
+  `qa-surface` is ignored, and the Host logs `documents.moved` once per
+  configuration change to make that visible.
 
-`document_from_url` opens no socket of its own: it asks the deployment's web
-provider for the URL, so the fetch rules, credentials, address policy and
-byte/char caps configured there decide what may be read (in practice
-`@yadsh/dsh-web-fetch-authenticated` plus its Confluence attachment support).
-Without a web provider the tool answers `BACKEND_UNAVAILABLE` instead of
-guessing. What it stores is bounded by `documents.limits.maxMarkdownChars` and
-what it returns inline by `documents.extraction.maxInlineChars`; the artifact
-always keeps the full text the fetch layer returned.
-
-One consequence is worth stating plainly: the pipeline writes its bundle with
-its own file-system calls, so `lockdown.sandboxMode: read-only` does not stop a
-document from being created. The allow-list is the switch that decides whether
-a chat can write documents at all, and the artifact root decides where they
-land.
-
-What the defaults assume:
-
-- `pandoc` and a headless `libreoffice` exist in the deployment image (or in
-  the container the plugin runs in). Missing executables are reported as
-  `BACKEND_UNAVAILABLE`, never worked around;
-- `docling` is reachable at `http://docling:5001` — the default of the
-  `docling-serve` container in `deploy/`, and the only backend that reads PDFs
-  and DOCX into Markdown. `documents.docling.enabled: false` turns extraction
-  off; a deployment that also enables `documents.markitdown` keeps a fast
-  fallback for text documents;
-- `typst` and `markitdown` are disabled. Requesting `pdfMode: typst` without
-  `documents.typst.enabled` is refused instead of silently rendering another
-  layout.
-
-Layout and storage:
-
-- artifacts are bundles under `<session workspace>/.qa/artifacts/documents/<id>`
-  and carry `manifest.json`, the Markdown source, the assets and the produced
-  files. With `accounts.perUserWorkspace` on, that directory is already inside
-  the user's own workspace, so one account cannot read another's documents;
-- `documents.storage.root` pins one absolute root instead (a mounted volume).
-  Retention cleanup only runs in that layout: with per-session directories the
-  plugin knows nothing about other workspaces and must not guess;
-- `documents.templates.root` points at a directory with a `manifest.yml`
-  listing reference DOCX files and Typst directories. A requested template that
-  is not registered fails the call — there is no silent fallback to another
-  layout.
-
-Security posture:
-
-- the agent chooses intent only. No tool parameter reaches a backend's command
-  line: the orchestrator builds every argv itself, so options such as
-  `--lua-filter`, an arbitrary `--resource-path` or `--pdf-engine-opt` are not
-  reachable at all;
-- inputs and assets are read only from the session workspace, the artifact root
-  and `documents.storage.allowedInputRoots`, after resolution and containment
-  checks (traversal, symlink escapes and `file://` references are refused);
-- remote image references are rejected rather than fetched, so a document
-  cannot make the renderer perform a network request;
-- macro-enabled documents (`.docm`, macro content types) and encrypted PDFs
-  are refused with their own codes;
-- the backends run with a filtered environment: ambient secrets and proxy
-  variables are not passed to them.
-
-Environment overrides apply on the way into the plugin and touch only the
-documented variables — `QA_DOCUMENTS_ENABLED`, `QA_DOCUMENTS_STORAGE_ROOT`,
-`QA_DOCUMENTS_TEMPLATES_ROOT`, `QA_DOCLING_BASE_URL`, `QA_DOCLING_TIMEOUT_MS`,
-`QA_PANDOC_EXECUTABLE`, `QA_LIBREOFFICE_EXECUTABLE`,
-`QA_MARKITDOWN_EXECUTABLE`, `QA_DOCUMENTS_OCR_LANGUAGES` and
-`QA_DOCUMENTS_MAX_INPUT_BYTES`. Everything else stays in the settings
-namespace, where the card's «Документы» section edits it.
+The pipeline's own documentation — configuration, backends, sizes, artifact
+layout, retention — is the [plugin README](../../dsh-documents/README.md) and
+its [design spec](../../dsh-documents/docs/specs/document-pipeline.md).
 
 ## Agent subroles and capability policies
 
