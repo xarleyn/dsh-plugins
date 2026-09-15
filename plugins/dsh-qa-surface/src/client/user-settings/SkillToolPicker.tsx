@@ -78,7 +78,10 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
           />
           <span className="dsh-qa-toolpicker__name">{tool.name}</span>
           {tool.description === "" ? null : (
-            <span className="dsh-qa-toolpicker__description">
+            <span
+              className="dsh-qa-toolpicker__description"
+              title={tool.description}
+            >
               {tool.description}
             </span>
           )}

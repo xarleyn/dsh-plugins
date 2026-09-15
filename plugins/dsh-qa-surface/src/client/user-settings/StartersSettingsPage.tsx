@@ -96,45 +96,44 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
         <div className="dsh-qa-starters__list">
           {rows.map((row, index) => (
             <div className="dsh-qa-starters__item" key={index}>
-              <div className="dsh-qa-starters__item-head">
-                <div className="dsh-qa-settings__field">
-                  <label className="dsh-qa-settings__field-label">
-                    Название
-                    <input
-                      value={row.label}
-                      maxLength={QA_STARTERS_MAX_LABEL}
-                      placeholder="Что видно на кнопке"
-                      onChange={(event) => {
-                        const value = event.currentTarget.value;
-                        setRows((current) =>
-                          current.map((candidate, at) =>
-                            at === index
-                              ? { ...candidate, label: value }
-                              : candidate,
-                          ),
-                        );
-                        setSaved(false);
-                      }}
-                    />
-                  </label>
-                </div>
-                <button
-                  type="button"
-                  className="dsh-qa-starters__remove"
-                  aria-label={`Удалить «${row.label.trim() || "без названия"}»`}
-                  title="Удалить"
-                  onClick={() => {
-                    setRows((current) =>
-                      current.filter((_, at) => at !== index),
-                    );
-                    setSaved(false);
-                  }}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <path d="m4 4 8 8m0-8-8 8" />
-                  </svg>
-                </button>
+              {/* The remove control sits beside both fields rather than inside
+                  the first one, so the label input and the prompt textarea end
+                  on the same right edge. */}
+              <div className="dsh-qa-settings__field">
+                <label className="dsh-qa-settings__field-label">
+                  Название
+                  <input
+                    value={row.label}
+                    maxLength={QA_STARTERS_MAX_LABEL}
+                    placeholder="Что видно на кнопке"
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setRows((current) =>
+                        current.map((candidate, at) =>
+                          at === index
+                            ? { ...candidate, label: value }
+                            : candidate,
+                        ),
+                      );
+                      setSaved(false);
+                    }}
+                  />
+                </label>
               </div>
+              <button
+                type="button"
+                className="dsh-qa-starters__remove"
+                aria-label={`Удалить «${row.label.trim() || "без названия"}»`}
+                title="Удалить"
+                onClick={() => {
+                  setRows((current) => current.filter((_, at) => at !== index));
+                  setSaved(false);
+                }}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="m4 4 8 8m0-8-8 8" />
+                </svg>
+              </button>
               <div className="dsh-qa-settings__field">
                 <label className="dsh-qa-settings__field-label">
                   Промпт

@@ -8,10 +8,11 @@ export interface QaGeneralSettingsPageProps {
 
 /**
  * Placeholder with a purpose: the section exists so the dialog has a home for
- * the user-scoped preferences that follow (notifications, integrations,
- * privacy), and so the thing it must not become is written down — deployment
- * and chat policy live in the Host settings, not here. It shows the account
- * facts a user can act on today and nothing invented.
+ * the user-scoped preferences that follow (notifications, privacy), and so the
+ * thing it must not become is written down — deployment and chat policy live in
+ * the Host settings, not here. It shows the account facts a user can act on
+ * today and nothing invented, and it names only what is still missing: a
+ * preference that already has its own tab does not belong on this list.
  */
 export function QaGeneralSettingsPage(props: QaGeneralSettingsPageProps) {
   return (
@@ -40,7 +41,6 @@ export function QaGeneralSettingsPage(props: QaGeneralSettingsPageProps) {
       <QaSettingsSection title="Скоро здесь">
         <ul className="dsh-qa-settings__list">
           <li>Настройки уведомлений</li>
-          <li>Персональные интеграции и внешние системы</li>
           <li>Приватность и хранение данных</li>
         </ul>
       </QaSettingsSection>

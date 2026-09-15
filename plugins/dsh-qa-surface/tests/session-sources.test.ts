@@ -91,4 +91,65 @@ describe("host source bridge", () => {
     await bridge.refresh("other", () => undefined);
     expect(console.warn).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps a turn the transcript filled when the Host collected nothing for it", async () => {
+    const bridge = bridgeFor(async () => ({
+      ok: true as const,
+      value: [BUNDLE],
+    }));
+    await bridge.refresh("saved", () => undefined);
+
+    // The Host answered for turn 1 but its collector saw nothing there, while
+    // the projection read the search results the turn actually produced.
+    const projected: QaTurnSources = {
+      version: 1,
+      sessionId: "projected",
+      turn: 1,
+      sources: [
+        {
+          id: "web:https://jira.zyfra.com/wiki/pages/viewpage.action?pageId=70615976",
+          kind: "web",
+          title: "Docker - настройки",
+          uri: "https://jira.zyfra.com/wiki/pages/viewpage.action?pageId=70615976",
+          locations: [],
+          evidence: "queried",
+          origins: [],
+          score: 55,
+        },
+      ],
+      complete: true,
+    };
+
+    expect(bridge.merge([projected])).toEqual([projected]);
+  });
+
+  it("lets a Host bundle that carries sources replace the projection's turn", async () => {
+    const hostBundle: QaTurnSources = {
+      ...BUNDLE,
+      sources: [
+        {
+          id: "web:https://jira.zyfra.com/wiki/host",
+          kind: "web",
+          title: "Host collected page",
+          uri: "https://jira.zyfra.com/wiki/host",
+          locations: [],
+          evidence: "fetched",
+          origins: [],
+          score: 100,
+        },
+      ],
+    };
+    const bridge = bridgeFor(async () => ({
+      ok: true as const,
+      value: [hostBundle],
+    }));
+    await bridge.refresh("saved", () => undefined);
+
+    const projected: QaTurnSources = {
+      ...hostBundle,
+      sessionId: "projected",
+      sources: [{ ...hostBundle.sources[0]!, title: "Projected page" }],
+    };
+    expect(bridge.merge([projected])).toEqual([hostBundle]);
+  });
 });

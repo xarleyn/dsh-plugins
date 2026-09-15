@@ -1035,6 +1035,9 @@ export function QaSurface(props: QaSurfaceProps) {
               filesOpen={rail.railOpen && rail.railTab === "files"}
               onOpenFiles={() => rail.openTab("files")}
               panelLauncher={<QaPanelLauncher panels={props.panels} />}
+              // The sidebar carries this entry next to the account name, so
+              // the header takes it over exactly when there is no sidebar.
+              settings={showSidebar ? undefined : settingsEntry}
               showReset={showResetButton}
               resetDisabled={
                 controller === undefined || state.phase === "creating"
