@@ -56,6 +56,8 @@ export interface QaHeaderProps {
   readonly viewingSubagent: boolean;
   readonly onCloseSubagent: () => void;
   readonly agentPreset: string | null;
+  readonly roleSelector?: ReactNode;
+  readonly administration?: { readonly onOpen: () => void };
   readonly agentCount: number;
   readonly agentsOpen: boolean;
   /** Toggles the agents drawer; also closes the right rail. */
@@ -81,6 +83,8 @@ export function QaHeader({
   viewingSubagent,
   onCloseSubagent,
   agentPreset,
+  roleSelector,
+  administration,
   agentCount,
   agentsOpen,
   onToggleAgents,
@@ -128,6 +132,7 @@ export function QaHeader({
               {modeLabel(agentPreset)}
             </span>
           )}
+          {roleSelector}
           <button
             type="button"
             className="dsh-qa-header__agents"
@@ -188,6 +193,15 @@ export function QaHeader({
               Новый чат
             </button>
           ) : null}
+          {administration === undefined ? null : (
+            <button
+              type="button"
+              className="dsh-qa-header__admin"
+              onClick={administration.onOpen}
+            >
+              Администрирование
+            </button>
+          )}
           {panelLauncher}
         </div>
         <div className="dsh-qa-header__tabs" aria-label="Вид беседы">

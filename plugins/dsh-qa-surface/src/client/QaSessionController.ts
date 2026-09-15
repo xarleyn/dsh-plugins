@@ -92,6 +92,9 @@ export interface QaSessionControllerOptions {
   readonly fileUpload?: () => QaFileUpload | undefined;
   /** Present while the deployment gates QA users with accounts. */
   readonly accounts?: QaAccountsFacade;
+  /** Server-validated role requested for newly materialized sessions. */
+  readonly initialSubrole?: string | null;
+  readonly adminPreview?: boolean;
   readonly timeoutMs?: number;
   /**
    * Minimum spacing between projections of a running turn's stream frames.
@@ -165,6 +168,8 @@ export class QaSessionController {
   private disposed = false;
   private generation = 0;
   private chatsRevision = 0;
+  private selectedSubrole: string | null;
+  private adminPreview: boolean;
   /** Host-side provenance of the bound chat, merged into the projection. */
   private readonly hostSources: QaHostSourceBridge;
   /** Host-side approvals of the bound chat waiting for the operator. */
@@ -195,6 +200,8 @@ export class QaSessionController {
       qaStorageNamespace(options.config),
     );
     this.accounts = options.accounts;
+    this.selectedSubrole = options.initialSubrole ?? null;
+    this.adminPreview = options.adminPreview === true;
     this.fileUpload = options.fileUpload ?? (() => undefined);
     this.hostSources = new QaHostSourceBridge(
       this.sourceApi,
@@ -226,6 +233,18 @@ export class QaSessionController {
     });
     this.ensuring = operation;
     return operation;
+  }
+
+  /**
+   * Select a different capability profile for the next agent. The current
+   * agent is never mutated: even a blank materialized chat is abandoned in
+   * favor of a fresh Host-owned session.
+   */
+  async selectSubrole(subroleId: string, adminPreview = false): Promise<void> {
+    if (this.disposed) return;
+    this.selectedSubrole = subroleId;
+    this.adminPreview = adminPreview;
+    await this.startDraft(true);
   }
 
   async send(
@@ -424,11 +443,13 @@ export class QaSessionController {
    * until the first prompt is actually sent, which materializes the session
    * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
    */
-  async startDraft(): Promise<void> {
+  async startDraft(policyChange = false): Promise<void> {
     if (
       this.disposed ||
       this.config.session.policy === "fixed" ||
-      (this.config.lockdown.enabled && !this.config.lockdown.allowSessionReset)
+      (!policyChange &&
+        this.config.lockdown.enabled &&
+        !this.config.lockdown.allowSessionReset)
     )
       return;
     const previous = this.session;
@@ -470,6 +491,8 @@ export class QaSessionController {
         const id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
+          subroleId: this.selectedSubrole,
+          adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return false;
         await this.bind(id);
@@ -727,6 +750,8 @@ export class QaSessionController {
         id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
+          subroleId: this.selectedSubrole,
+          adminPreview: this.adminPreview,
         });
       }
       if (this.disposed || operation !== this.generation) return;
@@ -759,6 +784,8 @@ export class QaSessionController {
         id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
+          subroleId: this.selectedSubrole,
+          adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return;
         await this.bind(id);
@@ -824,6 +851,8 @@ export class QaSessionController {
       const created = await createQaSession({
         createSession: this.createSessionRemote,
         token: this.accounts?.token() ?? "",
+        subroleId: this.selectedSubrole,
+        adminPreview: this.adminPreview,
       });
       if (this.disposed || operation !== this.generation) return null;
       await this.bind(created);

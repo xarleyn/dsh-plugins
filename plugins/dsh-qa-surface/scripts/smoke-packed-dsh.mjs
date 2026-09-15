@@ -153,7 +153,7 @@ async function runPermissionPreflightPass({ dshBin, dshEnv, root }) {
       await rpc(
         origin,
         "qaSurface/createSession",
-        { args: { token: "" } },
+        { args: { token: "", subroleId: null, adminPreview: false } },
         cookie,
       );
     } catch (error) {

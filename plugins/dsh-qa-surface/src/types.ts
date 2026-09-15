@@ -35,6 +35,126 @@ export interface QaQuestionAnswerItem {
 }
 export type QaAccountRole = "user" | "admin";
 
+/** Tool/skill selection shared by the common layer and one QA subrole. */
+export interface QaCapabilitySelection {
+  readonly tools: readonly string[];
+  readonly skills: readonly string[];
+  /** Reserved extension seams; v1 enforcement intentionally ignores them. */
+  readonly mcpServers?: readonly string[];
+  readonly knowledgeSources?: readonly string[];
+  readonly promptAdditions?: readonly string[];
+}
+
+/** One agent capability profile. It never grants administrative access. */
+export interface QaSubrole {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly enabled: boolean;
+  readonly capabilities: QaCapabilitySelection;
+  readonly ui?: {
+    readonly icon?: string;
+    readonly accent?: string;
+  };
+}
+
+/** Host-owned, versioned capability configuration. */
+export interface QaCapabilityConfig {
+  readonly version: 1;
+  readonly common: QaCapabilitySelection;
+  readonly subroles: readonly QaSubrole[];
+}
+
+/** The QA profiles one account may choose, independently of its access role. */
+export interface QaUserAccess {
+  readonly allowedSubroles: readonly string[];
+  readonly defaultSubrole: string;
+}
+
+export type QaCapabilitySourceKind =
+  "core" | "plugin" | "mcp" | "filesystem" | "runtime";
+
+/** One capability currently installed, or retained as a missing selection. */
+export interface QaCapabilityDescriptor {
+  readonly type: "tool" | "skill";
+  readonly id: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly source: {
+    readonly kind: QaCapabilitySourceKind;
+    readonly name?: string;
+  };
+  readonly status: "available" | "missing";
+  readonly modelInvocable?: boolean;
+  readonly userInvocable?: boolean;
+}
+
+/** JSON-safe projection of an immutable policy snapshot. */
+export interface QaEffectiveCapabilityPolicy {
+  readonly subroleId: string;
+  readonly tools: readonly string[];
+  readonly skills: readonly string[];
+  readonly sources: {
+    readonly systemTools: readonly string[];
+    readonly commonTools: readonly string[];
+    readonly roleTools: readonly string[];
+    readonly systemSkills: readonly string[];
+    readonly commonSkills: readonly string[];
+    readonly roleSkills: readonly string[];
+  };
+  readonly missingTools: readonly string[];
+  readonly missingSkills: readonly string[];
+}
+
+export type QaAccessAuditAction =
+  | "subrole.created"
+  | "subrole.updated"
+  | "subrole.deleted"
+  | "common.updated"
+  | "assignment.updated";
+
+export interface QaAccessAuditEvent {
+  readonly timestamp: string;
+  readonly actorId: string;
+  readonly action: QaAccessAuditAction;
+  readonly targetId?: string;
+  /** JSON snapshots serialized at the storage boundary for a strict Remote type. */
+  readonly before?: string;
+  readonly after?: string;
+}
+
+/** Admin table row: credentials and token material are never projected. */
+export interface QaAccessUser {
+  readonly id: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly accessRole: QaAccountRole;
+  readonly disabled: boolean;
+  readonly access: QaUserAccess;
+}
+
+/** Ordinary user's role selector data. */
+export interface QaCurrentAccess {
+  readonly subroles: readonly QaSubrole[];
+  readonly defaultSubrole: string;
+}
+
+/** The role pinned to one existing session. */
+export interface QaSessionAccess {
+  readonly subrole: QaSubrole;
+  readonly adminPreview: boolean;
+}
+
+/** One authoritative payload for the /qa/admin application. */
+export interface QaAccessAdminSnapshot {
+  readonly config: QaCapabilityConfig;
+  /** Immutable capabilities inherited by every role; exposed read-only. */
+  readonly systemRequired: QaCapabilitySelection;
+  readonly catalog: readonly QaCapabilityDescriptor[];
+  readonly users: readonly QaAccessUser[];
+  readonly audit: readonly QaAccessAuditEvent[];
+}
+
 /** The account fields projected to browsers; never includes credentials. */
 export interface QaAccountUserPublic {
   readonly id: string;

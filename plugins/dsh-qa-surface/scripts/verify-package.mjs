@@ -7,6 +7,11 @@ const root = new URL("../", import.meta.url);
 const required = [
   "lib/index.js",
   "lib/secure-session.js",
+  "lib/access/model.js",
+  "lib/access/role-repository.js",
+  "lib/access/capability-catalog.js",
+  "lib/access/service.js",
+  "lib/enforcement/skill-policy.js",
   "lib/host-route.js",
   "lib/navigation-marker.js",
   "lib/client.js",
@@ -143,10 +148,23 @@ assert.match(admission, /\.tools\.restrict/u);
 assert.match(admission, /\.tools\.guard/u);
 assert.match(admission, /qaToolPolicyPlan/u);
 assert.match(admission, /allow:\s*policy\.allow/u);
+assert.match(admission, /installQaSkillPolicy/u);
 assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
+for (const method of [
+  "accessCurrent",
+  "accessSession",
+  "accessAdminSnapshot",
+  "accessCreateSubrole",
+  "accessUpdateSubrole",
+  "accessDeleteSubrole",
+  "accessUpdateCommon",
+  "accessUpdateAssignment",
+]) {
+  assert.match(remote, new RegExp(`qaSurface/${method}`, "u"));
+}
 // Personal skills ride the same namespace: the browser names a skill, and the
 // account token behind the call decides which storage that name resolves in.
 for (const method of [
@@ -231,6 +249,11 @@ assert.match(client, /\.prompt\(/u);
 assert.match(client, /\.cancel\(/u);
 assert.match(client, /\.create\(/u);
 assert.match(client, /secureSession/u);
+assert.match(client, /\/qa\/admin/u);
+assert.match(client, /dsh-qa-role-selector/u);
+assert.match(client, /dsh-qa-admin-preview/u);
+assert.match(client, /Общие возможности/u);
+assert.match(client, /Фактический доступ/u);
 assert.match(client, /Настройки помощника недоступны\./u);
 assert.match(client, /dsh-qa-surface:v1|:v1:/u);
 assert.match(client, /dsh-qa-sidebar/u);
