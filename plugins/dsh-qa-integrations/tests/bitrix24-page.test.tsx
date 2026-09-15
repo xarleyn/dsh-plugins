@@ -2,9 +2,12 @@
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
-  createIntegrationsPage,
+  createBitrix24Page,
   type IntegrationsRemote,
-} from "../src/client/IntegrationsPage.js";
+} from "../src/client/bitrix24.js";
+// The page renders whatever the host declares, so the fixture reuses the
+// provider's own labels.
+import { BITRIX24_CAPABILITY_INFO } from "../src/providers/bitrix24/catalog.js";
 import type { IntegrationSummary } from "../src/types.js";
 
 const disconnected: IntegrationSummary = {
@@ -16,7 +19,11 @@ const disconnected: IntegrationSummary = {
   credentialConfigured: false,
   credentialUpdatedAt: null,
   capabilities: ["crm.read", "chat.read"],
-  policy: { "crm.read": "allow", "chat.read": "allow" },
+  capabilityInfo: BITRIX24_CAPABILITY_INFO,
+  policy: [
+    { capability: "crm.read", mode: "allow" },
+    { capability: "chat.read", mode: "allow" },
+  ],
   lastValidatedAt: null,
   errorCode: null,
 };
@@ -45,7 +52,7 @@ describe("Integrations settings page", () => {
       patchBitrix24Policy: async () => ({ ok: true, value: connected }),
       disconnectBitrix24: async () => ({ ok: true, value: true }),
     };
-    const Page = createIntegrationsPage(remote);
+    const Page = createBitrix24Page(remote);
     const { container } = render(<Page token="qa-account-token" />);
     const input = await screen.findByLabelText(
       "URL входящего вебхука Bitrix24",
@@ -77,7 +84,10 @@ describe("Integrations settings page", () => {
         value: {
           ...connected,
           capabilities: ["crm.read", "tasks.read"],
-          policy: { "crm.read": "allow", "tasks.read": "deny" },
+          policy: [
+            { capability: "crm.read", mode: "allow" },
+            { capability: "tasks.read", mode: "deny" },
+          ],
         },
       }),
       putBitrix24Credential: async () => ({ ok: true, value: connected }),
@@ -88,7 +98,7 @@ describe("Integrations settings page", () => {
       },
       disconnectBitrix24: async () => ({ ok: true, value: true }),
     };
-    const Page = createIntegrationsPage(remote);
+    const Page = createBitrix24Page(remote);
     const { container } = render(<Page token="qa-account-token" />);
 
     const crm = await screen.findByLabelText("Читать CRM");

@@ -2,7 +2,7 @@ import { resolveConfig } from "../src/config.js";
 import {
   Bitrix24Provider,
   parseBitrixWebhook,
-} from "../src/providers/bitrix24.js";
+} from "../src/providers/bitrix24/index.js";
 
 const CREDENTIAL = JSON.stringify({
   webhookBaseUrl: "https://company.bitrix24.ru/rest/42/abcdefghijk",

@@ -1,15 +1,30 @@
-import type { Bitrix24Flags, IntegrationCapability } from "./types.js";
+import type {
+  IntegrationCapability,
+  IntegrationCapabilityInfo,
+} from "../../types.js";
+import type { Bitrix24Flags } from "./config.js";
 
 /**
- * One capability per Bitrix24 scope. `scopes` is the set of webhook scopes that
- * grant it; the provider intersects them with the scopes the connected webhook
- * actually reports, and `flag` is the operator switch for this deployment.
+ * Capabilities this provider can offer, one per Bitrix24 webhook scope. `scopes`
+ * is the set of scopes that grant it; the provider intersects them with the
+ * scopes the connected webhook actually reports, and `flag` is the operator
+ * switch for this deployment.
  *
  * Labels live here so the host, the Settings card, and package verification all
  * describe a capability the same way.
  */
+export type Bitrix24Capability =
+  | "crm.read"
+  | "chat.read"
+  | "openlines.read"
+  | "user.read"
+  | "department.read"
+  | "tasks.read"
+  | "calendar.read"
+  | "disk.read";
+
 export interface Bitrix24CapabilityDefinition {
-  readonly capability: IntegrationCapability;
+  readonly capability: Bitrix24Capability;
   readonly flag: Exclude<keyof Bitrix24Flags, "enabled">;
   readonly scopes: readonly string[];
   readonly label: string;
@@ -272,8 +287,27 @@ export const BITRIX_OPERATIONS: Readonly<
 /** Capabilities this deployment allows, in catalog order. */
 export function enabledCapabilities(
   flags: Bitrix24Flags,
-): readonly IntegrationCapability[] {
+): readonly Bitrix24Capability[] {
   return BITRIX_CAPABILITIES.filter((item) => flags[item.flag]).map(
     (item) => item.capability,
   );
+}
+
+/** Label and hint per capability, for clients that render what we declare. */
+export const BITRIX24_CAPABILITY_INFO: Readonly<
+  Record<Bitrix24Capability, IntegrationCapabilityInfo>
+> = Object.freeze(
+  Object.fromEntries(
+    BITRIX_CAPABILITIES.map((item) => [
+      item.capability,
+      { label: item.label, hint: item.hint },
+    ]),
+  ) as Record<Bitrix24Capability, IntegrationCapabilityInfo>,
+);
+
+/** Capability an operation needs, or undefined when the catalog has none. */
+export function bitrix24OperationCapability(
+  operation: string,
+): IntegrationCapability | undefined {
+  return BITRIX_OPERATIONS[operation]?.capability;
 }

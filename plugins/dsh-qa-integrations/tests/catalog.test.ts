@@ -3,12 +3,12 @@ import {
   BITRIX_CAPABILITIES,
   BITRIX_OPERATIONS,
   enabledCapabilities,
-} from "../src/catalog.js";
+} from "../src/providers/bitrix24/catalog.js";
 import { resolveConfig } from "../src/config.js";
 import {
   BITRIX_HANDLERS,
   BITRIX_PROJECTIONS,
-} from "../src/providers/bitrix24-operations.js";
+} from "../src/providers/bitrix24/operations.js";
 import {
   createIntegrationTools,
   INTEGRATION_TOOL_NAMES,
@@ -19,7 +19,7 @@ const WRITE_METHOD =
   /\.(add|update|delete|set|unset|bind|unbind|move|import|start|complete|renew|send|create|register)$/u;
 
 const TOOLS_SOURCE = readFileSync(
-  new URL("../src/tools.ts", import.meta.url),
+  new URL("../src/providers/bitrix24/tools.ts", import.meta.url),
   "utf8",
 );
 
@@ -53,7 +53,7 @@ describe("Bitrix24 capability catalog", () => {
   });
 
   it("maps every operation onto a declared capability", () => {
-    const declared = new Set(
+    const declared = new Set<string>(
       BITRIX_CAPABILITIES.map((item) => item.capability),
     );
     for (const definition of Object.values(BITRIX_OPERATIONS)) {
@@ -134,5 +134,45 @@ describe("Bitrix24 tool surface", () => {
     ]) {
       expect(schema).not.toContain(forbidden);
     }
+  });
+});
+
+describe("provider boundary", () => {
+  /**
+   * Shared engine: it moves provider ids around and must know none of them.
+   * `config.ts`, `index.ts` and `tools.ts` are composition roots and do name the
+   * providers they mount — that is the whole point of keeping the list short.
+   */
+  const SHARED = [
+    "broker.ts",
+    "repository.ts",
+    "types.ts",
+    "tool-kit.ts",
+    "coerce.ts",
+    "providers/contract.ts",
+    "providers/registry.ts",
+    "secrets/key-provider.ts",
+    "secrets/secret-store.ts",
+  ];
+
+  it("keeps every provider's name out of the shared modules", () => {
+    for (const file of SHARED) {
+      const source = readFileSync(new URL(`../src/${file}`, import.meta.url), {
+        encoding: "utf8",
+      });
+      expect(source, `${file} must stay provider-agnostic`).not.toMatch(
+        /bitrix/iu,
+      );
+    }
+  });
+
+  it("brings its own tests instead of living in the Bitrix24 ones", () => {
+    // The broker suite drives a made-up provider, which is what proves the
+    // boundary: if it ever needs Bitrix24 to pass, the abstraction is gone.
+    const brokerSuite = readFileSync(
+      new URL("./broker-isolation.test.ts", import.meta.url),
+      { encoding: "utf8" },
+    );
+    expect(brokerSuite).not.toMatch(/bitrix/iu);
   });
 });

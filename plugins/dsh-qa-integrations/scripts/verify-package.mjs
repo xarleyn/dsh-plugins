@@ -13,6 +13,7 @@ assert(manifest.dependencies?.["@yadsh/dsh-qa-surface"]);
 for (const file of [
   "lib/index.js",
   "lib/tools.js",
+  "lib/tool-kit.js",
   "lib/client.js",
   "lib/typert.host.js",
   "lib/typert.host.d.ts",
@@ -20,6 +21,12 @@ for (const file of [
   "lib/typert.remote-client.d.ts",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
+  "lib/providers/bitrix24/index.js",
+  "lib/providers/bitrix24/catalog.js",
+  "lib/providers/bitrix24/operations.js",
+  "lib/providers/bitrix24/transport.js",
+  "lib/providers/bitrix24/config.js",
+  "lib/providers/bitrix24/tools.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -41,7 +48,15 @@ assert.match(
 assert.match(client, /"qaUserSettingsSections"/u);
 assert.match(client, /title:\s*"Интеграции"/u);
 assert.match(client, /type:\s*"password"/u);
-// Every capability the agent may be granted is offered in the Settings card.
+assert.doesNotMatch(client, /localStorage|sessionStorage/u);
+assert.doesNotMatch(client, /Показать токен|Копировать токен/u);
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of the catalog.
+const bitrixCatalog = await readFile(
+  new URL("lib/providers/bitrix24/catalog.js", root),
+  "utf8",
+);
 for (const label of [
   "Читать CRM",
   "Читать чаты",
@@ -52,12 +67,14 @@ for (const label of [
   "Читать календарь",
   "Читать файлы Диска",
 ]) {
-  assert.match(client, new RegExp(label, "u"));
+  assert.match(bitrixCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
 }
-assert.doesNotMatch(client, /localStorage|sessionStorage/u);
-assert.doesNotMatch(client, /Показать токен|Копировать токен/u);
 
-const tools = await readFile(new URL("src/tools.ts", root), "utf8");
+const tools = await readFile(
+  new URL("src/providers/bitrix24/tools.ts", root),
+  "utf8",
+);
 for (const name of [
   "bitrix_search_crm",
   "bitrix_get_crm_item",
@@ -114,7 +131,10 @@ for (const forbidden of [
 }
 
 // The capability table is the permission surface: nothing writable may reach it.
-const catalog = await readFile(new URL("src/catalog.ts", root), "utf8");
+const catalog = await readFile(
+  new URL("src/providers/bitrix24/catalog.ts", root),
+  "utf8",
+);
 const methods = [...catalog.matchAll(/method: "([^"]+)"/gu)].map(
   (match) => match[1],
 );
@@ -144,6 +164,26 @@ for (const scope of [
   "disk",
 ]) {
   assert.match(catalog, new RegExp(`"${scope}"`, "u"));
+}
+
+// One directory per integration: the shared engine must not know any provider.
+for (const file of [
+  "src/broker.ts",
+  "src/repository.ts",
+  "src/types.ts",
+  "src/tool-kit.ts",
+  "src/coerce.ts",
+  "src/secrets/secret-store.ts",
+  "src/secrets/key-provider.ts",
+  "src/providers/contract.ts",
+  "src/providers/registry.ts",
+]) {
+  const source = await readFile(new URL(file, root), "utf8");
+  assert.doesNotMatch(
+    source,
+    /bitrix/iu,
+    `${file} must stay provider-agnostic`,
+  );
 }
 
 const host = await readFile(new URL("lib/index.js", root), "utf8");

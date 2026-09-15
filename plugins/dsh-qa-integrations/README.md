@@ -4,6 +4,10 @@
 
 Плагин добавляет в пользовательские настройки QA отдельный раздел **«Интеграции»**. Токен вводится один раз, шифруется на Host и никогда не возвращается браузеру. Выбор пользователя, integration id, secret id или токена отсутствует в model-visible схемах: principal берётся из DSH-сессии, а Bitrix user id — из сохранённой записи интеграции.
 
+## Структура
+
+Один каталог — одна интеграция. Всё, что знает про Bitrix24, лежит в `src/providers/bitrix24/` (каталог возможностей и операций, построение запросов, HTTP-граница, срез конфига, тулы). Общий слой — брокер, репозиторий, секреты, обвязка тулов — не знает ни одной интеграции по имени: capability это свободная строка, а `providers/contract.ts` описывает, что должен уметь провайдер. Порядок добавления следующей интеграции (GitLab, TeamCity, …) и правила, которые проверяет гейт пакета, — в [`src/providers/README.md`](src/providers/README.md).
+
 ## Инструменты
 
 CRM:
@@ -172,4 +176,4 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 pnpm --filter @yadsh/dsh-qa-integrations check
 ```
 
-Unit/integration набор проверяет AEAD, неверный ключ, rewrap, SSRF-ограничение webhook URL, redaction, отсутствие model-visible identity/secret selectors, отказ unowned/subagent-сессии, соответствие каждого tool операции каталога, read-only характер каталога, сужение возможностей по scopes вебхука и параллельную изоляцию Alice/Bob.
+Unit/integration набор проверяет AEAD, неверный ключ, rewrap, SSRF-ограничение webhook URL, redaction, отсутствие model-visible identity/secret selectors, отказ unowned/subagent-сессии, соответствие каждого tool операции каталога, read-only характер каталога, сужение возможностей по scopes вебхука и параллельную изоляцию Alice/Bob. Отдельный гейт следит за границей провайдеров: `verify:package` падает, если в общем слое появится имя конкретной интеграции, а тест `provider boundary` — если брокер начнёт зависеть от Bitrix24.

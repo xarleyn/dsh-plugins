@@ -1,27 +1,37 @@
 import path from "node:path";
 import z from "@deepseek-ai/schemastery";
-import type {
-  Bitrix24Flags,
-  QaIntegrationsConfig,
-  ResolvedQaIntegrationsConfig,
-} from "./types.js";
+import {
+  bitrix24ConfigSchema,
+  resolveBitrix24Config,
+  type Bitrix24Flags,
+} from "./providers/bitrix24/config.js";
 
 /**
- * Every read scope is on by default: a capability is offered to the agent only
- * when the connected webhook was actually granted the matching Bitrix24 scope,
- * so these switches bound what this deployment allows, they do not grant it.
+ * Composition root of the plugin config: the shared knobs plus one slice per
+ * provider. Adding a provider means adding its slice here and nothing else.
  */
-const BITRIX24_DEFAULTS: Bitrix24Flags = {
-  enabled: true,
-  crmRead: true,
-  chatRead: true,
-  openlinesRead: true,
-  userRead: true,
-  departmentRead: true,
-  tasksRead: true,
-  calendarRead: true,
-  diskRead: true,
-};
+export interface QaIntegrationsConfig {
+  readonly enabled?: boolean;
+  readonly dataPath?: string;
+  readonly masterKeyPath?: string;
+  readonly masterKeyVersion?: number;
+  readonly timeoutMs?: number;
+  readonly maxResponseBytes?: number;
+  /** Host allowlist for providers that dial an operator-approved domain. */
+  readonly allowedPortalSuffixes?: string[];
+  readonly bitrix24?: Partial<Bitrix24Flags>;
+}
+
+export interface ResolvedQaIntegrationsConfig {
+  readonly enabled: boolean;
+  readonly dataPath: string;
+  readonly masterKeyPath: string;
+  readonly masterKeyVersion: number;
+  readonly timeoutMs: number;
+  readonly maxResponseBytes: number;
+  readonly allowedPortalSuffixes: readonly string[];
+  readonly bitrix24: Bitrix24Flags;
+}
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   enabled: z.boolean().default(false),
@@ -33,19 +43,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   allowedPortalSuffixes: z
     .array(z.string())
     .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"]),
-  bitrix24: z
-    .object({
-      enabled: z.boolean().default(true),
-      crmRead: z.boolean().default(true),
-      chatRead: z.boolean().default(true),
-      openlinesRead: z.boolean().default(true),
-      userRead: z.boolean().default(true),
-      departmentRead: z.boolean().default(true),
-      tasksRead: z.boolean().default(true),
-      calendarRead: z.boolean().default(true),
-      diskRead: z.boolean().default(true),
-    })
-    .default(BITRIX24_DEFAULTS),
+  bitrix24: bitrix24ConfigSchema,
 });
 
 export function resolveConfig(
@@ -63,7 +61,6 @@ export function resolveConfig(
   )
     .map((suffix) => suffix.trim().toLowerCase())
     .filter((suffix) => suffix.startsWith(".") && suffix.length > 1);
-  const bitrix24 = input.bitrix24 ?? {};
   return Object.freeze({
     enabled: input.enabled ?? false,
     dataPath: input.dataPath?.trim() || path.join(base, "qa-integrations.json"),
@@ -73,17 +70,6 @@ export function resolveConfig(
     timeoutMs: input.timeoutMs ?? 15_000,
     maxResponseBytes: input.maxResponseBytes ?? 2_000_000,
     allowedPortalSuffixes: Object.freeze(suffixes),
-    bitrix24: Object.freeze({
-      enabled: bitrix24.enabled ?? BITRIX24_DEFAULTS.enabled,
-      crmRead: bitrix24.crmRead ?? BITRIX24_DEFAULTS.crmRead,
-      chatRead: bitrix24.chatRead ?? BITRIX24_DEFAULTS.chatRead,
-      openlinesRead: bitrix24.openlinesRead ?? BITRIX24_DEFAULTS.openlinesRead,
-      userRead: bitrix24.userRead ?? BITRIX24_DEFAULTS.userRead,
-      departmentRead:
-        bitrix24.departmentRead ?? BITRIX24_DEFAULTS.departmentRead,
-      tasksRead: bitrix24.tasksRead ?? BITRIX24_DEFAULTS.tasksRead,
-      calendarRead: bitrix24.calendarRead ?? BITRIX24_DEFAULTS.calendarRead,
-      diskRead: bitrix24.diskRead ?? BITRIX24_DEFAULTS.diskRead,
-    }),
+    bitrix24: resolveBitrix24Config(input.bitrix24),
   });
 }

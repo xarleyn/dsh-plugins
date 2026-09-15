@@ -1,23 +1,28 @@
-export type IntegrationProviderId = "bitrix24";
+export type IntegrationProviderId = string;
 export type IntegrationAuthKind = "token" | "oauth" | "mcp_token";
 export type IntegrationStatus = "pending" | "connected" | "error" | "revoked";
 export type IntegrationPolicyMode = "allow" | "confirm" | "deny";
 
 /**
- * One capability per Bitrix24 webhook scope the plugin can use. A capability
- * exists only when the deployment enables it AND the connected webhook was
- * actually granted the matching scope, so the Settings card never offers the
- * agent more than the portal allows.
+ * Capability id, free-form on purpose: every provider declares its own set in
+ * its own catalog (`providers/<id>/catalog.ts`) and this framework only moves
+ * ids around. A capability exists for a user when the deployment enables it AND
+ * the connected credential really grants it, so the Settings card never offers
+ * the agent more than the external service allows.
  */
-export type IntegrationCapability =
-  | "crm.read"
-  | "chat.read"
-  | "openlines.read"
-  | "user.read"
-  | "department.read"
-  | "tasks.read"
-  | "calendar.read"
-  | "disk.read";
+export type IntegrationCapability = string;
+
+/** How a capability is presented to the user; supplied by its provider. */
+export interface IntegrationCapabilityInfo {
+  readonly label: string;
+  readonly hint: string;
+}
+
+/** Effective policy of one granted capability. */
+export interface IntegrationPolicyEntry {
+  readonly capability: IntegrationCapability;
+  readonly mode: IntegrationPolicyMode;
+}
 
 export interface IntegrationPrincipal {
   readonly userId: string;
@@ -32,10 +37,18 @@ export interface IntegrationSummary {
   readonly credentialConfigured: boolean;
   readonly credentialUpdatedAt: string | null;
   readonly capabilities: readonly IntegrationCapability[];
-  /** Present only for capabilities the connected webhook actually grants. */
-  readonly policy: Readonly<
-    Partial<Record<IntegrationCapability, IntegrationPolicyMode>>
+  /**
+   * Labels and hints for every capability the provider declares, so a client
+   * can render a provider it has never heard of.
+   */
+  readonly capabilityInfo: Readonly<
+    Record<IntegrationCapability, IntegrationCapabilityInfo>
   >;
+  /**
+   * Effective policy of every capability the connected credential grants; a
+   * capability outside this list is not granted at all.
+   */
+  readonly policy: readonly IntegrationPolicyEntry[];
   readonly lastValidatedAt: string | null;
   readonly errorCode: string | null;
 }
@@ -49,7 +62,7 @@ export interface IntegrationProviderSummary {
 }
 
 export interface CredentialInput {
-  /** Write-only Bitrix24 webhook URL; never appears in a response. */
+  /** Write-only credential; never appears in a response. */
   readonly token: string;
 }
 
@@ -127,39 +140,4 @@ export interface IntegrationToolResult {
   readonly provider: IntegrationProviderId;
   readonly operation: string;
   readonly data: Record<string, IntegrationJsonValue>;
-}
-
-/** Deployment switch per Bitrix24 webhook scope. */
-export interface Bitrix24Flags {
-  readonly enabled: boolean;
-  readonly crmRead: boolean;
-  readonly chatRead: boolean;
-  readonly openlinesRead: boolean;
-  readonly userRead: boolean;
-  readonly departmentRead: boolean;
-  readonly tasksRead: boolean;
-  readonly calendarRead: boolean;
-  readonly diskRead: boolean;
-}
-
-export interface QaIntegrationsConfig {
-  readonly enabled?: boolean;
-  readonly dataPath?: string;
-  readonly masterKeyPath?: string;
-  readonly masterKeyVersion?: number;
-  readonly timeoutMs?: number;
-  readonly maxResponseBytes?: number;
-  readonly allowedPortalSuffixes?: string[];
-  readonly bitrix24?: Partial<Bitrix24Flags>;
-}
-
-export interface ResolvedQaIntegrationsConfig {
-  readonly enabled: boolean;
-  readonly dataPath: string;
-  readonly masterKeyPath: string;
-  readonly masterKeyVersion: number;
-  readonly timeoutMs: number;
-  readonly maxResponseBytes: number;
-  readonly allowedPortalSuffixes: readonly string[];
-  readonly bitrix24: Bitrix24Flags;
 }

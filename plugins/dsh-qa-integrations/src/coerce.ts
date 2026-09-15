@@ -59,7 +59,7 @@ export function optionalBoolean(
   return value;
 }
 
-/** Bitrix calendar methods accept `YYYY-MM-DD`. */
+/** Date-only fields, as most REST APIs declare them. */
 export function requiredDate(value: unknown, field: string): string {
   const normalized = requiredText(value, field, 10, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/u.test(normalized)) invalid(field);
@@ -106,14 +106,11 @@ export function requiredStringList(
   );
 }
 
-/** `chat1489` and `1489` both name the numeric chat id Bitrix search methods take. */
-export function chatIdFromDialog(dialogId: string, field: string): number {
-  const numeric = dialogId.replace(/^chat/iu, "");
-  if (!/^\d+$/u.test(numeric)) invalid(field);
-  return requiredInteger(Number(numeric), field);
-}
-
-/** The connected Bitrix user, resolved server-side from the stored integration. */
+/**
+ * The external account id, resolved server-side from the stored integration. It
+ * backs "mine" defaults, so an operation that needs it must fail closed rather
+ * than guess when the provider never reported one.
+ */
 export function externalUserIdFrom(
   externalUserId: string | undefined,
   operation: string,
@@ -121,7 +118,7 @@ export function externalUserIdFrom(
   if (externalUserId === undefined || !/^\d+$/u.test(externalUserId)) {
     throw new IntegrationError(
       "InvalidRequest",
-      `${operation} needs the connected Bitrix user, which is unknown`,
+      `${operation} needs the connected account id, which is unknown`,
     );
   }
   return Number(externalUserId);

@@ -1,5 +1,4 @@
 import {
-  chatIdFromDialog,
   externalUserIdFrom,
   optionalBoolean,
   optionalDate,
@@ -10,8 +9,17 @@ import {
   requiredIntegerList,
   requiredStringList,
   requiredText,
-} from "../coerce.js";
-import { IntegrationError } from "../errors.js";
+} from "../../coerce.js";
+import { IntegrationError } from "../../errors.js";
+
+/** `chat1489` and `1489` both name the numeric chat id search methods take. */
+function chatIdFromDialog(dialogId: string, field: string): number {
+  const numeric = dialogId.replace(/^chat/iu, "");
+  if (!/^\d+$/u.test(numeric)) {
+    throw new IntegrationError("InvalidRequest", `${field} is invalid`);
+  }
+  return requiredInteger(Number(numeric), field);
+}
 
 export interface OperationContext {
   /** Bitrix user id of the webhook owner, resolved from the stored integration. */

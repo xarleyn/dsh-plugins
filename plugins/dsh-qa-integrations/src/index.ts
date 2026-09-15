@@ -7,9 +7,13 @@ import {
 } from "@yadsh/dsh-plugin-log";
 import type { QaSurface } from "@yadsh/dsh-qa-surface";
 import { IntegrationBroker } from "./broker.js";
-import { ConfigSchema, resolveConfig } from "./config.js";
+import {
+  ConfigSchema,
+  resolveConfig,
+  type QaIntegrationsConfig,
+} from "./config.js";
 import { IntegrationError, publicIntegrationError } from "./errors.js";
-import { Bitrix24Provider } from "./providers/bitrix24.js";
+import Bitrix24Provider from "./providers/bitrix24/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
@@ -21,7 +25,6 @@ import type {
   IntegrationProviderSummary,
   IntegrationSummary,
   PolicyPatch,
-  QaIntegrationsConfig,
 } from "./types.js";
 
 export const name = "dsh-qa-integrations";
@@ -61,10 +64,10 @@ export class QaIntegrations extends TypertRemoteService {
       ),
     );
     const providers = new IntegrationProviderRegistry();
-    if (config.bitrix24.enabled)
+    if (config.bitrix24.enabled) {
       providers.register(new Bitrix24Provider(config));
+    }
     this.broker = new IntegrationBroker(
-      config,
       repository,
       secrets,
       providers,
@@ -125,7 +128,7 @@ export class QaIntegrations extends TypertRemoteService {
     input: CredentialInput,
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connectBitrix(principal, input),
+      this.broker.connect(principal, "bitrix24", input),
     );
   }
 
@@ -194,19 +197,40 @@ export class QaIntegrations extends TypertRemoteService {
 
 export { IntegrationBroker } from "./broker.js";
 export {
+  ConfigSchema,
+  resolveConfig,
+  type QaIntegrationsConfig,
+  type ResolvedQaIntegrationsConfig,
+} from "./config.js";
+export { IntegrationError } from "./errors.js";
+export {
   BITRIX_CAPABILITIES,
   BITRIX_OPERATIONS,
+  BITRIX24_CAPABILITY_INFO,
+  bitrix24OperationCapability,
   enabledCapabilities,
+  type Bitrix24Capability,
   type Bitrix24CapabilityDefinition,
   type BitrixOperationDefinition,
-} from "./catalog.js";
-export { ConfigSchema, resolveConfig } from "./config.js";
-export { IntegrationError } from "./errors.js";
-export { Bitrix24Provider, parseBitrixWebhook } from "./providers/bitrix24.js";
+} from "./providers/bitrix24/catalog.js";
+export {
+  BITRIX24_DEFAULTS,
+  bitrix24ConfigSchema,
+  resolveBitrix24Config,
+  type Bitrix24Flags,
+} from "./providers/bitrix24/config.js";
+export {
+  Bitrix24Provider,
+  parseBitrixWebhook,
+} from "./providers/bitrix24/index.js";
 export {
   BITRIX_HANDLERS,
   BITRIX_PROJECTIONS,
-} from "./providers/bitrix24-operations.js";
+} from "./providers/bitrix24/operations.js";
+export {
+  createBitrix24Tools,
+  BITRIX24_TOOL_NAMES,
+} from "./providers/bitrix24/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {
@@ -215,6 +239,12 @@ export {
   type KeyProvider,
 } from "./secrets/key-provider.js";
 export { SecretStore } from "./secrets/secret-store.js";
+export { createToolKit, type ToolKitOptions } from "./tool-kit.js";
 export { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
 export type * from "./types.js";
+export {
+  BitrixTransport,
+  credentialFromPlaintext,
+  type BitrixCredential,
+} from "./providers/bitrix24/transport.js";
 export default QaIntegrations;
