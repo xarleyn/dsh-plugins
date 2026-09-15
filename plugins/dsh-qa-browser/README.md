@@ -87,8 +87,9 @@ The QA panel uses the existing DSH Remote transport and QA bearer credential.
 It never embeds the target page in an iframe, persists the credential, or opens
 a second server. Frames are rejected above 5 MiB.
 
-For a containerized Harness, see [docs/DOCKER.md](docs/DOCKER.md). Chromium and
-its OS libraries must be installed inside the Harness image.
+For a containerized Harness, see the
+[Docker deployment guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-browser/docs/DOCKER.md).
+Chromium and its OS libraries must be installed inside the Harness image.
 
 ## Development
 
