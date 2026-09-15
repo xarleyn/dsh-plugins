@@ -143,6 +143,15 @@ export const BITRIX_OPERATIONS: Readonly<
     capability: "crm.read",
     method: "crm.duplicate.findbycomm",
   },
+  "crm.requisites": {
+    capability: "crm.read",
+    method: "crm.requisite.list",
+    list: "self",
+  },
+  "crm.callTranscript": {
+    capability: "crm.read",
+    method: "crm.activity.call.getTranscript",
+  },
   "user.current": { capability: "user.read", method: "user.current" },
   /**
    * Bitrix24 documents `user.search` inconsistently (the parameter table wants
@@ -151,6 +160,7 @@ export const BITRIX_OPERATIONS: Readonly<
    * shape and `NAME_SEARCH` gives the same accelerated name search.
    */
   "user.list": { capability: "user.read", method: "user.get", list: "self" },
+  "user.fields": { capability: "user.read", method: "user.fields" },
   "user.departments": {
     capability: "department.read",
     method: "department.get",
@@ -179,6 +189,20 @@ export const BITRIX_OPERATIONS: Readonly<
     method: "im.search.user.list",
     list: "map",
   },
+  "chat.find": {
+    capability: "chat.read",
+    method: "im.chat.get",
+  },
+  "chat.participants": {
+    capability: "chat.read",
+    method: "im.chat.user.list",
+    list: "self",
+  },
+  "chat.userData": {
+    capability: "chat.read",
+    method: "im.user.list.get",
+    list: "self",
+  },
   "openlines.dialog": {
     capability: "openlines.read",
     method: "imopenlines.dialog.get",
@@ -193,6 +217,26 @@ export const BITRIX_OPERATIONS: Readonly<
     list: "tasks",
   },
   "tasks.get": { capability: "tasks.read", method: "tasks.task.get" },
+  "tasks.history": {
+    capability: "tasks.read",
+    method: "tasks.task.history.list",
+    list: "list",
+  },
+  "tasks.results": {
+    capability: "tasks.read",
+    method: "tasks.task.result.list",
+    list: "self",
+  },
+  /**
+   * The only operation with a positional body: Bitrix24 documents that
+   * `task.elapseditem.getlist` takes `[taskId, order, filter, select, params]`
+   * as a JSON array and fails when they arrive as named fields.
+   */
+  "tasks.elapsed": {
+    capability: "tasks.read",
+    method: "task.elapseditem.getlist",
+    list: "self",
+  },
   "calendar.events": {
     capability: "calendar.read",
     method: "calendar.event.get",
@@ -208,6 +252,21 @@ export const BITRIX_OPERATIONS: Readonly<
     list: "self",
   },
   "disk.file": { capability: "disk.read", method: "disk.file.get" },
+  "disk.storages": {
+    capability: "disk.read",
+    method: "disk.storage.getList",
+    list: "self",
+  },
+  "disk.storageChildren": {
+    capability: "disk.read",
+    method: "disk.storage.getChildren",
+    list: "self",
+  },
+  "disk.folderChildren": {
+    capability: "disk.read",
+    method: "disk.folder.getChildren",
+    list: "self",
+  },
 });
 
 /** Capabilities this deployment allows, in catalog order. */

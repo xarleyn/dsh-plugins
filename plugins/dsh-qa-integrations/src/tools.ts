@@ -32,22 +32,34 @@ export const INTEGRATION_TOOL_NAMES = [
   "bitrix_get_crm_stage_history",
   "bitrix_get_crm_product_rows",
   "bitrix_find_crm_duplicates",
+  "bitrix_get_crm_requisites",
+  "bitrix_get_call_transcript",
   "bitrix_get_current_user",
   "bitrix_search_users",
   "bitrix_get_departments",
+  "bitrix_get_user_fields",
   "bitrix_search_chats",
   "bitrix_get_chat_messages",
   "bitrix_search_chat_messages",
   "bitrix_get_recent_chats",
   "bitrix_search_chat_users",
+  "bitrix_find_chat",
+  "bitrix_get_chat_participants",
+  "bitrix_get_chat_user_data",
   "bitrix_get_openline_dialog",
   "bitrix_get_openline_history",
   "bitrix_search_tasks",
   "bitrix_get_task",
+  "bitrix_get_task_history",
+  "bitrix_get_task_results",
+  "bitrix_get_task_elapsed_time",
   "bitrix_get_calendar_events",
   "bitrix_get_calendar_accessibility",
   "bitrix_search_files",
   "bitrix_get_file",
+  "bitrix_get_drives",
+  "bitrix_get_storage_items",
+  "bitrix_get_folder_items",
 ] as const;
 
 const ENTITY_TYPE_HINT =
@@ -472,6 +484,51 @@ export function createIntegrationTools(options: {
     }),
 
     tool({
+      name: "bitrix_get_crm_requisites",
+      description:
+        "List the billing requisites (ИНН, КПП, address, bank details) of a contact or a company. Read-only; the portal returns every available field.",
+      parameters: {
+        entityTypeId: {
+          type: "number",
+          required: true,
+          description: "Requisite owner type: 3 contact, 4 company.",
+        },
+        entityId: {
+          type: "number",
+          required: true,
+          description: "Contact or company id.",
+        },
+        start: { type: "number", description: START_HINT },
+      },
+      operation: "crm.requisites",
+      input: (args) => ({
+        entityTypeId: requiredInteger(args["entityTypeId"], "entityTypeId"),
+        entityId: requiredInteger(args["entityId"], "entityId"),
+        ...(args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) }),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_call_transcript",
+      description:
+        "Read the ready-made AI transcription of one call activity. Read-only; it never starts transcription generation, and answers null while the transcription is not ready or when call processing failed.",
+      parameters: {
+        activityId: {
+          type: "number",
+          required: true,
+          description:
+            "Call activity id, for example from bitrix_get_crm_activities (activities of type 2).",
+        },
+      },
+      operation: "crm.callTranscript",
+      input: (args) => ({
+        activityId: requiredInteger(args["activityId"], "activityId"),
+      }),
+    }),
+
+    tool({
       name: "bitrix_get_current_user",
       description:
         "Identify the Bitrix24 user this connection belongs to. Read-only.",
@@ -543,6 +600,15 @@ export function createIntegrationTools(options: {
         args["parentId"] === undefined
           ? {}
           : { parentId: optionalInteger(args["parentId"], "parentId") },
+    }),
+
+    tool({
+      name: "bitrix_get_user_fields",
+      description:
+        "List the employee field codes the connected webhook may read, with their labels. Read-only; call it before answering questions about employee fields. Custom user fields are not included.",
+      parameters: {},
+      operation: "user.fields",
+      input: () => ({}),
     }),
 
     tool({
@@ -708,9 +774,84 @@ export function createIntegrationTools(options: {
     }),
 
     tool({
+      name: "bitrix_find_chat",
+      description:
+        "Find the chat attached to another Bitrix24 object: the discussion chat of a CRM entity, an open-line chat, a task chat, a calendar event chat or a group chat. Read-only; returns the chat id to use with the other chat tools, or null when there is none.",
+      parameters: {
+        entityType: {
+          type: "string",
+          enum: [
+            "CRM",
+            "LINES",
+            "LIVECHAT",
+            "TASKS",
+            "TASKS_TASK",
+            "CALENDAR",
+            "SONET_GROUP",
+            "MAIL",
+            "CALL",
+            "VIDEOCONF",
+            "ANNOUNCEMENT",
+            "AI_ASSISTANT_PRIVATE",
+          ],
+          required: true,
+          description:
+            "What entityId identifies. CRM is the entity's discussion chat, LINES the open line seen by the operator, LIVECHAT the same dialog seen by the client.",
+        },
+        entityId: {
+          type: "string",
+          required: true,
+          description:
+            'Entity code in the format that entityType expects: "DEAL|1663", "LEAD|13", "CONTACT|25", "COMPANY|7" for CRM, "DYNAMIC_<entityTypeId>|<itemId>" for smart processes, a task id for TASKS, a calendar event id for CALENDAR, a group id for SONET_GROUP.',
+        },
+      },
+      operation: "chat.find",
+      input: (args) => ({
+        entityType: requiredText(args["entityType"], "entityType", 2, 32),
+        entityId: requiredText(args["entityId"], "entityId", 1, 200),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_chat_participants",
+      description:
+        "List the user ids participating in a chat. Read-only; the portal returns an empty list when the connected user may not see the participants.",
+      parameters: {
+        chatId: {
+          type: "number",
+          required: true,
+          description:
+            "Numeric chat id from bitrix_find_chat, bitrix_search_chats or bitrix_get_openline_dialog.",
+        },
+      },
+      operation: "chat.participants",
+      input: (args) => ({
+        chatId: requiredInteger(args["chatId"], "chatId"),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_chat_user_data",
+      description:
+        "Read chat profiles of the given users: full name, position, departments, phones, e-mail and presence. Read-only; use it to put names to the ids from bitrix_get_chat_participants.",
+      parameters: {
+        users: {
+          type: "array",
+          items: { type: "number" },
+          required: true,
+          description: "Bitrix user ids, up to 50.",
+        },
+      },
+      operation: "chat.userData",
+      input: (args) => ({
+        users: requiredIntegerList(args["users"], "users", 50),
+      }),
+    }),
+
+    tool({
       name: "bitrix_get_openline_dialog",
       description:
-        "Read one open-line (customer) dialog: participants, connector entity link, counters and permissions. Read-only. Pass a dialogId or a sessionId, at least one.",
+        "Read one open-line (customer) dialog: participants, connector entity link, counters and permissions. Read-only. Pass a dialogId, a sessionId or the client's userCode, at least one.",
       parameters: {
         dialogId: {
           type: "string",
@@ -721,6 +862,11 @@ export function createIntegrationTools(options: {
           description:
             "Session id from bitrix_get_openline_history or bitrix_get_recent_chats.",
         },
+        userCode: {
+          type: "string",
+          description:
+            'External client code from a dialog\'s entity_id or a session\'s entityId, for example "livechat|22|1761|587" or "telegrambot|2|209607941|744". Finds the dialog from the client side.',
+        },
       },
       operation: "openlines.dialog",
       input: (args) => ({
@@ -730,6 +876,9 @@ export function createIntegrationTools(options: {
         ...(args["sessionId"] === undefined
           ? {}
           : { sessionId: optionalInteger(args["sessionId"], "sessionId") }),
+        ...(args["userCode"] === undefined
+          ? {}
+          : { userCode: requiredText(args["userCode"], "userCode", 3, 200) }),
       }),
     }),
 
@@ -837,6 +986,88 @@ export function createIntegrationTools(options: {
       },
       operation: "tasks.get",
       input: (args) => ({ taskId: requiredInteger(args["taskId"], "taskId") }),
+    }),
+
+    tool({
+      name: "bitrix_get_task_history",
+      description:
+        "Read the change log of a task: what changed, when and by whom. Read-only; Bitrix24 returns a single page of up to 50 records, newest first unless the order is reversed here.",
+      parameters: {
+        taskId: {
+          type: "number",
+          required: true,
+          description: "Task id.",
+        },
+        event: {
+          type: "string",
+          description:
+            "Only records of one event type, for example COMMENT, REAL_STATUS, DEADLINE, RESPONSIBLE_ID, CREATED_BY, GROUP_ID, CHECKLIST_ITEM_CHECK, TIME_SPENT_IN_LOGS.",
+        },
+        start: { type: "number", description: START_HINT },
+      },
+      operation: "tasks.history",
+      input: (args) => ({
+        taskId: requiredInteger(args["taskId"], "taskId"),
+        ...(args["event"] === undefined
+          ? {}
+          : { event: requiredText(args["event"], "event", 2, 40) }),
+        ...(args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) }),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_task_results",
+      description:
+        "Read the results attached to a task: text, author, dates and files. Read-only.",
+      parameters: {
+        taskId: {
+          type: "number",
+          required: true,
+          description: "Task id.",
+        },
+        start: { type: "number", description: START_HINT },
+      },
+      operation: "tasks.results",
+      input: (args) => ({
+        taskId: requiredInteger(args["taskId"], "taskId"),
+        ...(args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) }),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_task_elapsed_time",
+      description:
+        "Read the time tracking records of a task: who logged how long, with the comment and the date. Read-only; 50 records per page.",
+      parameters: {
+        taskId: {
+          type: "number",
+          required: true,
+          description: "Task id.",
+        },
+        loggedBy: {
+          type: "number",
+          description:
+            "Only the records logged by this Bitrix user id; a filter on the records, not an identity selector.",
+        },
+        page: {
+          type: "number",
+          description: "Page number starting at 1; defaults to 1.",
+        },
+      },
+      operation: "tasks.elapsed",
+      input: (args) => ({
+        taskId: requiredInteger(args["taskId"], "taskId"),
+        ...(args["loggedBy"] === undefined
+          ? {}
+          : { loggedBy: optionalInteger(args["loggedBy"], "loggedBy") }),
+        ...(args["page"] === undefined
+          ? {}
+          : { page: optionalInteger(args["page"], "page") }),
+      }),
     }),
 
     tool({
@@ -970,6 +1201,67 @@ export function createIntegrationTools(options: {
       },
       operation: "disk.file",
       input: (args) => ({ id: requiredInteger(args["id"], "id") }),
+    }),
+
+    tool({
+      name: "bitrix_get_drives",
+      description:
+        "List the Bitrix24 Drive storages the connected user can read, with the storage ids the other Drive tools take. Read-only.",
+      parameters: {
+        start: {
+          type: "number",
+          description:
+            "Pagination offset; Bitrix returns at most 50 storages per page.",
+        },
+      },
+      operation: "disk.storages",
+      input: (args) =>
+        args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) },
+    }),
+
+    tool({
+      name: "bitrix_get_storage_items",
+      description:
+        "List the files and folders in the root of one Drive storage. Read-only; only objects the connected user may read are returned.",
+      parameters: {
+        storageId: {
+          type: "number",
+          required: true,
+          description: "Storage id from bitrix_get_drives.",
+        },
+        start: { type: "number", description: START_HINT },
+      },
+      operation: "disk.storageChildren",
+      input: (args) => ({
+        storageId: requiredInteger(args["storageId"], "storageId"),
+        ...(args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) }),
+      }),
+    }),
+
+    tool({
+      name: "bitrix_get_folder_items",
+      description:
+        "List the files and folders inside one Drive folder. Read-only; only objects the connected user may read are returned.",
+      parameters: {
+        folderId: {
+          type: "number",
+          required: true,
+          description:
+            "Folder id from bitrix_get_storage_items or a nested bitrix_get_folder_items call.",
+        },
+        start: { type: "number", description: START_HINT },
+      },
+      operation: "disk.folderChildren",
+      input: (args) => ({
+        folderId: requiredInteger(args["folderId"], "folderId"),
+        ...(args["start"] === undefined
+          ? {}
+          : { start: optionalInteger(args["start"], "start", 0) }),
+      }),
     }),
   ];
 }

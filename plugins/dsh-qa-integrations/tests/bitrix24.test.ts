@@ -210,6 +210,133 @@ describe("Bitrix24 provider", () => {
     ).resolves.toEqual({ items: [{ ID: 9 }], pagination: { start: 0 } });
   });
 
+  it("scopes requisites to their owner and never narrows the returned fields", async () => {
+    const { calls, fetcher } = stub({ "crm.requisite.list": { result: [] } });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    await provider.execute({ credential: CREDENTIAL }, "crm.requisites", {
+      entityTypeId: 4,
+      entityId: 3027,
+    });
+    expect(calls[0]?.body).toEqual({
+      filter: { ENTITY_TYPE_ID: 4, ENTITY_ID: 3027 },
+      order: { ID: "ASC" },
+      start: 0,
+    });
+  });
+
+  it("reads a call transcript by activity and asks for chat data as a list", async () => {
+    const { calls, fetcher } = stub({
+      "crm.activity.call.getTranscript": { result: { transcription: "текст" } },
+      "im.chat.get": { result: { ID: 1437 } },
+      "im.chat.user.list": { result: [99, 1269] },
+      "im.user.list.get": { result: [{ id: 1269, name: "Пётр" }] },
+      "user.fields": { result: { ID: "ID", EMAIL: "E-Mail" } },
+    });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "crm.callTranscript", {
+        activityId: 12345,
+      }),
+    ).resolves.toEqual({ transcription: "текст" });
+    expect(calls[0]?.body).toEqual({ activityId: 12345 });
+
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "chat.find", {
+        entityType: "crm",
+        entityId: "DEAL|1663",
+      }),
+    ).resolves.toEqual({ ID: 1437 });
+    expect(calls[1]?.body).toEqual({
+      ENTITY_TYPE: "CRM",
+      ENTITY_ID: "DEAL|1663",
+    });
+
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "chat.participants", {
+        chatId: 2935,
+      }),
+    ).resolves.toEqual({ items: [99, 1269] });
+    expect(calls[2]?.body).toEqual({ CHAT_ID: 2935 });
+
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "chat.userData", {
+        users: [1269],
+      }),
+    ).resolves.toEqual({ items: [{ id: 1269, name: "Пётр" }] });
+    expect(calls[3]?.body).toEqual({ ID: [1269], RESULT_TYPE: "array" });
+
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "user.fields", {}),
+    ).resolves.toEqual({ ID: "ID", EMAIL: "E-Mail" });
+    expect(calls[4]?.body).toEqual({});
+  });
+
+  it("filters task history and sends elapsed time positionally", async () => {
+    const { calls, fetcher } = stub({
+      "tasks.task.history.list": { result: { list: [{ id: 1 }] } },
+      "task.elapseditem.getlist": { result: [{ ID: "153" }], total: 2 },
+      "disk.storage.getList": { result: [], total: 0 },
+      "disk.storage.getChildren": { result: [], total: 0 },
+      "disk.folder.getChildren": { result: [], total: 0 },
+    });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "tasks.history", {
+        taskId: 8137,
+        event: "comment",
+      }),
+    ).resolves.toEqual({ items: [{ id: 1 }], pagination: { start: 0 } });
+    expect(calls[0]?.body).toEqual({
+      taskId: 8137,
+      filter: { FIELD: "COMMENT" },
+      order: { createdDate: "ASC" },
+      start: 0,
+    });
+
+    // Bitrix24 documents a positional array body for this method and rejects
+    // the same values as named fields.
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "tasks.elapsed", {
+        taskId: 3839,
+        loggedBy: 1,
+      }),
+    ).resolves.toEqual({ items: [{ ID: "153" }], pagination: { total: 2 } });
+    expect(calls[1]?.body).toEqual([
+      3839,
+      { ID: "ASC" },
+      { USER_ID: 1 },
+      [
+        "ID",
+        "TASK_ID",
+        "USER_ID",
+        "MINUTES",
+        "SECONDS",
+        "COMMENT_TEXT",
+        "CREATED_DATE",
+        "DATE_START",
+        "DATE_STOP",
+      ],
+      { NAV_PARAMS: { nPageSize: 50, iNumPage: 1 } },
+    ]);
+
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "disk.storages", {}),
+    ).resolves.toEqual({ items: [], pagination: { start: 0, total: 0 } });
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "disk.storageChildren", {
+        storageId: 1357,
+      }),
+    ).resolves.toEqual({ items: [], pagination: { start: 0, total: 0 } });
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "disk.folderChildren", {
+        folderId: 8907,
+      }),
+    ).resolves.toEqual({ items: [], pagination: { start: 0, total: 0 } });
+    expect(calls[2]?.body).toEqual({ start: 0 });
+    expect(calls[3]?.body).toEqual({ id: 1357, start: 0 });
+    expect(calls[4]?.body).toEqual({ id: 8907, start: 0 });
+  });
+
   it("pages IM searches with OFFSET and still reports the cursor as start", async () => {
     const { calls, fetcher } = stub({
       "im.search.chat.list": { result: [{ id: 3 }], next: 40 },

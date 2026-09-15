@@ -21,7 +21,7 @@ export interface OperationContext {
 export type BitrixOperationHandler = (
   input: Readonly<Record<string, unknown>>,
   context: OperationContext,
-) => Record<string, unknown>;
+) => Record<string, unknown> | readonly unknown[];
 
 /** Deal stages are `DEAL_STAGE`, leads use `STATUS`; callers pass the rest raw. */
 const TIMELINE_ENTITY_TYPES: Readonly<Record<number, string>> = Object.freeze({
@@ -243,6 +243,26 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       };
     },
 
+    // Requisites belong to contacts and companies; the portal returns all
+    // available fields, so no `select` narrows the answer.
+    "crm.requisites": (input) => ({
+      filter: {
+        ENTITY_TYPE_ID: requiredInteger(
+          input["entityTypeId"],
+          "entityTypeId",
+          1,
+          128,
+        ),
+        ENTITY_ID: requiredInteger(input["entityId"], "entityId"),
+      },
+      order: { ID: "ASC" },
+      start: start(input),
+    }),
+
+    "crm.callTranscript": (input) => ({
+      activityId: requiredInteger(input["activityId"], "activityId"),
+    }),
+
     "user.current": () => ({}),
 
     "user.list": (input) => {
@@ -267,6 +287,8 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       }
       return { FILTER: filter, SORT: "ID", ORDER: "ASC", start: start(input) };
     },
+
+    "user.fields": () => ({}),
 
     "user.departments": (input) => {
       const parentId = optionalInteger(input["parentId"], "parentId");
@@ -327,18 +349,47 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       LIMIT: optionalInteger(input["limit"], "limit", 1, 50) ?? 10,
     }),
 
+    "chat.find": (input) => ({
+      ENTITY_TYPE: requiredText(
+        input["entityType"],
+        "entityType",
+        2,
+        32,
+      ).toUpperCase(),
+      ENTITY_ID: requiredText(input["entityId"], "entityId", 1, 200),
+    }),
+
+    "chat.participants": (input) => ({
+      CHAT_ID: requiredInteger(input["chatId"], "chatId"),
+    }),
+
+    "chat.userData": (input) => ({
+      ID: requiredIntegerList(input["users"], "users", 50),
+      RESULT_TYPE: "array",
+    }),
+
+    // imopenlines.dialog.get takes any one of four identifiers, and USER_CODE
+    // is the one that finds a dialog from the client side; the report also
+    // points at imopenlines.session.open for that lookup, but its documentation
+    // never certifies it as read-only while this method is a documented get.
     "openlines.dialog": (input) => {
       const dialogId = optionalText(input["dialogId"], "dialogId", 1, 80);
       const sessionId = optionalInteger(input["sessionId"], "sessionId");
-      if (dialogId === undefined && sessionId === undefined) {
+      const userCode = optionalText(input["userCode"], "userCode", 3, 200);
+      if (
+        dialogId === undefined &&
+        sessionId === undefined &&
+        userCode === undefined
+      ) {
         throw new IntegrationError(
           "InvalidRequest",
-          "dialogId or sessionId is required",
+          "dialogId, sessionId or userCode is required",
         );
       }
       return {
         ...(dialogId === undefined ? {} : { DIALOG_ID: dialogId }),
         ...(sessionId === undefined ? {} : { SESSION_ID: sessionId }),
+        ...(userCode === undefined ? {} : { USER_CODE: userCode }),
       };
     },
 
@@ -391,6 +442,50 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       taskId: requiredInteger(input["taskId"], "taskId"),
       select: ["*", "UF_CRM_TASK"],
     }),
+
+    "tasks.history": (input) => {
+      const event = optionalText(input["event"], "event", 2, 40);
+      return {
+        taskId: requiredInteger(input["taskId"], "taskId"),
+        ...(event === undefined
+          ? {}
+          : { filter: { FIELD: event.toUpperCase() } }),
+        order: { createdDate: "ASC" },
+        start: start(input),
+      };
+    },
+
+    "tasks.results": (input) => ({
+      taskId: requiredInteger(input["taskId"], "taskId"),
+      start: start(input),
+    }),
+
+    // Positional body: Bitrix24 rejects these five as named fields.
+    "tasks.elapsed": (input) => {
+      const loggedBy = optionalInteger(input["loggedBy"], "loggedBy");
+      return [
+        requiredInteger(input["taskId"], "taskId"),
+        { ID: "ASC" },
+        loggedBy === undefined ? {} : { USER_ID: loggedBy },
+        [
+          "ID",
+          "TASK_ID",
+          "USER_ID",
+          "MINUTES",
+          "SECONDS",
+          "COMMENT_TEXT",
+          "CREATED_DATE",
+          "DATE_START",
+          "DATE_STOP",
+        ],
+        {
+          NAV_PARAMS: {
+            nPageSize: 50,
+            iNumPage: optionalInteger(input["page"], "page") ?? 1,
+          },
+        },
+      ];
+    },
 
     "calendar.events": (input, context) => {
       const type = optionalText(input["type"], "type", 4, 20) ?? "user";
@@ -445,6 +540,18 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
 
     "disk.file": (input) => ({
       id: requiredInteger(input["id"], "id"),
+    }),
+
+    "disk.storages": (input) => ({ start: start(input) }),
+
+    "disk.storageChildren": (input) => ({
+      id: requiredInteger(input["storageId"], "storageId"),
+      start: start(input),
+    }),
+
+    "disk.folderChildren": (input) => ({
+      id: requiredInteger(input["folderId"], "folderId"),
+      start: start(input),
     }),
   });
 
