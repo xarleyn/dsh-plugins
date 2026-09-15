@@ -10,6 +10,12 @@ import {
   resolveGitlabConfig,
   type GitlabFlags,
 } from "./providers/gitlab/config.js";
+import {
+  resolveTeamCityConfig,
+  teamcityConfigSchema,
+  type TeamCityConfigInput,
+  type TeamCityFlags,
+} from "./providers/teamcity/config.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -26,6 +32,7 @@ export interface QaIntegrationsConfig {
   readonly allowedPortalSuffixes?: string[];
   readonly bitrix24?: Partial<Bitrix24Flags>;
   readonly gitlab?: Partial<GitlabFlags>;
+  readonly teamcity?: TeamCityConfigInput;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -38,6 +45,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly allowedPortalSuffixes: readonly string[];
   readonly bitrix24: Bitrix24Flags;
   readonly gitlab: GitlabFlags;
+  readonly teamcity: TeamCityFlags;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -52,6 +60,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
     .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"]),
   bitrix24: bitrix24ConfigSchema,
   gitlab: gitlabConfigSchema,
+  teamcity: teamcityConfigSchema,
 });
 
 export function resolveConfig(
@@ -80,5 +89,6 @@ export function resolveConfig(
     allowedPortalSuffixes: Object.freeze(suffixes),
     bitrix24: resolveBitrix24Config(input.bitrix24),
     gitlab: resolveGitlabConfig(input.gitlab),
+    teamcity: resolveTeamCityConfig(input.teamcity),
   });
 }

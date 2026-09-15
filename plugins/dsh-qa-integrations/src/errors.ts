@@ -15,7 +15,19 @@ export type IntegrationErrorCode =
    */
   | "ResourceNotFound"
   | "RateLimited"
-  | "ResultTooLarge";
+  | "ResultTooLarge"
+  /**
+   * The upstream did not answer inside the provider timeout. Distinct from
+   * `ProviderUnavailable` because it is worth retrying later as it is, while an
+   * unreachable host usually needs an operator.
+   */
+  | "UpstreamTimeout"
+  /**
+   * The TLS handshake failed — an expired, self-signed or otherwise untrusted
+   * certificate. The user cannot fix this from the connect form, so it is kept
+   * apart from a plain unreachable host.
+   */
+  | "TlsFailure";
 
 /** Safe domain error: message and code never include upstream bodies or secrets. */
 export class IntegrationError extends Error {

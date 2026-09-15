@@ -285,6 +285,7 @@
         "integrations",
         "bitrix24",
         "gitlab",
+        "teamcity",
         "credentials"
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",

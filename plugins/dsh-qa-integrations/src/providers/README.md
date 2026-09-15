@@ -29,6 +29,17 @@ src/
       transport.ts     HTTP-граница: инстанс из конфига, PRIVATE-TOKEN, повторы, лимит размера
       config.ts        список инстансов (SSRF-граница) и операции
       tools.ts         model-visible тулы провайдера
+    teamcity/
+      index.ts         TeamcityProvider: validate / execute / parseCredential
+      catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
+      operations.ts    locator-запросы, валидация аргументов, нормализация ответов
+      locators.ts      сборка locator-строки и её кодирование
+      logs.ts          чистка лога и выбор окна (head/tail/search)
+      artifacts.ts     политика путей и типов артефактов, бюджеты чтения
+      network.ts       политика адресов: allowlist/trusted-private, CIDR, порты
+      transport.ts     HTTP-граница: Bearer-токен, повторы, лимит размера, коды ошибок
+      config.ts        срез конфига вместе с политикой адресов
+      tools.ts         model-visible тулы провайдера
 ```
 
 ## Что должен реализовать новый провайдер (gitlab, teamcity, …)
@@ -60,6 +71,10 @@ src/
    Если подключение выбирает инстанс (GitLab), выбор живёт в форме
    подключения: `parseCredential(raw, options)` получает `instanceId` от
    операторского RPC, а не от модели, и запоминает его в credential.
+   Если адрес вводит пользователь (TeamCity), он приходит тем же путём —
+   `options.serverUrl` из формы подключения — и проверяется по политике
+   адресов из конфига оператора при сохранении **и** на каждом вызове, потому
+   что политику можно ужесточить уже после подключения.
 5. Композиция — три строки: срез в `src/config.ts`, `providers.register(...)`
    в `src/index.ts`, `create<Id>Tools(...)` в `src/tools.ts`.
 
@@ -68,10 +83,13 @@ src/
 - В общих модулях хоста (`broker.ts`, `repository.ts`, `secrets/**`,
   `tool-kit.ts`, `providers/contract.ts`, `providers/registry.ts`, `types.ts`)
   не должно быть упоминаний конкретной интеграции: `pnpm verify:package`
-  падает на `/bitrix/iu` вне `providers/bitrix24/`.
+  падает на `/bitrix|gitlab|teamcity/iu` вне каталога самого провайдера.
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
 - В каталоге GitLab пути сверяются с allow-list читающих эндпоинтов, а
   `transport.ts` обязан слать `GET`, `redirect: "error"` и токен только в
   заголовке `PRIVATE-TOKEN`.
+- В каталоге TeamCity у каждой операции `method: "GET"`, пути не заходят в
+  `/parameters`, тэги, комментарии, mute-ы и администрирование, а `transport.ts`
+  обязан слать `GET`, `redirect: "error"` и `Authorization: Bearer`.

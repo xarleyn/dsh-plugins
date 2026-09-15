@@ -9,6 +9,10 @@ import {
   createGitlabTools,
   GITLAB_TOOL_NAMES,
 } from "./providers/gitlab/tools.js";
+import {
+  createTeamcityTools,
+  TEAMCITY_TOOL_NAMES,
+} from "./providers/teamcity/tools.js";
 
 export interface IntegrationToolOptions {
   readonly broker: IntegrationBroker;
@@ -25,11 +29,16 @@ export interface IntegrationToolOptions {
 export const INTEGRATION_TOOL_NAMES = [
   ...BITRIX24_TOOL_NAMES,
   ...GITLAB_TOOL_NAMES,
+  ...TEAMCITY_TOOL_NAMES,
 ] as const;
 
 /** Provider tool modules, composed into one registration list. */
 export function createIntegrationTools(
   options: IntegrationToolOptions,
 ): readonly ToolDefinition[] {
-  return [...createBitrix24Tools(options), ...createGitlabTools(options)];
+  return [
+    ...createBitrix24Tools(options),
+    ...createGitlabTools(options),
+    ...createTeamcityTools(options),
+  ];
 }

@@ -1,8 +1,11 @@
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { createBitrix24Card, type IntegrationsRemote } from "./bitrix24.js";
 import { createGitlabCard, type GitlabRemote } from "./gitlab.js";
+import { createTeamcityCard, type TeamcityRemote } from "./teamcity.js";
 
-export type IntegrationsClientRemote = IntegrationsRemote & GitlabRemote;
+export type IntegrationsClientRemote = IntegrationsRemote &
+  GitlabRemote &
+  TeamcityRemote;
 
 /**
  * One settings section, one card per provider the deployment mounted. The card
@@ -15,6 +18,7 @@ export function createIntegrationsPage(
 ) {
   const Bitrix24Card = createBitrix24Card(remote);
   const GitlabCard = createGitlabCard(remote);
+  const TeamcityCard = createTeamcityCard(remote);
   return function IntegrationsPage({ token }: QaUserSettingsSectionProps) {
     return (
       <section
@@ -35,6 +39,7 @@ export function createIntegrationsPage(
         </div>
         {providers.includes("bitrix24") ? <Bitrix24Card token={token} /> : null}
         {providers.includes("gitlab") ? <GitlabCard token={token} /> : null}
+        {providers.includes("teamcity") ? <TeamcityCard token={token} /> : null}
         <p className="dsh-qa-integrations__notice">
           Данные, которые агент читает через интеграцию, могут передаваться
           настроенному для этого чата LLM-провайдеру для выполнения запроса.

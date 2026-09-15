@@ -33,6 +33,16 @@ for (const file of [
   "lib/providers/gitlab/transport.js",
   "lib/providers/gitlab/config.js",
   "lib/providers/gitlab/tools.js",
+  "lib/providers/teamcity/index.js",
+  "lib/providers/teamcity/catalog.js",
+  "lib/providers/teamcity/operations.js",
+  "lib/providers/teamcity/transport.js",
+  "lib/providers/teamcity/config.js",
+  "lib/providers/teamcity/tools.js",
+  "lib/providers/teamcity/artifacts.js",
+  "lib/providers/teamcity/logs.js",
+  "lib/providers/teamcity/network.js",
+  "lib/providers/teamcity/locators.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -60,6 +70,7 @@ assert.doesNotMatch(client, /Показать токен|Копировать т
 // mounted from one bundle and neither ships its provider's catalog.
 assert.match(client, /"bitrix24"/u);
 assert.match(client, /"gitlab"/u);
+assert.match(client, /"teamcity"/u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of the catalog.
@@ -274,7 +285,7 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix|gitlab/iu,
+    /bitrix|gitlab|teamcity/iu,
     `${file} must stay provider-agnostic`,
   );
 }
@@ -295,6 +306,103 @@ for (const label of [
   "Свой профиль",
 ]) {
   assert.match(gitlabCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
+}
+
+// The TeamCity provider has the same shape, with one extra rule: its server
+// address is user input, so the catalog may not carry it and the address policy
+// is re-checked on every call rather than only when the connection was stored.
+const teamcityTools = await readFile(
+  new URL("src/providers/teamcity/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "teamcity_connection_get",
+  "teamcity_projects",
+  "teamcity_build_configs",
+  "teamcity_builds",
+  "teamcity_build",
+  "teamcity_build_changes",
+  "teamcity_build_failures",
+  "teamcity_build_log",
+  "teamcity_queue",
+  "teamcity_investigations",
+  "teamcity_agents",
+  "teamcity_artifacts",
+  "teamcity_artifact_text",
+]) {
+  assert.match(teamcityTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "serverUrl:",
+  "instanceId:",
+  "locator:",
+  "raw_rest",
+]) {
+  assert.doesNotMatch(teamcityTools, new RegExp(forbidden, "u"));
+}
+
+const teamcityCatalog = await readFile(
+  new URL("src/providers/teamcity/catalog.ts", root),
+  "utf8",
+);
+const teamcityPaths = [...teamcityCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
+  (match) => match[1],
+);
+const teamcityToolCount = [...teamcityTools.matchAll(/operation: "([^"]+)"/gu)]
+  .length;
+assert.equal(
+  teamcityPaths.length,
+  teamcityToolCount,
+  "every TeamCity tool must name exactly one catalog operation",
+);
+assert.doesNotMatch(teamcityCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+for (const path of teamcityPaths) {
+  assert.match(path, /^\//u, `${path} must be an absolute API path`);
+  assert.doesNotMatch(
+    path,
+    /\/(?:parameters|resulting-properties|tags|comment|pin|mutes)|vcs-roots|agents\/\d|investigations\/\d|users/u,
+    `${path} is not a read-only endpoint`,
+  );
+}
+
+const teamcityTransport = await readFile(
+  new URL("src/providers/teamcity/transport.ts", root),
+  "utf8",
+);
+assert.match(teamcityTransport, /method: "GET"/u);
+assert.match(teamcityTransport, /redirect: "error"/u);
+assert.match(teamcityTransport, /authorization: `Bearer \$\{token\}`/u);
+const teamcityHost = await readFile(
+  new URL("src/providers/teamcity/index.ts", root),
+  "utf8",
+);
+assert.match(teamcityHost, /serverUrlProblem/u);
+assert.match(teamcityHost, /credentialServer/u);
+assert.match(teamcityHost, /sanitizeLog/u);
+assert.match(teamcityHost, /artifactBinaryProblem/u);
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of every catalog.
+const teamcityCapabilityCatalog = await readFile(
+  new URL("lib/providers/teamcity/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Читать сборки",
+  "Читать лог сборки",
+  "Читать причины падения",
+  "Читать артефакты",
+  "Читать очередь сборки",
+  "Читать агентов",
+]) {
+  assert.match(teamcityCapabilityCatalog, new RegExp(label, "u"));
   assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 
