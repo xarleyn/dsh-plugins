@@ -34,6 +34,7 @@ import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
+import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaTools } from "./qa-tools/index.js";
@@ -70,6 +71,7 @@ import type {
   QaSkillValidation,
   QaSourceFilePreview,
   QaWhoamiResult,
+  QaPrincipal,
 } from "./types.js";
 
 export const name = "qa-surface";
@@ -134,6 +136,8 @@ export class QaSurface extends TypertRemoteService {
   /** Personal-skill remote bodies; the wire signatures stay on this class. */
   private readonly skillRemotes: QaPersonalSkillRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
+  /** Root session principals attested for their owner, never for admin viewing. */
+  private readonly integrationPrincipals = new QaIntegrationPrincipalBindings();
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
@@ -238,6 +242,10 @@ export class QaSurface extends TypertRemoteService {
         ) as { authenticatedUrl?(baseUrl: string): string } | undefined,
       (message) => this.logger.warn("entry.token-bridge", { message }),
     );
+    ctx.effect(
+      () => () => this.integrationPrincipals.clear(),
+      "dsh-qa-surface.integration-principals",
+    );
     ctx.effect(() => async () => this.logger.close(), "dsh-qa-surface.logger");
     ctx.effect(
       () => () => this.admission.dispose(),
@@ -332,6 +340,30 @@ export class QaSurface extends TypertRemoteService {
       route: resolvedEntry.route.path,
       sessionPolicy: resolvedEntry.session.policy,
     });
+  }
+
+  /** Resolve browser authentication to the caller only; never accepts an id. */
+  principalForToken(token: string): QaPrincipal | undefined {
+    const accounts = this.accountRemotes.resolve(this.getConfig());
+    if (accounts === undefined) return undefined;
+    const result = accounts.whoami(token);
+    return result.authenticated ? { userId: result.user.id } : undefined;
+  }
+
+  /** Resolve only a directly QA-owned root session; delegated children fail closed. */
+  principalForSession(sessionId: string): QaPrincipal | undefined {
+    const accounts = this.accountRemotes.resolve(this.getConfig());
+    if (accounts === undefined) return undefined;
+    const userId = accounts.ownerIdOf(sessionId);
+    if (userId === undefined || accounts.identityOf(userId) === undefined) {
+      return undefined;
+    }
+    return this.integrationPrincipals.resolve(sessionId, userId);
+  }
+
+  /** Admit tools that independently enforce the same QA principal boundary. */
+  registerPrincipalScopedTools(names: readonly string[]): () => void {
+    return this.admission.registerPrincipalScopedTools(names);
   }
 
   getConfig(): ResolvedQaSurfaceConfig {
@@ -489,8 +521,14 @@ export class QaSurface extends TypertRemoteService {
             : { reasoningEffort: config.session.reasoningEffort }),
         });
       }
-      await this.admission.secureSession(token, String(created.sessionId));
-      return String(created.sessionId);
+      const sessionId = String(created.sessionId);
+      await this.admission.secureSession(token, sessionId);
+      this.integrationPrincipals.attest(
+        sessionId,
+        owner?.id,
+        accounts?.ownerIdOf(sessionId),
+      );
+      return sessionId;
     } catch (error) {
       if (!hostCreated && owner !== undefined) {
         accounts?.releaseSessionReservation(owner.id, String(id));
@@ -510,8 +548,15 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
   ): Promise<QaLockdownProof> {
     try {
-      return await this.admission.secureSession(token, sessionId);
+      const principal = this.principalForToken(token);
+      const proof = await this.admission.secureSession(token, sessionId);
+      const accounts = this.accountRemotes.resolve(this.getConfig());
+      const ownerId = accounts?.ownerIdOf(sessionId);
+      // Admin cross-user viewing is intentionally not credential delegation.
+      this.integrationPrincipals.attest(sessionId, principal?.userId, ownerId);
+      return proof;
     } catch (error) {
+      this.integrationPrincipals.attest(sessionId, undefined, undefined);
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
       // stay in this log only.
@@ -780,6 +825,7 @@ export type { QaAttestationReason } from "./attestation.js";
 export { QaAccounts, QaAccountsError } from "./accounts/store.js";
 export { entryRedirectRow, entryRedirectScript } from "./entry-redirect.js";
 export { registerQaNavigationRoute } from "./host-route.js";
+export { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";

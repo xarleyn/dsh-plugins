@@ -1,0 +1,10 @@
+{
+  "deepseekHarness": {
+    "channel": "next",
+    "range": ">=0.1.5-rc.2 <0.2.0",
+    "testedReleases": ["0.1.5-rc.2"],
+    "requiredHostFeatures": ["tools", "qaSurface"],
+    "requiredClientFeatures": ["qaUserSettingsSections"]
+  },
+  "node": ">=22"
+}

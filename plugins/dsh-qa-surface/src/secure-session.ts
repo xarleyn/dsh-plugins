@@ -65,6 +65,8 @@ function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
  */
 export class QaPolicyAdmission {
   private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
+  /** Host-trusted principal-scoped plugin tools enabled outside static config. */
+  private readonly principalScopedTools = new Set<string>();
   /**
    * Sessions the QA surface has attested. The provenance note is written for
    * exactly these, and a delegated child resolves through its root session, so
@@ -115,6 +117,19 @@ export class QaPolicyAdmission {
       this.appliedPolicies.delete(agent);
       this.workspaceAccess.delete(String(agent.session.id));
     });
+  }
+
+  /**
+   * Add tools whose own executor resolves the QA principal server-side.
+   * Enabling the contributing plugin is the operator decision; model arguments
+   * still cannot select an owner. The returned disposer mirrors tool lifetime.
+   */
+  registerPrincipalScopedTools(names: readonly string[]): () => void {
+    const normalized = names.map((name) => name.trim()).filter(Boolean);
+    for (const name of normalized) this.principalScopedTools.add(name);
+    return () => {
+      for (const name of normalized) this.principalScopedTools.delete(name);
+    };
   }
 
   /**
@@ -319,12 +334,15 @@ export class QaPolicyAdmission {
       );
     }
 
-    const policyAllow =
+    const configuredPolicyAllow =
       config.sources.enabled &&
       config.sources.subagents.enableReportToolFallback &&
       !lockdown.toolPolicy.allow.includes(QA_REPORT_SOURCES_TOOL)
         ? [...lockdown.toolPolicy.allow, QA_REPORT_SOURCES_TOOL]
         : lockdown.toolPolicy.allow;
+    const policyAllow = [
+      ...new Set([...configuredPolicyAllow, ...this.principalScopedTools]),
+    ];
     const policy = qaToolPolicyPlan(
       policyAllow,
       (toolName) => this.ctx.tools.get(toolName, agent) !== undefined,
@@ -436,6 +454,7 @@ export class QaPolicyAdmission {
     this.appliedPolicies.clear();
     this.attested.clear();
     this.workspaceAccess.clear();
+    this.principalScopedTools.clear();
     this.disposeWorkspaceGuard();
   }
 }

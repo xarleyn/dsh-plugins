@@ -546,6 +546,31 @@ are removed from keyboard navigation. Presentation state is browser-local and
 never enters the DSH Session log. Browser processes, tools, security policy and
 artifacts remain the responsibility of the Browser plugin, not QA Surface.
 
+### User Settings extensions
+
+An optional client plugin can add a first-class page to the signed-in user's
+existing `Настройки` dialog through the published
+`@yadsh/dsh-qa-surface/client/settings` contract. Register the page with the
+`qaUserSettingsSections` service; QA Surface owns the navigation and supplies
+only the current account token to the selected page. The extension must still
+authorize every Host call server-side and must not persist credentials in the
+browser.
+
+```ts
+import type { Context } from "@deepseek-ai/cordis"
+
+export const inject = ["qaUserSettingsSections"]
+
+export function apply(ctx: Context) {
+  ctx.effect(() => ctx.qaUserSettingsSections.register({
+    id: "integrations",
+    title: "Интеграции",
+    order: 40,
+    component: IntegrationsPage,
+  }))
+}
+```
+
 Subagents: the deployment may opt the delegation family (`subagent`,
 `subagent_fork`, `send_message`, `list_agents`, `interrupt_agent`) into the
 lockdown allow-list; the preset must mount them. Launches then render as
@@ -623,6 +648,9 @@ from the actual deployment. A name that is not registered fails closed. The
 Host restriction retains exact allow-listed tools from the agent preset's
 ancestor scope, and the additional execution guard also denies session-scoped
 tools and `run_code` unless their exact names are allowed.
+Host-installed integration plugins may add their own narrowly scoped tool names
+through the QA Surface service; those executors must independently resolve the
+owner-attested root principal and fail closed for unowned or child sessions.
 
 ## Security and deployment
 
