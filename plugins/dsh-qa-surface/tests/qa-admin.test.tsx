@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QaAdmin } from "../src/client/admin/QaAdmin.js";
 import type { QaAccessApi } from "../src/client/types.js";
 
@@ -148,6 +148,10 @@ function api() {
 }
 
 describe("QA administration", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/qa/admin/access/subroles");
+  });
+
   it("renders roles and the separate common capability editor", async () => {
     const { value } = api();
     render(
@@ -160,7 +164,7 @@ describe("QA administration", () => {
     );
     expect(await screen.findByText("Аналитик")).toBeTruthy();
     expect(screen.getByText("1 инструментов")).toBeTruthy();
-    fireEvent.click(screen.getByText("Общие возможности"));
+    fireEvent.click(screen.getByRole("button", { name: "Общие возможности" }));
     await waitFor(() => expect(screen.getByText("search")).toBeTruthy());
     expect(
       (screen.getByRole("checkbox", { name: /search/u }) as HTMLInputElement)
@@ -178,7 +182,9 @@ describe("QA administration", () => {
         onPreview={() => undefined}
       />,
     );
-    fireEvent.click(await screen.findByText("Общие возможности"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Общие возможности" }),
+    );
     fireEvent.click(screen.getByText("При активации навыка"));
     await waitFor(() =>
       expect(
@@ -201,7 +207,7 @@ describe("QA administration", () => {
         onPreview={() => undefined}
       />,
     );
-    fireEvent.click(await screen.findByText("Навыки"));
+    fireEvent.click(await screen.findByRole("button", { name: "Навыки" }));
     await waitFor(() =>
       expect(screen.getByText("browser-research")).toBeTruthy(),
     );
