@@ -25,8 +25,14 @@ function wireFailure(error: unknown): string {
 export async function createQaSession(args: {
   readonly createSession: QaCreateSession;
   readonly token: string;
+  readonly subroleId: string | null;
+  readonly adminPreview: boolean;
 }): Promise<string> {
-  const created = await args.createSession(args.token);
+  const created = await args.createSession(
+    args.token,
+    args.subroleId,
+    args.adminPreview,
+  );
   if (!created.ok) throw new Error(wireFailure(created.error));
   return created.value;
 }

@@ -12,8 +12,11 @@ import type {
   QaAccountSession,
   QaAccountStartersInput,
   QaAccountUserPublic,
+  QaAccessUser,
   QaClaimResult,
+  QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
+  QaUserAccess,
   QaWhoamiResult,
 } from "../types.js";
 import {
@@ -31,7 +34,7 @@ import {
   persistAccountsFile,
   reloadAccountsFileIfChanged,
 } from "./file.js";
-import type { AccountsFile, StoredUser } from "./file.js";
+import type { AccountsFile, StoredOwnership, StoredUser } from "./file.js";
 import { mintToken, verifyToken } from "./token.js";
 
 export { QaAccountsError } from "./errors.js";
@@ -278,6 +281,12 @@ export class QaAccounts {
     return user;
   }
 
+  /** Public identity behind a token; used by server-side access services. */
+  currentUser(token: string): QaAccountUserPublic {
+    this.reloadIfChanged();
+    return toPublic(this.requireUser(token));
+  }
+
   /**
    * Ownership gate for one session: claim unowned sessions for the requesting
    * user (first come, first served — the pre-accounts migration path), refuse
@@ -321,7 +330,11 @@ export class QaAccounts {
    * the Session exists. Browser callers therefore never get a race window in
    * which they can claim another user's newly created chat.
    */
-  reserveSession(token: string, sessionId: string): QaAccountUserPublic {
+  reserveSession(
+    token: string,
+    sessionId: string,
+    access?: { readonly subroleId: string; readonly adminPreview?: boolean },
+  ): QaAccountUserPublic {
     this.reloadIfChanged();
     const user = this.requireUser(token);
     if (
@@ -338,7 +351,12 @@ export class QaAccounts {
       ...this.file,
       ownership: {
         ...this.file.ownership,
-        [sessionId]: { userId: user.id, claimedAt: new Date().toISOString() },
+        [sessionId]: {
+          userId: user.id,
+          claimedAt: new Date().toISOString(),
+          ...(access === undefined ? {} : { subroleId: access.subroleId }),
+          ...(access?.adminPreview === true ? { adminPreview: true } : {}),
+        },
       },
     };
     this.save();
@@ -447,6 +465,87 @@ export class QaAccounts {
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
     }));
+  }
+
+  /** Browser-safe administration rows with capability assignments. */
+  listAccessUsers(
+    resolve: (stored: QaUserAccess | undefined) => QaUserAccess,
+  ): readonly QaAccessUser[] {
+    this.reloadIfChanged();
+    return this.file.users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      accessRole: user.role,
+      disabled: user.disabled === true,
+      access: resolve(user.qaAccess),
+    }));
+  }
+
+  /** Stored assignment for one account; callers normalize missing legacy rows. */
+  accessOf(userId: string): QaUserAccess | undefined {
+    this.reloadIfChanged();
+    return this.file.users.find((candidate) => candidate.id === userId)
+      ?.qaAccess;
+  }
+
+  /** Admin-owned assignment write addressed by stable account id. */
+  setAccess(userId: string, access: QaUserAccess): QaUserAccess {
+    this.reloadIfChanged();
+    const index = this.file.users.findIndex(
+      (candidate) => candidate.id === userId,
+    );
+    if (index === -1) {
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    }
+    const users = [...this.file.users];
+    users[index] = { ...(users[index] as StoredUser), qaAccess: access };
+    this.file = { ...this.file, users };
+    this.save();
+    return access;
+  }
+
+  /** Persisted role and immutable policy record for one Host session. */
+  sessionAccess(sessionId: string): StoredOwnership | undefined {
+    this.reloadIfChanged();
+    return this.file.ownership[sessionId];
+  }
+
+  /** Migrate a pre-subrole session or finalize its first policy snapshot. */
+  updateSessionAccess(
+    sessionId: string,
+    update: {
+      readonly subroleId?: string;
+      readonly adminPreview?: boolean;
+      readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
+    },
+  ): StoredOwnership {
+    this.reloadIfChanged();
+    const current = this.file.ownership[sessionId];
+    if (current === undefined) {
+      throw new QaAccountsError(
+        "session-owned-elsewhere",
+        "the session has no QA owner",
+      );
+    }
+    const next: StoredOwnership = {
+      ...current,
+      ...(update.subroleId === undefined
+        ? {}
+        : { subroleId: update.subroleId }),
+      ...(update.adminPreview === undefined
+        ? {}
+        : { adminPreview: update.adminPreview }),
+      ...(update.capabilitySnapshot === undefined
+        ? {}
+        : { capabilitySnapshot: update.capabilitySnapshot }),
+    };
+    this.file = {
+      ...this.file,
+      ownership: { ...this.file.ownership, [sessionId]: next },
+    };
+    this.save();
+    return next;
   }
 
   /** Create an account outside the self-registration gate. */

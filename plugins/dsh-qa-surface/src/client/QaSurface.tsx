@@ -21,6 +21,8 @@ import type {
   QaApprovalDecision,
   QaAttachmentDraft,
   QaQuestionAnswerItem,
+  QaCurrentAccess,
+  QaSubrole,
 } from "../types.js";
 import { effectiveQuickQuestions } from "../starters.js";
 import type { QaQuickQuestion } from "./types.js";
@@ -34,6 +36,7 @@ import { QaSessionController } from "./QaSessionController.js";
 import { attachmentLimits } from "./attachments.js";
 import type {
   QaApprovalApi,
+  QaAccessApi,
   QaBoundSkillApi,
   QaConversation,
   QaCreateSession,
@@ -88,6 +91,8 @@ import { QaPanelHost } from "./panels/PanelHost.js";
 import { QaPanelLauncher } from "./panels/PanelLauncher.js";
 import type { QaSurfacePanelRegistry } from "./panels/registry.js";
 import type { QaUserSettingsSections } from "./settings-extensions/index.js";
+import { QaAdmin } from "./admin/QaAdmin.js";
+import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -107,6 +112,7 @@ export interface QaSurfaceFace {
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
+  readonly accessApi: QaAccessApi;
   readonly sourceApi: QaSourceApi;
   /**
    * Personal-skill half of the plugin's namespace. Absent on a page whose Host
@@ -192,6 +198,13 @@ export function QaSurface(props: QaSurfaceProps) {
     accounts?.getSnapshot ?? noopAccountsSnapshot,
   );
   const accountsStage = accountsSnapshot.stage;
+  const adminRoute =
+    route.pathname.replace(/\/+$/u, "") ===
+    `${config.route.path === "/" ? "" : config.route.path}/admin`;
+  const [access, setAccess] = useState<QaCurrentAccess>();
+  const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
+  const [adminPreview, setAdminPreview] = useState(false);
+  const [sessionRole, setSessionRole] = useState<QaSubrole>();
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
@@ -201,7 +214,7 @@ export function QaSurface(props: QaSurfaceProps) {
   const activeTurnFrame = useRef<number | null>(null);
   const stateKey = qaStorageNamespace(config);
   const widthHandlers = useQaContentWidth({
-    active: route.active,
+    active: route.active && !adminRoute,
     root: chat,
     storage: window.localStorage,
     storageKey: `${stateKey}:content-width`,
@@ -209,7 +222,33 @@ export function QaSurface(props: QaSurfaceProps) {
   });
 
   useEffect(() => {
-    if (!route.active) {
+    if (accountsSnapshot.stage !== "authed") {
+      setAccess(undefined);
+      setSelectedSubrole(null);
+      setAdminPreview(false);
+      return;
+    }
+    let live = true;
+    void props.accessApi.current(accounts?.token() ?? "").then((result) => {
+      if (!live || !result.ok) return;
+      const preview =
+        accountsSnapshot.user.role === "admin" &&
+        typeof window.history.state?.qaPreview === "string"
+          ? result.value.subroles.find(
+              ({ id }) => id === window.history.state.qaPreview,
+            )
+          : undefined;
+      setAccess(result.value);
+      setSelectedSubrole(preview?.id ?? result.value.defaultSubrole);
+      setAdminPreview(preview !== undefined);
+    });
+    return () => {
+      live = false;
+    };
+  }, [accounts, accountsSnapshot, props.accessApi]);
+
+  useEffect(() => {
+    if (!route.active || adminRoute) {
       setController(undefined);
       return;
     }
@@ -217,6 +256,10 @@ export function QaSurface(props: QaSurfaceProps) {
     // The gate owns the frame until the browser holds a valid identity; the
     // session controller (and every attestation it triggers) waits for it.
     if (accountsEnabled && accountsStage !== "authed") {
+      setController(undefined);
+      return;
+    }
+    if (accountsEnabled && access === undefined) {
       setController(undefined);
       return;
     }
@@ -248,6 +291,8 @@ export function QaSurface(props: QaSurfaceProps) {
         ? {}
         : { questionApi: props.questionApi }),
       config,
+      initialSubrole: selectedSubrole,
+      adminPreview,
       storage: window.localStorage,
       accounts: facade,
       ...(props.fileUpload === undefined
@@ -260,6 +305,9 @@ export function QaSurface(props: QaSurfaceProps) {
   }, [
     accounts,
     accountsStage,
+    access,
+    adminPreview,
+    adminRoute,
     config,
     props.api,
     props.conversation,
@@ -328,6 +376,40 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
+  useEffect(() => {
+    if (
+      state.sessionId === null ||
+      accountsSnapshot.stage !== "authed" ||
+      adminRoute
+    ) {
+      setSessionRole(undefined);
+      return;
+    }
+    let live = true;
+    void props.accessApi
+      .session(accounts?.token() ?? "", state.sessionId)
+      .then((result) => {
+        if (!live || !result.ok) return;
+        setSessionRole(result.value.subrole);
+        setAdminPreview(result.value.adminPreview);
+        if (
+          !result.value.adminPreview &&
+          access?.subroles.some(({ id }) => id === result.value.subrole.id)
+        ) {
+          setSelectedSubrole(result.value.subrole.id);
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    access,
+    accounts,
+    accountsSnapshot.stage,
+    adminRoute,
+    props.accessApi,
+    state.sessionId,
+  ]);
   const listState = useSyncExternalStore(
     props.sessions.list.subscribe,
     props.sessions.list.getSnapshot,
@@ -712,6 +794,46 @@ export function QaSurface(props: QaSurfaceProps) {
     }
   }
 
+  if (
+    adminRoute &&
+    accountsSnapshot.stage === "authed" &&
+    accountsSnapshot.user.role === "admin"
+  ) {
+    return (
+      <QaAdmin
+        api={props.accessApi}
+        token={accounts?.token() ?? ""}
+        routePath={config.route.path}
+        onPreview={(role) => {
+          setSelectedSubrole(role.id);
+          setAdminPreview(true);
+          window.history.pushState(
+            { qaPreview: role.id },
+            "",
+            config.route.path,
+          );
+        }}
+      />
+    );
+  }
+  if (adminRoute) {
+    return (
+      <main className="dsh-qa-admin" aria-label="Администрирование QA">
+        <div className="dsh-qa-admin__loading">
+          <p>Этот раздел доступен только администратору.</p>
+          <button
+            type="button"
+            onClick={() =>
+              window.history.pushState(null, "", config.route.path)
+            }
+          >
+            Вернуться в чат
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <>
       {welcomeNotice}
@@ -755,6 +877,9 @@ export function QaSurface(props: QaSurfaceProps) {
         tabIndex={-1}
         onKeyDown={trapKeys}
       >
+        {adminPreview && sessionRole !== undefined ? (
+          <QaAdminPreviewBanner role={sessionRole.name} />
+        ) : null}
         {showSidebar ? (
           <QaSidebar
             rows={chatRows}
@@ -794,6 +919,48 @@ export function QaSurface(props: QaSurfaceProps) {
               viewingSubagent={state.viewingSubagent !== null}
               onCloseSubagent={handleCloseSubagent}
               agentPreset={config.session.agentPreset}
+              roleSelector={
+                access === undefined ||
+                selectedSubrole === null ||
+                adminPreview ? undefined : (
+                  <QaRoleSelector
+                    roles={access.subroles}
+                    selected={selectedSubrole}
+                    conversationStarted={!empty}
+                    disabled={
+                      config.session.policy === "fixed" ||
+                      state.phase === "creating" ||
+                      state.phase === "running"
+                    }
+                    onSelect={(id) => {
+                      window.history.replaceState(
+                        null,
+                        "",
+                        window.location.pathname,
+                      );
+                      setAdminPreview(false);
+                      setSelectedSubrole(id);
+                      setSessionRole(
+                        access.subroles.find((role) => role.id === id),
+                      );
+                      void controller?.selectSubrole(id, false);
+                    }}
+                  />
+                )
+              }
+              administration={
+                accountsSnapshot.stage === "authed" &&
+                accountsSnapshot.user.role === "admin"
+                  ? {
+                      onOpen: () =>
+                        window.history.pushState(
+                          null,
+                          "",
+                          `${config.route.path === "/" ? "" : config.route.path}/admin`,
+                        ),
+                    }
+                  : undefined
+              }
               agentCount={agentRows.length}
               agentsOpen={agentsOpen}
               onToggleAgents={rail.toggleAgents}

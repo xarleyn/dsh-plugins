@@ -70,6 +70,24 @@ matches its Host-delivered config and repeats the check before prompt
 admission. No private RPC handler, slash command, direct provider API, or DSH
 core patch is used.
 
+With accounts enabled, `QaAccessService` keeps authorization and agent
+capabilities separate. `QaRoleRepository` atomically owns role definitions and
+audit records, `QaCapabilityCatalog` adapts the live DSH tool/skill registries,
+and the resolver computes `system + Common + one active subrole`. The selected
+role and immutable effective policy are pinned to the account-owned session;
+the browser cannot request an unassigned role. An administrator's management
+role does not enter this calculation, except for an explicit, visibly marked
+preview session.
+
+Tool enforcement reuses the locked agent's scoped registry restriction and
+pre-execution guard. Principal-bound integration tools must also occur in the
+resolved role policy; their per-user principal checks remain an independent
+boundary. Skill enforcement registers an agent-local `skill` consumer that
+shadows the standard consumer, contributes a filtered `available_skills`
+prompt section, and applies the same allow-list when content is loaded. Policy
+IDs for temporarily absent plugins are preserved, but only capabilities found
+in the live scoped registries enter an effective policy.
+
 An indexed historical chat whose immutable preset, workspace or model no
 longer matches may keep its already-open transcript binding in compatibility
 read-only mode. It never receives a successful proof, and the projection and

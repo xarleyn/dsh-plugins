@@ -41,6 +41,7 @@ import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import { QaPolicyAdmission } from "./secure-session.js";
+import { QaAccessService } from "./access/service.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaTools } from "./qa-tools/index.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -77,6 +78,12 @@ import type {
   QaSourceFilePreview,
   QaWhoamiResult,
   QaPrincipal,
+  QaAccessAdminSnapshot,
+  QaCapabilitySelection,
+  QaCurrentAccess,
+  QaSessionAccess,
+  QaSubrole,
+  QaUserAccess,
 } from "./types.js";
 
 /**
@@ -149,6 +156,8 @@ export class QaSurface extends TypertRemoteService {
   private readonly tools!: QaTools;
   /** Account-remote bodies; the wire signatures stay on this class. */
   private readonly accountRemotes: QaAccountRemotes;
+  /** Roles, assignments, discovery and immutable per-session capability sets. */
+  private readonly access: QaAccessService;
   /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
   private readonly personalSkills: QaPersonalSkillsHost;
   /** Personal-skill remote bodies; the wire signatures stay on this class. */
@@ -186,6 +195,12 @@ export class QaSurface extends TypertRemoteService {
       getConfig: () => this.getConfig(),
       logger: this.logger,
     });
+    this.access = new QaAccessService(ctx, {
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
+      config: () => this.getConfig(),
+      logger: this.logger,
+      dynamicToolNames: () => this.tools?.catalogToolNames() ?? [],
+    });
     this.personalSkills = new QaPersonalSkillsHost({
       ctx,
       getConfig: () => this.getConfig(),
@@ -211,9 +226,13 @@ export class QaSurface extends TypertRemoteService {
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
       },
-      // Dynamically attached QA tools are not operator-configured allow-list
-      // entries, so the execution guard reads them per call instead.
+      // Legacy account-free sessions retain the dynamic catalog behavior;
+      // role-managed sessions authorize its known entries through the frozen
+      // capability policy instead.
       (agent) => this.tools?.activeToolNames(agent) ?? [],
+      (token, sessionId, agent) =>
+        this.access.policyForSession(token, sessionId, agent),
+      () => this.tools?.catalogToolNames() ?? [],
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -500,7 +519,11 @@ export class QaSurface extends TypertRemoteService {
    * intentionally not registered or attached as another DSH workspace.
    */
   @Remote("createSession")
-  async createSession(token: string): Promise<string> {
+  async createSession(
+    token: string,
+    subroleId: string | null,
+    adminPreview: boolean,
+  ): Promise<string> {
     const config = this.getConfig();
     if (config.session.policy === "fixed") {
       throw new Error("Fixed QA sessions cannot be created.");
@@ -511,7 +534,12 @@ export class QaSurface extends TypertRemoteService {
       accounts === undefined
         ? undefined
         : this.accountRemotes.run(() =>
-            accounts.reserveSession(token, String(id)),
+            this.access.reserveSession(
+              token,
+              String(id),
+              subroleId,
+              adminPreview,
+            ),
           );
     let hostCreated = false;
     try {
@@ -583,6 +611,80 @@ export class QaSurface extends TypertRemoteService {
         { cause: error },
       );
     }
+  }
+
+  /** The selector model for the signed-in user; admin grants are irrelevant. */
+  @Remote("accessCurrent")
+  accessCurrent(token: string): QaCurrentAccess {
+    return this.accountRemotes.run(() => this.access.current(token));
+  }
+
+  /** The immutable role pinned to an existing session. */
+  @Remote("accessSession")
+  accessSession(token: string, sessionId: string): QaSessionAccess {
+    return this.accountRemotes.run(
+      () => this.access.session(token, sessionId),
+      sessionId,
+    );
+  }
+
+  /** Complete administrator projection; authorization is checked before discovery. */
+  @Remote("accessAdminSnapshot")
+  async accessAdminSnapshot(token: string): Promise<QaAccessAdminSnapshot> {
+    try {
+      return await this.access.adminSnapshot(token);
+    } catch (error) {
+      return this.accountRemotes.run(() => {
+        throw error;
+      });
+    }
+  }
+
+  @Remote("accessCreateSubrole")
+  accessCreateSubrole(token: string, input: QaSubrole): QaSubrole {
+    return this.accountRemotes.run(() =>
+      this.access.createSubrole(token, input),
+    );
+  }
+
+  @Remote("accessUpdateSubrole")
+  accessUpdateSubrole(token: string, id: string, input: QaSubrole): QaSubrole {
+    return this.accountRemotes.run(() =>
+      this.access.updateSubrole(token, id, input),
+    );
+  }
+
+  @Remote("accessDeleteSubrole")
+  accessDeleteSubrole(
+    token: string,
+    id: string,
+    replacementId: string | null,
+  ): { readonly deleted: boolean } {
+    return this.accountRemotes.run(() => {
+      this.access.deleteSubrole(token, id, replacementId);
+      return { deleted: true };
+    });
+  }
+
+  @Remote("accessUpdateCommon")
+  accessUpdateCommon(
+    token: string,
+    input: QaCapabilitySelection,
+  ): QaCapabilitySelection {
+    return this.accountRemotes.run(() =>
+      this.access.updateCommon(token, input),
+    );
+  }
+
+  @Remote("accessUpdateAssignment")
+  accessUpdateAssignment(
+    token: string,
+    userId: string,
+    input: QaUserAccess,
+  ): QaUserAccess {
+    return this.accountRemotes.run(() =>
+      this.access.updateAssignment(token, userId, input),
+    );
   }
 
   /** Pin and attest the effective policy. The browser supplies identity only. */
@@ -882,6 +984,14 @@ export { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 export { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";
+export { QaAccessService } from "./access/service.js";
+export { QaRoleRepository } from "./access/role-repository.js";
+export {
+  defaultCapabilityConfig,
+  normalizeCapabilityConfig,
+  normalizeUserAccess,
+  resolveCapabilityPolicy,
+} from "./access/model.js";
 export {
   QaPromptNotes,
   renderUserIdentity,

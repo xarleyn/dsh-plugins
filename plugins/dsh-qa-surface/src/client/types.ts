@@ -12,6 +12,7 @@ import type {
   QaAccountStartersInput,
   QaAccountStarter,
   QaAccountUserPublic,
+  QaAccessAdminSnapshot,
   QaApprovalDecision,
   QaClaimResult,
   QaLockdownProof,
@@ -29,6 +30,11 @@ import type {
   QaSourceFilePreview,
   QaTurnSources,
   QaWhoamiResult,
+  QaCapabilitySelection,
+  QaCurrentAccess,
+  QaSessionAccess,
+  QaSubrole,
+  QaUserAccess,
 } from "../types.js";
 
 /** Wire content one prompt carries: text plus base64 image uploads. */
@@ -63,7 +69,44 @@ export type QaSecureSession = (
 >;
 
 /** Host-authoritative creation: identity, cwd and policy never come from the browser. */
-export type QaCreateSession = (token: string) => Promise<RemoteResult<string>>;
+export type QaCreateSession = (
+  token: string,
+  subroleId: string | null,
+  adminPreview: boolean,
+) => Promise<RemoteResult<string>>;
+
+/** Role selector plus administrator mutation channel. */
+export interface QaAccessApi {
+  current(token: string): Promise<RemoteResult<QaCurrentAccess>>;
+  session(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<QaSessionAccess>>;
+  admin(token: string): Promise<RemoteResult<QaAccessAdminSnapshot>>;
+  createSubrole(
+    token: string,
+    input: QaSubrole,
+  ): Promise<RemoteResult<QaSubrole>>;
+  updateSubrole(
+    token: string,
+    id: string,
+    input: QaSubrole,
+  ): Promise<RemoteResult<QaSubrole>>;
+  deleteSubrole(
+    token: string,
+    id: string,
+    replacementId: string | null,
+  ): Promise<RemoteResult<{ readonly deleted: boolean }>>;
+  updateCommon(
+    token: string,
+    input: QaCapabilitySelection,
+  ): Promise<RemoteResult<QaCapabilitySelection>>;
+  updateAssignment(
+    token: string,
+    userId: string,
+    input: QaUserAccess,
+  ): Promise<RemoteResult<QaUserAccess>>;
+}
 
 /**
  * Browser file-upload service (`ctx.fileUpload`), described structurally on

@@ -8,7 +8,11 @@ import {
 } from "node:fs";
 import type { Stats } from "node:fs";
 import path from "node:path";
-import type { QaAccountRole } from "../types.js";
+import type {
+  QaAccountRole,
+  QaEffectiveCapabilityPolicy,
+  QaUserAccess,
+} from "../types.js";
 import { base64Url } from "./token.js";
 
 /** One account's self-declared profile as it rests in the accounts file. */
@@ -45,6 +49,19 @@ export interface StoredUser {
   profile?: StoredProfile;
   /** Absent until the owner customizes the starter buttons. */
   starters?: StoredStarters;
+  /** Agent capability profiles assigned by an administrator. */
+  qaAccess?: QaUserAccess;
+}
+
+export interface StoredOwnership {
+  readonly userId: string;
+  readonly claimedAt: string;
+  /** Pinned at creation; absent only on sessions predating subroles. */
+  readonly subroleId?: string;
+  /** Admin preview is an explicit session fact, never inferred from role=admin. */
+  readonly adminPreview?: boolean;
+  /** First successful admission freezes the actually installed capabilities. */
+  readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
 }
 
 export interface AccountsFile {
@@ -52,10 +69,7 @@ export interface AccountsFile {
   /** HMAC key for account tokens; rotated on password change by rewriting it. */
   readonly secret: string;
   readonly users: StoredUser[];
-  readonly ownership: Record<
-    string,
-    { readonly userId: string; readonly claimedAt: string }
-  >;
+  readonly ownership: Record<string, StoredOwnership>;
 }
 
 /** mtime+size pair identifying one on-disk version of the accounts file. */

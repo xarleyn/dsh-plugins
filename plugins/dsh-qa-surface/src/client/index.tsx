@@ -21,6 +21,7 @@ import { QaSurfaceGuard } from "./QaSurfaceGuard.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
   QaAccountsApi,
+  QaAccessApi,
   QaApprovalApi,
   QaFileUpload,
   QaQuestionApi,
@@ -47,6 +48,12 @@ import type {
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
+  QaAccessAdminSnapshot,
+  QaCapabilitySelection,
+  QaCurrentAccess,
+  QaSessionAccess,
+  QaSubrole,
+  QaUserAccess,
 } from "../types.js";
 import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
@@ -67,7 +74,11 @@ declare module "@deepseek-ai/cordis" {
 // controller drives. It mirrors what the typert declaration generates, so the
 // client also type-checks from a checkout whose `lib/` has not been built yet.
 interface QaPolicyRemote extends QaAccountsApi {
-  createSession(token: string): Promise<RemoteResult<string>>;
+  createSession(
+    token: string,
+    subroleId: string | null,
+    adminPreview: boolean,
+  ): Promise<RemoteResult<string>>;
   secureSession(
     token: string,
     sessionId: string,
@@ -172,6 +183,37 @@ interface QaPolicyRemote extends QaAccountsApi {
   accountsListOwnership(
     token: string,
   ): Promise<RemoteResult<{ readonly entries: readonly QaOwnershipEntry[] }>>;
+  accessCurrent(token: string): Promise<RemoteResult<QaCurrentAccess>>;
+  accessSession(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<QaSessionAccess>>;
+  accessAdminSnapshot(
+    token: string,
+  ): Promise<RemoteResult<QaAccessAdminSnapshot>>;
+  accessCreateSubrole(
+    token: string,
+    input: QaSubrole,
+  ): Promise<RemoteResult<QaSubrole>>;
+  accessUpdateSubrole(
+    token: string,
+    id: string,
+    input: QaSubrole,
+  ): Promise<RemoteResult<QaSubrole>>;
+  accessDeleteSubrole(
+    token: string,
+    id: string,
+    replacementId: string | null,
+  ): Promise<RemoteResult<{ readonly deleted: boolean }>>;
+  accessUpdateCommon(
+    token: string,
+    input: QaCapabilitySelection,
+  ): Promise<RemoteResult<QaCapabilitySelection>>;
+  accessUpdateAssignment(
+    token: string,
+    userId: string,
+    input: QaUserAccess,
+  ): Promise<RemoteResult<QaUserAccess>>;
   skillsList(
     token: string,
   ): Promise<RemoteResult<{ readonly skills: readonly QaSkillSummary[] }>>;
@@ -250,7 +292,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     ["remote.qaSurface", "remote.session", "remote.agentPresets"],
     (remoteContext) => {
       const injectedRemote = remoteContext.remote as QaClientRemote;
-      const policyRemote = injectedRemote.qaSurface;
+      // Keep source checks independent of a previously generated lib/ Remote
+      // declaration. The handwritten face is the same contract the generator
+      // validates during build.
+      const policyRemote =
+        injectedRemote.qaSurface as unknown as QaPolicyRemote;
       const secureSession: QaSecureSession = (token, sessionId) =>
         policyRemote.secureSession(
           token,
@@ -260,6 +306,22 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         selectModel: (request) => injectedRemote.session.selectModel(request),
         selectAgentPreset: (agentId, agentPreset) =>
           injectedRemote.agentPresets.select(agentId, agentPreset),
+      };
+      const accessApi: QaAccessApi = {
+        current: (token) => policyRemote.accessCurrent(token),
+        session: (token, sessionId) =>
+          policyRemote.accessSession(token, sessionId),
+        admin: (token) => policyRemote.accessAdminSnapshot(token),
+        createSubrole: (token, input) =>
+          policyRemote.accessCreateSubrole(token, input),
+        updateSubrole: (token, id, input) =>
+          policyRemote.accessUpdateSubrole(token, id, input),
+        deleteSubrole: (token, id, replacementId) =>
+          policyRemote.accessDeleteSubrole(token, id, replacementId),
+        updateCommon: (token, input) =>
+          policyRemote.accessUpdateCommon(token, input),
+        updateAssignment: (token, userId, input) =>
+          policyRemote.accessUpdateAssignment(token, userId, input),
       };
       const sourceApi: QaSourceApi = {
         sources: (token, sessionId) =>
@@ -495,8 +557,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   api: qaApi,
                   connection: ctx.connection.generation,
                   secureSession,
-                  createSession: (token: string) =>
-                    policyRemote.createSession(token),
+                  createSession: (
+                    token: string,
+                    subroleId: string | null,
+                    adminPreview: boolean,
+                  ) =>
+                    policyRemote.createSession(token, subroleId, adminPreview),
+                  accessApi,
                   sourceApi,
                   skillApi,
                   approvalApi,

@@ -528,6 +528,42 @@ documented variables — `QA_DOCUMENTS_ENABLED`, `QA_DOCUMENTS_STORAGE_ROOT`,
 `QA_DOCUMENTS_MAX_INPUT_BYTES`. Everything else stays in the settings
 namespace, where the card's «Документы» section edits it.
 
+## Agent subroles and capability policies
+
+Subroles are available when `accounts.enabled` is on. Account authorization
+(`admin` or `user`) controls only administrative operations; the QA agent gets
+the capabilities of exactly one assigned subrole. An administrator configures
+the policy at `/qa/admin`:
+
+```text
+effective = system required + Common + active subrole
+```
+
+Both Tools and Skills are allow-lists. The server validates role selection,
+freezes the effective set on the session ownership record, restricts the
+agent-visible tool registry, gates direct execution, and installs a scoped
+skill catalog/loader. A newly installed capability is therefore unavailable
+until explicitly selected. Missing capability IDs remain in the policy file
+and appear with a warning in the editor.
+
+Policy definitions and the compact audit trail are stored atomically in
+`$DSH_HOME/qa-capability-policies.json`. User assignments and the selected
+subrole/capability snapshot remain in `$DSH_HOME/qa-accounts.json`. Do not edit
+either file while the Host is running; use the administration UI. Policy
+changes apply to new conversations. Existing conversations retain their
+snapshot, except that a tool or skill removed from the live registry is no
+longer usable.
+
+The default migration creates one enabled `general` subrole and assigns users
+only that role. Administrators do not implicitly receive all QA capabilities;
+use `Preview as role` for a real-policy test session. If a user has more than
+one assigned role, the header shows a selector. Changing it after conversation
+content exists requires confirmation and starts a new session.
+
+The first version reserves structured fields for MCP servers, knowledge
+sources, and prompt additions, while enforcement and the administration picker
+currently cover Tools and Skills.
+
 ## Personal skills
 
 Every account can own skills, and they are ordinary Agent Skills: one

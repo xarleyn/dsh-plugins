@@ -22,6 +22,9 @@ Session and Agent Loop.
 - pins locked sessions to the configured `read-only` or isolated
   `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
+- separates account authorization (`admin`/`user`) from the QA agent's active
+  subrole, with server-owned Common, per-role Tools and Skills, immutable
+  session snapshots, and a dedicated administration page at `/qa/admin`;
 - attaches its own QA tool catalog per agent only after the activation skill
   loads (`tools.dynamicActivation`), keeping every QA schema out of the initial
   request and restoring the catalog on resume from the session's own journal;
@@ -663,6 +666,32 @@ tools and `run_code` unless their exact names are allowed.
 Host-installed integration plugins may add their own narrowly scoped tool names
 through the QA Surface service; those executors must independently resolve the
 owner-attested root principal and fail closed for unowned or child sessions.
+
+## Subroles and capability policies
+
+With `accounts.enabled: true`, every QA session has exactly one active agent
+subrole. The Host resolves its effective capabilities as the union of the
+minimal system-required set, Common capabilities, and that one subrole; it
+never unions all roles assigned to the user. The chosen role and effective
+snapshot are stored with session ownership. Existing conversations never gain
+new capabilities after an administrator edits a role, while a capability that
+disappears from the running registry is revoked immediately.
+
+Administrators manage subroles, Common Tools/Skills, user assignments and the
+audit trail at `/qa/admin`. Capability choices come from the live tool and
+skill registries; configured-but-missing entries remain visible and are not
+deleted. Admin authorization affects only the management API and never grants
+agent capabilities. `Preview as role` creates an ordinary session using the
+selected role's real server-enforced policy and shows a persistent preview
+banner.
+
+The configuration lives in `$DSH_HOME/qa-capability-policies.json`; user
+assignments and session snapshots stay with the existing account store. Tools
+are filtered with an agent-scoped restriction and a pre-execution gate. Skills
+use an agent-scoped `skill` consumer that publishes only the allow-listed
+catalog and rejects direct out-of-policy loads with `SKILL_NOT_AVAILABLE`.
+The browser selector is hidden for a single assigned role. Switching roles
+after a meaningful turn requires confirmation and creates a new conversation.
 
 ## Security and deployment
 

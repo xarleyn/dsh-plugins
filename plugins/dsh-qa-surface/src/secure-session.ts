@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -8,6 +9,7 @@ import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
 import { qaUserWorkspaceDenial } from "./user-workspace.js";
@@ -16,6 +18,7 @@ interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
   readonly disposeRestriction: () => void;
+  readonly disposeSkillPolicy: () => void;
 }
 
 interface UserWorkspaceAccess {
@@ -94,6 +97,20 @@ export class QaPolicyAdmission {
     private readonly dynamicToolNames: (
       agent: Agent,
     ) => readonly string[] = () => [],
+    /** Resolve and freeze the session's subrole policy after its agent exists. */
+    private readonly capabilityPolicy?: (
+      token: string,
+      sessionId: string,
+      agent: Agent,
+    ) => Promise<
+      | {
+          readonly policy: import("./types.js").QaEffectiveCapabilityPolicy;
+          readonly skills: ReadonlyMap<string, SkillSummary>;
+        }
+      | undefined
+    >,
+    /** Scope-local catalog entries may be known before they are activated. */
+    private readonly knownDynamicToolNames: () => readonly string[] = () => [],
   ) {
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
@@ -327,18 +344,35 @@ export class QaPolicyAdmission {
       );
     }
 
+    // Resolve and persist a role snapshot only after every Host-owned
+    // composition and adoption check passed. A browser cannot make a
+    // foreign/non-QA agent leave behind a trusted capability record by merely
+    // asking to attest it.
+    const capability = await this.capabilityPolicy?.(token, sessionId, agent);
+
+    const basePolicyAllow =
+      capability?.policy.tools ?? lockdown.toolPolicy.allow;
     const configuredPolicyAllow =
       config.sources.enabled &&
       config.sources.subagents.enableReportToolFallback &&
-      !lockdown.toolPolicy.allow.includes(QA_REPORT_SOURCES_TOOL)
-        ? [...lockdown.toolPolicy.allow, QA_REPORT_SOURCES_TOOL]
-        : lockdown.toolPolicy.allow;
+      !basePolicyAllow.includes(QA_REPORT_SOURCES_TOOL)
+        ? [...basePolicyAllow, QA_REPORT_SOURCES_TOOL]
+        : basePolicyAllow;
+    // Principal-bound integrations were historically appended to the global
+    // allow-list. Once capability policies are active they must be selected by
+    // the role like every other tool; their own principal checks remain a
+    // second, independent boundary.
     const policyAllow = [
-      ...new Set([...configuredPolicyAllow, ...this.principalScopedTools]),
+      ...new Set([
+        ...configuredPolicyAllow,
+        ...(capability === undefined ? this.principalScopedTools : []),
+      ]),
     ];
     const policy = qaToolPolicyPlan(
       policyAllow,
-      (toolName) => this.ctx.tools.get(toolName, agent) !== undefined,
+      (toolName) =>
+        this.ctx.tools.get(toolName, agent) !== undefined ||
+        this.knownDynamicToolNames().includes(toolName),
     );
     if (policy.unknown.length > 0) {
       throw new QaAttestationError(
@@ -346,7 +380,10 @@ export class QaPolicyAdmission {
         `unknown QA tool(s): ${policy.unknown.join(", ")}`,
       );
     }
-    const fingerprint = JSON.stringify(policy.allow);
+    const fingerprint = JSON.stringify([
+      policy.allow,
+      capability?.policy.skills ?? [],
+    ]);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
@@ -355,21 +392,33 @@ export class QaPolicyAdmission {
         return qaToolDenial(
           allowed,
           execution.name,
-          agent === undefined ? [] : this.dynamicToolNames(agent),
+          capability === undefined && agent !== undefined
+            ? this.dynamicToolNames(agent)
+            : [],
         );
       });
+      let disposeRestriction: (() => void) | undefined;
       try {
-        const disposeRestriction = agent.ctx.tools.restrict({
+        disposeRestriction = agent.ctx.tools.restrict({
           allow: policy.allow,
         });
+        // A role snapshot cannot change for this session, but a restarted Host
+        // materializes a new Agent and therefore a fresh scoped loader.
+        prior?.disposeSkillPolicy();
+        const disposeSkillPolicy =
+          capability === undefined
+            ? () => undefined
+            : installQaSkillPolicy(agent, capability.policy, capability.skills);
         this.appliedPolicies.set(agent, {
           fingerprint,
           disposeGuard,
           disposeRestriction,
+          disposeSkillPolicy,
         });
         prior?.disposeRestriction();
         prior?.disposeGuard();
       } catch (error) {
+        disposeRestriction?.();
         disposeGuard();
         throw error;
       }
@@ -426,7 +475,7 @@ export class QaPolicyAdmission {
       toolPolicyLoaded: true,
       // The fallback reporter is an internal read-only provenance capability,
       // not an operator-configured QA tool grant.
-      toolAllowList: lockdown.toolPolicy.allow,
+      toolAllowList: capability?.policy.tools ?? lockdown.toolPolicy.allow,
     };
   }
 
@@ -483,6 +532,7 @@ export class QaPolicyAdmission {
   /** Detach every pinned tool policy; wired as a disposal effect by the entry. */
   dispose(): void {
     for (const policy of this.appliedPolicies.values()) {
+      policy.disposeSkillPolicy();
       policy.disposeRestriction();
       policy.disposeGuard();
     }

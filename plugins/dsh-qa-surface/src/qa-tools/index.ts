@@ -80,6 +80,11 @@ export class QaTools implements QaToolActivation {
     return this.manager.activeToolNames(agent);
   }
 
+  /** Shipped scope-local names, including entries not activated on an agent yet. */
+  catalogToolNames(): readonly string[] {
+    return this.catalogTools;
+  }
+
   dispose(): void {
     this.detector.disposeListeners();
     this.lifecycle.dispose();

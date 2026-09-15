@@ -116,7 +116,7 @@ describe("QA session controller", () => {
     expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
       "created-1",
     );
-    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.api.selectModel).not.toHaveBeenCalled();
     controller.dispose();
   });
@@ -361,7 +361,7 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.selectAgentPreset).not.toHaveBeenCalled();
     expect(world.secureSession).toHaveBeenCalledWith("", "created-1");
     controller.dispose();
@@ -840,8 +840,32 @@ describe("QA session controller", () => {
       config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
     });
     await controller.ensureSession();
-    expect(world.createSession).toHaveBeenCalledWith("");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.create).toHaveBeenCalledWith();
+    controller.dispose();
+  });
+
+  it("starts a new session when the active subrole changes", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      initialSubrole: "analyst",
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(world.createSession).toHaveBeenLastCalledWith("", "analyst", false);
+    const first = controller.activeSessionId();
+
+    await controller.selectSubrole("developer");
+    expect(controller.activeSessionId()).toBeNull();
+    await controller.send("Новый контекст роли", []);
+
+    expect(controller.activeSessionId()).not.toBe(first);
+    expect(world.createSession).toHaveBeenLastCalledWith(
+      "",
+      "developer",
+      false,
+    );
     controller.dispose();
   });
 
