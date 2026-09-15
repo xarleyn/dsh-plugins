@@ -76,6 +76,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientId = useRef(makeClientId()).current;
+  const addressInput = useRef<HTMLInputElement>(null);
   const lastFrameRevision = useRef<number | null>(null);
   const requestSequence = useRef(0);
 
@@ -98,7 +99,9 @@ export function BrowserPanel(props: BrowserPanelProps) {
           setError(null);
           return;
         }
-        setAddress(selected.url || "about:blank");
+        if (document.activeElement !== addressInput.current) {
+          setAddress(selected.url || "about:blank");
+        }
         if (!forceFrame && lastFrameRevision.current === selected.revision) {
           setError(null);
           return;
@@ -276,7 +279,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
           (relativeX / bounds.width) * selected.viewport.width,
           (relativeY / bounds.height) * selected.viewport.height,
           button,
-          event.detail === 2 ? 2 : 1,
+          1,
         ),
       );
     });
@@ -401,6 +404,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
       </div>
       <form className="dsh-qa-browser-panel__toolbar" onSubmit={navigate}>
         <input
+          ref={addressInput}
           className="dsh-qa-browser-panel__address"
           aria-label="Адрес Browser"
           title={selected?.url}
