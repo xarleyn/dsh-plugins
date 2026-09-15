@@ -410,4 +410,45 @@ describe("sidebar version and changelog", () => {
       QA_CHANGELOG.slice(currentIndex).map((entry) => entry.version),
     ).toEqual(released);
   });
+
+  it("keeps the next Nx-planned version at the top of the bundled changelog", async () => {
+    const { readFile, readdir } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const packageJson = JSON.parse(
+      await readFile(resolve(process.cwd(), "package.json"), "utf8"),
+    ) as { version: string };
+    const plansDirectory = resolve(process.cwd(), "../../.nx/version-plans");
+    const plans = await readdir(plansDirectory);
+    const bumps = (
+      await Promise.all(
+        plans
+          .filter((name) => name.endsWith(".md"))
+          .map((name) => readFile(resolve(plansDirectory, name), "utf8")),
+      )
+    ).flatMap((plan) => {
+      const match = /^"@yadsh\/dsh-qa-surface": (patch|minor|major)$/mu.exec(
+        plan,
+      );
+      return match?.[1] === undefined ? [] : [match[1]];
+    });
+    if (bumps.length === 0) return;
+
+    const priority = { patch: 1, minor: 2, major: 3 } as const;
+    const bump = bumps.reduce((highest, candidate) =>
+      priority[candidate as keyof typeof priority] >
+      priority[highest as keyof typeof priority]
+        ? candidate
+        : highest,
+    );
+    const [major = 0, minor = 0, patch = 0] = packageJson.version
+      .split(".")
+      .map((part) => Number(part));
+    const expected =
+      bump === "major"
+        ? `${major + 1}.0.0`
+        : bump === "minor"
+          ? `${major}.${minor + 1}.0`
+          : `${major}.${minor}.${patch + 1}`;
+    expect(QA_CHANGELOG[0]?.version).toBe(expected);
+  });
 });
