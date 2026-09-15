@@ -616,6 +616,44 @@ only that role. Administrators do not implicitly receive all QA capabilities;
 use `Preview as role` for a real-policy test session. If a user has more than
 one assigned role, the header shows a selector. Changing it after conversation
 content exists requires confirmation and starts a new session.
+### Administrative roles, feedback and the review file
+
+Accounts carry one of three authorization roles, independent of any QA
+subrole:
+
+| Role | Can do |
+|---|---|
+| `admin` | everything: users, policies, conversations, review, analytics, audit |
+| `reviewer` | read every conversation, review and classify them, see analytics |
+| `user` | use QA and rate their own conversations |
+
+Operators set the role with `qa-accounts add --role reviewer` or
+`qa-accounts set-role <email> reviewer`; administrators change it at
+`/qa/admin/users/<id>`. A deployment refuses to lose its last enabled
+administrator.
+
+User feedback, reviewer verdicts, the manual review queue and the
+administrative audit trail live in `$DSH_HOME/qa-quality.json`, written
+atomically on every change and re-read when another process changes it. The
+file is separate from the capability policy on purpose: role configuration is
+something an operator may replace wholesale, while feedback and reviews are
+user data that must survive such a reset. Retention is bounded (most recent
+20 000 feedback rows, 5 000 reviews, 2 000 queue entries, 5 000 audit events);
+configurable `admin.retentionDays` is not implemented yet.
+
+A rating is keyed to the position of the answer in the session's own event log,
+which is the one identity the durable log and the browser transcript agree on,
+so a rating survives a reload, a replay and a role change. Reviews are keyed the
+same way and never overwrite the user's own signal: the two are different
+measurements and the console shows them side by side.
+
+Conversations are listed from two sources: the deployment's own session
+reservations in `qa-accounts.json`, enriched with the stored session headers
+and logs when the running Harness serves a session-query backend. On a
+deployment without one, the console still lists every chat and its frozen
+capability snapshot and says why a transcript could not be shown; a log this
+build cannot parse (an event type it does not know) is reported as unreadable
+instead of failing the page.
 
 Policy definitions and the compact audit trail are stored atomically in
 `$DSH_HOME/qa-capability-policies.json`. User assignments and the selected

@@ -748,6 +748,47 @@ declared audience next to the effective one with a
 `Healthy`/`Degraded`/`Blocked` state. Every activation is recorded on the
 session record with the requested, granted and denied tools, so a later review
 can see what a conversation actually gained.
+## Administrative console
+
+`/qa/admin` is the review and administration surface. It is part of the QA page
+itself, not a separate application, and it is open to `admin` and `reviewer`
+accounts. Reviewer sees conversations, the review queue, feedback and
+analytics; only an administrator sees users, capability policies and audit.
+
+The console covers the quality loop end to end:
+
+- **Overview** — conversation, rating and review counters, the items that need
+  attention, and the newest signals.
+- **Users** — authorization role, enabled/disabled status, assigned QA subroles
+  and the default one, plus per-account activity. Disabling an account is the
+  operation to reach for: historical conversations, feedback and reviews stay
+  attributed to their author, and the last enabled administrator cannot be
+  demoted, disabled or removed.
+- **Conversations** — every conversation the deployment knows, filterable by
+  user, subrole, date range, rating and review state, with a viewer that reads
+  the stored transcript: messages in recorded order, tool calls with their
+  arguments, results and errors, per-message feedback, and the capability
+  snapshot frozen when the session started. A link can point at one message
+  (`/qa/admin/conversations/<id>/<seq>`).
+- **Review queue** — what needs attention, derived from unanswered negative
+  feedback, explicitly queued conversations and failed tool calls. A reviewer
+  classifies issues across answer, context, tools, skills and access, sets a
+  severity, writes notes and names the remediation target.
+- **Feedback** — every rating against the exact answer it judged, with the
+  optional reason and comment the user gave.
+- **Analytics** — rating coverage, positive share overall and per subrole,
+  issue distribution and a daily trend. These are user-satisfaction signals;
+  the console never presents them as accuracy.
+- **Audit** — one timeline of authorization changes, account status, subrole
+  assignments, policy edits and review verdicts, each with its before/after
+  image.
+
+Authorization is a permission table, not an `isAdmin` flag, and every
+administrative entry point names the permission it needs; the Host re-checks it
+on the call it serves, so a hidden control is convenience rather than the
+boundary. Review material is the most sensitive data the package handles, so
+tool arguments and results are bounded previews with credential shapes masked,
+behind a redactor a deployment can replace.
 
 ## Security and deployment
 

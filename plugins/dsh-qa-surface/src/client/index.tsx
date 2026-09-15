@@ -22,6 +22,7 @@ import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
 import type {
   QaAccountsApi,
   QaAccessApi,
+  QaAdminApi,
   QaApprovalApi,
   QaFileUpload,
   QaQuestionApi,
@@ -56,6 +57,26 @@ import type {
   QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
+  QaAdminAuditEvent,
+  QaAdminOverview,
+  QaAdminPage,
+  QaAdminUserDetail,
+  QaAdminUserRow,
+  QaAdminUserUpdate,
+  QaAuditQuery,
+  QaConversationDetail,
+  QaConversationQuery,
+  QaConversationReview,
+  QaConversationReviewInput,
+  QaConversationSummary,
+  QaFeedbackQuery,
+  QaFeedbackRow,
+  QaMessageFeedback,
+  QaMessageFeedbackInput,
+  QaQualityMetrics,
+  QaReviewQueueItem,
+  QaReviewQueueRow,
+  QaUserQuery,
 } from "../types.js";
 import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
@@ -75,7 +96,74 @@ declare module "@deepseek-ai/cordis" {
 // remotes this file calls directly, plus the account remotes the account
 // controller drives. It mirrors what the typert declaration generates, so the
 // client also type-checks from a checkout whose `lib/` has not been built yet.
-interface QaPolicyRemote extends QaAccountsApi {
+/**
+ * The console's methods exactly as the Host registers them under `qaSurface`.
+ * The page-facing {@link QaAdminApi} drops the `admin` prefix; this mirror
+ * keeps the wire names, so a rename on either side fails the build.
+ */
+interface QaAdminRemote {
+  adminOverview(token: string): Promise<RemoteResult<QaAdminOverview>>;
+  adminUsers(
+    token: string,
+    query: QaUserQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaAdminUserRow>>>;
+  adminUser(
+    token: string,
+    userId: string,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
+  adminUpdateUser(
+    token: string,
+    userId: string,
+    update: QaAdminUserUpdate,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
+  adminConversations(
+    token: string,
+    query: QaConversationQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaConversationSummary>>>;
+  adminConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<RemoteResult<QaConversationDetail>>;
+  adminFeedback(
+    token: string,
+    query: QaFeedbackQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaFeedbackRow>>>;
+  adminRateMessage(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    input: QaMessageFeedbackInput,
+  ): Promise<RemoteResult<QaMessageFeedback>>;
+  adminReviewQueue(
+    token: string,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaReviewQueueRow>>>;
+  adminQueueConversation(
+    token: string,
+    conversationId: string,
+    messageId: string | null,
+  ): Promise<RemoteResult<QaReviewQueueItem>>;
+  adminSaveReview(
+    token: string,
+    input: QaConversationReviewInput,
+  ): Promise<RemoteResult<QaConversationReview>>;
+  adminMetrics(token: string): Promise<RemoteResult<QaQualityMetrics>>;
+  adminAudit(
+    token: string,
+    query: QaAuditQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaAdminAuditEvent>>>;
+}
+
+interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   createSession(
     token: string,
     subroleId: string | null,
@@ -337,6 +425,36 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         skillActivations: (token, sessionId) =>
           policyRemote.accessSkillActivations(token, sessionId),
       };
+      const adminApi: QaAdminApi = {
+        overview: (token) => policyRemote.adminOverview(token),
+        users: (token, query, cursor, limit) =>
+          policyRemote.adminUsers(token, query, cursor, limit),
+        user: (token, userId) => policyRemote.adminUser(token, userId),
+        updateUser: (token, userId, update) =>
+          policyRemote.adminUpdateUser(token, userId, update),
+        conversations: (token, query, cursor, limit) =>
+          policyRemote.adminConversations(token, query, cursor, limit),
+        conversation: (token, conversationId) =>
+          policyRemote.adminConversation(token, conversationId),
+        feedback: (token, query, cursor, limit) =>
+          policyRemote.adminFeedback(token, query, cursor, limit),
+        rateMessage: (token, conversationId, messageId, input) =>
+          policyRemote.adminRateMessage(
+            token,
+            conversationId,
+            messageId,
+            input,
+          ),
+        reviewQueue: (token, cursor, limit) =>
+          policyRemote.adminReviewQueue(token, cursor, limit),
+        queueConversation: (token, conversationId, messageId) =>
+          policyRemote.adminQueueConversation(token, conversationId, messageId),
+        saveReview: (token, input) =>
+          policyRemote.adminSaveReview(token, input),
+        metrics: (token) => policyRemote.adminMetrics(token),
+        audit: (token, query, cursor, limit) =>
+          policyRemote.adminAudit(token, query, cursor, limit),
+      };
       const sourceApi: QaSourceApi = {
         sources: (token, sessionId) =>
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
@@ -578,6 +696,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   ) =>
                     policyRemote.createSession(token, subroleId, adminPreview),
                   accessApi,
+                  adminApi,
                   sourceApi,
                   skillApi,
                   approvalApi,

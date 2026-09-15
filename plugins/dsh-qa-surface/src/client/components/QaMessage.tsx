@@ -58,6 +58,8 @@ function QaAttachedImage({
     </a>
   );
 }
+import type { QaFeedbackReason } from "../../types.js";
+import { FEEDBACK_REASON_LABELS } from "../admin/format.js";
 import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";
@@ -85,6 +87,18 @@ export interface QaMessageProps {
   readonly onSourceDetail?: (source: QaSource) => void;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
+  /**
+   * Persist a rating for this answer. Omitted on a surface with no accounts or
+   * no durable message identity: the control then only records the choice
+   * locally, which is what the standalone QA surface has always done.
+   */
+  readonly onRateFeedback?: (input: {
+    /** Durable log position of this answer, when the transcript knows it. */
+    readonly messageId?: number;
+    readonly rating: "positive" | "negative";
+    readonly reasons?: readonly QaFeedbackReason[];
+    readonly comment?: string;
+  }) => void;
 }
 
 type Rating = "up" | "down";
@@ -189,6 +203,76 @@ function sameFiles(
   );
 }
 
+const REASONS: readonly QaFeedbackReason[] = [
+  "incorrect",
+  "instruction_not_followed",
+  "missing_information",
+  "outdated_information",
+  "tool_issue",
+  "too_verbose",
+  "too_short",
+  "other",
+];
+
+/**
+ * "What went wrong?" — optional detail on a down-vote.
+ *
+ * The rating is already recorded by the time this renders, so both buttons let
+ * the user out immediately: an unanswered survey costs a rating, and a rating
+ * lost is a quality signal lost.
+ */
+function FeedbackReasonForm(props: {
+  readonly onSubmit: (
+    reasons: readonly QaFeedbackReason[],
+    comment: string,
+  ) => void;
+  readonly onSkip: () => void;
+}) {
+  const [reasons, setReasons] = useState<readonly QaFeedbackReason[]>([]);
+  const [comment, setComment] = useState("");
+  return (
+    <form
+      className="dsh-qa-feedback"
+      onSubmit={(event) => {
+        event.preventDefault();
+        props.onSubmit(reasons, comment);
+      }}
+    >
+      <strong>Что пошло не так?</strong>
+      <div className="dsh-qa-feedback__reasons">
+        {REASONS.map((reason) => (
+          <label key={reason}>
+            <input
+              type="checkbox"
+              checked={reasons.includes(reason)}
+              onChange={() =>
+                setReasons((current) =>
+                  current.includes(reason)
+                    ? current.filter((value) => value !== reason)
+                    : [...current, reason],
+                )
+              }
+            />
+            {FEEDBACK_REASON_LABELS[reason]}
+          </label>
+        ))}
+      </div>
+      <textarea
+        value={comment}
+        rows={2}
+        placeholder="Комментарий (необязательно)"
+        onChange={(event) => setComment(event.currentTarget.value)}
+      />
+      <div className="dsh-qa-feedback__actions">
+        <button type="submit">Отправить</button>
+        <button type="button" onClick={props.onSkip}>
+          Пропустить
+        </button>
+      </div>
+    </form>
+  );
+}
+
 function readRatings(stateKey: string | undefined): Record<string, Rating> {
   if (stateKey === undefined) return {};
   try {
@@ -244,12 +328,15 @@ export const QaMessage = memo(
     onOpenSources,
     onSourceDetail,
     thinkingPhrases,
+    onRateFeedback,
   }: QaMessageProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     );
     const [rating, setRating] = useState<Rating | null>(null);
+    // The negative flow asks why, once, without blocking the rating itself.
+    const [askingWhy, setAskingWhy] = useState(false);
     // Source-footnote registry, cached by the source-id set so the memoized
     // Markdown keeps one resolver identity across streaming frames.
     const refsCache = useRef<{ ids: string; refs: QaSourceRefs }>({
@@ -350,10 +437,35 @@ export const QaMessage = memo(
         // action available for a later user gesture without surfacing noise.
       }
     };
+    const persist = (
+      next: Rating | null,
+      detail?: {
+        readonly reasons?: readonly QaFeedbackReason[];
+        readonly comment?: string;
+      },
+    ) => {
+      if (next === null || onRateFeedback === undefined) return;
+      onRateFeedback({
+        ...(message.role === "assistant" && message.seq !== undefined
+          ? { messageId: message.seq }
+          : {}),
+        rating: next === "up" ? "positive" : "negative",
+        ...(detail?.reasons === undefined ? {} : { reasons: detail.reasons }),
+        ...(detail?.comment === undefined ? {} : { comment: detail.comment }),
+      });
+    };
     const toggleRating = (value: Rating) => {
       const next = rating === value ? null : value;
       setRating(next);
       writeRating(stateKey, message.id, next);
+      // The reason form only opens where a rating can actually be stored: an
+      // answer nobody persists has no reviewer to inform.
+      if (value === "down" && next === "down" && onRateFeedback !== undefined) {
+        setAskingWhy(true);
+        return;
+      }
+      setAskingWhy(false);
+      persist(next);
     };
     const persistentMeta = showTimestamp && message.timestamp !== undefined;
     const meta =
@@ -516,6 +628,21 @@ export const QaMessage = memo(
             )}
             {message.role === "user" ? null : meta}
           </div>
+        ) : null}
+        {askingWhy ? (
+          <FeedbackReasonForm
+            onSubmit={(reasons, comment) => {
+              setAskingWhy(false);
+              persist("down", {
+                ...(reasons.length === 0 ? {} : { reasons }),
+                ...(comment.trim() === "" ? {} : { comment: comment.trim() }),
+              });
+            }}
+            onSkip={() => {
+              setAskingWhy(false);
+              persist("down");
+            }}
+          />
         ) : null}
       </article>
     );

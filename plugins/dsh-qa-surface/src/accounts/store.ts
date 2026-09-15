@@ -13,6 +13,7 @@ import type {
   QaAccountStartersInput,
   QaAccountUserPublic,
   QaAccessUser,
+  QaAdminAccountRow,
   QaClaimResult,
   QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
@@ -483,6 +484,109 @@ export class QaAccounts {
     }));
   }
 
+  /**
+   * Every account with the administrative columns the admin console renders:
+   * identity, status, authorization role, assignment and the timestamps of the
+   * account's own life. Credentials and token material are never projected.
+   */
+  listAdminUsers(
+    resolve: (stored: QaUserAccess | undefined) => QaUserAccess,
+  ): readonly QaAdminAccountRow[] {
+    this.reloadIfChanged();
+    return this.file.users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      fullName: normalizeProfile(user.profile).fullName,
+      role: user.role,
+      disabled: user.disabled === true,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+      access: resolve(user.qaAccess),
+    }));
+  }
+
+  /**
+   * Identity columns of every account, without their capability assignment.
+   * The console's name lookup: an audit row or a queue entry names an account
+   * by id, and the table needs a label for it.
+   */
+  directory(): readonly {
+    readonly id: string;
+    readonly email: string;
+    readonly displayName: string;
+    readonly role: QaAccountRole;
+    readonly disabled: boolean;
+  }[] {
+    this.reloadIfChanged();
+    return this.file.users.map((user) => ({
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      disabled: user.disabled === true,
+    }));
+  }
+
+  /** One account's administrative row, or undefined for an unknown id. */
+  adminUser(
+    userId: string,
+    resolve: (stored: QaUserAccess | undefined) => QaUserAccess,
+  ): QaAdminAccountRow | undefined {
+    return this.listAdminUsers(resolve).find((user) => user.id === userId);
+  }
+
+  /**
+   * Every session reservation with its pinned role and capability snapshot.
+   * This is the deployment's own conversation index: a QA chat exists here
+   * from the moment its id is reserved, before any message is written.
+   */
+  listOwnershipRecords(): readonly {
+    readonly sessionId: string;
+    readonly userId: string;
+    readonly claimedAt: string;
+    readonly subroleId?: string;
+    readonly adminPreview?: boolean;
+    readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
+  }[] {
+    this.reloadIfChanged();
+    return Object.entries(this.file.ownership).map(([sessionId, owner]) => ({
+      sessionId,
+      userId: owner.userId,
+      claimedAt: owner.claimedAt,
+      ...(owner.subroleId === undefined ? {} : { subroleId: owner.subroleId }),
+      ...(owner.adminPreview === true ? { adminPreview: true } : {}),
+      ...(owner.capabilitySnapshot === undefined
+        ? {}
+        : { capabilitySnapshot: owner.capabilitySnapshot }),
+    }));
+  }
+
+  /** Replace one account's authorization role, addressed by stable id. */
+  setAccessRole(userId: string, role: QaAccountRole): QaAccountUserPublic {
+    return toPublic(this.editUserById(userId, (user) => ({ ...user, role })));
+  }
+
+  /**
+   * Disable or enable one account by id. Same semantics as the operator
+   * {@link setUserDisabled}: disabling also invalidates every live token, and
+   * enabling does not bring the old ones back.
+   */
+  setAccessDisabled(userId: string, disabled: boolean): QaAccountUserPublic {
+    return toPublic(
+      this.editUserById(userId, (user) => {
+        const next = user;
+        if (disabled) {
+          next.disabled = true;
+          next.tokenVersion = (next.tokenVersion ?? 0) + 1;
+        } else {
+          delete next.disabled;
+        }
+        return next;
+      }),
+    );
+  }
+
   /** Stored assignment for one account; callers normalize missing legacy rows. */
   accessOf(userId: string): QaUserAccess | undefined {
     this.reloadIfChanged();
@@ -604,9 +708,13 @@ export class QaAccounts {
     if (
       options.role !== undefined &&
       options.role !== "admin" &&
+      options.role !== "reviewer" &&
       options.role !== "user"
     ) {
-      throw new QaAccountsError("invalid-role", "role must be admin or user");
+      throw new QaAccountsError(
+        "invalid-role",
+        "role must be admin, reviewer or user",
+      );
     }
     if (this.userByEmail(normalized) !== undefined) {
       throw new QaAccountsError(
@@ -639,6 +747,29 @@ export class QaAccounts {
     const index = this.file.users.findIndex(
       (user) => user.email === normalized,
     );
+    if (index === -1) {
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    }
+    const updated = edit(this.file.users[index] as StoredUser);
+    const users = [...this.file.users];
+    users[index] = updated;
+    this.file = { ...this.file, users };
+    this.save();
+    return updated;
+  }
+
+  /**
+   * Same read-modify-write as {@link editUser}, addressed by account id. The
+   * administrative console works in ids: an email is a credential-shaped
+   * handle the operator may change, while the id is what conversations,
+   * feedback and audit rows already reference.
+   */
+  private editUserById(
+    userId: string,
+    edit: (user: StoredUser) => StoredUser,
+  ): StoredUser {
+    this.reloadIfChanged();
+    const index = this.file.users.findIndex((user) => user.id === userId);
     if (index === -1) {
       throw new QaAccountsError("invalid-credentials", "no such account");
     }
