@@ -1,6 +1,7 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { BITRIX_OPERATIONS } from "../src/providers/bitrix24/catalog.js";
 import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
+import { TEAMCITY_OPERATIONS } from "../src/providers/teamcity/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
 /** Minimal valid arguments per tool, so the sweep reaches the executor. */
@@ -71,6 +72,19 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   gitlab_pipeline_jobs_list: { project: 12, pipelineId: 3 },
   gitlab_job_get: { project: 12, jobId: 4 },
   gitlab_job_log_get: { project: 12, jobId: 4 },
+  teamcity_connection_get: {},
+  teamcity_projects: {},
+  teamcity_build_configs: {},
+  teamcity_builds: {},
+  teamcity_build: { buildId: 5 },
+  teamcity_build_changes: { buildId: 5 },
+  teamcity_build_failures: { buildId: 5 },
+  teamcity_build_log: { buildId: 5 },
+  teamcity_queue: {},
+  teamcity_investigations: {},
+  teamcity_agents: {},
+  teamcity_artifacts: { buildId: 5 },
+  teamcity_artifact_text: { buildId: 5, path: "out/report.txt" },
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -139,7 +153,9 @@ describe("model-visible integration tools", () => {
     expect(called).toHaveLength(tools.length);
     for (const operation of called) {
       expect(
-        BITRIX_OPERATIONS[operation] ?? GITLAB_OPERATIONS[operation],
+        BITRIX_OPERATIONS[operation] ??
+          GITLAB_OPERATIONS[operation] ??
+          TEAMCITY_OPERATIONS[operation],
         operation,
       ).toBeDefined();
     }

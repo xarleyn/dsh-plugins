@@ -17,6 +17,8 @@ import Bitrix24Provider from "./providers/bitrix24/index.js";
 import type { IntegrationProvider } from "./providers/contract.js";
 import GitlabProvider from "./providers/gitlab/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
+import TeamcityProvider from "./providers/teamcity/index.js";
+import { networkAllowsNothing } from "./providers/teamcity/config.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
@@ -89,6 +91,9 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.gitlab.enabled) {
       providers.register(new GitlabProvider(config));
     }
+    if (config.teamcity.enabled) {
+      providers.register(new TeamcityProvider(config));
+    }
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
       : [];
@@ -130,6 +135,16 @@ export class QaIntegrations extends TypertRemoteService {
     this.logger.info(config.enabled ? "plugin.ready" : "plugin.disabled", {
       tools: config.enabled ? [...INTEGRATION_TOOL_NAMES] : [],
     });
+    if (
+      config.teamcity.enabled &&
+      networkAllowsNothing(config.teamcity.network)
+    ) {
+      // A TeamCity deployment whose address policy is empty refuses every
+      // connect form. Saying so here saves the operator a support round trip.
+      this.logger.warn("teamcity.address-policy-empty", {
+        hint: "set teamcity.network.allowedHosts or network.allowedCidrs",
+      });
+    }
   }
 
   @Remote("describe")
@@ -239,6 +254,53 @@ export class QaIntegrations extends TypertRemoteService {
   disconnectGitlab(token: string): boolean {
     return this.run(token, (principal) =>
       this.broker.disconnect(principal, "gitlab"),
+    );
+  }
+
+  @Remote("getTeamcity")
+  getTeamcity(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "teamcity"),
+    );
+  }
+
+  /**
+   * The TeamCity address is user input, unlike the operator-configured GitLab
+   * instances, so it travels with the secret as a non-secret connect-form
+   * option and is checked against the deployment's address policy by the
+   * provider before anything is stored.
+   */
+  @Remote("putTeamcityCredential")
+  async putTeamcityCredential(
+    token: string,
+    input: { readonly serverUrl: string; readonly token: string },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "teamcity", {
+        token: input.token,
+        options: { serverUrl: input.serverUrl },
+      }),
+    );
+  }
+
+  @Remote("testTeamcity")
+  async testTeamcity(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "teamcity"),
+    );
+  }
+
+  @Remote("patchTeamcityPolicy")
+  patchTeamcityPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "teamcity", patch),
+    );
+  }
+
+  @Remote("disconnectTeamcity")
+  disconnectTeamcity(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "teamcity"),
     );
   }
 
@@ -352,6 +414,81 @@ export {
   GITLAB_HANDLERS,
   GITLAB_PROJECTIONS,
 } from "./providers/gitlab/operations.js";
+export { TeamcityProvider } from "./providers/teamcity/index.js";
+export {
+  TEAMCITY_CAPABILITIES,
+  TEAMCITY_CAPABILITY_INFO,
+  TEAMCITY_OPERATIONS,
+  TEAMCITY_STREAM_OPERATIONS,
+  enabledCapabilities as enabledTeamcityCapabilities,
+  teamcityOperationCapability,
+  type TeamCityCapability,
+  type TeamCityCapabilityDefinition,
+  type TeamCityOperationDefinition,
+} from "./providers/teamcity/catalog.js";
+export {
+  TEAMCITY_DEFAULTS,
+  DEFAULT_LOG_LINES,
+  resolveTeamCityConfig,
+  teamcityConfigSchema,
+  type TeamCityConfigInput,
+  type TeamCityFlags,
+} from "./providers/teamcity/config.js";
+export {
+  artifactBinaryProblem,
+  artifactByteLimit,
+  artifactPath,
+  textArtifact,
+  type ArtifactPath,
+} from "./providers/teamcity/artifacts.js";
+export {
+  LOG_MODES,
+  logLines,
+  logMode,
+  sanitizeLog,
+  selectLogWindow,
+  trimToBytes,
+  type LogMode,
+  type LogWindow,
+} from "./providers/teamcity/logs.js";
+export {
+  PRIVATE_CIDRS,
+  canonicalServerUrl,
+  cidrProblem,
+  hostPatternProblem,
+  isIpLiteral,
+  serverUrlProblem,
+  type TeamCityNetworkMode,
+  type TeamCityNetworkPolicy,
+} from "./providers/teamcity/network.js";
+export {
+  buildBuildLocator,
+  dimension,
+  joinDimensions,
+  locatorValue,
+  nested,
+  teamCityDate,
+  type BuildLocatorInput,
+} from "./providers/teamcity/locators.js";
+export {
+  TEAMCITY_HANDLERS,
+  TEAMCITY_LIMITS,
+  TEAMCITY_PROJECTIONS,
+  isoDate,
+  listLimit,
+  type TeamCityProjection,
+  type TeamCityRequest,
+} from "./providers/teamcity/operations.js";
+export {
+  TeamCityTransport,
+  credentialServer as teamcityCredentialServer,
+  credentialFromPlaintext as teamcityCredentialFromPlaintext,
+  type TeamCityCredential,
+} from "./providers/teamcity/transport.js";
+export {
+  createTeamcityTools,
+  TEAMCITY_TOOL_NAMES,
+} from "./providers/teamcity/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {
