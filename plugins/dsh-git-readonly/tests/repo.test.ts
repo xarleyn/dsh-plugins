@@ -35,6 +35,17 @@ afterAll(async () => {
   await rm(plainDir, { recursive: true, force: true });
 });
 
+/** Await a resolution that must be refused, and hand the refusal back. */
+async function refusal(promise: Promise<unknown>): Promise<GitToolError> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof GitToolError) return error;
+    throw error;
+  }
+  throw new Error("expected the repository resolution to be refused");
+}
+
 describe("requireSessionCwd", () => {
   it("fails closed without an agent session", () => {
     expect(() => requireSessionCwd({})).toThrowError(GitToolError);
@@ -91,6 +102,56 @@ describe("resolveToolRepository", () => {
         repositoryRoots: [repo.dir, plainDir],
       }),
     ).rejects.toThrow(/select one configured repository root/u);
+  });
+
+  it("reads a selection of the session directory itself as the default", async () => {
+    // What a model echoing its own working directory sends, absolute or as
+    // ".": it names no repository, so it means the same as omitting it.
+    for (const requested of [plainDir, "."]) {
+      const root = await resolveToolRepository(
+        runGit,
+        makeExec(plainDir),
+        requested,
+        { timeoutMs: 10_000, repositoryRoots: [repo.dir] },
+      );
+      expect(normalizePath(root)).toBe(normalizePath(repo.dir));
+    }
+  });
+
+  it("refuses a selection of the session directory when no root is configured", async () => {
+    const error = await refusal(
+      resolveToolRepository(runGit, makeExec(plainDir), plainDir, {
+        timeoutMs: 10_000,
+        repositoryRoots: [],
+      }),
+    );
+    expect(error.code).toBe("not-a-git-repository");
+    expect(error.message).toContain("exposes no repository roots");
+  });
+
+  it("refuses instead of looping when the only root is the session directory", async () => {
+    const error = await refusal(
+      resolveToolRepository(runGit, makeExec(plainDir), plainDir, {
+        timeoutMs: 10_000,
+        repositoryRoots: [plainDir],
+      }),
+    );
+    expect(error.code).toBe("not-a-git-repository");
+    expect(error.message).toContain(plainDir);
+  });
+
+  it("names the configured roots when an explicit selection is not a repository", async () => {
+    const nested = join(plainDir, "nested");
+    await mkdir(nested);
+    const error = await refusal(
+      resolveToolRepository(runGit, makeExec(plainDir), nested, {
+        timeoutMs: 10_000,
+        repositoryRoots: [repo.dir],
+      }),
+    );
+    expect(error.code).toBe("not-a-git-repository");
+    expect(error.message).toContain(nested);
+    expect(error.message).toContain(`configured repository roots: ${repo.dir}`);
   });
 
   it("selects an operator-approved repository outside the session directory", async () => {

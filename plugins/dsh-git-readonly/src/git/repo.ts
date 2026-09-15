@@ -80,6 +80,11 @@ function pathIsInside(target: string, root: string): boolean {
   );
 }
 
+/** Whether two canonical directories are the same directory. */
+function sameDirectory(left: string, right: string): boolean {
+  return pathIsInside(left, right) && pathIsInside(right, left);
+}
+
 async function canonicalDirectory(
   input: string,
   label: string,
@@ -100,9 +105,11 @@ async function canonicalDirectory(
 /**
  * Resolve the repository selected by one tool call without granting a general
  * filesystem path escape. Omitting `requested` prefers the session repository
- * and falls back only when there is exactly one configured root. An explicit
- * path and its resolved work-tree root must both remain inside the session
- * directory or an operator-configured root.
+ * and falls back only when there is exactly one configured root; naming the
+ * session directory means the same default, which is what a session that is
+ * not itself a repository — a QA scratch directory — relies on. An explicit
+ * path elsewhere and its resolved work-tree root must both remain inside the
+ * session directory or an operator-configured root.
  */
 export async function resolveToolRepository(
   run: GitRunner,
@@ -115,33 +122,7 @@ export async function resolveToolRepository(
 ): Promise<string> {
   const sessionCwd = requireSessionCwd(exec);
   if (requested === undefined || requested === null) {
-    try {
-      return await resolveRepositoryRoot(run, sessionCwd, {
-        timeoutMs: options.timeoutMs,
-      });
-    } catch (error) {
-      if (
-        !(error instanceof GitToolError) ||
-        error.code !== "not-a-git-repository"
-      )
-        throw error;
-      if (options.repositoryRoots.length === 1) {
-        return resolveToolRepository(
-          run,
-          exec,
-          options.repositoryRoots[0],
-          options,
-        );
-      }
-      if (options.repositoryRoots.length > 1) {
-        throw new GitToolError(
-          "not-a-git-repository",
-          `the session directory is not inside a git work tree (${sessionCwd}); ` +
-            `select one configured repository root: ${options.repositoryRoots.join(", ")}`,
-        );
-      }
-      throw error;
-    }
+    return resolveDefaultRepository(run, sessionCwd, options);
   }
   if (typeof requested !== "string" || requested.trim() === "") {
     throw new GitToolError(
@@ -170,10 +151,101 @@ export async function resolveToolRepository(
       "repository is outside the session directory and configured repository roots",
     );
   }
+  // Naming the session directory is not a repository choice: it is the default
+  // a model that echoes its own working directory asks for, and it resolves
+  // exactly like an omitted argument.
+  if (sameDirectory(selected, canonicalSession)) {
+    return resolveDefaultRepository(run, sessionCwd, options);
+  }
+  return resolveSelectedRepository(run, selected, allowedRoots, options);
+}
 
-  const repoRoot = await resolveRepositoryRoot(run, selected, {
-    timeoutMs: options.timeoutMs,
-  });
+/**
+ * The default selection: the session repository, and only when the session
+ * directory is not one, the single configured root. Multiple roots require the
+ * model to choose, and no root at all is a plain refusal.
+ */
+async function resolveDefaultRepository(
+  run: GitRunner,
+  sessionCwd: string,
+  options: {
+    readonly timeoutMs: number;
+    readonly repositoryRoots: readonly string[];
+  },
+): Promise<string> {
+  try {
+    return await resolveRepositoryRoot(run, sessionCwd, {
+      timeoutMs: options.timeoutMs,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof GitToolError) ||
+      error.code !== "not-a-git-repository"
+    ) {
+      throw error;
+    }
+    const [only] = options.repositoryRoots;
+    if (only === undefined) {
+      throw new GitToolError(
+        "not-a-git-repository",
+        selectionRefusal(sessionCwd, options.repositoryRoots),
+      );
+    }
+    if (options.repositoryRoots.length > 1) {
+      throw new GitToolError(
+        "not-a-git-repository",
+        `the session directory is not inside a git work tree (${sessionCwd}); ` +
+          `select one configured repository root: ${options.repositoryRoots.join(", ")}`,
+      );
+    }
+    const [canonicalSession, canonicalRoot] = await Promise.all([
+      canonicalDirectory(sessionCwd, "the session working directory"),
+      canonicalDirectory(only, "a configured repository root"),
+    ]);
+    // The operator pointed the root at the session directory itself: there is
+    // nothing else to resolve, and retrying the same directory would loop.
+    if (sameDirectory(canonicalRoot, canonicalSession)) {
+      throw new GitToolError(
+        "not-a-git-repository",
+        selectionRefusal(sessionCwd, options.repositoryRoots),
+      );
+    }
+    return resolveSelectedRepository(
+      run,
+      canonicalRoot,
+      [canonicalSession, canonicalRoot],
+      options,
+    );
+  }
+}
+
+/** One explicit selection: it must be a work tree inside an allowed root. */
+async function resolveSelectedRepository(
+  run: GitRunner,
+  selected: string,
+  allowedRoots: readonly string[],
+  options: {
+    readonly timeoutMs: number;
+    readonly repositoryRoots: readonly string[];
+  },
+): Promise<string> {
+  let repoRoot: string;
+  try {
+    repoRoot = await resolveRepositoryRoot(run, selected, {
+      timeoutMs: options.timeoutMs,
+    });
+  } catch (error) {
+    if (
+      !(error instanceof GitToolError) ||
+      error.code !== "not-a-git-repository"
+    ) {
+      throw error;
+    }
+    throw new GitToolError(
+      "not-a-git-repository",
+      selectionRefusal(selected, options.repositoryRoots),
+    );
+  }
   const canonicalRepoRoot = await canonicalDirectory(
     repoRoot,
     "the resolved repository root",
@@ -185,6 +257,25 @@ export async function resolveToolRepository(
     );
   }
   return canonicalRepoRoot;
+}
+
+/**
+ * The refusal for a directory that names no repository. A deployment that
+ * configured roots gets them named: they are the only directories the model
+ * may select instead, and the tool parameter promises the same list. Without
+ * roots the refusal says so — the usual cause is a row that carries no
+ * `repositoryRoots`, which is what a preset-mounted instance of this plugin is
+ * until the operator configures the row that mounts it.
+ */
+function selectionRefusal(
+  selected: string,
+  repositoryRoots: readonly string[],
+): string {
+  const recovery =
+    repositoryRoots.length === 0
+      ? "this row exposes no repository roots, so only a repository inside the session directory can be read"
+      : `pass repository to select one of the configured repository roots: ${repositoryRoots.join(", ")}`;
+  return `the selected directory is not inside a git work tree (${selected}); ${recovery}`;
 }
 
 /**
