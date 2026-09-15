@@ -47,16 +47,17 @@ Session and Agent Loop.
 - ships an operator settings card (Settings → Plugins → plugin configuration →
   «Помощник QA») that edits the `qa-surface` namespace in place — route,
   branding, session, interface, lockdown, accounts, sources, attachments,
-  documents, embedding — and reports the configuration the running Host
+  embedding — and reports the configuration the running Host
   resolved;
-- registers five document tools (`document_create`, `document_to_markdown`,
-  `document_from_url`, `document_convert`, `document_inspect`) behind
-  `documents.enabled`: the agent writes Markdown and receives DOCX/PDF, hands
-  over a DOCX/PDF and receives Markdown, or stores the text of an online source
-  — for example a wiki attachment fetched through the authenticated web provider
-  — as an artifact, while the pipeline owns every backend command line, keeps
-  source, assets, outputs and a manifest in one artifact bundle, and is visible
-  to a QA chat only through the tool allow-list;
+- no longer owns the document pipeline: `document_create`,
+  `document_to_markdown`, `document_from_url`, `document_convert` and
+  `document_inspect` come from [`@yadsh/dsh-documents`](https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-documents#readme),
+  which a QA chat reaches exactly as before — same tool names, same allow-list
+  entry, same artifact layout. What moved with it is the configuration: the
+  pipeline is configured in that plugin's own `documents` namespace and card
+  (`QA_DOCUMENTS_*` environment variables became `DSH_DOCUMENTS_*`), and a
+  leftover `documents:` section under `qa-surface` is ignored with a
+  `documents.moved` warning in the Host log;
 - uses the existing same-origin DSH connection and trust boundary.
 
 It does not add another HTTP server, provider proxy, permissive CORS rule, or
