@@ -268,7 +268,7 @@
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-browser",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-browser#readme",
-      "client": false
+      "client": true
     },
     {
       "name": "dsh-qa-surface",
