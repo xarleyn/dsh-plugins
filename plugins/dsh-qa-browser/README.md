@@ -6,7 +6,7 @@ independent layout host.
 
 ## Current implementation status
 
-The first implementation slice provides:
+The implemented foundation provides:
 
 - a public Host service at `ctx.qaBrowser`;
 - one lazily created Playwright Chromium process per plugin runtime;
@@ -16,10 +16,13 @@ The first implementation slice provides:
 - compact semantic snapshots with revision-bound refs;
 - focused navigate, snapshot, click, type, fill, select, keyboard, hover,
   scroll, wait, tabs, viewport and history agent tools;
+- a native `browser_screenshot` result backed by durable DSH attachments;
+- a separate QA Surface panel client with tabs, URL/status, bounded on-demand
+  PNG frames, error states and non-focus-stealing activity reveal;
+- authenticated panel remotes that ask QA Surface to authorize every session;
 - server-side scheme, host, DNS, private-network and metadata-endpoint policy;
 - agent-disposal, idle-eviction and plugin-shutdown cleanup.
 
-Native DSH screenshot artifacts and the QA Surface panel are subsequent slices.
 No Browser code or Playwright dependency is added to `dsh-qa-surface`.
 
 ## Requirements
@@ -43,6 +46,7 @@ Playwright Chromium explicitly in the deployment image, or set an absolute
       executablePath: null
       browserChannel: chromium
       headless: true
+      chromiumSandbox: true
       actionTimeoutMs: 15000
       navigationTimeoutMs: 30000
       idleTimeoutMinutes: 30
@@ -53,6 +57,9 @@ Playwright Chromium explicitly in the deployment image, or set an absolute
       width: 1440
       height: 900
       deviceScaleFactor: 1
+    ui:
+      autoRevealOnAgentActivity: true
+      focusOnAutoReveal: false
     security:
       network:
         allowedSchemes: [http, https]
@@ -62,6 +69,8 @@ Playwright Chromium explicitly in the deployment image, or set an absolute
         denyHosts: []
         denyMetadataEndpoints: true
         denyDshOrigin: true
+        # Add the public reverse-proxy origin when it differs from Host listen.
+        dshOrigins: [https://qa.example.com]
 ```
 
 `allowHosts` and `denyHosts` accept exact hostnames or a leading wildcard such
@@ -69,10 +78,17 @@ as `*.internal.example`. Explicitly allowed hosts may resolve to private
 addresses, but cannot bypass the metadata-endpoint deny. `denyHosts` always
 wins.
 
-`denyDshOrigin` is enforced for every active DSH origin supplied by the Host
-integration. Automatic discovery of those origins is tracked for the security
-integration slice; deployments must not treat the empty discovery set in this
-foundation slice as a finished self-origin boundary.
+`denyDshOrigin` automatically covers the active Harness listener on localhost,
+the machine hostname and its network interfaces. Add reverse-proxy/public
+origins explicitly through `dshOrigins`; Browser rechecks every redirect and
+subrequest on the Host.
+
+The QA panel uses the existing DSH Remote transport and QA bearer credential.
+It never embeds the target page in an iframe, persists the credential, or opens
+a second server. Frames are rejected above 5 MiB.
+
+For a containerized Harness, see [docs/DOCKER.md](docs/DOCKER.md). Chromium and
+its OS libraries must be installed inside the Harness image.
 
 ## Development
 

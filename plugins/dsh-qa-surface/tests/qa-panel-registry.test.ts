@@ -82,6 +82,18 @@ describe("QaSurfacePanelRegistry", () => {
     expect(panels.toggle("missing")).toBe(false);
   });
 
+  it("exposes only the current ephemeral owner context", () => {
+    const panels = new QaSurfacePanelRegistry();
+    expect(panels.getContext()).toEqual({ sessionId: null, qaToken: "" });
+    panels.setContext({ sessionId: "session-a", qaToken: "qa-secret" });
+    expect(panels.getContext()).toEqual({
+      sessionId: "session-a",
+      qaToken: "qa-secret",
+    });
+    panels.dispose();
+    expect(panels.getContext()).toEqual({ sessionId: null, qaToken: "" });
+  });
+
   it("aborts and closes an active registration on deterministic cleanup", () => {
     const panels = new QaSurfacePanelRegistry();
     const remove = panels.register({

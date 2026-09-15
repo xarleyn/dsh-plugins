@@ -19,9 +19,14 @@ assert.match(patch, /name: "@yadsh\/dsh-qa-browser"/u);
 for (const path of [
   "../lib/index.js",
   "../lib/index.d.ts",
+  "../lib/client.js",
+  "../lib/client/index.d.ts",
+  "../lib/remote.js",
+  "../lib/remote.d.ts",
   "../lib/types.js",
   "../lib/types.d.ts",
   "../README.md",
+  "../docs/DOCKER.md",
   "../LICENSE",
 ]) {
   await access(new URL(path, import.meta.url));
@@ -47,5 +52,21 @@ assert.deepEqual(built.BROWSER_CORE_TOOL_NAMES, [
   "browser_history",
 ]);
 assert.deepEqual(built.BROWSER_VISION_TOOL_NAMES, ["browser_screenshot"]);
+
+assert.deepEqual(manifest.dsh?.client?.inject, [
+  "@deepseek-ai/dsh-api-gateway",
+  "@deepseek-ai/dsh-api-session-controller",
+  "@deepseek-ai/dsh-client-ui-slots",
+  "@yadsh/dsh-qa-surface",
+]);
+const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
+assert.match(
+  client,
+  /window\.__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-browser"/u,
+);
+assert.match(client, /qa\.surface\.panel/u);
+assert.match(client, /dsh-qa-browser-panel__viewport/u);
+assert.match(client, /api-session\/status/u);
+assert.doesNotMatch(client, /<iframe|createElement\("iframe"\)/iu);
 
 console.log("verify-package: all gates passed");

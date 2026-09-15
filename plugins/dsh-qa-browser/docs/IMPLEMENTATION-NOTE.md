@@ -11,19 +11,17 @@ Browser runtime.
 - Session-owned cleanup can follow the global `agent/disposed` event used by
   the QA tool lifecycle. The Browser keys state by `String(agent.session.id)`.
 - The target tool registry uses focused `defineTool` definitions and structured
-  content rendering. The image-bearing tool-result path exists, but its exact
-  artifact/attachment contract still needs a Phase 4 contract test before the
-  Browser exposes `browser_screenshot`.
-- Typert Remote is suitable for bounded JSON control/state. Binary-frame
-  transport has not been assumed; Phase B starts with bounded on-demand frames
-  and must choose its wire representation after a dedicated carrier test.
+  content rendering. `browser_screenshot` persists through `ctx.attachments`
+  and renders the returned native image reference.
+- Typert Remote carries strict read-only panel state and bounded base64 PNG
+  frames. Every call is authorized through QA Surface before session state is
+  read.
 - QA Surface publishes `@yadsh/dsh-qa-surface/client/panels`. A consumer must
   register metadata through `ctx.qaSurfacePanels.register`, then register its
   React body in keyed slot `qa.surface.panel` under exactly the same package id.
   Cleanup is deterministic and `keepMounted: true` is supported.
-- Every package declaring `dsh.client` must emit the classic ModuleLoader
-  wrapper with the full scoped npm package name. This runtime-only slice does
-  not declare `dsh.client`; the panel slice will add and verify it.
+- The panel client emits the classic ModuleLoader wrapper with the exact id
+  `@yadsh/dsh-qa-browser` and registers only through the public keyed seat.
 
 ## Implemented boundary
 
@@ -41,6 +39,6 @@ even when a hostname is explicitly allowed.
 
 The second implementation stage adds semantic snapshots, revision-bound refs
 and focused agent tools on top of `QaBrowserService`. A deterministic form
-fixture proves fill, select, checkbox and click behavior without CSS selectors
-or screenshots. The panel follows only after these Host contracts and the
-native screenshot artifact result are stable.
+fixture proves fill, select, checkbox and click behavior without CSS selectors.
+The basic QA panel now follows those Host contracts with latest-revision
+on-demand frames; live screencast and human takeover remain later phases.

@@ -1,5 +1,6 @@
 import type {
   QaSurfacePanelDefinition,
+  QaSurfacePanelContext,
   QaSurfacePanelOpenOptions,
   QaSurfacePanels,
 } from "./contract.js";
@@ -23,6 +24,10 @@ const EMPTY_SNAPSHOT: QaSurfacePanelsSnapshot = Object.freeze({
   params: undefined,
   focusRequest: 0,
   focus: false,
+});
+const EMPTY_CONTEXT: QaSurfacePanelContext = Object.freeze({
+  sessionId: null,
+  qaToken: "",
 });
 
 function requiredIdentity(value: string, field: "id" | "kind"): string {
@@ -60,6 +65,7 @@ export class QaSurfacePanelRegistry implements QaSurfacePanels {
   private focusRequest = 0;
   private focus = false;
   private snapshot: QaSurfacePanelsSnapshot = EMPTY_SNAPSHOT;
+  private context: QaSurfacePanelContext = EMPTY_CONTEXT;
   private disposed = false;
 
   readonly subscribe = (listener: () => void): (() => void) => {
@@ -144,6 +150,15 @@ export class QaSurfacePanelRegistry implements QaSurfacePanels {
     return this.activeKind;
   }
 
+  getContext(): QaSurfacePanelContext {
+    return this.context;
+  }
+
+  /** QA Surface-owned lifecycle update; extensions consume it read-only. */
+  setContext(context: QaSurfacePanelContext): void {
+    this.context = Object.freeze({ ...context });
+  }
+
   list(): readonly QaSurfacePanelDefinition[] {
     return this.snapshot.definitions;
   }
@@ -164,6 +179,7 @@ export class QaSurfacePanelRegistry implements QaSurfacePanels {
     this.byKind.clear();
     this.paramsByKind.clear();
     this.activeKind = null;
+    this.context = EMPTY_CONTEXT;
     this.publish();
     this.listeners.clear();
   }
