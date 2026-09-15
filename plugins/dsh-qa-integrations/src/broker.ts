@@ -8,6 +8,7 @@ import type {
   CredentialInput,
   IntegrationCapability,
   IntegrationJsonValue,
+  IntegrationPolicyMode,
   IntegrationPrincipal,
   IntegrationProviderId,
   IntegrationProviderSummary,
@@ -19,16 +20,16 @@ import type {
 
 const DEFAULT_POLICY: Readonly<
   Record<IntegrationCapability, "allow" | "deny">
-> = Object.freeze({ "crm.read": "allow", "chat.read": "allow" });
-
-function requiredCapability(operation: string): IntegrationCapability {
-  if (operation.startsWith("crm.")) return "crm.read";
-  if (operation.startsWith("chat.")) return "chat.read";
-  throw new IntegrationError(
-    "InvalidRequest",
-    "Unsupported integration operation",
-  );
-}
+> = Object.freeze({
+  "crm.read": "allow",
+  "chat.read": "allow",
+  "openlines.read": "allow",
+  "user.read": "allow",
+  "department.read": "allow",
+  "tasks.read": "allow",
+  "calendar.read": "allow",
+  "disk.read": "allow",
+});
 
 /** In-process broker boundary; no caller outside it receives decrypted secrets. */
 export class IntegrationBroker {
@@ -78,11 +79,13 @@ export class IntegrationBroker {
       };
     }
     const policy = Object.fromEntries(
-      provider.capabilities.map((capability) => [
+      integration.capabilities.map((capability) => [
         capability,
         this.repository.policy(integration, capability),
       ]),
-    ) as Record<IntegrationCapability, "allow" | "confirm" | "deny">;
+    ) as Readonly<
+      Partial<Record<IntegrationCapability, IntegrationPolicyMode>>
+    >;
     const secret = this.repository.secretFor(principal, providerId);
     return {
       provider: providerId,
@@ -139,8 +142,20 @@ export class IntegrationBroker {
     const integration = this.requireConnected(principal, providerId);
     try {
       const credential = await this.decrypt(principal, providerId);
-      await this.providers.get(providerId).validate({ credential });
-      this.repository.updateValidation(principal, providerId, true, null);
+      const validation = await this.providers
+        .get(providerId)
+        .validate({ credential });
+      // Re-probe capabilities: granting a new scope in Bitrix24 must show up
+      // here, and a revoked one must stop being offered. Policies are left
+      // untouched, so a newly detected capability starts denied until the user
+      // enables it in Settings.
+      this.repository.updateValidation(
+        principal,
+        providerId,
+        true,
+        null,
+        validation.capabilities,
+      );
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: providerId,
@@ -218,7 +233,14 @@ export class IntegrationBroker {
     },
   ): Promise<IntegrationToolResult> {
     const integration = this.requireConnected(principal, request.provider);
-    const capability = requiredCapability(request.operation);
+    const provider = this.providers.get(request.provider);
+    const capability = provider.operationCapability(request.operation);
+    if (capability === undefined) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        "Unsupported integration operation",
+      );
+    }
     const mode = this.repository.policy(integration, capability);
     if (mode !== "allow" || !integration.capabilities.includes(capability)) {
       this.repository.audit({
@@ -235,9 +257,14 @@ export class IntegrationBroker {
     }
     try {
       const credential = await this.decrypt(principal, request.provider);
-      const providerData = await this.providers
-        .get(request.provider)
-        .execute({ credential }, request.operation, request.input);
+      const providerData = await provider.execute(
+        {
+          credential,
+          externalUserId: integration.externalUserId ?? undefined,
+        },
+        request.operation,
+        request.input,
+      );
       const data =
         typeof providerData === "object" &&
         providerData !== null &&

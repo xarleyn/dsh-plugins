@@ -1,3 +1,10 @@
+import {
+  BITRIX_CAPABILITIES,
+  BITRIX_OPERATIONS,
+  enabledCapabilities,
+  type BitrixListShape,
+  type BitrixOperationDefinition,
+} from "../catalog.js";
 import { IntegrationError } from "../errors.js";
 import type {
   IntegrationCapability,
@@ -5,6 +12,7 @@ import type {
   ResolvedQaIntegrationsConfig,
 } from "../types.js";
 import type { IntegrationProvider, ProviderContext } from "./contract.js";
+import { BITRIX_HANDLERS, BITRIX_PROJECTIONS } from "./bitrix24-operations.js";
 
 interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -13,6 +21,14 @@ interface BitrixCredential {
 interface BitrixEnvelope {
   readonly result?: unknown;
   readonly error?: unknown;
+  readonly total?: unknown;
+  readonly next?: unknown;
+}
+
+interface BitrixResponse {
+  readonly result: unknown;
+  readonly total?: number | undefined;
+  readonly next?: number | undefined;
 }
 
 function credentialFromPlaintext(plaintext: string): BitrixCredential {
@@ -121,39 +137,99 @@ async function readBounded(
   }
 }
 
+function count(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function itemsOf(result: unknown, shape: BitrixListShape): unknown[] {
+  if (shape === "self") return Array.isArray(result) ? result : [];
+  if (shape === "map") {
+    return typeof result === "object" &&
+      result !== null &&
+      !Array.isArray(result)
+      ? Object.values(result)
+      : [];
+  }
+  if (typeof result !== "object" || result === null) return [];
+  const held = (result as Record<string, unknown>)[shape];
+  return Array.isArray(held) ? held : [];
+}
+
+/**
+ * Every list operation answers with the same envelope, so the model does not
+ * have to learn six response shapes and never loses the pagination cursor.
+ */
+function collect(
+  operation: string,
+  definition: BitrixOperationDefinition,
+  response: BitrixResponse,
+  params: Readonly<Record<string, unknown>>,
+): unknown {
+  const projection = BITRIX_PROJECTIONS[operation];
+  if (projection !== undefined) return projection(response.result);
+  if (definition.list === undefined) return response.result;
+  const items = itemsOf(response.result, definition.list);
+  // IM methods page with OFFSET, CRM and task methods with start.
+  const start = count(params["start"] ?? params["OFFSET"]);
+  const pagination = {
+    ...(start === undefined ? {} : { start }),
+    ...(response.next === undefined ? {} : { next: response.next }),
+    ...(response.total === undefined ? {} : { total: response.total }),
+  };
+  return Object.keys(pagination).length === 0
+    ? { items }
+    : { items, pagination };
+}
+
 export class Bitrix24Provider implements IntegrationProvider {
   readonly id = "bitrix24" as const;
   readonly displayName = "Bitrix24";
+  /** What this deployment allows; the webhook scope probe narrows it per user. */
   readonly capabilities: readonly IntegrationCapability[];
 
   constructor(
     private readonly config: ResolvedQaIntegrationsConfig,
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    this.capabilities = Object.freeze([
-      ...(config.bitrix24.crmRead ? (["crm.read"] as const) : []),
-      ...(config.bitrix24.chatRead ? (["chat.read"] as const) : []),
-    ]);
+    this.capabilities = Object.freeze(enabledCapabilities(config.bitrix24));
+  }
+
+  operationCapability(operation: string): IntegrationCapability | undefined {
+    return BITRIX_OPERATIONS[operation]?.capability;
   }
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
-    const result = await this.call(credential, "profile", {});
-    if (typeof result !== "object" || result === null) {
+    const profile = await this.call(credential, "profile", {});
+    if (typeof profile.result !== "object" || profile.result === null) {
       throw new IntegrationError(
         "ProviderUnavailable",
         "Provider identity is unavailable",
       );
     }
-    const profile = result as Record<string, unknown>;
-    const first = typeof profile["NAME"] === "string" ? profile["NAME"] : "";
+    const fields = profile.result as Record<string, unknown>;
+    const first = typeof fields["NAME"] === "string" ? fields["NAME"] : "";
     const last =
-      typeof profile["LAST_NAME"] === "string" ? profile["LAST_NAME"] : "";
+      typeof fields["LAST_NAME"] === "string" ? fields["LAST_NAME"] : "";
+    const scopes = await this.grantedScopes(credential);
     return {
       tenantId: new URL(credential.webhookBaseUrl).hostname,
-      externalUserId: String(profile["ID"] ?? ""),
+      externalUserId: String(fields["ID"] ?? ""),
       displayName: `${first} ${last}`.trim() || "Пользователь Bitrix24",
-      capabilities: this.capabilities,
+      capabilities:
+        scopes === undefined
+          ? this.capabilities
+          : this.capabilities.filter((capability) => {
+              const definition = BITRIX_CAPABILITIES.find(
+                (item) => item.capability === capability,
+              );
+              return (
+                definition !== undefined &&
+                definition.scopes.some((scope) => scopes.includes(scope))
+              );
+            }),
     };
   }
 
@@ -163,40 +239,35 @@ export class Bitrix24Provider implements IntegrationProvider {
     input: Readonly<Record<string, unknown>>,
   ): Promise<unknown> {
     const credential = credentialFromPlaintext(context.credential);
-    switch (operation) {
-      case "crm.search": {
-        const query = String(input["query"] ?? "").trim();
-        return this.call(credential, "crm.item.list", {
-          entityTypeId: input["entityTypeId"],
-          select: ["id", "title", "createdTime", "updatedTime", "assignedById"],
-          ...(query === "" ? {} : { filter: { "%title": query } }),
-          start: 0,
-        });
-      }
-      case "crm.get":
-        return this.call(credential, "crm.item.get", {
-          entityTypeId: input["entityTypeId"],
-          id: input["id"],
-        });
-      case "chat.search":
-        return this.call(credential, "im.search.chat.list", {
-          FIND: input["query"],
-          OFFSET: 0,
-          LIMIT: input["limit"],
-        });
-      case "chat.messages":
-        return this.call(credential, "im.dialog.messages.get", {
-          DIALOG_ID: input["dialogId"],
-          LIMIT: input["limit"],
-          ...(input["lastId"] === undefined
-            ? {}
-            : { LAST_ID: input["lastId"] }),
-        });
-      default:
-        throw new IntegrationError(
-          "InvalidRequest",
-          "Unsupported Bitrix24 operation",
-        );
+    const definition = BITRIX_OPERATIONS[operation];
+    const handler = BITRIX_HANDLERS[operation];
+    if (definition === undefined || handler === undefined) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        "Unsupported Bitrix24 operation",
+      );
+    }
+    const params = handler(input, { externalUserId: context.externalUserId });
+    const response = await this.call(credential, definition.method, params);
+    return collect(operation, definition, response, params);
+  }
+
+  /**
+   * The scopes the connected webhook was actually granted. A portal that
+   * refuses `scope` only costs precision: the deployment switches still bound
+   * what the agent may try.
+   */
+  private async grantedScopes(
+    credential: BitrixCredential,
+  ): Promise<readonly string[] | undefined> {
+    try {
+      const response = await this.call(credential, "scope", {});
+      if (!Array.isArray(response.result)) return undefined;
+      return response.result
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.toLowerCase());
+    } catch {
+      return undefined;
     }
   }
 
@@ -204,7 +275,7 @@ export class Bitrix24Provider implements IntegrationProvider {
     credential: BitrixCredential,
     method: string,
     params: Readonly<Record<string, unknown>>,
-  ): Promise<unknown> {
+  ): Promise<BitrixResponse> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     try {
@@ -232,7 +303,11 @@ export class Bitrix24Provider implements IntegrationProvider {
           denied ? "Provider denied this operation" : "Provider request failed",
         );
       }
-      return envelope?.result;
+      return {
+        result: envelope?.result,
+        total: count(envelope?.total),
+        next: count(envelope?.next),
+      };
     } catch (error) {
       if (error instanceof IntegrationError) throw error;
       throw new IntegrationError(

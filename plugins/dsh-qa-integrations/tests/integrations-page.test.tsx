@@ -67,4 +67,42 @@ describe("Integrations settings page", () => {
     expect(container.textContent).toContain("Токен настроен");
     expect(container.textContent).not.toContain("Показать токен");
   });
+
+  it("shows one row per capability and disables the ones Bitrix24 withheld", async () => {
+    const patched: string[] = [];
+    const remote: IntegrationsRemote = {
+      describe: async () => ({ ok: true, value: { enabled: true } }),
+      getBitrix24: async () => ({
+        ok: true,
+        value: {
+          ...connected,
+          capabilities: ["crm.read", "tasks.read"],
+          policy: { "crm.read": "allow", "tasks.read": "deny" },
+        },
+      }),
+      putBitrix24Credential: async () => ({ ok: true, value: connected }),
+      testBitrix24: async () => ({ ok: true, value: connected }),
+      patchBitrix24Policy: async (_token, patch) => {
+        patched.push(`${patch.operation}:${patch.mode}`);
+        return { ok: true, value: connected };
+      },
+      disconnectBitrix24: async () => ({ ok: true, value: true }),
+    };
+    const Page = createIntegrationsPage(remote);
+    const { container } = render(<Page token="qa-account-token" />);
+
+    const crm = await screen.findByLabelText("Читать CRM");
+    const tasks = screen.getByLabelText("Читать задачи");
+    const calendar = screen.getByLabelText("Читать календарь");
+    const disk = screen.getByLabelText("Читать файлы Диска");
+    expect(crm).toHaveProperty("checked", true);
+    expect(tasks).toHaveProperty("checked", false);
+    expect(tasks).toHaveProperty("disabled", false);
+    expect(calendar).toHaveProperty("disabled", true);
+    expect(disk).toHaveProperty("disabled", true);
+    expect(container.textContent).toContain("Нет разрешения Bitrix24");
+
+    fireEvent.click(tasks);
+    await waitFor(() => expect(patched).toEqual(["tasks.read:allow"]));
+  });
 });

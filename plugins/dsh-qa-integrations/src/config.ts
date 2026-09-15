@@ -1,9 +1,27 @@
 import path from "node:path";
 import z from "@deepseek-ai/schemastery";
 import type {
+  Bitrix24Flags,
   QaIntegrationsConfig,
   ResolvedQaIntegrationsConfig,
 } from "./types.js";
+
+/**
+ * Every read scope is on by default: a capability is offered to the agent only
+ * when the connected webhook was actually granted the matching Bitrix24 scope,
+ * so these switches bound what this deployment allows, they do not grant it.
+ */
+const BITRIX24_DEFAULTS: Bitrix24Flags = {
+  enabled: true,
+  crmRead: true,
+  chatRead: true,
+  openlinesRead: true,
+  userRead: true,
+  departmentRead: true,
+  tasksRead: true,
+  calendarRead: true,
+  diskRead: true,
+};
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   enabled: z.boolean().default(false),
@@ -20,8 +38,14 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
       enabled: z.boolean().default(true),
       crmRead: z.boolean().default(true),
       chatRead: z.boolean().default(true),
+      openlinesRead: z.boolean().default(true),
+      userRead: z.boolean().default(true),
+      departmentRead: z.boolean().default(true),
+      tasksRead: z.boolean().default(true),
+      calendarRead: z.boolean().default(true),
+      diskRead: z.boolean().default(true),
     })
-    .default({ enabled: true, crmRead: true, chatRead: true }),
+    .default(BITRIX24_DEFAULTS),
 });
 
 export function resolveConfig(
@@ -39,6 +63,7 @@ export function resolveConfig(
   )
     .map((suffix) => suffix.trim().toLowerCase())
     .filter((suffix) => suffix.startsWith(".") && suffix.length > 1);
+  const bitrix24 = input.bitrix24 ?? {};
   return Object.freeze({
     enabled: input.enabled ?? false,
     dataPath: input.dataPath?.trim() || path.join(base, "qa-integrations.json"),
@@ -49,9 +74,16 @@ export function resolveConfig(
     maxResponseBytes: input.maxResponseBytes ?? 2_000_000,
     allowedPortalSuffixes: Object.freeze(suffixes),
     bitrix24: Object.freeze({
-      enabled: input.bitrix24?.enabled ?? true,
-      crmRead: input.bitrix24?.crmRead ?? true,
-      chatRead: input.bitrix24?.chatRead ?? true,
+      enabled: bitrix24.enabled ?? BITRIX24_DEFAULTS.enabled,
+      crmRead: bitrix24.crmRead ?? BITRIX24_DEFAULTS.crmRead,
+      chatRead: bitrix24.chatRead ?? BITRIX24_DEFAULTS.chatRead,
+      openlinesRead: bitrix24.openlinesRead ?? BITRIX24_DEFAULTS.openlinesRead,
+      userRead: bitrix24.userRead ?? BITRIX24_DEFAULTS.userRead,
+      departmentRead:
+        bitrix24.departmentRead ?? BITRIX24_DEFAULTS.departmentRead,
+      tasksRead: bitrix24.tasksRead ?? BITRIX24_DEFAULTS.tasksRead,
+      calendarRead: bitrix24.calendarRead ?? BITRIX24_DEFAULTS.calendarRead,
+      diskRead: bitrix24.diskRead ?? BITRIX24_DEFAULTS.diskRead,
     }),
   });
 }

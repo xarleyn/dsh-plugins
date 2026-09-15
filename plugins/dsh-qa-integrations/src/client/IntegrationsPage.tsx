@@ -1,6 +1,7 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { useCallback, useEffect, useState } from "react";
+import { BITRIX_CAPABILITIES } from "../catalog.js";
 import type {
   IntegrationCapability,
   IntegrationSummary,
@@ -253,36 +254,30 @@ export function createIntegrationsPage(remote: IntegrationsRemote) {
             <>
               <div className="dsh-qa-integrations__section">
                 <h4>Доступ агента</h4>
-                {(
-                  [
-                    ["crm.read", "Читать CRM"],
-                    ["chat.read", "Читать чаты"],
-                  ] as const
-                ).map(([capability, label]) => (
-                  <div
-                    className="dsh-qa-integrations__permission"
-                    key={capability}
-                  >
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={summary.policy[capability] === "allow"}
-                        disabled={
-                          busy || !summary.capabilities.includes(capability)
-                        }
-                        onChange={(event) =>
-                          void patch(capability, event.currentTarget.checked)
-                        }
-                      />
-                      {label}
-                    </label>
-                    <span className="dsh-qa-integrations__muted">
-                      {summary.capabilities.includes(capability)
-                        ? "Доступно провайдеру"
-                        : "Нет разрешения Bitrix24"}
-                    </span>
-                  </div>
-                ))}
+                {BITRIX_CAPABILITIES.map(({ capability, label, hint }) => {
+                  const granted = summary.capabilities.includes(capability);
+                  return (
+                    <div
+                      className="dsh-qa-integrations__permission"
+                      key={capability}
+                    >
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={summary.policy[capability] === "allow"}
+                          disabled={busy || !granted}
+                          onChange={(event) =>
+                            void patch(capability, event.currentTarget.checked)
+                          }
+                        />
+                        {label}
+                      </label>
+                      <span className="dsh-qa-integrations__muted" title={hint}>
+                        {granted ? "Доступно" : "Нет разрешения Bitrix24"}
+                      </span>
+                    </div>
+                  );
+                })}
                 <div className="dsh-qa-integrations__permission">
                   <label>
                     <input type="checkbox" disabled /> Отправлять сообщения
