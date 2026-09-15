@@ -21,6 +21,7 @@ describe("resolveQaBrowserConfig", () => {
         network: {
           allowedSchemes: ["HTTPS:", "https", " http "],
           allowHosts: ["LOCALHOST", "localhost"],
+          dshOrigins: ["https://DSH.EXAMPLE/app"],
         },
       },
     });
@@ -34,6 +35,15 @@ describe("resolveQaBrowserConfig", () => {
     expect(config.session.maxTabs).toBe(32);
     expect(config.security.network.allowedSchemes).toEqual(["https", "http"]);
     expect(config.security.network.allowHosts).toEqual(["localhost"]);
+    expect(config.security.network.dshOrigins).toEqual(["https://dsh.example"]);
+  });
+
+  it("rejects non-origin self-deny entries", () => {
+    expect(() =>
+      resolveQaBrowserConfig({
+        security: { network: { dshOrigins: ["not an origin"] } },
+      }),
+    ).toThrow();
   });
 
   it("rejects relative executable paths", () => {

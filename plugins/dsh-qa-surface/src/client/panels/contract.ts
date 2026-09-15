@@ -48,6 +48,11 @@ export interface QaSurfacePanelOwnerProps {
   readonly signal: AbortSignal;
 }
 
+export interface QaSurfacePanelContext {
+  readonly sessionId: string | null;
+  readonly qaToken: string;
+}
+
 export interface QaSurfacePanels {
   register(definition: QaSurfacePanelDefinition): () => void;
   open(kind: string, options?: QaSurfacePanelOpenOptions): boolean;
@@ -55,6 +60,8 @@ export interface QaSurfacePanels {
   toggle(kind: string): boolean;
   isRegistered(kind: string): boolean;
   getActiveKind(): string | null;
+  /** Current QA session/credential pair for activity-driven extensions. */
+  getContext(): QaSurfacePanelContext;
   list(): readonly QaSurfacePanelDefinition[];
 }
 

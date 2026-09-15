@@ -40,6 +40,10 @@ export interface QaBrowserConfig {
     readonly uploads?: boolean;
     readonly unsafeEvaluate?: boolean;
   };
+  readonly ui?: {
+    readonly autoRevealOnAgentActivity?: boolean;
+    readonly focusOnAutoReveal?: boolean;
+  };
   readonly security?: {
     readonly network?: {
       readonly allowedSchemes?: string[];
@@ -49,6 +53,7 @@ export interface QaBrowserConfig {
       readonly denyHosts?: string[];
       readonly denyMetadataEndpoints?: boolean;
       readonly denyDshOrigin?: boolean;
+      readonly dshOrigins?: string[];
     };
   };
 }
@@ -91,6 +96,10 @@ export interface ResolvedQaBrowserConfig {
     readonly uploads: boolean;
     readonly unsafeEvaluate: boolean;
   };
+  readonly ui: {
+    readonly autoRevealOnAgentActivity: boolean;
+    readonly focusOnAutoReveal: boolean;
+  };
   readonly security: {
     readonly network: {
       readonly allowedSchemes: readonly string[];
@@ -100,6 +109,7 @@ export interface ResolvedQaBrowserConfig {
       readonly denyHosts: readonly string[];
       readonly denyMetadataEndpoints: boolean;
       readonly denyDshOrigin: boolean;
+      readonly dshOrigins: readonly string[];
     };
   };
 }
@@ -142,6 +152,10 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
     uploads: false,
     unsafeEvaluate: false,
   },
+  ui: {
+    autoRevealOnAgentActivity: true,
+    focusOnAutoReveal: false,
+  },
   security: {
     network: {
       allowedSchemes: ["http", "https"],
@@ -151,6 +165,7 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
       denyHosts: [],
       denyMetadataEndpoints: true,
       denyDshOrigin: true,
+      dshOrigins: [],
     },
   },
 };
@@ -216,6 +231,12 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
         unsafeEvaluate: z.boolean().default(false),
       })
       .description("Browser capability gates."),
+    ui: z
+      .object({
+        autoRevealOnAgentActivity: z.boolean().default(true),
+        focusOnAutoReveal: z.boolean().default(false),
+      })
+      .description("QA Surface Browser panel behavior."),
     security: z
       .object({
         network: z
@@ -227,6 +248,7 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
             denyHosts: z.array(z.string()).default([]),
             denyMetadataEndpoints: z.boolean().default(true),
             denyDshOrigin: z.boolean().default(true),
+            dshOrigins: z.array(z.string()).default([]),
           })
           .description("Server-enforced Browser network policy."),
       })
@@ -320,6 +342,11 @@ export function resolveQaBrowserConfig(
       uploads: raw.capabilities?.uploads ?? false,
       unsafeEvaluate: raw.capabilities?.unsafeEvaluate ?? false,
     },
+    ui: {
+      autoRevealOnAgentActivity:
+        raw.ui?.autoRevealOnAgentActivity ?? true,
+      focusOnAutoReveal: raw.ui?.focusOnAutoReveal ?? false,
+    },
     security: {
       network: {
         allowedSchemes:
@@ -332,6 +359,15 @@ export function resolveQaBrowserConfig(
         denyMetadataEndpoints:
           raw.security?.network?.denyMetadataEndpoints ?? true,
         denyDshOrigin: raw.security?.network?.denyDshOrigin ?? true,
+        dshOrigins: (raw.security?.network?.dshOrigins ?? []).map((value) => {
+          const origin = new URL(value).origin;
+          if (origin === "null") {
+            throw new TypeError(
+              "dsh-qa-browser: security.network.dshOrigins must contain HTTP(S) origins",
+            );
+          }
+          return origin;
+        }),
       },
     },
   };

@@ -167,6 +167,11 @@ export function QaPanelHost({
     ),
   );
 
+  useEffect(() => {
+    panels.setContext({ sessionId, qaToken });
+    return () => panels.setContext({ sessionId: null, qaToken: "" });
+  }, [panels, qaToken, sessionId]);
+
   if (active !== undefined) mounted.current.add(active.id);
   const liveIds = new Set(
     snapshot.definitions.map((definition) => definition.id),

@@ -133,3 +133,22 @@ export interface BrowserWaitRequest {
   readonly state?: "visible" | "hidden";
   readonly timeoutMs?: number;
 }
+
+/** Read-only state exposed to the authenticated QA Surface panel. */
+export interface BrowserPanelState {
+  readonly session: BrowserSessionInfo | null;
+  readonly tabs: readonly BrowserTabInfo[];
+  readonly autoRevealOnAgentActivity: boolean;
+  readonly focusOnAutoReveal: boolean;
+}
+
+/** Bounded on-demand viewport image carried over the existing DSH Remote. */
+export interface BrowserPanelFrame {
+  readonly tabId: string;
+  readonly revision: number;
+  readonly url: string;
+  readonly title: string;
+  readonly mediaType: "image/png";
+  readonly bytes: number;
+  readonly data: string;
+}
