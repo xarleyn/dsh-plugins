@@ -79,12 +79,26 @@ wave tag, workflow artifact, and npm publication, but should not create the
 GitHub Release.
 
 The live workflow asks Nx to create the release commit and project changelogs
-without publishing or tagging. It then runs all validation and tarball
-installation gates, checks that every selected package already exists on npm,
-and publishes the versioned projects through npm OIDC. Only once npm has every
-version does it tag the release wave with one `release/<date>` tag, push the
-release commit and the tag, and create one GitHub Release for the whole wave,
-with every `.tgz` attached and each package's changelog entry in the notes.
+without publishing or tagging. Nx commits the versions and changelogs but
+removes the consumed version plans outside that commit, so the workflow stages
+the workspace and folds the removal into the release commit before that commit
+leaves the prepare job. It then selects the released packages, checks that every
+one of them already exists on npm, and fans the validation out: one runner per
+released package verifies it, packs its tarball and installs that tarball into a
+clean npm environment, while a second job runs the repository-wide gates and an
+Nx sweep over every project the release does not publish. Between them the two
+jobs verify the whole workspace exactly once. Only once every job has passed
+does one runner publish the versioned projects through npm OIDC, and only once
+npm has every version does it tag the release wave with one `release/<date>`
+tag, push the release commit and the tag, and create one GitHub Release for the
+whole wave, with every `.tgz` attached and each package's changelog entry in the
+notes.
+
+The release commit exists only on the prepare runner, so the jobs below it work
+on a fresh checkout of the released ref plus a patch of that commit — every
+commit Nx created since the ref, replayed with `git am`, message and authorship
+included. Packing, tarball verification and publication therefore all read the
+same commit the push records.
 
 The order is the point: the branch never advances to a state the registry does
 not already reflect. A release that fails at any step before the push leaves
@@ -115,7 +129,9 @@ runner yet:
 - If versioning, the registry check, the validation gates, or the tarball
   checks fail, fix the cause and rerun the workflow. The version plans are
   still in the branch; the failed run's local release commit is discarded with
-  its runner.
+  its runner. Because validation is fanned out per package, re-running the
+  failed jobs retries only the packages that failed instead of the whole
+  workspace.
 - If the **Publish to npm with OIDC** step fails, it reports every package npm
   rejected, and nothing was pushed. A package the registry does not know yet
   means it has no first publish: follow *A new package needs one manual first
