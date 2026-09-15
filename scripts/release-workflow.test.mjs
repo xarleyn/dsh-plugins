@@ -290,19 +290,33 @@ describe("Nx release commands", () => {
     const base = run("git", ["rev-parse", "HEAD"], root).stdout.trim();
     assertSucceeded(runNx(root, "release", "--skip-publish"), "nx release");
 
-    // Nx removes the consumed version plans outside its own commit; the
-    // workflow stages the workspace and folds that into the release commit
-    // before it travels.
-    const staged = run("git", ["status", "--porcelain"], root).stdout;
-    assert.match(
-      staged,
-      / D \.nx\/version-plans\/release-test\.md/u,
-      "the fixture must exercise the plan removal Nx leaves uncommitted",
-    );
-    assertSucceeded(run("git", ["add", "--all"], root), "git add --all");
-    assertSucceeded(
-      run("git", ["commit", "--amend", "--no-edit"], root),
-      "git commit --amend",
+    // Nx versions differ here: some include the consumed plan's removal in
+    // their release commit, while others leave it in the worktree for the
+    // workflow's amend step. Accept both layouts, then assert the portable
+    // artifact's real invariant below: the release commit must not retain a
+    // plan it has already consumed.
+    const pending = run("git", ["status", "--porcelain"], root).stdout;
+    if (pending.trim() !== "") {
+      assert.match(
+        pending,
+        / D \.nx\/version-plans\/release-test\.md/u,
+        "only the consumed plan removal may remain outside the release commit",
+      );
+      assertSucceeded(run("git", ["add", "--all"], root), "git add --all");
+      assertSucceeded(
+        run("git", ["commit", "--amend", "--no-edit"], root),
+        "git commit --amend",
+      );
+    }
+    const committed = run(
+      "git",
+      ["ls-tree", "-r", "--name-only", "HEAD"],
+      root,
+    ).stdout;
+    assert.doesNotMatch(
+      committed,
+      /^\.nx\/version-plans\/release-test\.md$/mu,
+      "the portable release commit must consume its version plan",
     );
     const releasedSubject = run(
       "git",
