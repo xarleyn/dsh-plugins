@@ -2,16 +2,11 @@
   "extends": "@yadsh/dsh-config/tsconfig/node",
   "compilerOptions": {
     "moduleDetection": "legacy",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": false,
     "exactOptionalPropertyTypes": false,
     "noImplicitOverride": false
   },
-  "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts"
-  ]
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

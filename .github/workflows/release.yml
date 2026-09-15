@@ -19,7 +19,7 @@ on:
         default: false
         type: boolean
       create_github_releases:
-        description: Create per-package GitHub Releases after npm publication
+        description: Create one GitHub Release for the release wave after npm publication
         required: true
         default: true
         type: boolean
@@ -38,16 +38,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main
+      - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: main
+          # Release whatever ref the workflow was dispatched on: main for
+          # regular releases, a branch for test releases without touching main.
+          ref: ${{ github.ref_name }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 10.4.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -59,10 +59,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Require a version plan
+      # A plan file nx cannot parse is ignored without a warning, so requiring
+      # the files to exist is not enough to guarantee a release has work to do.
+      - name: Require a valid version plan
         if: inputs.publish_only == false
-        shell: bash
-        run: compgen -G '.nx/version-plans/*.md' > /dev/null
+        run: node scripts/verify-package-hygiene.mjs --version-plans-only
 
       - name: Preview release
         if: inputs.dry_run && inputs.publish_only == false
@@ -101,13 +102,29 @@ jobs:
           node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
 
           if [[ "${{ inputs.publish_only }}" == "true" ]]; then
-            while IFS=$'\t' read -r name version _directory _tarball; do
-              git rev-parse --verify --quiet "refs/tags/${name}@${version}^{commit}" > /dev/null || {
-                echo "Missing release tag ${name}@${version}" >&2
-                exit 1
-              }
-            done < "$RUNNER_TEMP/release-packages.tsv"
+            # A release-wave tag on HEAD means the release commit is already
+            # pushed. Per-package tags are the previous release scheme and
+            # keep answering for releases made before the wave tag existed.
+            if git tag --points-at HEAD | grep -q '^release/'; then
+              echo "HEAD carries the release wave tag $(git tag --points-at HEAD | grep '^release/' | head -1)"
+            else
+              while IFS=$'\t' read -r name version _directory _tarball; do
+                git rev-parse --verify --quiet "refs/tags/${name}@${version}^{commit}" > /dev/null || {
+                  echo "Missing release tag ${name}@${version}" >&2
+                  exit 1
+                }
+              done < "$RUNNER_TEMP/release-packages.tsv"
+            fi
           fi
+
+      # npm cannot claim a package name through Trusted Publishing: a Trusted
+      # Publisher is configured on a package that already exists, and the
+      # registry answers a workflow's first publish with a misleading 404. A
+      # package nobody bootstrapped by hand would otherwise be discovered inside
+      # the publish loop, after the release commit is ready to be pushed.
+      - name: Verify packages exist on npm
+        if: inputs.dry_run == false || inputs.publish_only
+        run: node scripts/verify-package-publication.mjs --tsv="$RUNNER_TEMP/release-packages.tsv"
 
       - name: Run release gates
         if: inputs.dry_run == false || inputs.publish_only
@@ -137,18 +154,21 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Push release commit and tags
-        if: inputs.dry_run == false && inputs.publish_only == false
-        run: git push origin HEAD:main --follow-tags
-
       - name: Upgrade npm for trusted publishing
         if: inputs.dry_run == false || inputs.publish_only
         run: npm install --global npm@^11.15.0
 
+      # Publication is the only step that changes state outside this repository,
+      # so it runs before the release commit is pushed. A publish that fails
+      # then leaves the branch untouched, version plans included, and a rerun
+      # resolves the same versions and retries only what npm is missing.
+      # Publishing first is also what makes a pushed tag mean something: every
+      # tag in the repository names a version the registry already has.
       - name: Publish to npm with OIDC
         if: inputs.dry_run == false || inputs.publish_only
         shell: bash
         run: |
+          failed=()
           while IFS=$'\t' read -r name version _directory tarball; do
             if npm view "${name}@${version}" version --json > /dev/null 2>&1; then
               echo "Skipping ${name}@${version}: already published"
@@ -165,15 +185,66 @@ jobs:
             if [[ "${{ inputs.dry_run }}" == "true" ]]; then
               args+=(--dry-run)
             fi
-            npm publish "${args[@]}"
+
+            # A rejected package must not hide the ones behind it: collect the
+            # failures, then report them together.
+            if ! npm publish "${args[@]}"; then
+              failed+=("${name}@${version}")
+            fi
           done < "$RUNNER_TEMP/release-packages.tsv"
 
-      - name: Create per-package GitHub Releases
+          if (( ${#failed[@]} > 0 )); then
+            printf 'Failed to publish %d package(s):\n' "${#failed[@]}" >&2
+            printf '  %s\n' "${failed[@]}" >&2
+            echo "Nothing was pushed; fix the failures and rerun the release." >&2
+            exit 1
+          fi
+
+      # One tag per release run replaces one tag per released package: the
+      # wave tag names a commit whose every version npm already has, so the
+      # repository's tag list stops growing by one tag per released package.
+      # Annotated, so the push below forwards it with --follow-tags.
+      - name: Tag the release wave
+        if: inputs.dry_run == false && inputs.publish_only == false
+        shell: bash
+        run: |
+          base="release/$(date -u +%Y-%m-%d)"
+          wave_tag="$base"
+          suffix=2
+          while git rev-parse --verify --quiet "refs/tags/$wave_tag" > /dev/null; do
+            wave_tag="$base-$suffix"
+            suffix=$((suffix + 1))
+          done
+          git tag -a "$wave_tag" -m "Release wave ${wave_tag#release/}"
+
+      - name: Push release commit and tags
+        if: inputs.dry_run == false && inputs.publish_only == false
+        run: git push origin HEAD:${{ github.ref_name }} --follow-tags --atomic
+
+      - name: Create the release-wave GitHub Release
         if: inputs.dry_run == false && inputs.create_github_releases
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          wave_tag="$(git tag --points-at HEAD | grep '^release/' | head -1 || true)"
+
+          if [[ -n "$wave_tag" ]]; then
+            notes="$RUNNER_TEMP/release-wave-notes.md"
+            node scripts/wave-release-notes.mjs --tsv="$RUNNER_TEMP/release-packages.tsv" > "$notes"
+            if gh release view "$wave_tag" > /dev/null 2>&1; then
+              gh release upload "$wave_tag" tarballs/*.tgz --clobber
+            else
+              gh release create "$wave_tag" tarballs/*.tgz \
+                --verify-tag \
+                --title "Release ${wave_tag#release/}" \
+                --notes-file "$notes"
+            fi
+            exit 0
+          fi
+
+          # A release made before the wave scheme carries per-package tags;
+          # its releases keep the per-package shape until those tags are gone.
           while IFS=$'\t' read -r name version _directory tarball; do
             tag="${name}@${version}"
             tarball_path="$GITHUB_WORKSPACE/tarballs/$tarball"

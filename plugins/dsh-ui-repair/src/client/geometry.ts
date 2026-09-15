@@ -46,7 +46,9 @@ function sameGeometry(
 function nextFrame(document: Document): Promise<void> {
   const schedule = document.defaultView?.requestAnimationFrame;
   if (schedule === undefined) return Promise.resolve();
-  return new Promise((resolve) => schedule.call(document.defaultView, () => resolve()));
+  return new Promise((resolve) =>
+    schedule.call(document.defaultView, () => resolve()),
+  );
 }
 
 export async function waitForStableLayout(
@@ -79,8 +81,8 @@ export function dominantPosition(
 ): { center: number; members: number } {
   let best: readonly number[] = [];
   for (const value of values) {
-    const cluster = values.filter((candidate) =>
-      Math.abs(candidate - value) <= tolerance,
+    const cluster = values.filter(
+      (candidate) => Math.abs(candidate - value) <= tolerance,
     );
     if (cluster.length > best.length) best = cluster;
   }

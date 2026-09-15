@@ -19,6 +19,7 @@ describe("audit events", () => {
   it("contains no raw content by default", () => {
     const secret = "api_key = 'sk-ant-very-secret-value'";
     const event = buildAuditEvent({
+      sessionId: "session-12",
       turn: 12,
       step: 2,
       direction: "output",
@@ -36,11 +37,13 @@ describe("audit events", () => {
     expect(event.contentSha256).toBe(contentSha256(secret));
     expect(event.rawContent).toBeUndefined();
     expect(event.decision).toBe("block");
+    expect(event.sessionId).toBe("session-12");
     expect(event.latencyMs).toBe(81);
   });
 
   it("includes a bounded preview when raw logging is opted in", () => {
     const event = buildAuditEvent({
+      sessionId: null,
       turn: null,
       step: null,
       direction: "input",
@@ -104,7 +107,11 @@ describe("turn risk state", () => {
   it("stamps turns from the input guard and resets on a new turn", () => {
     const tracker = new TurnRiskTracker();
     tracker.beginTurn("s1", 1);
-    tracker.mark("s1", { riskLevel: "elevated", source: "web_fetch", signalKey: "injection.ignore_previous" });
+    tracker.mark("s1", {
+      riskLevel: "elevated",
+      source: "web_fetch",
+      signalKey: "injection.ignore_previous",
+    });
     expect(tracker.get("s1")?.riskLevel).toBe("elevated");
     tracker.beginTurn("s1", 2);
     expect(tracker.get("s1")?.riskLevel).toBe("low");
@@ -114,8 +121,16 @@ describe("turn risk state", () => {
   it("escalates within a turn but never de-escalates", () => {
     const tracker = new TurnRiskTracker();
     tracker.beginTurn("s1", 1);
-    tracker.mark("s1", { riskLevel: "high", source: "web_fetch", signalKey: "k" });
-    const state = tracker.mark("s1", { riskLevel: "elevated", source: "docs", signalKey: "k2" });
+    tracker.mark("s1", {
+      riskLevel: "high",
+      source: "web_fetch",
+      signalKey: "k",
+    });
+    const state = tracker.mark("s1", {
+      riskLevel: "elevated",
+      source: "docs",
+      signalKey: "k2",
+    });
     expect(state?.riskLevel).toBe("high");
     expect(state?.signals).toContain("k2");
   });
@@ -131,7 +146,8 @@ describe("turn risk state", () => {
 
   it("caps tracked sessions", () => {
     const tracker = new TurnRiskTracker();
-    for (let index = 0; index < 600; index += 1) tracker.beginTurn(`s${index}`, 1);
+    for (let index = 0; index < 600; index += 1)
+      tracker.beginTurn(`s${index}`, 1);
     expect(tracker.get("s0")).toBeUndefined();
     expect(tracker.get("s599")).toBeDefined();
   });

@@ -1,6 +1,6 @@
 /**
  * Public `ctx.safetyGate` service: wires the two-layer safety gate onto the
- * DSH extension points.
+ * DSH extension points and exposes the operator surfaces behind it.
  *
  * Registered listeners (design SPEC §9, §10, §17, §18):
  *  - `agent/pre-step` — input guard (authoritative prompt gate);
@@ -13,46 +13,87 @@
  * moderator is never moderated (design SPEC §8). The host context is viewed
  * through a structural interface at the registration seam (repo convention:
  * real event key unions are scoped to runtime sub-contexts).
+ *
+ * Two operator-facing seams hang off the same service:
+ *  - the `model-safety-gate` settings namespace, installed as the base layer
+ *    so a card edit re-resolves the running configuration without a restart;
+ *  - the `safetyGate` Typert Remote, whose single `inspect` method returns the
+ *    effective configuration, the counters, the recent sanitized verdicts, and
+ *    the classifier wiring state.
  */
 
-import { Context, Service } from "@deepseek-ai/cordis";
-import { KNOWN_SESSION_EVENT_TYPES } from "@deepseek-ai/dsh-session";
+import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-settings";
+import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 
-import { createDshClassifierTransport, type DshLlmRuntime } from "./classifier/dsh-backend.js";
+import {
+  createDshClassifierTransport,
+  type DshLlmRuntime,
+} from "./classifier/dsh-backend.js";
 import { isSafetyInternal } from "./classifier/isolation.js";
 import { createOpenAiCompatibleTransport } from "./classifier/openai-backend.js";
-import { SafetyClassifierService, type ClassifierTransport } from "./classifier/service.js";
 import {
-  SAFETY_EVENT_TYPES,
-  type SafetyAuditEvent,
-  type SafetyEventType,
-} from "./audit/events.js";
-import { SafetyMetrics, type SafetyMetricsSnapshot } from "./audit/metrics.js";
-import { ModelSafetyGateConfigSchema, resolveSafetyGateConfig, type ModelSafetyGateConfig, type ResolvedSafetyGateConfig } from "./config.js";
-import { createInputGuard, type PreStepDecisionStruct, type PreStepPayload } from "./guards/input.js";
+  SafetyClassifierService,
+  type ClassifierTransport,
+} from "./classifier/service.js";
+import { type SafetyAuditEvent, type SafetyEventType } from "./audit/events.js";
+import { SafetyMetrics } from "./audit/metrics.js";
+import {
+  ModelSafetyGateConfigSchema,
+  resolveSafetyGateConfig,
+  type ModelSafetyGateConfig,
+  type ResolvedSafetyGateConfig,
+} from "./config.js";
+import {
+  createInputGuard,
+  type PreStepDecisionStruct,
+  type PreStepPayload,
+} from "./guards/input.js";
 import { guardOutputStream } from "./guards/output-stream.js";
 import { TurnRiskTracker } from "./guards/risk-state.js";
 import { createPostExecuteGuard } from "./guards/tool-results.js";
 import { createPreExecuteGuard } from "./guards/tools.js";
 import { CheckPipeline } from "./pipeline.js";
 import { SafetyScanner } from "./rules/scanner.js";
+import { SAFETY_GATE_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { cancelTurn, type CancellableAgent } from "./stream/cancellation.js";
 import type { StreamChunk } from "./stream/chunks.js";
+import type {
+  SafetyGateAuditRow,
+  SafetyGateClassifierState,
+  SafetyGateInspect,
+} from "./types.js";
 
 /** Structural view of the host context used at the registration seam. */
 export interface SafetyGateHostContext {
-  on(event: string, listener: (...args: never[]) => unknown, options?: unknown): () => void;
+  on(
+    event: string,
+    listener: (...args: never[]) => unknown,
+    options?: unknown,
+  ): () => void;
   inject(services: readonly string[], fn: (ctx: ToolHostContext) => void): void;
   effect(factory: () => () => void, name: string): void;
-  logger: { info(message: string, ...values: unknown[]): void; warn(message: string, ...values: unknown[]): void };
-  llm?: DshLlmRuntime;
-  agents?: { get(id: unknown): CancellableAgent | undefined };
-  sessions?: { get(id: unknown): { append(type: string, data: unknown): unknown } | undefined };
+  logger: {
+    info(message: string, ...values: unknown[]): void;
+    warn(message: string, ...values: unknown[]): void;
+  };
+  /**
+   * Optional-service read. Every service this gate only *tolerates* is read
+   * through here: the property proxy resolves per fiber topology and throws on
+   * an undeclared name, so `ctx.get` is the only safe read for an optional
+   * dependency (harness authoring rule, `packages/AGENTS.md`).
+   */
+  get(name: string): unknown;
+}
+
+/** Structural face of the agent registry this gate resolves live agents from. */
+export interface AgentRegistryFace {
+  get(id: unknown): CancellableAgent | undefined;
 }
 
 /** Structural view of the tool runtime sub-context. */
@@ -87,147 +128,338 @@ export class AuditRing {
   }
 }
 
-export interface SafetyGateInspect {
-  readonly enabled: boolean;
-  readonly mode: ResolvedSafetyGateConfig["mode"];
-  readonly config: ResolvedSafetyGateConfig;
-  readonly metrics: SafetyMetricsSnapshot;
-  readonly audit: readonly SafetyAuditEvent[];
-}
+/** How many recent verdicts the inspect surface returns. */
+const AUDIT_WINDOW = 50;
 
-export class ModelSafetyGate extends Service {
+export class ModelSafetyGate extends TypertRemoteService {
   static Config = ModelSafetyGateConfigSchema;
 
-  readonly config: ResolvedSafetyGateConfig;
   readonly metrics: SafetyMetrics;
-  readonly auditRing = new AuditRing();
-  readonly risk = new TurnRiskTracker();
+  readonly auditRing: AuditRing = new AuditRing();
+  readonly risk: TurnRiskTracker = new TurnRiskTracker();
+
+  private readonly owner: Context;
+  private readonly host: SafetyGateHostContext;
+  private readonly deps: SafetyGateServiceDeps;
   private readonly logger: PluginLogger;
-  private readonly pipeline: CheckPipeline;
-  private readonly classifier: SafetyClassifierService | null;
+  private readonly entryConfig: ModelSafetyGateConfig;
+  private readonly startedAt = Date.now();
   private readonly disposers: Array<() => void> = [];
-  private readonly knownEventTypes: string[] = [];
   private readonly agentsBySession = new Map<string, CancellableAgent>();
-  private lastSessionId: string | null = null;
+  private configSource: () => ModelSafetyGateConfig;
+  private resolved: ResolvedSafetyGateConfig;
+  private scanner: SafetyScanner;
+  private classifier: SafetyClassifierService | null;
+  private pipeline: CheckPipeline;
+  /**
+   * Stable handle the guard listeners close over. The guards read
+   * `deps.config` and `deps.pipeline` per call, so a configuration reload
+   * republishes these fields and the next check runs on the new policy without
+   * re-registering a listener.
+   */
+  private readonly guardDeps: {
+    config: ResolvedSafetyGateConfig;
+    pipeline: CheckPipeline;
+    readonly risk: TurnRiskTracker;
+  };
   private disposed = false;
 
-  constructor(ctx: Context, config: ModelSafetyGateConfig = {}, deps: SafetyGateServiceDeps = {}) {
-    super(ctx, "safetyGate");
+  constructor(
+    ctx: Context,
+    config: ModelSafetyGateConfig = {},
+    deps: SafetyGateServiceDeps = {},
+  ) {
+    // The Typert generator reads these as literals: the Cordis service key and
+    // the wire namespace must be spelled here, not aliased through a constant.
+    super(ctx, "safetyGate", { namespace: "safetyGate" });
     const host = ctx as unknown as SafetyGateHostContext;
-    this.config = resolveSafetyGateConfig(config);
+    this.owner = ctx;
+    this.host = host;
+    this.deps = deps;
+    this.entryConfig = structuredClone(config);
+    this.configSource = () => this.entryConfig;
+    this.resolved = resolveSafetyGateConfig(config);
     this.logger =
       deps.logger ??
       (getPluginLogger({
         pluginId: "dsh-model-safety-gate",
         console: "warn",
-        consoleSink: createHostLoggerSink(host.logger as unknown as Context["logger"]),
+        consoleSink: createHostLoggerSink(
+          host.logger as unknown as Context["logger"],
+        ),
       }) as PluginLogger);
     this.metrics = deps.metrics ?? new SafetyMetrics();
 
-    this.registerSessionEventTypes();
+    this.classifier = this.createClassifier();
+    this.scanner = this.createScanner();
+    this.pipeline = this.createPipeline();
+    this.guardDeps = {
+      config: this.resolved,
+      pipeline: this.pipeline,
+      risk: this.risk,
+    };
 
-    this.classifier =
-      deps.classifier !== undefined
-        ? deps.classifier
-        : deps.transport !== undefined
-          ? new SafetyClassifierService({
-              transport: deps.transport,
-              timeoutMs: this.config.classifier.timeoutMs,
-              maxTokens: this.config.classifier.maxTokens,
-              temperature: this.config.classifier.temperature,
-              failureMode: this.config.classifier.failureMode,
-            })
-          : this.buildClassifier(host);
-
-    const scanner =
-      deps.scanner ??
-      new SafetyScanner({
-        maxScanChars: this.config.maxScanChars,
-        customBlockPatterns: this.config.customBlockPatterns,
-      });
-
-    this.pipeline = new CheckPipeline({
-      scanner,
-      classifier: this.classifier,
-      config: this.config,
-      metrics: this.metrics,
-      emit:
-        deps.emit ??
-        ((type, event) => {
-          this.auditRing.push(event);
-          this.publishEvent(host, type, event);
-        }),
-    });
-
-    this.registerGuards(host, deps);
+    this.registerGuards();
     host.effect(() => () => this.dispose(), "dsh-model-safety-gate.lifecycle");
+    this.installSettings();
     this.logger.info("safety.plugin_ready", {
-      enabled: this.config.enabled,
-      mode: this.config.mode,
-      classifierBackend: this.config.classifier.backend,
-      streamMode: this.config.output.mode,
+      enabled: this.resolved.enabled,
+      mode: this.resolved.mode,
+      classifierBackend: this.resolved.classifier.backend,
+      streamMode: this.resolved.output.mode,
     });
   }
 
-  /** Aggregated sanitized state for diagnostics and future UI. */
+  /** Effective running configuration; the base layer until a settings layer attaches. */
+  get config(): ResolvedSafetyGateConfig {
+    return this.resolved;
+  }
+
+  /** Aggregated sanitized state for diagnostics and the operator card. */
+  @Remote("inspect")
   inspect(): SafetyGateInspect {
     return {
-      enabled: this.config.enabled,
-      mode: this.config.mode,
-      config: this.config,
+      enabled: this.resolved.enabled,
+      mode: this.resolved.mode,
+      // The key literal never crosses a wire: the card learns only whether
+      // one is configured.
+      config: {
+        ...this.resolved,
+        classifier: { ...this.resolved.classifier, apiKey: "" },
+      },
+      classifier: this.describeClassifier(),
       metrics: this.metrics.snapshot(),
-      audit: this.auditRing.list(),
+      audit: this.recentAudit(),
+      startedAt: this.startedAt,
     };
+  }
+
+  /** Test/diagnostics hook mirroring the cancellation path (SPEC §15). */
+  cancelSession(
+    sessionId: string,
+    reason: string,
+    host?: SafetyGateHostContext,
+  ): boolean {
+    const lookup = (id: string): CancellableAgent | undefined =>
+      (host === undefined
+        ? undefined
+        : (host.get("agents") as AgentRegistryFace | undefined)?.get(id)) ??
+      this.agentsBySession.get(id);
+    return cancelTurn(lookup, sessionId, reason);
   }
 
   // --------------------------------------------------------------- internals
 
-  private buildClassifier(host: SafetyGateHostContext): SafetyClassifierService {
-    const classifierConfig = this.config.classifier;
-    let transport: ClassifierTransport | null = null;
+  /**
+   * Attach the settings namespace. The installed section becomes the gate's
+   * configuration source, so a card edit re-resolves the running gate instead
+   * of waiting for a restart; without a settings provider the composition entry
+   * stays authoritative.
+   */
+  private installSettings(): void {
+    this.owner.inject(["settings"], (settingsCtx) => {
+      // Structural seam, like the rest of this file: the injected face is read
+      // defensively so a host without a mounted settings provider keeps the
+      // composition entry as the configuration source.
+      const settings = (
+        settingsCtx as unknown as { settings?: SettingsInstallFace }
+      ).settings;
+      if (settings === undefined) return;
+      settings.installSection(
+        this.owner,
+        SAFETY_GATE_SETTINGS_NAMESPACE,
+        ModelSafetyGateConfigSchema,
+        this.entryConfig,
+        {
+          setSource: (current) => {
+            this.configSource = current as () => ModelSafetyGateConfig;
+          },
+          onChange: () => {
+            this.reapply();
+          },
+          // Constraints the schema cannot express (backend requires an
+          // endpoint, custom patterns must compile) are refused at write time
+          // so the card reports them instead of storing a config the gate
+          // would silently keep ignoring.
+          validate: (value) => {
+            resolveSafetyGateConfig(value as ModelSafetyGateConfig);
+          },
+        },
+      );
+    });
+  }
+
+  /**
+   * Re-resolve the source after a committed settings change and rebuild
+   * everything derived from it. The guard listeners stay registered: they read
+   * configuration and pipeline through {@link guardDeps}, so swapping those
+   * fields is enough for the next check to run on the new policy.
+   */
+  private reapply(): void {
+    let next: ResolvedSafetyGateConfig;
+    try {
+      next = resolveSafetyGateConfig(this.configSource());
+    } catch (error) {
+      // The settings provider validates on write; this keeps a source that
+      // turned invalid through another path from taking the running gate down.
+      this.logger.warn("safety.config.rejected", {
+        message: String((error as Error).message),
+      });
+      return;
+    }
+    this.resolved = next;
+    this.classifier = this.createClassifier();
+    this.scanner = this.createScanner();
+    this.pipeline = this.createPipeline();
+    // Guards read through the handle, so publishing the rebuilt pieces here is
+    // what makes the change live.
+    this.guardDeps.config = next;
+    this.guardDeps.pipeline = this.pipeline;
+    this.logger.info("safety.config.reloaded", {
+      enabled: this.resolved.enabled,
+      mode: this.resolved.mode,
+      classifierBackend: this.resolved.classifier.backend,
+      streamMode: this.resolved.output.mode,
+    });
+  }
+
+  private createClassifier(): SafetyClassifierService | null {
+    if (this.deps.classifier !== undefined) return this.deps.classifier;
+    const classifierConfig = this.resolved.classifier;
+    const options = {
+      timeoutMs: classifierConfig.timeoutMs,
+      maxTokens: classifierConfig.maxTokens,
+      temperature: classifierConfig.temperature,
+      failureMode: classifierConfig.failureMode,
+    };
+    if (this.deps.transport !== undefined) {
+      return new SafetyClassifierService({
+        transport: this.deps.transport,
+        ...options,
+      });
+    }
+    return new SafetyClassifierService({
+      transport: this.buildTransport(),
+      ...options,
+    });
+  }
+
+  private buildTransport(): ClassifierTransport | null {
+    const classifierConfig = this.resolved.classifier;
     if (classifierConfig.backend === "dsh") {
-      const llm = host.llm;
+      const llm = this.host.get("llm") as DshLlmRuntime | undefined;
       if (llm === undefined) {
-        this.logger.warn("safety.classifier.no_llm", { backend: classifierConfig.backend });
-      } else {
-        transport = createDshClassifierTransport(llm, {
-          provider: classifierConfig.provider,
-          model: classifierConfig.model,
+        this.logger.warn("safety.classifier.no_llm", {
+          backend: classifierConfig.backend,
         });
+        return null;
       }
-    } else if (classifierConfig.backend === "openai-compatible") {
-      transport = createOpenAiCompatibleTransport({
+      return createDshClassifierTransport(llm, {
+        provider: classifierConfig.provider,
+        model: classifierConfig.model,
+      });
+    }
+    if (classifierConfig.backend === "openai-compatible") {
+      return createOpenAiCompatibleTransport({
         baseURL: classifierConfig.baseURL,
         apiKey: classifierConfig.apiKey,
         model: classifierConfig.model,
       });
     }
-    return new SafetyClassifierService({
-      transport,
-      timeoutMs: classifierConfig.timeoutMs,
-      maxTokens: classifierConfig.maxTokens,
-      temperature: classifierConfig.temperature,
-      failureMode: classifierConfig.failureMode,
+    return null;
+  }
+
+  private createScanner(): SafetyScanner {
+    return (
+      this.deps.scanner ??
+      new SafetyScanner({
+        maxScanChars: this.resolved.maxScanChars,
+        customBlockPatterns: this.resolved.customBlockPatterns,
+      })
+    );
+  }
+
+  private createPipeline(): CheckPipeline {
+    return new CheckPipeline({
+      scanner: this.scanner,
+      classifier: this.classifier,
+      config: this.resolved,
+      metrics: this.metrics,
+      emit:
+        this.deps.emit ??
+        ((type, event) => {
+          this.auditRing.push(event);
+          this.publishAudit(type, event);
+        }),
     });
   }
 
-  /**
-   * Custom session event types must be registered with the harness, which
-   * otherwise refuses to reconstruct logs containing unknown events. They are
-   * log-only and never part of the model surface.
-   */
-  private registerSessionEventTypes(): void {
-    const known = KNOWN_SESSION_EVENT_TYPES as Set<string>;
-    for (const type of Object.values(SAFETY_EVENT_TYPES)) {
-      known.add(type);
-      this.knownEventTypes.push(type);
+  private describeClassifier(): SafetyGateClassifierState {
+    const classifierConfig = this.resolved.classifier;
+    const remote = classifierConfig.backend === "openai-compatible";
+    const endpoint =
+      classifierConfig.backend === "dsh"
+        ? `${classifierConfig.provider}/${classifierConfig.model}`
+        : classifierConfig.backend === "openai-compatible"
+          ? classifierConfig.baseURL
+          : "";
+    const active = this.classifier !== null && this.classifier.enabled;
+    let reason: string | null = null;
+    if (classifierConfig.backend !== "none" && !active) {
+      reason =
+        classifierConfig.backend === "dsh"
+          ? "The Harness LLM service is unavailable, so the classifier cannot run."
+          : "No classifier transport could be built for this backend.";
     }
+    return {
+      backend: classifierConfig.backend,
+      remote,
+      endpoint,
+      active,
+      reason,
+      apiKeyConfigured: (classifierConfig.apiKey ?? "").length > 0,
+    };
   }
 
-  private publishEvent(host: SafetyGateHostContext, type: SafetyEventType, event: SafetyAuditEvent): void {
+  private recentAudit(): readonly SafetyGateAuditRow[] {
+    const entries = this.auditRing.list();
+    const rows: SafetyGateAuditRow[] = [];
+    for (
+      let index = entries.length - 1;
+      index >= 0 && rows.length < AUDIT_WINDOW;
+      index -= 1
+    ) {
+      const event = entries[index];
+      if (event === undefined) continue;
+      rows.push({
+        turn: event.turn,
+        step: event.step,
+        direction: event.direction,
+        channel: event.channel,
+        toolName: event.toolName,
+        decision: event.decision,
+        categories: [...event.categories],
+        summary: event.summary,
+        confidence: event.confidence,
+        classifierProvider: event.classifierProvider,
+        classifierModel: event.classifierModel,
+        classifierRan: event.classifierRan,
+        latencyMs: event.latencyMs,
+        contentSha256: event.contentSha256,
+        contentChars: event.contentChars,
+        errorCode: event.errorCode ?? null,
+        rawContent: event.rawContent ?? null,
+        policyVersion: event.policyVersion,
+      });
+    }
+    return rows;
+  }
+
+  private publishAudit(type: SafetyEventType, event: SafetyAuditEvent): void {
     // Audit supplement failures must never flip a gate decision.
     try {
       this.logger.info(type.replace("/", "."), {
+        sessionId: event.sessionId,
         decision: event.decision,
         channel: event.channel,
         categories: event.categories,
@@ -235,38 +467,44 @@ export class ModelSafetyGate extends Service {
         sha256: event.contentSha256,
         latencyMs: event.latencyMs,
         errorCode: event.errorCode,
+        ...(event.rawContent === undefined
+          ? {}
+          : { rawContent: event.rawContent }),
       });
     } catch {
       // Logger failures are contained.
     }
-    const sessionId = this.lastSessionId;
-    if (sessionId === null) return;
-    try {
-      host.sessions?.get(sessionId)?.append(type, event);
-    } catch {
-      // Session append failures are contained.
-    }
   }
 
-  private resolveAgentLookup(host: SafetyGateHostContext, deps: SafetyGateServiceDeps): (sessionId: string) => CancellableAgent | undefined {
+  private resolveAgentLookup(
+    host: SafetyGateHostContext,
+    deps: SafetyGateServiceDeps,
+  ): (sessionId: string) => CancellableAgent | undefined {
     if (deps.agentLookup !== undefined) return deps.agentLookup;
+    // Read per call: the gate must survive a host that mounts the registry later.
     return (sessionId: string): CancellableAgent | undefined =>
-      host.agents?.get(sessionId) ?? this.agentsBySession.get(sessionId);
+      (host.get("agents") as AgentRegistryFace | undefined)?.get(sessionId) ??
+      this.agentsBySession.get(sessionId);
   }
 
-  private registerGuards(host: SafetyGateHostContext, deps: SafetyGateServiceDeps): void {
+  private registerGuards(): void {
+    const host = this.host;
+    const deps = this.deps;
     const agentLookup = this.resolveAgentLookup(host, deps);
+    const guards = this.guardDeps;
 
-    const inputGuard = createInputGuard({
-      config: this.config,
-      pipeline: this.pipeline,
-      risk: this.risk,
-    });
+    // The handle itself is the dependency: its accessors resolve against the
+    // service's current fields on every check, which is what makes a settings
+    // change take effect without re-registering listeners.
+    const inputGuard = createInputGuard(guards);
 
     this.disposers.push(
       host.on(
         "agent/pre-step",
-        (async (payload: PreStepAgentPayload, next: () => Promise<PreStepDecisionStruct>): Promise<PreStepDecisionStruct> => {
+        (async (
+          payload: PreStepAgentPayload,
+          next: () => Promise<PreStepDecisionStruct>,
+        ): Promise<PreStepDecisionStruct> => {
           const sessionId = String(payload.agent?.id ?? "");
           if (payload.agent !== undefined) {
             this.agentsBySession.set(sessionId, payload.agent);
@@ -275,7 +513,6 @@ export class ModelSafetyGate extends Service {
               if (!oldest.done) this.agentsBySession.delete(oldest.value);
             }
           }
-          this.lastSessionId = sessionId.length > 0 ? sessionId : null;
           return inputGuard({ ...payload, sessionId }, next);
         }) as never,
         { global: true },
@@ -285,18 +522,31 @@ export class ModelSafetyGate extends Service {
     this.disposers.push(
       host.on(
         "llm/stream",
-        ((options: StreamGuardOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> => {
-          if (!this.config.enabled || this.config.mode === "off" || !this.config.output.enabled) return next();
+        ((
+          options: StreamGuardOptions,
+          next: () => AsyncIterable<StreamChunk>,
+        ): AsyncIterable<StreamChunk> => {
+          const config = guards.config;
+          if (
+            !config.enabled ||
+            config.mode === "off" ||
+            !config.output.enabled
+          )
+            return next();
           if (isSafetyInternal()) return next();
           // Non-agent traffic (title generation, compaction, plugin one-shots)
           // stays bypass in 0.1 (design SPEC §16).
           if (options.purpose !== undefined) return next();
-          const sessionId = options.sessionId !== undefined && options.sessionId !== null ? String(options.sessionId) : null;
-          const agentKnown = sessionId !== null && agentLookup(sessionId) !== undefined;
+          const sessionId =
+            options.sessionId !== undefined && options.sessionId !== null
+              ? String(options.sessionId)
+              : null;
+          const agentKnown =
+            sessionId !== null && agentLookup(sessionId) !== undefined;
           if (!agentKnown) return next();
           return guardOutputStream(next(), {
-            config: this.config,
-            pipeline: this.pipeline,
+            config,
+            pipeline: guards.pipeline,
             agentLookup,
             sessionId,
             turn: this.risk.get(sessionId)?.turn ?? null,
@@ -309,23 +559,12 @@ export class ModelSafetyGate extends Service {
 
     host.inject(["tools"], (toolCtx) => {
       this.disposers.push(
-        toolCtx.on(
-          "tools/pre-execute",
-          createPreExecuteGuard({
-            config: this.config,
-            pipeline: this.pipeline,
-            risk: this.risk,
-          }) as never,
-        ),
+        toolCtx.on("tools/pre-execute", createPreExecuteGuard(guards) as never),
       );
       this.disposers.push(
         toolCtx.on(
           "tools/post-execute",
-          createPostExecuteGuard({
-            config: this.config,
-            pipeline: this.pipeline,
-            risk: this.risk,
-          }) as never,
+          createPostExecuteGuard(guards) as never,
         ),
       );
     });
@@ -335,18 +574,9 @@ export class ModelSafetyGate extends Service {
     });
   }
 
-  /** Test/diagnostics hook mirroring the cancellation path (SPEC §15). */
-  cancelSession(sessionId: string, reason: string, host?: SafetyGateHostContext): boolean {
-    const lookup = (id: string): CancellableAgent | undefined =>
-      (host !== undefined ? host.agents?.get(id) : undefined) ?? this.agentsBySession.get(id);
-    return cancelTurn(lookup, sessionId, reason);
-  }
-
   private dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    const known = KNOWN_SESSION_EVENT_TYPES as Set<string>;
-    for (const type of this.knownEventTypes) known.delete(type);
     for (const dispose of this.disposers) {
       try {
         dispose();
@@ -368,6 +598,21 @@ interface PreStepAgentPayload extends PreStepPayload {
 interface StreamGuardOptions {
   readonly sessionId?: string | null;
   readonly purpose?: string;
+}
+
+/** Structural view of the settings provider seam (typed in @deepseek-ai/dsh-settings). */
+interface SettingsInstallFace {
+  installSection(
+    owner: Context,
+    namespace: string,
+    schema: unknown,
+    entry: unknown,
+    hooks: {
+      setSource(current: () => unknown): void;
+      onChange(): void;
+      validate?(value: unknown): void;
+    },
+  ): void;
 }
 
 export { ModelSafetyGate as SafetyGateService };

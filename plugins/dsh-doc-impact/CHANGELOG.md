@@ -1,3 +1,52 @@
+## 0.3.2 (2026-09-15)
+
+### 🩹 Fixes
+
+- Reformat the package with the repository's shared Prettier configuration. The ([ddba2dd](https://github.com/xarleyn/dsh-plugins/commit/ddba2dd))
+  config now lives in the repository root instead of inside four packages, and
+  this sweep brings every package to it. Formatting only — no behavior and no API
+  change beyond the reformatted sources in the published tarball.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.1 (2026-09-13)
+
+### 🩹 Fixes
+
+- Fix the settings card never mounting in the web UI. The 0.1.5 client ([39d397b](https://github.com/xarleyn/dsh-plugins/commit/39d397b))
+  runtime exposes only the services a module declares in `inject`, and the
+  client bootstrap still read `settingsScope` and `locale` through the
+  0.1.1-era `ctx.get` indirection, saw them as absent, and silently skipped
+  the `settings.plugin.item` card registration. The services are now
+  declared and read as context properties like every other card.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Port to the DSH session format v3: the tool context now derives from the ([6d2ba6a](https://github.com/xarleyn/dsh-plugins/commit/6d2ba6a))
+  host ToolRunContext and reads the raw log via session.snapshotEvents()
+  instead of the removed session.events. The supported host range moves to
+  >=0.1.5-rc.2 <0.2.0, dropping 0.1.1-rc.2.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.4 (2026-09-06)
 
 ### 🩹 Fixes

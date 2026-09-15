@@ -48,12 +48,18 @@ dsh_cas_retrieve(ref="sha256:ac7819…e029")
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-cas-results
+dsh plugin --profile <profile> add @yadsh/dsh-cas-results
 ```
 
-Or from a checkout of this monorepo, build the package and add it from the
-packed tarball.
+From a checkout of this monorepo, build the package and link the checkout:
+
+```bash
+pnpm nx run @yadsh/dsh-cas-results:build
+dsh plugin --profile <profile> add ./plugins/dsh-cas-results
+```
 
 ## Configuration
 
@@ -92,7 +98,7 @@ override layers or profile patches). All fields are optional.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (host-service plugin; no client UI).
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (host-service plugin; no client UI).
 - Node.js `^22.19.0 || >=24.0.0`.
 - See [compatibility.json](./compatibility.json) for the machine-readable
   contract.
@@ -108,7 +114,7 @@ pnpm nx run dsh-cas-results:verify
 ```
 
 The plugin contract and its verifiable guarantees live in
-[SPEC.md](./SPEC.md).
+[SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-cas-results/SPEC.md).
 
 ## Credits
 

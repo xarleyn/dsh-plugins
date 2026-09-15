@@ -41,7 +41,12 @@ export interface ModelSafetyGateConfig {
     readonly model?: string;
     /** `backend: openai-compatible` — endpoint base URL. */
     readonly baseURL?: string;
-    /** `backend: openai-compatible` — bearer API key. */
+    /**
+     * `backend: openai-compatible` — bearer API key.
+     *
+     * Declared `role("secret")` so configuration surfaces receive only
+     * whether a key is configured; the literal never crosses a wire.
+     */
     readonly apiKey?: string;
     readonly timeoutMs?: number;
     readonly maxTokens?: number;
@@ -202,24 +207,47 @@ const STREAM_MODES = ["observe", "interrupt", "buffered"] as const;
 const BACKENDS = ["none", "dsh", "openai-compatible"] as const;
 const ACTION_MODES = ["allow", "warn", "block"] as const;
 
-function enumOr<T extends readonly string[]>(values: T, name: string, raw: string | undefined, fallback: T[number]): T[number] {
+function enumOr<T extends readonly string[]>(
+  values: T,
+  name: string,
+  raw: string | undefined,
+  fallback: T[number],
+): T[number] {
   const value = raw ?? fallback;
   if (!(values as readonly string[]).includes(value)) {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", `config "${name}" must be one of: ${values.join(", ")} (got ${value})`);
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      `config "${name}" must be one of: ${values.join(", ")} (got ${value})`,
+    );
   }
   return value as T[number];
 }
 
 function requirePositive(name: string, value: number, minimum: number): number {
-  if (!Number.isFinite(value) || value < minimum || (minimum >= 1 && !Number.isInteger(value))) {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", `config "${name}" must be an integer >= ${minimum}`);
+  if (
+    !Number.isFinite(value) ||
+    value < minimum ||
+    (minimum >= 1 && !Number.isInteger(value))
+  ) {
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      `config "${name}" must be an integer >= ${minimum}`,
+    );
   }
   return value;
 }
 
-function requireRange(name: string, value: number, min: number, max: number): number {
+function requireRange(
+  name: string,
+  value: number,
+  min: number,
+  max: number,
+): number {
   if (!Number.isFinite(value) || value < min || value > max) {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", `config "${name}" must be a number in [${min}, ${max}]`);
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      `config "${name}" must be a number in [${min}, ${max}]`,
+    );
   }
   return value;
 }
@@ -237,7 +265,10 @@ export const ModelSafetyGateConfigSchema = z.object({
       provider: z.string().default(SAFETY_GATE_DEFAULTS.provider),
       model: z.string().default(SAFETY_GATE_DEFAULTS.model),
       baseURL: z.string().default(SAFETY_GATE_DEFAULTS.baseURL),
-      apiKey: z.string().default(SAFETY_GATE_DEFAULTS.apiKey),
+      // A secret slot: configuration surfaces receive only whether a key is
+      // configured, never the literal. The classifier-object default below
+      // still supplies the empty value the resolver expects.
+      apiKey: z.string().role("secret"),
       timeoutMs: z.number().default(SAFETY_GATE_DEFAULTS.timeoutMs),
       maxTokens: z.number().default(SAFETY_GATE_DEFAULTS.maxTokens),
       temperature: z.number().default(SAFETY_GATE_DEFAULTS.temperature),
@@ -284,8 +315,12 @@ export const ModelSafetyGateConfigSchema = z.object({
       checkEveryChars: z.number().default(SAFETY_GATE_DEFAULTS.checkEveryChars),
       windowChars: z.number().default(SAFETY_GATE_DEFAULTS.windowChars),
       lookbehindChars: z.number().default(SAFETY_GATE_DEFAULTS.lookbehindChars),
-      minCheckIntervalMs: z.number().default(SAFETY_GATE_DEFAULTS.minCheckIntervalMs),
-      maxBufferedChars: z.number().default(SAFETY_GATE_DEFAULTS.maxBufferedChars),
+      minCheckIntervalMs: z
+        .number()
+        .default(SAFETY_GATE_DEFAULTS.minCheckIntervalMs),
+      maxBufferedChars: z
+        .number()
+        .default(SAFETY_GATE_DEFAULTS.maxBufferedChars),
     })
     .default({
       enabled: SAFETY_GATE_DEFAULTS.outputEnabled,
@@ -301,8 +336,12 @@ export const ModelSafetyGateConfigSchema = z.object({
   tools: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.toolsEnabled),
-      semanticClassifier: z.boolean().default(SAFETY_GATE_DEFAULTS.semanticClassifier),
-      sensitiveTools: z.array(z.string()).default([...SAFETY_GATE_DEFAULTS.sensitiveTools]),
+      semanticClassifier: z
+        .boolean()
+        .default(SAFETY_GATE_DEFAULTS.semanticClassifier),
+      sensitiveTools: z
+        .array(z.string())
+        .default([...SAFETY_GATE_DEFAULTS.sensitiveTools]),
     })
     .default({
       enabled: SAFETY_GATE_DEFAULTS.toolsEnabled,
@@ -312,7 +351,9 @@ export const ModelSafetyGateConfigSchema = z.object({
   toolResults: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.toolResultsEnabled),
-      classifyUntrustedSources: z.boolean().default(SAFETY_GATE_DEFAULTS.classifyUntrustedSources),
+      classifyUntrustedSources: z
+        .boolean()
+        .default(SAFETY_GATE_DEFAULTS.classifyUntrustedSources),
     })
     .default({
       enabled: SAFETY_GATE_DEFAULTS.toolResultsEnabled,
@@ -321,7 +362,9 @@ export const ModelSafetyGateConfigSchema = z.object({
   audit: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.auditEnabled),
-      includeRawContent: z.boolean().default(SAFETY_GATE_DEFAULTS.includeRawContent),
+      includeRawContent: z
+        .boolean()
+        .default(SAFETY_GATE_DEFAULTS.includeRawContent),
     })
     .default({
       enabled: SAFETY_GATE_DEFAULTS.auditEnabled,
@@ -336,7 +379,9 @@ export const ModelSafetyGateConfigSchema = z.object({
       enabled: SAFETY_GATE_DEFAULTS.uiEnabled,
       showWarnings: SAFETY_GATE_DEFAULTS.showWarnings,
     }),
-  allowSessionOverride: z.boolean().default(SAFETY_GATE_DEFAULTS.allowSessionOverride),
+  allowSessionOverride: z
+    .boolean()
+    .default(SAFETY_GATE_DEFAULTS.allowSessionOverride),
   maxScanChars: z.number().default(SAFETY_GATE_DEFAULTS.maxScanChars),
   customBlockPatterns: z.array(z.string()).default([]),
 }) as unknown as z<ModelSafetyGateConfig>;
@@ -346,11 +391,28 @@ export const ModelSafetyGateConfigSchema = z.object({
  * `SafetyGateError("SAFETY_INVALID_ARGUMENT")` for structurally impossible
  * combinations so misconfiguration is loud at load time.
  */
-export function resolveSafetyGateConfig(input: ModelSafetyGateConfig = {}): ResolvedSafetyGateConfig {
-  const mode = enumOr(GATE_MODES, "mode", input.mode, SAFETY_GATE_DEFAULTS.mode);
+export function resolveSafetyGateConfig(
+  input: ModelSafetyGateConfig = {},
+): ResolvedSafetyGateConfig {
+  const mode = enumOr(
+    GATE_MODES,
+    "mode",
+    input.mode,
+    SAFETY_GATE_DEFAULTS.mode,
+  );
   const classifier = input.classifier ?? {};
-  const backend = enumOr(BACKENDS, "classifier.backend", classifier.backend, SAFETY_GATE_DEFAULTS.backend);
-  const failureMode = enumOr(FAILURE_MODES, "classifier.failureMode", classifier.failureMode, SAFETY_GATE_DEFAULTS.failureMode);
+  const backend = enumOr(
+    BACKENDS,
+    "classifier.backend",
+    classifier.backend,
+    SAFETY_GATE_DEFAULTS.backend,
+  );
+  const failureMode = enumOr(
+    FAILURE_MODES,
+    "classifier.failureMode",
+    classifier.failureMode,
+    SAFETY_GATE_DEFAULTS.failureMode,
+  );
   const input_ = input.input ?? {};
   const output = input.output ?? {};
   const tools = input.tools ?? {};
@@ -358,8 +420,17 @@ export function resolveSafetyGateConfig(input: ModelSafetyGateConfig = {}): Reso
   const audit = input.audit ?? {};
   const ui = input.ui ?? {};
 
-  const streamMode = enumOr(STREAM_MODES, "output.mode", output.mode, SAFETY_GATE_DEFAULTS.streamMode);
-  const windowChars = requirePositive("output.windowChars", output.windowChars ?? SAFETY_GATE_DEFAULTS.windowChars, 128);
+  const streamMode = enumOr(
+    STREAM_MODES,
+    "output.mode",
+    output.mode,
+    SAFETY_GATE_DEFAULTS.streamMode,
+  );
+  const windowChars = requirePositive(
+    "output.windowChars",
+    output.windowChars ?? SAFETY_GATE_DEFAULTS.windowChars,
+    128,
+  );
   const lookbehindChars = requirePositive(
     "output.lookbehindChars",
     output.lookbehindChars ?? SAFETY_GATE_DEFAULTS.lookbehindChars,
@@ -377,13 +448,22 @@ export function resolveSafetyGateConfig(input: ModelSafetyGateConfig = {}): Reso
   );
 
   if (backend === "dsh" && (!classifier.provider || !classifier.model)) {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", 'config "classifier.provider" and "classifier.model" are required for backend "dsh"');
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      'config "classifier.provider" and "classifier.model" are required for backend "dsh"',
+    );
   }
   if (backend === "openai-compatible" && !classifier.baseURL) {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", 'config "classifier.baseURL" is required for backend "openai-compatible"');
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      'config "classifier.baseURL" is required for backend "openai-compatible"',
+    );
   }
   if (classifier.requireLocal && backend === "openai-compatible") {
-    throw new SafetyGateError("SAFETY_INVALID_ARGUMENT", 'config "classifier.requireLocal" forbids the "openai-compatible" backend');
+    throw new SafetyGateError(
+      "SAFETY_INVALID_ARGUMENT",
+      'config "classifier.requireLocal" forbids the "openai-compatible" backend',
+    );
   }
 
   const customPatterns: string[] = [];
@@ -410,16 +490,40 @@ export function resolveSafetyGateConfig(input: ModelSafetyGateConfig = {}): Reso
       model: classifier.model ?? SAFETY_GATE_DEFAULTS.model,
       baseURL: classifier.baseURL ?? SAFETY_GATE_DEFAULTS.baseURL,
       apiKey: classifier.apiKey ?? SAFETY_GATE_DEFAULTS.apiKey,
-      timeoutMs: requirePositive("classifier.timeoutMs", classifier.timeoutMs ?? SAFETY_GATE_DEFAULTS.timeoutMs, 1),
-      maxTokens: requirePositive("classifier.maxTokens", classifier.maxTokens ?? SAFETY_GATE_DEFAULTS.maxTokens, 16),
-      temperature: requireRange("classifier.temperature", classifier.temperature ?? SAFETY_GATE_DEFAULTS.temperature, 0, 2),
+      timeoutMs: requirePositive(
+        "classifier.timeoutMs",
+        classifier.timeoutMs ?? SAFETY_GATE_DEFAULTS.timeoutMs,
+        1,
+      ),
+      maxTokens: requirePositive(
+        "classifier.maxTokens",
+        classifier.maxTokens ?? SAFETY_GATE_DEFAULTS.maxTokens,
+        16,
+      ),
+      temperature: requireRange(
+        "classifier.temperature",
+        classifier.temperature ?? SAFETY_GATE_DEFAULTS.temperature,
+        0,
+        2,
+      ),
       failureMode,
-      requireLocal: classifier.requireLocal ?? SAFETY_GATE_DEFAULTS.requireLocal,
+      requireLocal:
+        classifier.requireLocal ?? SAFETY_GATE_DEFAULTS.requireLocal,
     },
     input: {
       enabled: input_.enabled ?? SAFETY_GATE_DEFAULTS.inputEnabled,
-      safetyAction: enumOr(ACTION_MODES, "input.safetyAction", input_.safetyAction, SAFETY_GATE_DEFAULTS.safetyAction),
-      qualityAction: enumOr(ACTION_MODES, "input.qualityAction", input_.qualityAction, SAFETY_GATE_DEFAULTS.qualityAction),
+      safetyAction: enumOr(
+        ACTION_MODES,
+        "input.safetyAction",
+        input_.safetyAction,
+        SAFETY_GATE_DEFAULTS.safetyAction,
+      ),
+      qualityAction: enumOr(
+        ACTION_MODES,
+        "input.qualityAction",
+        input_.qualityAction,
+        SAFETY_GATE_DEFAULTS.qualityAction,
+      ),
     },
     output: {
       enabled: output.enabled ?? SAFETY_GATE_DEFAULTS.outputEnabled,
@@ -438,24 +542,34 @@ export function resolveSafetyGateConfig(input: ModelSafetyGateConfig = {}): Reso
     },
     tools: {
       enabled: tools.enabled ?? SAFETY_GATE_DEFAULTS.toolsEnabled,
-      semanticClassifier: tools.semanticClassifier ?? SAFETY_GATE_DEFAULTS.semanticClassifier,
-      sensitiveTools: [...(tools.sensitiveTools ?? SAFETY_GATE_DEFAULTS.sensitiveTools)],
+      semanticClassifier:
+        tools.semanticClassifier ?? SAFETY_GATE_DEFAULTS.semanticClassifier,
+      sensitiveTools: [
+        ...(tools.sensitiveTools ?? SAFETY_GATE_DEFAULTS.sensitiveTools),
+      ],
     },
     toolResults: {
       enabled: toolResults.enabled ?? SAFETY_GATE_DEFAULTS.toolResultsEnabled,
       classifyUntrustedSources:
-        toolResults.classifyUntrustedSources ?? SAFETY_GATE_DEFAULTS.classifyUntrustedSources,
+        toolResults.classifyUntrustedSources ??
+        SAFETY_GATE_DEFAULTS.classifyUntrustedSources,
     },
     audit: {
       enabled: audit.enabled ?? SAFETY_GATE_DEFAULTS.auditEnabled,
-      includeRawContent: audit.includeRawContent ?? SAFETY_GATE_DEFAULTS.includeRawContent,
+      includeRawContent:
+        audit.includeRawContent ?? SAFETY_GATE_DEFAULTS.includeRawContent,
     },
     ui: {
       enabled: ui.enabled ?? SAFETY_GATE_DEFAULTS.uiEnabled,
       showWarnings: ui.showWarnings ?? SAFETY_GATE_DEFAULTS.showWarnings,
     },
-    allowSessionOverride: input.allowSessionOverride ?? SAFETY_GATE_DEFAULTS.allowSessionOverride,
-    maxScanChars: requirePositive("maxScanChars", input.maxScanChars ?? SAFETY_GATE_DEFAULTS.maxScanChars, 1_024),
+    allowSessionOverride:
+      input.allowSessionOverride ?? SAFETY_GATE_DEFAULTS.allowSessionOverride,
+    maxScanChars: requirePositive(
+      "maxScanChars",
+      input.maxScanChars ?? SAFETY_GATE_DEFAULTS.maxScanChars,
+      1_024,
+    ),
     customBlockPatterns: customPatterns,
   };
 }

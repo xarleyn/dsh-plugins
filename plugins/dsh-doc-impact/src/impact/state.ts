@@ -1,4 +1,4 @@
-import type { Impact } from './types.js';
+import type { Impact } from "./types.js";
 
 export interface ImpactStateOptions {
   maxReminderRounds?: number;
@@ -11,8 +11,11 @@ export class ImpactState {
 
   constructor(options: ImpactStateOptions = {}) {
     this.#maxReminderRounds = options.maxReminderRounds ?? 2;
-    if (!Number.isInteger(this.#maxReminderRounds) || this.#maxReminderRounds < 1) {
-      throw new RangeError('maxReminderRounds must be a positive integer');
+    if (
+      !Number.isInteger(this.#maxReminderRounds) ||
+      this.#maxReminderRounds < 1
+    ) {
+      throw new RangeError("maxReminderRounds must be a positive integer");
     }
   }
 
@@ -23,11 +26,11 @@ export class ImpactState {
 
     for (const [id, impact] of this.#impacts) {
       if (
-        impact.status === 'pending' &&
+        impact.status === "pending" &&
         activeRuleIds.has(impact.ruleId) &&
         !nextIds.has(id)
       ) {
-        this.#impacts.set(id, { ...impact, status: 'superseded' });
+        this.#impacts.set(id, { ...impact, status: "superseded" });
       }
     }
     for (const impact of next) {
@@ -46,7 +49,9 @@ export class ImpactState {
   }
 
   pending(): Impact[] {
-    return [...this.#impacts.values()].filter((impact) => impact.status === 'pending');
+    return [...this.#impacts.values()].filter(
+      (impact) => impact.status === "pending",
+    );
   }
 
   reminderCount(fingerprint: string): number {
@@ -54,9 +59,9 @@ export class ImpactState {
   }
 
   shouldRemind(impact: Impact): boolean {
-    if (impact.status !== 'pending') return false;
+    if (impact.status !== "pending") return false;
     const count = this.reminderCount(impact.id);
-    if (impact.mode === 'remind') return count === 0;
+    if (impact.mode === "remind") return count === 0;
     return count < this.#maxReminderRounds;
   }
 

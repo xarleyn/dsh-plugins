@@ -120,12 +120,18 @@ export interface ResolvedToolOffloadConfig {
     readonly mode: "allowlist" | "denylist";
     readonly allow: readonly string[];
     readonly deny: readonly string[];
-    readonly thresholds: { readonly minBytes: number; readonly minEstimatedTokens: number };
+    readonly thresholds: {
+      readonly minBytes: number;
+      readonly minEstimatedTokens: number;
+    };
     readonly rules: readonly ResolvedOffloadRule[];
   };
   readonly workers: Readonly<Record<string, ResolvedWorkerProfile>>;
   readonly defaultWorker: string;
-  readonly context: { readonly includeLastUserMessage: boolean; readonly maxParentContextBytes: number };
+  readonly context: {
+    readonly includeLastUserMessage: boolean;
+    readonly maxParentContextBytes: number;
+  };
   readonly payload: { readonly maxBytes: number };
   readonly validation: {
     readonly maxOutputBytes: number;
@@ -134,7 +140,10 @@ export interface ResolvedToolOffloadConfig {
   };
   readonly fallback: { readonly mode: "original" | "truncate" | "error" };
   readonly annotation: { readonly enabled: boolean };
-  readonly concurrency: { readonly maxWorkersPerAgent: number; readonly maxWorkersGlobal: number };
+  readonly concurrency: {
+    readonly maxWorkersPerAgent: number;
+    readonly maxWorkersGlobal: number;
+  };
   readonly prompts: Readonly<Record<string, string>>;
   readonly telemetry: { readonly enabled: boolean };
 }
@@ -191,7 +200,11 @@ export const TOOL_OFFLOAD_DEFAULTS = {
  */
 const BUILT_IN_RULE_TOOLS = [
   { id: "built-in:web-reader", tools: ["web_fetch"], prompt: "web-reader" },
-  { id: "built-in:search-results", tools: ["grep", "search"], prompt: "search-results" },
+  {
+    id: "built-in:search-results",
+    tools: ["grep", "search"],
+    prompt: "search-results",
+  },
   { id: "built-in:code-reader", tools: ["read"], prompt: "code-reader" },
 ] as const;
 
@@ -208,7 +221,9 @@ const nullableNumber = z.union([z.number(), z.const(null)]);
 
 const workerProfileSchema = z
   .object({
-    subagentProvider: z.string().default(WORKER_PROFILE_DEFAULTS.subagentProvider),
+    subagentProvider: z
+      .string()
+      .default(WORKER_PROFILE_DEFAULTS.subagentProvider),
     provider: nullableString.default(WORKER_PROFILE_DEFAULTS.provider),
     model: nullableString.default(WORKER_PROFILE_DEFAULTS.model),
     maxTokens: nullableNumber.default(WORKER_PROFILE_DEFAULTS.maxTokens),
@@ -226,13 +241,17 @@ export const ToolOffloadConfigSchema = z.object({
   enabled: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.enabled),
   routing: z
     .object({
-      mode: z.union([z.const("allowlist"), z.const("denylist")]).default(TOOL_OFFLOAD_DEFAULTS.mode),
+      mode: z
+        .union([z.const("allowlist"), z.const("denylist")])
+        .default(TOOL_OFFLOAD_DEFAULTS.mode),
       allow: z.array(z.string()).default([...TOOL_OFFLOAD_DEFAULTS.allow]),
       deny: z.array(z.string()).default([...TOOL_OFFLOAD_DEFAULTS.deny]),
       thresholds: z
         .object({
           minBytes: z.number().default(TOOL_OFFLOAD_DEFAULTS.minBytes),
-          minEstimatedTokens: z.number().default(TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens),
+          minEstimatedTokens: z
+            .number()
+            .default(TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens),
         })
         .default({
           minBytes: TOOL_OFFLOAD_DEFAULTS.minBytes,
@@ -248,7 +267,9 @@ export const ToolOffloadConfigSchema = z.object({
                 minBytes: nullableNumber.default(null),
               })
               .default({ tools: [], minBytes: null }),
-            action: z.union([z.const("offload"), z.const("passthrough")]).default("offload"),
+            action: z
+              .union([z.const("offload"), z.const("passthrough")])
+              .default("offload"),
             worker: nullableString.default(null),
             prompt: nullableString.default(null),
           }),
@@ -259,28 +280,41 @@ export const ToolOffloadConfigSchema = z.object({
       mode: TOOL_OFFLOAD_DEFAULTS.mode,
       allow: [...TOOL_OFFLOAD_DEFAULTS.allow],
       deny: [...TOOL_OFFLOAD_DEFAULTS.deny],
-      thresholds: { minBytes: TOOL_OFFLOAD_DEFAULTS.minBytes, minEstimatedTokens: TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens },
+      thresholds: {
+        minBytes: TOOL_OFFLOAD_DEFAULTS.minBytes,
+        minEstimatedTokens: TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens,
+      },
       rules: [],
     }),
   workers: z.dict(workerProfileSchema).default({}),
   defaultWorker: z.string().default(TOOL_OFFLOAD_DEFAULTS.defaultWorker),
   context: z
     .object({
-      includeLastUserMessage: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.includeLastUserMessage),
-      maxParentContextBytes: z.number().default(TOOL_OFFLOAD_DEFAULTS.maxParentContextBytes),
+      includeLastUserMessage: z
+        .boolean()
+        .default(TOOL_OFFLOAD_DEFAULTS.includeLastUserMessage),
+      maxParentContextBytes: z
+        .number()
+        .default(TOOL_OFFLOAD_DEFAULTS.maxParentContextBytes),
     })
     .default({
       includeLastUserMessage: TOOL_OFFLOAD_DEFAULTS.includeLastUserMessage,
       maxParentContextBytes: TOOL_OFFLOAD_DEFAULTS.maxParentContextBytes,
     }),
   payload: z
-    .object({ maxBytes: z.number().default(TOOL_OFFLOAD_DEFAULTS.payloadMaxBytes) })
+    .object({
+      maxBytes: z.number().default(TOOL_OFFLOAD_DEFAULTS.payloadMaxBytes),
+    })
     .default({ maxBytes: TOOL_OFFLOAD_DEFAULTS.payloadMaxBytes }),
   validation: z
     .object({
       maxOutputBytes: z.number().default(TOOL_OFFLOAD_DEFAULTS.maxOutputBytes),
-      requireReduction: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.requireReduction),
-      minReductionRatio: z.number().default(TOOL_OFFLOAD_DEFAULTS.minReductionRatio),
+      requireReduction: z
+        .boolean()
+        .default(TOOL_OFFLOAD_DEFAULTS.requireReduction),
+      minReductionRatio: z
+        .number()
+        .default(TOOL_OFFLOAD_DEFAULTS.minReductionRatio),
     })
     .default({
       maxOutputBytes: TOOL_OFFLOAD_DEFAULTS.maxOutputBytes,
@@ -289,16 +323,24 @@ export const ToolOffloadConfigSchema = z.object({
     }),
   fallback: z
     .object({
-      mode: z.union([z.const("original"), z.const("truncate"), z.const("error")]).default(TOOL_OFFLOAD_DEFAULTS.fallbackMode),
+      mode: z
+        .union([z.const("original"), z.const("truncate"), z.const("error")])
+        .default(TOOL_OFFLOAD_DEFAULTS.fallbackMode),
     })
     .default({ mode: TOOL_OFFLOAD_DEFAULTS.fallbackMode }),
   annotation: z
-    .object({ enabled: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.annotationEnabled) })
+    .object({
+      enabled: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.annotationEnabled),
+    })
     .default({ enabled: TOOL_OFFLOAD_DEFAULTS.annotationEnabled }),
   concurrency: z
     .object({
-      maxWorkersPerAgent: z.number().default(TOOL_OFFLOAD_DEFAULTS.maxWorkersPerAgent),
-      maxWorkersGlobal: z.number().default(TOOL_OFFLOAD_DEFAULTS.maxWorkersGlobal),
+      maxWorkersPerAgent: z
+        .number()
+        .default(TOOL_OFFLOAD_DEFAULTS.maxWorkersPerAgent),
+      maxWorkersGlobal: z
+        .number()
+        .default(TOOL_OFFLOAD_DEFAULTS.maxWorkersGlobal),
     })
     .default({
       maxWorkersPerAgent: TOOL_OFFLOAD_DEFAULTS.maxWorkersPerAgent,
@@ -306,28 +348,51 @@ export const ToolOffloadConfigSchema = z.object({
     }),
   prompts: z.dict(z.string()).default({}),
   telemetry: z
-    .object({ enabled: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.telemetryEnabled) })
+    .object({
+      enabled: z.boolean().default(TOOL_OFFLOAD_DEFAULTS.telemetryEnabled),
+    })
     .default({ enabled: TOOL_OFFLOAD_DEFAULTS.telemetryEnabled }),
 }) as unknown as z<ToolOffloadConfig>;
 
-function requirePositiveInt(name: string, value: number, minimum: number): number {
+function requirePositiveInt(
+  name: string,
+  value: number,
+  minimum: number,
+): number {
   if (!Number.isFinite(value) || value < minimum || !Number.isInteger(value)) {
-    throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "${name}" must be an integer >= ${minimum}`);
+    throw new OffloadError(
+      "OFFLOAD_INVALID_ARGUMENT",
+      `config "${name}" must be an integer >= ${minimum}`,
+    );
   }
   return value;
 }
 
-function requireRange(name: string, value: number, min: number, max: number): number {
+function requireRange(
+  name: string,
+  value: number,
+  min: number,
+  max: number,
+): number {
   if (!Number.isFinite(value) || value < min || value > max) {
-    throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "${name}" must be between ${min} and ${max}`);
+    throw new OffloadError(
+      "OFFLOAD_INVALID_ARGUMENT",
+      `config "${name}" must be between ${min} and ${max}`,
+    );
   }
   return value;
 }
 
-function requireNonEmptyPatterns(name: string, patterns: readonly string[]): string[] {
+function requireNonEmptyPatterns(
+  name: string,
+  patterns: readonly string[],
+): string[] {
   for (const pattern of patterns) {
     if (typeof pattern !== "string" || pattern.trim() === "") {
-      throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "${name}" must contain non-empty tool patterns`);
+      throw new OffloadError(
+        "OFFLOAD_INVALID_ARGUMENT",
+        `config "${name}" must contain non-empty tool patterns`,
+      );
     }
   }
   return [...patterns];
@@ -337,19 +402,29 @@ function requireNonEmptyPatterns(name: string, patterns: readonly string[]): str
  * Resolve raw config into validated values. Unknown worker or prompt profile
  * references in rules fail loudly here so routing can stay total at runtime.
  */
-export function resolveToolOffloadConfig(input: ToolOffloadConfig = {}): ResolvedToolOffloadConfig {
+export function resolveToolOffloadConfig(
+  input: ToolOffloadConfig = {},
+): ResolvedToolOffloadConfig {
   const routing = input.routing ?? {};
   const thresholds = {
-    minBytes: requirePositiveInt("routing.thresholds.minBytes", routing.thresholds?.minBytes ?? TOOL_OFFLOAD_DEFAULTS.minBytes, 1),
+    minBytes: requirePositiveInt(
+      "routing.thresholds.minBytes",
+      routing.thresholds?.minBytes ?? TOOL_OFFLOAD_DEFAULTS.minBytes,
+      1,
+    ),
     minEstimatedTokens: requirePositiveInt(
       "routing.thresholds.minEstimatedTokens",
-      routing.thresholds?.minEstimatedTokens ?? TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens,
+      routing.thresholds?.minEstimatedTokens ??
+        TOOL_OFFLOAD_DEFAULTS.minEstimatedTokens,
       1,
     ),
   };
   const mode = routing.mode ?? TOOL_OFFLOAD_DEFAULTS.mode;
   if (mode !== "allowlist" && mode !== "denylist") {
-    throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "routing.mode" must be allowlist or denylist (got ${String(mode)})`);
+    throw new OffloadError(
+      "OFFLOAD_INVALID_ARGUMENT",
+      `config "routing.mode" must be allowlist or denylist (got ${String(mode)})`,
+    );
   }
 
   const resolvedWorkers: Record<string, ResolvedWorkerProfile> = {
@@ -357,63 +432,110 @@ export function resolveToolOffloadConfig(input: ToolOffloadConfig = {}): Resolve
   };
   for (const [name, profile] of Object.entries(input.workers ?? {})) {
     resolvedWorkers[name] = {
-      subagentProvider: profile.subagentProvider?.trim() || WORKER_PROFILE_DEFAULTS.subagentProvider,
+      subagentProvider:
+        profile.subagentProvider?.trim() ||
+        WORKER_PROFILE_DEFAULTS.subagentProvider,
       provider: profile.provider ?? WORKER_PROFILE_DEFAULTS.provider,
       model: profile.model ?? WORKER_PROFILE_DEFAULTS.model,
-      maxTokens: profile.maxTokens === null || profile.maxTokens === undefined ? WORKER_PROFILE_DEFAULTS.maxTokens : requirePositiveInt(`workers.${name}.maxTokens`, profile.maxTokens, 1),
-      timeoutMs: requirePositiveInt(`workers.${name}.timeoutMs`, profile.timeoutMs ?? WORKER_PROFILE_DEFAULTS.timeoutMs, 100),
+      maxTokens:
+        profile.maxTokens === null || profile.maxTokens === undefined
+          ? WORKER_PROFILE_DEFAULTS.maxTokens
+          : requirePositiveInt(
+              `workers.${name}.maxTokens`,
+              profile.maxTokens,
+              1,
+            ),
+      timeoutMs: requirePositiveInt(
+        `workers.${name}.timeoutMs`,
+        profile.timeoutMs ?? WORKER_PROFILE_DEFAULTS.timeoutMs,
+        100,
+      ),
     };
   }
-  const defaultWorker = input.defaultWorker ?? TOOL_OFFLOAD_DEFAULTS.defaultWorker;
+  const defaultWorker =
+    input.defaultWorker ?? TOOL_OFFLOAD_DEFAULTS.defaultWorker;
   if (!(defaultWorker in resolvedWorkers)) {
-    throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "defaultWorker" references unknown worker profile "${defaultWorker}"`);
+    throw new OffloadError(
+      "OFFLOAD_INVALID_ARGUMENT",
+      `config "defaultWorker" references unknown worker profile "${defaultWorker}"`,
+    );
   }
 
   const prompts: Record<string, string> = {};
   for (const [name, job] of Object.entries(input.prompts ?? {})) {
     if (typeof job !== "string" || job.trim() === "") {
-      throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "prompts.${name}" must be a non-empty string`);
+      throw new OffloadError(
+        "OFFLOAD_INVALID_ARGUMENT",
+        `config "prompts.${name}" must be a non-empty string`,
+      );
     }
     prompts[name] = job;
   }
   const resolvePromptName = (name: string, source: string): string => {
     if (name in prompts || name in BUNDLED_PROMPT_PROFILES) return name;
-    throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "${source}" references unknown prompt profile "${name}"`);
+    throw new OffloadError(
+      "OFFLOAD_INVALID_ARGUMENT",
+      `config "${source}" references unknown prompt profile "${name}"`,
+    );
   };
 
-  const userRules: ResolvedOffloadRule[] = (routing.rules ?? []).map((rule, index) => {
-    const id = rule.id?.trim() || `rule-${index + 1}`;
-    const minBytes = rule.match?.minBytes ?? null;
-    const action = rule.action ?? "offload";
-    if (action !== "offload" && action !== "passthrough") {
-      throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "routing.rules.${id}.action" must be offload or passthrough`);
-    }
-    const worker = rule.worker ?? defaultWorker;
-    if (!(worker in resolvedWorkers)) {
-      throw new OffloadError("OFFLOAD_INVALID_ARGUMENT", `config "routing.rules.${id}.worker" references unknown worker profile "${worker}"`);
-    }
-    const prompt = resolvePromptName(rule.prompt ?? "generic", `routing.rules.${id}.prompt`);
-    return {
-      id,
-      tools: requireNonEmptyPatterns(`routing.rules.${id}.match.tools`, rule.match?.tools ?? []),
-      minBytes: minBytes === null ? null : requirePositiveInt(`routing.rules.${id}.match.minBytes`, minBytes, 1),
-      action,
-      worker,
-      prompt,
-    };
-  });
-  const builtInRules: ResolvedOffloadRule[] = BUILT_IN_RULE_TOOLS.map((rule) => ({
-    id: rule.id,
-    tools: [...rule.tools],
-    minBytes: null,
-    action: "offload",
-    worker: defaultWorker,
-    prompt: resolvePromptName(rule.prompt, `built-in rule ${rule.id}`),
-  }));
+  const userRules: ResolvedOffloadRule[] = (routing.rules ?? []).map(
+    (rule, index) => {
+      const id = rule.id?.trim() || `rule-${index + 1}`;
+      const minBytes = rule.match?.minBytes ?? null;
+      const action = rule.action ?? "offload";
+      if (action !== "offload" && action !== "passthrough") {
+        throw new OffloadError(
+          "OFFLOAD_INVALID_ARGUMENT",
+          `config "routing.rules.${id}.action" must be offload or passthrough`,
+        );
+      }
+      const worker = rule.worker ?? defaultWorker;
+      if (!(worker in resolvedWorkers)) {
+        throw new OffloadError(
+          "OFFLOAD_INVALID_ARGUMENT",
+          `config "routing.rules.${id}.worker" references unknown worker profile "${worker}"`,
+        );
+      }
+      const prompt = resolvePromptName(
+        rule.prompt ?? "generic",
+        `routing.rules.${id}.prompt`,
+      );
+      return {
+        id,
+        tools: requireNonEmptyPatterns(
+          `routing.rules.${id}.match.tools`,
+          rule.match?.tools ?? [],
+        ),
+        minBytes:
+          minBytes === null
+            ? null
+            : requirePositiveInt(
+                `routing.rules.${id}.match.minBytes`,
+                minBytes,
+                1,
+              ),
+        action,
+        worker,
+        prompt,
+      };
+    },
+  );
+  const builtInRules: ResolvedOffloadRule[] = BUILT_IN_RULE_TOOLS.map(
+    (rule) => ({
+      id: rule.id,
+      tools: [...rule.tools],
+      minBytes: null,
+      action: "offload",
+      worker: defaultWorker,
+      prompt: resolvePromptName(rule.prompt, `built-in rule ${rule.id}`),
+    }),
+  );
 
   const minReductionRatio = requireRange(
     "validation.minReductionRatio",
-    input.validation?.minReductionRatio ?? TOOL_OFFLOAD_DEFAULTS.minReductionRatio,
+    input.validation?.minReductionRatio ??
+      TOOL_OFFLOAD_DEFAULTS.minReductionRatio,
     0,
     0.95,
   );
@@ -422,49 +544,75 @@ export function resolveToolOffloadConfig(input: ToolOffloadConfig = {}): Resolve
     enabled: input.enabled ?? TOOL_OFFLOAD_DEFAULTS.enabled,
     routing: {
       mode,
-      allow: requireNonEmptyPatterns("routing.allow", routing.allow ?? TOOL_OFFLOAD_DEFAULTS.allow),
-      deny: requireNonEmptyPatterns("routing.deny", routing.deny ?? TOOL_OFFLOAD_DEFAULTS.deny),
+      allow: requireNonEmptyPatterns(
+        "routing.allow",
+        routing.allow ?? TOOL_OFFLOAD_DEFAULTS.allow,
+      ),
+      deny: requireNonEmptyPatterns(
+        "routing.deny",
+        routing.deny ?? TOOL_OFFLOAD_DEFAULTS.deny,
+      ),
       thresholds,
       rules: [...userRules, ...builtInRules],
     },
     workers: resolvedWorkers,
     defaultWorker,
     context: {
-      includeLastUserMessage: input.context?.includeLastUserMessage ?? TOOL_OFFLOAD_DEFAULTS.includeLastUserMessage,
+      includeLastUserMessage:
+        input.context?.includeLastUserMessage ??
+        TOOL_OFFLOAD_DEFAULTS.includeLastUserMessage,
       maxParentContextBytes: requirePositiveInt(
         "context.maxParentContextBytes",
-        input.context?.maxParentContextBytes ?? TOOL_OFFLOAD_DEFAULTS.maxParentContextBytes,
+        input.context?.maxParentContextBytes ??
+          TOOL_OFFLOAD_DEFAULTS.maxParentContextBytes,
         256,
       ),
     },
     payload: {
-      maxBytes: requirePositiveInt("payload.maxBytes", input.payload?.maxBytes ?? TOOL_OFFLOAD_DEFAULTS.payloadMaxBytes, 1024),
+      maxBytes: requirePositiveInt(
+        "payload.maxBytes",
+        input.payload?.maxBytes ?? TOOL_OFFLOAD_DEFAULTS.payloadMaxBytes,
+        1024,
+      ),
     },
     validation: {
       maxOutputBytes: requirePositiveInt(
         "validation.maxOutputBytes",
-        input.validation?.maxOutputBytes ?? TOOL_OFFLOAD_DEFAULTS.maxOutputBytes,
+        input.validation?.maxOutputBytes ??
+          TOOL_OFFLOAD_DEFAULTS.maxOutputBytes,
         256,
       ),
-      requireReduction: input.validation?.requireReduction ?? TOOL_OFFLOAD_DEFAULTS.requireReduction,
+      requireReduction:
+        input.validation?.requireReduction ??
+        TOOL_OFFLOAD_DEFAULTS.requireReduction,
       minReductionRatio,
     },
-    fallback: { mode: input.fallback?.mode ?? TOOL_OFFLOAD_DEFAULTS.fallbackMode },
-    annotation: { enabled: input.annotation?.enabled ?? TOOL_OFFLOAD_DEFAULTS.annotationEnabled },
+    fallback: {
+      mode: input.fallback?.mode ?? TOOL_OFFLOAD_DEFAULTS.fallbackMode,
+    },
+    annotation: {
+      enabled:
+        input.annotation?.enabled ?? TOOL_OFFLOAD_DEFAULTS.annotationEnabled,
+    },
     concurrency: {
       maxWorkersPerAgent: requirePositiveInt(
         "concurrency.maxWorkersPerAgent",
-        input.concurrency?.maxWorkersPerAgent ?? TOOL_OFFLOAD_DEFAULTS.maxWorkersPerAgent,
+        input.concurrency?.maxWorkersPerAgent ??
+          TOOL_OFFLOAD_DEFAULTS.maxWorkersPerAgent,
         1,
       ),
       maxWorkersGlobal: requirePositiveInt(
         "concurrency.maxWorkersGlobal",
-        input.concurrency?.maxWorkersGlobal ?? TOOL_OFFLOAD_DEFAULTS.maxWorkersGlobal,
+        input.concurrency?.maxWorkersGlobal ??
+          TOOL_OFFLOAD_DEFAULTS.maxWorkersGlobal,
         1,
       ),
     },
     prompts,
-    telemetry: { enabled: input.telemetry?.enabled ?? TOOL_OFFLOAD_DEFAULTS.telemetryEnabled },
+    telemetry: {
+      enabled:
+        input.telemetry?.enabled ?? TOOL_OFFLOAD_DEFAULTS.telemetryEnabled,
+    },
   };
 }
 

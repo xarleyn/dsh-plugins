@@ -1,3 +1,100 @@
+## 0.3.3 (2026-09-15)
+
+### 🩹 Fixes
+
+- Reformat the package with the repository's shared Prettier configuration. The ([ddba2dd](https://github.com/xarleyn/dsh-plugins/commit/ddba2dd))
+  config now lives in the repository root instead of inside four packages, and
+  this sweep brings every package to it. Formatting only — no behavior and no API
+  change beyond the reformatted sources in the published tarball.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.2 (2026-09-14)
+
+### 🩹 Fixes
+
+- Read the credential provider per operation, so authentication works at all in a ([7b59536](https://github.com/xarleyn/dsh-plugins/commit/7b59536))
+  real Host. The plugin captured `ctx.get('credentials')` in its constructor, and
+  cordis' strict `Reflect.get` reports a service whose providing fiber is not
+  ACTIVE yet as absent: `@deepseek-ai/dsh-credentials-local` reaches ACTIVE only
+  after its asynchronous document load and watcher setup, while profile bundles —
+  this one included — are applied earlier. The captured value stayed `undefined`
+  for the whole process lifetime, so every rule whose auth is not `none` failed
+  with `AUTH_FETCH_CREDENTIAL_MISSING` while the DSH credentials page showed the
+  stored secret as configured, and the settings card's Test reported `missing`
+  next to a reference the Host itself could describe.
+
+  `createCredentialResolver` now takes a source callback and reads the provider on
+  every `resolve`/`describe`; the exported signature changed, so embedders pass
+  `() => ctx.get('credentials')` instead of an instance. A regression test proves
+  the wiring under a real Cordis context — a provider mounted after the plugin is
+  constructed still authorizes a test fetch — beside unit coverage for a provider
+  that appears late, a rotated value, an empty stored value, and a malformed
+  reference name.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.1 (2026-09-13)
+
+### 🩹 Fixes
+
+- Fix the settings card never mounting in the web UI. The 0.1.5 client runtime ([ed36855](https://github.com/xarleyn/dsh-plugins/commit/ed36855))
+  exposes `remote.credentials` as its own Cordis service key (owned by
+  `dsh-api-settings-controller`), separate from `remote`, and reading a service
+  that is not declared in `inject` throws `cannot get property
+  "remote.credentials" without inject`. The client half read the namespace
+  without declaring it, so the whole browser-side plugin failed to apply — the
+  Plugins page rendered no Authenticated Web Fetch card, and the loader error
+  took the entire plugin list down with it. The client now declares
+  `remote.credentials` beside `remote` and `settingsScope`, matching the
+  first-party settings plugins, and the package contract asserts the
+  declaration in the built bundle so the omission cannot come back.
+
+  The release also removes an internal project key from every example in the
+  package: the Diagnostics and rule-tester placeholders in the shipped client
+  bundle, the Jira adapter's key-format comment, the SPEC and the test fixtures
+  now use the neutral `PROJ-123` shape.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Migrate to the DSH 0.1.5-rc.2 client surface: credentials move from the ([458b9c2](https://github.com/xarleyn/dsh-plugins/commit/458b9c2))
+  removed IApiClient carrier to the `remote.credentials` Typert remote
+  (describe/set/unset RemoteResults), the settings section installs via
+  SettingsProvider.installSection, and the supported host range moves to
+  `>=0.1.5-rc.2 <0.2.0`, dropping 0.1.1-rc.2.
+
+  Content adapters (SPEC §29 phase 4): a rule can select a `jira` or
+  `confluence` content adapter. Recognized URLs (`/browse/ISSUE-KEY`,
+  `/issues/KEY`, `/pages/<id>`, `/display/SPACE/Title`) are re-fetched from the
+  product REST API through the same authenticated transport and normalized into
+  compact Markdown — issue fields plus optional comments/links (Server wiki
+  markup and Cloud ADF both convert), page metadata plus a storage-format XHTML
+  to Markdown conversion with code/panel/expand macros handled. Unrecognized
+  URLs fall back to raw HTTP/HTML; the connection tester runs the adapter too;
+  malformed REST bodies fail with the new `AUTH_FETCH_ADAPTER_FAILED` code.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-10)
 
 ### 🚀 Features

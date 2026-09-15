@@ -5,11 +5,16 @@ const compatibility = JSON.parse(
 );
 const harness = compatibility.deepseekHarness;
 
-if (!Array.isArray(harness?.testedReleases) || harness.testedReleases.length === 0) {
-  throw new Error("compatibility.json must declare at least one tested DSH release");
+if (
+  !Array.isArray(harness?.testedReleases) ||
+  harness.testedReleases.length === 0
+) {
+  throw new Error(
+    "compatibility.json must declare at least one tested DSH release",
+  );
 }
 for (const release of harness.testedReleases) {
-  if (typeof release !== "string" || !/^0\.1\.1-rc\.\d+$/.test(release)) {
+  if (typeof release !== "string" || !/^0\.1\.\d+-rc\.\d+$/.test(release)) {
     throw new Error(`invalid tested DSH release ${JSON.stringify(release)}`);
   }
 }
@@ -34,6 +39,8 @@ for (const [label, actual, expected] of [
   ["client", harness.requiredClientFeatures, expectedClient],
 ]) {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
-    throw new Error(`${label} feature contract mismatch: expected ${expected.join(", ")}`);
+    throw new Error(
+      `${label} feature contract mismatch: expected ${expected.join(", ")}`,
+    );
   }
 }

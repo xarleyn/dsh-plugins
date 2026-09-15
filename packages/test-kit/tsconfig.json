@@ -2,12 +2,7 @@
   "extends": "@yadsh/dsh-config/tsconfig/base",
   "compilerOptions": {
     "outDir": "lib",
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "src",
-    "tests"
-  ]
+  "include": ["src", "tests"]
 }

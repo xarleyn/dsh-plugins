@@ -993,10 +993,10 @@ Short description.
 ## Installation
 
 npm:
-dsh plugin add @yadsh/dsh-plugin-name
+dsh plugin --profile <profile> add @yadsh/dsh-plugin-name
 
 Tarball:
-dsh plugin add ./package.tgz
+dsh plugin --profile <profile> add ./package.tgz
 
 ## Configuration
 

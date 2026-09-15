@@ -6,14 +6,28 @@ import { buildPreviewBody } from "../../src/preview/index.js";
 import { previewHtml } from "../../src/preview/html.js";
 import { previewLog } from "../../src/preview/log.js";
 import { previewText } from "../../src/preview/text.js";
-import { buildBinaryMarker, formatBytes, formatMarkerHeader, formatRetrieveHint, isCasMarkerText } from "../../src/transform/marker.js";
+import {
+  buildBinaryMarker,
+  formatBytes,
+  formatMarkerHeader,
+  formatRetrieveHint,
+  isCasMarkerText,
+} from "../../src/transform/marker.js";
 import { makeLog } from "../fixtures/store-fixtures.js";
 
-const OPTIONS = { maxChars: 2_048, keepHeadLines: 10, keepTailLines: 12, keepPatterns: ["error", "exception"] };
+const OPTIONS = {
+  maxChars: 2_048,
+  keepHeadLines: 10,
+  keepTailLines: 12,
+  keepPatterns: ["error", "exception"],
+};
 
 describe("previewText", () => {
   it("keeps head and tail lines with an omission marker", () => {
-    const lines = Array.from({ length: 400 }, (_, index) => `line ${index} ${"x".repeat(30)}`);
+    const lines = Array.from(
+      { length: 400 },
+      (_, index) => `line ${index} ${"x".repeat(30)}`,
+    );
     const body = previewText(lines.join("\n"), OPTIONS).body;
     expect(body).toContain("line 0 ");
     expect(body).toContain("line 9 ");
@@ -30,8 +44,14 @@ describe("previewText", () => {
 
   it("preserves Unicode and CRLF boundaries deterministically", () => {
     const value = "emoji 🚀 line";
-    const first = previewText(`${value}\n${"filler\n".repeat(80)}tail 🏁`, OPTIONS).body;
-    const second = previewText(`${value}\n${"filler\n".repeat(80)}tail 🏁`, OPTIONS).body;
+    const first = previewText(
+      `${value}\n${"filler\n".repeat(80)}tail 🏁`,
+      OPTIONS,
+    ).body;
+    const second = previewText(
+      `${value}\n${"filler\n".repeat(80)}tail 🏁`,
+      OPTIONS,
+    ).body;
     expect(first).toBe(second);
   });
 });
@@ -40,7 +60,11 @@ describe("previewLog", () => {
   it("retains error lines from the middle of a large log (SPEC §31)", () => {
     const lines: string[] = [];
     for (let index = 0; index < 400; index += 1) {
-      lines.push(index === 200 ? "ERROR: unrecoverable state in worker-7" : `2026-08-30T18:00:00.000Z INFO ok ${index}`);
+      lines.push(
+        index === 200
+          ? "ERROR: unrecoverable state in worker-7"
+          : `2026-08-30T18:00:00.000Z INFO ok ${index}`,
+      );
     }
     const body = previewLog(lines.join("\n"), OPTIONS).body;
     expect(body).toContain("ERROR: unrecoverable state in worker-7");
@@ -74,16 +98,25 @@ describe("previewHtml", () => {
 describe("buildPreviewBody", () => {
   it("dispatches per kind deterministically", () => {
     const log = makeLog(50_000);
-    expect(buildPreviewBody("log", log, OPTIONS)).toBe(previewLog(log, OPTIONS).body);
+    expect(buildPreviewBody("log", log, OPTIONS)).toBe(
+      previewLog(log, OPTIONS).body,
+    );
     expect(buildPreviewBody("text", "plain", OPTIONS)).toBe("plain");
   });
 });
 
 describe("markers", () => {
-  const REF = "sha256:ac78199a1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b";
+  const REF =
+    "sha256:ac78199a1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b1c8f9b3b";
 
   it("embeds the complete hash and the retrieval hint (SPEC §19)", () => {
-    const header = formatMarkerHeader({ sizeBytes: 2_871_934, previewBytes: 4_096, kind: "html", mediaType: "text/html", ref: REF });
+    const header = formatMarkerHeader({
+      sizeBytes: 2_871_934,
+      previewBytes: 4_096,
+      kind: "html",
+      mediaType: "text/html",
+      ref: REF,
+    });
     expect(header).toContain(`sha256=${REF.replace("sha256:", "")}`);
     expect(header).toContain("use dsh_cas_retrieve");
     const hint = formatRetrieveHint(REF);
@@ -91,7 +124,12 @@ describe("markers", () => {
   });
 
   it("builds binary markers without payload content", () => {
-    const marker = buildBinaryMarker({ sizeBytes: 2_400_000, kind: "binary", mediaType: "image/png", ref: REF });
+    const marker = buildBinaryMarker({
+      sizeBytes: 2_400_000,
+      kind: "binary",
+      mediaType: "image/png",
+      ref: REF,
+    });
     expect(marker).toContain("binary payload offloaded");
     expect(marker).toContain("image/png");
     expect(marker).toContain("dsh_cas_retrieve");
@@ -99,7 +137,17 @@ describe("markers", () => {
   });
 
   it("recognizes its own markers to prevent reprocessing (SPEC §27)", () => {
-    expect(isCasMarkerText(formatMarkerHeader({ sizeBytes: 1, previewBytes: 1, kind: "text", mediaType: "text/plain", ref: REF }))).toBe(true);
+    expect(
+      isCasMarkerText(
+        formatMarkerHeader({
+          sizeBytes: 1,
+          previewBytes: 1,
+          kind: "text",
+          mediaType: "text/plain",
+          ref: REF,
+        }),
+      ),
+    ).toBe(true);
     expect(isCasMarkerText("ordinary tool output")).toBe(false);
   });
 

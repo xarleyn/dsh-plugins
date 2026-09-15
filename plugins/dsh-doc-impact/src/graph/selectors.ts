@@ -1,6 +1,6 @@
-import picomatch from 'picomatch';
-import type { FileSelector } from '../config/types.js';
-import { normalizeWorkspacePath, uniqueSorted } from '../utils/paths.js';
+import picomatch from "picomatch";
+import type { FileSelector } from "../config/types.js";
+import { normalizeWorkspacePath, uniqueSorted } from "../utils/paths.js";
 
 const GLOB_MAGIC = /[*?{}()[\]!+@]/u;
 
@@ -15,9 +15,14 @@ function patternMatches(path: string, pattern: string): boolean {
   return picomatch.isMatch(path, pattern, { dot: true });
 }
 
-export function matchesSelector(filePath: string, selector: FileSelector): boolean {
+export function matchesSelector(
+  filePath: string,
+  selector: FileSelector,
+): boolean {
   const path = normalizeWorkspacePath(filePath);
-  const included = selector.include.some((pattern) => patternMatches(path, pattern));
+  const included = selector.include.some((pattern) =>
+    patternMatches(path, pattern),
+  );
   if (!included) return false;
   return !selector.exclude.some((pattern) => patternMatches(path, pattern));
 }
@@ -27,7 +32,9 @@ export function matchingFiles(
   selector: FileSelector,
 ): string[] {
   const normalized = [...filePaths].map(normalizeWorkspacePath);
-  return uniqueSorted(normalized.filter((path) => matchesSelector(path, selector)));
+  return uniqueSorted(
+    normalized.filter((path) => matchesSelector(path, selector)),
+  );
 }
 
 export function materializeSelector(

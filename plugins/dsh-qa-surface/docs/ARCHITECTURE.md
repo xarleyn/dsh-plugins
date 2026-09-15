@@ -1,8 +1,28 @@
 # Architecture
 
+## QA panel extension boundary
+
+The `/qa` overlay declares one root-scoped keyed child slot,
+`qa.surface.panel`. Optional client plugins register static metadata through
+the `qaSurfacePanels` Cordis service and register their React body in that slot
+under the same implementation id. This keeps metadata serializable and keeps
+React implementations on the UI composition path.
+
+`dsh-qa-surface` owns only presentation: one active panel, launcher ordering,
+side-width reservation and resizing, narrow-screen fullscreen behavior,
+generic header/close actions, focus restoration, retained hidden-body
+inertness, and an extension error boundary. Extensions own feature state,
+controls, persistence and Host capabilities. Panel presentation is client
+state and never writes Session events.
+
+Registration lifetime is deterministic. Removing metadata closes an active
+panel and aborts its owner signal; removing the keyed body makes the shell show
+a controlled unavailable state. Neither path recreates or mutates the active
+DSH Session.
+
 The Host half validates the Loader configuration, registers the `qa-surface`
 settings namespace and owns one narrow GET/HEAD route for the configured QA
-path. Published DSH `0.1.1-rc.2` returns 404 for unknown frontend paths, so the
+path. Published DSH releases return 404 for unknown frontend paths, so the
 route redirects navigation through the canonical `/` index with an encoded
 same-origin path marker. It also exposes one typed
 `secureSession(sessionId)` operation whose policy is read only from Host
@@ -49,6 +69,12 @@ sanitized proof. The controller remains non-writable until every proof field
 matches its Host-delivered config and repeats the check before prompt
 admission. No private RPC handler, slash command, direct provider API, or DSH
 core patch is used.
+
+An indexed historical chat whose immutable preset, workspace or model no
+longer matches may keep its already-open transcript binding in compatibility
+read-only mode. It never receives a successful proof, and the projection and
+controller both suppress prompts, cancellation, approvals and questions. New
+chats are always created and preflighted against the current deployment pins.
 
 This narrows a QA agent's effective session/tool policy, but a route overlay on
 a shared privileged Host is not an authorization boundary for other DSH

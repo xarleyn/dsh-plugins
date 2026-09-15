@@ -23,7 +23,10 @@ afterEach(async () => {
 
 interface CapturedSurface {
   listeners: CasPostExecuteListener[];
-  tools: { name: string; execute: (args: unknown, exec: unknown) => Promise<unknown> }[];
+  tools: {
+    name: string;
+    execute: (args: unknown, exec: unknown) => Promise<unknown>;
+  }[];
 }
 
 interface Wiring {
@@ -39,7 +42,10 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
   const surface: CapturedSurface = { listeners: [], tools: [] };
   const toolCtx = {
     tools: {
-      register(definition: { name: string; execute: (args: unknown, exec: unknown) => Promise<unknown> }) {
+      register(definition: {
+        name: string;
+        execute: (args: unknown, exec: unknown) => Promise<unknown>;
+      }) {
         surface.tools.push(definition);
         return () => undefined;
       },
@@ -51,10 +57,14 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
   };
   // The test harness has no `tools` service; capture the registration
   // callback synchronously instead of waiting for injection.
-  (ctx as unknown as { inject: (services: readonly string[], cb: (c: unknown) => void) => () => void }).inject = (
-    _services,
-    cb,
-  ) => {
+  (
+    ctx as unknown as {
+      inject: (
+        services: readonly string[],
+        cb: (c: unknown) => void,
+      ) => () => void;
+    }
+  ).inject = (_services, cb) => {
     cb(toolCtx);
     return () => undefined;
   };
@@ -100,10 +110,17 @@ describe("CasResultsService wiring", () => {
   it("exposes the shared store surface to other plugins (SPEC §35)", async () => {
     const wiring = await wire();
     const payload = encoder.encode(makeText(2_048));
-    const object = await wiring.service.put({ payload, kind: "text", mediaType: "text/plain", encoding: "utf8" });
+    const object = await wiring.service.put({
+      payload,
+      kind: "text",
+      mediaType: "text/plain",
+      encoding: "utf8",
+    });
     const read = await wiring.service.read(object.ref);
     expect(Buffer.from(read.bytes).equals(Buffer.from(payload))).toBe(true);
-    expect(await wiring.service.stat(object.ref)).toMatchObject({ hash: object.ref.replace("sha256:", "") });
+    expect(await wiring.service.stat(object.ref)).toMatchObject({
+      hash: object.ref.replace("sha256:", ""),
+    });
     const search = await wiring.service.search(object.ref, { query: "line" });
     expect(search.totalMatches).toBeGreaterThan(0);
     const stats = await wiring.service.stats();
@@ -126,10 +143,16 @@ describe("CasResultsService wiring", () => {
         token: Symbol("t"),
         signal: new AbortController().signal,
       } as never,
-      { isError: false, value: { stdout: makeText(4_096) }, content: [] } as never,
+      {
+        isError: false,
+        value: { stdout: makeText(4_096) },
+        content: [],
+      } as never,
       async () => accept,
     );
-    expect((decision as { content?: { text: string }[] }).content?.[0]?.text).toContain("[dsh-cas-results:");
+    expect(
+      (decision as { content?: { text: string }[] }).content?.[0]?.text,
+    ).toContain("[dsh-cas-results:");
     await dispose(wiring);
   });
 });
@@ -144,10 +167,14 @@ describe("CasResultsService lifecycle", () => {
         { gc: { enabled: true, intervalMs: 3_600_000 } } as CasResultsConfig,
         { storeRoot: root, logger: silentPluginLogger() },
       );
-      const timer = (service as unknown as { gcTimer: NodeJS.Timeout | undefined }).gcTimer;
+      const timer = (
+        service as unknown as { gcTimer: NodeJS.Timeout | undefined }
+      ).gcTimer;
       expect(timer).toBeDefined();
       (service as unknown as { dispose(): void }).dispose();
-      expect((service as unknown as { gcTimer: NodeJS.Timeout | undefined }).gcTimer).toBeUndefined();
+      expect(
+        (service as unknown as { gcTimer: NodeJS.Timeout | undefined }).gcTimer,
+      ).toBeUndefined();
       // Dispose is idempotent.
       (service as unknown as { dispose(): void }).dispose();
     } finally {

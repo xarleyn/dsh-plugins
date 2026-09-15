@@ -117,7 +117,7 @@ flowchart LR
 
 - Node.js `^22.19.0` 或 `>=24.0.0`
 - pnpm 10.4.1（开发环境）
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`，并提供公开的 `sidebar.footer.action` 列表插槽
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`，并提供公开的 `sidebar.footer.action` 列表插槽
 
 已发布的 rc.2 客户端无需补丁即可支持。侧边栏标签页宿主通过可选且带版本的 `__dshNativeTabs@1` 协作协议检测；如果没有该协议，插件会回退到原生底部入口，而不会替换 workspace 浏览器。
 

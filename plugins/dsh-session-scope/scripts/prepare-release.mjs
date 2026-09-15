@@ -5,7 +5,9 @@ const SEMVER_TAG =
 
 const [tag, mode] = process.argv.slice(2);
 if (tag === undefined || !SEMVER_TAG.test(tag)) {
-  throw new Error("release tag must be exact SemVer prefixed with v, for example v0.5.0");
+  throw new Error(
+    "release tag must be exact SemVer prefixed with v, for example v0.5.0",
+  );
 }
 if (mode !== undefined && mode !== "--write") {
   throw new Error(`unknown option ${JSON.stringify(mode)}`);
@@ -26,9 +28,15 @@ if (mode === "--write") {
     writeFile(lockUrl, `${JSON.stringify(lock, null, 2)}\n`),
   ]);
 } else {
-  const versions = [manifest.version, lock.version, lock.packages?.[""]?.version];
+  const versions = [
+    manifest.version,
+    lock.version,
+    lock.packages?.[""]?.version,
+  ];
   if (versions.some((candidate) => candidate !== version)) {
-    throw new Error(`tag ${tag}, package.json and package-lock.json versions must match`);
+    throw new Error(
+      `tag ${tag}, package.json and package-lock.json versions must match`,
+    );
   }
 }
 

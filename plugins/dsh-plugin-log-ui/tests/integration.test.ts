@@ -1,5 +1,7 @@
 import { Context } from "@deepseek-ai/cordis";
-import SettingsProvider, { type SettingsNamespace } from "@deepseek-ai/dsh-settings";
+import SettingsProvider, {
+  type SettingsNamespace,
+} from "@deepseek-ai/dsh-settings";
 import {
   createPluginLogger,
   getRegisteredPluginLoggers,
@@ -34,10 +36,17 @@ const fibers: Array<{ dispose(): Promise<void> }> = [];
 
 afterEach(async () => {
   await Promise.all(loggers.splice(0).map((logger) => logger.close()));
-  await Promise.all(fibers.splice(0).reverse().map((fiber) => fiber.dispose()));
+  await Promise.all(
+    fibers
+      .splice(0)
+      .reverse()
+      .map((fiber) => fiber.dispose()),
+  );
 });
 
-async function configuredContext(document: Record<string, unknown> = {}): Promise<Context> {
+async function configuredContext(
+  document: Record<string, unknown> = {},
+): Promise<Context> {
   const ctx = new Context();
   const settingsFiber = ctx.plugin(MemorySettings, document);
   fibers.push(settingsFiber);
@@ -63,9 +72,11 @@ function logger(pluginId: string) {
 describe("plugin log UI integration", () => {
   it("registers a live settings namespace", async () => {
     const ctx = await configuredContext();
-    expect(ctx.settings.describe().find(
-      (item) => item.ns === PLUGIN_LOG_SETTINGS_NAMESPACE,
-    )).toMatchObject({
+    expect(
+      ctx.settings
+        .describe()
+        .find((item) => item.ns === PLUGIN_LOG_SETTINGS_NAMESPACE),
+    ).toMatchObject({
       ns: "plugin-log",
       applies: "live",
       revision: 0,
@@ -120,7 +131,71 @@ describe("plugin log UI integration", () => {
     await vi.waitFor(() => {
       expect(special.level).toBe("trace");
       expect(regular.level).toBe("error");
-      expect(getRegisteredPluginLoggers().every((entry) => entry.format === "text")).toBe(true);
+      expect(
+        getRegisteredPluginLoggers().every((entry) => entry.format === "text"),
+      ).toBe(true);
     });
+  });
+
+  it("serves the live record stream the panel reads", async () => {
+    const ctx = await configuredContext({
+      "plugin-log": { defaultLevel: "trace" },
+    });
+    const created = logger("dsh-stream");
+    // The stream carries every logger in the process, this plugin's own
+    // diagnostics included, so a reader narrows it by plugin.
+    const mine = (cursor: number) =>
+      ctx.pluginLogUi
+        .tail(cursor, 10)
+        .records.filter((record) => record.pluginId === "dsh-stream");
+
+    created.info("stream.first", { attempt: 1 });
+    created.child("worker").warn("stream.second");
+
+    const read = ctx.pluginLogUi.tail(0, 10);
+    expect(
+      mine(0).map((record) => [record.level, record.module, record.event]),
+    ).toEqual([
+      ["info", "", "stream.first"],
+      ["warn", "worker", "stream.second"],
+    ]);
+    expect(mine(0)[0]?.fields).toEqual([{ key: "attempt", value: "1" }]);
+
+    // The cursor is what makes the panel's poll incremental.
+    expect(mine(read.cursor)).toEqual([]);
+    created.info("stream.third");
+    expect(mine(read.cursor).map((record) => record.event)).toEqual([
+      "stream.third",
+    ]);
+  });
+
+  it("renders arbitrary field values instead of shipping them across the Remote", async () => {
+    const ctx = await configuredContext({
+      "plugin-log": { defaultLevel: "trace" },
+    });
+    const created = logger("dsh-fields");
+    const cyclic: Record<string, unknown> = { name: "loop" };
+    cyclic["self"] = cyclic;
+
+    created.info("stream.fields", {
+      cyclic,
+      failure: new Error("boom"),
+      list: [1, 2],
+    });
+
+    const [record] = ctx.pluginLogUi
+      .tail(0, 10)
+      .records.filter((entry) => entry.pluginId === "dsh-fields");
+    expect(record?.fields).toEqual([
+      // A self-referencing object terminates at the depth limit instead of
+      // cycling: the panel draws a string, and the wire carries one.
+      {
+        key: "cyclic",
+        value:
+          "{name: loop, self: {name: loop, self: {name: loop, self: {…}}}}",
+      },
+      { key: "failure", value: "Error: boom" },
+      { key: "list", value: "[1, 2]" },
+    ]);
   });
 });

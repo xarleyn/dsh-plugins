@@ -14,7 +14,10 @@ const packageJson = JSON.parse(
 const compatibility = JSON.parse(
   await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
 
 // Manifest identity.
 assert.match(packageJson.name, /^@yadsh\/dsh-kv-persist$/);
@@ -35,15 +38,20 @@ for (const required of [
   "lib",
   "cordis.patch.yml",
   "compatibility.json",
-  "docs/dsh-kv-persist.md",
   "README.md",
   "LICENSE",
 ]) {
-  assert.ok(packageJson.files.includes(required), `files is missing: ${required}`);
+  assert.ok(
+    packageJson.files.includes(required),
+    `files is missing: ${required}`,
+  );
 }
 
 // Canonical bundle patch pair (guidelines §4.3).
-assert.match(patch, /# The DSH plugin manager discovers this bundle through package\.json\./);
+assert.match(
+  patch,
+  /# The DSH plugin manager discovers this bundle through package\.json\./,
+);
 assert.match(patch, /id: dsh-kv-persist\b/);
 assert.match(patch, /name: "@yadsh\/dsh-kv-persist"/);
 

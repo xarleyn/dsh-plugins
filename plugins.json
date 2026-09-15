@@ -1,0 +1,440 @@
+{
+  "$schema": "./docs/plugins.schema.json",
+  "generatedBy": "scripts/generate-plugins-manifest.mjs",
+  "repository": "https://github.com/xarleyn/dsh-plugins",
+  "githubTopic": "dsh-plugin",
+  "plugins": [
+    {
+      "name": "plugin-log",
+      "npm": "@yadsh/dsh-plugin-log",
+      "path": "packages/plugin-log",
+      "description": "Shared structured file logging and runtime logger discovery for DSH plugins",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "logging",
+        "logs",
+        "structured-logging",
+        "observability"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-log",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-cas-results",
+      "npm": "@yadsh/dsh-cas-results",
+      "path": "plugins/dsh-cas-results",
+      "description": "Content-addressed offload store for bulky DeepSeek Harness tool results",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "tool-results",
+        "content-addressed-storage",
+        "deduplication",
+        "context-management"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-cas-results",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-cas-results#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-doc-impact",
+      "npm": "@yadsh/dsh-doc-impact",
+      "path": "plugins/dsh-doc-impact",
+      "description": "Deterministic documentation impact engine for DeepSeek Harness",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "documentation",
+        "impact-analysis",
+        "docs"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-doc-impact",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-doc-impact#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-domain-experts",
+      "npm": "@yadsh/dsh-domain-experts",
+      "path": "plugins/dsh-domain-experts",
+      "description": "Configurable domain-scoped expert agents for DeepSeek Harness",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "domain",
+        "expert",
+        "subagent",
+        "scoping",
+        "agent-teams"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-domain-experts",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-domain-experts#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-draft-sessions",
+      "npm": "@yadsh/dsh-draft-sessions",
+      "path": "plugins/dsh-draft-sessions",
+      "description": "Persistent unsent draft sessions for DeepSeek Harness",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "draft",
+        "sessions",
+        "web-ui",
+        "autosave"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-draft-sessions",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-draft-sessions#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-git-readonly",
+      "npm": "@yadsh/dsh-git-readonly",
+      "path": "plugins/dsh-git-readonly",
+      "description": "Read-only git provenance tools for DeepSeek Harness agents",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "git",
+        "read-only",
+        "provenance",
+        "agent-tools"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-git-readonly",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-git-readonly#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-kv-persist",
+      "npm": "@yadsh/dsh-kv-persist",
+      "path": "plugins/dsh-kv-persist",
+      "description": "Persistent KV-cache/session-state manager for DeepSeek Harness (llama.cpp slot snapshots)",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "kv-cache",
+        "llama-cpp",
+        "persistence",
+        "session-state"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-kv-persist",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-kv-persist#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-l10n-overrides",
+      "npm": "@yadsh/dsh-l10n-overrides",
+      "path": "plugins/dsh-l10n-overrides",
+      "description": "English localization overrides for DeepSeek Harness plugins",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "localization",
+        "i18n",
+        "web-ui"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-l10n-overrides",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-l10n-overrides#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-model-safety-gate",
+      "npm": "@yadsh/dsh-model-safety-gate",
+      "path": "plugins/dsh-model-safety-gate",
+      "description": "Independent two-layer safety gate around the DeepSeek Harness agent loop: deterministic and model-classifier verdicts for prompts, streamed output, tools, and tool results",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "safety",
+        "prompt-injection",
+        "jailbreak-detection",
+        "content-moderation",
+        "stream-guard",
+        "defense-in-depth"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-model-safety-gate",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-model-safety-gate#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-openviking-memory",
+      "npm": "@yadsh/dsh-openviking-memory",
+      "path": "plugins/dsh-openviking-memory",
+      "description": "OpenViking memory integration for DeepSeek Harness with configurable automatic context injection; derived from the official OpenViking DSH plugin.",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "openviking",
+        "memory",
+        "agent-memory",
+        "long-term-memory",
+        "manual-recall",
+        "auto-recall",
+        "context"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-openviking-memory",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-openviking-memory#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-plugin-log-ui",
+      "npm": "@yadsh/dsh-plugin-log-ui",
+      "path": "plugins/dsh-plugin-log-ui",
+      "description": "DSH settings UI for shared plugin logging levels and file format",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "logging",
+        "logs",
+        "settings-ui",
+        "web-ui",
+        "observability"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-log-ui",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-plugin-log-ui#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-prompt-firewall",
+      "npm": "@yadsh/dsh-prompt-firewall",
+      "path": "plugins/dsh-prompt-firewall",
+      "description": "Prompt hygiene, observability, and policy middleware for DeepSeek Harness",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "prompt",
+        "firewall",
+        "prompt-injection",
+        "policy",
+        "observability",
+        "middleware"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-prompt-firewall",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-prompt-firewall#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-qa-browser",
+      "npm": "@yadsh/dsh-qa-browser",
+      "path": "plugins/dsh-qa-browser",
+      "description": "Session-scoped Playwright browser runtime for DeepSeek Harness and QA Surface",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "browser",
+        "playwright",
+        "qa"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-browser",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-browser#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-qa-integrations",
+      "npm": "@yadsh/dsh-qa-integrations",
+      "path": "plugins/dsh-qa-integrations",
+      "description": "Principal-scoped, encrypted user integrations for DSH QA Surface",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "qa",
+        "integrations",
+        "bitrix24",
+        "credentials"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-integrations#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-qa-surface",
+      "npm": "@yadsh/dsh-qa-surface",
+      "path": "plugins/dsh-qa-surface",
+      "description": "A focused end-user QA surface backed by native DeepSeek Harness sessions",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "qa",
+        "chat",
+        "web-ui",
+        "testing",
+        "quality-assurance"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-surface",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-surface#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-session-scope",
+      "npm": "@yadsh/dsh-session-scope",
+      "path": "plugins/dsh-session-scope",
+      "description": "Per-session workspace visibility scopes for DeepSeek Harness.",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "sandbox",
+        "permission",
+        "session-scope",
+        "workspace-scope"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-session-scope",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-session-scope#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-sleev",
+      "npm": "@yadsh/dsh-sleev",
+      "path": "plugins/dsh-sleev",
+      "description": "Sleev routing observability for DeepSeek Harness",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "sleev",
+        "routing",
+        "observability",
+        "context-optimization"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-sleev",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-sleev#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-tool-offload",
+      "npm": "@yadsh/dsh-tool-offload",
+      "path": "plugins/dsh-tool-offload",
+      "description": "Offloads large, low-judgement DeepSeek Harness tool results to small one-shot worker agents before they enter the main model context",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "subagent",
+        "tool",
+        "offload",
+        "routing",
+        "context",
+        "tokens",
+        "cost",
+        "llm"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-tool-offload",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-tool-offload#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-ui-repair",
+      "npm": "@yadsh/dsh-ui-repair",
+      "path": "plugins/dsh-ui-repair",
+      "description": "Reversible DOM diagnostics and scoped UI repairs for DeepSeek Harness plugins",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "ui-repair",
+        "accessibility",
+        "dom",
+        "diagnostics"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-ui-repair",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-ui-repair#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-user-correction-miner",
+      "npm": "@yadsh/dsh-user-correction-miner",
+      "path": "plugins/dsh-user-correction-miner",
+      "description": "Mine durable project-rule candidates from user corrections in DeepSeek Harness sessions",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "project-rules",
+        "memory",
+        "corrections",
+        "knowledge-extraction"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-user-correction-miner",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-user-correction-miner#readme",
+      "client": false
+    },
+    {
+      "name": "dsh-web-fetch-authenticated",
+      "npm": "@yadsh/dsh-web-fetch-authenticated",
+      "path": "plugins/dsh-web-fetch-authenticated",
+      "description": "Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web)",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "web-fetch",
+        "ssrf",
+        "credentials",
+        "security",
+        "fetch"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-web-fetch-authenticated",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-web-fetch-authenticated#readme",
+      "client": true
+    }
+  ]
+}

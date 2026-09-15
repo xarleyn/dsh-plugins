@@ -1,12 +1,16 @@
 {
   "name": "@yadsh/dsh-doc-impact",
-  "version": "0.2.4",
+  "version": "0.3.2",
   "description": "Deterministic documentation impact engine for DeepSeek Harness",
   "keywords": [
+    "deepseek",
     "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
     "documentation",
     "impact-analysis",
-    "plugin"
+    "docs"
   ],
   "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-doc-impact#readme",
   "bugs": {
@@ -40,17 +44,27 @@
   "scripts": {
     "clean": "node -e \"const fs = require('node:fs'); for (const dir of ['lib']) fs.rmSync(dir, { recursive: true, force: true })\"",
     "build:client": "tsdown",
-    "build": "npm run clean && tsc -p tsconfig.build.json && npm run build:client",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json && pnpm run build:client",
     "lint": "eslint src tests scripts tsdown.config.ts",
-    "test": "npm run build:client && vitest run",
+    "test": "pnpm run build:client && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "smoke:packed": "node scripts/smoke-packed.mjs",
     "verify:package": "node scripts/verify-package.mjs",
-    "verify": "npm run verify:client && npm run verify:package",
-    "prepack": "npm run build && npm run verify:client",
-    "check": "npm run typecheck && npm test && npm run build && npm run verify",
-    "release:check": "npm run check && npm run verify:package"
+    "verify": "pnpm run verify:client && pnpm run verify:package",
+    "prepack": "pnpm run build && pnpm run verify:client",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "release:check": "pnpm run check && pnpm run verify:package"
+  },
+  "nx": {
+    "targets": {
+      "verify": {
+        "dependsOn": [
+          "build",
+          "test"
+        ]
+      }
+    }
   },
   "publishConfig": {
     "access": "public",

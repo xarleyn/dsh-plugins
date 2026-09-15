@@ -1,23 +1,44 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-runtime/client";
+import type {} from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type { InjectFace, PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
-import type { RemoteResult, TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
+import type {} from "@deepseek-ai/dsh-client-ui-sidebar-right/client";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
+import type {
+  RemoteResult,
+  TypertRemoteContribution,
+} from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
 import {
   CardShell,
   bindSettingsExternalStore,
+  injectCardStyles,
   registerSettingsCard,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type {
   ManagedPluginLogFormat,
   ManagedPluginLogLevel,
+  PluginLogTail,
   PluginLogUiConfig,
   PluginLogUiSnapshot,
 } from "../types.js";
+import { LogPanel } from "./panel/LogPanel.js";
+import { logPanelDefinition, LOG_PANEL_ID } from "./panel/definition.js";
+import { createLogTailReader } from "./panel/log-view.js";
+import { PANEL_STYLES } from "./panel/styles.js";
 import { styles } from "./styles.js";
 
 const SETTINGS_NAMESPACE = "plugin-log";
@@ -34,6 +55,7 @@ const LEVELS: readonly ManagedPluginLogLevel[] = [
 
 interface InspectorRemote {
   inspect(): Promise<RemoteResult<PluginLogUiSnapshot>>;
+  tail(cursor: number, limit: number): Promise<RemoteResult<PluginLogTail>>;
 }
 
 interface ClientRemote {
@@ -54,25 +76,38 @@ function errorText(error: unknown): string {
   return "Could not update plugin logging settings.";
 }
 
-function LevelOptions({ inherit }: { readonly inherit?: ManagedPluginLogLevel }) {
+function LevelOptions({
+  inherit,
+}: {
+  readonly inherit?: ManagedPluginLogLevel;
+}) {
   return (
     <>
-      {inherit !== undefined ? <option value="">Inherit default ({inherit})</option> : null}
+      {inherit !== undefined ? (
+        <option value="">Inherit default ({inherit})</option>
+      ) : null}
       {LEVELS.map((level) => (
-        <option value={level} key={level}>{level === "silent" ? "silent (off)" : level}</option>
+        <option value={level} key={level}>
+          {level === "silent" ? "silent (off)" : level}
+        </option>
       ))}
     </>
   );
 }
 
 function PluginLogSettingsCard({ scope, inspect }: CardProps) {
-  const settingsStore = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+  const settingsStore = useMemo(
+    () => bindSettingsExternalStore(scope),
+    [scope],
+  );
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
     settingsStore.getSnapshot,
   );
-  const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({ consumers: [] });
+  const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({
+    consumers: [],
+  });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const config = settings.value;
@@ -99,25 +134,31 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
     return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
   }, [refresh]);
 
-  const write = useCallback(async (field: keyof PluginLogUiConfig, value: unknown) => {
-    setSaving(true);
-    setError(null);
-    try {
-      await scope.set(field, value);
-      await refresh();
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setSaving(false);
-    }
-  }, [refresh, scope]);
+  const write = useCallback(
+    async (field: keyof PluginLogUiConfig, value: unknown) => {
+      setSaving(true);
+      setError(null);
+      try {
+        await scope.set(field, value);
+        await refresh();
+      } catch (cause) {
+        setError(errorText(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [refresh, scope],
+  );
 
-  const setOverride = useCallback((pluginId: string, level: string) => {
-    const next = { ...levels } as Record<string, ManagedPluginLogLevel>;
-    if (level === "") delete next[pluginId];
-    else next[pluginId] = level as ManagedPluginLogLevel;
-    void write("levels", next);
-  }, [levels, write]);
+  const setOverride = useCallback(
+    (pluginId: string, level: string) => {
+      const next = { ...levels } as Record<string, ManagedPluginLogLevel>;
+      if (level === "") delete next[pluginId];
+      else next[pluginId] = level as ManagedPluginLogLevel;
+      void write("levels", next);
+    },
+    [levels, write],
+  );
 
   if (settings.status === "unavailable") return null;
 
@@ -125,12 +166,24 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
     <CardShell
       title="Plugin logging"
       description="Levels and readable file output for registered server plugins."
-      badge={<span className="dsh-plugin-card__badge">{snapshot.consumers.length} active</span>}
+      badge={
+        <span className="dsh-plugin-card__badge">
+          {snapshot.consumers.length} active
+        </span>
+      }
       label={(open) => `${open ? "Hide" : "Show"} settings: Plugin logging`}
       bodyClassName="plu-body"
     >
-      {error !== null ? <p className="plu-error" role="status">{error}</p> : null}
-      {!writable ? <p className="plu-status">Settings are read-only for this connection.</p> : null}
+      {error !== null ? (
+        <p className="plu-error" role="status">
+          {error}
+        </p>
+      ) : null}
+      {!writable ? (
+        <p className="plu-status">
+          Settings are read-only for this connection.
+        </p>
+      ) : null}
 
       <section className="plu-section">
         <h3>Defaults</h3>
@@ -141,7 +194,9 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               className="plu-select"
               value={defaultLevel}
               disabled={!writable || saving}
-              onChange={(event) => void write("defaultLevel", event.currentTarget.value)}
+              onChange={(event) =>
+                void write("defaultLevel", event.currentTarget.value)
+              }
             >
               <LevelOptions />
             </select>
@@ -152,14 +207,26 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               className="plu-select"
               value={format}
               disabled={!writable || saving}
-              onChange={(event) => void write("format", event.currentTarget.value as ManagedPluginLogFormat)}
+              onChange={(event) =>
+                void write(
+                  "format",
+                  event.currentTarget.value as ManagedPluginLogFormat,
+                )
+              }
             >
               <option value="text">Text — readable lines</option>
               <option value="json">JSON — NDJSON records</option>
             </select>
           </label>
         </div>
-        <p className="plu-hint">Changes apply live. A format switch affects new lines; an existing daily file can contain both formats until rotation.</p>
+        <p className="plu-hint">
+          Changes apply live. A format switch affects new lines; an existing
+          daily file can contain both formats until rotation.
+        </p>
+        <p className="plu-hint">
+          Live output is the <strong>Plugin logs</strong> tab of the right
+          Sidebar: open it there and pick the panel from the guide page.
+        </p>
       </section>
 
       <section className="plu-section">
@@ -172,14 +239,20 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
               <div className="plu-row" key={consumer.pluginId}>
                 <div className="plu-plugin">
                   <code>{consumer.pluginId}</code>
-                  <span>{consumer.instances} instance{consumer.instances === 1 ? "" : "s"} · active: {consumer.level} · {consumer.format}</span>
+                  <span>
+                    {consumer.instances} instance
+                    {consumer.instances === 1 ? "" : "s"} · active:{" "}
+                    {consumer.level} · {consumer.format}
+                  </span>
                 </div>
                 <select
                   className="plu-select"
                   aria-label={`Log level for ${consumer.pluginId}`}
                   value={levels[consumer.pluginId] ?? ""}
                   disabled={!writable || saving}
-                  onChange={(event) => setOverride(consumer.pluginId, event.currentTarget.value)}
+                  onChange={(event) =>
+                    setOverride(consumer.pluginId, event.currentTarget.value)
+                  }
                 >
                   <LevelOptions inherit={defaultLevel} />
                 </select>
@@ -192,25 +265,85 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   );
 }
 
-export const inject = ["slots", "settingsScope", "remote"];
+export const inject = ["slots", "settingsScope", "remote", "sidebarRightTabs"];
+
+/**
+ * The settings card's stylesheet key.
+ *
+ * One key owns one `<style>` tag: `injectCardStyles` treats a key it has already
+ * seen as "this sheet is injected" and returns a no-op. Two sheets under one key
+ * therefore lose the second one silently, styled by nobody.
+ */
+const CARD_STYLE_KEY = "dsh-plugin-log-ui";
+
+/** The log panel's key: its own tag, for the reason above. */
+const PANEL_STYLE_KEY = `${CARD_STYLE_KEY}/panel`;
 
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  // The panel is a page tab on the host's right Sidebar. Its type registers
+  // through the public two-stage path, so the column dispatches the body below
+  // by this plugin's own id rather than by anything hard-coded there.
+  const removePanelStyles = injectCardStyles(PANEL_STYLE_KEY, PANEL_STYLES);
+  ctx.effect(
+    () => ctx.sidebarRightTabs.register(logPanelDefinition()),
+    "dsh-plugin-log-ui: log panel type",
+  );
+
   const remote = ctx.remote as unknown as ClientRemote;
   const disposeRemote = await remote.$mount(pluginLogUiRemote);
-  await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
-    const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
-    const inspector = mountedRemote.pluginLogUi;
-    const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
-      namespace: SETTINGS_NAMESPACE,
+  let disposePanel: (() => void) | undefined;
+  try {
+    await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
+      const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
+      const inspector = mountedRemote.pluginLogUi;
+      const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
+        namespace: SETTINGS_NAMESPACE,
+      });
+      // The column may not have declared its seat yet when this plugin loads, so
+      // the body waits for the declaration instead of assuming boot order. The
+      // callback is re-entered if the namespace is withdrawn and re-provided, so
+      // each pass replaces the previous registration rather than stacking one.
+      disposePanel?.();
+      disposePanel = remoteCtx.slots.inject("sidebar.right.pane.tab", () =>
+        remoteCtx.slots.register(
+          {
+            name: "sidebar.right.pane.tab",
+            key: LOG_PANEL_ID,
+            inject: () => ({
+              read: createLogTailReader(inspector),
+              // The source filter's list, from the registry rather than from the
+              // window: a plugin that has gone quiet is still a source a reader
+              // may want to isolate.
+              sources: async () => {
+                const snapshot = await inspector.inspect();
+                if (!snapshot.ok) return [];
+                return snapshot.value.consumers.map(
+                  (consumer) => consumer.pluginId,
+                );
+              },
+            }),
+          },
+          LogPanel,
+        ),
+      );
+      return registerSettingsCard(remoteCtx, {
+        key: SETTINGS_NAMESPACE,
+        pluginName: CARD_STYLE_KEY,
+        styles,
+        component: PluginLogSettingsCard,
+        inject: () => ({ scope, inspect: () => inspector.inspect() }),
+      });
     });
-    return registerSettingsCard(remoteCtx, {
-      key: SETTINGS_NAMESPACE,
-      pluginName: "dsh-plugin-log-ui",
-      styles,
-      component: PluginLogSettingsCard,
-      inject: () => ({ scope, inspect: () => inspector.inspect() }),
-    });
-  });
+  } catch (error) {
+    disposePanel?.();
+    removePanelStyles();
+    await disposeRemote();
+    throw error;
+  }
 
-  return disposeRemote;
+  return async () => {
+    disposePanel?.();
+    removePanelStyles();
+    return disposeRemote();
+  };
 }

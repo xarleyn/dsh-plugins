@@ -1,34 +1,36 @@
 import { memo, useEffect, useRef, useState } from "react";
-import type { QaMessage as QaMessageModel, QaImageView } from "../../types.js";
+import type {
+  QaFileView,
+  QaMessage as QaMessageModel,
+  QaImageView,
+  QaSource,
+  QaTurnSources,
+} from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
-
-/** Resolved image URLs live for the page lifetime; failures retry on demand. */
-const imageUrlCache = new Map<string, Promise<string>>();
-
-function cachedImageUrl(
-  attachmentId: string,
-  resolve: (attachmentId: string) => Promise<string>,
-): Promise<string> {
-  let pending = imageUrlCache.get(attachmentId);
-  if (pending === undefined) {
-    pending = resolve(attachmentId);
-    imageUrlCache.set(attachmentId, pending);
-    pending.catch(() => imageUrlCache.delete(attachmentId));
-  }
-  return pending;
-}
+import { QaFileAttachment } from "./QaFileAttachment.js";
+import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
 
 function QaAttachedImage({
   image,
   resolve,
 }: {
   readonly image: QaImageView;
-  readonly resolve: (attachmentId: string) => Promise<string>;
+  readonly resolve?: (attachmentId: string) => Promise<string>;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const [url, setUrl] = useState<string | null>(image.previewUrl ?? null);
   useEffect(() => {
+    if (image.previewUrl !== undefined) {
+      setUrl(image.previewUrl);
+      return;
+    }
+    if (resolve === undefined) {
+      setUrl("");
+      return;
+    }
     let alive = true;
-    cachedImageUrl(image.attachmentId, resolve).then(
+    // Deduplication and revocation live in the controller's per-chat asset
+    // repository; this effect only projects one resolution.
+    resolve(image.attachmentId).then(
       (resolved) => {
         if (alive) setUrl(resolved);
       },
@@ -39,7 +41,7 @@ function QaAttachedImage({
     return () => {
       alive = false;
     };
-  }, [image.attachmentId, resolve]);
+  }, [image.attachmentId, image.previewUrl, resolve]);
   if (url === null) {
     return <span className="dsh-qa-message__image" data-state="loading" />;
   }
@@ -64,12 +66,25 @@ export interface QaMessageProps {
   readonly message: QaMessageModel;
   readonly renderMarkdown: boolean;
   readonly showTimestamp: boolean;
-  /** Storage prefix persisted message ratings live under. */
+  /**
+   * Storage prefix persisted message ratings live under. Callers scope it to
+   * the chat: message ids repeat across chats (`assistant:<seq>`).
+   */
   readonly stateKey?: string;
   /** Ask for a fresh variant of this answer; omit to hide the control. */
   readonly onRegenerate?: () => void;
   /** Resolve one durable attachment into a viewable URL. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
+  /** Open the drawer at the exact canonical snapshot shown in this footer. */
+  readonly onOpenSources?: (
+    sources: readonly QaSource[],
+    complete: boolean,
+    incompleteOrigins: QaTurnSources["incompleteOrigins"],
+  ) => void;
+  /** Open one path-backed source's detail (an inline footnote click). */
+  readonly onSourceDetail?: (source: QaSource) => void;
+  /** Operator-configured running phrases; omitted reads the built-in list. */
+  readonly thinkingPhrases?: readonly string[];
 }
 
 type Rating = "up" | "down";
@@ -96,6 +111,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
   if (a.text !== b.text || a.timestamp !== b.timestamp) return false;
   if (a.role === "assistant" && b.role === "assistant") {
     return (
+      sameSources(a.sources, b.sources) &&
       (a.stats === undefined) === (b.stats === undefined) &&
       (a.stats === undefined ||
         b.stats === undefined ||
@@ -105,17 +121,44 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
     );
   }
   if (a.role === "user" && b.role === "user") {
-    return sameImages(a.images, b.images);
+    return (
+      a.author === b.author &&
+      sameImages(a.images, b.images) &&
+      sameFiles(a.files, b.files)
+    );
   }
   if (a.role === "system" && b.role === "system") {
     return (
       (a.notice === undefined) === (b.notice === undefined) &&
       (a.notice === undefined ||
         b.notice === undefined ||
-        (a.notice.title === b.notice.title && a.notice.body === b.notice.body))
+        (a.notice.title === b.notice.title &&
+          a.notice.body === b.notice.body &&
+          a.notice.meta === b.notice.meta))
     );
   }
   return false;
+}
+
+function sameSources(
+  a: readonly QaSource[] | undefined,
+  b: readonly QaSource[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (source, index) =>
+      source.id === b[index]?.id &&
+      source.title === b[index]?.title &&
+      source.uri === b[index]?.uri &&
+      source.path === b[index]?.path &&
+      source.snippet === b[index]?.snippet &&
+      source.evidence === b[index]?.evidence &&
+      source.score === b[index]?.score &&
+      JSON.stringify(source.locations) ===
+        JSON.stringify(b[index]?.locations) &&
+      JSON.stringify(source.origins) === JSON.stringify(b[index]?.origins),
+  );
 }
 
 function sameImages(
@@ -127,7 +170,22 @@ function sameImages(
   return a.every(
     (image, index) =>
       image.attachmentId === (b[index] as QaImageView).attachmentId &&
-      image.mediaType === (b[index] as QaImageView).mediaType,
+      image.mediaType === (b[index] as QaImageView).mediaType &&
+      image.previewUrl === (b[index] as QaImageView).previewUrl,
+  );
+}
+
+function sameFiles(
+  a: readonly QaFileView[] | undefined,
+  b: readonly QaFileView[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (file, index) =>
+      file.attachmentId === (b[index] as QaFileView).attachmentId &&
+      file.name === (b[index] as QaFileView).name &&
+      file.bytes === (b[index] as QaFileView).bytes,
   );
 }
 
@@ -183,12 +241,32 @@ export const QaMessage = memo(
     stateKey,
     onRegenerate,
     resolveImage,
+    onOpenSources,
+    onSourceDetail,
+    thinkingPhrases,
   }: QaMessageProps) {
     const [copied, setCopied] = useState(false);
     const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
       undefined,
     );
     const [rating, setRating] = useState<Rating | null>(null);
+    // Source-footnote registry, cached by the source-id set so the memoized
+    // Markdown keeps one resolver identity across streaming frames.
+    const refsCache = useRef<{ ids: string; refs: QaSourceRefs }>({
+      ids: "",
+      refs: buildSourceRefs([]),
+    });
+    if (message.role === "assistant") {
+      const ids = message.sources?.map((source) => source.id).join("|") ?? "";
+      if (refsCache.current.ids !== ids) {
+        refsCache.current = {
+          ids,
+          refs: buildSourceRefs(message.sources ?? []),
+        };
+      }
+    }
+    const sourceRefs =
+      message.role === "assistant" ? refsCache.current.refs : undefined;
     useEffect(() => {
       setRating(readRatings(stateKey)[message.id] ?? null);
     }, [stateKey, message.id]);
@@ -221,6 +299,9 @@ export const QaMessage = memo(
             </svg>
           </summary>
           <div className="dsh-qa-notice__body">
+            {message.notice.meta === undefined ? null : (
+              <p className="dsh-qa-notice__meta">{message.notice.meta}</p>
+            )}
             {message.notice.body === "" ? (
               <p>Без итогового сообщения.</p>
             ) : renderMarkdown ? (
@@ -245,6 +326,7 @@ export const QaMessage = memo(
             endedAt={message.endedAt}
             items={message.items}
             renderMarkdown={renderMarkdown}
+            thinkingPhrases={thinkingPhrases}
           />
         </article>
       );
@@ -253,7 +335,7 @@ export const QaMessage = memo(
       message.role === "assistant"
         ? "Помощник"
         : message.role === "user"
-          ? "Вы"
+          ? (message.author ?? "Вы")
           : "Статус";
     const copy = async () => {
       if (copied || navigator.clipboard?.writeText === undefined) return;
@@ -290,7 +372,9 @@ export const QaMessage = memo(
         </span>
       );
     const showActions =
-      message.role !== "system" && message.status !== "streaming";
+      message.role !== "system" &&
+      message.status !== "streaming" &&
+      message.status !== "pending";
     return (
       <article
         className={`dsh-qa-message dsh-qa-message--${message.role}`}
@@ -298,21 +382,41 @@ export const QaMessage = memo(
         aria-label={`Сообщение: ${label}`}
       >
         <div className="dsh-qa-message__content">
+          {message.role === "user" && message.author !== undefined ? (
+            <span className="dsh-qa-message__byline">{message.author}</span>
+          ) : null}
+          {message.role === "user" && message.files !== undefined ? (
+            <div
+              className="dsh-qa-message__files"
+              aria-label="Прикреплённые файлы"
+            >
+              {message.files.map((file) => (
+                <QaFileAttachment
+                  key={file.attachmentId}
+                  name={file.name}
+                  bytes={file.bytes}
+                  tone="sent"
+                />
+              ))}
+            </div>
+          ) : null}
           {message.role === "user" && message.images !== undefined ? (
             <div className="dsh-qa-message__images">
-              {message.images.map((image) =>
-                resolveImage === undefined ? null : (
-                  <QaAttachedImage
-                    key={image.attachmentId}
-                    image={image}
-                    resolve={resolveImage}
-                  />
-                ),
-              )}
+              {message.images.map((image) => (
+                <QaAttachedImage
+                  key={image.attachmentId}
+                  image={image}
+                  resolve={resolveImage}
+                />
+              ))}
             </div>
           ) : null}
           {message.role === "assistant" && renderMarkdown ? (
-            <Markdown text={message.text} />
+            <Markdown
+              text={message.text}
+              sourceRefs={sourceRefs}
+              onSourceOpen={onSourceDetail}
+            />
           ) : (
             message.text
           )}
@@ -320,6 +424,33 @@ export const QaMessage = memo(
             <span className="dsh-qa-message__cursor" aria-hidden="true" />
           ) : null}
         </div>
+        {message.role === "user" && message.status === "pending" ? (
+          <span className="dsh-qa-message__pending" role="status">
+            <span
+              className="dsh-qa-message__pending-spinner"
+              aria-hidden="true"
+            />
+            Подготавливаю ответ…
+          </span>
+        ) : null}
+        {message.role === "assistant" &&
+        onOpenSources !== undefined &&
+        message.sources !== undefined &&
+        message.sources.length > 0 ? (
+          <button
+            type="button"
+            className="dsh-qa-message__sources"
+            onClick={() =>
+              onOpenSources(
+                message.sources ?? [],
+                message.sourcesComplete ?? true,
+                message.incompleteSourceOrigins,
+              )
+            }
+          >
+            Источники ({message.sources.length})
+          </button>
+        ) : null}
         {showActions ? (
           <div
             className="dsh-qa-message__actions"
@@ -395,5 +526,8 @@ export const QaMessage = memo(
     prev.stateKey === next.stateKey &&
     prev.onRegenerate === next.onRegenerate &&
     prev.resolveImage === next.resolveImage &&
+    prev.onOpenSources === next.onOpenSources &&
+    prev.onSourceDetail === next.onSourceDetail &&
+    prev.thinkingPhrases === next.thinkingPhrases &&
     sameMessage(prev.message, next.message),
 );

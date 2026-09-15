@@ -12,7 +12,9 @@
  * diagnostic only; behavior never depends on it.
  */
 export function observedFetchProviderId(web: unknown): string | undefined {
-  if (web === undefined || web === null) return undefined
-  const candidate = (web as { fetchProviderId?: unknown }).fetchProviderId
-  return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined
+  if (web === undefined || web === null) return undefined;
+  const candidate = (web as { fetchProviderId?: unknown }).fetchProviderId;
+  return typeof candidate === "string" && candidate.length > 0
+    ? candidate
+    : undefined;
 }

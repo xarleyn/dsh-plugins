@@ -33,7 +33,7 @@ pnpm typecheck
 
 ### Prerequisites
 
-- **Node.js** >= 22
+- **Node.js** >= 22 (`.nvmrc` names the version CI runs)
 - **pnpm** >= 10.4
 - **Git**
 
@@ -50,15 +50,23 @@ pnpm typecheck
 | `pnpm test` | Run all tests |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm check` | Run the complete local validation pipeline |
+| `pnpm format` | Check formatting with the shared Prettier config |
+| `pnpm format:write` | Rewrite files that fail the formatting check |
 | `pnpm deps:check` | Enforce workspace dependency boundaries |
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
-| `pnpm affected:check` | Run lint/typecheck/test/build on affected packages only |
+| `pnpm affected:check` | Run lint/typecheck/test/build/verify on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
-| `pnpm release:check` | Validate version plans exist |
+| `pnpm release:check` | Check that unreleased commit ranges have version plans |
 
 ### Affected Builds
 
 Nx automatically calculates which packages are affected by your changes. Use `pnpm affected:check` to run the full pipeline only on changed packages — this is significantly faster than running everything.
+
+### Formatting and Line Endings
+
+Prettier and its ignore list live in the repository root (`.prettierrc`, `.prettierignore`); no package carries its own copy, and `pnpm format` checks every package from one place. Generated and machine-owned files stay outside the check — `CHANGELOG.md` is written by `nx release` on every release, `lib/` and `.nx/` are build output and caches, and `pnpm-lock.yaml` belongs to pnpm. Markdown is not formatted: Prettier's markdown printer rewrites fenced code and pads every table cell, which is churn in hand-written prose rather than formatting.
+
+Every text file is stored and checked out with LF line endings. `.gitattributes` enforces that on staging and checkout, and `.editorconfig` keeps editors from writing CRLF in the first place. Both matter, because a working tree that disagrees with the index stays invisible to `git status` until something stages it.
 
 ---
 
@@ -152,12 +160,12 @@ pnpm nx build my-capability
 
 2. **Verify tarball verification passes** (for publishable packages):
    ```bash
-   bash scripts/tarball-verify.sh plugins/your-plugin
+   pnpm tarball:verify:packages plugins/your-plugin
    ```
 
 3. **Check dependency rules:**
    ```bash
-   bash scripts/check-dependencies.sh
+   pnpm deps:check
    ```
 
 ### Dependency Rules (SPEC §27)
@@ -218,7 +226,7 @@ docs: add CONTRIBUTING.md
    pnpm release:plan
    ```
 2. This creates a version plan in `.nx/version-plans/`
-3. CI will fail if you push to `main` without a version plan
+3. CI fails a PR that leaves a publishable change without a version plan
 
 ### For Maintainers
 

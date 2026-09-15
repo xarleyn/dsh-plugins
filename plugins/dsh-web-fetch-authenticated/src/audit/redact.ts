@@ -9,33 +9,39 @@
 
 /** Header names whose values are secret in every context. */
 export const SENSITIVE_HEADER_NAMES: readonly string[] = Object.freeze([
-  'authorization',
-  'proxy-authorization',
-  'cookie',
-  'set-cookie',
-  'x-api-key',
-  'x-auth-token',
-  'x-csrf-token',
-  'private-token',
-])
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-api-key",
+  "x-auth-token",
+  "x-csrf-token",
+  "private-token",
+]);
 
-const REDACTED = '<redacted>'
+const REDACTED = "<redacted>";
 
 /**
  * Redact a headers object for logging/diagnostics. Matching is case-insensitive;
  * sensitive values are replaced, never truncated into partial leakage.
  */
-export function redactHeaders(headers: Record<string, string | string[] | undefined>): Record<string, string> {
-  const output: Record<string, string> = {}
+export function redactHeaders(
+  headers: Record<string, string | string[] | undefined>,
+): Record<string, string> {
+  const output: Record<string, string> = {};
   for (const [name, value] of Object.entries(headers)) {
-    output[name] = isSensitiveHeaderName(name) ? REDACTED : Array.isArray(value) ? value.join(', ') : value ?? ''
+    output[name] = isSensitiveHeaderName(name)
+      ? REDACTED
+      : Array.isArray(value)
+        ? value.join(", ")
+        : (value ?? "");
   }
-  return output
+  return output;
 }
 
 /** Whether a header name carries a secret and must never be logged verbatim. */
 export function isSensitiveHeaderName(name: string): boolean {
-  return SENSITIVE_HEADER_NAMES.includes(name.toLowerCase())
+  return SENSITIVE_HEADER_NAMES.includes(name.toLowerCase());
 }
 
 /**
@@ -44,18 +50,28 @@ export function isSensitiveHeaderName(name: string): boolean {
  * JWT-ish runs, and URL query secrets.
  */
 export function redactSecretsInText(text: string): string {
-  let output = text
+  let output = text;
   // Scheme-qualified values first, so `Authorization: Bearer x` loses the
   // whole value and the generic key=value pass cannot strand a fragment.
-  output = output.replace(/\bBearer\s+[A-Za-z0-9\-._~+/=]{6,}/giu, `Bearer ${REDACTED}`)
-  output = output.replace(/\bBasic\s+[A-Za-z0-9+/=_.\-~]{6,}/giu, `Basic ${REDACTED}`)
+  output = output.replace(
+    /\bBearer\s+[A-Za-z0-9\-._~+/=]{6,}/giu,
+    `Bearer ${REDACTED}`,
+  );
+  output = output.replace(
+    /\bBasic\s+[A-Za-z0-9+/=_.\-~]{6,}/giu,
+    `Basic ${REDACTED}`,
+  );
   // JWT-shaped values even without a scheme prefix.
-  output = output.replace(/\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?:\.[A-Za-z0-9_-]{2,})?/gu, REDACTED)
+  output = output.replace(
+    /\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?:\.[A-Za-z0-9_-]{2,})?/gu,
+    REDACTED,
+  );
   output = output.replace(
     /\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token|api[-_]?key|apikey|access[-_]?token|refresh[-_]?token|token|secret|password|passwd|pwd)\b(\s*[:=]\s*)(("[^"]*")|('[^']*')|([^\s,;&"']+))/giu,
-    (_match, name: string, separator: string) => `${name}${separator}${REDACTED}`,
-  )
-  return output
+    (_match, name: string, separator: string) =>
+      `${name}${separator}${REDACTED}`,
+  );
+  return output;
 }
 
 /**
@@ -64,5 +80,5 @@ export function redactSecretsInText(text: string): string {
  * reassemble either half.
  */
 export function sanitizePreview(text: string, maxLength = 400): string {
-  return redactSecretsInText(text.slice(0, maxLength))
+  return redactSecretsInText(text.slice(0, maxLength));
 }
