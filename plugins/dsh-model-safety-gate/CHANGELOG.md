@@ -1,3 +1,21 @@
+## 0.2.2 (2026-09-15)
+
+### 🩹 Fixes
+
+- Keep plugin-specific records out of Harness session journals so sessions remain ([82d5890](https://github.com/xarleyn/dsh-plugins/commit/82d5890))
+  readable after a DSH restart even when linked packages resolve separate module
+  instances. Safety audit records now use the plugin logger with explicit session
+  ids, QA source snapshots use plugin-owned durable storage, and the QA package
+  ships a dry-run-first repair command for legacy journals with automatic backups.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.1 (2026-09-14)
 
 ### 🩹 Fixes
