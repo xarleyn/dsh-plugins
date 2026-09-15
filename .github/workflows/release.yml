@@ -32,10 +32,25 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+# Validating a release means the same Nx targets the PR workflow runs, but a
+# release resolves its own scope: the packages it is about to publish, not the
+# ones a diff touched. Those run one job per package on their own runners, and
+# the projects that stay out of the release are swept in a job beside them, so
+# the workspace is still covered end to end without a single job walking it
+# target by target.
 jobs:
-  release:
-    name: Release packages
+  # Resolves the release once - version plans, release commit, selected
+  # packages, registry preflight - and hands the jobs below the two things
+  # they cannot compute for themselves: the release commit, which exists only
+  # on this runner, and the matrix of packages to fan out.
+  prepare:
+    name: Prepare the release
     runs-on: ubuntu-latest
+    outputs:
+      count: ${{ steps.packages.outputs.count }}
+      matrix: ${{ steps.packages.outputs.matrix }}
+      gates_projects: ${{ steps.packages.outputs.gates_projects }}
+      release_commit: ${{ steps.capture.outputs.created }}
 
     steps:
       - name: Checkout release ref
@@ -82,23 +97,74 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          # The release commit is diffed against this ref below, so the base has
+          # to be recorded before Nx touches the workspace.
+          git rev-parse HEAD > "$RUNNER_TEMP/release-base.sha"
+
           args=(--skip-publish)
           if [[ "${{ inputs.first_release }}" == "true" ]]; then
             args+=(--first-release)
           fi
           pnpm nx release "${args[@]}"
 
+      # Nx commits the versions and changelogs but removes the consumed version
+      # plans outside that commit, and the jobs below need the release as one
+      # commit they can replay: a branch that kept plans the release already
+      # spent would apply them again on the next run. The amendment is only ever
+      # reached when Nx produced a commit of its own - the base commit is pushed
+      # already and is never rewritten.
+      - name: Capture the release commit
+        id: capture
+        if: inputs.dry_run == false && inputs.publish_only == false
+        shell: bash
+        run: |
+          base="$(cat "$RUNNER_TEMP/release-base.sha")"
+          git add --all
+          if ! git diff --cached --quiet; then
+            if [[ "$(git rev-parse HEAD)" == "$base" ]]; then
+              git commit -m "chore(release): publish"
+            else
+              git commit --amend --no-edit
+            fi
+          fi
+
+          # Every commit since the base, so the patch carries the whole release
+          # even if a future Nx splits it across more than one commit.
+          git format-patch --stdout "$base"..HEAD > "$RUNNER_TEMP/release-commit.patch"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload the release commit
+        if: inputs.dry_run == false && inputs.publish_only == false
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-commit
+          path: ${{ runner.temp }}/release-commit.patch
+          if-no-files-found: error
+          retention-days: 30
+          # Artifacts are immutable within a run, so a rerun of this job would
+          # otherwise fail to replace its own.
+          overwrite: true
+
       - name: Select release packages
-        if: inputs.dry_run == false || inputs.publish_only
         id: packages
         shell: bash
         run: |
+          # A preview changes nothing and publishes nothing, so there is no
+          # released set to fan out. An empty matrix keeps every job below
+          # skipped while leaving the outputs they read well formed.
+          if [[ "${{ inputs.dry_run }}" == "true" && "${{ inputs.publish_only }}" == "false" ]]; then
+            printf 'count=0\nprojects=\ngates_projects=\nmatrix={"include":[]}\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           selection_args=()
           if [[ "${{ inputs.publish_only }}" == "false" ]]; then
             selection_args+=(--release-commit)
           fi
 
-          node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=github-output >> "$GITHUB_OUTPUT"
+          DSH_ALL_PROJECTS_JSON="$(pnpm nx show projects --json)" \
+            node scripts/workspace-packages.mjs "${selection_args[@]}" --require \
+              --format=release-matrix >> "$GITHUB_OUTPUT"
           node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
 
           if [[ "${{ inputs.publish_only }}" == "true" ]]; then
@@ -121,29 +187,220 @@ jobs:
       # Publisher is configured on a package that already exists, and the
       # registry answers a workflow's first publish with a misleading 404. A
       # package nobody bootstrapped by hand would otherwise be discovered inside
-      # the publish loop, after the release commit is ready to be pushed.
+      # the publish loop, after the release commit is ready to be pushed. The
+      # check runs here, before the fan-out, so a missing bootstrap costs
+      # seconds instead of a whole validation pass.
       - name: Verify packages exist on npm
         if: inputs.dry_run == false || inputs.publish_only
         run: node scripts/verify-package-publication.mjs --tsv="$RUNNER_TEMP/release-packages.tsv"
 
-      - name: Run release gates
-        if: inputs.dry_run == false || inputs.publish_only
-        run: |
-          pnpm deps:check
-          pnpm check
+  # Everything repository-wide, plus the projects the release does not publish.
+  # This job and the package matrix run beside each other and cover the
+  # workspace between them: every project is verified exactly once.
+  gates:
+    name: Repository gates
+    needs: prepare
+    if: needs.prepare.result == 'success' && needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
 
-      - name: Pack release tarballs
-        if: inputs.dry_run == false || inputs.publish_only
-        shell: bash
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-commit
+          path: ${{ runner.temp }}
+
+      # The gates read the tree npm is about to receive, versions included.
+      - name: Replay the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        env:
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: git am "$RUNNER_TEMP/release-commit.patch"
+
+      - name: Check dependency boundaries
+        run: pnpm deps:check
+
+      - name: Lint repository tooling
+        run: pnpm lint:workspace
+
+      - name: Check formatting
+        run: pnpm format
+
+      - name: Verify plugin logging contract
+        run: pnpm verify:logging
+
+      - name: Verify publishable plugin package hygiene
+        run: pnpm verify:packages
+
+      - name: Test repository tooling
+        run: pnpm test:release
+
+      - name: Verify the projects outside the release
+        if: needs.prepare.outputs.gates_projects != ''
+        env:
+          NX_PROJECTS: ${{ needs.prepare.outputs.gates_projects }}
+        run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECTS" --output-style=static
+
+  projects:
+    name: Package / ${{ matrix.project }}
+    needs: prepare
+    if: needs.prepare.result == 'success' && needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-commit
+          path: ${{ runner.temp }}
+
+      - name: Replay the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        env:
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: git am "$RUNNER_TEMP/release-commit.patch"
+
+      - name: Verify project
+        env:
+          NX_PROJECT: ${{ matrix.project }}
+        run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
+
+      # The tarball this job publishes is the one it also verifies: packing and
+      # inspecting it here is what keeps a broken package from reaching the
+      # publish loop, and the artifact it uploads is what that loop publishes.
+      - name: Pack the release tarball
+        env:
+          PACKAGE_DIRECTORY: ${{ matrix.directory }}
         run: |
           mkdir -p tarballs
-          for package_dir in ${{ steps.packages.outputs.directories }}; do
-            pnpm --dir "$package_dir" pack --pack-destination "$GITHUB_WORKSPACE/tarballs"
-          done
+          pnpm --dir "$PACKAGE_DIRECTORY" pack --pack-destination "$GITHUB_WORKSPACE/tarballs"
 
-      - name: Verify release tarballs
-        if: inputs.dry_run == false || inputs.publish_only
-        run: pnpm tarball:verify:packages ${{ steps.packages.outputs.directories }}
+      - name: Verify the release tarball
+        env:
+          PACKAGE_DIRECTORY: ${{ matrix.directory }}
+        run: pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"
+
+      - name: Upload the release tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-tarball-${{ matrix.slug }}
+          path: ${{ github.workspace }}/tarballs/*.tgz
+          if-no-files-found: error
+          retention-days: 30
+          # Artifacts are immutable within a run, so a rerun of this job would
+          # otherwise fail to replace its own.
+          overwrite: true
+
+  # Publication is the only step that changes state outside this repository, so
+  # it runs on its own runner after every gate has passed, and before the
+  # release commit is pushed. A publish that fails leaves the branch untouched,
+  # version plans included, and a rerun resolves the same versions and retries
+  # only what npm is missing. Publishing first is also what makes a pushed tag
+  # mean something: every tag in the repository names a version the registry
+  # already has.
+  publish:
+    name: Publish the release
+    needs: [prepare, gates, projects]
+    if: >-
+      needs.prepare.result == 'success' && needs.prepare.outputs.count != '0' &&
+      needs.gates.result == 'success' && needs.projects.result == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout release ref
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      # This job reads package.json and talks to the registry; it builds
+      # nothing, so it installs nothing.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Download the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-commit
+          path: ${{ runner.temp }}
+
+      # Replaying the commit here, rather than pushing what the prepare job
+      # committed, is what keeps the push and the publication on one commit:
+      # this runner is the one that pushes it, and the identity below is also
+      # what the wave tag is created with.
+      - name: Replay the release commit
+        if: needs.prepare.outputs.release_commit == 'true'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git am "$RUNNER_TEMP/release-commit.patch"
+
+      - name: Download release tarballs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: npm-tarball-*
+          path: ${{ github.workspace }}/tarballs
+          merge-multiple: true
+
+      # Read back from the tree that is about to be pushed, so the rows below
+      # name the tarballs the package jobs produced, versions included.
+      - name: Select release packages
+        shell: bash
+        run: |
+          selection_args=()
+          if [[ "${{ inputs.publish_only }}" == "false" ]]; then
+            selection_args+=(--release-commit)
+          fi
+
+          node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
 
       - name: Upload release artifacts
         if: inputs.dry_run == false
@@ -153,17 +410,13 @@ jobs:
           path: tarballs/*.tgz
           if-no-files-found: error
           retention-days: 30
+          # Artifacts are immutable within a run, so a rerun of this job would
+          # otherwise fail to replace its own.
+          overwrite: true
 
       - name: Upgrade npm for trusted publishing
-        if: inputs.dry_run == false || inputs.publish_only
         run: npm install --global npm@^11.15.0
 
-      # Publication is the only step that changes state outside this repository,
-      # so it runs before the release commit is pushed. A publish that fails
-      # then leaves the branch untouched, version plans included, and a rerun
-      # resolves the same versions and retries only what npm is missing.
-      # Publishing first is also what makes a pushed tag mean something: every
-      # tag in the repository names a version the registry already has.
       - name: Publish to npm with OIDC
         if: inputs.dry_run == false || inputs.publish_only
         shell: bash
