@@ -90,7 +90,10 @@ export class IntegrationBroker {
     input: CredentialInput,
   ): Promise<IntegrationSummary> {
     const provider = this.providers.get(providerId);
-    const parsed = provider.parseCredential(String(input.token ?? ""));
+    const parsed = provider.parseCredential(
+      String(input.token ?? ""),
+      input.options,
+    );
     const validation = await provider.validate({
       credential: parsed.credential,
     });

@@ -27,6 +27,12 @@ for (const file of [
   "lib/providers/bitrix24/transport.js",
   "lib/providers/bitrix24/config.js",
   "lib/providers/bitrix24/tools.js",
+  "lib/providers/gitlab/index.js",
+  "lib/providers/gitlab/catalog.js",
+  "lib/providers/gitlab/operations.js",
+  "lib/providers/gitlab/transport.js",
+  "lib/providers/gitlab/config.js",
+  "lib/providers/gitlab/tools.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -50,6 +56,10 @@ assert.match(client, /title:\s*"Интеграции"/u);
 assert.match(client, /type:\s*"password"/u);
 assert.doesNotMatch(client, /localStorage|sessionStorage/u);
 assert.doesNotMatch(client, /Показать токен|Копировать токен/u);
+// The section renders the providers the host declares, so both cards are
+// mounted from one bundle and neither ships its provider's catalog.
+assert.match(client, /"bitrix24"/u);
+assert.match(client, /"gitlab"/u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of the catalog.
@@ -166,6 +176,89 @@ for (const scope of [
   assert.match(catalog, new RegExp(`"${scope}"`, "u"));
 }
 
+// The GitLab provider follows the same shape: one directory, one catalog, one
+// read-only operation per tool, and no way for the model to name a host.
+const gitlabTools = await readFile(
+  new URL("src/providers/gitlab/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "gitlab_connection_get",
+  "gitlab_projects_list",
+  "gitlab_project_get",
+  "gitlab_repository_tree",
+  "gitlab_repository_file_get",
+  "gitlab_commits_list",
+  "gitlab_commit_get",
+  "gitlab_compare",
+  "gitlab_search",
+  "gitlab_issues_list",
+  "gitlab_issue_get",
+  "gitlab_issue_notes_list",
+  "gitlab_merge_requests_list",
+  "gitlab_merge_request_get",
+  "gitlab_merge_request_changes_get",
+  "gitlab_merge_request_discussions_list",
+  "gitlab_merge_request_approvals_get",
+  "gitlab_merge_request_pipelines_list",
+  "gitlab_pipelines_list",
+  "gitlab_pipeline_get",
+  "gitlab_pipeline_jobs_list",
+  "gitlab_job_get",
+  "gitlab_job_log_get",
+]) {
+  assert.match(gitlabTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "instanceId:",
+  "baseUrl:",
+  "raw_api",
+  "raw_graphql",
+  "sudo",
+]) {
+  assert.doesNotMatch(gitlabTools, new RegExp(forbidden, "u"));
+}
+
+const gitlabCatalog = await readFile(
+  new URL("src/providers/gitlab/catalog.ts", root),
+  "utf8",
+);
+const gitlabPaths = [...gitlabCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
+  (match) => match[1],
+);
+const gitlabToolCount = [...gitlabTools.matchAll(/operation: "[^"]+"/gu)]
+  .length;
+assert.equal(
+  gitlabPaths.length,
+  gitlabToolCount,
+  "every GitLab tool must name exactly one catalog operation",
+);
+assert.doesNotMatch(gitlabCatalog, /graphql|mutation/iu);
+for (const path of gitlabPaths) {
+  assert.match(path, /^\//u, `${path} must be an absolute API path`);
+  assert.doesNotMatch(
+    path,
+    /repository\/files\/.+\/raw$|\/keys|\/hooks|\/members|\/variables|\/badges|\/runners|\/deploy_tokens|\/access_tokens|sudo/u,
+    `${path} is not a read-only endpoint`,
+  );
+}
+// Every GitLab operation is a GET; the only write-shaped surface left in the
+// provider is the connect form, which never reaches a model tool.
+assert.doesNotMatch(gitlabCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+const gitlabTransport = await readFile(
+  new URL("src/providers/gitlab/transport.ts", root),
+  "utf8",
+);
+assert.match(gitlabTransport, /method: "GET"/u);
+assert.match(gitlabTransport, /redirect: "error"/u);
+assert.match(gitlabTransport, /"private-token": token/u);
+
 // One directory per integration: the shared engine must not know any provider.
 for (const file of [
   "src/broker.ts",
@@ -181,9 +274,28 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix/iu,
+    /bitrix|gitlab/iu,
     `${file} must stay provider-agnostic`,
   );
+}
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of every catalog.
+const gitlabCapabilityCatalog = await readFile(
+  new URL("lib/providers/gitlab/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Читать проекты",
+  "Читать репозитории",
+  "Искать по GitLab",
+  "Читать задачи",
+  "Читать merge requests",
+  "Читать CI/CD",
+  "Свой профиль",
+]) {
+  assert.match(gitlabCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 
 const host = await readFile(new URL("lib/index.js", root), "utf8");

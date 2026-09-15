@@ -1,8 +1,8 @@
 # SPEC / PLAN: User Integrations & Secure Credentials for `qa-surface`
 
-Status: Phases 1–2 implemented (read-only Bitrix24 catalog); phases 3+ pending
-Primary use case: per-user Bitrix24 access from DSH agents
-Designed to be reusable for Jira, Confluence, GitLab, generic MCP and other user-scoped integrations.
+Status: Phases 1–2 implemented (read-only Bitrix24 and GitLab catalogs); phases 3+ pending
+Primary use case: per-user Bitrix24 and GitLab access from DSH agents
+Designed to be reusable for Jira, Confluence, TeamCity, generic MCP and other user-scoped integrations.
 
 ---
 
@@ -10,7 +10,7 @@ Designed to be reusable for Jira, Confluence, GitLab, generic MCP and other user
 
 Add a new **`Интеграции` / `Integrations`** page to the existing user Settings UI in `qa-surface`, next to pages such as Profile, General and Skills.
 
-The page lets each authenticated user connect their own external services (initially Bitrix24) using OAuth or a manually supplied secret/token. Credentials are stored server-side, encrypted, never returned to the browser after saving, never exposed to the LLM, and never shared across users.
+The page lets each authenticated user connect their own external services — Bitrix24 by incoming-webhook URL, GitLab by personal access token — using OAuth or a manually supplied secret/token. Credentials are stored server-side, encrypted, never returned to the browser after saving, never exposed to the LLM, and never shared across users.
 
 DSH tools resolve the effective user from the authenticated QA session on the server. The model is not allowed to pass `userId`, `credentialId`, another user's integration id, or a raw token to a tool.
 

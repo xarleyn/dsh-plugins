@@ -284,6 +284,7 @@
         "qa",
         "integrations",
         "bitrix24",
+        "gitlab",
         "credentials"
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",

@@ -9,6 +9,7 @@ import {
   BITRIX_HANDLERS,
   BITRIX_PROJECTIONS,
 } from "../src/providers/bitrix24/operations.js";
+import { BITRIX24_TOOL_NAMES } from "../src/providers/bitrix24/tools.js";
 import {
   createIntegrationTools,
   INTEGRATION_TOOL_NAMES,
@@ -107,7 +108,7 @@ describe("Bitrix24 capability catalog", () => {
     const declared = [...TOOLS_SOURCE.matchAll(/operation: "([^"]+)"/gu)].map(
       (match) => match[1],
     );
-    expect(declared).toHaveLength(INTEGRATION_TOOL_NAMES.length);
+    expect(declared).toHaveLength(BITRIX24_TOOL_NAMES.length);
     for (const operation of declared) {
       expect(BITRIX_OPERATIONS[operation as string], operation).toBeDefined();
     }
@@ -160,8 +161,10 @@ describe("provider boundary", () => {
       const source = readFileSync(new URL(`../src/${file}`, import.meta.url), {
         encoding: "utf8",
       });
+      // Either provider's name in the shared engine means the abstraction is
+      // gone; the composition roots are the only places allowed to name them.
       expect(source, `${file} must stay provider-agnostic`).not.toMatch(
-        /bitrix/iu,
+        /bitrix|gitlab/iu,
       );
     }
   });
@@ -173,6 +176,6 @@ describe("provider boundary", () => {
       new URL("./broker-isolation.test.ts", import.meta.url),
       { encoding: "utf8" },
     );
-    expect(brokerSuite).not.toMatch(/bitrix/iu);
+    expect(brokerSuite).not.toMatch(/bitrix|gitlab/iu);
   });
 });

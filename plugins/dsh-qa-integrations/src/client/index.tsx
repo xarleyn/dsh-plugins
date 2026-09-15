@@ -6,12 +6,15 @@ import type {
 import qaIntegrationsRemote from "@yadsh/dsh-qa-integrations/remote";
 import type { QaUserSettingsSections } from "@yadsh/dsh-qa-surface/client/settings";
 import type { IntegrationSummary, PolicyPatch } from "../types.js";
-import { createBitrix24Page, type IntegrationsRemote } from "./bitrix24.js";
+import {
+  createIntegrationsPage,
+  type IntegrationsClientRemote,
+} from "./integrations.js";
 import { styles } from "./styles.js";
 
 interface ClientRemote {
   $mount(contribution: TypertRemoteContribution): Promise<() => Promise<void>>;
-  qaIntegrations: IntegrationsRemote;
+  qaIntegrations: IntegrationsClientRemote;
 }
 
 interface ClientContext extends Context {
@@ -55,7 +58,10 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
             id: "integrations",
             title: "Интеграции",
             order: 40,
-            component: createBitrix24Page(face.remote.qaIntegrations),
+            component: createIntegrationsPage(
+              face.remote.qaIntegrations,
+              description.value.providers,
+            ),
           });
         })().catch(() => undefined);
       },

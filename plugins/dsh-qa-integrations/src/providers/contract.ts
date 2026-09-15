@@ -27,8 +27,15 @@ export interface IntegrationProvider {
   /**
    * Validate and normalize one operator-supplied credential. The provider owns
    * its credential format; the broker only stores the returned opaque string.
+   *
+   * `options` carries the non-secret choices the connect form made next to the
+   * secret — today only which configured instance a token belongs to. It comes
+   * from the operator-facing RPC, never from a model tool call.
    */
-  parseCredential(raw: string): {
+  parseCredential(
+    raw: string,
+    options?: Readonly<Record<string, string>>,
+  ): {
     readonly credential: string;
     readonly portal: string;
   };

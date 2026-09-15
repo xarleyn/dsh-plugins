@@ -14,6 +14,8 @@ import {
 } from "./config.js";
 import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
+import type { IntegrationProvider } from "./providers/contract.js";
+import GitlabProvider from "./providers/gitlab/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
@@ -21,7 +23,9 @@ import { SecretStore } from "./secrets/secret-store.js";
 import { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
 import type {
   CredentialInput,
+  IntegrationInstanceSummary,
   IntegrationPrincipal,
+  IntegrationProviderId,
   IntegrationProviderSummary,
   IntegrationSummary,
   PolicyPatch,
@@ -39,6 +43,19 @@ declare module "@deepseek-ai/cordis" {
   }
 }
 
+/** What the settings client needs to render a provider it has never seen. */
+function providerSummary(
+  provider: IntegrationProvider,
+): IntegrationProviderSummary {
+  return {
+    id: provider.id,
+    displayName: provider.displayName,
+    enabled: true,
+    authModes: ["token"],
+    capabilities: provider.capabilities,
+  };
+}
+
 /** Host remote, broker owner, and registration point for read-only tools. */
 export class QaIntegrations extends TypertRemoteService {
   static inject = inject;
@@ -47,6 +64,8 @@ export class QaIntegrations extends TypertRemoteService {
   readonly broker: IntegrationBroker;
   private readonly logger: PluginLogger;
   private readonly enabled: boolean;
+  private readonly providerSummaries: readonly IntegrationProviderSummary[];
+  private readonly configuredInstances: readonly IntegrationInstanceSummary[];
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
@@ -67,6 +86,19 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.bitrix24.enabled) {
       providers.register(new Bitrix24Provider(config));
     }
+    if (config.gitlab.enabled) {
+      providers.register(new GitlabProvider(config));
+    }
+    this.providerSummaries = this.enabled
+      ? providers.list().map(providerSummary)
+      : [];
+    this.configuredInstances = config.gitlab.enabled
+      ? config.gitlab.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.label,
+          baseUrl: instance.baseUrl,
+        }))
+      : [];
     this.broker = new IntegrationBroker(
       repository,
       secrets,
@@ -101,8 +133,14 @@ export class QaIntegrations extends TypertRemoteService {
   }
 
   @Remote("describe")
-  describe(): { readonly enabled: boolean } {
-    return { enabled: this.enabled };
+  describe(): {
+    readonly enabled: boolean;
+    readonly providers: readonly IntegrationProviderId[];
+  } {
+    return {
+      enabled: this.enabled,
+      providers: this.providerSummaries.map((provider) => provider.id),
+    };
   }
 
   @Remote("providers")
@@ -150,6 +188,57 @@ export class QaIntegrations extends TypertRemoteService {
   disconnectBitrix24(token: string): boolean {
     return this.run(token, (principal) =>
       this.broker.disconnect(principal, "bitrix24"),
+    );
+  }
+
+  /**
+   * Instances this deployment allows. The connect form picks from this list and
+   * never takes a hostname, which is what keeps the broker from being pointed at
+   * an origin the operator did not configure.
+   */
+  @Remote("gitlabInstances")
+  gitlabInstances(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredInstances);
+  }
+
+  @Remote("getGitlab")
+  getGitlab(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "gitlab"),
+    );
+  }
+
+  @Remote("putGitlabCredential")
+  async putGitlabCredential(
+    token: string,
+    input: { readonly instanceId: string; readonly token: string },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "gitlab", {
+        token: input.token,
+        options: { instanceId: input.instanceId },
+      }),
+    );
+  }
+
+  @Remote("testGitlab")
+  async testGitlab(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "gitlab"),
+    );
+  }
+
+  @Remote("patchGitlabPolicy")
+  patchGitlabPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "gitlab", patch),
+    );
+  }
+
+  @Remote("disconnectGitlab")
+  disconnectGitlab(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "gitlab"),
     );
   }
 
@@ -231,6 +320,38 @@ export {
   createBitrix24Tools,
   BITRIX24_TOOL_NAMES,
 } from "./providers/bitrix24/tools.js";
+export { GitlabProvider } from "./providers/gitlab/index.js";
+export {
+  GITLAB_CAPABILITIES,
+  GITLAB_CAPABILITY_INFO,
+  GITLAB_OPERATIONS,
+  capabilitiesForScopes,
+  gitlabOperationCapability,
+  type GitlabCapability,
+  type GitlabCapabilityDefinition,
+  type GitlabOperationDefinition,
+} from "./providers/gitlab/catalog.js";
+export {
+  GITLAB_DEFAULTS,
+  gitlabConfigSchema,
+  resolveGitlabConfig,
+  type GitlabFlags,
+  type GitlabInstance,
+} from "./providers/gitlab/config.js";
+export {
+  createGitlabTools,
+  GITLAB_TOOL_NAMES,
+} from "./providers/gitlab/tools.js";
+export {
+  GitlabTransport,
+  credentialFromPlaintext as gitlabCredentialFromPlaintext,
+  credentialInstance,
+  type GitlabCredential,
+} from "./providers/gitlab/transport.js";
+export {
+  GITLAB_HANDLERS,
+  GITLAB_PROJECTIONS,
+} from "./providers/gitlab/operations.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {

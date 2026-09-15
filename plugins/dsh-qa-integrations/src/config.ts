@@ -5,6 +5,11 @@ import {
   resolveBitrix24Config,
   type Bitrix24Flags,
 } from "./providers/bitrix24/config.js";
+import {
+  gitlabConfigSchema,
+  resolveGitlabConfig,
+  type GitlabFlags,
+} from "./providers/gitlab/config.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -20,6 +25,7 @@ export interface QaIntegrationsConfig {
   /** Host allowlist for providers that dial an operator-approved domain. */
   readonly allowedPortalSuffixes?: string[];
   readonly bitrix24?: Partial<Bitrix24Flags>;
+  readonly gitlab?: Partial<GitlabFlags>;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -31,6 +37,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly maxResponseBytes: number;
   readonly allowedPortalSuffixes: readonly string[];
   readonly bitrix24: Bitrix24Flags;
+  readonly gitlab: GitlabFlags;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -44,6 +51,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
     .array(z.string())
     .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"]),
   bitrix24: bitrix24ConfigSchema,
+  gitlab: gitlabConfigSchema,
 });
 
 export function resolveConfig(
@@ -71,5 +79,6 @@ export function resolveConfig(
     maxResponseBytes: input.maxResponseBytes ?? 2_000_000,
     allowedPortalSuffixes: Object.freeze(suffixes),
     bitrix24: resolveBitrix24Config(input.bitrix24),
+    gitlab: resolveGitlabConfig(input.gitlab),
   });
 }
