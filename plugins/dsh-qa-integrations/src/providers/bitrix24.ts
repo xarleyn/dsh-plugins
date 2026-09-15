@@ -157,6 +157,16 @@ function itemsOf(result: unknown, shape: BitrixListShape): unknown[] {
   return Array.isArray(held) ? held : [];
 }
 
+/** Offset reported by a list call, for the object bodies only. */
+function offsetOf(params: unknown): number | undefined {
+  if (typeof params !== "object" || params === null || Array.isArray(params)) {
+    return undefined;
+  }
+  const record = params as Record<string, unknown>;
+  // IM methods page with OFFSET, CRM and task methods with start.
+  return count(record["start"] ?? record["OFFSET"]);
+}
+
 /**
  * Every list operation answers with the same envelope, so the model does not
  * have to learn six response shapes and never loses the pagination cursor.
@@ -165,16 +175,15 @@ function collect(
   operation: string,
   definition: BitrixOperationDefinition,
   response: BitrixResponse,
-  params: Readonly<Record<string, unknown>>,
+  params: unknown,
 ): unknown {
   const projection = BITRIX_PROJECTIONS[operation];
   if (projection !== undefined) return projection(response.result);
   if (definition.list === undefined) return response.result;
   const items = itemsOf(response.result, definition.list);
-  // IM methods page with OFFSET, CRM and task methods with start.
-  const start = count(params["start"] ?? params["OFFSET"]);
+  const offset = offsetOf(params);
   const pagination = {
-    ...(start === undefined ? {} : { start }),
+    ...(offset === undefined ? {} : { start: offset }),
     ...(response.next === undefined ? {} : { next: response.next }),
     ...(response.total === undefined ? {} : { total: response.total }),
   };
@@ -274,7 +283,8 @@ export class Bitrix24Provider implements IntegrationProvider {
   private async call(
     credential: BitrixCredential,
     method: string,
-    params: Readonly<Record<string, unknown>>,
+    // A few Bitrix24 methods take a positional JSON array instead of an object.
+    params: Readonly<Record<string, unknown>> | readonly unknown[],
   ): Promise<BitrixResponse> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);

@@ -651,11 +651,14 @@ bitrix_get_crm_timeline           # crm.timeline.comment.list
 bitrix_get_crm_stage_history      # crm.stagehistory.list
 bitrix_get_crm_product_rows       # crm.item.productrow.list
 bitrix_find_crm_duplicates        # crm.duplicate.findbycomm
+bitrix_get_crm_requisites         # crm.requisite.list
+bitrix_get_call_transcript        # crm.activity.call.getTranscript
 
 # Employees and company structure
 bitrix_get_current_user           # user.current
 bitrix_search_users               # user.get (NAME_SEARCH / EMAIL / UF_DEPARTMENT)
 bitrix_get_departments            # department.get
+bitrix_get_user_fields            # user.fields
 
 # Chats and open lines
 bitrix_search_chats               # im.search.chat.list
@@ -663,19 +666,28 @@ bitrix_get_chat_messages          # im.dialog.messages.get
 bitrix_search_chat_messages       # im.dialog.messages.search
 bitrix_get_recent_chats           # im.recent.get
 bitrix_search_chat_users          # im.search.user.list
+bitrix_find_chat                  # im.chat.get
+bitrix_get_chat_participants      # im.chat.user.list
+bitrix_get_chat_user_data         # im.user.list.get
 bitrix_get_openline_dialog        # imopenlines.dialog.get
 bitrix_get_openline_history       # imopenlines.session.history.get
 
 # Tasks, calendar, drive
 bitrix_search_tasks               # tasks.task.list
 bitrix_get_task                   # tasks.task.get
+bitrix_get_task_history           # tasks.task.history.list
+bitrix_get_task_results           # tasks.task.result.list
+bitrix_get_task_elapsed_time      # task.elapseditem.getlist (positional body)
 bitrix_get_calendar_events        # calendar.event.get
 bitrix_get_calendar_accessibility # calendar.accessibility.get
 bitrix_search_files               # disk.file.search
 bitrix_get_file                   # disk.file.get
+bitrix_get_drives                 # disk.storage.getList
+bitrix_get_storage_items          # disk.storage.getChildren
+bitrix_get_folder_items           # disk.folder.getChildren
 ```
 
-Two Bitrix24 docs ambiguities are resolved deliberately and must stay resolved
+Three Bitrix24 doc ambiguities are resolved deliberately and must stay resolved
 unless someone can test against a live portal:
 
 - `user.search` is not called. Its parameter table wants `FIND` inside
@@ -684,12 +696,24 @@ unless someone can test against a live portal:
   `FILTER.NAME_SEARCH` is documented in one shape and gives the same search.
 - `tasks.task.list` is called at the classic address, not REST 3.0. REST 3.0
   moved to `/rest/api/...` and documents "в REST 3.0 для задач поддержана
-  фильтрация по полю id", which cannot express "my open tasks".
+  фильтрация по полю id", which cannot express "my open tasks". The same
+  applies to `tasks.task.result.list`, which also exists in a `tasks`-scoped
+  3.0 variant.
+- `imopenlines.session.open` is not exposed. The report lists it for finding a
+  dialog, but its page never certifies it as read-only while it sits next to
+  `imopenlines.session.start` (starts a session) and
+  `imopenlines.operator.answer` (assigns the dialog to the operator). The same
+  lookup is a documented get on `imopenlines.dialog.get`, which accepts the
+  client's `USER_CODE` — that is what `bitrix_get_openline_dialog` passes.
+
+`task.elapseditem.getlist` is the one operation with a positional JSON array
+body: Bitrix24 documents `[taskId, order, filter, select, params]` and states
+that the same values as named fields fail.
 
 List operations answer with `{ items, pagination: { start, next, total } }`
-regardless of the shape Bitrix uses (`result.items`, `result.tasks`, a bare
-array, `result.productRows`), and id-keyed bundles (open-line history, calendar
-accessibility) are projected into ordered arrays.
+regardless of the shape Bitrix uses (`result.items`, `result.tasks`, `result.list`,
+a bare array, `result.productRows`), and id-keyed bundles (open-line history,
+calendar accessibility) are projected into ordered arrays.
 
 Possible later write tools:
 
