@@ -20,7 +20,9 @@ describe("QA Browser Remote contribution", () => {
     ]);
     for (const descriptor of qaBrowserRemote.descriptors) {
       expect(descriptor.namespace).toBe("qaBrowser");
-      expect(descriptor.parameters.every((item) => item.codec.mode === "strict")).toBe(true);
+      expect(
+        descriptor.parameters.every((item) => item.codec.mode === "strict"),
+      ).toBe(true);
       expect(descriptor.result.mode).toBe("strict");
     }
   });

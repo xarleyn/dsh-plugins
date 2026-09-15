@@ -325,11 +325,13 @@ describe("QaBrowserSessionManager", () => {
     const session = await manager.ensureSession("takeover");
     const tabId = session.selectedTabId!;
 
-    expect(manager.acquireHumanControl("takeover", "client-a").control).toEqual({
-      owner: "human",
-      clientId: "client-a",
-      leaseExpiresAt: now + config.humanControl.leaseMs,
-    });
+    expect(manager.acquireHumanControl("takeover", "client-a").control).toEqual(
+      {
+        owner: "human",
+        clientId: "client-a",
+        leaseExpiresAt: now + config.humanControl.leaseMs,
+      },
+    );
     await expect(
       manager.navigate("takeover", tabId, { url: "https://one.example" }),
     ).rejects.toMatchObject({ code: "BROWSER_HUMAN_CONTROL_ACTIVE" });
@@ -347,9 +349,7 @@ describe("QaBrowserSessionManager", () => {
       }),
     ).resolves.toMatchObject({ ok: true });
     const page = [...provider.contexts.values()][0]!.pages[0]!;
-    expect(page.pointerActions).toEqual([
-      { action: "click", x: 720, y: 450 },
-    ]);
+    expect(page.pointerActions).toEqual([{ action: "click", x: 720, y: 450 }]);
 
     now += config.humanControl.leaseMs - 1;
     expect(
@@ -378,10 +378,14 @@ describe("QaBrowserSessionManager", () => {
     const { manager } = createHarness();
     await manager.ensureSession("owners");
     manager.acquireHumanControl("owners", "client-a");
-    expect(() => manager.acquireHumanControl("owners", "client-b")).toThrowError(
+    expect(() =>
+      manager.acquireHumanControl("owners", "client-b"),
+    ).toThrowError(
       expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_ACTIVE" }),
     );
-    expect(() => manager.releaseHumanControl("owners", "client-b")).toThrowError(
+    expect(() =>
+      manager.releaseHumanControl("owners", "client-b"),
+    ).toThrowError(
       expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
     );
     expect(manager.releaseHumanControl("owners", "client-a").control).toEqual({

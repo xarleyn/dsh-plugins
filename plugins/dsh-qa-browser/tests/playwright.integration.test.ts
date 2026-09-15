@@ -72,12 +72,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
         x: 10,
         y: 10,
       });
-      await manager.humanKey(
-        "integration-session",
-        tabId,
-        "panel-e2e",
-        "Tab",
-      );
+      await manager.humanKey("integration-session", tabId, "panel-e2e", "Tab");
       await manager.humanText(
         "integration-session",
         tabId,

@@ -86,10 +86,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         stopProbe();
         void probe(String(sessionId));
         if (running) {
-          timer = window.setInterval(
-            () => void probe(String(sessionId)),
-            750,
-          );
+          timer = window.setInterval(() => void probe(String(sessionId)), 750);
         }
       },
     );

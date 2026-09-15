@@ -652,7 +652,11 @@ export class QaBrowserSessionManager {
       const x = this.viewportCoordinate(request.x, tab.viewport.width, "x");
       const y = this.viewportCoordinate(request.y, tab.viewport.height, "y");
       await tab.page.pointer({ ...request, x, y });
-      return this.finishMutation(record, tab, `Human pointer ${request.action}.`);
+      return this.finishMutation(
+        record,
+        tab,
+        `Human pointer ${request.action}.`,
+      );
     });
   }
 
@@ -694,10 +698,7 @@ export class QaBrowserSessionManager {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
     return this.enqueueHuman(record, tab, clientId, async () => {
-      await tab.page.wheel(
-        this.finiteDelta(deltaX),
-        this.finiteDelta(deltaY),
-      );
+      await tab.page.wheel(this.finiteDelta(deltaX), this.finiteDelta(deltaY));
       return this.finishMutation(record, tab, "Human viewport scrolled.");
     });
   }

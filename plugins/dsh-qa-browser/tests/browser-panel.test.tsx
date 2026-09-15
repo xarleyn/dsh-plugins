@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -10,7 +16,10 @@ import {
 
 afterEach(cleanup);
 
-function owner(remote: BrowserPanelRemote, sessionId: string | null = "session-a") {
+function owner(
+  remote: BrowserPanelRemote,
+  sessionId: string | null = "session-a",
+) {
   return {
     panelId: "@yadsh/dsh-qa-browser",
     panelKind: "browser",
@@ -76,10 +85,9 @@ describe("BrowserPanel", () => {
       name: /Example App/u,
     })) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe("data:image/png;base64,AA==");
-    expect(screen.getByRole("textbox", { name: "Адрес Browser" })).toHaveProperty(
-      "value",
-      "https://example.test/app",
-    );
+    expect(
+      screen.getByRole("textbox", { name: "Адрес Browser" }),
+    ).toHaveProperty("value", "https://example.test/app");
     expect(screen.getByText("1440×900")).toBeTruthy();
     expect(panelState).toHaveBeenCalledWith("secret-token", "session-a");
     expect(panelFrame).toHaveBeenCalledWith(

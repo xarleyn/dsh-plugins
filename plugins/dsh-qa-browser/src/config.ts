@@ -363,8 +363,7 @@ export function resolveQaBrowserConfig(
       unsafeEvaluate: raw.capabilities?.unsafeEvaluate ?? false,
     },
     ui: {
-      autoRevealOnAgentActivity:
-        raw.ui?.autoRevealOnAgentActivity ?? true,
+      autoRevealOnAgentActivity: raw.ui?.autoRevealOnAgentActivity ?? true,
       focusOnAutoReveal: raw.ui?.focusOnAutoReveal ?? false,
     },
     humanControl: (() => {
