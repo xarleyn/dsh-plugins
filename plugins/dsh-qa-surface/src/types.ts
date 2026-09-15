@@ -35,14 +35,120 @@ export interface QaQuestionAnswerItem {
 }
 export type QaAccountRole = "user" | "admin";
 
+/**
+ * Tools split by how they become available. `always` is visible from the first
+ * model step; `skillGrantable` is a ceiling — the tool only appears once an
+ * activated skill requires it, and never outside this list.
+ */
+export interface QaToolSelection {
+  readonly always: readonly string[];
+  readonly skillGrantable: readonly string[];
+}
+
 /** Tool/skill selection shared by the common layer and one QA subrole. */
 export interface QaCapabilitySelection {
-  readonly tools: readonly string[];
+  readonly tools: QaToolSelection;
   readonly skills: readonly string[];
   /** Reserved extension seams; v1 enforcement intentionally ignores them. */
   readonly mcpServers?: readonly string[];
   readonly knowledgeSources?: readonly string[];
   readonly promptAdditions?: readonly string[];
+}
+
+/** Audience one skill declares for itself in its own SKILL.md metadata. */
+export type QaSkillAudience =
+  | { readonly type: "unassigned" }
+  | { readonly type: "common" }
+  | { readonly type: "subroles"; readonly include: readonly string[] };
+
+/**
+ * Normalized `metadata.qa-surface` of one skill. Discovery never throws on a
+ * malformed block: the fields fall back to the fail-closed defaults and every
+ * complaint lands in `warnings` for the administration surface.
+ */
+export interface QaSkillDescriptor {
+  readonly name: string;
+  readonly audience: QaSkillAudience;
+  /** Tools the skill needs to work; the role ceiling still decides the grant. */
+  readonly requiredTools: readonly string[];
+  /** Whether activation must be refused when one required tool is unavailable. */
+  readonly requireAll: boolean;
+  readonly lifecycle: "session";
+  /** `metadata.qa-surface.version`; 0 when the block declared none. */
+  readonly schemaVersion: number;
+  /** Whether the skill carried a readable qa-surface metadata block. */
+  readonly declared: boolean;
+  readonly warnings: readonly string[];
+}
+
+/**
+ * Administrator overlay over one skill's declared audience. The skill file is
+ * never rewritten: assignments are stored beside the policy and merged here.
+ */
+export interface QaSkillAssignmentOverride {
+  readonly skillName: string;
+  readonly addToSubroles?: readonly string[];
+  readonly removeFromSubroles?: readonly string[];
+  readonly forceCommon?: boolean;
+  readonly disabled?: boolean;
+}
+
+export type QaSkillHealth = "healthy" | "degraded" | "blocked" | "unassigned";
+
+/** Per-role projection of one skill: what the role sees and what it may grant. */
+export interface QaSkillRoleGrant {
+  readonly roleId: string;
+  readonly visible: boolean;
+  readonly declared: boolean;
+  readonly addedByAdmin: boolean;
+  readonly removedByAdmin: boolean;
+  readonly disabled: boolean;
+  /** Required tools this role's ceiling admits. */
+  readonly grantableTools: readonly string[];
+  /** Required tools this role cannot grant: outside the ceiling or not installed. */
+  readonly unavailableTools: readonly string[];
+}
+
+/** One row of the administration Skills table plus its detail view. */
+export interface QaSkillAccess {
+  readonly name: string;
+  readonly description?: string;
+  readonly whenToUse?: string;
+  readonly source: QaCapabilityDescriptor["source"];
+  readonly status: "available" | "missing";
+  readonly descriptor: QaSkillDescriptor;
+  /** Roles whose policy currently exposes the skill. */
+  readonly visibleTo: readonly string[];
+  readonly disabled: boolean;
+  readonly forceCommon: boolean;
+  readonly overridden: boolean;
+  readonly health: QaSkillHealth;
+  /** Every required tool with the union of roles that could grant it. */
+  readonly tools: readonly {
+    readonly id: string;
+    readonly installed: boolean;
+    readonly grantableBy: readonly string[];
+    readonly blockedFor: readonly string[];
+  }[];
+  readonly roles: readonly QaSkillRoleGrant[];
+}
+
+/** Why a skill activation was attempted; recorded for conversation review. */
+export type QaSkillActivationOrigin = "model" | "user" | "preview";
+
+/**
+ * One activation attempt on a live session, appended to the session record.
+ * `denied` covers an audience refusal, `rejected` a failed `requireAll` check.
+ */
+export interface QaSkillActivationRecord {
+  readonly timestamp: string;
+  readonly skillName: string;
+  readonly origin: QaSkillActivationOrigin;
+  readonly outcome: "activated" | "rejected" | "denied";
+  readonly requestedTools: readonly string[];
+  readonly grantedTools: readonly string[];
+  readonly deniedTools: readonly string[];
+  readonly reason?: string;
 }
 
 /** One agent capability profile. It never grants administrative access. */
@@ -63,6 +169,8 @@ export interface QaCapabilityConfig {
   readonly version: 1;
   readonly common: QaCapabilitySelection;
   readonly subroles: readonly QaSubrole[];
+  /** Administrator assignments layered over what each skill declares. */
+  readonly skillOverrides: readonly QaSkillAssignmentOverride[];
 }
 
 /** The QA profiles one account may choose, independently of its access role. */
@@ -92,18 +200,33 @@ export interface QaCapabilityDescriptor {
 /** JSON-safe projection of an immutable policy snapshot. */
 export interface QaEffectiveCapabilityPolicy {
   readonly subroleId: string;
+  /** Tools visible from the first model step, before any skill is loaded. */
   readonly tools: readonly string[];
+  /** Ceiling for the tools an activated skill may add to this session. */
+  readonly grantableTools: readonly string[];
+  /** Skills the model may see and load for the frozen subrole. */
   readonly skills: readonly string[];
+  /**
+   * Visible skills a person may invoke with `/name`, including skills that
+   * opted out of model invocation and therefore stay out of the catalog.
+   */
+  readonly userSkills: readonly string[];
   readonly sources: {
     readonly systemTools: readonly string[];
     readonly commonTools: readonly string[];
     readonly roleTools: readonly string[];
+    readonly commonGrantableTools: readonly string[];
+    readonly roleGrantableTools: readonly string[];
     readonly systemSkills: readonly string[];
     readonly commonSkills: readonly string[];
     readonly roleSkills: readonly string[];
+    /** Skills this subrole received from their own SKILL.md audience. */
+    readonly declaredSkills: readonly string[];
   };
   readonly missingTools: readonly string[];
   readonly missingSkills: readonly string[];
+  /** Revision of the resolved policy, recorded with the session snapshot. */
+  readonly policyRevision: string;
 }
 
 export type QaAccessAuditAction =
@@ -111,7 +234,8 @@ export type QaAccessAuditAction =
   | "subrole.updated"
   | "subrole.deleted"
   | "common.updated"
-  | "assignment.updated";
+  | "assignment.updated"
+  | "skill.assignment-updated";
 
 export interface QaAccessAuditEvent {
   readonly timestamp: string;
@@ -151,6 +275,8 @@ export interface QaAccessAdminSnapshot {
   /** Immutable capabilities inherited by every role; exposed read-only. */
   readonly systemRequired: QaCapabilitySelection;
   readonly catalog: readonly QaCapabilityDescriptor[];
+  /** Every discovered skill with its declared audience and grant ceiling. */
+  readonly skills: readonly QaSkillAccess[];
   readonly users: readonly QaAccessUser[];
   readonly audit: readonly QaAccessAuditEvent[];
 }

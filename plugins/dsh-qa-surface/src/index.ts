@@ -82,6 +82,8 @@ import type {
   QaCapabilitySelection,
   QaCurrentAccess,
   QaSessionAccess,
+  QaSkillActivationRecord,
+  QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
 } from "./types.js";
@@ -687,6 +689,29 @@ export class QaSurface extends TypertRemoteService {
     );
   }
 
+  /** Layer one administrator assignment over what a SKILL.md declares. */
+  @Remote("accessUpdateSkillOverride")
+  accessUpdateSkillOverride(
+    token: string,
+    input: QaSkillAssignmentOverride,
+  ): readonly QaSkillAssignmentOverride[] {
+    return this.accountRemotes.run(() =>
+      this.access.updateSkillOverride(token, input),
+    );
+  }
+
+  /** What each skill activation actually granted in this session. */
+  @Remote("accessSkillActivations")
+  accessSkillActivations(
+    token: string,
+    sessionId: string,
+  ): readonly QaSkillActivationRecord[] {
+    return this.accountRemotes.run(
+      () => this.access.skillActivations(token, sessionId),
+      sessionId,
+    );
+  }
+
   /** Pin and attest the effective policy. The browser supplies identity only. */
   @Remote("secureSession")
   async secureSession(
@@ -986,12 +1011,18 @@ export * from "./documents/index.js";
 export { QaPolicyAdmission } from "./secure-session.js";
 export { QaAccessService } from "./access/service.js";
 export { QaRoleRepository } from "./access/role-repository.js";
+export { QaAgentToolGrants } from "./enforcement/tool-grants.js";
 export {
   defaultCapabilityConfig,
   normalizeCapabilityConfig,
   normalizeUserAccess,
   resolveCapabilityPolicy,
+  resolveSkillAccess,
 } from "./access/model.js";
+export {
+  parseQaSkillMetadata,
+  resolveSkillVisibility,
+} from "./access/skill-metadata.js";
 export {
   QaPromptNotes,
   renderUserIdentity,

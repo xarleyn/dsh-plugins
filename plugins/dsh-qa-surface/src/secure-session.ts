@@ -1,6 +1,5 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -9,6 +8,7 @@ import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+import type { QaResolvedSessionPolicy } from "./access/service.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
@@ -17,7 +17,8 @@ import { qaUserWorkspaceDenial } from "./user-workspace.js";
 interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
-  readonly disposeRestriction: () => void;
+  /** Owns the scoped restriction; disposed to lift the agent's tool mask. */
+  readonly disposeTools: () => void;
   readonly disposeSkillPolicy: () => void;
 }
 
@@ -102,13 +103,7 @@ export class QaPolicyAdmission {
       token: string,
       sessionId: string,
       agent: Agent,
-    ) => Promise<
-      | {
-          readonly policy: import("./types.js").QaEffectiveCapabilityPolicy;
-          readonly skills: ReadonlyMap<string, SkillSummary>;
-        }
-      | undefined
-    >,
+    ) => Promise<QaResolvedSessionPolicy | undefined>,
     /** Scope-local catalog entries may be known before they are activated. */
     private readonly knownDynamicToolNames: () => readonly string[] = () => [],
   ) {
@@ -383,42 +378,57 @@ export class QaPolicyAdmission {
     const fingerprint = JSON.stringify([
       policy.allow,
       capability?.policy.skills ?? [],
+      capability?.policy.grantableTools ?? [],
     ]);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
-      const disposeGuard = agent.ctx.tools.guard((execution) => {
-        const agent = execution.agent;
-        return qaToolDenial(
-          allowed,
-          execution.name,
-          capability === undefined && agent !== undefined
-            ? this.dynamicToolNames(agent)
-            : [],
-        );
-      });
-      let disposeRestriction: (() => void) | undefined;
+      // A capability policy owns the scoped restriction, because activating a
+      // skill has to widen it later. The account-free path keeps the static
+      // mask it has always used.
+      const grants = capability?.createGrants();
+      let disposeTools: () => void = () => undefined;
+      let disposeGuard: () => void = () => undefined;
+      let disposeSkillPolicy: () => void = () => undefined;
       try {
-        disposeRestriction = agent.ctx.tools.restrict({
-          allow: policy.allow,
+        disposeTools =
+          grants === undefined
+            ? agent.ctx.tools.restrict({ allow: policy.allow })
+            : () => grants.dispose();
+        disposeGuard = agent.ctx.tools.guard((execution) => {
+          const subject = execution.agent;
+          return qaToolDenial(
+            grants?.effectiveTools() ?? allowed,
+            execution.name,
+            capability === undefined && subject !== undefined
+              ? this.dynamicToolNames(subject)
+              : [],
+          );
         });
         // A role snapshot cannot change for this session, but a restarted Host
         // materializes a new Agent and therefore a fresh scoped loader.
         prior?.disposeSkillPolicy();
-        const disposeSkillPolicy =
-          capability === undefined
-            ? () => undefined
-            : installQaSkillPolicy(agent, capability.policy, capability.skills);
+        if (capability !== undefined && grants !== undefined) {
+          disposeSkillPolicy = installQaSkillPolicy({
+            agent,
+            policy: capability.policy,
+            discovered: capability.skills,
+            grants,
+            logger: this.logger,
+            preview: capability.adminPreview,
+          });
+        }
         this.appliedPolicies.set(agent, {
           fingerprint,
           disposeGuard,
-          disposeRestriction,
+          disposeTools,
           disposeSkillPolicy,
         });
-        prior?.disposeRestriction();
+        prior?.disposeTools();
         prior?.disposeGuard();
       } catch (error) {
-        disposeRestriction?.();
+        disposeSkillPolicy();
+        disposeTools();
         disposeGuard();
         throw error;
       }
@@ -533,7 +543,7 @@ export class QaPolicyAdmission {
   dispose(): void {
     for (const policy of this.appliedPolicies.values()) {
       policy.disposeSkillPolicy();
-      policy.disposeRestriction();
+      policy.disposeTools();
       policy.disposeGuard();
     }
     this.appliedPolicies.clear();

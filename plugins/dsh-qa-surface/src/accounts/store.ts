@@ -16,6 +16,7 @@ import type {
   QaClaimResult,
   QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
+  QaSkillActivationRecord,
   QaUserAccess,
   QaWhoamiResult,
 } from "../types.js";
@@ -546,6 +547,45 @@ export class QaAccounts {
     };
     this.save();
     return next;
+  }
+
+  /**
+   * Append one skill activation attempt to a session's history.
+   *
+   * The record is the reviewable half of a dynamic tool grant: it names what
+   * the skill asked for, what it received and what it was refused. The list is
+   * bounded, because a long session may activate skills many times and the
+   * oldest entries stop being interesting long before the file does.
+   * @param sessionId - the session the activation belongs to.
+   * @param entry - the attempt to append.
+   * @param limit - how many entries to keep, newest last.
+   * @returns the stored history after the append.
+   */
+  recordSkillActivation(
+    sessionId: string,
+    entry: QaSkillActivationRecord,
+    limit: number,
+  ): readonly QaSkillActivationRecord[] {
+    this.reloadIfChanged();
+    const current = this.file.ownership[sessionId];
+    if (current === undefined) {
+      throw new QaAccountsError(
+        "session-owned-elsewhere",
+        "the session has no QA owner",
+      );
+    }
+    const skillActivations = [...(current.skillActivations ?? []), entry].slice(
+      -limit,
+    );
+    this.file = {
+      ...this.file,
+      ownership: {
+        ...this.file.ownership,
+        [sessionId]: { ...current, skillActivations },
+      },
+    };
+    this.save();
+    return skillActivations;
   }
 
   /** Create an account outside the self-registration gate. */

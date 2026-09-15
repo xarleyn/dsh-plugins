@@ -4,13 +4,19 @@ import type {
   QaAccessUser,
   QaCapabilityDescriptor,
   QaCapabilitySelection,
+  QaCapabilitySourceKind,
+  QaSkillAccess,
+  QaSkillAssignmentOverride,
+  QaSkillHealth,
   QaSubrole,
   QaUserAccess,
 } from "../../types.js";
 import type { QaAccessApi } from "../types.js";
 
-type Page = "subroles" | "common" | "users" | "audit";
+type Page = "subroles" | "common" | "skills" | "users" | "audit";
 type CapabilityType = "tool" | "skill";
+/** The two tool classes: visible immediately, or only through a loaded skill. */
+type ToolBucket = "always" | "skillGrantable";
 
 const AUDIT_LABELS = {
   "subrole.created": "Саброль создана",
@@ -18,7 +24,23 @@ const AUDIT_LABELS = {
   "subrole.deleted": "Саброль удалена",
   "common.updated": "Общие возможности изменены",
   "assignment.updated": "Назначение изменено",
+  "skill.assignment-updated": "Назначение навыка изменено",
 } as const;
+
+const HEALTH_LABELS: Record<QaSkillHealth, string> = {
+  healthy: "В порядке",
+  degraded: "Ограничен",
+  blocked: "Заблокирован",
+  unassigned: "Не назначен",
+};
+
+const SOURCE_LABELS: Record<QaCapabilitySourceKind, string> = {
+  core: "ядро",
+  plugin: "плагин",
+  mcp: "MCP",
+  filesystem: "файл",
+  runtime: "runtime",
+};
 
 function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
@@ -30,6 +52,13 @@ function errorMessage(error: unknown): string {
 
 function unique(values: readonly string[]): string[] {
   return [...new Set(values)];
+}
+
+function bucketOf(
+  selection: QaCapabilitySelection,
+  bucket: ToolBucket,
+): readonly string[] {
+  return selection.tools[bucket];
 }
 
 function CapabilityPicker(props: {
@@ -155,14 +184,58 @@ function CapabilityPicker(props: {
   );
 }
 
+function emptySelection(): QaCapabilitySelection {
+  return { tools: { always: [], skillGrantable: [] }, skills: [] };
+}
+
 function emptyRole(): QaSubrole {
   return {
     id: "",
     name: "",
     description: "",
     enabled: true,
-    capabilities: { tools: [], skills: [] },
+    capabilities: emptySelection(),
   };
+}
+
+/** Tools and skills one role would receive, and where each one comes from. */
+function roleEffective(
+  props: {
+    readonly system: QaCapabilitySelection;
+    readonly common: QaCapabilitySelection;
+    readonly role: QaCapabilitySelection;
+    readonly skills: readonly QaSkillAccess[];
+  },
+  roleId: string,
+) {
+  const alwaysTools = unique([
+    ...props.system.tools.always,
+    ...props.common.tools.always,
+    ...props.role.tools.always,
+  ]);
+  const grantable = unique([
+    ...props.common.tools.skillGrantable,
+    ...props.role.tools.skillGrantable,
+  ]);
+  const via = new Map<string, string[]>();
+  for (const skill of props.skills) {
+    const grant = skill.roles.find(({ roleId: id }) => id === roleId);
+    if (grant === undefined || !grant.visible) continue;
+    for (const tool of grant.grantableTools) {
+      via.set(tool, [...(via.get(tool) ?? []), skill.name]);
+    }
+  }
+  const managed = unique([
+    ...props.system.skills,
+    ...props.common.skills,
+    ...props.role.skills,
+  ]);
+  const declared = props.skills
+    .filter((skill) =>
+      skill.roles.some(({ roleId: id, declared }) => id === roleId && declared),
+    )
+    .map(({ name }) => name);
+  return { alwaysTools, grantable, via, managed, declared };
 }
 
 function RoleEditor(props: {
@@ -170,6 +243,8 @@ function RoleEditor(props: {
   readonly catalog: readonly QaCapabilityDescriptor[];
   readonly common: QaCapabilitySelection;
   readonly system: QaCapabilitySelection;
+  readonly skills: readonly QaSkillAccess[];
+  readonly subroles: readonly QaSubrole[];
   readonly onCancel: () => void;
   readonly onSave: (role: QaSubrole) => Promise<void>;
 }) {
@@ -179,24 +254,31 @@ function RoleEditor(props: {
     "general",
   );
   const [saving, setSaving] = useState(false);
-  const setCapabilities = (key: CapabilityType, values: readonly string[]) =>
+  const setSkills = (values: readonly string[]) =>
+    setDraft((current) => ({
+      ...current,
+      capabilities: { ...current.capabilities, skills: values },
+    }));
+  const setTools = (bucket: ToolBucket, values: readonly string[]) =>
     setDraft((current) => ({
       ...current,
       capabilities: {
         ...current.capabilities,
-        [key === "tool" ? "tools" : "skills"]: values,
+        tools: { ...current.capabilities.tools, [bucket]: values },
       },
     }));
-  const effectiveTools = unique([
-    ...props.system.tools,
-    ...props.common.tools,
-    ...draft.capabilities.tools,
-  ]);
-  const effectiveSkills = unique([
-    ...props.system.skills,
-    ...props.common.skills,
-    ...draft.capabilities.skills,
-  ]);
+  const effective = roleEffective(
+    {
+      system: props.system,
+      common: props.common,
+      role: draft.capabilities,
+      skills: props.skills,
+    },
+    draft.id,
+  );
+  const declaredSkills = props.skills.filter(({ name }) =>
+    effective.declared.includes(name),
+  );
   return (
     <section className="dsh-qa-role-editor">
       <div className="dsh-qa-admin__title-row">
@@ -276,51 +358,148 @@ function RoleEditor(props: {
           </label>
         </div>
       ) : tab === "tools" ? (
-        <CapabilityPicker
-          type="tool"
-          catalog={props.catalog}
-          inherited={props.common.tools}
-          system={props.system.tools}
-          selected={draft.capabilities.tools}
-          onChange={(values) => setCapabilities("tool", values)}
-        />
+        <div className="dsh-qa-tool-buckets">
+          <section>
+            <h3>Инструменты · всегда</h3>
+            <p>Видны агенту с первого шага разговора.</p>
+            <CapabilityPicker
+              type="tool"
+              catalog={props.catalog}
+              inherited={props.common.tools.always}
+              system={props.system.tools.always}
+              selected={draft.capabilities.tools.always}
+              onChange={(values) => setTools("always", values)}
+            />
+          </section>
+          <section>
+            <h3>Инструменты · при активации навыка</h3>
+            <p>
+              Появятся только после загрузки навыка, который их требует. Пока
+              навык не загружен, инструменты не занимают список модели.
+            </p>
+            <CapabilityPicker
+              type="tool"
+              catalog={props.catalog}
+              inherited={props.common.tools.skillGrantable}
+              system={props.system.tools.skillGrantable}
+              selected={draft.capabilities.tools.skillGrantable}
+              onChange={(values) => setTools("skillGrantable", values)}
+            />
+            {effective.via.size === 0 ? null : (
+              <div className="dsh-qa-skill-grants">
+                <h4>Появятся с навыками</h4>
+                <ul>
+                  {[...effective.via].map(([tool, skills]) => (
+                    <li key={tool}>
+                      <code>{tool}</code>
+                      <span>via {skills.join(", ")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </section>
+        </div>
       ) : tab === "skills" ? (
-        <CapabilityPicker
-          type="skill"
-          catalog={props.catalog}
-          inherited={props.common.skills}
-          system={props.system.skills}
-          selected={draft.capabilities.skills}
-          onChange={(values) => setCapabilities("skill", values)}
-        />
+        <div className="dsh-qa-role-skills">
+          <p>
+            Навык сам объявляет, каким сабролям он доступен. Здесь настраиваются
+            общие навыки и назначения, добавленные вручную.
+          </p>
+          <section>
+            <h4>Назначены самим навыком</h4>
+            {declaredSkills.length === 0 ? (
+              <p className="dsh-qa-admin__empty">
+                Ни один навык не объявляет эту саброль.
+              </p>
+            ) : (
+              <ul className="dsh-qa-skill-list">
+                {declaredSkills.map((skill) => (
+                  <li key={skill.name}>
+                    <strong>{skill.name}</strong>
+                    <span>
+                      {skill.descriptor.requiredTools.length === 0
+                        ? "без инструментов"
+                        : `+${skill.descriptor.requiredTools.length} инструментов`}
+                    </span>
+                    <em>Навык</em>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="dsh-qa-role-skills__hint">
+              Отозвать объявленный навык можно на странице «Навыки».
+            </p>
+          </section>
+          <section>
+            <h4>Общие и ролевые</h4>
+            <CapabilityPicker
+              type="skill"
+              catalog={props.catalog}
+              inherited={props.common.skills}
+              system={props.system.skills}
+              selected={draft.capabilities.skills}
+              onChange={setSkills}
+            />
+          </section>
+        </div>
       ) : (
         <div className="dsh-qa-effective">
-          <h3>Фактические возможности для {draft.name || draft.id}</h3>
-          <p>
-            <strong>{effectiveTools.length}</strong> инструментов ·{" "}
-            {props.system.tools.length} системных · {props.common.tools.length}{" "}
-            общих · {draft.capabilities.tools.length} роли
-          </p>
-          <CapabilityPicker
-            type="tool"
-            catalog={props.catalog}
-            inherited={props.common.tools}
-            system={props.system.tools}
-            selected={draft.capabilities.tools}
-          />
-          <p>
-            <strong>{effectiveSkills.length}</strong> навыков ·{" "}
-            {props.system.skills.length} системных ·{" "}
-            {props.common.skills.length} общих ·{" "}
-            {draft.capabilities.skills.length} роли
-          </p>
-          <CapabilityPicker
-            type="skill"
-            catalog={props.catalog}
-            inherited={props.common.skills}
-            system={props.system.skills}
-            selected={draft.capabilities.skills}
-          />
+          <h3>
+            Фактический доступ для {draft.name || draft.id || "новой роли"}
+          </h3>
+          <section>
+            <h4>Инструменты · всегда</h4>
+            {effective.alwaysTools.length === 0 ? (
+              <p className="dsh-qa-admin__empty">Нет инструментов.</p>
+            ) : (
+              <ul className="dsh-qa-effective__list">
+                {effective.alwaysTools.map((tool) => (
+                  <li key={tool}>
+                    <code>{tool}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
+            <h4>Инструменты · при активации навыка</h4>
+            {effective.grantable.length === 0 ? (
+              <p className="dsh-qa-admin__empty">
+                Роль не может выдавать инструменты.
+              </p>
+            ) : (
+              <ul className="dsh-qa-effective__list">
+                {effective.grantable.map((tool) => (
+                  <li key={tool}>
+                    <code>{tool}</code>
+                    <span>
+                      {effective.via.get(tool) === undefined
+                        ? "Ни один доступный навык его не требует"
+                        : `via ${effective.via.get(tool)?.join(", ")}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+          <section>
+            <h4>Навыки</h4>
+            <ul className="dsh-qa-effective__list">
+              {[...unique([...effective.managed, ...effective.declared])].map(
+                (skill) => (
+                  <li key={skill}>
+                    <code>{skill}</code>
+                    <span>
+                      {effective.declared.includes(skill)
+                        ? "Назначен навыком"
+                        : "Назначен администратором"}
+                    </span>
+                  </li>
+                ),
+              )}
+            </ul>
+          </section>
         </div>
       )}
       <div className="dsh-qa-admin__savebar">
@@ -415,6 +594,239 @@ function UserAssignmentRow(props: {
   );
 }
 
+/**
+ * One skill's administrator overlay.
+ *
+ * The declared audience is shown as the starting point and never rewritten:
+ * the checkboxes only record the difference, so clearing the row restores what
+ * the skill's own SKILL.md says.
+ */
+function SkillAssignmentEditor(props: {
+  readonly skill: QaSkillAccess;
+  readonly roles: readonly QaSubrole[];
+  readonly onCancel: () => void;
+  readonly onSave: (override: QaSkillAssignmentOverride) => Promise<void>;
+}) {
+  const declared = new Set(
+    props.skill.roles
+      .filter(({ declared }) => declared)
+      .map(({ roleId }) => roleId),
+  );
+  const [visible, setVisible] = useState<ReadonlySet<string>>(
+    () => new Set(props.skill.visibleTo),
+  );
+  const [forceCommon, setForceCommon] = useState(props.skill.forceCommon);
+  const [disabled, setDisabled] = useState(props.skill.disabled);
+  const [saving, setSaving] = useState(false);
+  const override = (): QaSkillAssignmentOverride => {
+    const shown = disabled ? new Set<string>() : new Set(visible);
+    const addToSubroles = [...shown].filter((id) => !declared.has(id));
+    const removeFromSubroles = [...declared].filter((id) => !shown.has(id));
+    return {
+      skillName: props.skill.name,
+      ...(addToSubroles.length === 0 ? {} : { addToSubroles }),
+      ...(removeFromSubroles.length === 0 ? {} : { removeFromSubroles }),
+      ...(forceCommon ? { forceCommon: true } : {}),
+      ...(disabled ? { disabled: true } : {}),
+    };
+  };
+  return (
+    <section className="dsh-qa-skill-detail">
+      <div className="dsh-qa-admin__title-row">
+        <div>
+          <button
+            type="button"
+            className="dsh-qa-admin__back"
+            onClick={props.onCancel}
+          >
+            ← Навыки
+          </button>
+          <h2>{props.skill.name}</h2>
+          <p>
+            {props.skill.description ??
+              (props.skill.status === "missing"
+                ? "Навык назначен, но не установлен."
+                : "Без описания")}
+          </p>
+        </div>
+      </div>
+      <div className="dsh-qa-skill-detail__grid">
+        <section>
+          <h4>Доступ</h4>
+          <label className="dsh-qa-role-editor__check">
+            <input
+              type="checkbox"
+              checked={forceCommon}
+              onChange={(event) => setForceCommon(event.currentTarget.checked)}
+            />
+            Доступен всем включённым сабролям
+          </label>
+          <label className="dsh-qa-role-editor__check">
+            <input
+              type="checkbox"
+              checked={disabled}
+              onChange={(event) => setDisabled(event.currentTarget.checked)}
+            />
+            Отключён для всех
+          </label>
+          <ul className="dsh-qa-skill-roles">
+            {props.roles.map((role) => {
+              const grant = props.skill.roles.find(
+                ({ roleId }) => roleId === role.id,
+              );
+              const checked = !disabled && visible.has(role.id);
+              return (
+                <li key={role.id}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      disabled={disabled}
+                      checked={checked}
+                      onChange={(event) => {
+                        const next = new Set(visible);
+                        if (event.currentTarget.checked) next.add(role.id);
+                        else next.delete(role.id);
+                        setVisible(next);
+                      }}
+                    />
+                    {role.name}
+                  </label>
+                  {grant?.declared === true ? <em>Объявлено навыком</em> : null}
+                  {grant?.addedByAdmin === true ? (
+                    <em>Добавлено админом</em>
+                  ) : null}
+                  {grant?.removedByAdmin === true ? (
+                    <em>Отозвано админом</em>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+          {props.skill.descriptor.warnings.length === 0 ? null : (
+            <ul className="dsh-qa-skill-warnings">
+              {props.skill.descriptor.warnings.map((warning) => (
+                <li key={warning}>⚠ {warning}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+        <section>
+          <h4>Инструменты навыка</h4>
+          {props.skill.tools.length === 0 ? (
+            <p className="dsh-qa-admin__empty">
+              Навык не требует инструментов.
+            </p>
+          ) : (
+            <ul className="dsh-qa-skill-tools">
+              {props.skill.tools.map((tool) => (
+                <li key={tool.id}>
+                  <code>{tool.id}</code>
+                  {tool.grantableBy.length > 0 ? (
+                    <em>Доступен: {tool.grantableBy.join(", ")}</em>
+                  ) : null}
+                  {tool.installed ? null : (
+                    <em className="dsh-qa-capability__missing">
+                      Нет в реестре
+                    </em>
+                  )}
+                  {tool.blockedFor.length > 0 ? (
+                    <em className="dsh-qa-capability__missing">
+                      Недоступен: {tool.blockedFor.join(", ")}
+                    </em>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          )}
+          {props.skill.descriptor.requireAll ? (
+            <p className="dsh-qa-role-skills__hint">
+              Навык строгий: без любого из инструментов он не активируется.
+            </p>
+          ) : null}
+        </section>
+      </div>
+      <div className="dsh-qa-admin__savebar">
+        <span>Назначения хранятся отдельно и не изменяют SKILL.md.</span>
+        <button type="button" onClick={props.onCancel}>
+          Отмена
+        </button>
+        <button
+          type="button"
+          className="dsh-qa-admin__primary"
+          disabled={saving}
+          onClick={() => {
+            setSaving(true);
+            void props.onSave(override()).finally(() => setSaving(false));
+          }}
+        >
+          {saving ? "Сохраняю…" : "Сохранить"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SkillTable(props: {
+  readonly skills: readonly QaSkillAccess[];
+  readonly roles: readonly QaSubrole[];
+  readonly onSelect: (skill: QaSkillAccess) => void;
+}) {
+  const name = (id: string) =>
+    props.roles.find((role) => role.id === id)?.name ?? id;
+  return (
+    <div className="dsh-qa-skills">
+      <table>
+        <thead>
+          <tr>
+            <th>Навык</th>
+            <th>Аудитория</th>
+            <th>Инструменты</th>
+            <th>Состояние</th>
+            <th>Источник</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {props.skills.map((skill) => (
+            <tr key={skill.name}>
+              <td>
+                <strong>{skill.name}</strong>
+                {skill.overridden ? <em>Изменён</em> : null}
+                {skill.status === "missing" ? (
+                  <em className="dsh-qa-capability__missing">Не установлен</em>
+                ) : null}
+              </td>
+              <td>
+                {skill.disabled
+                  ? "Отключён"
+                  : skill.visibleTo.length === 0
+                    ? "Не назначен"
+                    : skill.visibleTo.map(name).join(", ")}
+              </td>
+              <td>{skill.descriptor.requiredTools.length}</td>
+              <td>{HEALTH_LABELS[skill.health]}</td>
+              <td>
+                {SOURCE_LABELS[skill.source.kind]}
+                {skill.source.name === undefined
+                  ? ""
+                  : ` · ${skill.source.name}`}
+              </td>
+              <td>
+                <button type="button" onClick={() => props.onSelect(skill)}>
+                  Изменить →
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {props.skills.length === 0 ? (
+        <p className="dsh-qa-admin__empty">Навыки не найдены.</p>
+      ) : null}
+    </div>
+  );
+}
+
 export function QaAdmin(props: {
   readonly api: QaAccessApi;
   readonly token: string;
@@ -424,11 +836,11 @@ export function QaAdmin(props: {
   const [snapshot, setSnapshot] = useState<QaAccessAdminSnapshot>();
   const [page, setPage] = useState<Page>("subroles");
   const [editing, setEditing] = useState<QaSubrole | null | undefined>();
+  const [editingSkill, setEditingSkill] = useState<QaSkillAccess>();
   const [commonType, setCommonType] = useState<CapabilityType>("tool");
-  const [common, setCommon] = useState<QaCapabilitySelection>({
-    tools: [],
-    skills: [],
-  });
+  const [commonToolBucket, setCommonToolBucket] =
+    useState<ToolBucket>("always");
+  const [common, setCommon] = useState<QaCapabilitySelection>(emptySelection());
   const [error, setError] = useState<string>();
   const refresh = async () => {
     const result = await props.api.admin(props.token);
@@ -477,6 +889,8 @@ export function QaAdmin(props: {
           catalog={snapshot.catalog}
           common={snapshot.config.common}
           system={snapshot.systemRequired}
+          skills={snapshot.skills}
+          subroles={roles}
           onCancel={() => setEditing(undefined)}
           onSave={async (role) => {
             const ok = await mutate(() =>
@@ -485,6 +899,26 @@ export function QaAdmin(props: {
                 : props.api.updateSubrole(props.token, editing.id, role),
             );
             if (ok) setEditing(undefined);
+          }}
+        />
+        {error === undefined ? null : (
+          <div className="dsh-qa-admin__error">{error}</div>
+        )}
+      </main>
+    );
+  }
+  if (editingSkill !== undefined) {
+    return (
+      <main className="dsh-qa-admin" aria-label="Назначения навыка">
+        <SkillAssignmentEditor
+          skill={editingSkill}
+          roles={enabledRoles}
+          onCancel={() => setEditingSkill(undefined)}
+          onSave={async (override) => {
+            const ok = await mutate(() =>
+              props.api.updateSkillOverride(props.token, override),
+            );
+            if (ok) setEditingSkill(undefined);
           }}
         />
         {error === undefined ? null : (
@@ -513,6 +947,7 @@ export function QaAdmin(props: {
           {(
             [
               ["subroles", "Саброли"],
+              ["skills", "Навыки"],
               ["common", "Общие возможности"],
               ["users", "Пользователи"],
               ["audit", "Аудит"],
@@ -563,11 +998,18 @@ export function QaAdmin(props: {
                     </div>
                     <p>{role.description ?? "Без описания"}</p>
                     <div className="dsh-qa-role-card__counts">
-                      <span>{role.capabilities.tools.length} инструментов</span>
+                      <span>
+                        {role.capabilities.tools.always.length} инструментов
+                      </span>
+                      <span>
+                        +{role.capabilities.tools.skillGrantable.length} по
+                        навыкам
+                      </span>
                       <span>{role.capabilities.skills.length} навыков</span>
                       <span>
                         +{" "}
-                        {snapshot.config.common.tools.length +
+                        {snapshot.config.common.tools.always.length +
+                          snapshot.config.common.tools.skillGrantable.length +
                           snapshot.config.common.skills.length}{" "}
                         общих
                       </span>
@@ -641,6 +1083,24 @@ export function QaAdmin(props: {
                 ))}
               </div>
             </>
+          ) : page === "skills" ? (
+            <>
+              <div className="dsh-qa-admin__title-row">
+                <div>
+                  <h1>Навыки</h1>
+                  <p>
+                    SKILL.md сам объявляет свою аудиторию и необходимые
+                    инструменты. Администратор может расширить или отозвать
+                    доступ, не изменяя файл навыка.
+                  </p>
+                </div>
+              </div>
+              <SkillTable
+                skills={snapshot.skills}
+                roles={enabledRoles}
+                onSelect={setEditingSkill}
+              />
+            </>
           ) : page === "common" ? (
             <>
               <div className="dsh-qa-admin__title-row">
@@ -668,15 +1128,48 @@ export function QaAdmin(props: {
                   Навыки
                 </button>
               </div>
+              {commonType === "tool" ? (
+                <div className="dsh-qa-admin__tabs">
+                  <button
+                    type="button"
+                    aria-current={
+                      commonToolBucket === "always" ? "page" : undefined
+                    }
+                    onClick={() => setCommonToolBucket("always")}
+                  >
+                    Всегда
+                  </button>
+                  <button
+                    type="button"
+                    aria-current={
+                      commonToolBucket === "skillGrantable" ? "page" : undefined
+                    }
+                    onClick={() => setCommonToolBucket("skillGrantable")}
+                  >
+                    При активации навыка
+                  </button>
+                </div>
+              ) : null}
               <CapabilityPicker
                 type={commonType}
                 catalog={snapshot.catalog}
-                selected={commonType === "tool" ? common.tools : common.skills}
+                selected={
+                  commonType === "tool"
+                    ? bucketOf(common, commonToolBucket)
+                    : common.skills
+                }
                 onChange={(values) =>
-                  setCommon({
-                    ...common,
-                    [commonType === "tool" ? "tools" : "skills"]: values,
-                  })
+                  setCommon(
+                    commonType === "tool"
+                      ? {
+                          ...common,
+                          tools: {
+                            ...common.tools,
+                            [commonToolBucket]: values,
+                          },
+                        }
+                      : { ...common, skills: values },
+                  )
                 }
               />
               <div className="dsh-qa-admin__impact">

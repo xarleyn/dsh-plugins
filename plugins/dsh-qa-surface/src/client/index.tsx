@@ -52,6 +52,8 @@ import type {
   QaCapabilitySelection,
   QaCurrentAccess,
   QaSessionAccess,
+  QaSkillActivationRecord,
+  QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
 } from "../types.js";
@@ -214,6 +216,14 @@ interface QaPolicyRemote extends QaAccountsApi {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  accessUpdateSkillOverride(
+    token: string,
+    input: QaSkillAssignmentOverride,
+  ): Promise<RemoteResult<readonly QaSkillAssignmentOverride[]>>;
+  accessSkillActivations(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<readonly QaSkillActivationRecord[]>>;
   skillsList(
     token: string,
   ): Promise<RemoteResult<{ readonly skills: readonly QaSkillSummary[] }>>;
@@ -322,6 +332,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.accessUpdateCommon(token, input),
         updateAssignment: (token, userId, input) =>
           policyRemote.accessUpdateAssignment(token, userId, input),
+        updateSkillOverride: (token, input) =>
+          policyRemote.accessUpdateSkillOverride(token, input),
+        skillActivations: (token, sessionId) =>
+          policyRemote.accessSkillActivations(token, sessionId),
       };
       const sourceApi: QaSourceApi = {
         sources: (token, sessionId) =>

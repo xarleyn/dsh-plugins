@@ -8,13 +8,13 @@ const roles = [
     id: "analyst",
     name: "Analyst",
     enabled: true,
-    capabilities: { tools: [], skills: [] },
+    capabilities: { tools: { always: [], skillGrantable: [] }, skills: [] },
   },
   {
     id: "developer",
     name: "Developer",
     enabled: true,
-    capabilities: { tools: [], skills: [] },
+    capabilities: { tools: { always: [], skillGrantable: [] }, skills: [] },
   },
 ] as const;
 

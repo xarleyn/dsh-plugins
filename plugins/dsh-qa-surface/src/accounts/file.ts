@@ -11,6 +11,7 @@ import path from "node:path";
 import type {
   QaAccountRole,
   QaEffectiveCapabilityPolicy,
+  QaSkillActivationRecord,
   QaUserAccess,
 } from "../types.js";
 import { base64Url } from "./token.js";
@@ -62,6 +63,8 @@ export interface StoredOwnership {
   readonly adminPreview?: boolean;
   /** First successful admission freezes the actually installed capabilities. */
   readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
+  /** Skill activations in order: what the model gained, and when it gained it. */
+  readonly skillActivations?: readonly QaSkillActivationRecord[];
 }
 
 export interface AccountsFile {

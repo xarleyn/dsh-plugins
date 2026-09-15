@@ -33,6 +33,8 @@ import type {
   QaCapabilitySelection,
   QaCurrentAccess,
   QaSessionAccess,
+  QaSkillActivationRecord,
+  QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
 } from "../types.js";
@@ -106,6 +108,14 @@ export interface QaAccessApi {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  updateSkillOverride(
+    token: string,
+    input: QaSkillAssignmentOverride,
+  ): Promise<RemoteResult<readonly QaSkillAssignmentOverride[]>>;
+  skillActivations(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<readonly QaSkillActivationRecord[]>>;
 }
 
 /**

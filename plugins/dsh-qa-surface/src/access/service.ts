@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "../accounts/store.js";
 import type { QaAccounts } from "../accounts/store.js";
+import type { QaAgentToolGrants } from "../enforcement/tool-grants.js";
+import { QaAgentToolGrants as Grants } from "../enforcement/tool-grants.js";
 import type {
   QaAccessAdminSnapshot,
   QaCapabilityConfig,
@@ -11,6 +14,10 @@ import type {
   QaCurrentAccess,
   QaEffectiveCapabilityPolicy,
   QaSessionAccess,
+  QaSkillAccess,
+  QaSkillActivationRecord,
+  QaSkillAssignmentOverride,
+  QaSkillDescriptor,
   QaSubrole,
   QaUserAccess,
   ResolvedQaSurfaceConfig,
@@ -20,6 +27,7 @@ import {
   normalizeCapabilityConfig,
   normalizeUserAccess,
   resolveCapabilityPolicy,
+  resolveSkillAccess,
 } from "./model.js";
 import {
   QaCapabilityCatalog,
@@ -28,9 +36,21 @@ import {
 } from "./capability-catalog.js";
 import { QaRoleRepository } from "./role-repository.js";
 
+/** Attempts recorded per session before the oldest ones are dropped. */
+const MAX_SKILL_ACTIVATIONS = 100;
+
 export interface QaResolvedSessionPolicy {
   readonly policy: QaEffectiveCapabilityPolicy;
   readonly skills: CapabilityCatalogSnapshot["skills"];
+  readonly skillMetadata: CapabilityCatalogSnapshot["skillMetadata"];
+  /** Preview sessions label their own activation records. */
+  readonly adminPreview: boolean;
+  /**
+   * Build the live tool policy of one agent. The admission calls this only
+   * when it installs a policy, so a repeated attestation never stacks a second
+   * scoped restriction.
+   */
+  readonly createGrants: () => QaAgentToolGrants;
 }
 
 function configuredCapabilities(config: QaCapabilityConfig): {
@@ -40,8 +60,12 @@ function configuredCapabilities(config: QaCapabilityConfig): {
   return {
     tools: [
       ...new Set([
-        ...config.common.tools,
-        ...config.subroles.flatMap(({ capabilities }) => capabilities.tools),
+        ...config.common.tools.always,
+        ...config.common.tools.skillGrantable,
+        ...config.subroles.flatMap(({ capabilities }) => [
+          ...capabilities.tools.always,
+          ...capabilities.tools.skillGrantable,
+        ]),
       ]),
     ],
     skills: [
@@ -51,6 +75,36 @@ function configuredCapabilities(config: QaCapabilityConfig): {
       ]),
     ],
   };
+}
+
+/**
+ * Opaque revision of everything that shaped one policy.
+ *
+ * A session records it next to its snapshot so a later review can tell whether
+ * a conversation ran under the policy that is in force now.
+ */
+function policyRevision(
+  config: QaCapabilityConfig,
+  metadata: ReadonlyMap<string, QaSkillDescriptor>,
+  tools: ReadonlySet<string>,
+): string {
+  return createHash("sha1")
+    .update(
+      JSON.stringify([
+        config,
+        [...metadata]
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([name, descriptor]) => [
+            name,
+            descriptor.audience,
+            descriptor.requiredTools,
+            descriptor.requireAll,
+          ]),
+        [...tools].sort(),
+      ]),
+    )
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function requireExactAssignment(
@@ -80,17 +134,25 @@ function freezePolicy(
   return Object.freeze({
     subroleId: policy.subroleId,
     tools: Object.freeze([...policy.tools]),
+    grantableTools: Object.freeze([...policy.grantableTools]),
     skills: Object.freeze([...policy.skills]),
+    userSkills: Object.freeze([...policy.userSkills]),
     sources: Object.freeze({
       systemTools: Object.freeze([...policy.sources.systemTools]),
       commonTools: Object.freeze([...policy.sources.commonTools]),
       roleTools: Object.freeze([...policy.sources.roleTools]),
+      commonGrantableTools: Object.freeze([
+        ...policy.sources.commonGrantableTools,
+      ]),
+      roleGrantableTools: Object.freeze([...policy.sources.roleGrantableTools]),
       systemSkills: Object.freeze([...policy.sources.systemSkills]),
       commonSkills: Object.freeze([...policy.sources.commonSkills]),
       roleSkills: Object.freeze([...policy.sources.roleSkills]),
+      declaredSkills: Object.freeze([...policy.sources.declaredSkills]),
     }),
     missingTools: Object.freeze([...policy.missingTools]),
     missingSkills: Object.freeze([...policy.missingSkills]),
+    policyRevision: policy.policyRevision,
   });
 }
 
@@ -100,24 +162,33 @@ function retainInstalledSnapshot(
 ): QaEffectiveCapabilityPolicy {
   const tool = (values: readonly string[]) =>
     values.filter((id) => catalog.toolIds.has(id));
-  const skill = (values: readonly string[]) =>
+  const modelSkill = (values: readonly string[]) =>
     values.filter((id) => catalog.skillIds.has(id));
+  const anySkill = (values: readonly string[]) =>
+    values.filter((id) => catalog.userSkillIds.has(id));
   return freezePolicy({
     subroleId: stored.subroleId,
     tools: tool(stored.tools),
-    skills: skill(stored.skills),
+    grantableTools: tool(stored.grantableTools),
+    skills: modelSkill(stored.skills),
+    userSkills: anySkill(stored.userSkills),
     sources: {
       systemTools: tool(stored.sources.systemTools),
       commonTools: tool(stored.sources.commonTools),
       roleTools: tool(stored.sources.roleTools),
-      systemSkills: skill(stored.sources.systemSkills),
-      commonSkills: skill(stored.sources.commonSkills),
-      roleSkills: skill(stored.sources.roleSkills),
+      commonGrantableTools: tool(stored.sources.commonGrantableTools),
+      roleGrantableTools: tool(stored.sources.roleGrantableTools),
+      systemSkills: modelSkill(stored.sources.systemSkills),
+      commonSkills: modelSkill(stored.sources.commonSkills),
+      roleSkills: modelSkill(stored.sources.roleSkills),
+      declaredSkills: modelSkill(stored.sources.declaredSkills),
     },
     missingTools: [
       ...new Set([
         ...stored.missingTools,
-        ...stored.tools.filter((id) => !catalog.toolIds.has(id)),
+        ...[...stored.tools, ...stored.grantableTools].filter(
+          (id) => !catalog.toolIds.has(id),
+        ),
       ]),
     ],
     missingSkills: [
@@ -126,6 +197,7 @@ function retainInstalledSnapshot(
         ...stored.skills.filter((id) => !catalog.skillIds.has(id)),
       ]),
     ],
+    policyRevision: stored.policyRevision,
   });
 }
 
@@ -148,6 +220,7 @@ export class QaAccessService {
     this.catalog = new QaCapabilityCatalog(
       ctx,
       options.dynamicToolNames ?? (() => []),
+      () => this.roles.snapshot().subroles.map(({ id }) => id),
     );
   }
 
@@ -182,7 +255,10 @@ export class QaAccessService {
         name: subroleId,
         description: "Снимок удалённой саброли",
         enabled: false,
-        capabilities: { tools: [], skills: [] },
+        capabilities: {
+          tools: { always: [], skillGrantable: [] },
+          skills: [],
+        },
       } satisfies QaSubrole);
     return Object.freeze({
       subrole: role,
@@ -250,7 +326,14 @@ export class QaAccessService {
             available: {
               tools: catalog.toolIds,
               skills: catalog.skillIds,
+              userSkills: catalog.userSkillIds,
             },
+            skillMetadata: catalog.skillMetadata,
+            revision: policyRevision(
+              config,
+              catalog.skillMetadata,
+              catalog.toolIds,
+            ),
           })
         : retainInstalledSnapshot(record.capabilitySnapshot, catalog);
     if (record?.capabilitySnapshot === undefined) {
@@ -259,10 +342,53 @@ export class QaAccessService {
         sessionId,
         subroleId,
         tools: policy.tools,
+        grantableTools: policy.grantableTools,
         skills: policy.skills,
+        revision: policy.policyRevision,
       });
     }
-    return { policy, skills: catalog.skills };
+    return {
+      policy,
+      skills: catalog.skills,
+      skillMetadata: catalog.skillMetadata,
+      adminPreview: record?.adminPreview === true,
+      createGrants: () =>
+        new Grants({
+          agent,
+          baseTools: policy.tools,
+          grantableTools: policy.grantableTools,
+          descriptors: catalog.skillMetadata,
+          logger: this.options.logger,
+          record: (entry) => this.recordSkillActivation(sessionId, entry),
+        }),
+    };
+  }
+
+  /** Activation history of one session, for review and quality analysis. */
+  skillActivations(
+    token: string,
+    sessionId: string,
+  ): readonly QaSkillActivationRecord[] {
+    const { accounts } = this.requireAdmin(token);
+    return accounts.sessionAccess(sessionId)?.skillActivations ?? [];
+  }
+
+  /** Append one activation attempt; a lost record never fails the session. */
+  private recordSkillActivation(
+    sessionId: string,
+    entry: QaSkillActivationRecord,
+  ): void {
+    const accounts = this.options.accounts();
+    if (accounts === undefined) return;
+    try {
+      accounts.recordSkillActivation(sessionId, entry, MAX_SKILL_ACTIVATIONS);
+    } catch (error) {
+      this.options.logger.warn("access.skill-activation-record-failed", {
+        sessionId,
+        skill: entry.skillName,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async adminSnapshot(token: string): Promise<QaAccessAdminSnapshot> {
@@ -271,22 +397,42 @@ export class QaAccessService {
     const catalog = await this.catalog.snapshot();
     const configured = configuredCapabilities(config);
     const systemRequired: QaCapabilitySelection = Object.freeze({
-      tools: Object.freeze(this.systemRequiredTools()),
-      skills: Object.freeze([]),
+      tools: Object.freeze({
+        always: Object.freeze(this.systemRequiredTools()),
+        skillGrantable: Object.freeze([]) as readonly string[],
+      }),
+      skills: Object.freeze([]) as readonly string[],
+    });
+    const rows = withMissingCapabilities(
+      catalog.descriptors,
+      [...systemRequired.tools.always, ...configured.tools],
+      [...systemRequired.skills, ...configured.skills],
+    );
+    const skills: readonly QaSkillAccess[] = resolveSkillAccess({
+      config,
+      descriptors: catalog.skillMetadata,
+      rows: rows.filter(({ type }) => type === "skill"),
+      installedTools: catalog.toolIds,
     });
     return Object.freeze({
       config,
       systemRequired,
-      catalog: withMissingCapabilities(
-        catalog.descriptors,
-        [...systemRequired.tools, ...configured.tools],
-        [...systemRequired.skills, ...configured.skills],
-      ),
+      catalog: rows,
+      skills,
       users: accounts.listAccessUsers((value) =>
         normalizeUserAccess(value, config),
       ),
       audit: this.roles.audit(),
     });
+  }
+
+  /** Replace or clear one skill's administrator overlay. */
+  updateSkillOverride(
+    token: string,
+    input: QaSkillAssignmentOverride,
+  ): readonly QaSkillAssignmentOverride[] {
+    const { actor } = this.requireAdmin(token);
+    return this.roles.updateSkillOverride(actor.id, input);
   }
 
   createSubrole(token: string, input: QaSubrole): QaSubrole {

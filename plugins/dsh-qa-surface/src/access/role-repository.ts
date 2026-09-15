@@ -12,6 +12,7 @@ import type {
   QaAccessAuditEvent,
   QaCapabilityConfig,
   QaCapabilitySelection,
+  QaSkillAssignmentOverride,
   QaSubrole,
 } from "../types.js";
 import {
@@ -20,6 +21,7 @@ import {
   normalizeCapabilitySelection,
   normalizeSubrole,
 } from "./model.js";
+import { normalizeSkillOverride } from "./skill-metadata.js";
 
 interface RoleFile {
   readonly version: 1;
@@ -135,6 +137,43 @@ export class QaRoleRepository {
     const after = normalizeCapabilityConfig({ ...before, common });
     this.replace(actorId, "common.updated", undefined, before, after);
     return common;
+  }
+
+  /**
+   * Replace one skill's administrator overlay.
+   *
+   * An overlay with nothing left to declare is removed outright, so clearing a
+   * row in the administration surface leaves the file as if it was never set.
+   * @param actorId - the administrator performing the change.
+   * @param input - the overlay as edited in the browser.
+   * @returns every overlay in force after the change.
+   */
+  updateSkillOverride(
+    actorId: string,
+    input: QaSkillAssignmentOverride,
+  ): readonly QaSkillAssignmentOverride[] {
+    const before = this.snapshot();
+    const override = normalizeSkillOverride(input);
+    const cleared =
+      override.addToSubroles === undefined &&
+      override.removeFromSubroles === undefined &&
+      override.forceCommon !== true &&
+      override.disabled !== true;
+    const remaining = before.skillOverrides.filter(
+      ({ skillName }) => skillName !== override.skillName,
+    );
+    const after = normalizeCapabilityConfig({
+      ...before,
+      skillOverrides: cleared ? remaining : [...remaining, override],
+    });
+    this.replace(
+      actorId,
+      "skill.assignment-updated",
+      override.skillName,
+      before,
+      after,
+    );
+    return after.skillOverrides;
   }
 
   recordAssignment(
