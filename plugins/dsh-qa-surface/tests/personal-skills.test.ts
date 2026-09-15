@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../src/resolve-config.js";
+import { prepareQaUserWorkspace } from "../src/user-workspace.js";
 import {
   createQaPersonalSkillRemotes,
   normalizeAllowedTools,
@@ -410,6 +411,7 @@ function serviceFor(options: {
 }): {
   readonly service: QaPersonalSkills;
   readonly invalidations: () => number;
+  readonly observed: () => readonly string[];
   readonly context: QaPersonalSkillContext;
 } {
   const config = resolveConfig({
@@ -434,6 +436,7 @@ function serviceFor(options: {
     sources: { enabled: false },
   });
   let invalidations = 0;
+  const observed: string[] = [];
   const context = {
     tools: {
       schemas: () =>
@@ -452,8 +455,12 @@ function serviceFor(options: {
       invalidate: () => {
         invalidations += 1;
       },
+      onRootDiscovered: (root) => {
+        observed.push(root);
+      },
     }),
     invalidations: () => invalidations,
+    observed: () => observed,
     context: { userId: options.userId ?? USER_A },
   };
 }
@@ -492,6 +499,32 @@ describe("personal skill service", () => {
     expect(service.get(context, "api-testing").body).toContain(
       "Send a request",
     );
+  });
+
+  it("materializes the account's skill root before anything is saved", () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "qa-skills-root-"));
+    const { service, observed, context } = serviceFor({ workspace });
+    const skillsRoot = path.join(
+      workspace,
+      ".qa-users",
+      USER_A,
+      ".dsh",
+      "skills",
+    );
+    expect(existsSync(skillsRoot)).toBe(false);
+
+    // The editor's first read meets an account directory that exists and owns
+    // no skills yet: it must leave the tree behind, because the session that
+    // discovers the same account follows exactly that root.
+    expect(service.list(context)).toEqual([]);
+    expect(existsSync(skillsRoot)).toBe(true);
+
+    // The session path provisions the account directory and discovers its
+    // skills in one go — the root is reported only once it is there.
+    const cwd = prepareQaUserWorkspace(workspace, USER_B);
+    expect(service.discover(cwd)).toEqual([]);
+    expect(existsSync(path.join(cwd, ".dsh", "skills"))).toBe(true);
+    expect(observed()).toEqual([path.join(cwd, ".dsh", "skills")]);
   });
 
   it("refuses a duplicate name and keeps a bad draft off the disk", () => {
