@@ -1,3 +1,18 @@
+## 0.6.1 (2026-09-15)
+
+### 🩹 Fixes
+
+- Validate the pinned Workspace and permission preset before creating a durable ([a383035](https://github.com/xarleyn/dsh-plugins/commit/a383035))
+  QA session. Creation failures now retain a coarse `permission-preset` or
+  `workspace-unavailable` reason for browser diagnostics without exposing Host
+  details, and failed attestation no longer marks a session as trusted. Existing
+  chats whose recorded composition predates a deployment config change remain
+  available as read-only transcripts while new chats use the current policy.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.0 (2026-09-15)
 
 ### 🚀 Features
