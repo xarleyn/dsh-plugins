@@ -32,8 +32,12 @@ branch → history → blame → commit — without ever receiving a command lin
   tools use the session working directory. An explicit directory must remain
   inside that directory or an operator-configured `repositoryRoots` entry,
   both before and after Git resolves the work-tree root. Canonical-path checks
-  reject traversal and symlink escapes. Nothing writes to the repository, and
-  no network git command exists in the tool surface.
+  reject traversal and symlink escapes. A selection that names the session
+  directory itself counts as no selection: a session pinned to a directory
+  that is not a repository resolves through the configured root instead of
+  failing, which is what a model echoing its own cwd depends on. Nothing
+  writes to the repository, and no network git command exists in the tool
+  surface.
 - **Bounded, structured output.** Commits, files, blame lines and patches
   come back as structured fields with explicit `truncated` flags, sized so
   one call cannot flood the model context.
@@ -97,9 +101,34 @@ For a QA session rooted at `E:/qa-assistant/workspaces/work` that must inspect
 the sibling checkout, configure the plugin with
 `repositoryRoots: ["E:/qa-assistant/workspaces/code"]`. Because this is the
 only configured root, `dsh_git_context {}` automatically uses it when the
-session cwd is not itself a repository. The model can also pass the absolute
-path explicitly. With multiple configured roots the model must select one;
-the tool parameter and the typed error both list the available roots.
+session cwd is not itself a repository — and so does a call that names the
+session cwd, which is what a model reciting its own working directory sends.
+The model can also pass the absolute path explicitly. With multiple configured
+roots the model must select one; the tool parameter and the typed error both
+list the available roots.
+
+**Configure the row that mounts the tools.** A deployment can mount this
+plugin more than once, and each mount is its own instance with its own
+configuration. An agent preset is the usual second mount: a preset row is
+composed under the session's own scope, so the tools a chat calls are the
+preset instance's — a `repositoryRoots` entry in the profile patch configures
+the operator's harness sessions and is invisible to a preset session. Put the
+roots on the preset's row:
+
+```yaml
+# <DSH_HOME>/.agent-presets/<preset>/agent.cordis.yml
+- id: dsh-git-readonly
+  name: '@yadsh/dsh-git-readonly'
+  config:
+    repositoryRoots:
+      - E:/qa-assistant/workspaces/code
+```
+
+A missing entry is recognizable from the tool itself: the `repository`
+parameter description reports the roots that instance actually has, and a
+refusal says `this row exposes no repository roots`. Editing a live preset
+takes effect for new chats — an already mounted session keeps the composition
+it was created with.
 
 ## Security model
 

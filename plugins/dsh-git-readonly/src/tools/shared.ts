@@ -31,7 +31,8 @@ export function repositoryParameter(config: ResolvedGitReadonlyConfig) {
       "Repository directory. Relative paths start at the session directory and must remain " +
       "inside it or a configured repository root. When omitted, the session repository is used; " +
       "if the session directory is not a repository and exactly one repository root is configured, " +
-      `that root is used automatically. ${configuredRoots}`,
+      "that root is used automatically. Naming the session directory itself is the same as " +
+      `omitting this argument. ${configuredRoots}`,
   };
 }
 

@@ -114,4 +114,17 @@ describe("dsh_git_context", () => {
       }).description,
     ).toContain(repo.dir);
   });
+
+  it("orients a session-directory selection into the configured root", async () => {
+    // A model working in a pinned QA directory tends to name that directory as
+    // the repository. It names no repository, so the deployment's root answers.
+    const tool = makeTool({ repositoryRoots: [repo.dir] });
+    for (const requested of [externalSessionDir, "."]) {
+      const context = (await tool.execute(
+        { repository: requested },
+        makeExec(externalSessionDir),
+      )) as GitContextResult;
+      expect(normalizePath(context.root)).toBe(normalizePath(repo.dir));
+    }
+  });
 });
