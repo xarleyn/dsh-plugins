@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -278,6 +279,100 @@ describe("Nx release commands", () => {
     );
   });
 
+  // The workflow validates a release on more than one runner, and the versioned
+  // tree reaches them as a patch of the release commit: that commit only ever
+  // exists on the runner that created it. A commit nx cannot replay would leave
+  // the other jobs verifying, packing and eventually pushing the previous
+  // versions, and a release that kept the plans it consumed would apply them
+  // again on the next run.
+  test("the release commit replays in a checkout that does not have it yet", () => {
+    const root = createFixture({ withVersionPlan: true });
+    const base = run("git", ["rev-parse", "HEAD"], root).stdout.trim();
+    assertSucceeded(runNx(root, "release", "--skip-publish"), "nx release");
+
+    // Nx removes the consumed version plans outside its own commit; the
+    // workflow stages the workspace and folds that into the release commit
+    // before it travels.
+    const staged = run("git", ["status", "--porcelain"], root).stdout;
+    assert.match(
+      staged,
+      / D \.nx\/version-plans\/release-test\.md/u,
+      "the fixture must exercise the plan removal Nx leaves uncommitted",
+    );
+    assertSucceeded(run("git", ["add", "--all"], root), "git add --all");
+    assertSucceeded(
+      run("git", ["commit", "--amend", "--no-edit"], root),
+      "git commit --amend",
+    );
+    const releasedSubject = run(
+      "git",
+      ["log", "-1", "--format=%s"],
+      root,
+    ).stdout.trim();
+
+    const patch = run(
+      "git",
+      ["format-patch", "--stdout", `${base}..HEAD`],
+      root,
+    ).stdout;
+    assert.match(patch, /^From [0-9a-f]{40} /mu, "format-patch output");
+
+    // A later job gets a fresh checkout of the released ref, which does not
+    // carry the release commit.
+    const checkout = mkdtempSync(path.join(tmpdir(), "dsh-release-checkout-"));
+    fixtures.push(checkout);
+    assertSucceeded(
+      run("git", ["clone", "--quiet", root, checkout], tmpdir()),
+      "git clone",
+    );
+    assertSucceeded(
+      run("git", ["reset", "--quiet", "--hard", "HEAD~1"], checkout),
+      "git reset",
+    );
+    for (const args of [
+      ["config", "user.name", "Release Test"],
+      ["config", "user.email", "release-test@example.com"],
+    ]) {
+      assertSucceeded(run("git", args, checkout), `git ${args.join(" ")}`);
+    }
+
+    // The workflow hands the patch to the other jobs from outside the
+    // workspace, so the replay leaves the checkout clean.
+    const patchDirectory = mkdtempSync(
+      path.join(tmpdir(), "dsh-release-patch-"),
+    );
+    fixtures.push(patchDirectory);
+    const patchFile = path.join(patchDirectory, "release-commit.patch");
+    writeFileSync(patchFile, patch);
+    assertSucceeded(run("git", ["am", patchFile], checkout), "git am");
+
+    assert.match(
+      readFileSync(
+        path.join(checkout, "packages", "release-package", "package.json"),
+        "utf8",
+      ),
+      /"version": "1\.0\.1"/u,
+      "the replayed commit must carry the resolved version",
+    );
+    assert.equal(
+      existsSync(
+        path.join(checkout, ".nx", "version-plans", "release-test.md"),
+      ),
+      false,
+      "the replayed commit must consume the version plans",
+    );
+    assert.equal(
+      run("git", ["log", "-1", "--format=%s"], checkout).stdout.trim(),
+      releasedSubject,
+      "the replayed commit must keep the message nx wrote",
+    );
+    assert.equal(
+      run("git", ["status", "--porcelain"], checkout).stdout.trim(),
+      "",
+      "the replayed commit must leave no uncommitted change behind",
+    );
+  });
+
   test("the repository release config stops creating per-project tags", () => {
     const nxConfig = JSON.parse(
       readFileSync(path.join(repositoryRoot, "nx.json"), "utf8"),
@@ -437,6 +532,194 @@ describe("Nx release commands", () => {
     );
     assert.match(workflow, /if ! npm publish "\$\{args\[@\]\}"; then/u);
     assert.match(workflow, /Failed to publish %d package\(s\)/u);
+  });
+});
+
+describe("release workflow fan-out", () => {
+  function releaseWorkflow() {
+    return readFileSync(
+      path.join(repositoryRoot, ".github", "workflows", "release.yml"),
+      "utf8",
+    );
+  }
+
+  test("the release fans the released packages out and sweeps the rest", () => {
+    const workflow = releaseWorkflow();
+
+    assert.match(workflow, /--format=release-matrix/u);
+    assert.match(
+      workflow,
+      /DSH_ALL_PROJECTS_JSON="\$\(pnpm nx show projects --json\)"/u,
+    );
+    assert.match(
+      workflow,
+      /matrix: \$\{\{ fromJSON\(needs\.prepare\.outputs\.matrix\) \}\}/u,
+    );
+    assert.match(workflow, /max-parallel: 6/u);
+    assert.match(
+      workflow,
+      /NX_PROJECT: \$\{\{ matrix\.project \}\}\s+run: pnpm nx run-many -t lint typecheck test build verify --projects="\$NX_PROJECT" --output-style=static/u,
+    );
+    assert.match(
+      workflow,
+      /if: needs\.prepare\.outputs\.gates_projects != ''\s+env:\s+NX_PROJECTS: \$\{\{ needs\.prepare\.outputs\.gates_projects \}\}\s+run: pnpm nx run-many -t lint typecheck test build verify --projects="\$NX_PROJECTS" --output-style=static/u,
+    );
+
+    // The sequential pass over the whole workspace this replaces is what cost a
+    // release minutes of a single runner's time; a released package is verified
+    // by its own job and every other project by the sweep beside it.
+    assert.doesNotMatch(workflow, /pnpm check/u);
+
+    const jobs = [
+      "name: Prepare the release",
+      "name: Repository gates",
+      "name: Package /",
+      "name: Publish the release",
+    ].map((name) => {
+      const index = workflow.indexOf(name);
+      assert.notEqual(index, -1, `the workflow has no "${name}" job`);
+      return index;
+    });
+    assert.ok(
+      jobs[0] < jobs[1] && jobs[1] < jobs[3],
+      "the repository gates run between prepare and publish",
+    );
+    assert.ok(
+      jobs[0] < jobs[2] && jobs[2] < jobs[3],
+      "the package matrix runs between prepare and publish",
+    );
+  });
+
+  test("the release verifies the same repository gates the PR workflow runs", () => {
+    const workflow = releaseWorkflow();
+
+    for (const step of [
+      "Check dependency boundaries",
+      "Lint repository tooling",
+      "Check formatting",
+      "Verify plugin logging contract",
+      "Verify publishable plugin package hygiene",
+      "Test repository tooling",
+    ]) {
+      assert.ok(
+        workflow.includes(`- name: ${step}`),
+        `the release must run "${step}"`,
+      );
+    }
+  });
+
+  test("the release commit and the tarballs travel between the jobs", () => {
+    const workflow = releaseWorkflow();
+
+    assert.match(
+      workflow,
+      /git rev-parse HEAD > "\$RUNNER_TEMP\/release-base\.sha"/u,
+    );
+    assert.match(
+      workflow,
+      /git format-patch --stdout "\$base"\.\.HEAD > "\$RUNNER_TEMP\/release-commit\.patch"/u,
+    );
+    // Nx leaves the consumed version plans outside its commit, so the workflow
+    // stages the workspace and folds them in - but only ever into a commit this
+    // run created: the base commit is pushed already.
+    assert.match(
+      workflow,
+      /git add --all\s+if ! git diff --cached --quiet; then\s+if \[\[ "\$\(git rev-parse HEAD\)" == "\$base" \]\]/u,
+    );
+    assert.match(
+      workflow,
+      /name: release-commit\s+path: \$\{\{ runner\.temp \}\}\/release-commit\.patch\s+if-no-files-found: error/u,
+    );
+    assert.equal(
+      (workflow.match(/git am "\$RUNNER_TEMP\/release-commit\.patch"/gu) ?? [])
+        .length,
+      3,
+      "the gates, the package matrix and the publish job must all replay the release commit",
+    );
+
+    assert.match(
+      workflow,
+      /name: npm-tarball-\$\{\{ matrix\.slug \}\}\s+path: \$\{\{ github\.workspace \}\}\/tarballs\/\*\.tgz/u,
+    );
+    assert.match(
+      workflow,
+      /pattern: npm-tarball-\*\s+path: \$\{\{ github\.workspace \}\}\/tarballs\s+merge-multiple: true/u,
+    );
+    // An artifact is immutable within a run, so a rerun of one job would fail
+    // to replace its own without this.
+    assert.equal(
+      (workflow.match(/overwrite: true/gu) ?? []).length,
+      3,
+      "every artifact upload must be able to replace itself on a rerun",
+    );
+  });
+
+  test("a preview resolves no matrix and keeps every later job skipped", () => {
+    const workflow = releaseWorkflow();
+
+    assert.match(
+      workflow,
+      /printf 'count=0\\nprojects=\\ngates_projects=\\nmatrix=\{"include":\[\]\}\\n' >> "\$GITHUB_OUTPUT"/u,
+    );
+  });
+
+  test("the release matrix names a released package per job", () => {
+    const output = run(
+      process.execPath,
+      [
+        path.join(repositoryRoot, "scripts", "workspace-packages.mjs"),
+        "--format=release-matrix",
+        "--require",
+      ],
+      repositoryRoot,
+      {
+        env: {
+          DSH_PROJECTS_JSON: JSON.stringify([
+            "plugins/dsh-qa-surface",
+            "@yadsh/dsh-cas-results",
+          ]),
+          DSH_ALL_PROJECTS_JSON: JSON.stringify([
+            "@yadsh/dsh-cas-results",
+            "@yadsh/dsh-config",
+            "@yadsh/dsh-plugin-generator",
+            "@yadsh/dsh-qa-surface",
+          ]),
+        },
+      },
+    );
+    assertSucceeded(output, "workspace-packages.mjs --format=release-matrix");
+
+    const fields = new Map(
+      output.stdout
+        .trim()
+        .split("\n")
+        .map((line) => line.split(/=(.*)/su).slice(0, 2)),
+    );
+
+    assert.equal(fields.get("count"), "2");
+    assert.equal(
+      fields.get("projects"),
+      "@yadsh/dsh-cas-results,@yadsh/dsh-qa-surface",
+    );
+    assert.equal(
+      fields.get("gates_projects"),
+      "@yadsh/dsh-config,@yadsh/dsh-plugin-generator",
+      "the sweep must keep the projects the release does not publish",
+    );
+    assert.deepEqual(JSON.parse(fields.get("matrix")), {
+      include: [
+        {
+          project: "@yadsh/dsh-cas-results",
+          directory: "plugins/dsh-cas-results",
+          slug: "dsh-cas-results",
+        },
+        {
+          project: "@yadsh/dsh-qa-surface",
+          directory: "plugins/dsh-qa-surface",
+          slug: "dsh-qa-surface",
+        },
+      ],
+    });
   });
 });
 
