@@ -728,7 +728,8 @@ The implementation should reuse as much semantics as possible from upstream `dsh
 - bounded byte reads;
 - charset detection;
 - text MIME classification;
-- binary rejection;
+- binary rejection — except office documents whose text the rule's `documents`
+  section allows extracting (§15.3);
 - same-origin redirect semantics;
 - non-2xx responses represented as fetch results rather than transport exceptions where appropriate.
 
@@ -816,6 +817,22 @@ With Jira-specific fields shown only when selected.
 The Confluence adapter serves every page URL form Confluence itself produces: `/pages/<id>/…`, `/display/<SPACE>/<Title>`, and the link in the address bar and in "copy link" — `<context>/pages/viewpage.action?pageId=<id>`, with its legacy `?spaceKey=<key>&title=<title>` variant. A URL form the adapter cannot map falls through to raw HTTP/HTML, so a page reached through an unrecognized link arrives as the full wiki page (header, menus, breadcrumbs, footer) rather than as normalized text: the recognized forms are the contract, and the adapter's URL reader is the single place that defines them.
 
 A Confluence storage body carries page chrome beside the prose, and how much of it a caller wants to see is a preference, not a constant. The Confluence adapter therefore takes a per-rule `cleanup` level — `off` (keep every marker), `balanced` (default: drop navigation/aggregation macros, keep links, media, and emoticons), `strict` (readable content only) — and renders the readable content identically at every level. The level is edited in the rule editor beside the adapter type and stored under `adapter.cleanup`.
+
+---
+
+## 15.3 Attachments and document text
+
+A Confluence body refers to an attachment by filename only (`<ri:attachment ri:filename>`, and through the viewer macros `view-file`/`viewdoc`/`viewpdf`/`viewppt`/`viewxls`). A filename is not actionable: the model sees "read the attached regulation" and has nothing to fetch. The adapter therefore (a) resolves every attachment reference into the canonical download URL (`<context>/download/attachments/<pageId>/<encoded filename>?api=v2`, which needs only the page id and the name) and (b) appends the page's attachment collection — `/rest/api/content/<id>/child/attachment` — as an `## Attachments` list with name, media type, size, and the link Confluence itself returned when it did. The collection request is best effort: a failure leaves the prose intact and adds `_[attachment list unavailable]_`. `adapter.maxAttachments` (default 50) caps the list; `0` disables it. `cleanup: strict` carries no attachment links or list, because the level's `media` policy covers both. When Jira and Confluence share a hostname, the deployment needs one rule per product with non-overlapping `allowPaths`, since a rule carries exactly one adapter.
+
+Downloading an attachment is where the seam, not the adapter, decides: `WebFetchBody` in `@deepseek-ai/dsh-web` is a closed `html | text` union, so no provider can return bytes and a new arm is a coordinated upstream change. The only way an attachment becomes readable is therefore extraction inside the provider, and that is what the per-rule `documents` section enables (globally defaulted, per rule overridable):
+
+- the transport reads the capped body, and when the response is a non-text type whose media type, filename extension, and archive content agree on Word (`.docx`/`.docm`/`.dotx`) or OpenDocument (`.odt`), it inflates the one XML part that holds the body text and renders Markdown from it — headings, paragraphs, list items, tables; field codes, deleted revisions, comments, drawings, and footnotes are dropped. No external binary and no temporary file is involved;
+- the result is a `text` body with a provenance line naming the file and its format, so the model can attribute what it read;
+- `documents.maxBytes` (default 4 MiB) bounds the download and `documents.maxChars` (default 40000) bounds what the document may add to the conversation; exceeding the byte cap is `AUTH_FETCH_DOCUMENT_TOO_LARGE` and a shortened text carries an explicit truncation line plus `truncated: true`;
+- a document format the plugin does not extract (`.pdf`, legacy `.doc`, spreadsheets, presentations, archives) is refused with `AUTH_FETCH_DOCUMENT_UNREADABLE` and a reason that names the format, instead of the bare `AUTH_FETCH_UNSUPPORTED_CONTENT` the raw path would produce;
+- bytes that only claim to be a document (an HTML error page served as a download) are `AUTH_FETCH_DOCUMENT_UNREADABLE` too, because returning mojibake as text would be worse than refusing.
+
+`documents.enabled: false` restores the plain behavior exactly: any non-text body is `AUTH_FETCH_UNSUPPORTED_CONTENT`. The connection tester runs the extraction as well, so Test on an attachment URL shows what the model would receive.
 
 ---
 

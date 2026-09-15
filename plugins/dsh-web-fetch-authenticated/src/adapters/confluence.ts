@@ -13,6 +13,16 @@
  * of it survives into the Markdown is the rule's `adapter.cleanup` level
  * ({@link CleanupLevel}); the readable content — headings, text, lists,
  * tables, code — is rendered the same way at every level.
+ *
+ * Attachments are the one thing a page body cannot say by itself: the storage
+ * format records a filename and nothing else (`<ri:attachment ri:filename>`),
+ * so an attachment reference used to reach the model as a bare name it could
+ * do nothing with. The adapter therefore resolves every attachment reference
+ * into its download URL, and appends the page's attachment list — the same
+ * list Confluence's own "Attachments" view shows — so a document the prose
+ * mentions but the body does not link is still reachable. Whether attachments
+ * are served at all follows the cleanup level's `media` policy: `strict` drops
+ * them, like every other auxiliary marker.
  * @module adapters/confluence
  */
 
@@ -119,6 +129,140 @@ export function contentLookupUrl(
   return url;
 }
 
+/** REST URL of one page's attachment collection. */
+export function contentAttachmentsUrl(
+  origin: string,
+  prefix: string,
+  pageId: string,
+  limit: number,
+): URL {
+  const url = new URL(`${prefix}/content/${pageId}/child/attachment`, origin);
+  url.searchParams.set("limit", String(limit));
+  url.searchParams.set("expand", "version,metadata");
+  return url;
+}
+
+/**
+ * Deployment context path a download URL hangs off: `/wiki` for a Cloud URL or
+ * a Server instance mounted under a context path, otherwise the origin root.
+ */
+export function attachmentContextPath(pathname: string): string {
+  return restPrefix(pathname).replace(/\/rest\/api$/u, "");
+}
+
+/**
+ * Download URL of one attachment. Confluence serves attachments from a fixed
+ * path that needs the page id and the file name, so a reference in the body is
+ * enough to build it — no extra request per file.
+ */
+export function attachmentDownloadUrl(
+  origin: string,
+  contextPath: string,
+  pageId: string,
+  filename: string,
+): string {
+  return `${origin}${contextPath}/download/attachments/${pageId}/${encodeURIComponent(filename)}?api=v2`;
+}
+
+/**
+ * Resolves an attachment filename found in a page body to its download URL.
+ * `undefined` means the reference cannot be turned into a link (the page id is
+ * unknown), and the caller keeps the plain-name marker instead.
+ */
+export type AttachmentLinks = (filename: string) => string | undefined;
+
+/** One entry of the attachment collection, as far as the adapter reads it. */
+interface AttachmentEntry {
+  readonly filename: string;
+  readonly mediaType?: string;
+  readonly bytes?: number;
+  readonly link?: string;
+}
+
+interface AttachmentCollection {
+  readonly entries: readonly AttachmentEntry[];
+  readonly truncated: boolean;
+}
+
+/** Read the attachment collection response into entries the section renders. */
+export function parseAttachmentCollection(
+  data: unknown,
+  context: {
+    readonly origin: string;
+    readonly contextPath: string;
+    readonly pageId: string;
+    readonly maxAttachments: number;
+  },
+): AttachmentCollection {
+  const results = asRecord(data)?.results;
+  if (!Array.isArray(results)) return { entries: [], truncated: false };
+  const entries: AttachmentEntry[] = [];
+  for (const item of results) {
+    const record = asRecord(item);
+    const filename =
+      typeof record?.title === "string" ? record.title.trim() : "";
+    if (filename.length === 0) continue;
+    const mediaType = asRecord(record?.metadata)?.mediaType;
+    const extensions = asRecord(record?.extensions);
+    const links = asRecord(record?._links);
+    entries.push({
+      filename,
+      ...(typeof mediaType === "string" ? { mediaType } : {}),
+      ...(typeof extensions?.fileSize === "number"
+        ? { bytes: extensions.fileSize }
+        : {}),
+      link: attachmentEntryUrl(
+        { link: links?.download, base: links?.base },
+        context,
+        filename,
+      ),
+    });
+  }
+  const truncated = entries.length > context.maxAttachments;
+  return {
+    entries: truncated ? entries.slice(0, context.maxAttachments) : entries,
+    truncated,
+  };
+}
+
+/**
+ * Prefer the link Confluence itself returned (it carries the version and
+ * modification date); fall back to the canonical download path.
+ */
+function attachmentEntryUrl(
+  links: { readonly link?: unknown; readonly base?: unknown },
+  context: {
+    readonly origin: string;
+    readonly contextPath: string;
+    readonly pageId: string;
+  },
+  filename: string,
+): string {
+  if (typeof links.link === "string" && links.link.length > 0) {
+    try {
+      const base =
+        typeof links.base === "string" && links.base.length > 0
+          ? links.base
+          : `${context.origin}${context.contextPath}/`;
+      return new URL(links.link, base).toString();
+    } catch {
+      // Fall through to the canonical path below.
+    }
+  }
+  return attachmentDownloadUrl(
+    context.origin,
+    context.contextPath,
+    context.pageId,
+    filename,
+  );
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 interface ContentResult {
   readonly id?: unknown;
   readonly title?: unknown;
@@ -126,6 +270,9 @@ interface ContentResult {
   readonly version?: { readonly when?: unknown; readonly number?: unknown };
   readonly body?: { readonly storage?: { readonly value?: unknown } };
 }
+
+/** Attachment outcome: a collection, or `"unavailable"` when the list failed. */
+type AttachmentLookup = AttachmentCollection | "unavailable";
 
 /** Fetch a Confluence page and normalize it into Markdown text. */
 export async function fetchPageMarkdown(
@@ -166,8 +313,66 @@ export async function fetchPageMarkdown(
     };
   }
   const page = asContent(response.data);
-  const markdown = renderPage(page, adapter.cleanup);
-  return { statusCode: response.statusCode, markdown };
+  const pageId =
+    typeof page.id === "string" || typeof page.id === "number"
+      ? String(page.id)
+      : ref.id;
+  const cleanup = adapter.cleanup;
+  const media = (CLEANUP_POLICIES[cleanup] ?? CLEANUP_POLICIES.balanced).media;
+  const linkable = media && pageId !== undefined;
+  return {
+    statusCode: response.statusCode,
+    markdown: renderPage(
+      page,
+      cleanup,
+      linkable
+        ? (filename) =>
+            attachmentDownloadUrl(
+              requestUrl.origin,
+              attachmentContextPath(requestUrl.pathname),
+              pageId,
+              filename,
+            )
+        : undefined,
+      linkable && adapter.maxAttachments > 0
+        ? await loadAttachments(requestUrl, pageId, adapter, fetchJson)
+        : undefined,
+    ),
+  };
+}
+
+/**
+ * Read the page's attachment collection. A failure here must never cost the
+ * page: the caller renders the prose either way, and reports the missing list
+ * as a marker.
+ */
+async function loadAttachments(
+  requestUrl: URL,
+  pageId: string,
+  adapter: ResolvedAdapter,
+  fetchJson: FetchJson,
+): Promise<AttachmentLookup> {
+  const limit = Math.min(Math.max(adapter.maxAttachments, 1), 100);
+  try {
+    const response = await fetchJson(
+      contentAttachmentsUrl(
+        requestUrl.origin,
+        restPrefix(requestUrl.pathname),
+        pageId,
+        limit,
+      ),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300)
+      return "unavailable";
+    return parseAttachmentCollection(response.data, {
+      origin: requestUrl.origin,
+      contextPath: attachmentContextPath(requestUrl.pathname),
+      pageId,
+      maxAttachments: adapter.maxAttachments,
+    });
+  } catch {
+    return "unavailable";
+  }
 }
 
 function asContent(data: unknown): ContentResult {
@@ -185,7 +390,12 @@ function asContent(data: unknown): ContentResult {
   return record;
 }
 
-function renderPage(page: ContentResult, cleanup: CleanupLevel): string {
+function renderPage(
+  page: ContentResult,
+  cleanup: CleanupLevel,
+  links: AttachmentLinks | undefined,
+  attachments: AttachmentLookup | undefined,
+): string {
   const lines: string[] = [];
   const title =
     typeof page.title === "string" && page.title.length > 0
@@ -212,10 +422,53 @@ function renderPage(page: ContentResult, cleanup: CleanupLevel): string {
   }
   const storage = page.body?.storage?.value;
   if (typeof storage === "string" && storage.trim().length > 0) {
-    lines.push(storageToMarkdown(storage, cleanup));
+    lines.push(storageToMarkdown(storage, cleanup, links));
     lines.push("");
   }
+  const policy = CLEANUP_POLICIES[cleanup] ?? CLEANUP_POLICIES.balanced;
+  if (policy.media && attachments !== undefined) {
+    const section = renderAttachments(attachments);
+    // A page without attachments says nothing about them: the section exists
+    // only when it gives the model something to fetch, or reports that the
+    // list could not be read.
+    if (section.length > 0) {
+      lines.push(section);
+      lines.push("");
+    }
+  }
   return lines.join("\n").trimEnd();
+}
+
+/**
+ * The page's attachments, in the one form the model can act on: a name, what it
+ * is, how big it is, and the URL that downloads it. Bodies mention attachments
+ * by filename only, so this list is what turns "see the attached regulation"
+ * into something fetchable.
+ */
+function renderAttachments(lookup: AttachmentLookup): string {
+  if (lookup === "unavailable")
+    return "## Attachments\n\n_[attachment list unavailable]_";
+  if (lookup.entries.length === 0) return "";
+  const lines = ["## Attachments", ""];
+  for (const entry of lookup.entries) {
+    const facts = [
+      entry.bytes === undefined
+        ? undefined
+        : formatAttachmentBytes(entry.bytes),
+      entry.mediaType,
+    ].filter((fact): fact is string => fact !== undefined && fact.length > 0);
+    const suffix = facts.length > 0 ? ` — ${facts.join(", ")}` : "";
+    lines.push(`- [${entry.filename}](${entry.link ?? ""})${suffix}`);
+  }
+  if (lookup.truncated)
+    lines.push("", `_[list capped at ${lookup.entries.length} attachments]_`);
+  return lines.join("\n");
+}
+
+function formatAttachmentBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 // ---- Confluence storage-format XHTML → Markdown ----
@@ -268,11 +521,12 @@ const CLEANUP_POLICIES: Readonly<Record<CleanupLevel, CleanupPolicy>> =
 export function storageToMarkdown(
   storage: string,
   cleanup: CleanupLevel = "balanced",
+  links?: AttachmentLinks,
 ): string {
   // A level that reaches here from an unvalidated config still renders.
   const policy = CLEANUP_POLICIES[cleanup] ?? CLEANUP_POLICIES.balanced;
   const nodes = parseMarkup(storage);
-  const blocks = renderBlocks(nodes, policy);
+  const blocks = renderBlocks(nodes, policy, links);
   return polish(blocks, policy);
 }
 
@@ -356,6 +610,19 @@ const CALLOUT_MACROS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Macros that embed a document in a viewer rather than listing it. The page
+ * still means "read this attachment", and the model can only do that with a
+ * URL, so these render as attachment links (SPEC §15.2).
+ */
+const DOCUMENT_VIEW_MACROS: ReadonlySet<string> = new Set([
+  "view-file",
+  "viewdoc",
+  "viewpdf",
+  "viewppt",
+  "viewxls",
+]);
+
+/**
  * Macros that aggregate or navigate (a table of contents, a child-page list,
  * attachments, search widgets). They carry no page content of their own, so
  * `balanced` and `strict` drop them.
@@ -391,8 +658,6 @@ const NAVIGATION_MACROS: ReadonlySet<string> = new Set([
   "tasks-report",
   "timeline",
   "toc",
-  "view-file",
-  "viewpdf",
   "widget",
   "widget-connector",
 ]);
@@ -407,6 +672,7 @@ const INCLUDE_MACROS: ReadonlySet<string> = new Set([
 function renderBlocks(
   nodes: readonly MarkupNode[],
   policy: CleanupPolicy,
+  links?: AttachmentLinks,
 ): string[] {
   const out: string[] = [];
   let inlineBuffer: string[] = [];
@@ -421,11 +687,11 @@ function renderBlocks(
       continue;
     }
     if (INLINE_ELEMENTS.has(node.name)) {
-      inlineBuffer.push(renderInlineElement(node, policy));
+      inlineBuffer.push(renderInlineElement(node, policy, links));
       continue;
     }
     flush();
-    out.push(...renderBlockElement(node, policy));
+    out.push(...renderBlockElement(node, policy, links));
   }
   flush();
   return out.filter((block) => block.length > 0);
@@ -434,10 +700,11 @@ function renderBlocks(
 function renderBlockElement(
   node: MarkupElement,
   policy: CleanupPolicy,
+  links?: AttachmentLinks,
 ): string[] {
   switch (node.name) {
     case "p": {
-      const text = renderInline(node.children, policy)
+      const text = renderInline(node.children, policy, links)
         .replace(/\s+/gu, " ")
         .trim();
       return text.length === 0 ? [] : [text];
@@ -448,7 +715,7 @@ function renderBlockElement(
     case "h4":
     case "h5":
     case "h6": {
-      const text = renderInline(node.children, policy).trim();
+      const text = renderInline(node.children, policy, links).trim();
       return text.length === 0
         ? []
         : [`${"#".repeat(Number(node.name.slice(1)))} ${text}`];
@@ -457,10 +724,12 @@ function renderBlockElement(
     case "ol":
       // One block: a blank line between items would break the list apart.
       return [
-        renderList(node, node.name === "ol" ? 1 : 0, 0, policy).join("\n"),
+        renderList(node, node.name === "ol" ? 1 : 0, 0, policy, links).join(
+          "\n",
+        ),
       ];
     case "blockquote": {
-      const inner = renderBlocks(node.children, policy).join("\n\n");
+      const inner = renderBlocks(node.children, policy, links).join("\n\n");
       return inner.length === 0
         ? []
         : [
@@ -476,17 +745,19 @@ function renderBlockElement(
       ];
     case "table": {
       // One block: blank lines between rows would split the table in two.
-      const rows = renderTable(node, policy);
+      const rows = renderTable(node, policy, links);
       return rows.length === 0 ? [] : [rows.join("\n")];
     }
     case "hr":
       return ["---"];
     case "ac:task-list": {
-      const tasks = renderTaskList(node, policy);
+      const tasks = renderTaskList(node, policy, links);
       return tasks.length === 0 ? [] : [tasks.join("\n")];
     }
     case "ac:structured-macro":
-      return [renderMacro(node, policy)].filter((block) => block.length > 0);
+      return [renderMacro(node, policy, links)].filter(
+        (block) => block.length > 0,
+      );
     case "ac:layout":
     case "ac:layout-section":
     case "ac:layout-cell":
@@ -498,39 +769,40 @@ function renderBlockElement(
     case "tbody":
     case "thead":
     case "tfoot":
-      return renderBlocks(node.children, policy);
+      return renderBlocks(node.children, policy, links);
     default:
       // Unknown block elements: keep their text so content is never dropped.
-      return renderBlocks(node.children, policy);
+      return renderBlocks(node.children, policy, links);
   }
 }
 
 function renderInlineElement(
   node: MarkupElement,
   policy: CleanupPolicy,
+  links?: AttachmentLinks,
 ): string {
   switch (node.name) {
     case "br":
       return "  \n";
     case "a": {
       const href = node.attrs.href ?? "";
-      const text = renderInline(node.children, policy).trim();
+      const text = renderInline(node.children, policy, links).trim();
       if (href.length === 0) return text;
       return `[${text.length > 0 ? text : href}](${href})`;
     }
     case "strong":
     case "b": {
-      const text = renderInline(node.children, policy).trim();
+      const text = renderInline(node.children, policy, links).trim();
       return text.length === 0 ? "" : `**${text}**`;
     }
     case "em":
     case "i": {
-      const text = renderInline(node.children, policy).trim();
+      const text = renderInline(node.children, policy, links).trim();
       return text.length === 0 ? "" : `*${text}*`;
     }
     case "s":
     case "strike": {
-      const text = renderInline(node.children, policy).trim();
+      const text = renderInline(node.children, policy, links).trim();
       return text.length === 0 ? "" : `~~${text}~~`;
     }
     case "code":
@@ -543,24 +815,64 @@ function renderInlineElement(
       return node.attrs["ac:name"] ?? "";
     }
     case "ac:link":
-      return renderAcLink(node, policy);
+      return renderAcLink(node, policy, links);
     case "ac:placeholder":
       return "";
     case "ac:image":
+      return renderImage(node, policy, links);
     case "ri:attachment": {
-      if (!policy.media) return "";
-      const name =
-        node.attrs["ri:filename"] ??
-        findDescendantAttr(node, "ri:attachment", "ri:filename") ??
-        "attachment";
-      return `_[${name}]_`;
+      const name = node.attrs["ri:filename"] ?? "attachment";
+      return renderAttachmentReference(name, policy, links);
     }
     default:
-      return renderInline(node.children, policy);
+      return renderInline(node.children, policy, links);
   }
 }
 
-function renderAcLink(node: MarkupElement, policy: CleanupPolicy): string {
+/**
+ * An image embedded in the page: a link when it is an attachment, the storage
+ * URL when it is external. Never a bare `_[file.png]_` — the model cannot fetch
+ * a name, and an attachment it cannot fetch is not worth a line of context.
+ */
+function renderImage(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string {
+  const filename = attachmentNameOf(node);
+  if (filename !== undefined)
+    return renderAttachmentReference(filename, policy, links);
+  const external = findDescendantAttr(node, "ri:url", "ri:value");
+  if (typeof external === "string" && external.length > 0)
+    return `![](${external})`;
+  return "";
+}
+
+/** `[name](url)` for an attachment, or the plain-name marker when unresolvable. */
+function renderAttachmentReference(
+  name: string,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string {
+  if (!policy.media) return "";
+  const href = links?.(name);
+  if (href !== undefined && href.length > 0) return `[${name}](${href})`;
+  return `_[${name}]_`;
+}
+
+/** Filename of the attachment an element points at, if any. */
+function attachmentNameOf(node: MarkupElement): string | undefined {
+  const direct =
+    node.attrs["ri:filename"] ??
+    findDescendantAttr(node, "ri:attachment", "ri:filename");
+  return typeof direct === "string" && direct.length > 0 ? direct : undefined;
+}
+
+function renderAcLink(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string {
   const body = node.children.find(
     (child) =>
       isElement(child) &&
@@ -572,7 +884,12 @@ function renderAcLink(node: MarkupElement, policy: CleanupPolicy): string {
     label =
       body.name === "ac:plain-text-link-body"
         ? textContent(body.children).trim()
-        : renderInline(body.children, policy).trim();
+        : renderInline(body.children, policy, links).trim();
+  }
+  const attachment = attachmentNameOf(node);
+  if (attachment !== undefined) {
+    const text = label !== undefined && label.length > 0 ? label : attachment;
+    return renderAttachmentReference(text, policy, links);
   }
   const pageRef = findDescendantAttr(node, "ri:page", "ri:content-title");
   const anchor = node.attrs["ac:anchor"];
@@ -644,11 +961,16 @@ function macroParts(node: MarkupElement): MacroParts {
 }
 
 /** Render one `ac:structured-macro` to a Markdown block. */
-function renderMacro(node: MarkupElement, policy: CleanupPolicy): string {
+function renderMacro(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string {
   const name = node.attrs["ac:name"] ?? "macro";
   const parts = macroParts(node);
   const title = (parts.params.get("title") ?? "").trim();
-  const body = (): string => renderBlocks(parts.body, policy).join("\n\n");
+  const body = (): string =>
+    renderBlocks(parts.body, policy, links).join("\n\n");
   // Code macros are the ones the model actually needs verbatim.
   if (name === "code") {
     const language = (
@@ -669,6 +991,13 @@ function renderMacro(node: MarkupElement, policy: CleanupPolicy): string {
     // A status badge is content: it reads as a bold label inline.
     const label = (title.length > 0 ? title : plainBody(parts)).trim();
     return label.length === 0 ? "" : `**${label}**`;
+  }
+  if (DOCUMENT_VIEW_MACROS.has(name)) {
+    // An embedded Office/PDF document: the macro shows a viewer, the page means
+    // "read this attachment". Link it so the model can fetch it.
+    const filename = attachmentNameOf(node) ?? title;
+    if (filename.length === 0) return "";
+    return renderAttachmentReference(filename, policy, links);
   }
   if (CONTAINER_MACROS.has(name)) {
     return joinBlocks(title.length > 0 ? `**${title}**` : "", body());
@@ -749,6 +1078,7 @@ function renderList(
   ordered: number | 0,
   depth: number,
   policy: CleanupPolicy,
+  links?: AttachmentLinks,
 ): string[] {
   const out: string[] = [];
   let index = 0;
@@ -765,12 +1095,18 @@ function renderList(
         continue;
       }
       if (INLINE_ELEMENTS.has(part.name) || part.name === "p")
-        inline.push(renderInlineElement(part, policy));
+        inline.push(renderInlineElement(part, policy, links));
       else if (part.name === "ul" || part.name === "ol")
         nested.push(
-          ...renderList(part, part.name === "ol" ? 1 : 0, depth + 1, policy),
+          ...renderList(
+            part,
+            part.name === "ol" ? 1 : 0,
+            depth + 1,
+            policy,
+            links,
+          ),
         );
-      else nested.push(...renderBlockElement(part, policy));
+      else nested.push(...renderBlockElement(part, policy, links));
     }
     const text = inline.join("").trim();
     out.push(`${"  ".repeat(depth)}${marker} ${text}`);
@@ -783,7 +1119,11 @@ function renderList(
  * Task lists render as Markdown checkboxes: the task text is page content and
  * its completion state is the only thing the macro adds.
  */
-function renderTaskList(node: MarkupElement, policy: CleanupPolicy): string[] {
+function renderTaskList(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string[] {
   const out: string[] = [];
   for (const child of node.children) {
     if (!isElement(child) || child.name !== "ac:task") continue;
@@ -792,7 +1132,7 @@ function renderTaskList(node: MarkupElement, policy: CleanupPolicy): string[] {
       (part) => isElement(part) && part.name === "ac:task-body",
     );
     const text = isElement(body)
-      ? renderBlocks(body.children, policy)
+      ? renderBlocks(body.children, policy, links)
           .join(" ")
           .replace(/\s+/gu, " ")
           .trim()
@@ -814,7 +1154,11 @@ function findElementText(node: MarkupElement, name: string): string {
   return "";
 }
 
-function renderTable(node: MarkupElement, policy: CleanupPolicy): string[] {
+function renderTable(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string[] {
   const rows: string[][] = [];
   for (const child of node.children) {
     if (!isElement(child) || child.name !== "tr") {
@@ -826,12 +1170,12 @@ function renderTable(node: MarkupElement, policy: CleanupPolicy): string[] {
       ) {
         for (const row of child.children) {
           if (isElement(row) && row.name === "tr")
-            rows.push(rowCells(row, policy));
+            rows.push(rowCells(row, policy, links));
         }
       }
       continue;
     }
-    rows.push(rowCells(child, policy));
+    rows.push(rowCells(child, policy, links));
   }
   if (rows.length === 0) return [];
   const width = Math.max(...rows.map((row) => row.length), 1);
@@ -845,14 +1189,18 @@ function renderTable(node: MarkupElement, policy: CleanupPolicy): string[] {
   return out;
 }
 
-function rowCells(row: MarkupElement, policy: CleanupPolicy): string[] {
+function rowCells(
+  row: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string[] {
   const cells: MarkupElement[] = [];
   for (const child of row.children) {
     if (isElement(child) && (child.name === "td" || child.name === "th"))
       cells.push(child);
   }
   return cells.map((cell) => {
-    const blocks = renderBlocks(cell.children, policy);
+    const blocks = renderBlocks(cell.children, policy, links);
     return blocks.join(" ").replace(/\|/gu, "\\|").trim();
   });
 }
@@ -861,6 +1209,7 @@ function rowCells(row: MarkupElement, policy: CleanupPolicy): string[] {
 function renderInline(
   nodes: readonly MarkupNode[],
   policy: CleanupPolicy,
+  links?: AttachmentLinks,
 ): string {
   let out = "";
   for (const node of nodes) {
@@ -869,20 +1218,24 @@ function renderInline(
       continue;
     }
     if (INLINE_ELEMENTS.has(node.name)) {
-      out += renderInlineElement(node, policy);
+      out += renderInlineElement(node, policy, links);
       continue;
     }
     if (node.name === "ac:structured-macro") {
-      out += renderInlineMacro(node, policy);
+      out += renderInlineMacro(node, policy, links);
       continue;
     }
-    out += renderInline(node.children, policy);
+    out += renderInline(node.children, policy, links);
   }
   return out;
 }
 
 /** A macro met mid-paragraph: its text stays, its chrome follows the policy. */
-function renderInlineMacro(node: MarkupElement, policy: CleanupPolicy): string {
+function renderInlineMacro(
+  node: MarkupElement,
+  policy: CleanupPolicy,
+  links?: AttachmentLinks,
+): string {
   const name = node.attrs["ac:name"] ?? "macro";
   const parts = macroParts(node);
   if (name === "status") {
@@ -891,13 +1244,19 @@ function renderInlineMacro(node: MarkupElement, policy: CleanupPolicy): string {
     ).trim();
     return label.length === 0 ? "" : `**${label}**`;
   }
+  if (DOCUMENT_VIEW_MACROS.has(name)) {
+    const filename = attachmentNameOf(node) ?? "";
+    return filename.length === 0
+      ? ""
+      : renderAttachmentReference(filename, policy, links);
+  }
   if (
     CONTAINER_MACROS.has(name) ||
     CALLOUT_MACROS.has(name) ||
     name === "expand" ||
     name === "excerpt"
   ) {
-    return renderInline(parts.body, policy).trim();
+    return renderInline(parts.body, policy, links).trim();
   }
   if (NAVIGATION_MACROS.has(name))
     return policy.navigationMarkers ? `_[macro: ${name}]_` : "";

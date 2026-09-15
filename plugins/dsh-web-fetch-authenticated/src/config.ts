@@ -14,10 +14,12 @@ import type {
   AuthenticatedFetchRule,
   WebFetchAuthConfig,
   DefaultPolicy,
+  DocumentsConfig,
   FetchLimits,
   NetworkPolicy,
   ResolvedAdapter,
   ResolvedConfig,
+  ResolvedDocuments,
   ResolvedRule,
   RedirectPolicy,
   RuleMatch,
@@ -31,6 +33,22 @@ export const DEFAULT_LIMITS: Readonly<Required<FetchLimits>> = Object.freeze({
   maxResponseBytes: 5_242_880,
   maxBodyChars: 100_000,
 });
+
+/**
+ * Extraction caps applied when neither the rule nor the global config names
+ * them. `maxBytes` is deliberately below `maxResponseBytes`: a document is
+ * downloaded for its TEXT, and a file that large usually means the model asked
+ * for the wrong thing.
+ */
+export const DEFAULT_DOCUMENTS: Readonly<Required<DocumentsConfig>> =
+  Object.freeze({
+    enabled: true,
+    maxBytes: 4_194_304,
+    maxChars: 40_000,
+  });
+
+/** How many attachments the Confluence adapter's appended list reports by default. */
+export const DEFAULT_MAX_ATTACHMENTS = 50;
 
 export const DEFAULT_USER_AGENT =
   "deepseek-harness-authenticated-fetch (+https://github.com/xarleyn/dsh-plugins)";
@@ -53,6 +71,12 @@ const fetchLimitsSchema = z.object({
   timeoutMs: z.number().step(1).min(1),
   maxResponseBytes: z.number().step(1).min(1),
   maxBodyChars: z.number().step(1).min(1),
+});
+
+const documentsSchema = z.object({
+  enabled: z.boolean(),
+  maxBytes: z.number().step(1).min(1),
+  maxChars: z.number().step(1).min(1),
 });
 
 const networkPolicySchema = z.object({
@@ -111,7 +135,9 @@ const ruleSchema = z.object({
     includeComments: z.boolean(),
     includeLinks: z.boolean(),
     cleanup: z.union([...CLEANUP_LEVELS]),
+    maxAttachments: z.number().step(1).min(0),
   }) as z<AdapterConfig>,
+  documents: documentsSchema as z<DocumentsConfig>,
 });
 
 /** Runtime schema consumed by the Cordis loader and the settings section. */
@@ -123,6 +149,7 @@ export const ConfigSchema: z<WebFetchAuthConfig> = z.object({
     unmatched: z.union(["block"] as const),
   }) as z<DefaultPolicy>,
   limits: fetchLimitsSchema as z<FetchLimits>,
+  documents: documentsSchema as z<DocumentsConfig>,
   audit: z
     .object({
       enabled: z.boolean().default(true),
@@ -161,12 +188,35 @@ function resolveAdapter(adapter: AdapterConfig | undefined): ResolvedAdapter {
     includeComments: adapter?.includeComments ?? false,
     includeLinks: adapter?.includeLinks ?? false,
     cleanup: adapter?.cleanup ?? DEFAULT_CLEANUP_LEVEL,
+    maxAttachments: adapter?.maxAttachments ?? DEFAULT_MAX_ATTACHMENTS,
+  });
+}
+
+/** Merge one rule's extraction caps over the global defaults. */
+function resolveDocuments(
+  globalDocuments: DocumentsConfig | undefined,
+  ruleDocuments: DocumentsConfig | undefined,
+): ResolvedDocuments {
+  return Object.freeze({
+    enabled:
+      ruleDocuments?.enabled ??
+      globalDocuments?.enabled ??
+      DEFAULT_DOCUMENTS.enabled,
+    maxBytes:
+      ruleDocuments?.maxBytes ??
+      globalDocuments?.maxBytes ??
+      DEFAULT_DOCUMENTS.maxBytes,
+    maxChars:
+      ruleDocuments?.maxChars ??
+      globalDocuments?.maxChars ??
+      DEFAULT_DOCUMENTS.maxChars,
   });
 }
 
 function resolveRule(
   rule: AuthenticatedFetchRule,
   globalLimits: FetchLimits | undefined,
+  globalDocuments: DocumentsConfig | undefined,
 ): ResolvedRule {
   const networkPolicySource = rule.networkPolicy ?? {};
   const redirects = rule.redirects ?? {};
@@ -198,6 +248,7 @@ function resolveRule(
     }),
     limits: Object.freeze(resolveLimits(globalLimits, rule.limits)),
     adapter: resolveAdapter(rule.adapter),
+    documents: resolveDocuments(globalDocuments, rule.documents),
   };
 }
 
@@ -207,6 +258,7 @@ function resolveRule(
  */
 export function resolveConfig(config: WebFetchAuthConfig = {}): ResolvedConfig {
   const globalLimits = config.limits;
+  const globalDocuments = config.documents;
   const rules: ResolvedRule[] = [];
   const configErrors: string[] = [];
   const perRuleErrors = groupRuleErrors(config.rules ?? []);
@@ -216,7 +268,7 @@ export function resolveConfig(config: WebFetchAuthConfig = {}): ResolvedConfig {
       configErrors.push(...ruleErrors);
       continue;
     }
-    rules.push(resolveRule(rule, globalLimits));
+    rules.push(resolveRule(rule, globalLimits, globalDocuments));
   }
   return Object.freeze({
     configVersion: config.configVersion ?? 1,
@@ -224,6 +276,7 @@ export function resolveConfig(config: WebFetchAuthConfig = {}): ResolvedConfig {
     unmatchedPolicy: config.defaultPolicy?.unmatched ?? "block",
     rules: Object.freeze(rules),
     limits: Object.freeze(resolveLimits(globalLimits, undefined)),
+    documents: resolveDocuments(globalDocuments, undefined),
     audit: Object.freeze({ enabled: config.audit?.enabled ?? true }),
     configErrors: Object.freeze([...configErrors]),
   });

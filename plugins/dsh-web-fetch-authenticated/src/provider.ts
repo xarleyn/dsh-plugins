@@ -105,7 +105,12 @@ export class AuthenticatedFetchProvider implements WebFetchProvider {
       // REST API and normalizes them; unrecognized URLs fall through to raw.
       const adapted = await applyAdapter(url, adapterContext);
       const result =
-        adapted ?? (await authenticatedFetch({ url, ...adapterContext }));
+        adapted ??
+        (await authenticatedFetch({
+          url,
+          ...adapterContext,
+          documents: rule.documents,
+        }));
       this.auditOk(rule, url, Date.now() - startedAt, result.statusCode);
       return result;
     } catch (error: unknown) {

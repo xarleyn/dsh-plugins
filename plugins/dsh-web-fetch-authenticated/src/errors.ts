@@ -23,6 +23,8 @@ export const AUTH_FETCH_ERROR_CODES = {
   redirectDenied: "AUTH_FETCH_REDIRECT_DENIED",
   responseTooLarge: "AUTH_FETCH_RESPONSE_TOO_LARGE",
   unsupportedContent: "AUTH_FETCH_UNSUPPORTED_CONTENT",
+  documentTooLarge: "AUTH_FETCH_DOCUMENT_TOO_LARGE",
+  documentUnreadable: "AUTH_FETCH_DOCUMENT_UNREADABLE",
   timeout: "AUTH_FETCH_TIMEOUT",
   invalidUrl: "AUTH_FETCH_INVALID_URL",
   providerError: "AUTH_FETCH_PROVIDER_ERROR",
@@ -116,6 +118,45 @@ export function unsupportedCharset(charset: string): WebError {
   return new WebError(
     `unsupported charset "${charset}"`,
     AUTH_FETCH_ERROR_CODES.unsupportedContent,
+  );
+}
+
+/** An attachment is a document this plugin cannot turn into text (SPEC §15.3). */
+export function documentNotExtractable(
+  filename: string,
+  reason: string,
+): WebError {
+  const label =
+    filename.trim().length > 0
+      ? `"${truncateForMessage(filename, 120)}"`
+      : "the attachment";
+  return new WebError(
+    `${label} cannot be read: ${sanitizedDetail(reason)}`,
+    AUTH_FETCH_ERROR_CODES.documentUnreadable,
+  );
+}
+
+/** A document exceeded the configured extraction download cap (SPEC §15.3). */
+export function documentTooLarge(filename: string, maxBytes: number): WebError {
+  const label =
+    filename.trim().length > 0
+      ? `"${truncateForMessage(filename, 120)}"`
+      : "the document";
+  return new WebError(
+    `${label} is larger than the configured extraction limit of ${maxBytes} bytes; raise documents.maxBytes to read it`,
+    AUTH_FETCH_ERROR_CODES.documentTooLarge,
+  );
+}
+
+/** Bytes that claimed to be a document but are not one this plugin reads. */
+export function documentUnreadable(filename: string): WebError {
+  const label =
+    filename.trim().length > 0
+      ? `"${truncateForMessage(filename, 120)}"`
+      : "the attachment";
+  return new WebError(
+    `${label} is not a readable Word or OpenDocument file`,
+    AUTH_FETCH_ERROR_CODES.documentUnreadable,
   );
 }
 

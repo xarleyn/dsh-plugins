@@ -125,6 +125,12 @@ export interface AdapterConfig {
    * level has no effect there.
    */
   readonly cleanup?: CleanupLevel;
+  /**
+   * Confluence only: how many attachments the appended "Attachments" list
+   * reports. Default `50`; the remainder is reported as a count, never dropped
+   * silently.
+   */
+  readonly maxAttachments?: number;
 }
 
 /** Fully resolved adapter settings of a rule (defaults applied). */
@@ -134,6 +140,30 @@ export interface ResolvedAdapter {
   readonly includeComments: boolean;
   readonly includeLinks: boolean;
   readonly cleanup: CleanupLevel;
+  readonly maxAttachments: number;
+}
+
+/**
+ * Attachment text extraction (SPEC §15.3). A fetched attachment never reaches
+ * the model as bytes — the harness body union is `html | text` — so a Word or
+ * OpenDocument file is inflated inside the plugin and served as Markdown.
+ * The caps exist because the model's context is finite: `maxBytes` bounds the
+ * download, `maxChars` bounds what the document may add to the conversation.
+ */
+export interface DocumentsConfig {
+  /** Extract text from Word/OpenDocument attachments at all. Default `true`. */
+  readonly enabled?: boolean;
+  /** Largest attachment downloaded for extraction, in bytes. Default `4194304` (4 MiB). */
+  readonly maxBytes?: number;
+  /** Largest extracted text handed to the model, in characters. Default `40000`. */
+  readonly maxChars?: number;
+}
+
+/** Fully resolved extraction caps of a rule (defaults applied). */
+export interface ResolvedDocuments {
+  readonly enabled: boolean;
+  readonly maxBytes: number;
+  readonly maxChars: number;
 }
 
 /** Match section of a rule (SPEC §7/§9): exact hosts, glob paths. */
@@ -166,6 +196,8 @@ export interface AuthenticatedFetchRule {
   limits?: FetchLimits;
   /** Optional content adapter (SPEC §15.2). Omitted = raw HTTP/HTML passthrough. */
   adapter?: AdapterConfig;
+  /** Attachment text extraction (SPEC §15.3); omitted = the global defaults. */
+  documents?: DocumentsConfig;
 }
 
 /** What happens when no rule matches (SPEC §17). v1 supports `block` only. */
@@ -188,6 +220,8 @@ export interface WebFetchAuthConfig {
   defaultPolicy?: DefaultPolicy;
   /** Global limit defaults applied to every rule. */
   limits?: FetchLimits;
+  /** Global extraction caps applied to every rule that does not override them. */
+  documents?: DocumentsConfig;
   audit?: AuditConfig;
 }
 
@@ -221,6 +255,7 @@ export interface ResolvedRule {
   readonly redirects: ResolvedRedirectPolicy;
   readonly limits: ResolvedLimits;
   readonly adapter: ResolvedAdapter;
+  readonly documents: ResolvedDocuments;
 }
 
 export interface ResolvedConfig {
@@ -229,6 +264,7 @@ export interface ResolvedConfig {
   readonly unmatchedPolicy: UnmatchedPolicy;
   readonly rules: readonly ResolvedRule[];
   readonly limits: ResolvedLimits;
+  readonly documents: ResolvedDocuments;
   readonly audit: Required<AuditConfig>;
   /** Rules dropped because they failed validation, with the reasons. */
   readonly configErrors: readonly string[];

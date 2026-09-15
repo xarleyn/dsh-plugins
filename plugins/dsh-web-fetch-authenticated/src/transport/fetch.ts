@@ -34,6 +34,11 @@ import {
   decoderForCharset,
   parseCharset,
 } from "./charset.js";
+import {
+  classifyDocumentTarget,
+  extractDocument,
+  type DocumentExtractionSettings,
+} from "../documents/extract.js";
 
 /** Protocol-level settings shared by every rule (SPEC §23). */
 export interface TransportGlobals {
@@ -72,6 +77,12 @@ export interface AuthenticatedFetchOptions {
   readonly onMetrics?: (metrics: FetchMetrics) => void;
   /** DNS resolver override (tests); defaults to the OS resolver. */
   readonly resolveAddresses?: HostnameResolver;
+  /**
+   * Attachment text extraction (SPEC §15.3). Omitted or `enabled: false` keeps
+   * the plain behavior: a non-text body is refused with an unsupported-content
+   * error.
+   */
+  readonly documents?: DocumentExtractionSettings;
 }
 
 /** Redirect statuses that carry a `Location` (upstream parity). */
@@ -224,6 +235,7 @@ export async function authenticatedFetch(
       currentRule.limits.maxBodyChars,
       signal,
       options.onMetrics,
+      options.documents,
     );
   }
 }
@@ -288,11 +300,30 @@ async function readBody(
   maxBodyChars: number,
   signal: AbortSignal,
   onMetrics?: (metrics: FetchMetrics) => void,
+  documents?: DocumentExtractionSettings,
 ): Promise<WebFetchResult> {
   const contentType = response.headers["content-type"] ?? null;
   const kind = classifyContentType(contentType);
   if (kind === undefined) {
+    const target =
+      documents?.enabled === true
+        ? classifyDocumentTarget(finalUrl.toString(), contentType)
+        : undefined;
+    if (target?.extractable === true) {
+      return await readDocumentBody(
+        response,
+        finalUrl,
+        contentType,
+        target,
+        Math.min(documents?.maxBytes ?? 0, maxResponseBytes),
+        documents?.maxChars ?? maxBodyChars,
+        signal,
+        onMetrics,
+      );
+    }
     consume(response);
+    if (target !== undefined)
+      throw errors.documentNotExtractable(target.filename, target.reason);
     throw errors.unsupportedContent(contentType);
   }
   let decoder: TextDecoder;
@@ -328,6 +359,67 @@ async function readBody(
     statusCode: response.statusCode ?? 0,
     body,
     truncated: truncatedByBytes || truncatedByChars,
+  };
+}
+
+/**
+ * Read an office document and hand back its TEXT (SPEC §15.3). The harness body
+ * union has no binary arm, so extraction is what makes an attachment readable
+ * at all; the caps come from the rule's `documents` settings, and the download
+ * cap applies before any inflate work happens.
+ */
+async function readDocumentBody(
+  response: IncomingMessage,
+  finalUrl: URL,
+  contentType: string | null,
+  target: {
+    readonly extractable: true;
+    readonly format: "docx" | "odt";
+    readonly filename: string;
+  },
+  maxBytes: number,
+  maxChars: number,
+  signal: AbortSignal,
+  onMetrics?: (metrics: FetchMetrics) => void,
+): Promise<WebFetchResult> {
+  const declared = response.headers["content-length"];
+  if (declared !== undefined) {
+    const length = Number(declared);
+    if (Number.isFinite(length) && length > maxBytes) {
+      consume(response);
+      throw errors.documentTooLarge(target.filename, maxBytes);
+    }
+  }
+  const { bytes, truncatedByBytes } = await readCapped(
+    response,
+    maxBytes,
+    signal,
+  );
+  const extracted = extractDocument({
+    bytes,
+    filename: target.filename,
+    format: target.format,
+    maxPartBytes: Math.max(maxBytes, 1) * 4,
+    maxChars,
+  });
+  if (extracted === undefined) {
+    // The bytes are not an office archive after all (an HTML error page served
+    // as a download, a renamed file): say so instead of returning mojibake.
+    throw errors.documentUnreadable(target.filename);
+  }
+  onMetrics?.({
+    responseBytes: bytes.byteLength,
+    ...(contentType === null ? {} : { contentType }),
+    ...(response.statusCode === undefined
+      ? {}
+      : { statusCode: response.statusCode }),
+    finalUrl: finalUrl.toString(),
+  });
+  return {
+    url: finalUrl.toString(),
+    statusCode: response.statusCode ?? 0,
+    body: { kind: "text", content: extracted.content },
+    truncated: truncatedByBytes || extracted.truncated,
   };
 }
 

@@ -154,8 +154,8 @@ identically at every level.
 
 | Level | Navigation macros¹ | Unknown macros | Attachments/images | Emoticons | Inline links, page links, callouts, tasks |
 | --- | --- | --- | --- | --- | --- |
-| `off` | `_[macro: toc — 2]_` | name + parameters | `_[file.png]_` | name | kept |
-| `balanced` (default) | dropped | `_[macro: name]_` | `_[file.png]_` | name | kept |
+| `off` | `_[macro: toc — 2]_` | name + parameters | link to the file (marker only when the URL is unknown) | name | kept |
+| `balanced` (default) | dropped | `_[macro: name]_` | link to the file (marker only when the URL is unknown) | name | kept |
 | `strict` | dropped | body only, no marker | dropped | dropped | kept |
 
 ¹ A table of contents, child-page list, attachment list, search widget, and the
@@ -177,6 +177,7 @@ adapter:
 adapter:
   type: confluence
   cleanup: strict
+  maxAttachments: 50
 ```
 
 Non-2xx REST responses stay results (the seam never throws for status codes):
@@ -185,6 +186,67 @@ non-JSON REST bodies fail with `AUTH_FETCH_ADAPTER_FAILED`. The generated text
 is capped by the rule's `maxBodyChars`, and the connection tester runs the
 adapter too, so Test shows the exact normalized text the model will get.
 
+## Confluence attachments and document text
+
+A storage body names an attachment and nothing else — `<ri:attachment
+ri:filename="Регламент.docx"/>` — so a page that says "see the attached
+regulation" used to reach the model as a bare filename it could do nothing with.
+The adapter now resolves every attachment reference (linked file, embedded
+image, embedded Office/PDF viewer macro) into its download URL and appends the
+page's attachment list:
+
+```markdown
+## Attachments
+
+- [Регламент v3.docx](https://wiki.example.corp/wiki/download/attachments/483043310/Регламент%20v3.docx?api=v2) — 46.0 KiB, application/vnd.openxmlformats-officedocument.wordprocessingml.document
+```
+
+The list is the page's own attachment collection, so a document the prose
+mentions without linking it is still reachable. `adapter.maxAttachments`
+(default 50, `0` disables the list) caps how many entries one page reports; the
+remainder is stated as a count, never dropped silently. A failed collection
+request never costs the page — the prose is served with an
+`_[attachment list unavailable]_` marker. `cleanup: strict` serves neither links
+nor the list.
+
+Downloading an attachment is refused by the harness for every binary body: the
+`WebFetchBody` union is `html | text` and owned by `@deepseek-ai/dsh-web`, so no
+provider can hand bytes to the model. This plugin therefore extracts the text
+inside the provider and returns it as `text`:
+
+- **Supported**: Word `.docx`/`.docm`/`.dotx` and OpenDocument `.odt` — the
+  document is inflated in memory (no external binary, no temporary file) and
+  rendered as Markdown: headings, paragraphs, list items, tables, tabs. Field
+  codes, deleted revisions, comments, drawings, and footnotes are left out.
+- **Refused with a reason**: `.pdf`, `.doc`, `.xlsx`, `.pptx`, archives — the
+  model gets `AUTH_FETCH_DOCUMENT_UNREADABLE` naming the format instead of a
+  bare "unsupported content type".
+- **Not a document**: everything else keeps the plain
+  `AUTH_FETCH_UNSUPPORTED_CONTENT` behavior.
+
+Caps are per rule and exist because the model's context is finite:
+
+```yaml
+- id: corp-confluence
+  config:
+    documents:
+      enabled: true       # default: true
+      maxBytes: 4194304   # largest attachment downloaded for extraction (4 MiB)
+      maxChars: 40000     # largest extracted text handed to the model
+```
+
+`documents` also exists at the top level as the default every rule inherits;
+a rule's own block overrides it field by field. Exceeding `maxBytes` is
+`AUTH_FETCH_DOCUMENT_TOO_LARGE`; text longer than `maxChars` is cut with an
+explicit `_[text truncated at N characters …]_` line and `truncated: true` in
+the result. Both appear in the connection tester as well, so Test on an
+attachment URL shows exactly the extracted text the model would receive.
+
+Two rules are needed when Jira and Confluence share a hostname (`jira.example.corp`
+serving both `/browse/**` and `/wiki/**`): one rule per product, with
+non-overlapping `allowPaths` — a rule has exactly one adapter, and a Confluence
+page served by a rule whose adapter is `jira` falls through to raw HTML.
+
 ## Error codes
 
 `AUTH_FETCH_NO_MATCHING_RULE`, `AUTH_FETCH_AMBIGUOUS_MATCH`,
@@ -192,6 +254,7 @@ adapter too, so Test shows the exact normalized text the model will get.
 `AUTH_FETCH_CREDENTIAL_INVALID`, `AUTH_FETCH_NETWORK_DENIED`,
 `AUTH_FETCH_DNS_POLICY_DENIED`, `AUTH_FETCH_REDIRECT_DENIED`,
 `AUTH_FETCH_RESPONSE_TOO_LARGE`, `AUTH_FETCH_UNSUPPORTED_CONTENT`,
+`AUTH_FETCH_DOCUMENT_TOO_LARGE`, `AUTH_FETCH_DOCUMENT_UNREADABLE`,
 `AUTH_FETCH_TIMEOUT`, `AUTH_FETCH_INVALID_URL`, `AUTH_FETCH_PROVIDER_ERROR`,
 `AUTH_FETCH_ADAPTER_FAILED` —
 surfaced as `WebError` codes through the existing `web_fetch` error metadata.
