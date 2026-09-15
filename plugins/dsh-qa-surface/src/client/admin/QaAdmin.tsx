@@ -26,6 +26,11 @@ type CapabilityType = "tool" | "skill";
 /** The two tool classes: visible immediately, or only through a loaded skill. */
 type ToolBucket = "always" | "skillGrantable";
 
+const TOOL_BUCKET_LABELS: Record<ToolBucket, string> = {
+  always: "Всегда доступны",
+  skillGrantable: "Доступны через навыки",
+};
+
 /**
  * The sections an operator may open, with the permission each one needs. The
  * nav is filtered by the caller's role, but hiding is only a courtesy: the Host
@@ -184,6 +189,7 @@ function CapabilityPicker(props: {
   readonly selected: readonly string[];
   readonly inherited?: readonly string[];
   readonly system?: readonly string[];
+  readonly skillDetails?: readonly QaSkillAccess[];
   readonly onChange?: (next: readonly string[]) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -241,6 +247,9 @@ function CapabilityPicker(props: {
               const required = system.has(capability.id);
               const common = inherited.has(capability.id);
               const checked = required || common || selected.has(capability.id);
+              const skill = props.skillDetails?.find(
+                ({ name }) => name === capability.id,
+              );
               return (
                 <label
                   key={`${capability.type}:${capability.id}`}
@@ -272,19 +281,31 @@ function CapabilityPicker(props: {
                       <small>{capability.description}</small>
                     )}
                     {capability.type === "skill" ? (
-                      <small>
-                        Provider:{" "}
-                        {capability.source.name ?? capability.source.kind}
-                        {capability.modelInvocable === false
-                          ? " · только вручную"
-                          : " · доступен модели"}
-                      </small>
+                      <>
+                        <small>
+                          Provider:{" "}
+                          {capability.source.name ?? capability.source.kind}
+                          {capability.modelInvocable === false
+                            ? " · только вручную"
+                            : " · доступен модели"}
+                        </small>
+                        {skill === undefined ? null : (
+                          <small>
+                            {skill.descriptor.requiredTools.length === 0
+                              ? "Не выдаёт инструменты"
+                              : `Выдаёт при активации: ${skill.descriptor.requiredTools.join(", ")}`}
+                          </small>
+                        )}
+                      </>
                     ) : null}
                   </span>
                   {required ? (
                     <em>Системное</em>
                   ) : common ? (
                     <em>Общее</em>
+                  ) : capability.type === "skill" &&
+                    selected.has(capability.id) ? (
+                    <em>Администратор</em>
                   ) : null}
                   {capability.status === "missing" ? (
                     <em className="dsh-qa-capability__missing">
@@ -477,7 +498,7 @@ function RoleEditor(props: {
       ) : tab === "tools" ? (
         <div className="dsh-qa-tool-buckets">
           <section>
-            <h3>Инструменты · всегда</h3>
+            <h3>{TOOL_BUCKET_LABELS.always}</h3>
             <p>Видны агенту с первого шага разговора.</p>
             <CapabilityPicker
               type="tool"
@@ -489,10 +510,11 @@ function RoleEditor(props: {
             />
           </section>
           <section>
-            <h3>Инструменты · при активации навыка</h3>
+            <h3>{TOOL_BUCKET_LABELS.skillGrantable}</h3>
             <p>
-              Появятся только после загрузки навыка, который их требует. Пока
-              навык не загружен, инструменты не занимают список модели.
+              Эти инструменты не показываются агенту по умолчанию. Они
+              становятся доступны, когда активируется разрешённый навык,
+              которому они нужны.
             </p>
             <CapabilityPicker
               type="tool"
@@ -504,12 +526,12 @@ function RoleEditor(props: {
             />
             {effective.via.size === 0 ? null : (
               <div className="dsh-qa-skill-grants">
-                <h4>Появятся с навыками</h4>
+                <h4>Используют назначенные навыки</h4>
                 <ul>
                   {[...effective.via].map(([tool, skills]) => (
                     <li key={tool}>
                       <code>{tool}</code>
-                      <span>via {skills.join(", ")}</span>
+                      <span>Доступен через: {skills.join(", ")}</span>
                     </li>
                   ))}
                 </ul>
@@ -524,7 +546,7 @@ function RoleEditor(props: {
             общие навыки и назначения, добавленные вручную.
           </p>
           <section>
-            <h4>Назначены самим навыком</h4>
+            <h4>Объявлены навыками</h4>
             {declaredSkills.length === 0 ? (
               <p className="dsh-qa-admin__empty">
                 Ни один навык не объявляет эту саброль.
@@ -536,10 +558,10 @@ function RoleEditor(props: {
                     <strong>{skill.name}</strong>
                     <span>
                       {skill.descriptor.requiredTools.length === 0
-                        ? "без инструментов"
-                        : `+${skill.descriptor.requiredTools.length} инструментов`}
+                        ? "Не выдаёт инструменты"
+                        : `Выдаёт при активации: ${skill.descriptor.requiredTools.join(", ")}`}
                     </span>
-                    <em>Навык</em>
+                    <em>Объявлено навыком</em>
                   </li>
                 ))}
               </ul>
@@ -549,13 +571,14 @@ function RoleEditor(props: {
             </p>
           </section>
           <section>
-            <h4>Общие и ролевые</h4>
+            <h4>Общие и ролевые навыки</h4>
             <CapabilityPicker
               type="skill"
               catalog={props.catalog}
               inherited={props.common.skills}
               system={props.system.skills}
               selected={draft.capabilities.skills}
+              skillDetails={props.skills}
               onChange={setSkills}
             />
           </section>
@@ -566,7 +589,7 @@ function RoleEditor(props: {
             Фактический доступ для {draft.name || draft.id || "новой роли"}
           </h3>
           <section>
-            <h4>Инструменты · всегда</h4>
+            <h4>{TOOL_BUCKET_LABELS.always}</h4>
             {effective.alwaysTools.length === 0 ? (
               <p className="dsh-qa-admin__empty">Нет инструментов.</p>
             ) : (
@@ -580,7 +603,7 @@ function RoleEditor(props: {
             )}
           </section>
           <section>
-            <h4>Инструменты · при активации навыка</h4>
+            <h4>{TOOL_BUCKET_LABELS.skillGrantable}</h4>
             {effective.grantable.length === 0 ? (
               <p className="dsh-qa-admin__empty">
                 Роль не может выдавать инструменты.
@@ -592,8 +615,8 @@ function RoleEditor(props: {
                     <code>{tool}</code>
                     <span>
                       {effective.via.get(tool) === undefined
-                        ? "Ни один доступный навык его не требует"
-                        : `via ${effective.via.get(tool)?.join(", ")}`}
+                        ? "Сейчас не используется ни одним назначенным навыком"
+                        : `Доступен через: ${effective.via.get(tool)?.join(", ")}`}
                     </span>
                   </li>
                 ))}
@@ -1317,7 +1340,7 @@ export function QaAdmin(props: {
                     }
                     onClick={() => setCommonToolBucket("always")}
                   >
-                    Всегда
+                    {TOOL_BUCKET_LABELS.always}
                   </button>
                   <button
                     type="button"
@@ -1326,13 +1349,14 @@ export function QaAdmin(props: {
                     }
                     onClick={() => setCommonToolBucket("skillGrantable")}
                   >
-                    При активации навыка
+                    {TOOL_BUCKET_LABELS.skillGrantable}
                   </button>
                 </div>
               ) : null}
               <CapabilityPicker
                 type={commonType}
                 catalog={snapshot.catalog}
+                skillDetails={snapshot.skills}
                 selected={
                   commonType === "tool"
                     ? bucketOf(common, commonToolBucket)

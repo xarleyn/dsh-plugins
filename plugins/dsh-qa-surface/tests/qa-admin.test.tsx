@@ -185,7 +185,9 @@ describe("QA administration", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Общие возможности" }),
     );
-    fireEvent.click(screen.getByText("При активации навыка"));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Доступны через навыки" }),
+    );
     await waitFor(() =>
       expect(
         (
@@ -195,6 +197,49 @@ describe("QA administration", () => {
         ).checked,
       ).toBe(true),
     );
+  });
+
+  it("uses administrator-facing names for role tool buckets and grants", async () => {
+    const { value } = api();
+    render(
+      <QaAdmin
+        api={value}
+        token="admin-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    expect(await screen.findByText("Аналитик")).toBeTruthy();
+    fireEvent.click(screen.getAllByText("Изменить →")[0]!);
+
+    fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
+    expect(
+      screen.getByRole("heading", { name: "Всегда доступны" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Доступны через навыки" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/не показываются агенту по умолчанию/u),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Навыки" }));
+    expect(screen.getByText("Объявлены навыками")).toBeTruthy();
+    expect(
+      screen.getAllByText("Выдаёт при активации: browser_open"),
+    ).not.toHaveLength(0);
+    expect(screen.getByText("Объявлено навыком")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Фактический доступ" }));
+    expect(
+      screen.getByRole("heading", { name: "Всегда доступны" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "Доступны через навыки" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Сейчас не используется ни одним назначенным навыком"),
+    ).toBeTruthy();
   });
 
   it("lists skills with health and writes an audience override", async () => {
