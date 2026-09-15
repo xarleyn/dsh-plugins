@@ -70,6 +70,12 @@ matches its Host-delivered config and repeats the check before prompt
 admission. No private RPC handler, slash command, direct provider API, or DSH
 core patch is used.
 
+An indexed historical chat whose immutable preset, workspace or model no
+longer matches may keep its already-open transcript binding in compatibility
+read-only mode. It never receives a successful proof, and the projection and
+controller both suppress prompts, cancellation, approvals and questions. New
+chats are always created and preflighted against the current deployment pins.
+
 This narrows a QA agent's effective session/tool policy, but a route overlay on
 a shared privileged Host is not an authorization boundary for other DSH
 clients. Strong isolation requires a dedicated process/profile, restricted

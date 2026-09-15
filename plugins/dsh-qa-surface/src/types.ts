@@ -879,6 +879,12 @@ export interface QaSessionState {
   /** Immediate send feedback, kept outside the durable transcript. */
   readonly pendingMessage: QaPendingUserMessage | null;
   readonly error: string | null;
+  /**
+   * An owner-authorized historical chat whose recorded composition no longer
+   * matches the deployment. Its transcript remains visible, but no Host
+   * operation may be issued through this binding.
+   */
+  readonly compatibilityReadOnly?: boolean;
   readonly canSend: boolean;
   readonly canStop: boolean;
   /** Bumped whenever this browser's chat index changes (add/forget). */

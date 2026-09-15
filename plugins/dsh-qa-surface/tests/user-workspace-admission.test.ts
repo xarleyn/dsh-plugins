@@ -2,6 +2,10 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  QaAttestationError,
+  qaAttestationFailureMessage,
+} from "../src/attestation.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import { QaPolicyAdmission } from "../src/secure-session.js";
 import { prepareQaUserWorkspace } from "../src/user-workspace.js";
@@ -163,5 +167,84 @@ describe("per-user workspace admission", () => {
       }),
     ).toBeUndefined();
     admission.dispose();
+  });
+
+  it("rejects a mismatched writable permission preset before resolving an agent", async () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), "qa-preflight-"));
+    let agentLookups = 0;
+    const rejectedAgent = {
+      session: {
+        id: "session-new",
+        header: {
+          id: "session-new",
+          cwd: workspace,
+          createdAt: Date.now(),
+        },
+        surface: { nodes: [] },
+        eventAt: () => undefined,
+      },
+      options: {},
+      ctx: {},
+    };
+    const context = {
+      on: () => () => undefined,
+      agents: {
+        get: () => {
+          agentLookups += 1;
+          return rejectedAgent;
+        },
+      },
+      workspaceRegistry: { get: () => ({ path: workspace }) },
+      permissionPresets: {
+        resolve: () => ({ sandbox: "workspace-write", approval: "ask" }),
+      },
+      tools: { guard: () => () => undefined },
+    };
+    const admission = new QaPolicyAdmission(
+      context as never,
+      () =>
+        resolveConfig({
+          session: { workspaceId: "workspace-1" },
+          accounts: { enabled: true, perUserWorkspace: true },
+          lockdown: {
+            sandboxMode: "workspace-write",
+            permissionPreset: "qa-workspace-write",
+          },
+        }),
+      { debug() {}, info() {}, warn() {}, error() {}, close() {} } as never,
+    );
+
+    expect(() => admission.preflightDeployment()).toThrowError(
+      expect.objectContaining({
+        reason: "permission-preset",
+        message:
+          "permission preset qa-workspace-write does not resolve to workspace-write/never",
+      }),
+    );
+    expect(agentLookups).toBe(0);
+    await expect(
+      admission.secureSession("token", "session-new"),
+    ).rejects.toMatchObject({ reason: "permission-preset" });
+    expect(agentLookups).toBe(1);
+    expect(admission.knowsSession("session-new")).toBe(false);
+    admission.dispose();
+  });
+
+  it("keeps only the coarse preflight reason in the creation failure", () => {
+    expect(
+      qaAttestationFailureMessage(
+        "Unable to create a QA session.",
+        new QaAttestationError(
+          "permission-preset",
+          "the private deployment detail",
+        ),
+      ),
+    ).toBe("Unable to create a QA session. (reason: permission-preset)");
+    expect(
+      qaAttestationFailureMessage(
+        "Unable to create a QA session.",
+        new Error("transport failed"),
+      ),
+    ).toBe("Unable to create a QA session.");
   });
 });

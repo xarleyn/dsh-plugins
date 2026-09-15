@@ -591,8 +591,13 @@ grouped by owner. Switching re-runs the full policy
 attestation, and that attestation materializes the chat's agent when the Host
 does not hold one: DSH builds an agent on demand, so a chat restored after a
 Host restart still opens (its composition is resumed from what the session
-recorded) instead of failing as unavailable. A chat the Host no longer lists is
-pruned from the index. Each
+recorded) instead of failing as unavailable. If that recorded agent preset,
+workspace or model belongs to an older deployment configuration, the history
+still opens in an explicit compatibility read-only mode. Send, stop, approvals
+and questions stay disabled so the historical session cannot bypass the
+current workspace or permission boundary; use New chat to continue under the
+current configuration. A chat the Host no longer lists is pruned from the
+index. Each
 row carries a two-click delete control that removes the chat from this
 browser's index; deleting the chat that is currently open continues in a
 fresh attested session. Host-side sessions are not deleted — DSH 0.1.x
@@ -614,6 +619,11 @@ shows it again. Other DSH routes retain the stock onboarding entry.
 The default locked mode requires a deployment permission preset named
 `qa-read-only`. Per-user writable mode uses a separate preset such as
 `qa-workspace-write`.
+`interaction.approvals: interactive` does not change this requirement: it
+parks an `ask` returned by a composed tool gate in the QA view, while the
+permission preset must keep `approval: never` as the independent fail-closed
+backstop. Setting the preset itself to `approval: ask` fails deployment
+preflight with `(reason: permission-preset)` before a Host session is created.
 Extend the existing `@deepseek-ai/dsh-permission-presets` row without changing
 its process-wide default:
 

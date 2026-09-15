@@ -23,7 +23,10 @@ import {
 } from "./personal-skills/index.js";
 import type { QaPersonalSkillRemotes } from "./personal-skills/index.js";
 import { QaApprovalGate } from "./approvals.js";
-import { QaAttestationError } from "./attestation.js";
+import {
+  QaAttestationError,
+  qaAttestationFailureMessage,
+} from "./attestation.js";
 import { applyDocumentsEnvOverrides } from "./documents/config.js";
 import {
   installDocumentSubsystem,
@@ -478,6 +481,9 @@ export class QaSurface extends TypertRemoteService {
           );
     let hostCreated = false;
     try {
+      // Check deployment-only pins before creating a durable Host session.
+      // Full admission below still verifies the composed agent and tool view.
+      this.admission.preflightDeployment();
       let userCwd: string | undefined;
       if (config.accounts.perUserWorkspace) {
         const workspaceId = config.session.workspaceId;
@@ -535,9 +541,13 @@ export class QaSurface extends TypertRemoteService {
       }
       this.logger.error("session.create-rejected", {
         sessionId: String(id),
+        reason: error instanceof QaAttestationError ? error.reason : undefined,
         error: error instanceof Error ? error.message : String(error),
       });
-      throw new Error("Unable to create a QA session.", { cause: error });
+      throw new Error(
+        qaAttestationFailureMessage("Unable to create a QA session.", error),
+        { cause: error },
+      );
     }
   }
 

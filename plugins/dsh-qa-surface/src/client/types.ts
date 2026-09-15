@@ -298,6 +298,7 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   messages: Object.freeze([]),
   pendingMessage: null,
   error: null,
+  compatibilityReadOnly: false,
   canSend: false,
   canStop: false,
   chatsRevision: 0,

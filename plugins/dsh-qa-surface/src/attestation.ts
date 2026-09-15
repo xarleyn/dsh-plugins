@@ -29,3 +29,13 @@ export class QaAttestationError extends Error {
     this.name = "QaAttestationError";
   }
 }
+
+/** Keep deployment details in Host logs while preserving a stable wire hint. */
+export function qaAttestationFailureMessage(
+  message: string,
+  error: unknown,
+): string {
+  return error instanceof QaAttestationError
+    ? `${message} (reason: ${error.reason})`
+    : message;
+}

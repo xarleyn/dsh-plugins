@@ -925,6 +925,13 @@ export function QaSurface(props: QaSurfaceProps) {
                       />
                     </div>
                   )}
+                  {state.compatibilityReadOnly === true ? (
+                    <div className="dsh-qa-compatibility" role="status">
+                      Этот чат создан при другой конфигурации стенда и открыт
+                      только для чтения. История сохранена; чтобы продолжить
+                      работу с текущими настройками, создайте новый чат.
+                    </div>
+                  ) : null}
                   {state.error === null ? null : (
                     <div className="dsh-qa-error" role="alert">
                       <span>{state.error}</span>

@@ -14,7 +14,10 @@ import type {
   QaSubagentView,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
-import { QaPolicyAttestationError } from "./attestation.js";
+import {
+  canOpenAsCompatibilityReadOnly,
+  QaPolicyAttestationError,
+} from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
@@ -152,6 +155,8 @@ export class QaSessionController {
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
   private policyReady = false;
+  /** Historical transcript retained after the Host classifies policy drift. */
+  private compatibilityReadOnly = false;
   private drafting = false;
   /** The chat session to return to when a subagent view closes. */
   private chatSessionId: string | null = null;
@@ -427,7 +432,10 @@ export class QaSessionController {
     )
       return;
     const previous = this.session;
-    if (previous?.getSnapshot().running === true) {
+    if (
+      !this.compatibilityReadOnly &&
+      previous?.getSnapshot().running === true
+    ) {
       try {
         await previous.cancel();
       } catch (error) {
@@ -529,7 +537,7 @@ export class QaSessionController {
         this.forgetChat(sessionId);
         throw new Error("Этот чат больше недоступен.");
       }
-      await this.bind(sessionId);
+      await this.bind(sessionId, { allowCompatibilityReadOnly: true });
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
@@ -698,16 +706,19 @@ export class QaSessionController {
       );
       let id: string | null = null;
       let restored = false;
+      let existing = false;
       if (this.config.session.policy === "fixed") {
         id = this.config.session.fixedSessionId;
         if (id === null || !Object.hasOwn(list.byId, id)) {
           throw new Error("Configured fixed session is unavailable.");
         }
+        existing = true;
       } else if (this.config.session.policy === "browser-persistent") {
         const stored = this.chats.activeId();
         if (stored !== null && Object.hasOwn(list.byId, stored)) {
           id = stored;
           restored = true;
+          existing = true;
         } else if (stored !== null) {
           this.chats.clearActive();
         }
@@ -723,7 +734,10 @@ export class QaSessionController {
       // replace it. A freshly created session must report a refusal at once —
       // it is the deployment's only chance to learn the reason.
       try {
-        await this.bind(id, { report: !restored });
+        await this.bind(id, {
+          report: !restored,
+          allowCompatibilityReadOnly: existing,
+        });
       } catch (error) {
         // A stale restore must not start its recovery ladder against a newer
         // operation; rethrow for the generation-guarded outer catch.
@@ -830,9 +844,19 @@ export class QaSessionController {
 
   private async bind(
     id: string,
-    options: { report?: boolean; attest?: boolean; track?: boolean } = {},
+    options: {
+      report?: boolean;
+      attest?: boolean;
+      track?: boolean;
+      allowCompatibilityReadOnly?: boolean;
+    } = {},
   ): Promise<void> {
-    const { report = true, attest = true, track = true } = options;
+    const {
+      report = true,
+      attest = true,
+      track = true,
+      allowCompatibilityReadOnly = false,
+    } = options;
     this.sessions.open(id as SessionId);
     let binding = this.sessions.binding(id as SessionId);
     if (binding === undefined) {
@@ -849,6 +873,7 @@ export class QaSessionController {
     this.session = binding.session;
     this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
+    this.compatibilityReadOnly = false;
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
       this.operationError = null;
@@ -872,7 +897,21 @@ export class QaSessionController {
     }
     if (attest) {
       const step = await this.attestPolicy(report);
-      if (step.kind !== "ok") throw new QaPolicyAttestationError();
+      if (step.kind === "refused") {
+        if (
+          !allowCompatibilityReadOnly ||
+          !canOpenAsCompatibilityReadOnly(step.reason)
+        ) {
+          throw new QaPolicyAttestationError(step.reason);
+        }
+        // The Host classified the existing binding before returning these
+        // reason classes. Preserve the transcript, but never mark the binding
+        // policy-ready: every mutating operation remains disabled.
+        this.compatibilityReadOnly = true;
+        this.operationError = null;
+      } else if (step.kind !== "ok") {
+        throw new QaPolicyAttestationError();
+      }
     }
     if (track) {
       this.chatSessionId = String(this.session.sessionId);
@@ -902,6 +941,7 @@ export class QaSessionController {
     this.stopPendingPolling();
     this.admissionPending = false;
     this.policyReady = false;
+    this.compatibilityReadOnly = false;
   }
 
   private waitForConnection(): Promise<unknown> {
@@ -968,7 +1008,9 @@ export class QaSessionController {
     if (!snapshot.running) {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
-    this.syncPendingPolling(snapshot.running === true);
+    this.syncPendingPolling(
+      snapshot.running === true && !this.compatibilityReadOnly,
+    );
     const projectionInput = {
       connected,
       sessionId,
@@ -982,6 +1024,7 @@ export class QaSessionController {
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
       policyReady: this.policyReady,
+      compatibilityReadOnly: this.compatibilityReadOnly,
       admissionPending:
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
@@ -1069,10 +1112,12 @@ export class QaSessionController {
   private async attestPolicy(
     reportFailure = true,
   ): Promise<
-    { kind: "ok"; sessionId: string } | { kind: "refused" } | { kind: "stale" }
+    | { kind: "ok"; sessionId: string }
+    | { kind: "refused"; reason: string | null }
+    | { kind: "stale" }
   > {
     const session = this.session;
-    if (session === undefined) return { kind: "refused" };
+    if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
     if (!this.config.lockdown.enabled) {
       this.policyReady = true;
@@ -1098,12 +1143,12 @@ export class QaSessionController {
       // The identity expired or was rotated: back to the gate instead of
       // the generic configuration error.
       this.accounts?.onAuthRequired();
-      return { kind: "refused" };
+      return { kind: "refused", reason: outcome.reason };
     }
     this.policyReady = false;
     this.operationError = CONFIGURATION_ERROR;
     this.publish();
-    return { kind: "refused" };
+    return { kind: "refused", reason: outcome.reason };
   }
 
   private emit(): void {
@@ -1119,7 +1164,7 @@ export class QaSessionController {
     requestId: string,
     decision: QaApprovalDecision,
   ): Promise<void> {
-    if (this.session === undefined) return;
+    if (this.session === undefined || this.compatibilityReadOnly) return;
     await this.hostApprovals.answer(
       String(this.session.sessionId),
       this.hostToken(),
@@ -1134,7 +1179,7 @@ export class QaSessionController {
     requestId: string,
     answers: readonly QaQuestionAnswerItem[],
   ): Promise<void> {
-    if (this.session === undefined) return;
+    if (this.session === undefined || this.compatibilityReadOnly) return;
     await this.hostQuestions.answer(
       String(this.session.sessionId),
       this.hostToken(),
@@ -1146,7 +1191,7 @@ export class QaSessionController {
 
   /** Close a parked question request without answering it. */
   async cancelQuestion(requestId: string): Promise<void> {
-    if (this.session === undefined) return;
+    if (this.session === undefined || this.compatibilityReadOnly) return;
     await this.hostQuestions.cancel(
       String(this.session.sessionId),
       this.hostToken(),
