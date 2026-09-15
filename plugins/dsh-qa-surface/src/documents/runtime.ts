@@ -27,11 +27,13 @@ import {
 } from "./providers/registry.js";
 import { convertDocument } from "./orchestrator/convert-document.js";
 import { createDocument } from "./orchestrator/create-document.js";
+import { fromUrl } from "./orchestrator/fetch-document.js";
 import { inspectDocument } from "./orchestrator/inspect-document.js";
 import { toMarkdown } from "./orchestrator/extract-document.js";
 import {
   createRuntimeDeps,
   silentDocumentLogger,
+  type DocumentFetchSource,
   type DocumentLogger,
   type DocumentRuntimeDeps,
 } from "./orchestrator/runtime-deps.js";
@@ -48,6 +50,8 @@ import type {
   DocumentConvertResult,
   DocumentCreateInput,
   DocumentCreateResult,
+  DocumentFromUrlInput,
+  DocumentFromUrlResult,
   DocumentHealth,
   DocumentInspectInput,
   DocumentInspectResult,
@@ -62,6 +66,8 @@ export interface DocumentRuntimeOptions {
   /** Pre-built registry; tests substitute stub backends here. */
   readonly providers?: ProviderSet;
   readonly now?: () => Date;
+  /** Late-bound retrieval through the deployment's web provider. */
+  readonly fetchSource?: DocumentFetchSource;
 }
 
 export class DocumentRuntime {
@@ -80,6 +86,9 @@ export class DocumentRuntime {
       providers: this.providers,
       logger: options.logger ?? silentDocumentLogger,
       ...(options.now === undefined ? {} : { now: options.now }),
+      ...(options.fetchSource === undefined
+        ? {}
+        : { fetchSource: options.fetchSource }),
     });
   }
 
@@ -109,6 +118,13 @@ export class DocumentRuntime {
     scope: DocumentScope,
   ): Promise<DocumentInspectResult> {
     return await inspectDocument(this.deps, input, scope);
+  }
+
+  async fromUrl(
+    input: DocumentFromUrlInput,
+    scope: DocumentScope,
+  ): Promise<DocumentFromUrlResult> {
+    return await fromUrl(this.deps, input, scope);
   }
 
   async health(
@@ -173,6 +189,7 @@ export function createDocumentRuntime(options: {
   readonly seams?: ProviderSeams;
   readonly providers?: ProviderSet;
   readonly now?: () => Date;
+  readonly fetchSource?: DocumentFetchSource;
 }): DocumentRuntime {
   const withEnv = applyDocumentsEnvOverrides(
     options.config,
@@ -193,6 +210,9 @@ export function createDocumentRuntime(options: {
       ? {}
       : { providers: options.providers }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.fetchSource === undefined
+      ? {}
+      : { fetchSource: options.fetchSource }),
   });
 }
 

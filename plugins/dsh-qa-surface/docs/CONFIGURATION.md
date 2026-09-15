@@ -436,11 +436,13 @@ still run on the resolved call.
 
 ## Documents
 
-`documents` configures the document pipeline that backs the four agent tools
-`document_create`, `document_to_markdown`, `document_convert` and
-`document_inspect`. Markdown is the canonical source: the agent writes
-Markdown, the pipeline renders DOCX and/or PDF from it and can read either
-format back out as Markdown. The full design is in
+`documents` configures the document pipeline that backs the five agent tools
+`document_create`, `document_to_markdown`, `document_from_url`,
+`document_convert` and `document_inspect`. Markdown is the canonical source: the
+agent writes Markdown, the pipeline renders DOCX and/or PDF from it, it can read
+either format back out as Markdown, and `document_from_url` stores the text of an
+online source — a wiki attachment, a document behind an authenticated fetch
+provider — as an artifact. The full design is in
 [`document-pipeline.md`](./specs/document-pipeline.md).
 
 The tools are registered by the plugin, not by a preset, so they exist in the
@@ -454,9 +456,19 @@ lockdown:
     allow:
       - document_create
       - document_to_markdown
+      - document_from_url
       - document_convert
       - document_inspect
 ```
+
+`document_from_url` opens no socket of its own: it asks the deployment's web
+provider for the URL, so the fetch rules, credentials, address policy and
+byte/char caps configured there decide what may be read (in practice
+`@yadsh/dsh-web-fetch-authenticated` plus its Confluence attachment support).
+Without a web provider the tool answers `BACKEND_UNAVAILABLE` instead of
+guessing. What it stores is bounded by `documents.limits.maxMarkdownChars` and
+what it returns inline by `documents.extraction.maxInlineChars`; the artifact
+always keeps the full text the fetch layer returned.
 
 One consequence is worth stating plainly: the pipeline writes its bundle with
 its own file-system calls, so `lockdown.sandboxMode: read-only` does not stop a

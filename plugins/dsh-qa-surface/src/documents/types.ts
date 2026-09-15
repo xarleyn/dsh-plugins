@@ -131,6 +131,32 @@ export interface DocumentToMarkdownResult {
   readonly manifestPath: string;
 }
 
+/**
+ * Fetch an online source (a wiki attachment, a text document behind an
+ * authenticated provider) and keep what comes back as a document artifact.
+ * Retrieval goes through the deployment's web provider, so the rules,
+ * credentials, address policy and size caps of the fetch layer apply unchanged
+ * — this tool never opens a socket of its own (§9, §34).
+ */
+export interface DocumentFromUrlInput {
+  readonly url: string;
+  /** Name of the stored Markdown inside the bundle. Default `source.md`. */
+  readonly outputFilename?: string;
+}
+
+export interface DocumentFromUrlResult {
+  readonly artifactId: string;
+  /** Fetched text; truncated to the configured inline budget when longer. */
+  readonly markdown: string;
+  /** Path of the stored Markdown: the full text the fetch layer returned. */
+  readonly markdownPath: string;
+  readonly sourceUrl: string;
+  readonly truncated: boolean;
+  readonly backend: string;
+  readonly warnings: readonly DocumentWarning[];
+  readonly manifestPath: string;
+}
+
 export interface DocumentConvertInput {
   readonly file: string;
   readonly targetFormat: CreateFormat | "md";
@@ -143,7 +169,6 @@ export interface DocumentConvertInput {
     readonly ocr?: OcrMode;
   };
 }
-
 export interface DocumentConvertResult {
   readonly artifactId: string;
   readonly files: readonly DocumentFileResult[];
@@ -292,7 +317,10 @@ export interface DocumentManifest {
   readonly schemaVersion: 1;
   readonly artifactId: string;
   readonly operation:
-    "document_create" | "document_to_markdown" | "document_convert";
+    | "document_create"
+    | "document_to_markdown"
+    | "document_convert"
+    | "document_from_url";
   readonly createdAt: string;
   readonly input: {
     readonly format: DocumentFormat | "unknown";

@@ -27,11 +27,31 @@ export const silentDocumentLogger: DocumentLogger = {
   error: () => undefined,
 };
 
+/**
+ * One retrieval through the deployment's web provider. The shape is
+ * structurally the harness web seam's result, so the plugin passes
+ * `ctx.web.fetch` straight through and the subsystem keeps no second client.
+ */
+export type DocumentFetchSource = (
+  url: string,
+  signal?: AbortSignal,
+) => Promise<{
+  readonly url: string;
+  readonly statusCode: number;
+  readonly body: {
+    readonly kind: "html" | "text";
+    readonly content: string;
+  };
+  readonly truncated: boolean;
+}>;
+
 export interface DocumentRuntimeDeps {
   readonly config: ResolvedQaDocumentsConfig;
   readonly providers: ProviderSet;
   readonly logger: DocumentLogger;
   readonly now: () => Date;
+  /** Absent when the deployment configures no web provider. */
+  readonly fetchSource?: DocumentFetchSource;
   readonly semaphores: {
     readonly render: Semaphore;
     readonly extraction: Semaphore;
@@ -44,12 +64,16 @@ export function createRuntimeDeps(options: {
   readonly providers: ProviderSet;
   readonly logger?: DocumentLogger;
   readonly now?: () => Date;
+  readonly fetchSource?: DocumentFetchSource;
 }): DocumentRuntimeDeps {
   return {
     config: options.config,
     providers: options.providers,
     logger: options.logger ?? silentDocumentLogger,
     now: options.now ?? (() => new Date()),
+    ...(options.fetchSource === undefined
+      ? {}
+      : { fetchSource: options.fetchSource }),
     semaphores: {
       render: createSemaphore(options.config.workers.renderConcurrency),
       extraction: createSemaphore(options.config.workers.extractionConcurrency),

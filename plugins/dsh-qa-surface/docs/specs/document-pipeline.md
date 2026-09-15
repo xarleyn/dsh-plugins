@@ -25,6 +25,7 @@ Primary goal: дать агентам безопасный, стабильный
 
 - `document_create`
 - `document_to_markdown`
+- `document_from_url`
 - `document_convert`
 - `document_inspect`
 
@@ -103,6 +104,7 @@ docling_exec(...)
 ```text
 document_create(...)
 document_to_markdown(...)
+document_from_url(...)
 document_convert(...)
 document_inspect(...)
 ```
@@ -164,6 +166,7 @@ Manifest является источником истины о том:
 │ document_create    │
 │ document_convert   │
 │ document_to_md     │
+│ document_from_url  │
 │ document_inspect   │
 └─────────┬──────────┘
           │
@@ -440,6 +443,55 @@ interface DocumentToMarkdownResult {
   manifestPath: string;
 }
 ```
+
+---
+
+# 9.1 `document_from_url`
+
+Онлайн-источник — вложение вики, документ за аутентифицированным fetch-провайдером — сохраняется как artifact bundle с текстом и манифестом.
+
+## Input
+
+```ts
+interface DocumentFromUrlInput {
+  url: string;
+  outputFilename?: string;
+}
+```
+
+## Output
+
+```ts
+interface DocumentFromUrlResult {
+  artifactId: string;
+  markdown: string;
+  markdownPath: string;
+  sourceUrl: string;
+  truncated: boolean;
+  backend: string;
+  warnings: DocumentWarning[];
+  manifestPath: string;
+}
+```
+
+## Кто ходит в сеть
+
+Операция не открывает сокет сама: URL запрашивается через web-провайдер развёртывания
+(`ctx.web.fetch`), поэтому правила, креды, политика адресов и лимиты fetch-слоя действуют
+без изменений. Если web-провайдер не сконфигурирован, инструмент отвечает
+`BACKEND_UNAVAILABLE`, а не пытается достать источник иначе.
+
+## Что попадает в артефакт
+
+- Ответ вида `text` (в том числе текст вложения, извлечённый провайдером) сохраняется как
+  Markdown в bundle, манифест получает `operation: "document_from_url"` и имя файла из URL;
+- ответ вида `html` отклоняется с `UNSUPPORTED_FORMAT`: страницы читаются инструментом
+  web fetch, а документы создаются из их текста;
+- отказ fetch-слоя (неподдерживаемый формат, нет правила, таймаут) доезжает до модели
+  дословно как `EXTRACTION_FAILED` — чтобы причина называла формат, а не терялась;
+- `documents.limits.maxMarkdownChars` ограничивает объём, попадающий в bundle,
+  `documents.extraction.maxInlineChars` — объём, возвращаемый в ответе; при обрезке
+  добавляется warning `MARKDOWN_TRUNCATED`.
 
 ---
 
@@ -1369,6 +1421,10 @@ Agent не должен рассуждать:
 ## document_to_markdown
 
 > Extract a DOCX or PDF into Markdown. Supports structured extraction, tables, images and OCR when required.
+
+## document_from_url
+
+> Fetch an online document or attachment by URL and store it as a Markdown artifact in the session. Retrieval goes through the configured web provider, so the deployment's fetch rules and credentials apply.
 
 ## document_convert
 
