@@ -543,6 +543,12 @@ accounts:
   there is no shared fallback to fall back to. The resolver reports the
   effective value, and the settings dialog simply has no Навыки section when
   it is off.
+- The account's skill tree is materialized as soon as the account works in its
+  own directory: the first chat opened in a fresh `.qa-users/<uuid>` directory,
+  and the editor's first read, both leave `<personal root>/.dsh/skills` behind.
+  A hand-made skill directory therefore lands in a root that already exists,
+  and the watcher below never meets a missing directory to report. The
+  `skills-trash` directory still appears only on the first deletion.
 - Two deployment facts decide whether the model ever sees a personal skill.
   The preset must mount the skill tool package (`dsh-tool-skill`), and
   `lockdown.toolPolicy.allow` must list `skill`: the harness publishes the

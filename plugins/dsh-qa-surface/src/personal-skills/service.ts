@@ -149,7 +149,12 @@ export class QaPersonalSkills {
         error instanceof Error ? error.message : String(error),
       );
     }
-    return resolveSkillRoots(personalRoot, config.accounts.skills.relativeRoot);
+    const roots = resolveSkillRoots(
+      personalRoot,
+      config.accounts.skills.relativeRoot,
+    );
+    ensureSkillRoots(roots);
+    return roots;
   }
 
   /**
@@ -165,7 +170,13 @@ export class QaPersonalSkills {
     const personalRoot = qaUserWorkspaceFromCwd(cwd);
     if (personalRoot === undefined) return undefined;
     try {
-      return resolveSkillRoots(personalRoot, relativeRoot);
+      const roots = resolveSkillRoots(personalRoot, relativeRoot);
+      // The account directory is provisioned when its first session starts,
+      // but the skill tree inside it used to wait for the first save — which
+      // left every boot of every account watching a directory that was not
+      // there, and reported it as a failed watch instead of an empty catalog.
+      ensureSkillRoots(roots);
+      return roots;
     } catch {
       return undefined;
     }
@@ -240,7 +251,6 @@ export class QaPersonalSkills {
   ): QaSkillDocument {
     const roots = this.rootsFor(context);
     const prepared = this.prepareWrite(input, this.options.getConfig(), true);
-    ensureSkillRoots(roots);
     const directory = skillDirectory(roots, prepared.name);
     if (directoryExists(directory)) {
       throw new QaPersonalSkillError(
