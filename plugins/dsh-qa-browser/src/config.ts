@@ -44,6 +44,10 @@ export interface QaBrowserConfig {
     readonly autoRevealOnAgentActivity?: boolean;
     readonly focusOnAutoReveal?: boolean;
   };
+  readonly humanControl?: {
+    readonly enabled?: boolean;
+    readonly leaseSeconds?: number;
+  };
   readonly security?: {
     readonly network?: {
       readonly allowedSchemes?: string[];
@@ -100,6 +104,11 @@ export interface ResolvedQaBrowserConfig {
     readonly autoRevealOnAgentActivity: boolean;
     readonly focusOnAutoReveal: boolean;
   };
+  readonly humanControl: {
+    readonly enabled: boolean;
+    readonly leaseSeconds: number;
+    readonly leaseMs: number;
+  };
   readonly security: {
     readonly network: {
       readonly allowedSchemes: readonly string[];
@@ -155,6 +164,11 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
   ui: {
     autoRevealOnAgentActivity: true,
     focusOnAutoReveal: false,
+  },
+  humanControl: {
+    enabled: true,
+    leaseSeconds: 30,
+    leaseMs: 30_000,
   },
   security: {
     network: {
@@ -237,6 +251,12 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
         focusOnAutoReveal: z.boolean().default(false),
       })
       .description("QA Surface Browser panel behavior."),
+    humanControl: z
+      .object({
+        enabled: z.boolean().default(true),
+        leaseSeconds: z.number().default(30),
+      })
+      .description("Explicit human takeover lease for the QA Browser panel."),
     security: z
       .object({
         network: z
@@ -347,6 +367,19 @@ export function resolveQaBrowserConfig(
         raw.ui?.autoRevealOnAgentActivity ?? true,
       focusOnAutoReveal: raw.ui?.focusOnAutoReveal ?? false,
     },
+    humanControl: (() => {
+      const leaseSeconds = clampInteger(
+        raw.humanControl?.leaseSeconds,
+        5,
+        300,
+        30,
+      );
+      return {
+        enabled: raw.humanControl?.enabled ?? true,
+        leaseSeconds,
+        leaseMs: leaseSeconds * 1_000,
+      };
+    })(),
     security: {
       network: {
         allowedSchemes:

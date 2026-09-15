@@ -9,6 +9,7 @@ import {
 import type {
   BrowserActionResult,
   BrowserFormValue,
+  BrowserHumanPointerRequest,
   BrowserNavigationRequest,
   BrowserSessionInfo,
   BrowserSnapshot,
@@ -63,6 +64,9 @@ interface SessionRecord {
   readonly createdAt: number;
   lastActivityAt: number;
   activeActions: number;
+  control:
+    | { owner: "agent"; leaseExpiresAt: null }
+    | { owner: "human"; clientId: string; leaseExpiresAt: number };
 }
 
 export interface QaBrowserSessionManagerOptions {
@@ -165,34 +169,39 @@ export class QaBrowserSessionManager {
   async newTab(sessionId: string): Promise<BrowserTabInfo> {
     await this.ensureSession(sessionId);
     const record = this.requireSession(sessionId);
-    if (record.tabs.size >= this.options.config.session.maxTabs) {
-      throw new QaBrowserError(
-        "BROWSER_TOO_MANY_TABS",
-        `Browser session reached its ${this.options.config.session.maxTabs}-tab limit.`,
-      );
-    }
-    const tab = await this.createTab(record);
-    record.selectedTabId = tab.id;
-    this.touch(record);
-    return this.tabInfo(tab);
+    return this.runSessionMutation(record, async () => {
+      if (record.tabs.size >= this.options.config.session.maxTabs) {
+        throw new QaBrowserError(
+          "BROWSER_TOO_MANY_TABS",
+          `Browser session reached its ${this.options.config.session.maxTabs}-tab limit.`,
+        );
+      }
+      const tab = await this.createTab(record);
+      record.selectedTabId = tab.id;
+      this.touch(record);
+      return this.tabInfo(tab);
+    });
   }
 
   async closeTab(sessionId: string, id: string): Promise<void> {
     const record = this.requireSession(sessionId);
-    const tab = this.requireTab(record, id);
-    await tab.queue;
-    this.disposeTabListeners(tab);
-    tab.status = "closed";
-    record.tabs.delete(id);
-    if (record.selectedTabId === id) {
-      record.selectedTabId = record.tabs.keys().next().value ?? null;
-    }
-    await tab.page.close();
-    this.touch(record);
+    await this.runSessionMutation(record, async () => {
+      const tab = this.requireTab(record, id);
+      await tab.queue;
+      this.disposeTabListeners(tab);
+      tab.status = "closed";
+      record.tabs.delete(id);
+      if (record.selectedTabId === id) {
+        record.selectedTabId = record.tabs.keys().next().value ?? null;
+      }
+      await tab.page.close();
+      this.touch(record);
+    });
   }
 
   async selectTab(sessionId: string, id: string): Promise<void> {
     const record = this.requireSession(sessionId);
+    this.assertAgentControl(record);
     this.requireTab(record, id);
     record.selectedTabId = id;
     this.touch(record);
@@ -205,7 +214,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       const started = this.now();
       const from = tab.page.url();
       await this.options.policy.assertAllowed(request.url);
@@ -380,7 +389,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       const targets = fields.map((field) => ({
         value: field.value,
         record: this.requireRef(tab, field.ref),
@@ -425,7 +434,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       await tab.page.press(key);
       return this.finishMutation(record, tab, `Pressed ${key}.`);
     });
@@ -455,7 +464,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       const locator =
         ref === undefined ? undefined : this.requireRef(tab, ref).locator;
       await tab.page.scroll(deltaY, locator);
@@ -499,7 +508,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       const from = tab.page.url();
       const result = await tab.page.history(action);
       await this.options.policy.assertAllowed(result.url);
@@ -519,7 +528,7 @@ export class QaBrowserSessionManager {
   ): Promise<void> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    await this.enqueue(record, tab, async () => {
+    await this.enqueueMutation(record, tab, async () => {
       await tab.page.setViewport(viewport);
       Object.assign(tab.viewport, viewport);
       this.advanceRevision(tab);
@@ -534,10 +543,164 @@ export class QaBrowserSessionManager {
     return image;
   }
 
+  acquireHumanControl(sessionId: string, clientId: string): BrowserSessionInfo {
+    const record = this.requireSession(sessionId);
+    const ownerId = this.validClientId(clientId);
+    if (!this.options.config.humanControl.enabled) {
+      throw new QaBrowserError(
+        "BROWSER_HUMAN_CONTROL_DISABLED",
+        "Human control is disabled for this Browser runtime.",
+      );
+    }
+    const control = this.currentControl(record);
+    if (control.owner === "human" && control.clientId !== ownerId) {
+      throw new QaBrowserError(
+        "BROWSER_HUMAN_CONTROL_ACTIVE",
+        "Another Browser panel currently owns human control.",
+      );
+    }
+    if (record.activeActions > 0 && control.owner === "agent") {
+      throw new QaBrowserError(
+        "BROWSER_ACTION_FAILED",
+        "Wait for the current Browser action to finish, then take control again.",
+      );
+    }
+    record.control = {
+      owner: "human",
+      clientId: ownerId,
+      leaseExpiresAt: this.now() + this.options.config.humanControl.leaseMs,
+    };
+    this.touch(record);
+    return this.sessionInfo(record);
+  }
+
+  heartbeatHumanControl(
+    sessionId: string,
+    clientId: string,
+  ): BrowserSessionInfo {
+    const record = this.requireSession(sessionId);
+    this.assertHumanControl(record, clientId);
+    record.control = {
+      owner: "human",
+      clientId,
+      leaseExpiresAt: this.now() + this.options.config.humanControl.leaseMs,
+    };
+    this.touch(record);
+    return this.sessionInfo(record);
+  }
+
+  releaseHumanControl(sessionId: string, clientId: string): BrowserSessionInfo {
+    const record = this.requireSession(sessionId);
+    const control = this.currentControl(record);
+    if (control.owner === "agent") return this.sessionInfo(record);
+    this.assertHumanControl(record, clientId);
+    record.control = { owner: "agent", leaseExpiresAt: null };
+    this.touch(record);
+    return this.sessionInfo(record);
+  }
+
+  async humanSelectTab(
+    sessionId: string,
+    id: string,
+    clientId: string,
+  ): Promise<void> {
+    const record = this.requireSession(sessionId);
+    this.assertHumanControl(record, clientId);
+    this.requireTab(record, id);
+    record.selectedTabId = id;
+    this.touch(record);
+  }
+
+  async humanNavigate(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    request: BrowserNavigationRequest,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      const from = tab.page.url();
+      await this.options.policy.assertAllowed(request.url);
+      const result = await tab.page.navigate(request);
+      await this.options.policy.assertAllowed(result.url);
+      tab.url = result.url;
+      tab.title = result.title;
+      tab.status = "ready";
+      return this.finishMutation(record, tab, "Human navigation completed.", {
+        from,
+        to: result.url,
+      });
+    });
+  }
+
+  async humanPointer(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    request: BrowserHumanPointerRequest,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      const x = this.viewportCoordinate(request.x, tab.viewport.width, "x");
+      const y = this.viewportCoordinate(request.y, tab.viewport.height, "y");
+      await tab.page.pointer({ ...request, x, y });
+      return this.finishMutation(record, tab, `Human pointer ${request.action}.`);
+    });
+  }
+
+  async humanKey(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    key: string,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      await tab.page.press(key);
+      return this.finishMutation(record, tab, `Human key ${key}.`);
+    });
+  }
+
+  async humanText(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    text: string,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      await tab.page.insertText(text);
+      return this.finishMutation(record, tab, "Human text inserted.");
+    });
+  }
+
+  async humanScroll(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    deltaX: number,
+    deltaY: number,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      await tab.page.wheel(
+        this.finiteDelta(deltaX),
+        this.finiteDelta(deltaY),
+      );
+      return this.finishMutation(record, tab, "Human viewport scrolled.");
+    });
+  }
+
   async closeIdleSessions(now = this.now()): Promise<number> {
     const expired = [...this.sessions.values()].filter(
       (record) =>
         record.activeActions === 0 &&
+        this.currentControl(record).owner === "agent" &&
         now - record.lastActivityAt >=
           this.options.config.runtime.idleTimeoutMs,
     );
@@ -583,6 +746,7 @@ export class QaBrowserSessionManager {
       createdAt: now,
       lastActivityAt: now,
       activeActions: 0,
+      control: { owner: "agent", leaseExpiresAt: null },
     };
     try {
       const tab = await this.createTab(record);
@@ -679,6 +843,44 @@ export class QaBrowserSessionManager {
     return run;
   }
 
+  private async runSessionMutation<T>(
+    record: SessionRecord,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    this.assertAgentControl(record);
+    record.activeActions += 1;
+    this.touch(record);
+    try {
+      return await action();
+    } finally {
+      record.activeActions -= 1;
+      this.touch(record);
+    }
+  }
+
+  private enqueueMutation<T>(
+    record: SessionRecord,
+    tab: TabRecord,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    return this.enqueue(record, tab, async () => {
+      this.assertAgentControl(record);
+      return action();
+    });
+  }
+
+  private enqueueHuman<T>(
+    record: SessionRecord,
+    tab: TabRecord,
+    clientId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    return this.enqueue(record, tab, async () => {
+      this.assertHumanControl(record, clientId);
+      return action();
+    });
+  }
+
   private async refAction(
     sessionId: string,
     id: string,
@@ -688,7 +890,7 @@ export class QaBrowserSessionManager {
   ): Promise<BrowserActionResult> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
-    return this.enqueue(record, tab, async () => {
+    return this.enqueueMutation(record, tab, async () => {
       const target = this.requireRef(tab, ref);
       await tab.page.validateLocator(target.locator);
       await action(tab, target.locator);
@@ -808,6 +1010,71 @@ export class QaBrowserSessionManager {
     return value;
   }
 
+  private validClientId(clientId: string): string {
+    const value = clientId.trim();
+    if (value === "" || value.length > 128) {
+      throw new QaBrowserError(
+        "BROWSER_HUMAN_CONTROL_NOT_OWNER",
+        "Browser panel client id is invalid.",
+      );
+    }
+    return value;
+  }
+
+  private currentControl(record: SessionRecord): SessionRecord["control"] {
+    if (
+      record.control.owner === "human" &&
+      record.control.leaseExpiresAt <= this.now()
+    ) {
+      record.control = { owner: "agent", leaseExpiresAt: null };
+    }
+    return record.control;
+  }
+
+  private assertAgentControl(record: SessionRecord): void {
+    if (this.currentControl(record).owner === "human") {
+      throw new QaBrowserError(
+        "BROWSER_HUMAN_CONTROL_ACTIVE",
+        "A user currently controls this Browser session. Retry after control is released.",
+      );
+    }
+  }
+
+  private assertHumanControl(record: SessionRecord, clientId: string): void {
+    const ownerId = this.validClientId(clientId);
+    const control = this.currentControl(record);
+    if (control.owner !== "human" || control.clientId !== ownerId) {
+      throw new QaBrowserError(
+        "BROWSER_HUMAN_CONTROL_NOT_OWNER",
+        "This Browser panel does not own human control.",
+      );
+    }
+  }
+
+  private viewportCoordinate(
+    value: number,
+    limit: number,
+    axis: "x" | "y",
+  ): number {
+    if (!Number.isFinite(value) || value < 0 || value >= limit) {
+      throw new QaBrowserError(
+        "BROWSER_ACTION_FAILED",
+        `Pointer ${axis} coordinate is outside the Browser viewport.`,
+      );
+    }
+    return value;
+  }
+
+  private finiteDelta(value: number): number {
+    if (!Number.isFinite(value)) {
+      throw new QaBrowserError(
+        "BROWSER_ACTION_FAILED",
+        "Browser scroll delta must be finite.",
+      );
+    }
+    return Math.min(10_000, Math.max(-10_000, value));
+  }
+
   private touch(record: SessionRecord): void {
     record.lastActivityAt = this.now();
     if (record.status === "idle") record.status = "ready";
@@ -819,7 +1086,7 @@ export class QaBrowserSessionManager {
       status: record.status,
       selectedTabId: record.selectedTabId,
       tabIds: [...record.tabs.keys()],
-      control: { owner: "agent", leaseExpiresAt: null },
+      control: { ...this.currentControl(record) },
       profileName: null,
       createdAt: record.createdAt,
       lastActivityAt: record.lastActivityAt,

@@ -26,6 +26,13 @@ class FakePage implements BrowserPageHandle {
   activeNavigations = 0;
   maxActiveNavigations = 0;
   readonly navigations: string[] = [];
+  readonly pointerActions: Array<{
+    readonly action: "move" | "click" | "down" | "up";
+    readonly x: number;
+    readonly y: number;
+  }> = [];
+  readonly insertedText: string[] = [];
+  readonly wheels: Array<readonly [number, number]> = [];
   private readonly changed = new Set<() => void>();
   private readonly closedListeners = new Set<() => void>();
 
@@ -89,6 +96,22 @@ class FakePage implements BrowserPageHandle {
   async setValue(_locator: LocatorPlan): Promise<void> {}
 
   async press(_key: string): Promise<void> {}
+
+  async insertText(text: string): Promise<void> {
+    this.insertedText.push(text);
+  }
+
+  async pointer(request: {
+    readonly action: "move" | "click" | "down" | "up";
+    readonly x: number;
+    readonly y: number;
+  }): Promise<void> {
+    this.pointerActions.push(request);
+  }
+
+  async wheel(deltaX: number, deltaY: number): Promise<void> {
+    this.wheels.push([deltaX, deltaY]);
+  }
 
   async hover(_locator: LocatorPlan): Promise<void> {}
 
@@ -292,6 +315,78 @@ describe("QaBrowserSessionManager", () => {
     });
     await expect(manager.click("semantic", tabId, "e2")).rejects.toMatchObject({
       code: "BROWSER_STALE_REF",
+    });
+    await manager.dispose();
+  });
+
+  it("leases human control, blocks agent mutations, and expires safely", async () => {
+    let now = 10_000;
+    const { config, manager, provider } = createHarness({ now: () => now });
+    const session = await manager.ensureSession("takeover");
+    const tabId = session.selectedTabId!;
+
+    expect(manager.acquireHumanControl("takeover", "client-a").control).toEqual({
+      owner: "human",
+      clientId: "client-a",
+      leaseExpiresAt: now + config.humanControl.leaseMs,
+    });
+    await expect(
+      manager.navigate("takeover", tabId, { url: "https://one.example" }),
+    ).rejects.toMatchObject({ code: "BROWSER_HUMAN_CONTROL_ACTIVE" });
+    await expect(manager.snapshot("takeover", tabId)).resolves.toMatchObject({
+      tabId,
+    });
+    await expect(manager.screenshot("takeover", tabId)).resolves.toEqual(
+      Buffer.from("fake-png"),
+    );
+    await expect(
+      manager.humanPointer("takeover", tabId, "client-a", {
+        action: "click",
+        x: 720,
+        y: 450,
+      }),
+    ).resolves.toMatchObject({ ok: true });
+    const page = [...provider.contexts.values()][0]!.pages[0]!;
+    expect(page.pointerActions).toEqual([
+      { action: "click", x: 720, y: 450 },
+    ]);
+
+    now += config.humanControl.leaseMs - 1;
+    expect(
+      manager.heartbeatHumanControl("takeover", "client-a").control,
+    ).toMatchObject({ leaseExpiresAt: now + config.humanControl.leaseMs });
+    await expect(
+      manager.humanPointer("takeover", tabId, "client-a", {
+        action: "click",
+        x: 1440,
+        y: 0,
+      }),
+    ).rejects.toMatchObject({ code: "BROWSER_ACTION_FAILED" });
+
+    now += config.humanControl.leaseMs;
+    expect(manager.getSession("takeover")?.control).toEqual({
+      owner: "agent",
+      leaseExpiresAt: null,
+    });
+    await expect(
+      manager.navigate("takeover", tabId, { url: "https://two.example" }),
+    ).resolves.toMatchObject({ ok: true });
+    await manager.dispose();
+  });
+
+  it("rejects competing human clients and releases only for the owner", async () => {
+    const { manager } = createHarness();
+    await manager.ensureSession("owners");
+    manager.acquireHumanControl("owners", "client-a");
+    expect(() => manager.acquireHumanControl("owners", "client-b")).toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_ACTIVE" }),
+    );
+    expect(() => manager.releaseHumanControl("owners", "client-b")).toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
+    );
+    expect(manager.releaseHumanControl("owners", "client-a").control).toEqual({
+      owner: "agent",
+      leaseExpiresAt: null,
     });
     await manager.dispose();
   });

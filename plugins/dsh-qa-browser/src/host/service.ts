@@ -18,7 +18,9 @@ import {
 } from "../config.js";
 import type {
   BrowserActionResult,
+  BrowserControlState,
   BrowserFormValue,
+  BrowserHumanPointerAction,
   BrowserNavigationRequest,
   BrowserPanelFrame,
   BrowserPanelState,
@@ -304,6 +306,8 @@ export class QaBrowserService extends TypertRemoteService {
     return {
       session,
       tabs: session === null ? [] : await this.manager.listTabs(sessionId),
+      humanControlEnabled: this.config.humanControl.enabled,
+      humanControlLeaseSeconds: this.config.humanControl.leaseSeconds,
       autoRevealOnAgentActivity: this.config.ui.autoRevealOnAgentActivity,
       focusOnAutoReveal: this.config.ui.focusOnAutoReveal,
     };
@@ -336,6 +340,119 @@ export class QaBrowserService extends TypertRemoteService {
     };
   }
 
+  async panelTakeControl(
+    qaToken: string,
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserControlState> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.acquireHumanControl(sessionId, clientId).control;
+  }
+
+  async panelControlHeartbeat(
+    qaToken: string,
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserControlState> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.heartbeatHumanControl(sessionId, clientId).control;
+  }
+
+  async panelReleaseControl(
+    qaToken: string,
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserControlState> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.releaseHumanControl(sessionId, clientId).control;
+  }
+
+  async panelSelectTab(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+  ): Promise<boolean> {
+    await this.authorizePanel(qaToken, sessionId);
+    await this.manager.humanSelectTab(sessionId, tabId, clientId);
+    return true;
+  }
+
+  async panelNavigate(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    url: string,
+  ): Promise<BrowserActionResult> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.humanNavigate(sessionId, tabId, clientId, {
+      url,
+      waitUntil: "domcontentloaded",
+    });
+  }
+
+  async panelPointer(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    action: BrowserHumanPointerAction,
+    x: number,
+    y: number,
+    button: "left" | "middle" | "right" | null,
+    clickCount: number,
+  ): Promise<BrowserActionResult> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.humanPointer(sessionId, tabId, clientId, {
+      action,
+      x,
+      y,
+      ...(button === null ? {} : { button }),
+      clickCount: clickCount === 2 ? 2 : 1,
+    });
+  }
+
+  async panelKey(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    key: string,
+  ): Promise<BrowserActionResult> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.humanKey(sessionId, tabId, clientId, key);
+  }
+
+  async panelText(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    text: string,
+  ): Promise<BrowserActionResult> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.humanText(sessionId, tabId, clientId, text);
+  }
+
+  async panelScroll(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    deltaX: number,
+    deltaY: number,
+  ): Promise<BrowserActionResult> {
+    await this.authorizePanel(qaToken, sessionId);
+    return this.manager.humanScroll(
+      sessionId,
+      tabId,
+      clientId,
+      deltaX,
+      deltaY,
+    );
+  }
+
   private async authorizePanel(
     qaToken: string,
     sessionId: string,
@@ -363,7 +480,18 @@ export class QaBrowserService extends TypertRemoteService {
   }
 }
 
-type RemoteMethod = "panelState" | "panelFrame";
+type RemoteMethod =
+  | "panelState"
+  | "panelFrame"
+  | "panelTakeControl"
+  | "panelControlHeartbeat"
+  | "panelReleaseControl"
+  | "panelSelectTab"
+  | "panelNavigate"
+  | "panelPointer"
+  | "panelKey"
+  | "panelText"
+  | "panelScroll";
 
 function registerRemoteMethod(method: RemoteMethod): void {
   const initializers: Array<(this: object) => void> = [];
@@ -393,6 +521,18 @@ function registerRemoteMethod(method: RemoteMethod): void {
   for (const initializer of initializers) initializer.call(markerReceiver);
 }
 
-for (const method of ["panelState", "panelFrame"] as const) {
+for (const method of [
+  "panelState",
+  "panelFrame",
+  "panelTakeControl",
+  "panelControlHeartbeat",
+  "panelReleaseControl",
+  "panelSelectTab",
+  "panelNavigate",
+  "panelPointer",
+  "panelKey",
+  "panelText",
+  "panelScroll",
+] as const) {
   registerRemoteMethod(method);
 }

@@ -6,7 +6,25 @@ import type {
   TypertRemoteNamespace,
 } from "@deepseek-ai/dsh-typert-protocol";
 
-import type { BrowserPanelFrame, BrowserPanelState } from "./types.js";
+import type {
+  BrowserActionResult,
+  BrowserControlState,
+  BrowserPanelFrame,
+  BrowserPanelState,
+} from "./types.js";
+
+type PanelRemoteMethod =
+  | "panelState"
+  | "panelFrame"
+  | "panelTakeControl"
+  | "panelControlHeartbeat"
+  | "panelReleaseControl"
+  | "panelSelectTab"
+  | "panelNavigate"
+  | "panelPointer"
+  | "panelKey"
+  | "panelText"
+  | "panelScroll";
 
 const viewportSchema = z.strictObject({
   width: z.number().int().positive(),
@@ -14,15 +32,24 @@ const viewportSchema = z.strictObject({
   deviceScaleFactor: z.number().positive(),
 });
 
+const controlSchema: z.ZodType<BrowserControlState> = z.discriminatedUnion(
+  "owner",
+  [
+    z.strictObject({ owner: z.literal("agent"), leaseExpiresAt: z.null() }),
+    z.strictObject({
+      owner: z.literal("human"),
+      clientId: z.string().min(1).max(128),
+      leaseExpiresAt: z.number(),
+    }),
+  ],
+);
+
 const sessionSchema = z.strictObject({
   sessionId: z.string().min(1),
   status: z.enum(["starting", "ready", "idle", "crashed", "closed"]),
   selectedTabId: z.string().min(1).nullable(),
   tabIds: z.array(z.string().min(1)),
-  control: z.strictObject({
-    owner: z.enum(["agent", "human"]),
-    leaseExpiresAt: z.number().nullable(),
-  }),
+  control: controlSchema,
   profileName: z.string().nullable(),
   createdAt: z.number(),
   lastActivityAt: z.number(),
@@ -40,6 +67,8 @@ const tabSchema = z.strictObject({
 const stateSchema = z.strictObject({
   session: sessionSchema.nullable(),
   tabs: z.array(tabSchema),
+  humanControlEnabled: z.boolean(),
+  humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),
   focusOnAutoReveal: z.boolean(),
 });
@@ -54,8 +83,21 @@ const frameSchema = z.strictObject({
   data: z.string(),
 });
 
+const actionResultSchema: z.ZodType<BrowserActionResult> = z.strictObject({
+  ok: z.boolean(),
+  sessionId: z.string().min(1),
+  tabId: z.string().min(1),
+  revision: z.number().int().nonnegative(),
+  url: z.string(),
+  title: z.string(),
+  summary: z.string(),
+  navigation: z
+    .strictObject({ from: z.string().optional(), to: z.string().optional() })
+    .optional(),
+});
+
 function descriptor(
-  method: "panelState" | "panelFrame",
+  method: PanelRemoteMethod,
   parameters: InvocationDescriptor["parameters"],
   resultType: string,
   resultSchema: z.ZodType,
@@ -85,6 +127,53 @@ const stringParameter = (
   },
 });
 
+const numberParameter = (
+  name: string,
+): InvocationDescriptor["parameters"][number] => ({
+  name,
+  wire: name,
+  source: "json",
+  codec: { mode: "strict", typeSymbol: "number", schema: z.number().finite() },
+});
+
+const nullableButtonParameter: InvocationDescriptor["parameters"][number] = {
+  name: "button",
+  wire: "button",
+  source: "json",
+  codec: {
+    mode: "strict",
+    typeSymbol: '"left" | "middle" | "right" | null',
+    schema: z.enum(["left", "middle", "right"]).nullable(),
+  },
+};
+
+const clickCountParameter: InvocationDescriptor["parameters"][number] = {
+  name: "clickCount",
+  wire: "clickCount",
+  source: "json",
+  codec: {
+    mode: "strict",
+    typeSymbol: "1 | 2",
+    schema: z.union([z.literal(1), z.literal(2)]),
+  },
+};
+
+const authParameters = [
+  stringParameter("qaToken", true),
+  stringParameter("sessionId"),
+];
+
+const controlParameters = [
+  ...authParameters,
+  stringParameter("clientId"),
+];
+
+const tabControlParameters = [
+  ...authParameters,
+  stringParameter("tabId"),
+  stringParameter("clientId"),
+];
+
 declare module "@deepseek-ai/dsh-typert-protocol" {
   interface TypertRemoteMap {
     "qaBrowser/panelState": (
@@ -96,6 +185,67 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
       sessionId: string,
       tabId: string,
     ) => Promise<RemoteResult<BrowserPanelFrame>>;
+    "qaBrowser/panelTakeControl": (
+      qaToken: string,
+      sessionId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<BrowserControlState>>;
+    "qaBrowser/panelControlHeartbeat": (
+      qaToken: string,
+      sessionId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<BrowserControlState>>;
+    "qaBrowser/panelReleaseControl": (
+      qaToken: string,
+      sessionId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<BrowserControlState>>;
+    "qaBrowser/panelSelectTab": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<boolean>>;
+    "qaBrowser/panelNavigate": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      url: string,
+    ) => Promise<RemoteResult<BrowserActionResult>>;
+    "qaBrowser/panelPointer": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      action: "move" | "click" | "down" | "up",
+      x: number,
+      y: number,
+      button: "left" | "middle" | "right" | null,
+      clickCount: number,
+    ) => Promise<RemoteResult<BrowserActionResult>>;
+    "qaBrowser/panelKey": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      key: string,
+    ) => Promise<RemoteResult<BrowserActionResult>>;
+    "qaBrowser/panelText": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      text: string,
+    ) => Promise<RemoteResult<BrowserActionResult>>;
+    "qaBrowser/panelScroll": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      deltaX: number,
+      deltaY: number,
+    ) => Promise<RemoteResult<BrowserActionResult>>;
   }
 
   interface TypertRemoteNamespaceMap {
@@ -108,19 +258,84 @@ const qaBrowserRemote = {
   descriptors: [
     descriptor(
       "panelState",
-      [stringParameter("qaToken", true), stringParameter("sessionId")],
+      authParameters,
       "@yadsh/dsh-qa-browser/types#BrowserPanelState",
       stateSchema,
     ),
     descriptor(
       "panelFrame",
-      [
-        stringParameter("qaToken", true),
-        stringParameter("sessionId"),
-        stringParameter("tabId"),
-      ],
+      [...authParameters, stringParameter("tabId")],
       "@yadsh/dsh-qa-browser/types#BrowserPanelFrame",
       frameSchema,
+    ),
+    ...(
+      [
+        "panelTakeControl",
+        "panelControlHeartbeat",
+        "panelReleaseControl",
+      ] as const
+    ).map((method) =>
+      descriptor(
+        method,
+        controlParameters,
+        "@yadsh/dsh-qa-browser/types#BrowserControlState",
+        controlSchema,
+      ),
+    ),
+    descriptor(
+      "panelSelectTab",
+      tabControlParameters,
+      "boolean",
+      z.boolean(),
+    ),
+    descriptor(
+      "panelNavigate",
+      [...tabControlParameters, stringParameter("url")],
+      "@yadsh/dsh-qa-browser/types#BrowserActionResult",
+      actionResultSchema,
+    ),
+    descriptor(
+      "panelPointer",
+      [
+        ...tabControlParameters,
+        {
+          name: "action",
+          wire: "action",
+          source: "json",
+          codec: {
+            mode: "strict",
+            typeSymbol: "BrowserHumanPointerAction",
+            schema: z.enum(["move", "click", "down", "up"]),
+          },
+        },
+        numberParameter("x"),
+        numberParameter("y"),
+        nullableButtonParameter,
+        clickCountParameter,
+      ],
+      "@yadsh/dsh-qa-browser/types#BrowserActionResult",
+      actionResultSchema,
+    ),
+    ...(["panelKey", "panelText"] as const).map((method) =>
+      descriptor(
+        method,
+        [
+          ...tabControlParameters,
+          stringParameter(method === "panelKey" ? "key" : "text", true),
+        ],
+        "@yadsh/dsh-qa-browser/types#BrowserActionResult",
+        actionResultSchema,
+      ),
+    ),
+    descriptor(
+      "panelScroll",
+      [
+        ...tabControlParameters,
+        numberParameter("deltaX"),
+        numberParameter("deltaY"),
+      ],
+      "@yadsh/dsh-qa-browser/types#BrowserActionResult",
+      actionResultSchema,
     ),
   ],
 } satisfies TypertRemoteContribution;

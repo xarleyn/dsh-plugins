@@ -52,6 +52,11 @@ assert.deepEqual(built.BROWSER_CORE_TOOL_NAMES, [
   "browser_history",
 ]);
 assert.deepEqual(built.BROWSER_VISION_TOOL_NAMES, ["browser_screenshot"]);
+assert.deepEqual(built.QA_BROWSER_DEFAULTS.humanControl, {
+  enabled: true,
+  leaseSeconds: 30,
+  leaseMs: 30_000,
+});
 
 assert.deepEqual(manifest.dsh?.client?.inject, [
   "@deepseek-ai/dsh-api-gateway",
@@ -66,6 +71,9 @@ assert.match(
 );
 assert.match(client, /qa\.surface\.panel/u);
 assert.match(client, /dsh-qa-browser-panel__viewport/u);
+assert.match(client, /panelTakeControl/u);
+assert.match(client, /panelControlHeartbeat/u);
+assert.match(client, /panelReleaseControl/u);
 assert.match(client, /api-session\/status/u);
 assert.doesNotMatch(client, /<iframe|createElement\("iframe"\)/iu);
 

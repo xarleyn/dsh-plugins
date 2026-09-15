@@ -7,10 +7,13 @@ export interface BrowserViewport {
   readonly deviceScaleFactor: number;
 }
 
-export interface BrowserControlState {
-  readonly owner: "agent" | "human";
-  readonly leaseExpiresAt: number | null;
-}
+export type BrowserControlState =
+  | { readonly owner: "agent"; readonly leaseExpiresAt: null }
+  | {
+      readonly owner: "human";
+      readonly clientId: string;
+      readonly leaseExpiresAt: number;
+    };
 
 export interface BrowserSessionInfo {
   readonly sessionId: string;
@@ -138,8 +141,20 @@ export interface BrowserWaitRequest {
 export interface BrowserPanelState {
   readonly session: BrowserSessionInfo | null;
   readonly tabs: readonly BrowserTabInfo[];
+  readonly humanControlEnabled: boolean;
+  readonly humanControlLeaseSeconds: number;
   readonly autoRevealOnAgentActivity: boolean;
   readonly focusOnAutoReveal: boolean;
+}
+
+export type BrowserHumanPointerAction = "move" | "click" | "down" | "up";
+
+export interface BrowserHumanPointerRequest {
+  readonly action: BrowserHumanPointerAction;
+  readonly x: number;
+  readonly y: number;
+  readonly button?: "left" | "middle" | "right";
+  readonly clickCount?: 1 | 2;
 }
 
 /** Bounded on-demand viewport image carried over the existing DSH Remote. */
