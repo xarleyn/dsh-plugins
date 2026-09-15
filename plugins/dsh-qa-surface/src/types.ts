@@ -894,3 +894,7 @@ export interface QaSessionState {
   /** Question requests parked for the operator's answer, oldest first. */
   readonly questions: readonly QaPendingQuestion[];
 }
+/** Minimal server-trusted identity exposed to principal-scoped plugins. */
+export interface QaPrincipal {
+  readonly userId: string;
+}

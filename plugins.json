@@ -271,6 +271,26 @@
       "client": true
     },
     {
+      "name": "dsh-qa-integrations",
+      "npm": "@yadsh/dsh-qa-integrations",
+      "path": "plugins/dsh-qa-integrations",
+      "description": "Principal-scoped, encrypted user integrations for DSH QA Surface",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "qa",
+        "integrations",
+        "bitrix24",
+        "credentials"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-integrations#readme",
+      "client": true
+    },
+    {
       "name": "dsh-qa-surface",
       "npm": "@yadsh/dsh-qa-surface",
       "path": "plugins/dsh-qa-surface",

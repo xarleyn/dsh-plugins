@@ -31,6 +31,10 @@
       "types": "./lib/types/client/panels/index.d.ts",
       "default": "./lib/client/panels/index.js"
     },
+    "./client/settings": {
+      "types": "./lib/types/client/settings-extensions/index.d.ts",
+      "default": "./lib/client/settings-extensions/index.js"
+    },
     "./remote": {
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"

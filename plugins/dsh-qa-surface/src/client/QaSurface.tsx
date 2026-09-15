@@ -87,6 +87,7 @@ import { qaStorageNamespace } from "../shared/session-key.js";
 import { QaPanelHost } from "./panels/PanelHost.js";
 import { QaPanelLauncher } from "./panels/PanelLauncher.js";
 import type { QaSurfacePanelRegistry } from "./panels/registry.js";
+import type { QaUserSettingsSections } from "./settings-extensions/index.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -128,6 +129,8 @@ export interface QaSurfaceFace {
   readonly accounts?: QaAccountsController;
   /** Global client-only panel metadata and presentation navigation. */
   readonly panels: QaSurfacePanelRegistry;
+  /** First-class settings pages registered by additive QA plugins. */
+  readonly settingsSections: QaUserSettingsSections;
 }
 
 export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
@@ -587,8 +590,6 @@ export function QaSurface(props: QaSurfaceProps) {
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    if (profile === undefined && starters === undefined && skills === undefined)
-      return undefined;
     return { profile, starters, skills };
   }, [accounts, accountsSnapshot, config, boundSkillApi]);
   const busyTurn =
@@ -734,6 +735,8 @@ export function QaSurface(props: QaSurfaceProps) {
           }
           chatCount={controller?.chatIds().length ?? 0}
           onClose={() => setSettingsOpen(false)}
+          extensions={props.settingsSections}
+          token={accounts?.token() ?? ""}
           {...(settingsDialog.profile === undefined
             ? {}
             : { profile: settingsDialog.profile })}

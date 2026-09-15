@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { QaModal } from "../components/QaModal.js";
 import type {
   QaAccountIdentityField,
@@ -12,9 +12,11 @@ import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
 import { QaStartersSettingsPage } from "./StartersSettingsPage.js";
+import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
-export type QaSettingsSectionId = "profile" | "starters" | "general" | "skills";
+export type QaSettingsSectionId =
+  "profile" | "starters" | "general" | "skills" | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -38,12 +40,23 @@ export interface QaUserSettingsDialogProps {
   };
   /** Personal skills; absent when the deployment cannot host them. */
   readonly skills?: QaBoundSkillApi;
+  /** Additive pages contributed by separately shipped QA plugins. */
+  readonly extensions?: QaUserSettingsSections;
+  /** Current account token, passed only to the selected extension page. */
+  readonly token?: string;
 }
 
 interface QaSettingsSectionModel {
   readonly id: QaSettingsSectionId;
   readonly title: string;
 }
+
+const EMPTY_EXTENSION_SNAPSHOT = Object.freeze({
+  sections: Object.freeze([]),
+  revision: 0,
+});
+const subscribeToNothing = () => () => undefined;
+const emptyExtensionSnapshot = () => EMPTY_EXTENSION_SNAPSHOT;
 
 /**
  * One settings dialog for everything the signed-in user owns: the profile, a
@@ -58,6 +71,11 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
   const [section, setSection] = useState<QaSettingsSectionId>(
     props.initialSection,
   );
+  const extensionSnapshot = useSyncExternalStore(
+    props.extensions?.subscribe ?? subscribeToNothing,
+    props.extensions?.getSnapshot ?? emptyExtensionSnapshot,
+    props.extensions?.getSnapshot ?? emptyExtensionSnapshot,
+  );
   const sections = useMemo((): readonly QaSettingsSectionModel[] => {
     const models: QaSettingsSectionModel[] = [];
     if (props.profile !== undefined) {
@@ -70,8 +88,11 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.skills !== undefined) {
       models.push({ id: "skills", title: "Навыки" });
     }
+    models.push(
+      ...extensionSnapshot.sections.map(({ id, title }) => ({ id, title })),
+    );
     return models;
-  }, [props.profile, props.starters, props.skills]);
+  }, [props.profile, props.starters, props.skills, extensionSnapshot.sections]);
   // A section the deployment withdrew while the dialog was open must not leave
   // an empty panel behind.
   const active = sections.some((entry) => entry.id === section)
@@ -142,6 +163,11 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
             // another tab is re-read the next time the section is entered.
             <QaSkillsSettingsPage api={props.skills} />
           ) : null}
+          {extensionSnapshot.sections.map((entry) =>
+            entry.id === active && props.token !== undefined ? (
+              <entry.component key={entry.id} token={props.token} />
+            ) : null,
+          )}
         </div>
       </div>
     </QaModal>

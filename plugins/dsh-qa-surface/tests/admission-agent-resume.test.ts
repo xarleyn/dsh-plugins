@@ -113,6 +113,18 @@ describe("agent materialization in policy admission", () => {
     admission.dispose();
   });
 
+  it("pins host-trusted principal-scoped tools without exposing them as config", async () => {
+    const { admission, restricted } = world({ live: true });
+    const unregister = admission.registerPrincipalScopedTools([
+      "bitrix_search_crm",
+    ]);
+    const proof = await admission.secureSession("token", "session-cold");
+    expect(restricted).toEqual([["read", "bitrix_search_crm"]]);
+    expect(proof.toolAllowList).toEqual(["read"]);
+    unregister();
+    admission.dispose();
+  });
+
   it("refuses with agent-unavailable when the resume produces no agent", async () => {
     const { admission, logged } = world({
       fail: 'preset "qa-research" failed to mount: invalid config',

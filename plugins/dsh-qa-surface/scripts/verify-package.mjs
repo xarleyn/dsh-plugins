@@ -24,6 +24,9 @@ const required = [
   "lib/client/panels/index.js",
   "lib/types/client/panels/index.d.ts",
   "lib/types/client/panels/contract.d.ts",
+  "lib/client/settings-extensions/index.js",
+  "lib/types/client/settings-extensions/index.d.ts",
+  "lib/types/client/settings-extensions/contract.d.ts",
   "scripts/repair-session-events.mjs",
   "cordis.patch.yml",
   "compatibility.json",
@@ -59,6 +62,14 @@ assert.equal(
 assert.equal(
   manifest.exports["./client/panels"].types,
   "./lib/types/client/panels/index.d.ts",
+);
+assert.equal(
+  manifest.exports["./client/settings"].default,
+  "./lib/client/settings-extensions/index.js",
+);
+assert.equal(
+  manifest.exports["./client/settings"].types,
+  "./lib/types/client/settings-extensions/index.d.ts",
 );
 assert.equal(
   manifest.exports["./remote"].default,
