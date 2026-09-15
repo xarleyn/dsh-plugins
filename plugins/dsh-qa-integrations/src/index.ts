@@ -193,9 +193,20 @@ export class QaIntegrations extends TypertRemoteService {
 }
 
 export { IntegrationBroker } from "./broker.js";
+export {
+  BITRIX_CAPABILITIES,
+  BITRIX_OPERATIONS,
+  enabledCapabilities,
+  type Bitrix24CapabilityDefinition,
+  type BitrixOperationDefinition,
+} from "./catalog.js";
 export { ConfigSchema, resolveConfig } from "./config.js";
 export { IntegrationError } from "./errors.js";
 export { Bitrix24Provider, parseBitrixWebhook } from "./providers/bitrix24.js";
+export {
+  BITRIX_HANDLERS,
+  BITRIX_PROJECTIONS,
+} from "./providers/bitrix24-operations.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {

@@ -2,7 +2,22 @@ export type IntegrationProviderId = "bitrix24";
 export type IntegrationAuthKind = "token" | "oauth" | "mcp_token";
 export type IntegrationStatus = "pending" | "connected" | "error" | "revoked";
 export type IntegrationPolicyMode = "allow" | "confirm" | "deny";
-export type IntegrationCapability = "crm.read" | "chat.read";
+
+/**
+ * One capability per Bitrix24 webhook scope the plugin can use. A capability
+ * exists only when the deployment enables it AND the connected webhook was
+ * actually granted the matching scope, so the Settings card never offers the
+ * agent more than the portal allows.
+ */
+export type IntegrationCapability =
+  | "crm.read"
+  | "chat.read"
+  | "openlines.read"
+  | "user.read"
+  | "department.read"
+  | "tasks.read"
+  | "calendar.read"
+  | "disk.read";
 
 export interface IntegrationPrincipal {
   readonly userId: string;
@@ -17,8 +32,9 @@ export interface IntegrationSummary {
   readonly credentialConfigured: boolean;
   readonly credentialUpdatedAt: string | null;
   readonly capabilities: readonly IntegrationCapability[];
+  /** Present only for capabilities the connected webhook actually grants. */
   readonly policy: Readonly<
-    Record<IntegrationCapability, IntegrationPolicyMode>
+    Partial<Record<IntegrationCapability, IntegrationPolicyMode>>
   >;
   readonly lastValidatedAt: string | null;
   readonly errorCode: string | null;
@@ -113,6 +129,19 @@ export interface IntegrationToolResult {
   readonly data: Record<string, IntegrationJsonValue>;
 }
 
+/** Deployment switch per Bitrix24 webhook scope. */
+export interface Bitrix24Flags {
+  readonly enabled: boolean;
+  readonly crmRead: boolean;
+  readonly chatRead: boolean;
+  readonly openlinesRead: boolean;
+  readonly userRead: boolean;
+  readonly departmentRead: boolean;
+  readonly tasksRead: boolean;
+  readonly calendarRead: boolean;
+  readonly diskRead: boolean;
+}
+
 export interface QaIntegrationsConfig {
   readonly enabled?: boolean;
   readonly dataPath?: string;
@@ -121,11 +150,7 @@ export interface QaIntegrationsConfig {
   readonly timeoutMs?: number;
   readonly maxResponseBytes?: number;
   readonly allowedPortalSuffixes?: string[];
-  readonly bitrix24?: {
-    readonly enabled?: boolean;
-    readonly crmRead?: boolean;
-    readonly chatRead?: boolean;
-  };
+  readonly bitrix24?: Partial<Bitrix24Flags>;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -136,9 +161,5 @@ export interface ResolvedQaIntegrationsConfig {
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
   readonly allowedPortalSuffixes: readonly string[];
-  readonly bitrix24: {
-    readonly enabled: boolean;
-    readonly crmRead: boolean;
-    readonly chatRead: boolean;
-  };
+  readonly bitrix24: Bitrix24Flags;
 }

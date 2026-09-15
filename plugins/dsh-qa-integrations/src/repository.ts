@@ -145,6 +145,7 @@ export class IntegrationRepository {
     provider: IntegrationProviderId,
     success: boolean,
     errorCode: string | null,
+    capabilities?: readonly IntegrationCapability[],
   ): void {
     const file = this.read();
     const now = new Date().toISOString();
@@ -158,6 +159,10 @@ export class IntegrationRepository {
               updatedAt: now,
               lastValidatedAt: success ? now : item.lastValidatedAt,
               lastErrorCode: errorCode,
+              capabilities:
+                success && capabilities !== undefined
+                  ? Object.freeze([...capabilities])
+                  : item.capabilities,
             }
           : item,
       ),
