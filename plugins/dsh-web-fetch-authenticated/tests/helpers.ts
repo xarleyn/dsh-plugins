@@ -24,6 +24,8 @@ export interface FixtureRoute {
   status?: number;
   headers?: Record<string, string>;
   body?: string;
+  /** Binary reply; takes precedence over `body` (documents, images). */
+  bodyBytes?: Uint8Array;
   /** Redirect instead of answering: `location` + status (301/302/...). */
   redirectStatus?: number;
   redirectLocation?: string;
@@ -55,7 +57,8 @@ export async function startFixture(
         "content-type": route.headers?.["content-type"] ?? "application/json",
         ...(route.headers ?? {}),
       });
-      response.end(body);
+      if (route.bodyBytes !== undefined) response.end(route.bodyBytes);
+      else response.end(body);
     };
     if (route.delayMs !== undefined) setTimeout(respond, route.delayMs);
     else respond();

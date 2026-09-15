@@ -11,6 +11,7 @@ import type {
   AuthConfig,
   AuthenticatedFetchRule,
   AuthType,
+  DocumentsConfig,
   WebFetchAuthConfig,
   NetworkPolicy,
   RedirectPolicy,
@@ -178,6 +179,27 @@ export function validateRule(
       errors.push(`${label}: testUrl is not a valid absolute URL`);
     }
   }
+  errors.push(...validateDocuments(rule.documents, label));
+  return errors;
+}
+
+/**
+ * Extraction caps (SPEC §15.3). A negative or zero cap would silently make the
+ * feature useless, so each present value must be a positive whole number.
+ */
+function validateDocuments(
+  documents: DocumentsConfig | undefined,
+  label: string,
+): string[] {
+  if (documents === undefined) return [];
+  const errors: string[] = [];
+  if (documents.enabled !== undefined && typeof documents.enabled !== "boolean")
+    errors.push(`${label}: documents.enabled must be a boolean`);
+  for (const field of ["maxBytes", "maxChars"] as const) {
+    const value = documents[field];
+    if (value !== undefined && !isPositiveFinite(value))
+      errors.push(`${label}: documents.${field} must be a positive number`);
+  }
   return errors;
 }
 
@@ -213,6 +235,14 @@ function validateAdapter(
     if (value !== undefined && typeof value !== "boolean")
       errors.push(`${label}: adapter.${field} must be a boolean`);
   }
+  const maxAttachments = adapter.maxAttachments;
+  if (
+    maxAttachments !== undefined &&
+    (!Number.isInteger(maxAttachments) || maxAttachments < 0)
+  )
+    errors.push(
+      `${label}: adapter.maxAttachments must be a non-negative whole number`,
+    );
   return errors;
 }
 
@@ -353,6 +383,7 @@ export function validateConfig(config: WebFetchAuthConfig): ConfigValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
   const rules = config.rules ?? [];
+  errors.push(...validateDocuments(config.documents, "documents"));
   const seenIds = new Set<string>();
   for (const [index, rule] of rules.entries()) {
     errors.push(...validateRule(rule, index));

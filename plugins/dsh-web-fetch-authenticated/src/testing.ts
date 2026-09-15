@@ -220,12 +220,16 @@ export async function testRule(
         return { credential: value };
       },
     };
-    // Same adapter seam as the live provider: Test shows the normalized text.
+    // Same adapter seam as the live provider: Test shows the normalized text,
+    // and a document URL is answered with the same extracted text the model
+    // would receive — otherwise Test would report a readable attachment as
+    // "unsupported content type".
     const result =
-      (await await applyAdapter(url, adapterContext)) ??
+      (await applyAdapter(url, adapterContext)) ??
       (await authenticatedFetch({
         url,
         ...adapterContext,
+        documents: rule.documents,
         onMetrics: (update) => {
           Object.assign(metrics, update);
         },
