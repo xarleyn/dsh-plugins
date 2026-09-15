@@ -113,7 +113,9 @@ describe("QA panel extension shell", () => {
         panels={panels}
         sessionId="session-a"
         qaToken="qa-secret"
-        renderSlot={slotRenderer((owner) => <span>{owner.qaToken}</span>)}
+        renderSlot={slotRenderer((owner) => (
+          <span>{owner.qaToken}</span>
+        ))}
       />,
     );
     expect(screen.getByText("qa-secret")).toBeTruthy();

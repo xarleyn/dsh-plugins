@@ -79,7 +79,11 @@ const frameSchema = z.strictObject({
   url: z.string(),
   title: z.string(),
   mediaType: z.literal("image/png"),
-  bytes: z.number().int().nonnegative().max(5 * 1024 * 1024),
+  bytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(5 * 1024 * 1024),
   data: z.string(),
 });
 
@@ -163,10 +167,7 @@ const authParameters = [
   stringParameter("sessionId"),
 ];
 
-const controlParameters = [
-  ...authParameters,
-  stringParameter("clientId"),
-];
+const controlParameters = [...authParameters, stringParameter("clientId")];
 
 const tabControlParameters = [
   ...authParameters,
@@ -282,12 +283,7 @@ const qaBrowserRemote = {
         controlSchema,
       ),
     ),
-    descriptor(
-      "panelSelectTab",
-      tabControlParameters,
-      "boolean",
-      z.boolean(),
-    ),
+    descriptor("panelSelectTab", tabControlParameters, "boolean", z.boolean()),
     descriptor(
       "panelNavigate",
       [...tabControlParameters, stringParameter("url")],

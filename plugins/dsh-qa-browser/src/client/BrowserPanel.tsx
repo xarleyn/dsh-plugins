@@ -23,8 +23,9 @@ import type { BrowserPanelFrame, BrowserPanelState } from "../types.js";
 
 export type BrowserPanelRemote = TypertRemoteNamespace<"qaBrowser">;
 
-export interface BrowserPanelProps
-  extends PropsRuntime<typeof QA_SURFACE_PANEL_SLOT> {
+export interface BrowserPanelProps extends PropsRuntime<
+  typeof QA_SURFACE_PANEL_SLOT
+> {
   readonly browserRemote: BrowserPanelRemote;
 }
 
@@ -89,7 +90,8 @@ export function BrowserPanel(props: BrowserPanelProps) {
         const next = remoteValue(
           await props.browserRemote.panelState(owner.qaToken, owner.sessionId),
         );
-        if (sequence !== requestSequence.current || owner.signal.aborted) return;
+        if (sequence !== requestSequence.current || owner.signal.aborted)
+          return;
         setState(next);
         const selectedId = next.session?.selectedTabId;
         const selected = next.tabs.find((tab) => tab.id === selectedId);
@@ -113,19 +115,22 @@ export function BrowserPanel(props: BrowserPanelProps) {
             selected.id,
           ),
         );
-        if (sequence !== requestSequence.current || owner.signal.aborted) return;
+        if (sequence !== requestSequence.current || owner.signal.aborted)
+          return;
         lastFrameRevision.current = nextFrame.revision;
         setFrame(nextFrame);
         setError(null);
       } catch (cause) {
-        if (sequence !== requestSequence.current || owner.signal.aborted) return;
+        if (sequence !== requestSequence.current || owner.signal.aborted)
+          return;
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         if (sequence === requestSequence.current && !owner.signal.aborted) {
           setLoading(false);
         }
       }
-    }, [
+    },
+    [
       owner.qaToken,
       owner.sessionId,
       owner.signal,
@@ -168,7 +173,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
     const sessionId = owner.sessionId;
     const heartbeatMs = Math.max(
       1_000,
-      Math.floor((state?.humanControlLeaseSeconds ?? 30) * 1_000 / 3),
+      Math.floor(((state?.humanControlLeaseSeconds ?? 30) * 1_000) / 3),
     );
     const timer = window.setInterval(() => {
       void props.browserRemote
@@ -397,7 +402,9 @@ export function BrowserPanel(props: BrowserPanelProps) {
               })
             }
           >
-            {tab.status === "loading" ? <span aria-hidden="true">◌</span> : null}
+            {tab.status === "loading" ? (
+              <span aria-hidden="true">◌</span>
+            ) : null}
             <span>{tab.title || "Новая вкладка"}</span>
           </button>
         ))}
@@ -450,7 +457,11 @@ export function BrowserPanel(props: BrowserPanelProps) {
           </div>
         ) : (
           <img
-            className={ownsControl ? "dsh-qa-browser-panel__frame--interactive" : undefined}
+            className={
+              ownsControl
+                ? "dsh-qa-browser-panel__frame--interactive"
+                : undefined
+            }
             src={`data:${frame.mediaType};base64,${frame.data}`}
             alt={`Страница Browser: ${frame.title || frame.url}`}
             draggable={false}
@@ -476,7 +487,9 @@ export function BrowserPanel(props: BrowserPanelProps) {
               type="button"
               className="dsh-qa-browser-panel__control"
               disabled={loading || controlledByOther}
-              onClick={() => void (ownsControl ? releaseControl() : takeControl())}
+              onClick={() =>
+                void (ownsControl ? releaseControl() : takeControl())
+              }
             >
               {ownsControl
                 ? "Вернуть агенту"

@@ -80,9 +80,7 @@ function launchCandidates(
         "Configured Chromium executable does not exist.",
       );
     }
-    return [
-      { executablePath: options.executablePath, ...common },
-    ];
+    return [{ executablePath: options.executablePath, ...common }];
   }
 
   const candidates: LaunchOptions[] = [];

@@ -1,7 +1,10 @@
 import { Context } from "@deepseek-ai/cordis";
 import { hostname, networkInterfaces } from "node:os";
 import type {} from "@deepseek-ai/dsh-agent";
-import type { AttachmentStore, ImageAttachmentRef } from "@deepseek-ai/dsh-attachment";
+import type {
+  AttachmentStore,
+  ImageAttachmentRef,
+} from "@deepseek-ai/dsh-attachment";
 import type {} from "@deepseek-ai/dsh-tools";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
@@ -101,12 +104,10 @@ export class QaBrowserService extends TypertRemoteService {
       config: this.config,
       provider,
       policy: new BrowserNetworkPolicy(this.config.security.network, {
-        dshOrigins:
-          dependencies.dshOrigins ??
-          [
-            ...activeDshOrigins(ctx),
-            ...this.config.security.network.dshOrigins,
-          ],
+        dshOrigins: dependencies.dshOrigins ?? [
+          ...activeDshOrigins(ctx),
+          ...this.config.security.network.dshOrigins,
+        ],
       }),
       logger: this.logger,
       now: dependencies.now,
@@ -327,7 +328,9 @@ export class QaBrowserService extends TypertRemoteService {
     }
     const data = await this.manager.screenshot(sessionId, tabId);
     if (data.byteLength > 5 * 1024 * 1024) {
-      throw new Error("QA Browser panel frame exceeds the 5 MiB transport limit.");
+      throw new Error(
+        "QA Browser panel frame exceeds the 5 MiB transport limit.",
+      );
     }
     return {
       tabId,
@@ -444,13 +447,7 @@ export class QaBrowserService extends TypertRemoteService {
     deltaY: number,
   ): Promise<BrowserActionResult> {
     await this.authorizePanel(qaToken, sessionId);
-    return this.manager.humanScroll(
-      sessionId,
-      tabId,
-      clientId,
-      deltaX,
-      deltaY,
-    );
+    return this.manager.humanScroll(sessionId, tabId, clientId, deltaX, deltaY);
   }
 
   private async authorizePanel(

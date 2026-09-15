@@ -64,7 +64,10 @@ assert.deepEqual(manifest.dsh?.client?.inject, [
   "@deepseek-ai/dsh-client-ui-slots",
   "@yadsh/dsh-qa-surface",
 ]);
-const client = await readFile(new URL("../lib/client.js", import.meta.url), "utf8");
+const client = await readFile(
+  new URL("../lib/client.js", import.meta.url),
+  "utf8",
+);
 assert.match(
   client,
   /window\.__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-browser"/u,
