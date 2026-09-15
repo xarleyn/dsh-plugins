@@ -11,6 +11,7 @@ const PANEL_ID = "@fixture/dsh-qa-panel-consumer";
 function FixturePanel(props: PropsRuntime<typeof QA_SURFACE_PANEL_SLOT>) {
   const owner: QaSurfacePanelOwnerProps = props;
   void owner.sessionId;
+  void owner.qaToken;
   return null;
 }
 

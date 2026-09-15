@@ -104,6 +104,21 @@ describe("QA panel extension shell", () => {
     ).toBeTruthy();
   });
 
+  it("passes the ephemeral QA credential to an extension body", () => {
+    const panels = new QaSurfacePanelRegistry();
+    panels.register({ id: "fixture-auth", kind: "auth", title: () => "Auth" });
+    panels.open("auth", { focus: false });
+    render(
+      <QaPanelHost
+        panels={panels}
+        sessionId="session-a"
+        qaToken="qa-secret"
+        renderSlot={slotRenderer((owner) => <span>{owner.qaToken}</span>)}
+      />,
+    );
+    expect(screen.getByText("qa-secret")).toBeTruthy();
+  });
+
   it("omits hidden metadata from launchers but still allows programmatic open", () => {
     const panels = new QaSurfacePanelRegistry();
     panels.register({

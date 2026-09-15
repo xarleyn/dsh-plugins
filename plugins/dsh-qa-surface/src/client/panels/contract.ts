@@ -31,6 +31,12 @@ export interface QaSurfacePanelOwnerProps {
   readonly panelId: string;
   readonly panelKind: string;
   readonly sessionId: string | null;
+  /**
+   * Current QA bearer credential for Host remotes that authorize access to
+   * `sessionId`. Panel plugins must not persist, log, or place it in URLs.
+   * Empty when QA accounts are disabled.
+   */
+  readonly qaToken: string;
   readonly visible: boolean;
   readonly presentation: QaSurfacePanelPresentation;
   readonly params: unknown;

@@ -131,12 +131,14 @@ function useAvailableWidth(
 export interface QaPanelHostProps {
   readonly panels: QaSurfacePanelRegistry;
   readonly sessionId: string | null;
+  readonly qaToken?: string;
   readonly renderSlot: RenderPanelSlot;
 }
 
 export function QaPanelHost({
   panels,
   sessionId,
+  qaToken = "",
   renderSlot,
 }: QaPanelHostProps) {
   const snapshot = useSyncExternalStore(
@@ -335,6 +337,7 @@ export function QaPanelHost({
               panelId: definition.id,
               panelKind: definition.kind,
               sessionId,
+              qaToken,
               visible,
               presentation,
               params: panels.params(definition.kind),
