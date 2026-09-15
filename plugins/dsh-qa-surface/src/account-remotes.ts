@@ -30,6 +30,15 @@ export interface QaAccountRemotes {
   resolve(config: ResolvedQaSurfaceConfig): QaAccounts | undefined;
   /** Map a store failure onto the shared `(reason: <code>)` wire marker. */
   run<T>(operation: () => T, sessionIdForLog?: string): T;
+  /**
+   * The same mapping for an asynchronous body. A refusal thrown after an
+   * `await` never reaches a synchronous `run`, and the administrative reads
+   * await stored logs before they can decide anything.
+   */
+  runAsync<T>(
+    operation: () => Promise<T>,
+    sessionIdForLog?: string,
+  ): Promise<T>;
   register(email: string, password: string): QaAccountSession;
   login(email: string, password: string): QaAccountSession;
   /** Identity probe; safe to call with an empty or expired token. */
@@ -98,29 +107,43 @@ export function createQaAccountRemotes(options: {
     return store;
   };
 
+  const mapError = (error: unknown, sessionIdForLog?: string): unknown => {
+    if (error instanceof QaAccountsError) {
+      logger.warn("accounts.rejected", {
+        reason: error.reason,
+        sessionId: sessionIdForLog,
+      });
+      return new Error(
+        `QA accounts refused the request (reason: ${error.reason})`,
+        { cause: error },
+      );
+    }
+    return error;
+  };
+
   const run = <T>(operation: () => T, sessionIdForLog?: string): T => {
     try {
       return operation();
     } catch (error) {
-      if (error instanceof QaAccountsError) {
-        logger.warn("accounts.rejected", {
-          reason: error.reason,
-          sessionId: sessionIdForLog,
-        });
-        throw new Error(
-          `QA accounts refused the request (reason: ${error.reason})`,
-          {
-            cause: error,
-          },
-        );
-      }
-      throw error;
+      throw mapError(error, sessionIdForLog);
+    }
+  };
+
+  const runAsync = async <T>(
+    operation: () => Promise<T>,
+    sessionIdForLog?: string,
+  ): Promise<T> => {
+    try {
+      return await operation();
+    } catch (error) {
+      throw mapError(error, sessionIdForLog);
     }
   };
 
   return {
     resolve,
     run,
+    runAsync,
     register: (email, password) => {
       const store = requireAccounts();
       return run(() => store.register(email, password));

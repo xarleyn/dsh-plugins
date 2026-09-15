@@ -48,6 +48,8 @@ interface TextMessage {
   readonly text: string;
   readonly status: "streaming" | "committed";
   readonly timestamp?: number;
+  /** Durable log position; feedback is keyed to it. */
+  readonly seq?: number;
   readonly turn?: number;
   readonly stats?: QaMessageStats;
 }
@@ -198,6 +200,7 @@ function collectAssistant(
   if (text !== "") {
     turn.text.push({
       id: `assistant:${node.messageId ?? node.seq}`,
+      seq: node.seq,
       order: node.seq,
       text,
       status: "committed",

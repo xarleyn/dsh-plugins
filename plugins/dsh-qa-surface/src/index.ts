@@ -17,6 +17,9 @@ import {
 import { ConfigSchema, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
+import { QaAdminService } from "./admin/service.js";
+import { QaQualityStore } from "./admin/quality-store.js";
+import { createSessionLogReader } from "./admin/session-log.js";
 import {
   createQaPersonalSkillRemotes,
   QaPersonalSkillsHost,
@@ -79,13 +82,33 @@ import type {
   QaWhoamiResult,
   QaPrincipal,
   QaAccessAdminSnapshot,
+  QaAdminAuditEvent,
+  QaAdminOverview,
+  QaAdminPage,
+  QaAdminUserDetail,
+  QaAdminUserRow,
+  QaAdminUserUpdate,
+  QaAuditQuery,
   QaCapabilitySelection,
+  QaConversationDetail,
+  QaConversationQuery,
+  QaConversationReview,
+  QaConversationReviewInput,
+  QaConversationSummary,
   QaCurrentAccess,
+  QaFeedbackQuery,
+  QaFeedbackRow,
+  QaMessageFeedback,
+  QaMessageFeedbackInput,
+  QaQualityMetrics,
+  QaReviewQueueItem,
+  QaReviewQueueRow,
   QaSessionAccess,
   QaSkillActivationRecord,
   QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
+  QaUserQuery,
 } from "./types.js";
 
 /**
@@ -160,6 +183,11 @@ export class QaSurface extends TypertRemoteService {
   private readonly accountRemotes: QaAccountRemotes;
   /** Roles, assignments, discovery and immutable per-session capability sets. */
   private readonly access: QaAccessService;
+  /**
+   * The administrative console: authorization, conversation queries over
+   * stored logs, quality records and their aggregations.
+   */
+  private readonly admin: QaAdminService;
   /** Personal skills: storage, the DSH provider and the manual-edit watcher. */
   private readonly personalSkills: QaPersonalSkillsHost;
   /** Personal-skill remote bodies; the wire signatures stay on this class. */
@@ -184,6 +212,11 @@ export class QaSurface extends TypertRemoteService {
    */
   private documents: DocumentSubsystem | undefined;
   private documentsKey: string | undefined;
+  /**
+   * The quality store opens its file on first use, so a deployment that never
+   * opens the admin console never grows one.
+   */
+  private qualityStore: QaQualityStore | undefined;
 
   constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
@@ -206,6 +239,14 @@ export class QaSurface extends TypertRemoteService {
     this.personalSkills = new QaPersonalSkillsHost({
       ctx,
       getConfig: () => this.getConfig(),
+      logger: this.logger,
+    });
+    this.admin = new QaAdminService({
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
+      quality: () => this.quality(),
+      roles: () => this.access.roles,
+      access: () => this.access,
+      sessionLog: createSessionLogReader(ctx),
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -398,6 +439,12 @@ export class QaSurface extends TypertRemoteService {
       route: resolvedEntry.route.path,
       sessionPolicy: resolvedEntry.session.policy,
     });
+  }
+
+  /** The quality store, opening its file the first time anyone needs it. */
+  private quality(): QaQualityStore {
+    this.qualityStore ??= new QaQualityStore();
+    return this.qualityStore;
   }
 
   /** Resolve browser authentication to the caller only; never accepts an id. */
@@ -709,6 +756,159 @@ export class QaSurface extends TypertRemoteService {
     return this.accountRemotes.run(
       () => this.access.skillActivations(token, sessionId),
       sessionId,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Administrative console. Every method names its permission inside the
+  // service; the wire carries a token and never an identity.
+  // ---------------------------------------------------------------------------
+
+  /** Counters, attention lines and the newest quality signals. */
+  @Remote("adminOverview")
+  adminOverview(token: string): Promise<QaAdminOverview> {
+    return this.accountRemotes.runAsync(() => this.admin.overview(token));
+  }
+
+  @Remote("adminUsers")
+  adminUsers(
+    token: string,
+    query: QaUserQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<QaAdminPage<QaAdminUserRow>> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.users(token, query, cursor ?? undefined, limit ?? undefined),
+    );
+  }
+
+  @Remote("adminUser")
+  adminUser(token: string, userId: string): Promise<QaAdminUserDetail> {
+    return this.accountRemotes.runAsync(() => this.admin.user(token, userId));
+  }
+
+  /** Authorization role, status and subrole assignment of one account. */
+  @Remote("adminUpdateUser")
+  adminUpdateUser(
+    token: string,
+    userId: string,
+    update: QaAdminUserUpdate,
+  ): Promise<QaAdminUserDetail> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.updateUser(token, userId, update),
+    );
+  }
+
+  @Remote("adminConversations")
+  adminConversations(
+    token: string,
+    query: QaConversationQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<QaAdminPage<QaConversationSummary>> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.conversations(
+        token,
+        query,
+        cursor ?? undefined,
+        limit ?? undefined,
+      ),
+    );
+  }
+
+  /** One conversation with its messages, tool calls and review state. */
+  @Remote("adminConversation")
+  adminConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<QaConversationDetail> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.conversation(token, conversationId),
+    );
+  }
+
+  @Remote("adminFeedback")
+  adminFeedback(
+    token: string,
+    query: QaFeedbackQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<QaAdminPage<QaFeedbackRow>> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.feedback(
+        token,
+        query,
+        cursor ?? undefined,
+        limit ?? undefined,
+      ),
+    );
+  }
+
+  /**
+   * Rate one of the caller's own assistant messages. The token names the only
+   * ratable conversation, exactly as the self-service profile write does.
+   */
+  @Remote("adminRateMessage")
+  adminRateMessage(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    input: QaMessageFeedbackInput,
+  ): QaMessageFeedback {
+    return this.accountRemotes.run(() =>
+      this.admin.rateMessage(token, conversationId, messageId, input),
+    );
+  }
+
+  @Remote("adminReviewQueue")
+  adminReviewQueue(
+    token: string,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<QaAdminPage<QaReviewQueueRow>> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.reviewQueue(token, cursor ?? undefined, limit ?? undefined),
+    );
+  }
+
+  /** Park a conversation for review without rating it. */
+  @Remote("adminQueueConversation")
+  adminQueueConversation(
+    token: string,
+    conversationId: string,
+    messageId: string | null,
+  ): QaReviewQueueItem {
+    return this.accountRemotes.run(() =>
+      this.admin.queueConversation(
+        token,
+        conversationId,
+        messageId ?? undefined,
+      ),
+    );
+  }
+
+  @Remote("adminSaveReview")
+  adminSaveReview(
+    token: string,
+    input: QaConversationReviewInput,
+  ): QaConversationReview {
+    return this.accountRemotes.run(() => this.admin.saveReview(token, input));
+  }
+
+  @Remote("adminMetrics")
+  adminMetrics(token: string): Promise<QaQualityMetrics> {
+    return this.accountRemotes.runAsync(() => this.admin.metrics(token));
+  }
+
+  @Remote("adminAudit")
+  adminAudit(
+    token: string,
+    query: QaAuditQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<QaAdminPage<QaAdminAuditEvent>> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.audit(token, query, cursor ?? undefined, limit ?? undefined),
     );
   }
 

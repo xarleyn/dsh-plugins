@@ -6,7 +6,7 @@ import {
   QaAccountsError,
   defaultAccountsFilePath,
 } from "./accounts/store.js";
-import type { QaAccountUserPublic } from "./types.js";
+import type { QaAccountRole, QaAccountUserPublic } from "./types.js";
 
 export interface CliIo {
   out(line: string): void;
@@ -21,9 +21,9 @@ const defaultIo: CliIo = {
 const USAGE = `Usage:
   qa-accounts [--file <path>] list
   qa-accounts [--file <path>] show <email>
-  qa-accounts [--file <path>] add <email> --password-stdin [--name <name>] [--role admin|user]
+  qa-accounts [--file <path>] add <email> --password-stdin [--name <name>] [--role admin|reviewer|user]
   qa-accounts [--file <path>] set-password <email> --password-stdin
-  qa-accounts [--file <path>] set-role <email> <admin|user>
+  qa-accounts [--file <path>] set-role <email> <admin|reviewer|user>
   qa-accounts [--file <path>] disable <email>     # blocks logins and revokes live tokens
   qa-accounts [--file <path>] enable <email>
   qa-accounts [--file <path>] revoke <email>      # invalidates every issued token
@@ -183,13 +183,18 @@ export function run(
         throw new Error("the add command requires --password-stdin");
       }
       const role = options.get("role");
-      if (role !== undefined && role !== "admin" && role !== "user") {
-        throw new Error("--role must be admin or user");
+      if (
+        role !== undefined &&
+        role !== "admin" &&
+        role !== "reviewer" &&
+        role !== "user"
+      ) {
+        throw new Error("--role must be admin, reviewer or user");
       }
       const name = options.get("name");
       const user = accounts.addUser(first as string, readStdin(), {
         ...(name === undefined ? {} : { displayName: name }),
-        ...(role === undefined ? {} : { role: role as "admin" | "user" }),
+        ...(role === undefined ? {} : { role: role as QaAccountRole }),
       });
       io.out(`added ${user.email} (${user.role})`);
       return 0;
@@ -205,8 +210,8 @@ export function run(
     }
     case "set-role": {
       requireArgs(2);
-      if (second !== "admin" && second !== "user") {
-        throw new Error("role must be admin or user");
+      if (second !== "admin" && second !== "reviewer" && second !== "user") {
+        throw new Error("role must be admin, reviewer or user");
       }
       const user = accounts.setUserRole(first as string, second);
       io.out(`${user.email} is now ${user.role}`);

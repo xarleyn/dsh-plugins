@@ -133,3 +133,39 @@ tokens so light and dark hosts stay coherent.
 The overlay locks document scrolling and contains keyboard focus while active.
 It does not locate AppFrame through generated CSS classes and does not dispose
 global DSH runtime services when the route changes.
+
+## Administrative console
+
+`src/admin/` is the server side and `src/client/admin/` the console itself.
+
+The server side has five parts, each with one job: `permissions.ts` (the role to
+permission table), `quality-store.ts` (feedback, reviews, queue flags and audit,
+atomically persisted), `conversation-log.ts` plus `session-log.ts` (reading
+stored conversations and projecting a log into a transcript), `queue.ts` and
+`metrics.ts` (pure derivations), and `service.ts`, which owns authorization and
+composes them.
+
+Two boundaries are worth stating explicitly:
+
+* **Conversations come from two sources.** The deployment's own reservation
+  index (`qa-accounts.json`) always knows which chats exist and what role and
+  capabilities they were created with; the stored log knows what was said.
+  `session-log.ts` joins them and reads the optional session-query service
+  structurally, so the package keeps loading on a deployment that serves no
+  query backend.
+* **The review queue is derived, never stored.** Every entry is a signal that
+  still exists — an unanswered negative rating, a deliberate queue request, a
+  failed tool call — plus the review that answers it, which is what keeps the
+  queue honest when a review is edited or a rating changed. Manual queue
+  requests are the one exception, because a reviewer's own act has no other
+  record.
+
+Reads never throw for an unavailable backend: an unreadable transcript reaches
+the reviewer as a stated reason. Projection bounds every preview and masks
+credential shapes through `redaction.ts`; the seam is replaceable, so a
+deployment with its own DLP can substitute it rather than trust tool output.
+
+`QaAdminService` is the only place that answers "may this caller do this", and
+it does so per call from the token, never from anything the browser sends. The
+client's navigation hides what a role cannot open, but that is a courtesy: the
+Host re-checks every permission it serves.

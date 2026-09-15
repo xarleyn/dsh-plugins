@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   QaAccessAdminSnapshot,
-  QaAccessUser,
+  QaAccountRole,
   QaCapabilityDescriptor,
   QaCapabilitySelection,
   QaCapabilitySourceKind,
@@ -9,23 +9,137 @@ import type {
   QaSkillAssignmentOverride,
   QaSkillHealth,
   QaSubrole,
-  QaUserAccess,
 } from "../../types.js";
-import type { QaAccessApi } from "../types.js";
+import type { QaAccessApi, QaAdminApi } from "../types.js";
+import {
+  adminPath,
+  adminSectionOf,
+  parseAdminRoute,
+  type QaAdminRoute,
+} from "./routes.js";
+import { AdminOverview } from "./pages/Overview.js";
+import {
+  AdminConversation,
+  AdminConversations,
+} from "./pages/Conversations.js";
+import { AdminReviewQueue } from "./pages/Review.js";
+import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
+import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
 
-type Page = "subroles" | "common" | "skills" | "users" | "audit";
+type Page = QaAdminRoute["page"];
 type CapabilityType = "tool" | "skill";
 /** The two tool classes: visible immediately, or only through a loaded skill. */
 type ToolBucket = "always" | "skillGrantable";
 
-const AUDIT_LABELS = {
-  "subrole.created": "Саброль создана",
-  "subrole.updated": "Саброль изменена",
-  "subrole.deleted": "Саброль удалена",
-  "common.updated": "Общие возможности изменены",
-  "assignment.updated": "Назначение изменено",
-  "skill.assignment-updated": "Назначение навыка изменено",
-} as const;
+/**
+ * The sections an operator may open, with the permission each one needs. The
+ * nav is filtered by the caller's role, but hiding is only a courtesy: the Host
+ * re-checks every permission on the call it serves.
+ */
+const NAV: readonly {
+  readonly page: Page;
+  readonly label: string;
+  readonly group: string;
+  readonly permission:
+    | "users.read"
+    | "roles.read"
+    | "conversations.read.all"
+    | "reviews.read"
+    | "analytics.read"
+    | "audit.read";
+}[] = [
+  {
+    page: "overview",
+    label: "Обзор",
+    group: "QA Admin",
+    permission: "conversations.read.all",
+  },
+  {
+    page: "users",
+    label: "Пользователи",
+    group: "Пользователи",
+    permission: "users.read",
+  },
+  {
+    page: "subroles",
+    label: "Саброли",
+    group: "Доступ",
+    permission: "roles.read",
+  },
+  {
+    page: "common",
+    label: "Общие возможности",
+    group: "Доступ",
+    permission: "roles.read",
+  },
+  {
+    page: "skills",
+    label: "Навыки",
+    group: "Доступ",
+    permission: "roles.read",
+  },
+  {
+    page: "conversations",
+    label: "Разговоры",
+    group: "Качество",
+    permission: "conversations.read.all",
+  },
+  {
+    page: "review",
+    label: "Очередь разбора",
+    group: "Качество",
+    permission: "reviews.read",
+  },
+  {
+    page: "feedback",
+    label: "Обратная связь",
+    group: "Качество",
+    permission: "reviews.read",
+  },
+  {
+    page: "quality",
+    label: "Аналитика",
+    group: "Качество",
+    permission: "analytics.read",
+  },
+  { page: "audit", label: "Аудит", group: "Система", permission: "audit.read" },
+];
+
+/** Sections that read the console's own surface rather than the policy file. */
+const CONSOLE_PAGES = new Set<Page>([
+  "overview",
+  "users",
+  "user",
+  "conversations",
+  "conversation",
+  "review",
+  "feedback",
+  "quality",
+  "audit",
+]);
+
+/** The permission each section needs, for the nav filter. */
+const SECTION_PERMISSIONS = new Map(
+  NAV.map((entry) => [entry.page, entry.permission]),
+);
+
+/** The role's permission set, as the Host defines it (admin sees everything). */
+function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
+  if (role === undefined) return true;
+  const permission = SECTION_PERMISSIONS.get(page);
+  if (permission === undefined) return true;
+  if (role === "admin") return true;
+  if (role === "reviewer") {
+    return (
+      permission === "conversations.read.all" ||
+      permission === "reviews.read" ||
+      permission === "analytics.read"
+    );
+  }
+  // A plain user never reaches the console; the Host refuses every
+  // administrative call for that role anyway.
+  return false;
+}
 
 const HEALTH_LABELS: Record<QaSkillHealth, string> = {
   healthy: "В порядке",
@@ -525,75 +639,6 @@ function RoleEditor(props: {
   );
 }
 
-function UserAssignmentRow(props: {
-  readonly user: QaAccessUser;
-  readonly roles: readonly QaSubrole[];
-  readonly onSave: (access: QaUserAccess) => Promise<void>;
-}) {
-  const [access, setAccess] = useState(props.user.access);
-  const [saving, setSaving] = useState(false);
-  return (
-    <tr>
-      <td>
-        <strong>{props.user.displayName}</strong>
-        <small>{props.user.email}</small>
-      </td>
-      <td>{props.user.accessRole}</td>
-      <td>
-        <select
-          value={access.defaultSubrole}
-          onChange={(event) =>
-            setAccess({ ...access, defaultSubrole: event.currentTarget.value })
-          }
-        >
-          {props.roles
-            .filter(({ id }) => access.allowedSubroles.includes(id))
-            .map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.name}
-              </option>
-            ))}
-        </select>
-      </td>
-      <td className="dsh-qa-users__roles">
-        {props.roles.map((role) => (
-          <label key={role.id}>
-            <input
-              type="checkbox"
-              checked={access.allowedSubroles.includes(role.id)}
-              onChange={(event) => {
-                const allowed = new Set(access.allowedSubroles);
-                if (event.currentTarget.checked) allowed.add(role.id);
-                else allowed.delete(role.id);
-                const values = [...allowed];
-                setAccess({
-                  allowedSubroles: values,
-                  defaultSubrole: values.includes(access.defaultSubrole)
-                    ? access.defaultSubrole
-                    : (values[0] ?? ""),
-                });
-              }}
-            />
-            {role.name}
-          </label>
-        ))}
-      </td>
-      <td>
-        <button
-          type="button"
-          disabled={saving || access.allowedSubroles.length === 0}
-          onClick={() => {
-            setSaving(true);
-            void props.onSave(access).finally(() => setSaving(false));
-          }}
-        >
-          {saving ? "…" : "Сохранить"}
-        </button>
-      </td>
-    </tr>
-  );
-}
-
 /**
  * One skill's administrator overlay.
  *
@@ -828,15 +873,51 @@ function SkillTable(props: {
 }
 
 export function QaAdmin(props: {
+  /** Capability administration; the access service's own wire surface. */
   readonly api: QaAccessApi;
+  /**
+   * The console's own surface. A deployment that serves only the chat surface
+   * has no accounts, so the console falls back to the role editors.
+   */
+  readonly adminApi?: QaAdminApi;
   readonly token: string;
   readonly routePath: string;
+  /** The signed-in account's role, used only to filter the navigation. */
+  readonly role?: QaAccountRole;
   readonly onPreview: (role: QaSubrole) => void;
 }) {
   const [snapshot, setSnapshot] = useState<QaAccessAdminSnapshot>();
-  const [page, setPage] = useState<Page>("subroles");
+  const [pathname, setPathname] = useState(() => window.location.pathname);
   const [editing, setEditing] = useState<QaSubrole | null | undefined>();
   const [editingSkill, setEditingSkill] = useState<QaSkillAccess>();
+
+  // The console owns its own sub-routes: a review finding is a link people
+  // paste, and the browser's back button must walk the sections.
+  useEffect(() => {
+    const onPopState = () => setPathname(window.location.pathname);
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  const route = parseAdminRoute(pathname, props.routePath);
+  const adminApi = props.adminApi;
+  // Without the console's surface — a deployment with no accounts — the
+  // sections that read conversations and quality records are unavailable; the
+  // capability editors stay reachable under their own routes.
+  const page: Page =
+    adminApi === undefined && CONSOLE_PAGES.has(route.page)
+      ? "subroles"
+      : route.page;
+  const navigate = useCallback(
+    (next: QaAdminRoute) => {
+      window.history.pushState(
+        { qaAdmin: next.page },
+        "",
+        adminPath(props.routePath, next),
+      );
+      setPathname(window.location.pathname);
+    },
+    [props.routePath],
+  );
   const [commonType, setCommonType] = useState<CapabilityType>("tool");
   const [commonToolBucket, setCommonToolBucket] =
     useState<ToolBucket>("always");
@@ -943,31 +1024,130 @@ export function QaAdmin(props: {
       </header>
       <div className="dsh-qa-admin__layout">
         <nav aria-label="Разделы администрирования">
-          <strong>Доступ</strong>
-          {(
-            [
-              ["subroles", "Саброли"],
-              ["skills", "Навыки"],
-              ["common", "Общие возможности"],
-              ["users", "Пользователи"],
-              ["audit", "Аудит"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              aria-current={page === id ? "page" : undefined}
-              onClick={() => setPage(id)}
-            >
-              {label}
-            </button>
-          ))}
+          {["QA Admin", "Пользователи", "Доступ", "Качество", "Система"].map(
+            (group) => {
+              const entries = NAV.filter(
+                (entry) =>
+                  entry.group === group && canOpen(props.role, entry.page),
+              );
+              if (entries.length === 0) return null;
+              return (
+                <div key={group} className="dsh-qa-admin__nav-group">
+                  <strong>{group}</strong>
+                  {entries.map((entry) => (
+                    <button
+                      key={entry.page}
+                      type="button"
+                      aria-current={
+                        adminSectionOf(route) ===
+                        adminSectionOf({ page: entry.page } as QaAdminRoute)
+                          ? "page"
+                          : undefined
+                      }
+                      onClick={() =>
+                        navigate({
+                          page: entry.page,
+                        } as QaAdminRoute)
+                      }
+                    >
+                      {entry.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            },
+          )}
         </nav>
         <section className="dsh-qa-admin__content">
           {error === undefined ? null : (
             <div className="dsh-qa-admin__error">{error}</div>
           )}
-          {page === "subroles" ? (
+          {adminApi !== undefined && page === "overview" ? (
+            <AdminOverview
+              api={adminApi}
+              token={props.token}
+              onOpenConversation={(conversationId, messageId) =>
+                navigate({
+                  page: "conversation",
+                  conversationId,
+                  ...(messageId === undefined ? {} : { messageId }),
+                })
+              }
+              onOpenQueue={() => navigate({ page: "review" })}
+            />
+          ) : adminApi !== undefined && page === "users" ? (
+            <AdminUsers
+              api={adminApi}
+              token={props.token}
+              onOpenUser={(userId) => navigate({ page: "user", userId })}
+            />
+          ) : adminApi !== undefined && page === "user" ? (
+            <AdminUserDetail
+              api={adminApi}
+              accessApi={props.api}
+              token={props.token}
+              userId={route.page === "user" ? route.userId : ""}
+              onBack={() => navigate({ page: "users" })}
+              onOpenAudit={() => navigate({ page: "audit" })}
+              onOpenConversations={(userId) =>
+                navigate({ page: "conversations", userId } as QaAdminRoute)
+              }
+            />
+          ) : adminApi !== undefined && page === "conversations" ? (
+            <AdminConversations
+              api={adminApi}
+              token={props.token}
+              onOpenConversation={(conversationId, messageId) =>
+                navigate({
+                  page: "conversation",
+                  conversationId,
+                  ...(messageId === undefined ? {} : { messageId }),
+                })
+              }
+            />
+          ) : adminApi !== undefined && page === "conversation" ? (
+            <AdminConversation
+              api={adminApi}
+              token={props.token}
+              conversationId={
+                route.page === "conversation" ? route.conversationId : ""
+              }
+              {...(route.page === "conversation" &&
+              route.messageId !== undefined
+                ? { messageId: route.messageId }
+                : {})}
+              canReview={canOpen(props.role, "review")}
+              onBack={() => navigate({ page: "conversations" })}
+            />
+          ) : adminApi !== undefined && page === "review" ? (
+            <AdminReviewQueue
+              api={adminApi}
+              token={props.token}
+              onOpenConversation={(conversationId, messageId) =>
+                navigate({
+                  page: "conversation",
+                  conversationId,
+                  ...(messageId === undefined ? {} : { messageId }),
+                })
+              }
+            />
+          ) : adminApi !== undefined && page === "feedback" ? (
+            <AdminFeedback
+              api={adminApi}
+              token={props.token}
+              onOpenConversation={(conversationId, messageId) =>
+                navigate({
+                  page: "conversation",
+                  conversationId,
+                  ...(messageId === undefined ? {} : { messageId }),
+                })
+              }
+            />
+          ) : adminApi !== undefined && page === "quality" ? (
+            <AdminQuality api={adminApi} token={props.token} />
+          ) : adminApi !== undefined && page === "audit" ? (
+            <AdminAudit api={adminApi} token={props.token} />
+          ) : page === "subroles" ? (
             <>
               <div className="dsh-qa-admin__title-row">
                 <div>
@@ -1192,81 +1372,8 @@ export function QaAdmin(props: {
                 </button>
               </div>
             </>
-          ) : page === "users" ? (
-            <>
-              <div className="dsh-qa-admin__title-row">
-                <div>
-                  <h1>Пользователи</h1>
-                  <p>
-                    Административная роль и возможности агента настраиваются
-                    независимо.
-                  </p>
-                </div>
-              </div>
-              <div className="dsh-qa-users">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Пользователь</th>
-                      <th>Доступ</th>
-                      <th>По умолчанию</th>
-                      <th>Доступные саброли</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {snapshot.users.map((user) => (
-                      <UserAssignmentRow
-                        key={`${user.id}:${snapshot.audit.length}`}
-                        user={user}
-                        roles={enabledRoles}
-                        onSave={async (access) => {
-                          await mutate(() =>
-                            props.api.updateAssignment(
-                              props.token,
-                              user.id,
-                              access,
-                            ),
-                          );
-                        }}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
           ) : (
-            <>
-              <div className="dsh-qa-admin__title-row">
-                <div>
-                  <h1>Аудит</h1>
-                  <p>Последние изменения конфигурации доступа.</p>
-                </div>
-              </div>
-              <ol className="dsh-qa-audit">
-                {[...snapshot.audit].reverse().map((event, index) => (
-                  <li key={`${event.timestamp}:${index}`}>
-                    <time>
-                      {new Date(event.timestamp).toLocaleString("ru-RU")}
-                    </time>
-                    <strong>{AUDIT_LABELS[event.action]}</strong>
-                    <span>{event.targetId ?? "общие возможности"}</span>
-                    <code>{event.actorId}</code>
-                    <details>
-                      <summary>Показать изменение</summary>
-                      <pre>
-                        {event.before ?? "—"}
-                        {"\n→\n"}
-                        {event.after ?? "—"}
-                      </pre>
-                    </details>
-                  </li>
-                ))}
-              </ol>
-              {snapshot.audit.length === 0 ? (
-                <p className="dsh-qa-admin__empty">Изменений пока нет.</p>
-              ) : null}
-            </>
+            <p className="dsh-qa-admin__empty">Раздел недоступен.</p>
           )}
         </section>
       </div>

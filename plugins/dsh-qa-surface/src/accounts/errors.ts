@@ -6,6 +6,7 @@
 export type QaAccountsErrorReason =
   | "auth-required"
   | "admin-required"
+  | "forbidden"
   | "invalid-credentials"
   | "account-disabled"
   | "email-taken"

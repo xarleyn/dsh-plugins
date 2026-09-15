@@ -23,6 +23,7 @@ import type {
   QaQuestionAnswerItem,
   QaCurrentAccess,
   QaSubrole,
+  QaFeedbackReason,
 } from "../types.js";
 import { effectiveQuickQuestions } from "../starters.js";
 import type { QaQuickQuestion } from "./types.js";
@@ -37,6 +38,7 @@ import { attachmentLimits } from "./attachments.js";
 import type {
   QaApprovalApi,
   QaAccessApi,
+  QaAdminApi,
   QaBoundSkillApi,
   QaConversation,
   QaCreateSession,
@@ -113,6 +115,11 @@ export interface QaSurfaceFace {
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
   readonly accessApi: QaAccessApi;
+  /**
+   * The administrative console's surface. Optional so an older Host that does
+   * not answer it still renders the capability editors.
+   */
+  readonly adminApi?: QaAdminApi;
   readonly sourceApi: QaSourceApi;
   /**
    * Personal-skill half of the plugin's namespace. Absent on a page whose Host
@@ -794,14 +801,68 @@ export function QaSurface(props: QaSurfaceProps) {
     }
   }
 
-  if (
-    adminRoute &&
+  // The console admits administrators and reviewers: a reviewer answers
+  // conversations, and the Host re-checks every permission it serves.
+  const consoleRole =
     accountsSnapshot.stage === "authed" &&
-    accountsSnapshot.user.role === "admin"
-  ) {
+    (accountsSnapshot.user.role === "admin" ||
+      accountsSnapshot.user.role === "reviewer")
+      ? accountsSnapshot.user.role
+      : undefined;
+  /**
+   * Persist a rating of one answer. The control is offered only where the
+   * rating can be stored: an accounts-enabled deployment, an authenticated
+   * owner, and an answer whose log position the Host knows.
+   */
+  const rateFeedback =
+    props.adminApi === undefined ||
+    accounts === undefined ||
+    accountsStage !== "authed" ||
+    state.sessionId === null
+      ? undefined
+      : (input: {
+          readonly messageId?: number;
+          readonly rating: "positive" | "negative";
+          readonly reasons?: readonly QaFeedbackReason[];
+          readonly comment?: string;
+        }) => {
+          if (input.messageId === undefined) return;
+          const conversationId = state.sessionId;
+          const token = accounts.token();
+          if (conversationId === null || token === null) return;
+          void props
+            .adminApi!.rateMessage(
+              token,
+              conversationId,
+              String(input.messageId),
+              {
+                rating: input.rating,
+                ...(input.reasons === undefined
+                  ? {}
+                  : { reasons: input.reasons }),
+                ...(input.comment === undefined
+                  ? {}
+                  : { comment: input.comment }),
+              },
+            )
+            .then((result) => {
+              if (!result.ok) {
+                // The rating stays local when the Host refuses it; the console
+                // still shows the user's own choice for this browser.
+                console.warn(
+                  "QA feedback was not stored:",
+                  result.error ?? "unknown",
+                );
+              }
+            });
+        };
+
+  if (adminRoute && consoleRole !== undefined) {
     return (
       <QaAdmin
         api={props.accessApi}
+        {...(props.adminApi === undefined ? {} : { adminApi: props.adminApi })}
+        role={consoleRole}
         token={accounts?.token() ?? ""}
         routePath={config.route.path}
         onPreview={(role) => {
@@ -1065,6 +1126,7 @@ export function QaSurface(props: QaSurfaceProps) {
                                 ? rail.openSourceDetail
                                 : undefined
                             }
+                            onRateFeedback={rateFeedback}
                           />
                           {group !== undefined && group.turns.length > 1 ? (
                             <VariantSwitcher

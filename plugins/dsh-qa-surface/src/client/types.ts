@@ -37,6 +37,26 @@ import type {
   QaSkillAssignmentOverride,
   QaSubrole,
   QaUserAccess,
+  QaAdminAuditEvent,
+  QaAdminOverview,
+  QaAdminPage,
+  QaAdminUserDetail,
+  QaAdminUserRow,
+  QaAdminUserUpdate,
+  QaAuditQuery,
+  QaConversationDetail,
+  QaConversationQuery,
+  QaConversationReview,
+  QaConversationReviewInput,
+  QaConversationSummary,
+  QaFeedbackQuery,
+  QaFeedbackRow,
+  QaMessageFeedback,
+  QaMessageFeedbackInput,
+  QaQualityMetrics,
+  QaReviewQueueItem,
+  QaReviewQueueRow,
+  QaUserQuery,
 } from "../types.js";
 
 /** Wire content one prompt carries: text plus base64 image uploads. */
@@ -116,6 +136,72 @@ export interface QaAccessApi {
     token: string,
     sessionId: string,
   ): Promise<RemoteResult<readonly QaSkillActivationRecord[]>>;
+}
+
+/**
+ * The administrative console's wire surface. Every call carries the caller's
+ * token and nothing else identifying: the Host resolves the actor, checks the
+ * permission the method needs and answers with the audience-safe refusal code
+ * the page renders.
+ */
+export interface QaAdminApi {
+  overview(token: string): Promise<RemoteResult<QaAdminOverview>>;
+  users(
+    token: string,
+    query: QaUserQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaAdminUserRow>>>;
+  user(token: string, userId: string): Promise<RemoteResult<QaAdminUserDetail>>;
+  updateUser(
+    token: string,
+    userId: string,
+    update: QaAdminUserUpdate,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
+  conversations(
+    token: string,
+    query: QaConversationQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaConversationSummary>>>;
+  conversation(
+    token: string,
+    conversationId: string,
+  ): Promise<RemoteResult<QaConversationDetail>>;
+  feedback(
+    token: string,
+    query: QaFeedbackQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaFeedbackRow>>>;
+  /** The signed-in user's own verdict on one of their assistant messages. */
+  rateMessage(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    input: QaMessageFeedbackInput,
+  ): Promise<RemoteResult<QaMessageFeedback>>;
+  reviewQueue(
+    token: string,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaReviewQueueRow>>>;
+  queueConversation(
+    token: string,
+    conversationId: string,
+    messageId: string | null,
+  ): Promise<RemoteResult<QaReviewQueueItem>>;
+  saveReview(
+    token: string,
+    input: QaConversationReviewInput,
+  ): Promise<RemoteResult<QaConversationReview>>;
+  metrics(token: string): Promise<RemoteResult<QaQualityMetrics>>;
+  audit(
+    token: string,
+    query: QaAuditQuery,
+    cursor: string | null,
+    limit: number | null,
+  ): Promise<RemoteResult<QaAdminPage<QaAdminAuditEvent>>>;
 }
 
 /**
