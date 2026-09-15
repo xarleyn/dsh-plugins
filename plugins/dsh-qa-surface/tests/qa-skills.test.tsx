@@ -605,6 +605,9 @@ describe("skill editor", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Добавить инструменты" }),
     );
+    // The row's description is clamped to two lines by CSS, so the full text
+    // has to stay reachable as the row's title.
+    expect(screen.getByTitle("Search files").textContent).toBe("Search files");
     fireEvent.click(screen.getByRole("checkbox", { name: /grep/u }));
     fireEvent.click(screen.getByRole("button", { name: "Применить" }));
     expect(screen.getByText("2 выбрано")).toBeTruthy();

@@ -247,6 +247,34 @@ export function createWebSearchExtractor(
   };
 }
 
+/**
+ * The Host's web tool opens its result with an envelope — `Fetched <url>
+ * (HTTP <code>)`, then the untrusted-content notice — before the page itself.
+ * Both lines are dropped here, and so is a first line that is the page's own
+ * address: the card already prints the target URL, so a snippet drawn from
+ * either of them would only repeat what the reader can already see.
+ */
+const WEB_FETCH_ENVELOPE =
+  /^(?:Fetched\s+\S+\s+\(HTTP\s+\d+\)|External web content follows\..*)$/u;
+
+function fetchedSnippet(
+  value: string | undefined,
+  uri: string,
+): string | undefined {
+  if (value === undefined) return undefined;
+  const target = uri.replace(/\/+$/u, "");
+  const content = value
+    .split(/\r?\n/u)
+    .filter((line) => {
+      const text = line.trim();
+      if (text === "") return true;
+      if (WEB_FETCH_ENVELOPE.test(text)) return false;
+      return text.replace(/\/+$/u, "") !== target;
+    })
+    .join("\n");
+  return snippet(content);
+}
+
 export function createWebFetchExtractor(
   urlOptions: Parameters<typeof canonicalizeUrl>[1] = {},
 ): SourceExtractor {
@@ -276,7 +304,7 @@ export function createWebFetchExtractor(
           ? meta.title.trim()
           : undefined;
       const titleExplicit = explicitTitle !== undefined;
-      const sourceSnippet = snippet(firstText(context.result));
+      const sourceSnippet = fetchedSnippet(firstText(context.result), uri);
       return [
         {
           id: `web:${uri}`,

@@ -30,10 +30,28 @@ export class QaHostSourceBridge {
     this.refusal = "";
   }
 
+  /**
+   * The Host's bundles win the turns they share with the projection, with one
+   * exception: a bundle that collected nothing never erases a turn the
+   * transcript accounts for. Both channels read the same durable tool results,
+   * so a turn the projection filled and the Host reported empty means the
+   * Host's collection missed that turn, not that the answer had no sources —
+   * and without this guard such a turn loses the sources the reader could see
+   * while it ran the moment the Host answers for it.
+   */
   merge(projected: readonly QaTurnSources[]): readonly QaTurnSources[] {
     const merged = new Map<number, QaTurnSources>();
     for (const bundle of projected) merged.set(bundle.turn, bundle);
-    for (const bundle of this.bundles) merged.set(bundle.turn, bundle);
+    for (const bundle of this.bundles) {
+      const collected = merged.get(bundle.turn);
+      if (
+        collected !== undefined &&
+        carriesNothing(bundle) &&
+        !carriesNothing(collected)
+      )
+        continue;
+      merged.set(bundle.turn, bundle);
+    }
     return [...merged.values()].sort((left, right) => left.turn - right.turn);
   }
 
@@ -77,6 +95,11 @@ export class QaHostSourceBridge {
       if (generation === this.generation) this.refreshing = false;
     }
   }
+}
+
+/** True when a bundle holds no source at all, promoted or discovered. */
+function carriesNothing(bundle: QaTurnSources): boolean {
+  return bundle.sources.length === 0 && (bundle.discovered?.length ?? 0) === 0;
 }
 
 /** Stable text for one refusal, so the same failure is not reported twice. */

@@ -71,6 +71,16 @@ export interface QaHeaderProps {
   readonly fileCount: number;
   readonly filesOpen: boolean;
   readonly onOpenFiles: () => void;
+  /**
+   * The signed-in user's settings entry. The sidebar carries it next to the
+   * account name, so a deployment that hides the session list has to hand it
+   * here instead: without either, a signed-in user cannot reach their own
+   * profile, starter buttons, skills or integrations at all.
+   */
+  readonly settings?: {
+    readonly label: string;
+    readonly onOpen: () => void;
+  };
   readonly panelLauncher?: ReactNode;
   readonly showReset: boolean;
   readonly resetDisabled: boolean;
@@ -96,6 +106,7 @@ export function QaHeader({
   fileCount,
   filesOpen,
   onOpenFiles,
+  settings,
   panelLauncher,
   showReset,
   resetDisabled,
@@ -203,6 +214,20 @@ export function QaHeader({
             </button>
           )}
           {panelLauncher}
+          {settings === undefined ? null : (
+            <button
+              type="button"
+              className="dsh-qa-header__settings"
+              title={settings.label}
+              onClick={settings.onOpen}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="8" r="2.2" />
+                <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" />
+              </svg>
+              Настройки
+            </button>
+          )}
         </div>
         <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
           <span aria-current="page">Чат</span>
