@@ -27,7 +27,14 @@ from the stored integration, never from a model argument.
 
 List operations now answer with a uniform `{ items, pagination }` envelope, so
 the model sees one response shape instead of six, and id-keyed responses such as
-open-line history are projected into ordered arrays.
+open-line history are projected into ordered arrays. Capability labels come from
+the provider at runtime and the effective policy arrives as capability/mode
+pairs, so the Settings card renders a provider it has never heard of.
+
+The plugin is laid out as one directory per integration under
+`src/providers/`, with the shared engine — broker, repository, secret store,
+tool plumbing — naming no integration at all, which is what the next provider
+(Jira, GitLab, TeamCity) plugs into.
 
 Three Bitrix24 documentation ambiguities shape the surface: `user.search` is not
 called because its parameter table and its examples disagree about where filter

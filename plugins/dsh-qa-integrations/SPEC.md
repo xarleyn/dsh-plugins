@@ -1330,9 +1330,39 @@ After Bitrix is stable:
 
 ---
 
-## 31. Suggested repository structure
+## 31. Repository structure (implemented)
 
-If kept in the existing monorepo:
+The in-process MVP keeps the provider boundary the spec asks for. One directory
+per integration; the shared engine never names one (a package gate enforces it):
+
+```text
+plugins/dsh-qa-integrations/src/
+  index.ts             plugin, host remote, provider registration
+  config.ts            composition: shared knobs + one slice per provider
+  tools.ts             composition: tools of every enabled provider
+  broker.ts            principal -> integration -> credential -> provider
+  tool-kit.ts          session -> principal -> broker.call, shared by providers
+  repository.ts        owner+provider scoped persistence
+  secrets/             envelope encryption, master key
+  types.ts             shared DTOs; a capability is a free-form string
+  client/
+    index.tsx          settings-section registration
+    bitrix24.tsx       Bitrix24 card; renders labels the host declares
+  providers/
+    README.md          how to add a provider
+    contract.ts        IntegrationProvider
+    registry.ts        provider registry
+    bitrix24/
+      index.ts         Bitrix24Provider: validate / execute / parseCredential
+      catalog.ts       capabilities (capability <-> scope) and operations
+      operations.ts    request parameter building, response projections
+      transport.ts     credential parsing, bounded HTTP call
+      config.ts        `bitrix24:` config slice and defaults
+      tools.ts         model-visible Bitrix24 tools
+```
+
+The original sketch below stays as the target for a separate broker service and
+for when Jira/Confluence providers arrive:
 
 ```text
 packages/

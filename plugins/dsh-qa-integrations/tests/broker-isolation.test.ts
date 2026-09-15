@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationBroker } from "../src/broker.js";
-import { resolveConfig } from "../src/config.js";
 import type { IntegrationProvider } from "../src/providers/contract.js";
 import { IntegrationProviderRegistry } from "../src/providers/registry.js";
 import { IntegrationRepository } from "../src/repository.js";
@@ -30,15 +29,30 @@ function fakeLogger(): PluginLogger {
   return logger as unknown as PluginLogger;
 }
 
+/**
+ * A made-up provider, so these tests exercise the broker as the generic
+ * boundary it is: if this suite ever needed a real integration to pass, the
+ * abstraction would be gone.
+ */
 function fakeProvider(options: {
   readonly capabilities: readonly IntegrationCapability[];
   readonly validated?: () => readonly IntegrationCapability[];
 }): IntegrationProvider {
   return {
-    id: "bitrix24",
-    displayName: "Bitrix24",
+    id: "acme",
+    displayName: "Acme",
     capabilities: options.capabilities,
+    capabilityInfo: Object.fromEntries(
+      options.capabilities.map((capability) => [
+        capability,
+        { label: capability, hint: `${capability} hint` },
+      ]),
+    ),
     operationCapability: (operation) => OPERATION_CAPABILITY[operation],
+    parseCredential: (raw) => ({
+      credential: JSON.stringify({ webhookBaseUrl: raw }),
+      portal: new URL(raw).hostname,
+    }),
     validate: async ({ credential }) => {
       const base = String(
         (JSON.parse(credential) as { webhookBaseUrl: string }).webhookBaseUrl,
@@ -64,7 +78,6 @@ function buildBroker(
   const providers = new IntegrationProviderRegistry();
   providers.register(provider);
   return new IntegrationBroker(
-    resolveConfig({ enabled: true }),
     new IntegrationRepository(filePath),
     new SecretStore(new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1)),
     providers,
@@ -86,22 +99,22 @@ describe("IntegrationBroker user isolation", () => {
     const bob = { userId: "bob" };
     const aliceSecret = "alice-secret-123";
     const bobSecret = "bob-secret-456";
-    await broker.connectBitrix(alice, {
-      token: `https://alice.bitrix24.ru/rest/1/${aliceSecret}`,
+    await broker.connect(alice, "acme", {
+      token: `https://alice.example/rest/1/${aliceSecret}`,
     });
-    await broker.connectBitrix(bob, {
-      token: `https://bob.bitrix24.ru/rest/2/${bobSecret}`,
+    await broker.connect(bob, "acme", {
+      token: `https://bob.example/rest/2/${bobSecret}`,
     });
 
     const [aliceResult, bobResult] = await Promise.all([
       broker.call(alice, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "crm.get",
         input: { entityTypeId: 2, id: 1 },
         sourceSessionId: "session-alice",
       }),
       broker.call(bob, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "crm.get",
         input: { entityTypeId: 2, id: 1 },
         sourceSessionId: "session-bob",
@@ -109,20 +122,20 @@ describe("IntegrationBroker user isolation", () => {
     ]);
     expect(aliceResult.data).toMatchObject({ account: "alice" });
     expect(bobResult.data).toMatchObject({ account: "bob" });
-    expect(broker.summary(alice, "bitrix24").externalAccountName).toBe("Alice");
-    expect(broker.summary(bob, "bitrix24").externalAccountName).toBe("Bob");
+    expect(broker.summary(alice, "acme").externalAccountName).toBe("Alice");
+    expect(broker.summary(bob, "acme").externalAccountName).toBe("Bob");
 
     const persisted = readFileSync(filePath, "utf8");
     expect(persisted).not.toContain(aliceSecret);
     expect(persisted).not.toContain(bobSecret);
-    expect(JSON.stringify(broker.summary(alice, "bitrix24"))).not.toContain(
+    expect(JSON.stringify(broker.summary(alice, "acme"))).not.toContain(
       "secretRef",
     );
 
-    expect(broker.disconnect(alice, "bitrix24")).toBe(true);
+    expect(broker.disconnect(alice, "acme")).toBe(true);
     await expect(
       broker.call(alice, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "crm.get",
         input: {},
         sourceSessionId: "session-alice",
@@ -130,7 +143,7 @@ describe("IntegrationBroker user isolation", () => {
     ).rejects.toMatchObject({ code: "IntegrationNotConnected" });
     await expect(
       broker.call(bob, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "crm.get",
         input: {},
         sourceSessionId: "session-bob",
@@ -144,15 +157,17 @@ describe("IntegrationBroker user isolation", () => {
       fakeProvider({ capabilities: ["crm.read"] }),
     );
     const principal = { userId: "carol" };
-    const summary = await broker.connectBitrix(principal, {
-      token: "https://carol.bitrix24.ru/rest/3/carol-secret-value",
+    const summary = await broker.connect(principal, "acme", {
+      token: "https://carol.example/rest/3/carol-secret-value",
     });
     expect(summary.capabilities).toEqual(["crm.read"]);
-    expect(summary.policy["chat.read"]).toBeUndefined();
+    expect(
+      summary.policy.find((entry) => entry.capability === "chat.read"),
+    ).toBeUndefined();
 
     await expect(
       broker.call(principal, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "chat.messages",
         input: { dialogId: "chat1" },
         sourceSessionId: "session-carol",
@@ -160,7 +175,7 @@ describe("IntegrationBroker user isolation", () => {
     ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
     await expect(
       broker.call(principal, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "crm.get",
         input: {},
         sourceSessionId: "session-carol",
@@ -168,7 +183,7 @@ describe("IntegrationBroker user isolation", () => {
     ).resolves.toMatchObject({ data: { operation: "crm.get" } });
     await expect(
       broker.call(principal, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "unknown.operation",
         input: {},
         sourceSessionId: "session-carol",
@@ -186,34 +201,36 @@ describe("IntegrationBroker user isolation", () => {
       }),
     );
     const principal = { userId: "dave" };
-    await broker.connectBitrix(principal, {
-      token: "https://dave.bitrix24.ru/rest/4/dave-secret-value",
+    await broker.connect(principal, "acme", {
+      token: "https://dave.example/rest/4/dave-secret-value",
     });
-    expect(broker.summary(principal, "bitrix24").capabilities).toEqual([
+    expect(broker.summary(principal, "acme").capabilities).toEqual([
       "crm.read",
     ]);
 
     granted = ["crm.read", "tasks.read"];
-    const refreshed = await broker.validate(principal, "bitrix24");
+    const refreshed = await broker.validate(principal, "acme");
     expect(refreshed.capabilities).toEqual(["crm.read", "tasks.read"]);
     // Detected but not yet enabled by the user, so the agent still may not read tasks.
-    expect(refreshed.policy["tasks.read"]).toBe("deny");
+    expect(
+      refreshed.policy.find((entry) => entry.capability === "tasks.read")?.mode,
+    ).toBe("deny");
     await expect(
       broker.call(principal, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "tasks.list",
         input: {},
         sourceSessionId: "session-dave",
       }),
     ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
 
-    broker.patchPolicy(principal, "bitrix24", {
+    broker.patchPolicy(principal, "acme", {
       operation: "tasks.read",
       mode: "allow",
     });
     await expect(
       broker.call(principal, {
-        provider: "bitrix24",
+        provider: "acme",
         operation: "tasks.list",
         input: {},
         sourceSessionId: "session-dave",

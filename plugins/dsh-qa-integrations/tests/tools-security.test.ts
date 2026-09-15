@@ -1,5 +1,5 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
-import { BITRIX_OPERATIONS } from "../src/catalog.js";
+import { BITRIX_OPERATIONS } from "../src/providers/bitrix24/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
 /** Minimal valid arguments per tool, so the sweep reaches the executor. */

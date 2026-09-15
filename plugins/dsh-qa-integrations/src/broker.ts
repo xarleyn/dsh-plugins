@@ -1,40 +1,22 @@
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationError } from "./errors.js";
-import { parseBitrixWebhook } from "./providers/bitrix24.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
 import type { IntegrationRepository } from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
 import type {
   CredentialInput,
-  IntegrationCapability,
   IntegrationJsonValue,
-  IntegrationPolicyMode,
   IntegrationPrincipal,
   IntegrationProviderId,
   IntegrationProviderSummary,
   IntegrationSummary,
   IntegrationToolResult,
   PolicyPatch,
-  ResolvedQaIntegrationsConfig,
 } from "./types.js";
-
-const DEFAULT_POLICY: Readonly<
-  Record<IntegrationCapability, "allow" | "deny">
-> = Object.freeze({
-  "crm.read": "allow",
-  "chat.read": "allow",
-  "openlines.read": "allow",
-  "user.read": "allow",
-  "department.read": "allow",
-  "tasks.read": "allow",
-  "calendar.read": "allow",
-  "disk.read": "allow",
-});
 
 /** In-process broker boundary; no caller outside it receives decrypted secrets. */
 export class IntegrationBroker {
   constructor(
-    private readonly config: ResolvedQaIntegrationsConfig,
     private readonly repository: IntegrationRepository,
     private readonly secrets: SecretStore,
     private readonly providers: IntegrationProviderRegistry,
@@ -73,19 +55,17 @@ export class IntegrationBroker {
         credentialConfigured: false,
         credentialUpdatedAt: null,
         capabilities: provider.capabilities,
-        policy: DEFAULT_POLICY,
+        capabilityInfo: provider.capabilityInfo,
+        // Nothing is granted yet, so nothing carries a policy either.
+        policy: [],
         lastValidatedAt: null,
         errorCode: null,
       };
     }
-    const policy = Object.fromEntries(
-      integration.capabilities.map((capability) => [
-        capability,
-        this.repository.policy(integration, capability),
-      ]),
-    ) as Readonly<
-      Partial<Record<IntegrationCapability, IntegrationPolicyMode>>
-    >;
+    const policy = integration.capabilities.map((capability) => ({
+      capability,
+      mode: this.repository.policy(integration, capability),
+    }));
     const secret = this.repository.secretFor(principal, providerId);
     return {
       provider: providerId,
@@ -96,28 +76,28 @@ export class IntegrationBroker {
       credentialConfigured: secret !== undefined,
       credentialUpdatedAt: secret?.updatedAt ?? null,
       capabilities: integration.capabilities,
+      capabilityInfo: provider.capabilityInfo,
       policy,
       lastValidatedAt: integration.lastValidatedAt,
       errorCode: integration.lastErrorCode,
     };
   }
 
-  async connectBitrix(
+  /** Connect one provider for one principal; the provider owns its credential shape. */
+  async connect(
     principal: IntegrationPrincipal,
+    providerId: IntegrationProviderId,
     input: CredentialInput,
   ): Promise<IntegrationSummary> {
-    const parsed = parseBitrixWebhook(
-      String(input.token ?? ""),
-      this.config.allowedPortalSuffixes,
-    );
-    const provider = this.providers.get("bitrix24");
+    const provider = this.providers.get(providerId);
+    const parsed = provider.parseCredential(String(input.token ?? ""));
     const validation = await provider.validate({
       credential: parsed.credential,
     });
     const encrypted = await this.secrets.encrypt(parsed.credential, "token");
     this.repository.connect({
       principal,
-      provider: "bitrix24",
+      provider: providerId,
       secret: encrypted,
       tenantId: validation.tenantId,
       externalUserId: validation.externalUserId,
@@ -126,13 +106,13 @@ export class IntegrationBroker {
     });
     this.repository.audit({
       ownerUserId: principal.userId,
-      provider: "bitrix24",
+      provider: providerId,
       operation: "credential.connect",
       result: "success",
       sourceSessionId: null,
     });
-    this.logger.info("credential.connected", { provider: "bitrix24" });
-    return this.summary(principal, "bitrix24");
+    this.logger.info("credential.connected", { provider: providerId });
+    return this.summary(principal, providerId);
   }
 
   async validate(
@@ -145,7 +125,7 @@ export class IntegrationBroker {
       const validation = await this.providers
         .get(providerId)
         .validate({ credential });
-      // Re-probe capabilities: granting a new scope in Bitrix24 must show up
+      // Re-probe capabilities: a scope granted later at the provider must show up
       // here, and a revoked one must stop being offered. Policies are left
       // untouched, so a newly detected capability starts denied until the user
       // enables it in Settings.
