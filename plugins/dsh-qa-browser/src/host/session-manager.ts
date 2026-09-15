@@ -640,6 +640,12 @@ export class QaBrowserSessionManager {
     clientId: string,
     request: BrowserHumanPointerRequest,
   ): Promise<BrowserActionResult> {
+    if (!this.options.config.capabilities.coordinateInput) {
+      throw new QaBrowserError(
+        "BROWSER_ACTION_FAILED",
+        "Coordinate input is disabled for this Browser runtime.",
+      );
+    }
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
     return this.enqueueHuman(record, tab, clientId, async () => {
