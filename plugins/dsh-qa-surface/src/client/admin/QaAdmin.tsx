@@ -11,12 +11,7 @@ import type {
   QaSubrole,
 } from "../../types.js";
 import type { QaAccessApi, QaAdminApi } from "../types.js";
-import {
-  adminPath,
-  adminSectionOf,
-  parseAdminRoute,
-  type QaAdminRoute,
-} from "./routes.js";
+import { adminPath, parseAdminRoute, type QaAdminRoute } from "./routes.js";
 import { AdminOverview } from "./pages/Overview.js";
 import {
   AdminConversation,
@@ -138,6 +133,14 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
   }
   // A plain user never reaches the console; the Host refuses every
   // administrative call for that role anyway.
+  return false;
+}
+
+/** Detail routes keep their parent navigation entry current. */
+function isCurrentEntry(route: QaAdminRoute, page: Page): boolean {
+  if (route.page === page) return true;
+  if (route.page === "user") return page === "users";
+  if (route.page === "conversation") return page === "conversations";
   return false;
 }
 
@@ -1039,10 +1042,7 @@ export function QaAdmin(props: {
                       key={entry.page}
                       type="button"
                       aria-current={
-                        adminSectionOf(route) ===
-                        adminSectionOf({ page: entry.page } as QaAdminRoute)
-                          ? "page"
-                          : undefined
+                        isCurrentEntry(route, entry.page) ? "page" : undefined
                       }
                       onClick={() =>
                         navigate({
