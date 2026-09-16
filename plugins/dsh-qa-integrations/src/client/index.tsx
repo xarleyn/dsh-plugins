@@ -1,8 +1,10 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import type {
+  RemoteResult,
+  TypertRemoteContribution,
+} from "@deepseek-ai/dsh-typert-protocol";
 import qaIntegrationsRemote from "@yadsh/dsh-qa-integrations/remote";
 import type {
   QaUserSession,
@@ -18,13 +20,25 @@ import {
 } from "./integrations.js";
 import { styles } from "./styles.js";
 
-interface ClientContext extends Context {
-  readonly remote: ClientRemote & {
-    readonly qaIntegrations: IntegrationsClientRemote;
-  };
+/**
+ * What this bundle reads off its client context.
+ *
+ * The remote registry is declared structurally and reached through one cast:
+ * the gateway exposes one `ClientRemote` declaration per resolved copy of its
+ * types, so a signature that names it can compile against one installed graph
+ * and fail against another. The entry's own parameter stays a plain `Context`,
+ * which every graph resolves the same way.
+ */
+interface ClientRemoteFace {
+  $mount(contribution: TypertRemoteContribution): Promise<() => Promise<void>>;
+  readonly qaIntegrations: IntegrationsClientRemote;
+}
+
+type ClientFace = Context & {
+  readonly remote: ClientRemoteFace;
   readonly qaUserSettingsSections: QaUserSettingsSections;
   readonly qaUserSession: QaUserSession;
-}
+};
 
 export const inject = [
   "remote",
@@ -39,8 +53,10 @@ export const inject = [
  * card of the host's "Plugin configuration" tab, which reaches the same account
  * through the `qaUserSession` service.
  */
-export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
-  const disposeRemote = await ctx.remote.$mount(qaIntegrationsRemote);
+export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  const disposeRemote = await (ctx as ClientFace).remote.$mount(
+    qaIntegrationsRemote,
+  );
   try {
     await ctx.inject(
       [
@@ -50,7 +66,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
         "slots",
       ],
       (injected) => {
-        const face = injected as ClientContext;
+        const face = injected as ClientFace;
         let cancelled = false;
         let removeSection: (() => void) | undefined;
         let removeCard: (() => void) | undefined;

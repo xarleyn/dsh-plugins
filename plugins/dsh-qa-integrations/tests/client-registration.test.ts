@@ -66,8 +66,8 @@ function stub(enabled: boolean): Stub {
       callback(face);
     },
     effect: face.effect,
-  } as unknown as Context;
-  return { ctx, sections, slots, effects };
+  };
+  return { ctx: ctx as unknown as Context, sections, slots, effects };
 }
 
 /** The registrations happen once `describe()` has answered. */
