@@ -1,3 +1,73 @@
+## 0.4.0 (2026-09-16)
+
+### 🚀 Features
+
+- Serve Confluence attachments as links, and read Word/OpenDocument attachments ([67ac3ff](https://github.com/xarleyn/dsh-plugins/commit/67ac3ff))
+  as text.
+
+  A storage body names an attachment by filename and nothing else, so a page that
+  says "see the attached regulation" used to reach the model as a bare name it
+  could do nothing with. The Confluence adapter now resolves every attachment
+  reference — a linked file, an embedded image, and the embedded Office/PDF viewer
+  macros (`view-file`, `viewpdf`, `viewdoc`, `viewppt`, `viewxls`) — into its
+  download URL, and appends the page's own attachment collection as an
+  `## Attachments` list with name, media type, size and link. `adapter.cleanup:
+  strict` still serves neither, and `adapter.maxAttachments` (default 50, `0`
+  disables the list) caps how many entries one page reports; a failed collection
+  request never costs the page.
+
+  Downloading an attachment as bytes is impossible by construction: the harness
+  body union is `html | text`, so the plugin extracts the document's text inside
+  the provider and returns that. Word (`.docx`/`.docm`/`.dotx`) and OpenDocument
+  (`.odt`) files are inflated in memory — no external binary, no temporary file —
+  and rendered as Markdown with headings, paragraphs, list items and tables; field
+  codes, deleted revisions, comments, drawings and footnotes are left out. The
+  per-rule `documents` section bounds it: `maxBytes` (default 4 MiB) caps the
+  download, `maxChars` (default 40000) caps what a document may add to the
+  conversation, and both are overridable from the top-level `documents` defaults.
+  A format the plugin does not read (PDF, legacy `.doc`, spreadsheets,
+  presentations, archives) is refused by name instead of as an unknown content
+  type, and bytes that only claim to be a document are refused too rather than
+  returned as mojibake. `documents.enabled: false` restores the previous behavior
+  exactly, and the connection tester runs the same extraction so Test on an
+  attachment URL shows what the model would receive.
+
+- Serve the Confluence page links Confluence itself hands out. A rule with the ([8dc89ce](https://github.com/xarleyn/dsh-plugins/commit/8dc89ce))
+  Confluence adapter now recognizes `<context>/pages/viewpage.action?pageId=<id>`
+  — the URL in the browser bar and in every "copy link" action — plus its legacy
+  `?spaceKey=<key>&title=<title>` form, and resolves them through the same REST
+  API as the `/pages/<id>/…` and `/display/<SPACE>/<Title>` forms. Until now only
+  those two path shapes were recognized, so a page opened through a view-page
+  link fell through to raw HTTP/HTML and the model received the whole wiki page:
+  masthead, space menus, breadcrumbs, page tools, comment box, and the Atlassian
+  footer, with the actual article buried in the middle. Whether a URL is served
+  by the adapter is now decided by the one function that reads page references,
+  so the route and the conversion can no longer drift apart.
+
+  Give Confluence rules a `cleanup` level and stop the adapter from burying page
+  content in macro noise. Layout macros (`section`, `column`, `div`) used to be
+  reported as one placeholder line that flattened everything they wrapped into a
+  single paragraph; they now unwrap, so the headings, paragraphs, lists, and
+  tables inside keep their block structure. Task lists become `- [x]` checkboxes,
+  status badges keep their label, panels keep their callout, a bare user mention
+  reads `@user` instead of leaving the sentence that introduced it dangling, and
+  list items and table rows stay in one block instead of being separated by blank
+  lines (which broke Markdown tables).
+
+  What survives beside that content is now the rule's choice:
+  `adapter.cleanup` is `off` (keep every `_[macro: …]_` and `_[file.png]_` marker),
+  `balanced` (the default — navigation and aggregation macros are dropped, links,
+  attachments, and emoticons stay), or `strict` (readable content only, no
+  markers). The rule editor exposes it as "Page cleanup" next to the adapter
+  type; an omitted value resolves to `balanced`. The configuration warning for
+  two rules that can match the same URL now names the shared scheme, host, and
+  port instead of only naming the rules, and the overlap check no longer reports
+  two rules that restrict themselves to disjoint ports.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.3 (2026-09-15)
 
 ### 🩹 Fixes
