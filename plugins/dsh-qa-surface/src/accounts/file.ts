@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   mkdirSync,
   readFileSync,
@@ -67,12 +67,121 @@ export interface StoredOwnership {
   readonly skillActivations?: readonly QaSkillActivationRecord[];
 }
 
+/** How ownership rests in the file: the snapshot is a reference, not a copy. */
+interface StoredOwnershipOnDisk extends Omit<
+  StoredOwnership,
+  "capabilitySnapshot"
+> {
+  readonly snapshotRef?: string;
+}
+
 export interface AccountsFile {
   readonly version: 1;
   /** HMAC key for account tokens; rotated on password change by rewriting it. */
   readonly secret: string;
   readonly users: StoredUser[];
   readonly ownership: Record<string, StoredOwnership>;
+  /**
+   * Capability snapshots, one copy per distinct policy.
+   *
+   * Every admitted chat freezes the capabilities it was admitted with, and on
+   * a real deployment those snapshots are almost always the same list: 25 of
+   * them were byte-identical on the live stand and made up 45% of the file.
+   * Content addressing keeps one copy and gives each chat a reference to it,
+   * which is lossless where a per-chat copy was merely redundant.
+   */
+  readonly snapshots: Record<string, QaEffectiveCapabilityPolicy>;
+}
+
+/** The on-disk shape: ownership rows point into `snapshots`. */
+interface AccountsFileOnDisk extends Omit<
+  AccountsFile,
+  "ownership" | "snapshots"
+> {
+  readonly ownership: Record<string, StoredOwnershipOnDisk>;
+  /** Absent on files written before snapshots were content-addressed. */
+  readonly snapshots?: Record<string, QaEffectiveCapabilityPolicy>;
+}
+
+/**
+ * A stable digest of one policy, so two chats admitted under the same policy
+ * share a snapshot. Keys are sorted because object key order is an artefact of
+ * construction, not part of the policy.
+ */
+export function snapshotDigest(value: unknown): string {
+  const canonical = (input: unknown): string => {
+    if (input === null || typeof input !== "object") {
+      return JSON.stringify(input) ?? "null";
+    }
+    if (Array.isArray(input)) {
+      return `[${input.map(canonical).join(",")}]`;
+    }
+    const entries = Object.entries(input as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
+    return `{${entries
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
+      .join(",")}}`;
+  };
+  return createHash("sha256").update(canonical(value)).digest("hex");
+}
+
+/**
+ * Model → disk: move every inline snapshot into the shared map and leave a
+ * reference behind, dropping snapshots no chat refers to any more.
+ */
+function toOnDisk(file: AccountsFile): AccountsFileOnDisk {
+  const snapshots: Record<string, QaEffectiveCapabilityPolicy> = {};
+  const ownership: Record<string, StoredOwnershipOnDisk> = {};
+  for (const [sessionId, owner] of Object.entries(file.ownership)) {
+    const { capabilitySnapshot, ...rest } = owner;
+    if (capabilitySnapshot === undefined) {
+      ownership[sessionId] = rest;
+      continue;
+    }
+    const digest = snapshotDigest(capabilitySnapshot);
+    snapshots[digest] = capabilitySnapshot;
+    ownership[sessionId] = { ...rest, snapshotRef: digest };
+  }
+  return {
+    version: 1,
+    secret: file.secret,
+    users: file.users,
+    ownership,
+    snapshots,
+  };
+}
+
+/**
+ * Disk → model: resolve every reference into the inline snapshot the rest of
+ * the plugin reads. A dangling reference is a corrupt file rather than an
+ * expected state, and it is refused: silently dropping the snapshot would let
+ * the chat be re-admitted under a policy it was never granted.
+ */
+function fromOnDisk(file: AccountsFileOnDisk): AccountsFile {
+  const snapshots = file.snapshots ?? {};
+  const ownership: Record<string, StoredOwnership> = {};
+  for (const [sessionId, owner] of Object.entries(file.ownership ?? {})) {
+    const { snapshotRef, ...rest } = owner;
+    if (snapshotRef === undefined) {
+      ownership[sessionId] = rest;
+      continue;
+    }
+    const snapshot = snapshots[snapshotRef];
+    if (snapshot === undefined) {
+      throw new Error(
+        `qa-accounts: session ${sessionId} refers to missing capability snapshot ${snapshotRef}; refusing to serve a corrupt accounts file`,
+      );
+    }
+    ownership[sessionId] = { ...rest, capabilitySnapshot: snapshot };
+  }
+  return {
+    version: 1,
+    secret: file.secret,
+    users: file.users,
+    ownership,
+    snapshots,
+  };
 }
 
 /** mtime+size pair identifying one on-disk version of the accounts file. */
@@ -133,6 +242,7 @@ export function loadAccountsFile(
       secret: base64Url(randomBytes(SECRET_BYTES)),
       users: [],
       ownership: {},
+      snapshots: {},
     };
     persistAccountsFile(filePath, created, stamp);
     return created;
@@ -149,14 +259,15 @@ export function loadAccountsFile(
       `qa-accounts: ${filePath} is not a recognizable accounts file; refusing to overwrite it`,
     );
   }
-  const file = parsed as AccountsFile;
+  const file = parsed as AccountsFileOnDisk;
   if (stat !== undefined) stamp.current = stampOf(stat);
-  return {
+  return fromOnDisk({
     version: 1,
     secret: file.secret,
     users: file.users,
     ownership: file.ownership ?? {},
-  };
+    ...(file.snapshots === undefined ? {} : { snapshots: file.snapshots }),
+  });
 }
 
 /**
@@ -171,7 +282,7 @@ export function persistAccountsFile(
   mkdirSync(path.dirname(filePath), { recursive: true });
   // A per-process temp name: the Host and the CLI never race on one file.
   const temp = `${filePath}.${process.pid}.tmp`;
-  writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  writeFileSync(temp, `${JSON.stringify(toOnDisk(file), null, 2)}\n`, "utf8");
   renameSync(temp, filePath);
   stamp.current = stampOf(statSync(filePath));
 }

@@ -155,6 +155,25 @@ const configSchema = z.object({
     .object({
       enabled: z.boolean().default(D.accounts.enabled),
       allowRegistration: z.boolean().default(D.accounts.allowRegistration),
+      retention: z
+        .object({
+          pruneVanishedSessions: z
+            .boolean()
+            .default(D.accounts.retention.pruneVanishedSessions),
+          ownershipGraceHours: z
+            .number()
+            .step(1)
+            .min(1)
+            .max(8_760)
+            .default(D.accounts.retention.ownershipGraceHours),
+          sweepIntervalMinutes: z
+            .number()
+            .step(1)
+            .min(1)
+            .max(1_440)
+            .default(D.accounts.retention.sweepIntervalMinutes),
+        })
+        .default({ ...D.accounts.retention }),
       sessionTtlDays: z
         .number()
         .step(1)
@@ -213,6 +232,7 @@ const configSchema = z.object({
     })
     .default({
       ...D.accounts,
+      retention: { ...D.accounts.retention },
       profile: {
         ...D.accounts.profile,
         identities: [...D.accounts.profile.identities],
