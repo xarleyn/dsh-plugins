@@ -21,6 +21,20 @@ for (const path of [
   assert((await stat(new URL(path, root))).isFile(), `${path} must be built`);
 }
 
+// A subpath that no build step produces is a promise the package cannot keep:
+// the packed-tarball gate catches it only in a packing run, so pin it here.
+for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+  if (subpath === "./package.json") continue;
+  for (const key of ["types", "default"]) {
+    const path = target?.[key];
+    if (path === undefined) continue;
+    assert(
+      (await stat(new URL(path, root))).isFile(),
+      `exports["${subpath}"].${key} must be built: ${path}`,
+    );
+  }
+}
+
 const patch = await readFile(new URL("cordis.patch.yml", root), "utf8");
 assert.match(patch, /id:\s*documents/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-documents"/u);

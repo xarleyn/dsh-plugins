@@ -37,8 +37,7 @@
       "default": "./lib/client.js"
     },
     "./types": {
-      "types": "./lib/types/types.d.ts",
-      "default": "./lib/types.js"
+      "types": "./lib/types/documents/types.d.ts"
     },
     "./package.json": "./package.json"
   },
