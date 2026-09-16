@@ -9,6 +9,11 @@ const draftRegistration = client.indexOf('id: "@yadsh/dsh-draft-sessions"');
 if (draftRegistration < 0) {
   throw new Error("client bundle is missing the draft-sessions factory");
 }
+if (!client.includes("window.__ModuleLoader__.load({")) {
+  throw new Error(
+    "client bundle must register through the shared ModuleLoader",
+  );
+}
 if (client.includes("dsh-client-ui-workspace")) {
   throw new Error(
     "client bundle must not embed or require a workspace-browser implementation",

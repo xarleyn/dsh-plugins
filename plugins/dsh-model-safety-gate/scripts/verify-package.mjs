@@ -68,6 +68,7 @@ await runVerifyPackage({
     ],
   },
   clientBundle: {
+    moduleLoaderId: true,
     matches: [
       // Browser bundle identity (AGENTS.md): the registration id is the full
       // package name.

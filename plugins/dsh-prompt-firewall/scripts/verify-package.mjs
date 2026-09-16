@@ -24,6 +24,7 @@ await runVerifyPackage({
   patch: { id: "dsh-prompt-firewall" },
   client: { platform: "web" },
   clientBundle: {
+    moduleLoaderId: true,
     matches: [/id:\s*"@yadsh\/dsh-prompt-firewall"/u],
     notMatches: [/useSyncExternalStore\)\(scope\.subscribe/u],
     cardContract: {

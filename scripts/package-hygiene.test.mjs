@@ -12,6 +12,8 @@ import {
 import {
   compareVersions,
   curatedChangelogVersions,
+  incrementVersion,
+  planBumpFor,
   planProjects,
   validateClientContractGates,
   validateDiscoverability,
@@ -654,19 +656,19 @@ async function qaSurfaceFixture({
   return root;
 }
 
-test("a qa-surface plan requires a changelog entry newer than the released version", async () => {
+test("a qa-surface plan requires a changelog entry for the planned version", async () => {
   const root = await qaSurfaceFixture({ plans: [["plan.md", qaSurfacePlan]] });
   try {
     assert.throws(
       () => verifyVersionPlans(root),
-      /QaChangelog\.tsx has no entry newer than the current 0\.7\.4/u,
+      /plans bump to 0\.7\.5, but QaChangelog\.tsx has no entry for it/u,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("a qa-surface plan covered by a newer curated entry passes", async () => {
+test("a qa-surface plan covered by the planned curated entry passes", async () => {
   const root = await qaSurfaceFixture({
     plans: [["plan.md", qaSurfacePlan]],
     changelogVersions: ["0.7.5", "0.7.4"],
@@ -675,6 +677,62 @@ test("a qa-surface plan covered by a newer curated entry passes", async () => {
     assert.equal(verifyVersionPlans(root), 1);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stale future entry does not cover the next planned release", async () => {
+  // The reviewer's false-positive: with 0.8.0 already recorded, a patch plan
+  // still demands its own 0.7.5 entry — any-version-newer is not coverage.
+  const root = await qaSurfaceFixture({
+    plans: [["plan.md", qaSurfacePlan]],
+    changelogVersions: ["0.8.0", "0.7.4"],
+  });
+  try {
+    assert.throws(
+      () => verifyVersionPlans(root),
+      /plans bump to 0\.7\.5, but QaChangelog\.tsx has no entry for it/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the highest qa-surface bump decides the demanded version", async () => {
+  const minorPlan = [
+    "---",
+    '"@yadsh/dsh-qa-surface": minor',
+    "---",
+    "",
+    "Add something to the QA chat.",
+    "",
+  ].join("\n");
+  const matchingRoot = await qaSurfaceFixture({
+    plans: [
+      ["patch.md", qaSurfacePlan],
+      ["minor.md", minorPlan],
+    ],
+    changelogVersions: ["0.8.0", "0.7.4"],
+  });
+  try {
+    assert.equal(verifyVersionPlans(matchingRoot), 2);
+  } finally {
+    await rm(matchingRoot, { recursive: true, force: true });
+  }
+
+  const staleRoot = await qaSurfaceFixture({
+    plans: [
+      ["patch.md", qaSurfacePlan],
+      ["minor.md", minorPlan],
+    ],
+    changelogVersions: ["0.7.5", "0.7.4"],
+  });
+  try {
+    assert.throws(
+      () => verifyVersionPlans(staleRoot),
+      /plans bump to 0\.8\.0, but QaChangelog\.tsx has no entry for it/u,
+    );
+  } finally {
+    await rm(staleRoot, { recursive: true, force: true });
   }
 });
 
@@ -711,10 +769,21 @@ test("an empty plan set never trips the changelog tripwire", async () => {
 test("changelog coverage parses front matter, versions, and orders them", () => {
   assert.deepEqual(planProjects(qaSurfacePlan), ["@yadsh/dsh-qa-surface"]);
   assert.deepEqual(planProjects("no front matter"), []);
+  assert.equal(planBumpFor(qaSurfacePlan, "@yadsh/dsh-qa-surface"), "patch");
+  assert.equal(planBumpFor(qaSurfacePlan, "@yadsh/dsh-other"), undefined);
+  assert.equal(
+    planBumpFor("no front matter", "@yadsh/dsh-qa-surface"),
+    undefined,
+  );
   assert.deepEqual(curatedChangelogVersions(changelogOf(["0.7.5", "0.7.4"])), [
     "0.7.5",
     "0.7.4",
   ]);
+  assert.equal(incrementVersion("0.7.4", "patch"), "0.7.5");
+  assert.equal(incrementVersion("0.7.4", "minor"), "0.8.0");
+  assert.equal(incrementVersion("0.7.4", "major"), "1.0.0");
+  assert.equal(incrementVersion("1.0.0-rc.1", "minor"), "1.1.0");
+  assert.equal(incrementVersion("not-a-version", "patch"), undefined);
   assert.equal(compareVersions("0.7.5", "0.7.4"), 1);
   assert.equal(compareVersions("0.7.4", "0.7.4"), 0);
   assert.equal(compareVersions("0.10.0", "0.9.9"), 1);
@@ -768,14 +837,33 @@ test("a client bundle whose scripts never assert the full package name fails", a
     assert.equal(errors.length, 1);
     assert.match(
       errors[0],
-      /asserts the full package name "@yadsh\/dsh-fixture"/u,
+      /asserts the ModuleLoader registration id "@yadsh\/dsh-fixture"/u,
     );
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("regex-literal and string asserts of the full package name both pass", async () => {
+test("a bare package-name mention without a ModuleLoader assert fails", async () => {
+  // The reviewer's false-positive: `manifest.name === "@yadsh/dsh-fixture"`
+  // mentions the full package name but pins no bundle registration id.
+  const { root, directory, manifest } = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs":
+        "assert.equal(manifest.name, '@yadsh/dsh-fixture');\n",
+    },
+  });
+  try {
+    const errors = validateClientContractGates(directory, manifest);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /ModuleLoader registration id/u);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("regex-literal and shared-runner asserts of the registration id both pass", async () => {
   const regexForm = await pluginFixture({
     manifest: clientManifest,
     scriptFiles: {
@@ -799,19 +887,27 @@ test("regex-literal and string asserts of the full package name both pass", asyn
     await rm(regexForm.root, { recursive: true, force: true });
   }
 
-  const stringForm = await pluginFixture({
+  const runnerForm = await pluginFixture({
     manifest: clientManifest,
     scriptFiles: {
-      "smoke-packed.mjs": "assert.equal(json.name, '@yadsh/dsh-fixture');\n",
+      "verify-package.mjs": [
+        'import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";',
+        "",
+        "runVerifyPackage({",
+        '  packageName: "@yadsh/dsh-fixture",',
+        "  clientBundle: { moduleLoaderId: true },",
+        "});",
+        "",
+      ].join("\n"),
     },
   });
   try {
     assert.deepEqual(
-      validateClientContractGates(stringForm.directory, stringForm.manifest),
+      validateClientContractGates(runnerForm.directory, runnerForm.manifest),
       [],
     );
   } finally {
-    await rm(stringForm.root, { recursive: true, force: true });
+    await rm(runnerForm.root, { recursive: true, force: true });
   }
 });
 
@@ -822,7 +918,10 @@ test("a card source demands a script that runs the card-contract gate", async ()
   const withoutGate = await pluginFixture({
     manifest: clientManifest,
     scriptFiles: {
-      "verify-package.mjs": "assert.equal(name, '@yadsh/dsh-fixture');\n",
+      "verify-package.mjs": [
+        "assert.match(client, /window\\.__ModuleLoader__\\.load/u);",
+        "assert.equal(name, '@yadsh/dsh-fixture');",
+      ].join("\n"),
     },
     sourceFiles: cardSource,
   });
@@ -844,6 +943,7 @@ test("a card source demands a script that runs the card-contract gate", async ()
         'import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";',
         "",
         "verifyPluginCardContract(bundle);",
+        "assert.match(client, /window\\.__ModuleLoader__\\.load/u);",
         "assert.equal(name, '@yadsh/dsh-fixture');",
         "",
       ].join("\n"),
