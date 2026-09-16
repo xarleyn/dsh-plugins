@@ -12,7 +12,12 @@ import {
   enabledCapabilities,
   jiraOperationCapability,
 } from "./catalog.js";
-import { jiraSite, type JiraSite } from "./config.js";
+import {
+  CUSTOM_FIELD_ID,
+  jiraSite,
+  type JiraFlags,
+  type JiraSite,
+} from "./config.js";
 import { needsUserLookup } from "./jql.js";
 import {
   JIRA_HANDLERS,
@@ -168,12 +173,17 @@ export class JiraProvider implements IntegrationProvider {
       );
     }
     const flags = this.config.jira;
-    // A person is named the way a person actually has a name ("задачи
-    // Иванова"), and Jira filters on an account id: the directory turns one into
-    // the other before the query is built.
+    // Two values a question carries but Jira cannot take as they stand: a custom
+    // field named by its business term instead of its instance id, and a person
+    // named the way a person actually has a name ("задачи Иванова"). Both are
+    // turned into what Jira filters on before the query is built.
     const prepared =
       operation === "issues.search"
-        ? await this.resolvePeople(site, credential, input)
+        ? await this.resolvePeople(
+            site,
+            credential,
+            this.applyFieldAliases(input, flags),
+          )
         : input;
     const request = handler(prepared, {
       externalUserId: context.externalUserId,
@@ -215,6 +225,45 @@ export class JiraProvider implements IntegrationProvider {
       !Array.isArray(projected)
       ? (projected as Record<string, unknown>)
       : { value: projected ?? null };
+  }
+
+  /**
+   * Replace a custom field's alias with the instance id the operator mapped it
+   * to. The mapping lives in the deployment's config on purpose: which of an
+   * instance's fields carries "the product" is knowledge about that instance,
+   * not about this provider, so the repository ships no field id and the
+   * deployment declares its own names.
+   *
+   * A name that is neither an id nor a configured alias is refused here, with
+   * the aliases this deployment does declare, because a silently unresolved
+   * field would answer "no such issues" instead of "unknown field".
+   */
+  private applyFieldAliases(
+    input: Readonly<Record<string, unknown>>,
+    flags: JiraFlags,
+  ): Readonly<Record<string, unknown>> {
+    const requested = input["customFields"];
+    if (!Array.isArray(requested)) return input;
+    const aliases = flags.fieldAliases;
+    const names = Object.keys(aliases).sort();
+    const resolved = requested.map((entry) => {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        return entry;
+      }
+      const record = entry as Record<string, unknown>;
+      const name =
+        typeof record["field"] === "string" ? record["field"].trim() : "";
+      if (name === "" || CUSTOM_FIELD_ID.test(name)) return entry;
+      const id = aliases[name];
+      if (id !== undefined) return { ...record, field: id };
+      throw new IntegrationError(
+        "InvalidRequest",
+        names.length === 0
+          ? `customFields.field "${name}" is not a customfield_ id; this deployment configured no aliases`
+          : `customFields.field "${name}" is not a customfield_ id or a configured alias (${names.join(", ")})`,
+      );
+    });
+    return { ...input, customFields: resolved };
   }
 
   /**

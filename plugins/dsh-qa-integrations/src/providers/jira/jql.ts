@@ -5,7 +5,7 @@ import {
   requiredText,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
-import { SEARCH_PAGE_CAP, type JiraFlags } from "./config.js";
+import { CUSTOM_FIELD_ID, SEARCH_PAGE_CAP, type JiraFlags } from "./config.js";
 
 /**
  * JQL is a query language, and this provider deliberately does not hand it to
@@ -35,8 +35,6 @@ const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,31}-\d{1,10}$/u;
 const ACCOUNT_ID = /^[A-Za-z0-9:_.@-]{8,128}$/u;
 /** An opaque continuation token Jira minted for this exact query. */
 const PAGE_TOKEN = /^[A-Za-z0-9._~+/=-]{1,4096}$/u;
-/** A custom field id, as the site's field catalog spells it. */
-const CUSTOM_FIELD = /^customfield_\d{1,10}$/u;
 /** Jira's own relative date tokens: `-3w`, `-2d`, `-4h`, `-30m`. */
 const RELATIVE_DATE = /^-\d{1,4}[wdhm]$/u;
 /** Status categories are the three Jira defines, not a workflow state. */
@@ -204,10 +202,10 @@ function customFieldClauses(value: unknown): string[] {
     }
     const record = entry as Record<string, unknown>;
     const field = requiredText(record["field"], "customFields.field", 13, 32);
-    if (!CUSTOM_FIELD.test(field)) {
+    if (!CUSTOM_FIELD_ID.test(field)) {
       throw new IntegrationError(
         "InvalidRequest",
-        "customFields.field must be the customfield_ id jira_get_fields reported",
+        "customFields.field must be the customfield_ id jira_get_fields reported, or an alias this deployment configured",
       );
     }
     const isEmpty = optionalBoolean(record["empty"], "customFields.empty");

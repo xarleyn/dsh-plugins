@@ -150,7 +150,7 @@ export function createJiraTools(options: {
                 type: "string",
                 required: true,
                 description:
-                  "The customfield_ id jira_get_fields reported for this field.",
+                  "The customfield_ id jira_get_fields reported, or an alias this deployment configured for it (jira_get_fields lists the aliases).",
               },
               value: { type: "string", description: "The value to match." },
               empty: {
@@ -466,7 +466,7 @@ export function createJiraTools(options: {
     tool({
       name: "jira_get_fields",
       description:
-        "The fields of this Jira site: id, name, whether it is custom, its type and the JQL names it answers to. Read-only; use it to interpret custom field ids an issue returned. The list is what the connected account may see.",
+        "The fields of this Jira site: id, name, whether it is custom, its type and the JQL names it answers to, plus the aliases this deployment configured for its custom fields. Read-only; use it to interpret custom field ids an issue returned and to filter by an alias instead of an id. The list is what the connected account may see.",
       parameters: {},
       operation: "fields.list",
       input: () => ({}),

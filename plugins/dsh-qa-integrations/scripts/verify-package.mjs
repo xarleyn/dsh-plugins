@@ -565,16 +565,26 @@ for (const companion of ["/rest/api/3/serverInfo", "/rest/api/3/user/search"]) {
   assert(jiraReadPaths.includes(companion), companion);
 }
 // The filter vocabulary stays typed: custom fields are addressed by the id the
-// field catalog reported, never by a display name two fields can share, and the
-// history is an expansion this provider asks for on purpose.
+// field catalog reported or by an alias the deployment configured, never by a
+// display name two fields can share, and the history is an expansion this
+// provider asks for on purpose.
 const jiraJql = await readFile(
   new URL("src/providers/jira/jql.ts", root),
   "utf8",
 );
-assert.match(jiraJql, /customfield_\\d\{1,10\}/u);
+// The shape of an id is validated here; no concrete id is ever carried, because
+// an id belongs to an instance and the deployment declares its own names.
+assert.match(jiraJql, /CUSTOM_FIELD_ID/u);
+assert.doesNotMatch(jiraJql, /customfield_\\d/u);
 // An empty version or custom field is a first-class filter, in both directions.
 assert.match(jiraJql, /IS \$\{isEmpty \? "" : "NOT "\}EMPTY/u);
 assert.match(jiraJql, /statusCategory/u);
+const jiraConfig = await readFile(
+  new URL("src/providers/jira/config.ts", root),
+  "utf8",
+);
+assert.match(jiraConfig, /fieldAliases/u);
+assert.match(jiraConfig, /CUSTOM_FIELD_ID =/u);
 const jiraOperations = await readFile(
   new URL("src/providers/jira/operations.ts", root),
   "utf8",
@@ -583,6 +593,21 @@ const jiraOperations = await readFile(
 assert.match(jiraOperations, /jql: buildJql\(input\)/u);
 assert.match(jiraOperations, /expand: "changelog"/u);
 assert.match(jiraOperations, /"changelog_summary"/u);
+// An instance's own field ids and values live in the deployment's config, never
+// in this package: a hardcoded customfield_ id here would be someone's instance.
+for (const [name, source] of [
+  ["catalog.ts", jiraCatalog],
+  ["config.ts", jiraConfig],
+  ["operations.ts", jiraOperations],
+  ["tools.ts", jiraTools],
+  ["jql.ts", jiraJql],
+]) {
+  assert.doesNotMatch(
+    source,
+    /customfield_\d/u,
+    `src/providers/jira/${name} must not carry a concrete custom field id`,
+  );
+}
 
 const jiraTransport = await readFile(
   new URL("src/providers/jira/transport.ts", root),

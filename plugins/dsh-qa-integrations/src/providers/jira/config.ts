@@ -35,6 +35,14 @@ export interface JiraFlags {
   readonly transitionsRead: boolean;
   readonly projectsRead: boolean;
   readonly fieldsRead: boolean;
+  /**
+   * Names this deployment gives to the instance's custom fields, so a question
+   * about "the product" does not have to carry a `customfield_…` id, and the
+   * mapping between a business term and a field stays where the instance is —
+   * in the operator's config, not in a catalog or a skill file. See
+   * {@link JiraFlags} consumers: `customFields[].field` accepts either form.
+   */
+  readonly fieldAliases: Readonly<Record<string, string>>;
   /** Rows of a search answer when the model names no limit. */
   readonly defaultSearchLimit: number;
   /** Hard ceiling for one search answer, whatever the model asks for. */
@@ -50,6 +58,13 @@ export interface JiraFlags {
 /** Jira Cloud caps one search page at 100 issues once fields are requested. */
 export const SEARCH_PAGE_CAP = 100;
 
+/**
+ * The shape of a custom field id, as Jira spells it. The provider never carries
+ * one itself: an id belongs to an instance, so it arrives either from the
+ * field catalog or from the operator's aliases.
+ */
+export const CUSTOM_FIELD_ID = /^customfield_\d{1,10}$/u;
+
 export const JIRA_DEFAULTS: JiraFlags = Object.freeze({
   enabled: true,
   allowInsecureHttp: false,
@@ -61,6 +76,7 @@ export const JIRA_DEFAULTS: JiraFlags = Object.freeze({
   transitionsRead: true,
   projectsRead: true,
   fieldsRead: true,
+  fieldAliases: Object.freeze({}),
   defaultSearchLimit: 20,
   maxSearchLimit: SEARCH_PAGE_CAP,
   maxCommentLimit: 100,
@@ -69,7 +85,9 @@ export const JIRA_DEFAULTS: JiraFlags = Object.freeze({
 });
 
 const SITE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
+const ALIAS = /^[a-z][a-z0-9-]{0,31}$/u;
 const MAX_SITES = 16;
+const MAX_ALIASES = 32;
 
 function configError(message: string): Error {
   return new Error(`jira integration config: ${message}`);
@@ -148,6 +166,41 @@ function normalizeSites(
 }
 
 /**
+ * The instance's custom fields, as names this deployment chose. The mapping is
+ * operator input and fails loudly on a typo, like the site list: an alias that
+ * silently pointed nowhere would make a question about "the product" answer
+ * nothing at all, with no way to tell that from "no such issues".
+ */
+function normalizeAliases(input: unknown): Readonly<Record<string, string>> {
+  if (input === undefined || input === null) return JIRA_DEFAULTS.fieldAliases;
+  if (typeof input !== "object" || Array.isArray(input)) {
+    throw configError(
+      "fieldAliases must be a mapping of alias to customfield_ id",
+    );
+  }
+  const entries = Object.entries(input as Record<string, unknown>);
+  if (entries.length > MAX_ALIASES) {
+    throw configError(`fieldAliases accepts at most ${MAX_ALIASES} entries`);
+  }
+  const aliases: Record<string, string> = {};
+  for (const [alias, value] of entries) {
+    if (!ALIAS.test(alias)) {
+      throw configError(
+        `fieldAliases keys must be lowercase latin, digits or dashes: ${JSON.stringify(alias)}`,
+      );
+    }
+    const id = typeof value === "string" ? value.trim() : "";
+    if (!CUSTOM_FIELD_ID.test(id)) {
+      throw configError(
+        `fieldAliases.${alias} must be a customfield_ id, as jira_get_fields reports it`,
+      );
+    }
+    aliases[alias] = id;
+  }
+  return Object.freeze(aliases);
+}
+
+/**
  * Config slice of this provider, as it appears under `jira:` in YAML. The site
  * list is validated and canonicalized by `resolveJiraConfig`, which is where a
  * deployment typo fails loudly.
@@ -164,6 +217,7 @@ export const jiraConfigSchema = z.object({
       }),
     )
     .default([]),
+  fieldAliases: z.dict(z.string()).default({}),
   identityRead: z.boolean().default(JIRA_DEFAULTS.identityRead),
   issuesRead: z.boolean().default(JIRA_DEFAULTS.issuesRead),
   commentsRead: z.boolean().default(JIRA_DEFAULTS.commentsRead),
@@ -219,6 +273,7 @@ export function resolveJiraConfig(input: Partial<JiraFlags> = {}): JiraFlags {
     enabled: input.enabled ?? JIRA_DEFAULTS.enabled,
     allowInsecureHttp,
     sites: normalizeSites(input.sites, allowInsecureHttp),
+    fieldAliases: normalizeAliases(input.fieldAliases),
     identityRead: input.identityRead ?? JIRA_DEFAULTS.identityRead,
     issuesRead: input.issuesRead ?? JIRA_DEFAULTS.issuesRead,
     commentsRead: input.commentsRead ?? JIRA_DEFAULTS.commentsRead,
