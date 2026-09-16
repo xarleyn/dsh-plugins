@@ -5,7 +5,7 @@ import type {
   QaUserAccess,
 } from "../../../types.js";
 import type { QaAdminApi, QaAccessApi } from "../../types.js";
-import { ADMIN_ROLE_LABELS, formatCount, formatStamp } from "../format.js";
+import { ADMIN_ROLE_LABELS, formatCount, formatStamp } from "../copy.js";
 import {
   Badge,
   FilterField,

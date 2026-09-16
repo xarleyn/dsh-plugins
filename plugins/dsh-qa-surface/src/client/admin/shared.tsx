@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RemoteResult } from "../types.js";
-import { formatRelative } from "./format.js";
+import { formatRelative } from "./copy.js";
 
 /** The audience-safe text of a refused Remote call. */
 export function errorMessage(error: unknown): string {

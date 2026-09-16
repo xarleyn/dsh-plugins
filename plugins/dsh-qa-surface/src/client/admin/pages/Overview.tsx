@@ -8,7 +8,7 @@ import {
   formatCount,
   formatRate,
   formatRelative,
-} from "../format.js";
+} from "../copy.js";
 
 /**
  * The overview answers the four questions the admin asks on arrival: is
