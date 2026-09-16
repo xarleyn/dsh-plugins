@@ -194,6 +194,10 @@ function discoverableManifest(overrides = {}) {
     homepage:
       "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-fixture#readme",
     bugs: { url: "https://github.com/xarleyn/dsh-plugins/issues" },
+    publishConfig: {
+      access: "public",
+      registry: "https://registry.npmjs.org/",
+    },
     ...overrides,
   };
 }
@@ -303,6 +307,10 @@ function packageManifest(name, overrides = {}) {
     },
     homepage: `https://github.com/xarleyn/dsh-plugins/tree/main/plugins/${name}#readme`,
     bugs: { url: "https://github.com/xarleyn/dsh-plugins/issues" },
+    publishConfig: {
+      access: "public",
+      registry: "https://registry.npmjs.org/",
+    },
     ...overrides,
   };
 }
