@@ -368,6 +368,22 @@ assert.match(client, /--dsw-specific-bubble/u);
 assert.match(client, /--dsw-specific-input-major/u);
 assert.match(client, /--dsh-qa-bleed/u);
 assert.match(client, /--dsh-qa-brand/u);
+// Assistant Markdown is rendered by this plugin's own grammar: the bundle must
+// carry the fenced-code card (banner, copy button, token hooks) and keep its
+// colors on the host theme's shiki token variables, so a code block here and
+// one in DSH's own transcript stay one palette in either theme. A Markdown or
+// highlighting engine would cost the self-contained client megabytes.
+assert.match(client, /dsh-qa-md-code__banner/u);
+assert.match(client, /dsh-qa-md-code__lang/u);
+assert.match(client, /dsh-qa-md-tok/u);
+assert.match(client, /Копировать/u);
+assert.match(client, /--shiki-token-keyword/u);
+assert.match(client, /--dsw-font-markdown-base-font-size/u);
+assert.doesNotMatch(
+  client,
+  /micromark|mdast|react-markdown|@shikijs/u,
+  "the self-contained client must not bundle a Markdown or highlighting engine",
+);
 assert.match(client, /#3D9E9A/u);
 assert.match(client, /--dsh-qa-accent-contrast/u);
 assert.match(client, /TTFT/u);

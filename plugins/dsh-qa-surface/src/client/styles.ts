@@ -496,7 +496,11 @@ a.dsh-qa-sources__title:hover{text-decoration:underline}
 .dsh-qa-preview__range{display:flex;align-items:center;gap:8px;margin:0 0 9px!important;color:var(--dsw-alias-label-secondary);font-size:11px}
 .dsh-qa-preview__range button{appearance:none;padding:1px 6px;border:0;background:transparent;color:var(--dsh-qa-accent);font:inherit;font-size:11px;cursor:pointer}
 .dsh-qa-preview__markdown{white-space:normal;color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.6}
-.dsh-qa-preview__markdown p,.dsh-qa-preview__markdown ul,.dsh-qa-preview__markdown ol,.dsh-qa-preview__markdown blockquote,.dsh-qa-preview__markdown pre,.dsh-qa-preview__markdown table{margin:0 0 10px}
+/* The preview pane is a dense read-only pane: it keeps its own scale instead
+   of the transcript's ladder, one step tighter in every block. */
+.dsh-qa-preview__markdown .dsh-qa-md{font-size:13px;line-height:1.6}
+.dsh-qa-preview__markdown .dsh-qa-md :where(p,ul,ol,blockquote,.dsh-qa-md-code,.dsh-qa-md-table){margin:0 0 10px}
+.dsh-qa-preview__markdown .dsh-qa-md :where(h1,h2,h3,h4,h5,h6){margin:14px 0 8px;font-size:15px;line-height:1.4}
 .dsh-qa-preview__raw{max-width:100%;margin:0;overflow:auto;white-space:pre;background:var(--dsw-alias-bg-layer-3);font:11px/18px ui-monospace,SFMono-Regular,Consolas,monospace}
 .dsh-qa-preview__raw code{display:block;min-width:max-content}
 .dsh-qa-preview__line{display:flex;min-height:18px}
@@ -574,24 +578,67 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-srcref__card-target{display:block;overflow:hidden;margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;text-overflow:ellipsis;white-space:nowrap}
 .dsh-qa-srcref__card-snippet{display:-webkit-box;overflow:hidden;margin-top:6px;color:var(--dsw-alias-label-secondary);-webkit-box-orient:vertical;-webkit-line-clamp:3}
 
-.dsh-qa-message__content p,.dsh-qa-message__content ul,.dsh-qa-message__content blockquote,.dsh-qa-message__content pre{margin:0 0 14px}
-.dsh-qa-message__content :last-child{margin-bottom:0}
-.dsh-qa-message__content h2,.dsh-qa-message__content h3,.dsh-qa-message__content h4{margin:18px 0 8px;line-height:1.35}
-.dsh-qa-message__content h2{font-size:19px}.dsh-qa-message__content h3{font-size:17px}.dsh-qa-message__content h4{font-size:15px}
-.dsh-qa-message__content ul{padding-left:22px}.dsh-qa-message__content a{color:var(--dsh-qa-accent)}
-.dsh-qa-message__content code{border-radius:5px;padding:1px 4px;background:var(--dsw-alias-bg-layer-2);font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9em}
-.dsh-qa-message__content pre{overflow-x:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:13px;background:var(--dsw-alias-bg-layer-2)}
-.dsh-qa-message__content pre code{padding:0;background:transparent}
-.dsh-qa-message__content ol{margin:0 0 14px;padding-left:22px}
-.dsh-qa-message__content ol li,.dsh-qa-message__content ul li{margin:0 0 4px}
-.dsh-qa-message__content hr{border:0;border-top:1px solid var(--dsw-alias-border-l2);margin:16px 0}
+/* Markdown typography follows the host transcript's own ladder: the sizes,
+   weights, and margins below are the ones DSH gives assistant prose, read
+   from the theme's --dsw-font-markdown-* / --dsw-alias-markdown-* custom
+   properties, so a font-size preference or a light/dark switch moves both
+   surfaces together. A container that needs a denser scale (the source
+   preview, the work-item text) overrides the ladder for its own subtree. */
+.dsh-qa-md{min-width:0;white-space:normal;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-markdown-base-font-family,inherit);font-size:var(--dsw-font-markdown-base-font-size,14px);font-weight:400;line-height:var(--dsw-font-markdown-base-line-height,24px)}
+.dsh-qa-md>:first-child{margin-top:0}
+.dsh-qa-md>:last-child{margin-bottom:0}
+.dsh-qa-md p{margin:16px 0}
+.dsh-qa-md strong{font-weight:600}
+.dsh-qa-md h1{margin:32px 0 16px;font-size:var(--dsw-font-markdown-h1-font-size,21px);font-weight:700;line-height:var(--dsw-font-markdown-h1-line-height,30px)}
+.dsh-qa-md h2{margin:32px 0 16px;font-size:var(--dsw-font-markdown-h2-font-size,19px);font-weight:700;line-height:var(--dsw-font-markdown-h2-line-height,28px)}
+.dsh-qa-md h3{margin:32px 0 16px;font-size:var(--dsw-font-markdown-h3-font-size,18px);font-weight:700;line-height:var(--dsw-font-markdown-h3-line-height,26px)}
+.dsh-qa-md h4,.dsh-qa-md h5,.dsh-qa-md h6{margin:16px 0;font-size:var(--dsw-font-markdown-base-font-size,14px);font-weight:600;line-height:var(--dsw-font-markdown-base-line-height,24px)}
+.dsh-qa-md h1 strong,.dsh-qa-md h2 strong,.dsh-qa-md h3 strong,.dsh-qa-md h4 strong,.dsh-qa-md h5 strong,.dsh-qa-md h6 strong{font-weight:inherit}
+.dsh-qa-md h4+ol,.dsh-qa-md h4+ul,.dsh-qa-md h5+ol,.dsh-qa-md h5+ul,.dsh-qa-md h6+ol,.dsh-qa-md h6+ul{margin-top:8px}
+.dsh-qa-md a{position:relative;color:var(--dsh-qa-accent);font-weight:500;text-decoration:none}
+.dsh-qa-md a:hover,.dsh-qa-md a:focus-visible{text-decoration:underline dotted var(--dsh-qa-accent);text-underline-offset:3px;outline:none}
+.dsh-qa-md-link-icon{width:1.05em;height:1.05em;flex:none;margin-right:5px;vertical-align:-.18em;fill:none;stroke:currentColor;stroke-width:1.15;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-md ol,.dsh-qa-md ul{margin:16px 0;padding-left:22px}
+.dsh-qa-md li{margin-top:6px}
+.dsh-qa-md li>:first-child{margin-top:0}
+.dsh-qa-md li>:last-child{margin-bottom:0}
+.dsh-qa-md li::marker{color:var(--dsw-alias-label-secondary)}
+.dsh-qa-md li>ol,.dsh-qa-md li>ul{margin-top:4px}
+.dsh-qa-md :where(ol,ul) ol{list-style-position:inside;padding-left:0}
+.dsh-qa-md .dsh-qa-md-task{list-style:none}
+.dsh-qa-md .dsh-qa-md-task input{margin:0 8px 0 0;accent-color:var(--dsw-alias-label-secondary)}
+.dsh-qa-md hr{height:.5px;margin:32px 0;border:0;background:var(--dsw-alias-border-l2)}
+.dsh-qa-md blockquote{margin:16px 0;padding-left:14px;border-left:2px solid var(--dsw-alias-label-caption,var(--dsw-alias-label-tertiary));color:var(--dsw-alias-label-secondary)}
+.dsh-qa-md :not(pre)>code{display:inline-flex;align-items:center;box-sizing:border-box;padding:0 5px;border:.5px solid var(--dsw-alias-border-l1);border-radius:6px;background:var(--dsw-alias-markdown-inline-code,var(--dsw-alias-bg-layer-2));font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:.875em;line-height:19px}
+.dsh-qa-md h1 code,.dsh-qa-md h2 code,.dsh-qa-md h3 code,.dsh-qa-md h4 code,.dsh-qa-md h5 code,.dsh-qa-md h6 code{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:inherit}
+.dsh-qa-md-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px}
+.dsh-qa-md-image-alt{color:var(--dsw-alias-label-tertiary);font-style:italic}
+.dsh-qa-md-code{margin:16px 0;border-radius:12px;background:var(--dsw-alias-markdown-code-block,var(--dsw-alias-bg-layer-2));color:var(--dsw-alias-label-primary)}
+.dsh-qa-md-code__banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;border-radius:12px 12px 0 0;background:var(--dsw-alias-markdown-code-block-banner,var(--dsw-alias-bg-layer-3))}
+.dsh-qa-md-code__lang{min-width:0;overflow:hidden;color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:11px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
+.dsh-qa-md-code__copy{appearance:none;flex:none;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;cursor:pointer}
+.dsh-qa-md-code__copy:hover{color:var(--dsw-alias-label-primary)}
+.dsh-qa-md-code__copy:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:2px}
+.dsh-qa-md-code pre{overflow-x:auto;margin:0;padding:16px;border:0;border-radius:0 0 12px 12px;background:transparent;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:var(--dsw-font-markdown-code-block-font-size,11px);line-height:var(--dsw-font-markdown-code-block-line-height,19px);white-space:pre-wrap;word-break:break-word}
+.dsh-qa-md-code pre code{display:block;padding:0;border:0;background:transparent;font:inherit}
+.dsh-qa-md-tok[data-tok="comment"]{color:var(--shiki-token-comment)}
+.dsh-qa-md-tok[data-tok="string"]{color:var(--shiki-token-string)}
+.dsh-qa-md-tok[data-tok="keyword"]{color:var(--shiki-token-keyword)}
+.dsh-qa-md-tok[data-tok="number"]{color:var(--shiki-token-constant)}
+.dsh-qa-md-tok[data-tok="constant"]{color:var(--shiki-token-constant)}
+.dsh-qa-md-tok[data-tok="meta"]{color:var(--shiki-token-parameter)}
+.dsh-qa-md-tok[data-tok="tag"]{color:var(--shiki-token-keyword)}
+.dsh-qa-md-tok[data-tok="attr"]{color:var(--shiki-token-parameter)}
+.dsh-qa-md-tok[data-tok="key"]{color:var(--shiki-token-function)}
+.dsh-qa-md-tok[data-tok="insert"]{color:var(--dsh-qa-success)}
+.dsh-qa-md-tok[data-tok="delete"]{color:var(--dsh-qa-error)}
+.dsh-qa-md-tok[data-tok="hunk"]{color:var(--shiki-token-function)}
 .dsh-qa-md-table{max-width:100%;overflow-x:auto;overscroll-behavior-x:contain;margin:0 0 14px}
-.dsh-qa-md-table table{border-collapse:collapse;width:max-content;font-size:14px}
+.dsh-qa-md-table table{border-collapse:collapse;width:max-content;font-size:var(--dsw-font-markdown-table-font-size,14px)}
 .dsh-qa-md-table th,.dsh-qa-md-table td{max-width:max(160px,calc(var(--dsh-qa-content-width,920px)*0.35));border:1px solid var(--dsw-alias-border-l2);padding:6px 10px;vertical-align:top;overflow-wrap:anywhere}
 .dsh-qa-md-table thead th{background:var(--dsw-alias-bg-layer-2);font-weight:600}
 .dsh-qa-md-table tbody tr:nth-child(even){background:var(--dsw-alias-bg-layer-2)}
-.dsh-qa-message--assistant .dsh-qa-message__content pre{width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
-.dsh-qa-message__content blockquote{border-left:3px solid var(--dsw-alias-border-l2);padding-left:12px;color:var(--dsw-alias-label-secondary)}
+.dsh-qa-message--assistant .dsh-qa-message__content .dsh-qa-md-code{width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
 .dsh-qa-message__cursor{display:inline-block;width:7px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--dsw-alias-label-secondary);animation:dsh-qa-blink 1s steps(2,start) infinite}
 @keyframes dsh-qa-blink{50%{opacity:0}}
 .dsh-qa-notice{width:100%;min-width:0;margin:-4px 0 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}
@@ -605,6 +652,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-notice[open] .dsh-qa-notice__chevron{transform:rotate(90deg)}
 .dsh-qa-notice__body{padding:2px 12px 10px 32px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-notice__body p{margin:0}
+.dsh-qa-notice__body .dsh-qa-md{font-size:13px;line-height:20px;white-space:pre-wrap}
 .dsh-qa-notice__meta{margin:0 0 6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dsh-qa-work{width:100%;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:22px}
 .dsh-qa-work__toggle{display:flex;align-items:center;gap:7px;min-height:30px;margin:0;padding:3px 5px 3px 0;border:0;border-radius:7px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;cursor:pointer}
@@ -634,6 +682,9 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-work-item__text{padding:3px 0 0 23px;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:23px;white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-work-item__text p,.dsh-qa-work-item__text ul,.dsh-qa-work-item__text pre{margin:0 0 9px}
 .dsh-qa-work-item__text :last-child{margin-bottom:0}
+/* Reasoning keeps its authored line breaks: the process log reads as the
+   model wrote it, not as reflowed prose. */
+.dsh-qa-work-item__text .dsh-qa-md{font-size:14px;line-height:23px;white-space:pre-wrap}
 .dsh-qa-work-tool__body{margin:0 6px 7px 29px;overflow:hidden;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-qa-work-tool__body section+section{border-top:1px solid var(--dsw-alias-border-l2)}
 .dsh-qa-work-tool__body section>span{display:block;padding:7px 10px 0;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:600;line-height:18px;text-transform:uppercase;letter-spacing:.04em}

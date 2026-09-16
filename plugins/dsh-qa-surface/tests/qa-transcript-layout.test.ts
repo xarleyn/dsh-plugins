@@ -29,12 +29,17 @@ describe("QA transcript layout contract", () => {
 
     // A viewport-derived gutter ignored the sidebars and panels inside the
     // surface, so bled blocks reached past both the column and the handles.
-    const pre = ruleBody(
+    // The block that bleeds is the whole fenced-code card (its banner carries
+    // the same width as its code), never a bare `pre` inside it.
+    const block = ruleBody(
       QA_SURFACE_STYLES,
-      ".dsh-qa-message--assistant .dsh-qa-message__content pre",
+      ".dsh-qa-message--assistant .dsh-qa-message__content .dsh-qa-md-code",
     );
-    expect(pre).toContain("var(--dsh-qa-bleed)");
-    expect(pre).not.toContain("vw");
+    expect(block).toContain("var(--dsh-qa-bleed)");
+    expect(block).not.toContain("vw");
+    expect(QA_SURFACE_STYLES).not.toContain(
+      ".dsh-qa-message--assistant .dsh-qa-message__content pre{",
+    );
   });
 
   it("bounds tables instead of stretching or spilling them", () => {
