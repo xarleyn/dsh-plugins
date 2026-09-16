@@ -357,6 +357,9 @@ export class QaAccessService {
           agent,
           baseTools: policy.tools,
           grantableTools: policy.grantableTools,
+          // The catalog's names ride on the agent itself, so no mask can carry
+          // them; the guard admits them for as long as the policy holds.
+          agentLocalTools: new Set(this.options.dynamicToolNames?.() ?? []),
           descriptors: catalog.skillMetadata,
           logger: this.options.logger,
           record: (entry) => this.recordSkillActivation(sessionId, entry),

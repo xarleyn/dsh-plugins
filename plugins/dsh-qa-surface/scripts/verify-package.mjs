@@ -139,6 +139,11 @@ const toolGrants = await readFile(
   new URL("lib/enforcement/tool-grants.js", root),
   "utf8",
 );
+// The one place that talks to `tools.restrict()`, for both masking paths.
+const toolMask = await readFile(
+  new URL("lib/enforcement/tool-mask.js", root),
+  "utf8",
+);
 const skillPolicy = await readFile(
   new URL("lib/enforcement/skill-policy.js", root),
   "utf8",
@@ -160,14 +165,22 @@ assert.match(`${hostRoute}\n${navigationMarker}`, /__dsh_qa_route/u);
 assert.doesNotMatch(`${host}\n${hostRoute}`, /registerFallback/u);
 assert.match(admission, /permissionPresets\.set/u);
 assert.match(admission, /agentPresets\.composedPreset/u);
-assert.match(admission, /\.tools\.restrict/u);
+// The mask helper is the only caller of the registry restriction, and it names
+// the inheritable subset of an allow-list.
+assert.match(toolMask, /tools\.restrict\(\{/u);
+assert.match(toolMask, /filter\(\(name\) => !agentLocal\.has\(name\)\)/u);
 assert.match(admission, /\.tools\.guard/u);
 assert.match(admission, /qaToolPolicyPlan/u);
-// The account-free path masks the agent to the policy's own allow-list, and to
-// the subset of it the registry can actually put in a restriction: a QA catalog
-// tool is registered on the agent itself, and naming one fails the attestation.
-assert.match(admission, /policy\.allow\.filter/u);
-assert.match(admission, /allow:\s*restrictable/u);
+// The account-free path masks the agent through the mask helper, which admits
+// the names the scope inherits — a preset's own tool rows are inherited, so a
+// mask that named only the global layer used to hide them — and leaves out the
+// names the QA catalog registers on the agent, which no restriction can name.
+assert.match(admission, /installInheritableMask/u);
+assert.match(admission, /lockdown\.tool-mask-incomplete/u);
+// The proof carries the deployment's pinned list; a subrole's narrower list is
+// a session fact the browser reads elsewhere, not the config it compares this
+// proof against.
+assert.match(admission, /toolAllowList:\s*lockdown\.toolPolicy\.allow/u);
 assert.match(admission, /installQaSkillPolicy/u);
 // The capability policy owns the scoped restriction, so activating a skill can
 // widen the toolset; the guard reads the same live set.
@@ -198,11 +211,11 @@ assert.match(skillMetadata, /audience lists no known subrole/u);
 assert.match(skillMetadata, /unsupported qa-surface metadata version/u);
 assert.doesNotMatch(skillMetadata, /writeFileSync|SKILL\.md/u);
 // A grant intersects the role ceiling and is reported when it cannot be given.
-// Every restriction this class installs is filtered to the names the registry
-// can actually restrict: an agent-local one (the QA activation diagnostic) is
-// visible without being nameable, and naming it refuses the whole call.
-assert.match(toolGrants, /\.tools\.restrict\(\{/u);
-assert.match(toolGrants, /allow: allow\.filter/u);
+// Every restriction this class installs goes through the mask helper: it leaves
+// out the names the agent registers for itself and gives up whatever else the
+// registry refuses, so no single entry can refuse the whole call.
+assert.match(toolGrants, /installInheritableMask/u);
+assert.match(toolGrants, /skill\.tool-mask-incomplete/u);
 assert.match(toolGrants, /effectiveTools/u);
 assert.match(toolGrants, /cannot be activated because required tool/u);
 assert.match(toolGrants, /Unavailable required tools/u);

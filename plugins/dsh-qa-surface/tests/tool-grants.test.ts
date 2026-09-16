@@ -72,6 +72,7 @@ async function setup(options: {
     agent,
     baseTools: options.baseTools,
     grantableTools: options.grantableTools,
+    agentLocalTools: new Set(options.localTools ?? []),
     descriptors: new Map(options.descriptors.map((d) => [d.name, d])),
     logger: logger(),
     record: (entry) => records.push(entry),

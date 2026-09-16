@@ -12,7 +12,13 @@ import { QaPolicyAdmission } from "../src/secure-session.js";
  * without it the whole chat history in the sidebar is unopenable after every
  * restart.
  */
-function world(options: { live?: boolean; fail?: string } = {}) {
+function world(
+  options: {
+    live?: boolean;
+    fail?: string;
+    capability?: readonly string[];
+  } = {},
+) {
   const workspace = mkdtempSync(path.join(tmpdir(), "qa-resume-"));
   const session = {
     id: "session-cold",
@@ -85,6 +91,28 @@ function world(options: { live?: boolean; fail?: string } = {}) {
       },
       close() {},
     } as never,
+    undefined,
+    undefined,
+    options.capability === undefined
+      ? undefined
+      : async () =>
+          ({
+            // A role's effective list is a session fact: it narrows the pinned
+            // deployment list and carries plugin internals the config never had.
+            policy: {
+              subroleId: "general",
+              tools: options.capability,
+              grantableTools: [],
+              skills: [],
+            },
+            skills: [],
+            skillMetadata: new Map(),
+            adminPreview: false,
+            createGrants: () => ({
+              dispose: () => undefined,
+              effectiveTools: () => options.capability,
+            }),
+          }) as never,
   );
   return { admission, restricted, resolved, logged };
 }
@@ -122,6 +150,19 @@ describe("agent materialization in policy admission", () => {
     expect(restricted).toEqual([["read", "bitrix_search_crm"]]);
     expect(proof.toolAllowList).toEqual(["read"]);
     unregister();
+    admission.dispose();
+  });
+
+  it("reports the pinned deployment list as the proof, whatever a role narrows to", async () => {
+    // The browser answers this proof against the lockdown config it holds, so
+    // the role's own list — which carries the catalog's agent-local diagnostic
+    // and drops what the role may not use — must not become the answer.
+    const { admission } = world({
+      live: true,
+      capability: ["read", "qa_tools_selfcheck"],
+    });
+    const proof = await admission.secureSession("token", "session-cold");
+    expect(proof.toolAllowList).toEqual(["read"]);
     admission.dispose();
   });
 

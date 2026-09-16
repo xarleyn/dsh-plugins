@@ -10,6 +10,7 @@ import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
 import type { QaResolvedSessionPolicy } from "./access/service.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
+import { installInheritableMask } from "./enforcement/tool-mask.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
 import { qaUserWorkspaceDenial } from "./user-workspace.js";
@@ -383,17 +384,6 @@ export class QaPolicyAdmission {
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
-      // `restrict()` accepts only names the agent INHERITS, and the QA tool
-      // catalog attaches its tools to the agent itself. The activation
-      // diagnostic therefore passes the `unknown-tools` check above — the
-      // catalog declares it — and would still make `restrict()` refuse the
-      // whole call and fail every chat's attestation. It keeps its place in the
-      // policy and in the guard below; only the mask skips it, which is also
-      // what makes a name the registry does not hold globally a loud refusal
-      // above rather than a silent omission here.
-      const restrictable = policy.allow.filter(
-        (name) => this.ctx.tools.get(name) !== undefined,
-      );
       // A capability policy owns the scoped restriction, because activating a
       // skill has to widen it later. The account-free path keeps the static
       // mask it has always used.
@@ -404,7 +394,7 @@ export class QaPolicyAdmission {
       try {
         disposeTools =
           grants === undefined
-            ? agent.ctx.tools.restrict({ allow: restrictable })
+            ? this.maskAgentTools(agent, policy.allow, sessionId)
             : () => grants.dispose();
         disposeGuard = agent.ctx.tools.guard((execution) => {
           const subject = execution.agent;
@@ -494,10 +484,42 @@ export class QaPolicyAdmission {
       approvalIsNever,
       permissionPreset: lockdown.permissionPreset,
       toolPolicyLoaded: true,
-      // The fallback reporter is an internal read-only provenance capability,
-      // not an operator-configured QA tool grant.
-      toolAllowList: capability?.policy.tools ?? lockdown.toolPolicy.allow,
+      // The deployment's pinned list, not this session's effective one: the
+      // browser answers this proof against the lockdown config it holds, and a
+      // subrole narrows that list — or the plugin adds its own internals to it —
+      // without changing the config either side treats as the contract.
+      toolAllowList: lockdown.toolPolicy.allow,
     };
+  }
+
+  /**
+   * Mask one agent down to the policy's tool names, for the account-free path
+   * (a capability policy installs its own mask through its grants).
+   *
+   * The mask admits what the scope inherits — the global layer and the ancestor
+   * layers, which is where a preset's own tool rows live — and skips the names
+   * the QA catalog registers on the agent, since a restriction cannot name
+   * those. A name that is neither, or that the registry refuses for any other
+   * reason, is left out of the mask and reported instead of failing the chat:
+   * the guard below still denies it, so the effective set is unchanged.
+   */
+  private maskAgentTools(
+    agent: Agent,
+    allow: readonly string[],
+    sessionId: string,
+  ): () => void {
+    const mask = installInheritableMask(
+      agent.ctx.tools,
+      allow,
+      new Set(this.knownDynamicToolNames()),
+    );
+    if (mask.refused.length > 0) {
+      this.logger.warn("lockdown.tool-mask-incomplete", {
+        sessionId,
+        dropped: mask.refused,
+      });
+    }
+    return mask.dispose;
   }
 
   /** Resolve the deployment facts shared by creation and full attestation. */
