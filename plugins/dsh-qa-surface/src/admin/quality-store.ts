@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, renameSync } from "node:fs";
 import path from "node:path";
-import { SqliteDatabase, type SqliteMigration } from "@yadsh/dsh-plugin-kit";
+import {
+  SqliteDatabase,
+  type SqliteMigration,
+} from "@yadsh/dsh-plugin-kit/sqlite";
 import type {
   QaAdminAuditAction,
   QaAdminAuditEvent,

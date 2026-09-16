@@ -6,14 +6,12 @@
  * - configuration validation
  * - compatibility checks
  * - safe feature detection
- * - SQLite plumbing for stores that outgrow a JSON document
+ *
+ * SQLite plumbing for stores that outgrow a JSON document lives behind the
+ * `./sqlite` subpath rather than here: it needs Node's `node:sqlite`, and this
+ * entry point is imported by test helpers that run in browser-like
+ * environments, where an eager Node import is a runtime error.
  */
-
-export {
-  SqliteDatabase,
-  SqliteStoreError,
-  type SqliteMigration,
-} from "./sqlite.js";
 
 // Minimal console interface to avoid @types/node dependency
 interface ConsoleLike {
