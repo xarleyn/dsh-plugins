@@ -45,3 +45,28 @@ export function qaToolDenial(
     ? undefined
     : TOOL_DENIAL;
 }
+
+const CEILING_DENIAL =
+  "This tool is outside the capability profile of this conversation, which also bounds its delegated assistants.";
+
+/**
+ * The conversation-wide ceiling, applied to every agent of an attested chat.
+ *
+ * A scoped restriction and a scoped guard cover the scope that owns them and
+ * that scope's descendants. A delegated child is composed from the parent's
+ * PRESET, so the parent agent's own layers never enter the child's chain: the
+ * child is bounded by its preset `toolFilter` alone, and an expert can
+ * therefore hold — and call — a tool the subrole never granted the chat. This
+ * check is the ceiling the whole conversation shares: the subrole's reach,
+ * visible tools plus the grantable ones, so a skill may still hand a tool to a
+ * delegated assistant, but nothing may exceed what the role could ever grant.
+ * @param ceiling - names reachable anywhere in this conversation.
+ * @param toolName - the tool the model is trying to call.
+ * @returns the denial reason, or `undefined` when the call is within reach.
+ */
+export function qaCeilingDenial(
+  ceiling: ReadonlySet<string>,
+  toolName: string,
+): string | undefined {
+  return ceiling.has(toolName) ? undefined : CEILING_DENIAL;
+}

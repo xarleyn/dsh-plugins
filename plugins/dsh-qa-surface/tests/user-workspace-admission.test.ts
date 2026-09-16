@@ -41,7 +41,17 @@ describe("per-user workspace admission", () => {
         systemPrompt: { section: () => () => undefined },
       },
     };
-    let globalGuard: ((execution: unknown) => string | undefined) | undefined;
+    // Both context-global guards are captured: the admission registers the
+    // workspace fence and the conversation ceiling, and a denial is whichever
+    // of them answers first.
+    const globalGuards: ((execution: unknown) => string | undefined)[] = [];
+    const globalGuard = (execution: unknown): string | undefined => {
+      for (const guard of globalGuards) {
+        const reason = guard(execution);
+        if (reason !== undefined) return reason;
+      }
+      return undefined;
+    };
     let childCreated: ((session: never) => void) | undefined;
     const context = {
       on: (name: string, listener: (event: never) => void) => {
@@ -64,7 +74,7 @@ describe("per-user workspace admission", () => {
       },
       tools: {
         guard: (guard: (execution: unknown) => string | undefined) => {
-          globalGuard = guard;
+          globalGuards.push(guard);
           return () => undefined;
         },
         get: () => ({}),
@@ -98,28 +108,28 @@ describe("per-user workspace admission", () => {
       sandboxModeMatches: true,
     });
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "read",
         arguments: { file_path: "../other/secret" },
         agent,
       }),
     ).toMatch(/outside/u);
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "read",
         arguments: { file_path: path.join(docs, "guide.md") },
         agent,
       }),
     ).toBeUndefined();
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "write",
         arguments: { file_path: path.join(docs, "guide.md"), content: "x" },
         agent,
       }),
     ).toMatch(/outside/u);
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "dsh_git_context",
         arguments: {},
         agent,
@@ -136,14 +146,14 @@ describe("per-user workspace admission", () => {
     };
     childCreated?.(child as never);
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "write",
         arguments: { file_path: "../other/result" },
         agent: { session: child },
       }),
     ).toMatch(/outside/u);
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "read",
         arguments: { file_path: path.join(docs, "guide.md") },
         agent: { session: child },
@@ -153,14 +163,14 @@ describe("per-user workspace admission", () => {
     sharedReadOnlyRoots = [nextDocs];
     await admission.secureSession("token", "session-parent");
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "read",
         arguments: { file_path: path.join(docs, "guide.md") },
         agent: { session: child },
       }),
     ).toMatch(/outside/u);
     expect(
-      globalGuard?.({
+      globalGuard({
         name: "read",
         arguments: { file_path: path.join(nextDocs, "guide.md") },
         agent: { session: child },
