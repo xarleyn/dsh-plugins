@@ -87,6 +87,7 @@
     "bitrix24",
     "gitlab",
     "teamcity",
+    "jira",
     "credentials"
   ],
   "engines": {

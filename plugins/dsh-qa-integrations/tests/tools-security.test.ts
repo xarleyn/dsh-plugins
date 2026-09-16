@@ -1,6 +1,7 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { BITRIX_OPERATIONS } from "../src/providers/bitrix24/catalog.js";
 import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
+import { JIRA_OPERATIONS } from "../src/providers/jira/catalog.js";
 import { TEAMCITY_OPERATIONS } from "../src/providers/teamcity/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
@@ -85,6 +86,14 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   teamcity_agents: {},
   teamcity_artifacts: { buildId: 5 },
   teamcity_artifact_text: { buildId: 5, path: "out/report.txt" },
+  jira_get_current_user: {},
+  jira_search_issues: { query: "payment timeout" },
+  jira_get_issue: { issueKey: "PROJ-123" },
+  jira_get_issue_comments: { issueKey: "PROJ-123" },
+  jira_get_issue_attachments: { issueKey: "PROJ-123" },
+  jira_get_available_transitions: { issueKey: "PROJ-123" },
+  jira_get_project: { projectKey: "PROJ" },
+  jira_get_fields: {},
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -155,7 +164,8 @@ describe("model-visible integration tools", () => {
       expect(
         BITRIX_OPERATIONS[operation] ??
           GITLAB_OPERATIONS[operation] ??
-          TEAMCITY_OPERATIONS[operation],
+          TEAMCITY_OPERATIONS[operation] ??
+          JIRA_OPERATIONS[operation],
         operation,
       ).toBeDefined();
     }

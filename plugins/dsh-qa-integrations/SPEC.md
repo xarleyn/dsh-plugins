@@ -1,8 +1,8 @@
 # SPEC / PLAN: User Integrations & Secure Credentials for `qa-surface`
 
-Status: Phases 1–2 implemented (read-only Bitrix24 and GitLab catalogs); phases 3+ pending
-Primary use case: per-user Bitrix24 and GitLab access from DSH agents
-Designed to be reusable for Jira, Confluence, TeamCity, generic MCP and other user-scoped integrations.
+Status: Phases 1–2 implemented (read-only Bitrix24, GitLab, TeamCity and Jira catalogs); phases 3+ pending
+Primary use case: per-user Bitrix24, GitLab, TeamCity and Jira access from DSH agents
+Designed to be reusable for Jira, Confluence, generic MCP and other user-scoped integrations.
 
 ---
 

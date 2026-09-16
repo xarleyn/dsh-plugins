@@ -40,9 +40,18 @@ src/
       transport.ts     HTTP-граница: Bearer-токен, повторы, лимит размера, коды ошибок
       config.ts        срез конфига вместе с политикой адресов
       tools.ts         model-visible тулы провайдера
+    jira/
+      index.ts         JiraProvider: validate / execute / parseCredential
+      catalog.ts       возможности и операции (operation ↔ GET-путь) + allow-list читающих путей
+      operations.ts    построение запросов, проекции ответов, нормализованная задача
+      jql.ts           типизированные фильтры → JQL с экранированием значений
+      adf.ts           Atlassian Document Format → ограниченный текст
+      transport.ts     HTTP-граница: сайты из конфига, Basic email:token, повторы, лимит размера
+      config.ts        список сайтов (SSRF-граница) и операции
+      tools.ts         model-visible тулы провайдера
 ```
 
-## Что должен реализовать новый провайдер (gitlab, teamcity, …)
+## Что должен реализовать новый провайдер (gitlab, teamcity, jira, …)
 
 1. `providers/<id>/catalog.ts` — список возможностей и операций. Это
    permission surface: всё, что не описано здесь, недостижимо для модели.
@@ -76,6 +85,13 @@ src/
    только секрет, credential его не хранит, и адрес заново проверяется по
    политике адресов **на каждом вызове**, потому что политику можно ужесточить
    уже после подключения.
+   Если провайдер требует не только секрет, но и не-секретную идентичность
+   (Jira: `email` + API-токен в HTTP Basic), идентичность едет в том же
+   `options`, а хранится в одном зашифрованном credential вместе с токеном.
+   Если внешний API принимает язык запросов (Jira: JQL) — модель его не
+   получает: тулы несут типизированные фильтры, а строка запроса собирается и
+   экранируется внутри провайдера, отдельным модулем (`jql.ts`), который
+   гейт проверяет вместе с allow-list читающих путей.
 5. Композиция — три строки: срез в `src/config.ts`, `providers.register(...)`
    в `src/index.ts`, `create<Id>Tools(...)` в `src/tools.ts`.
 
@@ -84,7 +100,7 @@ src/
 - В общих модулях хоста (`broker.ts`, `repository.ts`, `secrets/**`,
   `tool-kit.ts`, `providers/contract.ts`, `providers/registry.ts`, `types.ts`)
   не должно быть упоминаний конкретной интеграции: `pnpm verify:package`
-  падает на `/bitrix|gitlab|teamcity/iu` вне каталога самого провайдера.
+  падает на `/bitrix|gitlab|teamcity|jira/iu` вне каталога самого провайдера.
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
@@ -94,3 +110,9 @@ src/
 - В каталоге TeamCity у каждой операции `method: "GET"`, пути не заходят в
   `/parameters`, тэги, комментарии, mute-ы и администрирование, а `transport.ts`
   обязан слать `GET`, `redirect: "error"` и `Authorization: Bearer`.
+- В каталоге Jira у каждой операции `method: "GET"`, а её путь обязан быть
+  объявлен в `JIRA_READ_PATHS` — allow-list читающих эндпоинтов именно этого
+  провайдера. Легаси-эндпоинт `/rest/api/3/search` (Atlassian его удалил) и
+  любой `jql`-аргумент в схеме тула — падение гейта: запросы собирает
+  `jql.ts`, а не модель. `transport.ts` обязан слать `GET`, `redirect: "error"`
+  и `Authorization: Basic …` из `email:token`.
