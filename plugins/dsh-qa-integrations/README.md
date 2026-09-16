@@ -184,11 +184,12 @@ TeamCity, в отличие от GitLab и Bitrix24, не сообщает че�
 
 ## Как подключается TeamCity
 
-Адрес TeamCity вводит пользователь — сервер почти всегда свой, и заранее перечислить их списком, как инстансы GitLab, нельзя. Вместо списка оператор задаёт **политику адресов**: какие адреса этот стенд готов набирать вообще.
+Адрес TeamCity задаёт оператор: сервер один на весь стенд, поэтому `teamcity.serverUrl` — обычная настройка развёртывания, а не поле формы. Пользователь вводит только токен, и токен тратится ровно по этому адресу. Рядом оператор задаёт **политику адресов**: какие адреса этот стенд готов набирать вообще (политика осталась от времён, когда адрес вводил пользователь, и закрывает переезд конфига на чужой хост).
 
 ```yaml
 teamcity:
   enabled: true
+  serverUrl: https://teamcity.example.internal
   network:
     mode: allowlist              # allowlist | trusted-private
     allowedHosts:
@@ -217,6 +218,7 @@ teamcity:
 ```yaml
 teamcity:
   enabled: true
+  serverUrl: https://teamcity.example.internal   # один адрес на весь стенд
   network:
     mode: allowlist
     allowedHosts: [teamcity.example.internal]
@@ -371,6 +373,7 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
             baseUrl: https://gitlab.com
       teamcity:
         enabled: true
+        serverUrl: https://teamcity.example.internal
         network:
           mode: allowlist
           allowedHosts:
@@ -392,7 +395,7 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
 
 Для GitLab: создайте personal access token с read-scope, выберите инстанс (если их несколько), вставьте токен и нажмите «Сохранить и проверить». Плагин проверит профиль, прочитает scopes токена и покажет, что именно доступно агенту.
 
-Для TeamCity: создайте в профиле access token (по возможности с «Limit per project» и read-правами), укажите адрес сервера и вставьте токен. Адрес должен входить в политику адресов стенда — если оператор её не задал галку, карточка честно ответит отказом, а не полезет в сеть. Плагин прочитает `/app/rest/server` и `/app/rest/users/current`, покажет версию сервера и подключённого пользователя, а список возможностей останется в границах, которые разрешил оператор: сам TeamCity не сообщает, какие права выданы токену.
+Для TeamCity: оператор задаёт адрес сервера (`teamcity.serverUrl`) и политику адресов, пользователь создаёт в профиле access token (по возможности с «Limit per project» и read-правами) и вставляет только его. Если адрес не задан, карточка говорит об этом и формы не показывает; если адрес не проходит политику — конфигурация стенда падает при загрузке, а не отвечает отказом пользователю. Плагин прочитает `/app/rest/server` и `/app/rest/users/current`, покажет версию сервера и подключённого пользователя, а список возможностей останется в границах, которые разрешил оператор: сам TeamCity не сообщает, какие права выданы токену.
 
 Отключение атомарно удаляет локальный encrypted secret; дальнейшие tool calls получают `IntegrationNotConnected`. Запись и generic REST/MCP вызовы отсутствуют. OAuth и confirmation-based writes намеренно остаются следующими фазами спецификации — и для Bitrix24, и для GitLab, и для TeamCity.
 
