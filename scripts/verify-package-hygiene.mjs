@@ -556,16 +556,59 @@ export function curatedChangelogVersions(changelogSource) {
 }
 
 /**
+ * The semver bump a version plan declares for one project, read from the
+ * front matter (`"project": patch|minor|major`).
+ */
+export function planBumpFor(content, project) {
+  const lines = content.split("\n");
+  if (lines[0]?.trim() !== FRONT_MATTER_FENCE) return undefined;
+  const closingFence = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === FRONT_MATTER_FENCE,
+  );
+  if (closingFence === -1) return undefined;
+  const escaped = project.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  const match = lines
+    .slice(1, closingFence)
+    .map((line) =>
+      new RegExp(`^"${escaped}"\\s*:\\s*(patch|minor|major)\\s*$`, "u").exec(
+        line.trim(),
+      ),
+    )
+    .find((match) => match !== null);
+  return match?.[1];
+}
+
+/**
+ * The version one semver bump step away from `version`. A version outside
+ * the numeric `x.y.z` core (prerelease suffixes are tolerated but ignored)
+ * yields undefined, so callers can fall back to a weaker check.
+ */
+export function incrementVersion(version, bump) {
+  const core = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/u.exec(version);
+  if (core === null) return undefined;
+  const [major, minor, patch] = [
+    Number(core.groups.major),
+    Number(core.groups.minor),
+    Number(core.groups.patch),
+  ];
+  if (bump === "major") return `${major + 1}.0.0`;
+  if (bump === "minor") return `${major}.${minor + 1}.0`;
+  return `${major}.${minor}.${patch + 1}`;
+}
+
+/**
  * AGENTS.md ("QA surface release notes"): a version plan for the qa-surface
- * project must come with a curated changelog entry for a version strictly
- * newer than the manifest's current version. The gate is a tripwire — it
- * only fires when qa-surface has plans but no such record at all.
+ * project must come with a curated changelog entry for exactly the version
+ * the plans currently bump to — the highest bump across the qa-surface plans
+ * applied to the manifest's current version. Tying the gate to the computed
+ * version keeps it satisfied by a stale future entry: once 0.8.0 exists, the
+ * next planned release must update QaChangelog.tsx again.
  */
 export function validateQaChangelogCoverage(repoRoot, plans) {
-  const mentionsQaSurface = plans.some((plan) =>
+  const qaSurfacePlans = plans.filter((plan) =>
     planProjects(plan.content).includes(QA_SURFACE_PROJECT),
   );
-  if (!mentionsQaSurface) return [];
+  if (qaSurfacePlans.length === 0) return [];
 
   const packageDirectory = path.join(repoRoot, QA_SURFACE_DIRECTORY);
   const manifestPath = path.join(packageDirectory, "package.json");
@@ -585,13 +628,36 @@ export function validateQaChangelogCoverage(repoRoot, plans) {
   const versions = curatedChangelogVersions(
     readFileSync(changelogPath, "utf8"),
   );
-  if (
-    versions.some((version) => compareVersions(version, currentVersion) > 0)
-  ) {
-    return [];
+  const bumpOrder = { patch: 0, minor: 1, major: 2 };
+  const bumps = qaSurfacePlans
+    .map((plan) => planBumpFor(plan.content, QA_SURFACE_PROJECT))
+    .filter((bump) => bump !== undefined);
+  if (bumps.length === 0) {
+    // Unparseable plans fall back to the weaker tripwire: some entry newer
+    // than the current version. validateVersionPlan already rejects damaged
+    // front matter, so this is a safety net rather than the main check.
+    if (
+      versions.some((version) => compareVersions(version, currentVersion) > 0)
+    ) {
+      return [];
+    }
+    return [
+      `plugins/dsh-qa-surface: a version plan declares the project, but QaChangelog.tsx has no entry newer than the current ${currentVersion}; add the planned version to QA_CHANGELOG in the same change`,
+    ];
   }
+  const highestBump = Object.keys(bumpOrder)
+    .filter((bump) => bumps.includes(bump))
+    .sort((a, b) => bumpOrder[b] - bumpOrder[a])
+    .at(0);
+  const plannedVersion = incrementVersion(currentVersion, highestBump);
+  if (plannedVersion === undefined) {
+    return [
+      `plugins/dsh-qa-surface: the manifest version ${currentVersion} is not a numeric x.y.z release, so the planned changelog version cannot be derived`,
+    ];
+  }
+  if (versions.includes(plannedVersion)) return [];
   return [
-    `plugins/dsh-qa-surface: a version plan declares the project, but QaChangelog.tsx has no entry newer than the current ${currentVersion}; add the planned version to QA_CHANGELOG in the same change`,
+    `plugins/dsh-qa-surface: the qa-surface version plans bump to ${plannedVersion}, but QaChangelog.tsx has no entry for it; add the planned version to QA_CHANGELOG in the same change`,
   ];
 }
 
@@ -610,17 +676,24 @@ export function validateClientContractGates(directory, manifest) {
   if (manifest.dsh?.client) {
     const directoryName = path.basename(directory);
     // Regex literals escape the slash (`@yadsh\/name`), so compare with the
-    // escapes dropped before looking for the full package name.
+    // escapes dropped before looking for the full package name. A bare
+    // mention of the name is not enough — a `manifest.name` equality check
+    // would satisfy it — so the same script must also pin the ModuleLoader
+    // registration: either the shared runner's `moduleLoaderId` option or an
+    // assertion against `window.__ModuleLoader__` itself.
     const asserted = walkFiles(scripts)
       .filter((file) => file.endsWith(".mjs"))
-      .some((file) =>
-        readFileSync(file, "utf8")
-          .replaceAll("\\", "")
-          .includes(`@yadsh/${directoryName}`),
-      );
+      .map((file) => readFileSync(file, "utf8"))
+      .some((content) => {
+        const normalized = content.replaceAll("\\", "");
+        return (
+          normalized.includes(`@yadsh/${directoryName}`) &&
+          /__ModuleLoader__|moduleLoaderId/u.test(normalized)
+        );
+      });
     if (!asserted) {
       errors.push(
-        `dsh.client is declared, but no scripts/*.mjs asserts the full package name "@yadsh/${directoryName}"; assert it in verify-package.mjs or verify-client-bundle.mjs`,
+        `dsh.client is declared, but no scripts/*.mjs asserts the ModuleLoader registration id "@yadsh/${directoryName}"; pass clientBundle.moduleLoaderId to runVerifyPackage or assert window.__ModuleLoader__.load in verify-package.mjs or verify-client-bundle.mjs`,
       );
     }
   }

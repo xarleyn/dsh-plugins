@@ -6,6 +6,7 @@ const client = await readFile(
 );
 
 const requiredFragments = [
+  "window.__ModuleLoader__.load({",
   "id: '@yadsh/dsh-session-scope'",
   "slots.inject('conversation.input.left'",
   "data-session-scope-hero-mount",
