@@ -226,7 +226,7 @@ describe("Host provenance lifecycle", () => {
     restoredHost.dispose();
   });
 
-  it("drops the durable snapshots of a disposed session", () => {
+  it("keeps the durable snapshots of a disposed session", () => {
     const store = new MemoryQaProvenanceSnapshotStore();
     const session = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
     const world = harness([session.session]);
@@ -237,9 +237,24 @@ describe("Host provenance lifecycle", () => {
       turn: 1,
     });
     expect(store.list("root")).toHaveLength(1);
-    // Disposal forgets the durable copy too: nothing will read it again.
+    // Disposal only forgets the in-memory records: `session/disposed` also
+    // fires for runtime teardown of a chat that still exists, and the
+    // durable copy is what restores its sources after a Host restart.
     world.forgetSession("root");
-    expect(store.list("root")).toEqual([]);
+    expect(store.list("root")).toHaveLength(1);
+    const restoredHost = new QaProvenanceHost(
+      harness([]).ctx,
+      () => resolveConfig(),
+      store,
+    );
+    expect(restoredHost.bundles("root")).toMatchObject([
+      {
+        sessionId: "root",
+        turn: 1,
+        sources: [{ id: "file:docs/guide.md" }],
+      },
+    ]);
+    restoredHost.dispose();
     host.dispose();
   });
 
@@ -441,7 +456,7 @@ describe("Host provenance lifecycle", () => {
     host.dispose();
   });
 
-  it("drops a disposed session's provenance records", () => {
+  it("forgets a disposed session's in-memory provenance records", () => {
     const root = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
     const world = harness([root.session]);
     const host = new QaProvenanceHost(world.ctx, () => resolveConfig());

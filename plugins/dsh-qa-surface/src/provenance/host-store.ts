@@ -156,11 +156,13 @@ export class QaProvenanceHost {
   }
 
   /**
-   * Drop every per-session record of one chat. Long-lived servers outlive
-   * their sessions by weeks; without this the collector, snapshot, call and
-   * lineage maps grow with every chat and turn forever. The durable snapshot
-   * file follows: the session is gone, so nothing will ever read its stored
-   * turns again.
+   * Drop the in-memory per-session records of one chat. Long-lived servers
+   * outlive their sessions by weeks; without this the collector, snapshot,
+   * call and lineage maps grow with every chat and turn forever. The durable
+   * snapshot file is intentionally kept: `session/disposed` also fires for
+   * runtime teardown of a chat that still exists and will be reopened, and
+   * its stored turns are what let the transcript show sources after a Host
+   * restart. Growth of the file is bounded by the snapshot store's caps.
    */
   private forget(session: Session): void {
     const sessionId = String(session.id);
@@ -169,11 +171,6 @@ export class QaProvenanceHost {
     this.seededSessions.delete(sessionId);
     this.calls.delete(sessionId);
     this.lineage.delete(sessionId);
-    try {
-      this.store.drop(sessionId);
-    } catch (error) {
-      this.onPersistenceError(error);
-    }
   }
 
   private forgetAll(): void {

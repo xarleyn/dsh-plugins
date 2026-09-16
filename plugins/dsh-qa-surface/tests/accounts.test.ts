@@ -133,7 +133,9 @@ describe("QA accounts store", () => {
       const session = accounts.register("a@b.co", "password-1");
       userId = session.user.id;
       accounts.claimSessions(session.token, ["s-1", "s-2"]);
-      accounts.ensureSessionAccess(session.token, "s-3");
+      accounts.ensureSessionAccess(session.token, "s-3", {
+        createdAt: Date.now(),
+      });
     }
     expect(existsSync(path.join(dir, "qa-accounts.json.tmp"))).toBe(false);
     const raw = JSON.parse(readFileSync(filePath, "utf8")) as {
@@ -274,10 +276,11 @@ describe("QA accounts store", () => {
     ).toBe("session-owned-elsewhere");
     // ...and stays unowned, so ownership is never granted by a drive-by open.
     expect(accounts.ownedSessionIds(user.token)).toEqual(["s-fresh"]);
-    // Unknown facts (the operator CLI, a session this Host has not read yet)
-    // keep the historical claim.
+    // Unknown facts (a session this Host has not materialized yet) defer the
+    // claim: a delegated child from a previous run must not gain an owner
+    // from a drive-by open.
     accounts.ensureSessionAccess(user.token, "s-unknown");
-    expect(accounts.ownedSessionIds(user.token)).toContain("s-unknown");
+    expect(accounts.ownedSessionIds(user.token)).not.toContain("s-unknown");
   });
 
   it("creates the accounts file readable by its owner only", () => {
@@ -300,9 +303,12 @@ describe("QA accounts store", () => {
     const host = new QaAccounts(filePath, options);
     const admin = host.register("op@example.com", "password-1");
     const user = host.register("user@example.com", "password-2");
-    // The CLI is another process writing the same file.
+    // The CLI is another process writing the same file; it attests a live
+    // session, so the facts are known.
     const cli = new QaAccounts(filePath, options);
-    cli.ensureSessionAccess(user.token, "s-external");
+    cli.ensureSessionAccess(user.token, "s-external", {
+      createdAt: Date.now(),
+    });
     expect(
       host
         .listOwnership(admin.token)
@@ -425,8 +431,9 @@ describe("QA accounts store", () => {
     }
     expect(accounts.ownedSessionIds(a.token)).toEqual([]);
     // ...and a pre-owned child is still refused at the composition check,
-    // however the request reached it.
-    accounts.ensureSessionAccess(a.token, "session-child");
+    // however the request reached it. The ownership is seeded explicitly:
+    // ensureSessionAccess alone defers the claim for an unmaterialized child.
+    accounts.claimSessions(a.token, ["session-child"]);
     try {
       await admission.secureSession(a.token, "session-child");
       expect.unreachable("owned subagent sessions must not be attestable");
@@ -435,13 +442,61 @@ describe("QA accounts store", () => {
     }
   });
 
+  it("leaves a previous-run delegated child unowned when admission refuses it", async () => {
+    const accounts = store();
+    const a = accounts.register("a@b.co", "password-1");
+    const gate: QaAccountsGate = {
+      enforceSessionAccess: (token, sessionId, facts) =>
+        accounts.ensureSessionAccess(token, sessionId, facts),
+      userWorkspace: () => "D:/qa-user",
+    };
+    // The child session comes from a previous Host run: it is not in the
+    // registry yet, so the ownership facts are unknown and the claim is
+    // deferred — but materializing it for attestation reveals the delegated
+    // parent, and the refusal must land before any claim is recorded.
+    const child = {
+      session: {
+        header: { parentSession: "session-parent", createdAt: Date.now() },
+      },
+    };
+    const admission = new QaPolicyAdmission(
+      {
+        on: () => () => undefined,
+        sessions: { get: () => undefined },
+        agents: { get: () => child },
+        sessionController: {
+          resolveAgent: async () => ({ error: new Error("no such session") }),
+        },
+        tools: { guard: () => () => undefined },
+      } as never,
+      () => resolveConfig(),
+      {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        close() {},
+      } as never,
+      gate,
+    );
+    try {
+      await admission.secureSession(a.token, "session-child");
+      expect.unreachable("subagent sessions must not be attestable");
+    } catch (error) {
+      expect((error as QaAttestationError).reason).toBe("adoption-refused");
+    }
+    expect(accounts.ownedSessionIds(a.token)).toEqual([]);
+  });
+
   it("claims unowned sessions at access time and honors the admin role", () => {
     const accounts = store();
     const admin = accounts.register("a@b.co", "password-1");
     const user = accounts.register("b@b.co", "password-2");
     const outsider = accounts.register("c@b.co", "password-3");
     // First come, first served: an unowned session joins the attesting user.
-    accounts.ensureSessionAccess(user.token, "s-fresh");
+    accounts.ensureSessionAccess(user.token, "s-fresh", {
+      createdAt: Date.now(),
+    });
     expect(accounts.ownedSessionIds(user.token)).toEqual(["s-fresh"]);
     // Another user's session is refused with the dedicated reason...
     expect(
@@ -453,7 +508,11 @@ describe("QA accounts store", () => {
       role: "user",
     });
     // Unowned sessions are claimed for whoever attests first.
-    expect(accounts.ensureSessionAccess(admin.token, "s-other")).toMatchObject({
+    expect(
+      accounts.ensureSessionAccess(admin.token, "s-other", {
+        createdAt: Date.now(),
+      }),
+    ).toMatchObject({
       id: admin.user.id,
     });
     expect(accounts.ownedSessionIds(admin.token)).toContain("s-other");
@@ -488,7 +547,7 @@ describe("QA accounts store", () => {
     const accounts = store();
     const admin = accounts.register("op@example.com", "password-1");
     const user = accounts.register("user@example.com", "password-2");
-    accounts.ensureSessionAccess(admin.token, "s-1");
+    accounts.ensureSessionAccess(admin.token, "s-1", { createdAt: Date.now() });
     accounts.claimSessions(user.token, ["s-2"]);
     // Disabled accounts still name their chats in the admin view.
     accounts.setUserDisabled("user@example.com", true);

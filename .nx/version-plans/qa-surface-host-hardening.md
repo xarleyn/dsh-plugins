@@ -25,15 +25,24 @@ boundary uses for adoption) is refused instead of being silently attached
 to whoever opened it first. Owners re-attaching after a Host restart are
 unaffected — their claim already exists in the accounts file.
 
-`qa-sources.json` stopped growing without bound. A session's snapshots are
-now dropped from the durable file when the session is disposed (previously
-only the in-memory maps were cleared), and backstop caps — 256 sessions,
-500 turns per session, oldest first — bound the file for sessions that
-never dispose cleanly. The store keeps an mtime+size stamp of the file, so
-a turn no longer re-reads and re-parses the whole JSON it just wrote.
+`qa-sources.json` stopped growing without bound: backstop caps — 256
+sessions, 500 turns per session, oldest first — bound the file, and the
+store keeps an mtime+size stamp of it, so a turn no longer re-reads and
+re-parses the whole JSON it just wrote. Session disposal clears only the
+in-memory records; the durable file intentionally survives, because
+`session/disposed` also fires for runtime teardown of chats that still
+exist and are reopened later — their stored turns are what keep sources
+visible after a Host restart.
 
 Two small reliability fixes ride along: the question gate folds a malformed
 answer payload (a non-array, a non-object entry, a non-string selection)
 into its existing refusal/skip semantics instead of throwing, and the
 admin ownership listing re-reads the accounts file when another process
 changed it, like every other read in the store.
+
+One claim subtlety is closed as well: a delegated child session from a
+previous Host run is not materialized when a browser first presents it, so
+its header is unknown and the ownership claim used to be recorded before
+the refusal for delegated sessions could fire. The claim is now deferred
+until the session header is known, so an adopted child never ends up in
+the accounts file at all.
