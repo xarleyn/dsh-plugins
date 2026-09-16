@@ -1,3 +1,28 @@
+## 0.7.1 (2026-09-16)
+
+### 🩹 Fixes
+
+- Publish the signed-in QA account as a client service. A QA panel plugin receives ([b71afd5](https://github.com/xarleyn/dsh-plugins/commit/b71afd5))
+  the account token through its panel props, which is why the integrations page
+  could live in the settings dialog and nowhere else: a card mounted in the host's
+  own settings has no panel to read it from. `qaUserSession` closes that gap — it
+  reports `checking`, `anonymous` or `authed` with the bearer credential the
+  principal-scoped QA remotes authorize with, and follows the same account
+  controller the pages use, so every mount sees one session. The credential is
+  transport authentication only: consumers must not persist it, log it, or place it
+  in a URL or a model-visible value.
+
+- Keep the administrative console mounted while it walks its own sections. The ([77bb316](https://github.com/xarleyn/dsh-plugins/commit/77bb316))
+  surface recognised the console only at the bare `/qa/admin`, so opening any
+  section — and any pasted deep link to a user, a conversation or one message in
+  it — fell back to the chat: the console vanished, and every such click left an
+  empty chat behind in the deployment's own counters. The console now owns its
+  base path and everything under it.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.0 (2026-09-16)
 
 ### 🚀 Features
