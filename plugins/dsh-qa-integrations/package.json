@@ -89,6 +89,7 @@
     "gitlab",
     "teamcity",
     "jira",
+    "testit",
     "credentials"
   ],
   "engines": {

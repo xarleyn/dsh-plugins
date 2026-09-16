@@ -49,6 +49,14 @@ src/
       transport.ts     HTTP-граница: Bearer-токен, повторы, лимит размера, коды ошибок
       config.ts        срез конфига вместе с политикой адресов
       tools.ts         model-visible тулы провайдера
+    testit/
+      index.ts         TestitProvider: validate / execute / parseCredential
+      catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
+      operations.ts    запросы, лимиты, проекции ответов, конверты страниц
+      attachments.ts   политика видов вложений и бюджет чтения
+      transport.ts     HTTP-граница: PrivateToken, страницы (Pagination-*), лимит размера
+      config.ts        список инсталляций (SSRF-граница), флаги, бюджеты
+      tools.ts         model-visible тулы провайдера
     jira/
       index.ts         JiraProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь) + allow-list читающих путей
@@ -60,7 +68,7 @@ src/
       tools.ts         model-visible тулы провайдера
 ```
 
-## Что должен реализовать новый провайдер (bitrix24, confluence, gitlab, jira, teamcity, …)
+## Что должен реализовать новый провайдер (bitrix24, confluence, gitlab, jira, teamcity, testit, …)
 
 1. `providers/<id>/catalog.ts` — список возможностей и операций. Это
    permission surface: всё, что не описано здесь, недостижимо для модели.
@@ -109,8 +117,8 @@ src/
 - В общих модулях хоста (`broker.ts`, `repository.ts`, `secrets/**`,
   `tool-kit.ts`, `providers/contract.ts`, `providers/registry.ts`, `types.ts`)
   не должно быть упоминаний конкретной интеграции: `pnpm verify:package`
-  падает на `/bitrix|confluence|gitlab|jira|teamcity/iu` вне каталога самого
-  провайдера.
+  падает на `/bitrix|confluence|gitlab|jira|teamcity|testit/iu` вне каталога
+  самого провайдера.
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
@@ -134,3 +142,11 @@ src/
   `redirect: "error"` и пару `Authorization: Basic` — токен не попадает ни в
   URL, ни в тело. Политику пространств (`allowedSpaces`) провайдер применяет и
   к поиску, и к прямому чтению: отказ обязан быть `OperationDeniedByPolicy`.
+- В каталоге Test IT у каждой операции `method: "GET"`, путь лежит под `/api/v2` и не
+  заходит ни в один search-эндпоинт (у Test IT они все POST), ни в like/move/purge/
+  restore/actual/transform, ни в администрирование (webhooks, parameters, users,
+  backgroundJobs), а `transport.ts` обязан слать `GET`, `redirect: "error"` и
+  `Authorization: PrivateToken …` — токен не попадает ни в URL, ни в тело. Адрес
+  инсталляции объявляет оператор, поэтому `index.ts` резолвит её из конфига на каждом
+  вызове (`credentialInstance`), а вложение читается только после `…/metadata`: вид и
+  размер файла берутся у Test IT, а не из аргументов тула.

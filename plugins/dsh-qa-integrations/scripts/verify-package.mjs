@@ -60,6 +60,13 @@ for (const file of [
   "lib/providers/jira/tools.js",
   "lib/providers/jira/jql.js",
   "lib/providers/jira/adf.js",
+  "lib/providers/testit/index.js",
+  "lib/providers/testit/catalog.js",
+  "lib/providers/testit/operations.js",
+  "lib/providers/testit/transport.js",
+  "lib/providers/testit/config.js",
+  "lib/providers/testit/tools.js",
+  "lib/providers/testit/attachments.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -90,6 +97,7 @@ assert.match(client, /"confluence"/u);
 assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
 assert.match(client, /"jira"/u);
+assert.match(client, /"testit"/u);
 // The Confluence site is operator configuration too: the connect form picks one
 // and asks for the account e-mail next to the secret, never for an address.
 assert.match(client, /Почта аккаунта Atlassian/u);
@@ -109,6 +117,12 @@ assert.match(client, /Аккаунт Atlassian \(e-mail\)/u);
 assert.match(client, /Сайт Jira/u);
 assert.match(client, /Оператор не настроил ни одного сайта Jira/u);
 assert.doesNotMatch(client, /atlassian\.net/u);
+// The Test IT card follows the same rule: the installation list comes from the
+// Host, the address never reaches the bundle, and the token stays write-only.
+assert.match(client, /API-токен Test IT/u);
+assert.match(client, /Инсталляция Test IT/u);
+assert.match(client, /Оператор не настроил ни одной инсталляции Test IT/u);
+assert.doesNotMatch(client, /testit\.software|PrivateToken/u);
 
 // The feature-owned Plugins tab stays available without the loopback-only Host
 // settings directory. It may reuse the standard card shell inside its own list.
@@ -365,7 +379,7 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix|confluence|gitlab|jira|teamcity/iu,
+    /bitrix|confluence|gitlab|jira|teamcity|testit/iu,
     `${file} must stay provider-agnostic`,
   );
 }
@@ -702,6 +716,127 @@ for (const forbidden of [
   "search_cql",
 ]) {
   assert.doesNotMatch(confluenceTools, new RegExp(forbidden, "u"));
+}
+
+// The Test IT provider is read-only over one documented API surface: every
+// operation is a GET under `/api/v2`, no search endpoint is in the catalog (all
+// of Test IT's are POST), no installation address reaches a tool, and the token
+// travels as the `PrivateToken` authorization header and nowhere else.
+const testitTools = await readFile(
+  new URL("src/providers/testit/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "testit_connection_get",
+  "testit_projects",
+  "testit_project_get",
+  "testit_sections",
+  "testit_work_items",
+  "testit_work_item_get",
+  "testit_work_item_history",
+  "testit_work_item_comments",
+  "testit_work_item_test_results",
+  "testit_test_plans",
+  "testit_test_plan_get",
+  "testit_test_plan_summary",
+  "testit_test_runs",
+  "testit_test_run_get",
+  "testit_test_run_results",
+  "testit_test_result_get",
+  "testit_test_result_attachments",
+  "testit_attachment_metadata",
+  "testit_attachment_text",
+  "testit_auto_tests",
+  "testit_auto_test_get",
+  "testit_configurations",
+]) {
+  assert.match(testitTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "instanceId:",
+  "baseUrl:",
+  "serverUrl:",
+  "privateToken",
+  "raw_rest",
+  "raw_api",
+]) {
+  assert.doesNotMatch(testitTools, new RegExp(forbidden, "u"));
+}
+
+const testitCatalog = await readFile(
+  new URL("src/providers/testit/catalog.ts", root),
+  "utf8",
+);
+const testitPaths = [...testitCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
+  (match) => match[1],
+);
+const testitToolCount = [...testitTools.matchAll(/operation: "([^"]+)"/gu)]
+  .length;
+assert.equal(
+  testitPaths.length,
+  testitToolCount,
+  "every Test IT tool must name exactly one catalog operation",
+);
+assert.doesNotMatch(testitCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+for (const path of testitPaths) {
+  assert.match(path, /^\//u, `${path} must be an absolute API path`);
+  assert.doesNotMatch(
+    path,
+    /\/(?:search|like|move|purge|restore|demo|favorite|actual|transform|webhooks|parameters|users|roles|backgroundJobs|globalAttributes)/u,
+    `${path} is not a read-only endpoint`,
+  );
+}
+const testitTransport = await readFile(
+  new URL("src/providers/testit/transport.ts", root),
+  "utf8",
+);
+assert.match(testitTransport, /authorization: `PrivateToken \$\{token\}`/u);
+assert.doesNotMatch(testitTransport, /searchParams\.set\([^)]*token/u);
+const testitHost = await readFile(
+  new URL("src/providers/testit/index.ts", root),
+  "utf8",
+);
+// The installation is operator configuration: it is canonicalized while the
+// deployment config is resolved, never taken from a connect form field that
+// carries an address, and re-resolved from config on every call.
+assert.match(testitHost, /credentialInstance/u);
+assert.doesNotMatch(testitHost, /baseUrl:\s*input/u);
+assert.match(testitHost, /attachmentBinaryProblem/u);
+assert.match(testitHost, /assertReadableSize/u);
+const testitConfig = await readFile(
+  new URL("src/providers/testit/config.ts", root),
+  "utf8",
+);
+assert.match(testitConfig, /allowInsecureHttp/u);
+assert.match(testitConfig, /must carry no credentials or query/u);
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of every catalog.
+const testitCapabilityCatalog = await readFile(
+  new URL("lib/providers/testit/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Читать проекты",
+  "Читать разделы",
+  "Читать тест-кейсы",
+  "Читать историю изменений",
+  "Читать комментарии",
+  "Читать тест-планы",
+  "Читать прогоны",
+  "Читать результаты тестов",
+  "Читать автотесты",
+  "Читать вложения",
+  "Читать конфигурации",
+]) {
+  assert.match(testitCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 
 const confluenceCatalog = await readFile(

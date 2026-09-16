@@ -21,6 +21,7 @@ import JiraProvider from "./providers/jira/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
 import TeamcityProvider from "./providers/teamcity/index.js";
 import { networkAllowsNothing } from "./providers/teamcity/config.js";
+import TestitProvider from "./providers/testit/index.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
@@ -83,6 +84,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly configuredJiraSites: readonly IntegrationInstanceSummary[];
   /** The TeamCity server this deployment dials, or null when it mounts none. */
   private readonly configuredServer: IntegrationInstanceSummary | null;
+  /** The Test IT installations this deployment allows, in config order. */
+  private readonly configuredTestitInstances: readonly IntegrationInstanceSummary[];
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
@@ -120,6 +123,9 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.jira.enabled) {
       providers.register(new JiraProvider(config));
     }
+    if (config.testit.enabled) {
+      providers.register(new TestitProvider(config));
+    }
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
       : [];
@@ -142,6 +148,13 @@ export class QaIntegrations extends TypertRemoteService {
           id: site.id,
           label: site.label,
           baseUrl: site.baseUrl,
+        }))
+      : [];
+    this.configuredTestitInstances = config.testit.enabled
+      ? config.testit.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.label,
+          baseUrl: instance.baseUrl,
         }))
       : [];
     this.configuredServer =
@@ -476,6 +489,57 @@ export class QaIntegrations extends TypertRemoteService {
     );
   }
 
+  /**
+   * Installations this deployment allows. Like the GitLab instance list, the
+   * connect form picks from it and never takes a hostname: the Test IT address a
+   * token is spent against is operator configuration.
+   */
+  @Remote("testitInstances")
+  testitInstances(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredTestitInstances);
+  }
+
+  @Remote("getTestit")
+  getTestit(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "testit"),
+    );
+  }
+
+  @Remote("putTestitCredential")
+  async putTestitCredential(
+    token: string,
+    input: { readonly instanceId: string; readonly token: string },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "testit", {
+        token: input.token,
+        options: { instanceId: input.instanceId },
+      }),
+    );
+  }
+
+  @Remote("testTestit")
+  async testTestit(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "testit"),
+    );
+  }
+
+  @Remote("patchTestitPolicy")
+  patchTestitPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "testit", patch),
+    );
+  }
+
+  @Remote("disconnectTestit")
+  disconnectTestit(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "testit"),
+    );
+  }
+
   private requirePrincipal(token: string): IntegrationPrincipal {
     if (!this.enabled) {
       throw new IntegrationError(
@@ -788,6 +852,63 @@ export {
   type JiraCredential,
 } from "./providers/jira/transport.js";
 export { createJiraTools, JIRA_TOOL_NAMES } from "./providers/jira/tools.js";
+export { TestitProvider } from "./providers/testit/index.js";
+export {
+  TESTIT_CAPABILITIES,
+  TESTIT_CAPABILITY_INFO,
+  TESTIT_OPERATIONS,
+  enabledCapabilities as enabledTestitCapabilities,
+  testitOperationCapability,
+  type TestitCapability,
+  type TestitCapabilityDefinition,
+  type TestitListKind,
+  type TestitOperationDefinition,
+} from "./providers/testit/catalog.js";
+export {
+  TESTIT_DEFAULTS,
+  resolveTestitConfig,
+  testitConfigSchema,
+  testitInstance,
+  type TestitFlags,
+  type TestitInstance,
+} from "./providers/testit/config.js";
+export {
+  assertReadableSize,
+  attachmentBinaryProblem,
+  attachmentByteLimit,
+  attachmentExtension,
+  attachmentName,
+} from "./providers/testit/attachments.js";
+export {
+  RESULT_OUTCOMES,
+  TESTIT_HANDLERS,
+  TESTIT_LIMITS,
+  TESTIT_PROJECTIONS,
+  TEST_RUN_STATES,
+  WORK_ITEM_ENTITY_TYPES,
+  WORK_ITEM_PRIORITIES,
+  WORK_ITEM_STATES,
+  bounded as testitBounded,
+  capped,
+  contentBlock as testitContentBlock,
+  listLimit as testitListLimit,
+  listOffset as testitListOffset,
+  paged,
+  type TestitProjection,
+  type TestitProjectionContext,
+  type TestitRequest,
+} from "./providers/testit/operations.js";
+export {
+  TestitTransport,
+  credentialFromPlaintext as testitCredentialFromPlaintext,
+  credentialInstance as testitCredentialInstance,
+  type TestitCredential,
+  type TestitPage,
+} from "./providers/testit/transport.js";
+export {
+  createTestitTools,
+  TESTIT_TOOL_NAMES,
+} from "./providers/testit/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {
