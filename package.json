@@ -25,7 +25,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": "^22.19.0 || >=24.0.0"
   },
   "scripts": {
     "build": "nx run-many -t build",
@@ -40,7 +40,7 @@
     "verify:packages": "node scripts/verify-package-hygiene.mjs",
     "verify:logging": "node scripts/verify-plugin-logging.mjs",
     "plugins:manifest": "node scripts/generate-plugins-manifest.mjs",
-    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build && pnpm verify",
+    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build && pnpm verify && pnpm deps:check",
     "deps:check": "node scripts/run-bash.mjs scripts/check-dependencies.sh",
     "tarball:verify": "node scripts/run-bash.mjs scripts/tarball-verify.sh --all",
     "tarball:verify:packages": "node scripts/run-bash.mjs scripts/tarball-verify.sh",
