@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
+import { installInheritableMask } from "./tool-mask.js";
 import type {
   QaSkillActivationOrigin,
   QaSkillActivationRecord,
@@ -31,6 +32,11 @@ export interface QaAgentToolGrantsOptions {
   readonly baseTools: readonly string[];
   /** Ceiling for grants, already narrowed to tools that exist right now. */
   readonly grantableTools: readonly string[];
+  /**
+   * Names the QA tool catalog registers on the agent itself. A restriction
+   * cannot name one, so the mask leaves them out; the guard covers them.
+   */
+  readonly agentLocalTools: ReadonlySet<string>;
   /** Normalized `metadata.qa-surface` of every discovered skill. */
   readonly descriptors: ReadonlyMap<string, QaSkillDescriptor>;
   readonly logger: PluginLogger;
@@ -55,7 +61,8 @@ function describe(tools: readonly string[]): string {
  * attaches its tools to the agent itself, and such a registration is visible to
  * the model without ever being nameable in a restriction: handing one to
  * `restrict()` makes the registry refuse the whole call. Every restriction this
- * class installs is therefore filtered to the inheritable names, and a grant is
+ * class installs is therefore installed through the mask helper, which admits
+ * the inherited names and leaves the self-registered ones out, and a grant is
  * verified against the same view — a name no layer holds is dropped from the
  * grant instead of breaking the session.
  */
@@ -75,21 +82,17 @@ export class QaAgentToolGrants {
   }
 
   /**
-   * Whether the scoped registry can admit this name under a restriction.
+   * Whether the tool is callable for the agent at all, masks aside.
    *
-   * `restrict()` accepts the names a scope inherits — the global and ancestor
-   * layers — and nothing else. A tool the agent registered for itself is
-   * deliberately absent here even though it is visible.
+   * The global view ignores restrictions and the agent's own view covers what
+   * the agent registered for itself, so a tool some layer holds stays grantable
+   * even while the current mask hides it.
    */
-  private restrictable(tool: string): boolean {
-    return this.options.agent.ctx.tools.get(tool) !== undefined;
-  }
-
-  /** Whether any layer makes this tool callable for the agent at all. */
   private mounted(tool: string): boolean {
+    if (this.options.agentLocalTools.has(tool)) return true;
     const tools = this.options.agent.ctx.tools;
     return (
-      this.restrictable(tool) ||
+      tools.get(tool) !== undefined ||
       tools.get(tool, this.options.agent) !== undefined
     );
   }
@@ -217,14 +220,22 @@ export class QaAgentToolGrants {
    * unrestricted, and a rejected name would then leave it that way.
    */
   private applyRestriction(allow: readonly string[]): void {
-    // Only inheritable names may reach the registry: a base set that carries an
-    // agent-local tool (the QA activation diagnostic is one) would otherwise
-    // make `restrict()` refuse the call and fail the whole attestation.
-    const next = this.options.agent.ctx.tools.restrict({
-      allow: allow.filter((tool) => this.restrictable(tool)),
-    });
+    // Only names the scope INHERITS may reach the registry: a base set that
+    // carries an agent-local tool (the QA activation diagnostic is one) would
+    // otherwise make `restrict()` refuse the call and fail the whole
+    // attestation, and a name no layer holds would do the same.
+    const mask = installInheritableMask(
+      this.options.agent.ctx.tools,
+      allow,
+      this.options.agentLocalTools,
+    );
+    if (mask.refused.length > 0) {
+      this.options.logger.warn("skill.tool-mask-incomplete", {
+        dropped: mask.refused,
+      });
+    }
     const previous = this.disposeRestriction;
-    this.disposeRestriction = next;
+    this.disposeRestriction = mask.dispose;
     previous?.();
   }
 

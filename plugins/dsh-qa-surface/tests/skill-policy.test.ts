@@ -152,6 +152,7 @@ async function setup(options: {
     agent,
     baseTools: policy.tools,
     grantableTools: policy.grantableTools,
+    agentLocalTools: new Set(),
     descriptors: new Map<string, QaSkillDescriptor>([
       [
         "allowed-skill",
