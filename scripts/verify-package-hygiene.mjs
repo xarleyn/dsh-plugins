@@ -20,6 +20,7 @@ const CANONICAL_REPOSITORY_URL =
 const CANONICAL_BUGS_URL = "https://github.com/xarleyn/dsh-plugins/issues";
 const HOMEPAGE_PREFIX = "https://github.com/xarleyn/dsh-plugins/tree/main";
 const BLOB_PREFIX = "https://github.com/xarleyn/dsh-plugins/blob/main";
+const CANONICAL_REGISTRY = "https://registry.npmjs.org/";
 // Packages are discovered through these keywords by DSH indexes and npm
 // search; a package missing them is invisible to the ecosystem even though it
 // publishes correctly. The canonical set a package should carry is
@@ -345,6 +346,20 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
   const homepage = `${HOMEPAGE_PREFIX}/${relative}#readme`;
   if (manifest.homepage !== homepage) {
     errors.push(`homepage must be "${homepage}"`);
+  }
+
+  // A scoped package defaults to restricted access, and publishing a
+  // restricted one needs a paid npm plan: the register answers 402 and the
+  // release stops after the tarball is already built. The access level is
+  // therefore part of the publishable contract, not an operator preference.
+  const publishConfig = manifest.publishConfig;
+  if (publishConfig?.access !== "public") {
+    errors.push(
+      'publishConfig.access must be "public" so a scoped package publishes on the free plan',
+    );
+  }
+  if (publishConfig?.registry !== CANONICAL_REGISTRY) {
+    errors.push(`publishConfig.registry must be "${CANONICAL_REGISTRY}"`);
   }
 
   if (manifest.bugs?.url !== CANONICAL_BUGS_URL) {

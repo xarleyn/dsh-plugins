@@ -40,6 +40,10 @@
   "bugs": {
     "url": "https://github.com/xarleyn/dsh-plugins/issues"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dependencies": {},
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
