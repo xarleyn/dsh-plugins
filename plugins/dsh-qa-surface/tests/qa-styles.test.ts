@@ -58,4 +58,19 @@ describe("QA surface stylesheet", () => {
   it("keeps the legacy profile shell out of the bundle", () => {
     expect(QA_SURFACE_STYLES).not.toContain("dsh-qa-profile");
   });
+
+  it("pins the header row with a single auto margin", () => {
+    // Two auto margins split the row's free space between two gaps, which left
+    // «Файлы» stranded in the middle instead of next to the sources control.
+    const rules = QA_SURFACE_STYLES.split("}").map(
+      (chunk) => `${chunk.trim()}}`,
+    );
+    const pinned = rules.filter(
+      (rule) =>
+        rule.includes("margin-left:auto") && rule.includes("dsh-qa-header"),
+    );
+    expect(pinned).toEqual([
+      ".dsh-qa-header__actions{display:flex;align-items:center;flex:none;gap:10px;margin-left:auto}",
+    ]);
+  });
 });

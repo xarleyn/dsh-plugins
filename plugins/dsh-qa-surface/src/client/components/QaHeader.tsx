@@ -178,11 +178,7 @@ export function QaHeader({
           ) : null}
           <button
             type="button"
-            className={
-              showReset
-                ? "dsh-qa-header__files"
-                : "dsh-qa-header__files dsh-qa-header__files--end"
-            }
+            className="dsh-qa-header__files"
             disabled={fileCount === 0}
             aria-expanded={filesOpen}
             onClick={onOpenFiles}
@@ -194,40 +190,48 @@ export function QaHeader({
             Файлы
             {fileCount === 0 ? null : ` (${fileCount})`}
           </button>
-          {showReset ? (
-            <button
-              type="button"
-              className="dsh-qa-header__reset"
-              disabled={resetDisabled}
-              onClick={onReset}
-            >
-              Новый чат
-            </button>
-          ) : null}
-          {administration === undefined ? null : (
-            <button
-              type="button"
-              className="dsh-qa-header__admin"
-              onClick={administration.onOpen}
-            >
-              Администрирование
-            </button>
-          )}
-          {panelLauncher}
-          {settings === undefined ? null : (
-            <button
-              type="button"
-              className="dsh-qa-header__settings"
-              title={settings.label}
-              onClick={settings.onOpen}
-            >
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="8" cy="8" r="2.2" />
-                <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" />
-              </svg>
-              Настройки
-            </button>
-          )}
+          {/*
+            The right-hand cluster is one flex group with a single auto margin.
+            Pinning each button separately made the free space split between two
+            gaps, which parked «Файлы» in the middle of the row, away from the
+            tabs it belongs to.
+          */}
+          <div className="dsh-qa-header__actions">
+            {showReset ? (
+              <button
+                type="button"
+                className="dsh-qa-header__reset"
+                disabled={resetDisabled}
+                onClick={onReset}
+              >
+                Новый чат
+              </button>
+            ) : null}
+            {administration === undefined ? null : (
+              <button
+                type="button"
+                className="dsh-qa-header__admin"
+                onClick={administration.onOpen}
+              >
+                Администрирование
+              </button>
+            )}
+            {panelLauncher}
+            {settings === undefined ? null : (
+              <button
+                type="button"
+                className="dsh-qa-header__settings"
+                title={settings.label}
+                onClick={settings.onOpen}
+              >
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <circle cx="8" cy="8" r="2.2" />
+                  <path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" />
+                </svg>
+                Настройки
+              </button>
+            )}
+          </div>
         </div>
         <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
           <span aria-current="page">Чат</span>
