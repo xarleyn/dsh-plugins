@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { QaSource } from "../../types.js";
-import { SourceIcon } from "../components/QaSourcesPanel.js";
+import { SourceIcon } from "../components/source-icon.js";
 import {
   sourceFileName,
   type QaSourceRefs,
