@@ -5,7 +5,11 @@ import type { Context } from "@deepseek-ai/cordis";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import { QaAccountsError } from "./accounts/store.js";
+import {
+  QA_SESSION_CLAIM_WINDOW_MS,
+  QaAccountsError,
+  type QaSessionFacts,
+} from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
 import {
   qaCeilingDenial,
@@ -46,12 +50,18 @@ export interface QaAccountsGate {
   enforceSessionAccess(
     token: string,
     sessionId: string,
+    facts?: QaSessionFacts,
   ): { readonly id: string } | undefined;
   userWorkspace(userId: string, registeredWorkspacePath: string): string;
 }
 
-/** Grace period in which a fresh session may still be pinned to the QA preset. */
-const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = 120_000;
+/**
+ * Grace period in which a fresh session may still be pinned to the QA preset
+ * (and, in the accounts store, claimed by whoever attests it first). One
+ * number on purpose: the adoption rule and the auto-claim rule must describe
+ * the same notion of "fresh".
+ */
+const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = QA_SESSION_CLAIM_WINDOW_MS;
 
 /**
  * Compare session cwds the way the host records them: separator- and
@@ -249,33 +259,97 @@ export class QaPolicyAdmission {
     throw new QaAttestationError("agent-unavailable", "agent is unavailable");
   }
 
+  /**
+   * The Host-registered facts of one session, for the accounts gate's bounded
+   * auto-claim. A session this process has not materialized (a chat of an
+   * earlier Host run, reached before its agent exists) yields no facts and
+   * keeps the historical unbounded claim.
+   */
+  private sessionFacts(sessionId: string): QaSessionFacts {
+    const registry = (
+      this.ctx as {
+        sessions?: {
+          get(id: SessionId):
+            | {
+                readonly header: {
+                  readonly createdAt?: number;
+                  readonly parentSession?: unknown;
+                };
+              }
+            | undefined;
+        };
+      }
+    ).sessions;
+    const header = registry?.get(SessionId(sessionId))?.header;
+    if (header === undefined) return {};
+    return {
+      ...(header.createdAt === undefined
+        ? {}
+        : { createdAt: header.createdAt }),
+      ...(header.parentSession === undefined ? {} : { hasParent: true }),
+    };
+  }
+
+  /**
+   * Account identity and ownership are checked before any policy work: an
+   * invalid token must not learn whether a session exists or how the
+   * deployment composes. Independent of lockdown — a deployment may gate
+   * users without pinning the policy, and the gate itself no-ops while
+   * accounts are disabled.
+   */
+  private accessOwner(
+    token: string,
+    sessionId: string,
+  ): { readonly id: string } | undefined {
+    if (this.accounts === undefined) return undefined;
+    try {
+      return this.accounts.enforceSessionAccess(
+        token,
+        sessionId,
+        this.sessionFacts(sessionId),
+      );
+    } catch (error) {
+      if (error instanceof QaAccountsError) {
+        throw new QaAttestationError(
+          error.reason === "session-owned-elsewhere"
+            ? "session-owned-elsewhere"
+            : "auth-required",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   async secureSession(
     token: string,
     sessionId: string,
   ): Promise<QaLockdownProof> {
     const config = this.config();
     const lockdown = config.lockdown;
-    // Account identity is checked before any policy work: an invalid token
-    // must not learn whether a session exists or how the deployment composes.
-    // Independent of lockdown — a deployment may gate users without pinning
-    // the policy, and the gate itself no-ops while accounts are disabled.
-    let sessionOwner: { readonly id: string } | undefined;
-    if (this.accounts !== undefined) {
-      try {
-        sessionOwner = this.accounts.enforceSessionAccess(token, sessionId);
-      } catch (error) {
-        if (error instanceof QaAccountsError) {
-          throw new QaAttestationError(
-            error.reason === "session-owned-elsewhere"
-              ? "session-owned-elsewhere"
-              : "auth-required",
-            error.message,
-          );
-        }
-        throw error;
-      }
-    }
+    let sessionOwner = this.accessOwner(token, sessionId);
     const agent = await this.liveAgent(sessionId);
+    // A delegated subagent session is an implementation detail of one answer
+    // of its parent chat: it has no QA owner, and its sources reach the
+    // parent through the provenance inheritance flow. Attesting it from the
+    // browser would pin a capability policy onto a conversation nobody can
+    // open, name or review, so it is refused whatever the lockdown state is.
+    if (agent.session.header.parentSession !== undefined) {
+      this.logger.warn("lockdown.subagent-attestation-refused", { sessionId });
+      throw new QaAttestationError(
+        "adoption-refused",
+        "a delegated subagent session cannot be attested",
+      );
+    }
+    if (this.accounts !== undefined) {
+      // The first check ran before the session was materialized, when its
+      // header could still be unknown — a delegated child from a previous
+      // run is then indistinguishable from a fresh chat, and the store had
+      // to leave the ownership claim deferred. Re-run it now that the
+      // header is known, so ownership is recorded only for a session that
+      // survived the refusal above.
+      sessionOwner = this.accessOwner(token, sessionId);
+    }
     const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {
       this.attested.add(sessionId);

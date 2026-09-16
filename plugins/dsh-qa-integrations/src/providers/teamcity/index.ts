@@ -8,6 +8,7 @@ import type {
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
+import { accountName, objectOf } from "../shared/account.js";
 import {
   artifactBinaryProblem,
   artifactByteLimit,
@@ -57,20 +58,6 @@ export {
  */
 const TOKEN_SHAPE = /^\S{16,4096}$/u;
 const URL_LIKE = /^https?:\/\//iu;
-
-function accountName(data: Record<string, unknown>): string {
-  const name = typeof data["name"] === "string" ? data["name"].trim() : "";
-  const username =
-    typeof data["username"] === "string" ? data["username"].trim() : "";
-  if (name !== "" && username !== "") return `${name} (@${username})`;
-  return name !== "" ? name : username === "" ? "TeamCity" : `@${username}`;
-}
-
-function objectOf(data: unknown): Record<string, unknown> {
-  return typeof data === "object" && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : { value: data ?? null };
-}
 
 /**
  * TeamCity provider: one TeamCity server per QA user, connected with that user's
@@ -164,8 +151,8 @@ export class TeamcityProvider implements IntegrationProvider {
       externalUserId: String(id),
       displayName:
         version === ""
-          ? accountName(user)
-          : `${accountName(user)} · TeamCity ${version}`,
+          ? accountName(user, "TeamCity")
+          : `${accountName(user, "TeamCity")} · TeamCity ${version}`,
       /**
        * TeamCity does not report the restrictions of the token it was given, so
        * there is nothing to narrow here: the deployment switches bound what this

@@ -33,6 +33,10 @@ function expectPresent(needle, why) {
 }
 
 expectPresent(
+  "window.__ModuleLoader__.load({",
+  "the bundle registers through the shared ModuleLoader",
+);
+expectPresent(
   'id: "@yadsh/dsh-doc-impact"',
   "the ModuleLoader factory id keys the served bundle",
 );

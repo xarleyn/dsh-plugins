@@ -59,7 +59,7 @@ function QaAttachedImage({
   );
 }
 import type { QaFeedbackReason } from "../../types.js";
-import { FEEDBACK_REASON_LABELS } from "../admin/format.js";
+import { FEEDBACK_REASON_LABELS } from "../admin/copy.js";
 import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";

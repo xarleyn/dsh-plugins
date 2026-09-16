@@ -100,6 +100,13 @@ export function stampOf(stat: Stats): FileStamp {
 }
 
 const SECRET_BYTES = 32;
+/**
+ * The file carries scrypt password material and the HMAC key that backs every
+ * account token, so it is created readable by its owner only. POSIX honors the
+ * creation mode (the atomic rename keeps it); Windows ignores it, which the
+ * platform's own ACLs already cover.
+ */
+const FILE_MODE = 0o600;
 
 /** The accounts file lives next to the DSH home the launcher exports. */
 export function defaultAccountsFilePath(): string {
@@ -171,7 +178,10 @@ export function persistAccountsFile(
   mkdirSync(path.dirname(filePath), { recursive: true });
   // A per-process temp name: the Host and the CLI never race on one file.
   const temp = `${filePath}.${process.pid}.tmp`;
-  writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+  writeFileSync(temp, `${JSON.stringify(file, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: FILE_MODE,
+  });
   renameSync(temp, filePath);
   stamp.current = stampOf(statSync(filePath));
 }

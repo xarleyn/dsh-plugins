@@ -4,11 +4,16 @@ import {
   readdirSync,
   readFileSync,
   existsSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { QaAccounts, QaAccountsError } from "../src/accounts/store.js";
+import {
+  QA_SESSION_CLAIM_WINDOW_MS,
+  QaAccounts,
+  QaAccountsError,
+} from "../src/accounts/store.js";
 import { QaAttestationError } from "../src/attestation.js";
 import { QaPolicyAdmission } from "../src/secure-session.js";
 import { resolveConfig } from "../src/resolve-config.js";
@@ -128,7 +133,9 @@ describe("QA accounts store", () => {
       const session = accounts.register("a@b.co", "password-1");
       userId = session.user.id;
       accounts.claimSessions(session.token, ["s-1", "s-2"]);
-      accounts.ensureSessionAccess(session.token, "s-3");
+      accounts.ensureSessionAccess(session.token, "s-3", {
+        createdAt: Date.now(),
+      });
     }
     expect(existsSync(path.join(dir, "qa-accounts.json.tmp"))).toBe(false);
     const raw = JSON.parse(readFileSync(filePath, "utf8")) as {
@@ -220,6 +227,96 @@ describe("QA accounts store", () => {
     expect(accounts.ownedSessionIds(b.token)).toEqual(["s-3"]);
   });
 
+  it("refuses a role outside the role union on the administrative write", () => {
+    const accounts = store();
+    const session = accounts.register("a@b.co", "password-1");
+    // The console sends the role over the wire as a string; a hand-rolled
+    // request can name a role the permission tables do not know. Storing it
+    // would crash every later permission check for the account.
+    const garbage = "superadmin" as unknown as "user";
+    expect(
+      reasonOf(() => accounts.setAccessRole(session.user.id, garbage)),
+    ).toBe("invalid-role");
+    expect(accounts.whoami(session.token)).toMatchObject({
+      authenticated: true,
+      user: { role: "admin" },
+    });
+    // The operator CLI path validates against the same union.
+    expect(
+      reasonOf(() =>
+        accounts.addUser("b@b.co", "password-2", { role: garbage }),
+      ),
+    ).toBe("invalid-role");
+  });
+
+  it("bounds the first-come auto-claim to fresh root sessions", () => {
+    const accounts = store();
+    const user = accounts.register("a@b.co", "password-1");
+    const now = Date.now();
+    // A delegated subagent session is never claimable: it has no QA owner.
+    expect(
+      reasonOf(() =>
+        accounts.ensureSessionAccess(user.token, "session-child", {
+          hasParent: true,
+        }),
+      ),
+    ).toBe("session-owned-elsewhere");
+    // A fresh session joins the attesting user...
+    accounts.ensureSessionAccess(user.token, "s-fresh", {
+      createdAt: now - QA_SESSION_CLAIM_WINDOW_MS + 1_000,
+    });
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["s-fresh"]);
+    // ...an established one is refused instead of silently attached...
+    expect(
+      reasonOf(() =>
+        accounts.ensureSessionAccess(user.token, "s-established", {
+          createdAt: now - QA_SESSION_CLAIM_WINDOW_MS - 1_000,
+        }),
+      ),
+    ).toBe("session-owned-elsewhere");
+    // ...and stays unowned, so ownership is never granted by a drive-by open.
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["s-fresh"]);
+    // Unknown facts (a session this Host has not materialized yet) defer the
+    // claim: a delegated child from a previous run must not gain an owner
+    // from a drive-by open.
+    accounts.ensureSessionAccess(user.token, "s-unknown");
+    expect(accounts.ownedSessionIds(user.token)).not.toContain("s-unknown");
+  });
+
+  it("creates the accounts file readable by its owner only", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-mode-"));
+    const filePath = path.join(dir, "qa-accounts.json");
+    new QaAccounts(filePath, {
+      sessionTtlDays: 30,
+      allowRegistration: true,
+    }).register("a@b.co", "password-1");
+    // Windows ignores the creation mode; the platform's own ACLs cover it.
+    if (process.platform !== "win32") {
+      expect(statSync(filePath).mode & 0o777).toBe(0o600);
+    }
+  });
+
+  it("reloads the ownership map before an admin lists it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-ownership-"));
+    const filePath = path.join(dir, "qa-accounts.json");
+    const options = { sessionTtlDays: 30, allowRegistration: true };
+    const host = new QaAccounts(filePath, options);
+    const admin = host.register("op@example.com", "password-1");
+    const user = host.register("user@example.com", "password-2");
+    // The CLI is another process writing the same file; it attests a live
+    // session, so the facts are known.
+    const cli = new QaAccounts(filePath, options);
+    cli.ensureSessionAccess(user.token, "s-external", {
+      createdAt: Date.now(),
+    });
+    expect(
+      host
+        .listOwnership(admin.token)
+        .map((row) => row.sessionId)
+        .sort(),
+    ).toContain("s-external");
+  });
+
   it("enforces ownership before the admission boundary resolves agents", async () => {
     const accounts = store();
     const a = accounts.register("a@b.co", "password-1");
@@ -288,13 +385,118 @@ describe("QA accounts store", () => {
     }
   });
 
+  it("refuses to attest or claim a delegated subagent session", async () => {
+    const accounts = store();
+    const a = accounts.register("a@b.co", "password-1");
+    const gate: QaAccountsGate = {
+      enforceSessionAccess: (token, sessionId, facts) =>
+        accounts.ensureSessionAccess(token, sessionId, facts),
+      userWorkspace: () => "D:/qa-user",
+    };
+    // The Host registry knows the session is a delegated child; the agent
+    // resolves fine, so the refusal must come from the parent check itself.
+    const child = {
+      session: {
+        header: { parentSession: "session-parent", createdAt: Date.now() },
+      },
+    };
+    const admission = new QaPolicyAdmission(
+      {
+        on: () => () => undefined,
+        sessions: { get: () => child.session },
+        agents: { get: () => child },
+        sessionController: {
+          resolveAgent: async () => ({ error: new Error("no such session") }),
+        },
+        tools: { guard: () => () => undefined },
+      } as never,
+      () => resolveConfig(),
+      {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        close() {},
+      } as never,
+      gate,
+    );
+    // An unowned child cannot be claimed into existence by the gate...
+    try {
+      await admission.secureSession(a.token, "session-child");
+      expect.unreachable("subagent sessions must not be attestable");
+    } catch (error) {
+      expect((error as QaAttestationError).reason).toBe(
+        "session-owned-elsewhere",
+      );
+    }
+    expect(accounts.ownedSessionIds(a.token)).toEqual([]);
+    // ...and a pre-owned child is still refused at the composition check,
+    // however the request reached it. The ownership is seeded explicitly:
+    // ensureSessionAccess alone defers the claim for an unmaterialized child.
+    accounts.claimSessions(a.token, ["session-child"]);
+    try {
+      await admission.secureSession(a.token, "session-child");
+      expect.unreachable("owned subagent sessions must not be attestable");
+    } catch (error) {
+      expect((error as QaAttestationError).reason).toBe("adoption-refused");
+    }
+  });
+
+  it("leaves a previous-run delegated child unowned when admission refuses it", async () => {
+    const accounts = store();
+    const a = accounts.register("a@b.co", "password-1");
+    const gate: QaAccountsGate = {
+      enforceSessionAccess: (token, sessionId, facts) =>
+        accounts.ensureSessionAccess(token, sessionId, facts),
+      userWorkspace: () => "D:/qa-user",
+    };
+    // The child session comes from a previous Host run: it is not in the
+    // registry yet, so the ownership facts are unknown and the claim is
+    // deferred — but materializing it for attestation reveals the delegated
+    // parent, and the refusal must land before any claim is recorded.
+    const child = {
+      session: {
+        header: { parentSession: "session-parent", createdAt: Date.now() },
+      },
+    };
+    const admission = new QaPolicyAdmission(
+      {
+        on: () => () => undefined,
+        sessions: { get: () => undefined },
+        agents: { get: () => child },
+        sessionController: {
+          resolveAgent: async () => ({ error: new Error("no such session") }),
+        },
+        tools: { guard: () => () => undefined },
+      } as never,
+      () => resolveConfig(),
+      {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        close() {},
+      } as never,
+      gate,
+    );
+    try {
+      await admission.secureSession(a.token, "session-child");
+      expect.unreachable("subagent sessions must not be attestable");
+    } catch (error) {
+      expect((error as QaAttestationError).reason).toBe("adoption-refused");
+    }
+    expect(accounts.ownedSessionIds(a.token)).toEqual([]);
+  });
+
   it("claims unowned sessions at access time and honors the admin role", () => {
     const accounts = store();
     const admin = accounts.register("a@b.co", "password-1");
     const user = accounts.register("b@b.co", "password-2");
     const outsider = accounts.register("c@b.co", "password-3");
     // First come, first served: an unowned session joins the attesting user.
-    accounts.ensureSessionAccess(user.token, "s-fresh");
+    accounts.ensureSessionAccess(user.token, "s-fresh", {
+      createdAt: Date.now(),
+    });
     expect(accounts.ownedSessionIds(user.token)).toEqual(["s-fresh"]);
     // Another user's session is refused with the dedicated reason...
     expect(
@@ -306,7 +508,11 @@ describe("QA accounts store", () => {
       role: "user",
     });
     // Unowned sessions are claimed for whoever attests first.
-    expect(accounts.ensureSessionAccess(admin.token, "s-other")).toMatchObject({
+    expect(
+      accounts.ensureSessionAccess(admin.token, "s-other", {
+        createdAt: Date.now(),
+      }),
+    ).toMatchObject({
       id: admin.user.id,
     });
     expect(accounts.ownedSessionIds(admin.token)).toContain("s-other");
@@ -341,7 +547,7 @@ describe("QA accounts store", () => {
     const accounts = store();
     const admin = accounts.register("op@example.com", "password-1");
     const user = accounts.register("user@example.com", "password-2");
-    accounts.ensureSessionAccess(admin.token, "s-1");
+    accounts.ensureSessionAccess(admin.token, "s-1", { createdAt: Date.now() });
     accounts.claimSessions(user.token, ["s-2"]);
     // Disabled accounts still name their chats in the admin view.
     accounts.setUserDisabled("user@example.com", true);

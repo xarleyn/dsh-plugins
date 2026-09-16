@@ -1,6 +1,7 @@
 import { resolveConfig } from "../src/config.js";
 import {
   Bitrix24Provider,
+  credentialFromPlaintext,
   parseBitrixWebhook,
 } from "../src/providers/bitrix24/index.js";
 
@@ -54,6 +55,30 @@ describe("Bitrix24 provider", () => {
     ]) {
       expect(() => parseBitrixWebhook(invalid, [".bitrix24.ru"])).toThrow(
         /webhook URL/u,
+      );
+    }
+  });
+
+  it("keeps only a non-empty HTTPS webhook when reading a stored credential", () => {
+    expect(
+      credentialFromPlaintext(
+        JSON.stringify({
+          webhookBaseUrl: "https://company.bitrix24.ru/rest/42/abcdefghijk",
+        }),
+      ),
+    ).toEqual({
+      webhookBaseUrl: "https://company.bitrix24.ru/rest/42/abcdefghijk",
+    });
+    for (const invalid of [
+      "not json",
+      "{}",
+      JSON.stringify({ webhookBaseUrl: "" }),
+      JSON.stringify({ webhookBaseUrl: 42 }),
+      JSON.stringify({ webhookBaseUrl: "http://company.bitrix24.ru/rest/1/x" }),
+      JSON.stringify({ webhookBaseUrl: "company.bitrix24.ru/rest/1/x" }),
+    ]) {
+      expect(() => credentialFromPlaintext(invalid)).toThrow(
+        /Stored credential is invalid/u,
       );
     }
   });

@@ -160,6 +160,12 @@ const configSchema = z.object({
         .min(1)
         .max(365)
         .default(D.accounts.sessionTtlDays),
+      maxAuthAttemptsPerMinute: z
+        .number()
+        .step(1)
+        .min(1)
+        .max(600)
+        .default(D.accounts.maxAuthAttemptsPerMinute),
       showOtherUsersChats: z.boolean().default(D.accounts.showOtherUsersChats),
       perUserWorkspace: z.boolean().default(D.accounts.perUserWorkspace),
       profile: z
@@ -222,6 +228,7 @@ const configSchema = z.object({
   entry: z
     .object({
       redirectNonLoopback: z.boolean().default(D.entry.redirectNonLoopback),
+      cookieBootstrap: z.boolean().default(D.entry.cookieBootstrap),
     })
     .default({ ...D.entry }),
   tools: z

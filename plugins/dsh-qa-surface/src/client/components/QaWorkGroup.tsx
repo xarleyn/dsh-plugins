@@ -3,6 +3,7 @@ import type { QaWorkItem } from "../../types.js";
 import { formatWorkDuration } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { thinkingPhrase } from "./thinking-phrases.js";
+import { useNow } from "./use-now.js";
 
 export interface QaWorkGroupProps {
   /** "error" marks a turn the host ended with a provider failure. */
@@ -232,7 +233,9 @@ export const QaWorkGroup = memo(
     thinkingPhrases,
   }: QaWorkGroupProps) {
     const [open, setOpen] = useState(status === "running");
-    const [now, setNow] = useState(() => Date.now());
+    // The duration only moves while the turn runs; the tick is the shared
+    // per-second clock the thinking phrase reads too.
+    const now = useNow(status === "running" && startedAt !== undefined);
     const previousStatus = useRef(status);
 
     useEffect(() => {
@@ -249,13 +252,6 @@ export const QaWorkGroup = memo(
       }
       previousStatus.current = status;
     }, [status]);
-
-    useEffect(() => {
-      if (status !== "running" || startedAt === undefined) return;
-      setNow(Date.now());
-      const timer = setInterval(() => setNow(Date.now()), 1_000);
-      return () => clearInterval(timer);
-    }, [startedAt, status]);
 
     const elapsed = (endedAt ?? now) - (startedAt ?? now);
     const duration =

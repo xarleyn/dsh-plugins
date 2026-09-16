@@ -7,9 +7,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
+import { fixedClock } from "@yadsh/dsh-test-kit";
+
 import { FilesystemCasStore } from "../../src/cas/filesystem-store.js";
 import type { CompressionMode } from "../../src/cas/compression.js";
-import { silentPluginLogger } from "../../src/logging.js";
 import { CasCounters } from "../../src/observability/counters.js";
 import type { ResolvedCasResultsConfig } from "../../src/config.js";
 import { resolveCasResultsConfig } from "../../src/config.js";
@@ -48,10 +50,10 @@ export function buildStore(
   root: string,
   compression: CompressionMode = "none",
 ): FilesystemCasStore {
-  let tick = 0;
+  const clock = fixedClock();
   return new FilesystemCasStore(root, {
     compression,
-    now: () => new Date(1_700_000_000_000 + (tick += 1) * 1_000),
+    now: () => new Date(clock()),
   });
 }
 

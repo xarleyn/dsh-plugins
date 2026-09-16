@@ -34,6 +34,15 @@ export function resolveAccounts(
     input.accounts?.sessionTtlDays ??
     DEFAULT_QA_SURFACE_CONFIG.accounts.sessionTtlDays;
   assertIntInRange("accounts.sessionTtlDays", sessionTtlDays, 1, 365);
+  const maxAuthAttemptsPerMinute =
+    input.accounts?.maxAuthAttemptsPerMinute ??
+    DEFAULT_QA_SURFACE_CONFIG.accounts.maxAuthAttemptsPerMinute;
+  assertIntInRange(
+    "accounts.maxAuthAttemptsPerMinute",
+    maxAuthAttemptsPerMinute,
+    1,
+    600,
+  );
   const accountsEnabled =
     input.accounts?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.accounts.enabled;
   const instructionsMaxLength =
@@ -119,6 +128,7 @@ export function resolveAccounts(
       input.accounts?.allowRegistration ??
       DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,
     sessionTtlDays,
+    maxAuthAttemptsPerMinute,
     showOtherUsersChats:
       input.accounts?.showOtherUsersChats ??
       DEFAULT_QA_SURFACE_CONFIG.accounts.showOtherUsersChats,

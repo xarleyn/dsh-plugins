@@ -1,8 +1,8 @@
 # Architecture overview
 
 A short map of the monorepo for humans. The full normative specification is
-[dsh-plugins-monorepo-SPEC.md](../dsh-plugins-monorepo-SPEC.md); the plugin
-rulebook is [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md).
+[SPEC.md](../SPEC.md); the plugin rulebook is
+[PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md).
 
 ## Layout
 
@@ -11,8 +11,9 @@ rulebook is [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md).
 | `plugins/*` | One independently versioned plugin per directory (public npm packages `@yadsh/dsh-*`) |
 | `packages/plugin-log` | The only published shared package: structured file logging + runtime consumer discovery |
 | `packages/plugin-kit` | Private shared runtime helpers, incl. `@yadsh/dsh-plugin-kit/client` (settings-card scaffolding) |
+| `packages/plugin-scripts` | Private shared build/verify script runners (`@yadsh/dsh-plugin-scripts/generate-typert`) |
 | `packages/config` | Private shared tsconfig presets (`tsconfig/{base,node,browser}`) and the Vitest preset |
-| `packages/test-kit` | Private shared test helpers (`createMockContext`, `createTempFixture`) |
+| `packages/test-kit` | Private shared test helpers (`fixedClock`, `memoryTable`, `listenerCollector`, log fixtures, module-loader stub) |
 | `tooling/generators/dsh-plugin` | `pnpm nx g dsh-plugin` scaffold generator |
 | `scripts/` | Repo-level gates: hygiene, card contract, logging contract, dependency check, packed-tarball verify |
 | `docs/` | Human documentation (this file, guidelines, logging, releasing, compatibility) |

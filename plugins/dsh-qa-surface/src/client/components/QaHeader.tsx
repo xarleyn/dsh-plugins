@@ -233,7 +233,9 @@ export function QaHeader({
             )}
           </div>
         </div>
-        <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
+        {/* Not a tablist yet: the tab bar is a single current page marker, and
+        an aria-label without a widget role would never be announced. */}
+        <div className="dsh-qa-header__tabs">
           <span aria-current="page">Чат</span>
         </div>
       </div>

@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+// The `types` subpath keeps the client ISessions Context merge authoritative,
+// mirroring the admission boundary's import.
+import { SessionId } from "@deepseek-ai/dsh-session/types";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "../accounts/store.js";
-import type { QaAccounts } from "../accounts/store.js";
+import type { QaAccounts, QaSessionFacts } from "../accounts/store.js";
 import type { QaAgentToolGrants } from "../enforcement/tool-grants.js";
 import { QaAgentToolGrants as Grants } from "../enforcement/tool-grants.js";
 import type {
@@ -211,7 +214,7 @@ export class QaAccessService {
   readonly catalog: QaCapabilityCatalog;
 
   constructor(
-    ctx: Context,
+    private readonly ctx: Context,
     private readonly options: {
       readonly accounts: () => QaAccounts | undefined;
       readonly config: () => ResolvedQaSurfaceConfig;
@@ -226,6 +229,38 @@ export class QaAccessService {
       options.dynamicToolNames ?? (() => []),
       () => this.roles.snapshot().subroles.map(({ id }) => id),
     );
+  }
+
+  /**
+   * The Host-registered facts of one session, for the accounts store's
+   * bounded auto-claim. Absent facts (the session registry is unavailable,
+   * or this chat is not materialized here) keep the historical claim.
+   */
+  private sessionFacts(sessionId: string): QaSessionFacts {
+    // Structural access: test and embedding contexts may compose no session
+    // registry at all.
+    const registry = (
+      this.ctx as {
+        sessions?: {
+          get(id: SessionId):
+            | {
+                readonly header?: {
+                  readonly createdAt?: number;
+                  readonly parentSession?: unknown;
+                };
+              }
+            | undefined;
+        };
+      }
+    ).sessions;
+    const header = registry?.get(SessionId(sessionId))?.header;
+    if (header === undefined) return {};
+    return {
+      ...(header.createdAt === undefined
+        ? {}
+        : { createdAt: header.createdAt }),
+      ...(header.parentSession === undefined ? {} : { hasParent: true }),
+    };
   }
 
   current(token: string): QaCurrentAccess {
@@ -244,7 +279,11 @@ export class QaAccessService {
 
   session(token: string, sessionId: string): QaSessionAccess {
     const accounts = this.requireAccounts();
-    const owner = accounts.ensureSessionAccess(token, sessionId);
+    const owner = accounts.ensureSessionAccess(
+      token,
+      sessionId,
+      this.sessionFacts(sessionId),
+    );
     const record = accounts.sessionAccess(sessionId);
     const config = this.roles.snapshot();
     const access = normalizeUserAccess(accounts.accessOf(owner.id), config);
@@ -311,7 +350,12 @@ export class QaAccessService {
   ): Promise<QaResolvedSessionPolicy | undefined> {
     const accounts = this.options.accounts();
     if (accounts === undefined) return undefined;
-    const owner = accounts.ensureSessionAccess(token, sessionId);
+    const owner = accounts.ensureSessionAccess(token, sessionId, {
+      createdAt: agent.session.header.createdAt,
+      ...(agent.session.header.parentSession === undefined
+        ? {}
+        : { hasParent: true }),
+    });
     let record = accounts.sessionAccess(sessionId);
     const config = this.roles.snapshot();
     const assignment = normalizeUserAccess(accounts.accessOf(owner.id), config);

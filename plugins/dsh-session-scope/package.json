@@ -76,7 +76,6 @@
     "verify": "pnpm run verify:client && pnpm run verify:compatibility && pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
-    "release:prepare": "node scripts/prepare-release.mjs",
     "prepack": "pnpm run build && pnpm run verify",
     "prepublishOnly": "pnpm run check"
   },
@@ -153,6 +152,7 @@
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",

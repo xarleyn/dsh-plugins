@@ -1,5 +1,6 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
+import { hostMatchesSuffix } from "../shared/host.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -28,17 +29,30 @@ export function credentialFromPlaintext(plaintext: string): BitrixCredential {
       "Stored credential is invalid",
     );
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    typeof (parsed as { webhookBaseUrl?: unknown }).webhookBaseUrl !== "string"
-  ) {
+  const webhookBaseUrl = (parsed as { webhookBaseUrl?: unknown } | null)
+    ?.webhookBaseUrl;
+  if (typeof webhookBaseUrl !== "string" || webhookBaseUrl === "") {
     throw new IntegrationError(
       "CredentialRevoked",
       "Stored credential is invalid",
     );
   }
-  return parsed as BitrixCredential;
+  let url: URL;
+  try {
+    url = new URL(webhookBaseUrl);
+  } catch {
+    throw new IntegrationError(
+      "CredentialRevoked",
+      "Stored credential is invalid",
+    );
+  }
+  if (url.protocol !== "https:") {
+    throw new IntegrationError(
+      "CredentialRevoked",
+      "Stored credential is invalid",
+    );
+  }
+  return { webhookBaseUrl };
 }
 
 /** Parse a complete incoming-webhook URL without ever returning its secret part. */
@@ -56,8 +70,8 @@ export function parseBitrixWebhook(
     throw new IntegrationError("InvalidCredential", "Webhook URL is invalid");
   }
   const host = url.hostname.toLowerCase();
-  const hostAllowed = allowedSuffixes.some(
-    (suffix) => host.endsWith(suffix) && host.length > suffix.length,
+  const hostAllowed = allowedSuffixes.some((suffix) =>
+    hostMatchesSuffix(host, suffix),
   );
   const match = /^\/rest\/(\d+)\/([A-Za-z0-9_-]{8,})\/?$/u.exec(url.pathname);
   if (

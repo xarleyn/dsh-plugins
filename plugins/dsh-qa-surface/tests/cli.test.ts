@@ -187,7 +187,9 @@ describe("qa-accounts CLI", () => {
     expect(reloaded().login("a@b.co", "password-1").user.email).toBe("a@b.co");
 
     const before = reloaded().login("a@b.co", "password-1");
-    reloaded().ensureSessionAccess(before.token, "s-1");
+    reloaded().ensureSessionAccess(before.token, "s-1", {
+      createdAt: Date.now(),
+    });
     expect(
       spawn(
         [...argv, "set-password", "a@b.co", "--password-stdin"],

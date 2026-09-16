@@ -494,6 +494,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | **Packed smoke** | Тарбол ставится в чистый consumer, вход грузится в Node | `scripts/tarball-verify.sh` | repo-гейт |
 | **Browser e2e** | Реальный DSH + плагин в браузере | Playwright (`smoke-packed-dsh.mjs --browser`) | по возможности |
 
+Раскладка тестов по умолчанию — плоская: `tests/*.test.ts`, зеркалящие
+`src/`, плюс общие фикстуры и фейки в `tests/helpers/`. Подкаталоги
+`tests/unit/` и `tests/integration/` вводятся только тогда, когда в пакете
+реально появились интеграционные тесты, требующие отдельного слоя (как в
+`dsh-cas-results`); структура «про запас» не нужна — общий vitest-пресет
+находит `.test.ts` на любой глубине.
+
 ### 6.2 Что обязательно покрыть
 
 - Парсинг/валидацию конфига (включая пустой и невалидный).
@@ -543,8 +550,9 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build/ver
 ```
 
 3. **Feature detection вместо версионных проверок** там, где это возможно:
-   проверяйте наличие возможности, а не версию пакета (`hasCompatibleMajor` из
-   `plugin-kit` — для грубых гейтов старта).
+   проверяйте наличие возможности, а не версию пакета — для грубых гейтов
+   старта объявляйте требование в `compatibility.json`, а не сравнивайте
+   мажоры в рантайме.
 4. Опора на `optionalClientProtocols` должна быть безопасной при их отсутствии.
 5. Сужение/расширение поддерживаемого диапазона DSH — **breaking change**
    пакета и требует обновления `docs/COMPATIBILITY.md` + README плагина.

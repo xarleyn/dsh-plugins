@@ -1,5 +1,5 @@
 /**
- * The document subsystem of `dsh-qa-surface` (§38).
+ * The document subsystem (§38) of the `@yadsh/dsh-documents` plugin.
  *
  * Markdown is the canonical source for everything the agent creates, the
  * backends that turn it into DOCX/PDF (or read it back out of them) live
@@ -190,7 +190,7 @@ export function installDocumentSubsystem(
     timer.unref?.();
     ctx.effect(
       () => () => clearInterval(timer),
-      "dsh-qa-surface.documents-retention",
+      "dsh-documents.documents-retention",
     );
   }
 

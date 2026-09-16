@@ -57,9 +57,41 @@ export interface QaAccountsOptions {
   readonly identityFields?: readonly QaAccountIdentityField[];
 }
 
+/**
+ * What the caller knows about the live session it is gating. The store is
+ * file-backed and session-agnostic; the Host supplies these facts so the
+ * first-come auto-claim can refuse what it must not attach silently. Absent
+ * facts (the operator CLI, a session the Host has not materialized) keep the
+ * historical unbounded claim.
+ */
+export interface QaSessionFacts {
+  /** Epoch ms the Host recorded as the session's creation. */
+  readonly createdAt?: number;
+  /** True when the session is a delegated child of another chat. */
+  readonly hasParent?: boolean;
+}
+
 const SCRYPT_KEY_LENGTH = 32;
 const MAX_CLAIM_BATCH = 50;
 const MAX_SESSION_ID_LENGTH = 200;
+
+/**
+ * How long an unowned session stays claimable at access time. Mirrors the
+ * admission bootstrap window: a session older than this has either user
+ * history or a settled composition, so silently attaching it to whoever
+ * asked first would hand over a conversation nobody assigned to them.
+ * Owners are unaffected — their claim already exists in the file.
+ */
+export const QA_SESSION_CLAIM_WINDOW_MS = 120_000;
+
+const ACCOUNT_ROLES: readonly QaAccountRole[] = ["admin", "reviewer", "user"];
+
+/** Wire-safe role guard: the browser sends a string, not the union. */
+function isAccountRole(value: unknown): value is QaAccountRole {
+  return (
+    typeof value === "string" && ACCOUNT_ROLES.includes(value as QaAccountRole)
+  );
+}
 
 function toPublic(user: StoredUser): QaAccountUserPublic {
   return {
@@ -293,12 +325,46 @@ export class QaAccounts {
    * Ownership gate for one session: claim unowned sessions for the requesting
    * user (first come, first served — the pre-accounts migration path), refuse
    * foreign sessions unless the caller administers the deployment.
+   *
+   * The auto-claim is bounded when the caller can describe the live session
+   * ({@link QaSessionFacts}): a delegated subagent session is never claimed,
+   * and a session past the freshness window is refused instead of silently
+   * attached to whoever opened it first. Both refusals keep the file intact —
+   * the session stays unowned, so the operator CLI or a deliberate future
+   * claim can still resolve it.
    */
-  ensureSessionAccess(token: string, sessionId: string): QaAccountUserPublic {
+  ensureSessionAccess(
+    token: string,
+    sessionId: string,
+    facts?: QaSessionFacts,
+  ): QaAccountUserPublic {
     this.reloadIfChanged();
     const user = this.requireUser(token);
     const owner = this.file.ownership[sessionId];
     if (owner === undefined) {
+      if (facts?.hasParent === true) {
+        throw new QaAccountsError(
+          "session-owned-elsewhere",
+          "a delegated subagent session has no QA owner",
+        );
+      }
+      if (
+        facts?.createdAt !== undefined &&
+        Date.now() - facts.createdAt > QA_SESSION_CLAIM_WINDOW_MS
+      ) {
+        throw new QaAccountsError(
+          "session-owned-elsewhere",
+          "an established session is not claimed automatically",
+        );
+      }
+      if (facts?.createdAt === undefined) {
+        // The session header is unknown — the session is not materialized in
+        // this Host process, so a delegated child from a previous run cannot
+        // be told apart from a fresh chat. Grant provisional access without
+        // recording ownership; admission re-runs this check once the session
+        // is live and its header is known.
+        return toPublic(user);
+      }
       this.file = {
         ...this.file,
         ownership: {
@@ -425,6 +491,7 @@ export class QaAccounts {
    * admin sidebar groups chats by; ordinary accounts get a dedicated refusal.
    */
   listOwnership(token: string): readonly QaOwnershipEntry[] {
+    this.reloadIfChanged();
     const user = this.requireUser(token);
     if (user.role !== "admin") {
       throw new QaAccountsError(
@@ -562,8 +629,21 @@ export class QaAccounts {
     }));
   }
 
-  /** Replace one account's authorization role, addressed by stable id. */
+  /**
+   * Replace one account's authorization role, addressed by stable id.
+   *
+   * The union is re-checked here even though the type names it: the value
+   * arrives from the browser's admin console over the wire, and a role outside
+   * the union would be stored as-is and then crash every later permission
+   * check (`PERMISSIONS[role]` lookup) for that account.
+   */
   setAccessRole(userId: string, role: QaAccountRole): QaAccountUserPublic {
+    if (!isAccountRole(role)) {
+      throw new QaAccountsError(
+        "invalid-role",
+        "role must be admin, reviewer or user",
+      );
+    }
     return toPublic(this.editUserById(userId, (user) => ({ ...user, role })));
   }
 
@@ -705,12 +785,7 @@ export class QaAccounts {
       password,
       options.displayName,
     );
-    if (
-      options.role !== undefined &&
-      options.role !== "admin" &&
-      options.role !== "reviewer" &&
-      options.role !== "user"
-    ) {
+    if (options.role !== undefined && !isAccountRole(options.role)) {
       throw new QaAccountsError(
         "invalid-role",
         "role must be admin, reviewer or user",

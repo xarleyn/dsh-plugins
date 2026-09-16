@@ -8,6 +8,8 @@
  * same check runs when the credential is stored and again on every call, so
  * tightening the policy closes existing connections instead of only new ones.
  */
+import { hostMatchesPattern } from "../shared/host.js";
+
 export type TeamCityNetworkMode = "allowlist" | "trusted-private";
 
 export interface TeamCityNetworkPolicy {
@@ -66,13 +68,6 @@ function isPrivateAddress(hostname: string, cidrs: readonly string[]): boolean {
   });
 }
 
-/** `example.com` matches itself, `*.corp.example` matches its subdomains. */
-function matchesHostPattern(hostname: string, pattern: string): boolean {
-  if (!pattern.startsWith("*.")) return hostname === pattern;
-  const suffix = pattern.slice(1);
-  return hostname.endsWith(suffix) && hostname.length > suffix.length;
-}
-
 function hostAllowed(hostname: string, policy: TeamCityNetworkPolicy): boolean {
   if (isIpLiteral(hostname)) {
     // A literal address is only ever matched by a network, never by a name:
@@ -93,7 +88,7 @@ function hostAllowed(hostname: string, policy: TeamCityNetworkPolicy): boolean {
     return true;
   }
   return policy.allowedHosts.some((pattern) =>
-    matchesHostPattern(hostname, pattern),
+    hostMatchesPattern(hostname, pattern),
   );
 }
 

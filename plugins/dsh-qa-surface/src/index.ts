@@ -228,10 +228,10 @@ export class QaSurface extends TypertRemoteService {
       this.logger,
       // Identity half of admission; no-ops while accounts stay disabled.
       {
-        enforceSessionAccess: (token, sessionId) => {
+        enforceSessionAccess: (token, sessionId, facts) => {
           return this.accountRemotes
             .resolve(this.getConfig())
-            ?.ensureSessionAccess(token, sessionId);
+            ?.ensureSessionAccess(token, sessionId, facts);
         },
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),

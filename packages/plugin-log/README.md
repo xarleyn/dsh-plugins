@@ -47,6 +47,24 @@ See the repository's
 [`docs/PLUGIN_LOGGING.md`](https://github.com/xarleyn/dsh-plugins/blob/main/docs/PLUGIN_LOGGING.md)
 for the complete behavior and API contract.
 
+## Structural logging surface
+
+Plugins that keep their services decoupled from the concrete logger accept the
+narrow `PluginLoggerLike` contract (`debug`/`info`/`warn`/`error` with event
+codes and metadata fields). The real `PluginLogger` satisfies it structurally,
+and `silentPluginLogger()` provides the no-op stand-in for tests and optional
+diagnostics:
+
+```ts
+import { getPluginLogger, silentPluginLogger, type PluginLoggerLike } from "@yadsh/dsh-plugin-log";
+
+function createService(log: PluginLoggerLike = silentPluginLogger()) {
+  log.info("service.ready", { modules: 3 });
+}
+
+createService(getPluginLogger({ pluginId: "dsh-example" }));
+```
+
 ## Development
 
 ```bash

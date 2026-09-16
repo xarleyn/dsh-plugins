@@ -19,6 +19,7 @@ import {
   getPluginLogger,
   resolveDshHome,
   type PluginLogger,
+  type PluginLoggerLike,
 } from "@yadsh/dsh-plugin-log";
 
 import { FilesystemCasStore } from "./cas/filesystem-store.js";
@@ -45,7 +46,6 @@ import {
   createPostExecuteListener,
   type CasPostExecuteListener,
 } from "./integration/post-execute.js";
-import type { PluginLoggerLike } from "./logging.js";
 import { CasCounters, deriveCasMetrics } from "./observability/counters.js";
 import { createGcTool } from "./tools/gc.js";
 import { createInfoTool } from "./tools/info.js";

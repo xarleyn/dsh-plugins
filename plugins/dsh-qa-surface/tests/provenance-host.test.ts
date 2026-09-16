@@ -226,6 +226,38 @@ describe("Host provenance lifecycle", () => {
     restoredHost.dispose();
   });
 
+  it("keeps the durable snapshots of a disposed session", () => {
+    const store = new MemoryQaProvenanceSnapshotStore();
+    const session = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
+    const world = harness([session.session]);
+    const host = new QaProvenanceHost(world.ctx, () => resolveConfig(), store);
+
+    world.emit("agent/turn-stopping", {
+      agent: { id: "root", session: session.session },
+      turn: 1,
+    });
+    expect(store.list("root")).toHaveLength(1);
+    // Disposal only forgets the in-memory records: `session/disposed` also
+    // fires for runtime teardown of a chat that still exists, and the
+    // durable copy is what restores its sources after a Host restart.
+    world.forgetSession("root");
+    expect(store.list("root")).toHaveLength(1);
+    const restoredHost = new QaProvenanceHost(
+      harness([]).ctx,
+      () => resolveConfig(),
+      store,
+    );
+    expect(restoredHost.bundles("root")).toMatchObject([
+      {
+        sessionId: "root",
+        turn: 1,
+        sources: [{ id: "file:docs/guide.md" }],
+      },
+    ]);
+    restoredHost.dispose();
+    host.dispose();
+  });
+
   it("bubbles nested observable child sources to the root turn", () => {
     const root = fakeSession("root", [event("turn/start", { turn: 4 }, 0)]);
     const childA = fakeSession(
@@ -424,7 +456,7 @@ describe("Host provenance lifecycle", () => {
     host.dispose();
   });
 
-  it("drops a disposed session's provenance records", () => {
+  it("forgets a disposed session's in-memory provenance records", () => {
     const root = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
     const world = harness([root.session]);
     const host = new QaProvenanceHost(world.ctx, () => resolveConfig());

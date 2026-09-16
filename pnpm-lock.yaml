@@ -236,6 +236,9 @@ importers:
       '@yadsh/dsh-plugin-generator':
         specifier: workspace:*
         version: link:tooling/generators/dsh-plugin
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:packages/plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -326,10 +329,6 @@ importers:
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
 
   packages/test-kit:
-    dependencies:
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../plugin-kit
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
@@ -371,6 +370,12 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
+      '@yadsh/dsh-test-kit':
+        specifier: workspace:^
+        version: link:../../packages/test-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -718,6 +723,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
@@ -752,6 +760,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -780,6 +791,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -938,6 +952,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
@@ -1451,6 +1468,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
@@ -1521,6 +1541,12 @@ importers:
       '@yadsh/dsh-plugin-kit':
         specifier: workspace:^
         version: link:../../packages/plugin-kit
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
+      '@yadsh/dsh-test-kit':
+        specifier: workspace:^
+        version: link:../../packages/test-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -1564,6 +1590,9 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
@@ -1613,6 +1642,9 @@ importers:
       '@yadsh/dsh-plugin-kit':
         specifier: workspace:^
         version: link:../../packages/plugin-kit
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
@@ -1668,6 +1700,12 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
+      '@yadsh/dsh-test-kit':
+        specifier: workspace:^
+        version: link:../../packages/test-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)

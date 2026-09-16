@@ -4,6 +4,7 @@ import type {
   SessionRecord,
 } from "@deepseek-ai/dsh-session-query";
 import { SessionLogOffset } from "@deepseek-ai/dsh-session";
+import { fixedClock } from "@yadsh/dsh-test-kit";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../src/config.js";
 import { MemoryCorrectionStore } from "../src/dsh/storage.js";
@@ -178,32 +179,32 @@ describe("CorrectionMinerEngine", () => {
   });
 
   it("keeps a hanging pending session alive while later events arrive", async () => {
-    let clock = 0;
-    const { engine } = liveEngine({ live: { pendingTtlMs: 100 } }, () => clock);
+    const clock = fixedClock(0, 0);
+    const { engine } = liveEngine({ live: { pendingTtlMs: 100 } }, clock);
     const correction = userEvent(0, "Не используй npm, используй pnpm.");
     const activity = assistantActivity(1);
     const session = liveSession("hanging", [correction, activity]);
 
     engine.observeEvent(session, correction);
-    clock = 90;
+    clock.set(90);
     engine.observeEvent(session, activity);
-    clock = 180;
+    clock.set(180);
     engine.observeDisposed(session);
 
     await vi.waitFor(() => expect(engine.count(session.header.cwd!)).toBe(1));
   });
 
   it("expires a pending session without turn/end and ignores a late dispose", async () => {
-    let clock = 0;
+    const clock = fixedClock(0, 0);
     const { engine, warnings } = liveEngine(
       { live: { pendingTtlMs: 100 } },
-      () => clock,
+      clock,
     );
     const correction = userEvent(0, "Не используй npm, используй pnpm.");
     const session = liveSession("expired", [correction]);
 
     engine.observeEvent(session, correction);
-    clock = 100;
+    clock.set(100);
     engine.observeDisposed(session);
 
     await Promise.resolve();
@@ -219,16 +220,16 @@ describe("CorrectionMinerEngine", () => {
   });
 
   it("evicts bounded pending sessions and events with metadata-only warnings", async () => {
-    let clock = 0;
+    const clock = fixedClock(0, 0);
     const { engine, warnings } = liveEngine(
       { live: { maxPendingSessions: 1, maxPendingEventsPerSession: 1 } },
-      () => clock,
+      clock,
     );
     const firstCorrection = userEvent(0, "Не используй npm, используй pnpm.");
     const first = liveSession("first", [firstCorrection]);
     engine.observeEvent(first, firstCorrection);
 
-    clock = 1;
+    clock.set(1);
     const secondCorrection = userEvent(0, "Не используй npm, используй pnpm.");
     const laterCorrection = userEvent(1, "Не используй npm, используй pnpm.");
     const second = liveSession("second", [secondCorrection, laterCorrection]);

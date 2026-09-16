@@ -26,11 +26,6 @@
       "type": "string",
       "default": "@yadsh"
     },
-    "withUi": {
-      "description": "Use the repository UI kit (requires packages/ui-kit).",
-      "type": "boolean",
-      "default": false
-    },
     "withTests": {
       "description": "Include pre-configured test setup with fixture helpers.",
       "type": "boolean",

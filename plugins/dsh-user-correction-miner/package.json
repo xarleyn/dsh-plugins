@@ -83,6 +83,8 @@
     "@deepseek-ai/dsh-storage-domain": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
+    "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
