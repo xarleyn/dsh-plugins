@@ -177,6 +177,11 @@ assert.match(admission, /qaToolPolicyPlan/u);
 // names the QA catalog registers on the agent, which no restriction can name.
 assert.match(admission, /installInheritableMask/u);
 assert.match(admission, /lockdown\.tool-mask-incomplete/u);
+// The sources fallback names this plugin's own reporter, so the policy may only
+// carry it where the deployment mounts it: elsewhere the fallback is what gives
+// way, not the chat.
+assert.match(admission, /sources\.report-tool-unmounted/u);
+assert.match(admission, /reportToolMissing/u);
 // The proof carries the deployment's pinned list; a subrole's narrower list is
 // a session fact the browser reads elsewhere, not the config it compares this
 // proof against.
