@@ -113,6 +113,29 @@ export function resolveAccounts(
     (input.accounts?.skills?.enabled ?? QA_SKILL_ENABLED_BY_DEFAULT) &&
     accountsEnabled &&
     perUserWorkspace;
+  const retention = {
+    pruneVanishedSessions:
+      input.accounts?.retention?.pruneVanishedSessions ??
+      DEFAULT_QA_SURFACE_CONFIG.accounts.retention.pruneVanishedSessions,
+    ownershipGraceHours:
+      input.accounts?.retention?.ownershipGraceHours ??
+      DEFAULT_QA_SURFACE_CONFIG.accounts.retention.ownershipGraceHours,
+    sweepIntervalMinutes:
+      input.accounts?.retention?.sweepIntervalMinutes ??
+      DEFAULT_QA_SURFACE_CONFIG.accounts.retention.sweepIntervalMinutes,
+  };
+  assertIntInRange(
+    "accounts.retention.ownershipGraceHours",
+    retention.ownershipGraceHours,
+    1,
+    8_760,
+  );
+  assertIntInRange(
+    "accounts.retention.sweepIntervalMinutes",
+    retention.sweepIntervalMinutes,
+    1,
+    1_440,
+  );
   return Object.freeze({
     enabled: accountsEnabled,
     allowRegistration:
@@ -123,6 +146,7 @@ export function resolveAccounts(
       input.accounts?.showOtherUsersChats ??
       DEFAULT_QA_SURFACE_CONFIG.accounts.showOtherUsersChats,
     perUserWorkspace,
+    retention: Object.freeze(retention),
     profile: Object.freeze({
       enabled:
         input.accounts?.profile?.enabled ??

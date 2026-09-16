@@ -205,9 +205,24 @@ the `.gitignore` fix that stops any of these files from being staged.
 
 | Phase | Content | State |
 | --- | --- | --- |
-| 0 | `src/storage/sqlite.ts` helper + tests | |
-| 1 | Sources: shard per session, retention, legacy split | |
-| 2 | Accounts: ownership eviction, snapshot dedup, SQLite | |
+| 1 | Sources: shard per session, retention, legacy split | landed (`36fdb91`) |
+| 2a | `src/storage/sqlite.ts` helper + tests | landed |
+| 2b | Accounts: ownership eviction, snapshot dedup | landed |
+| 2c | Accounts: move the store onto SQLite | next |
 | 3 | Integrations: SQLite, batched audit, retention | |
 | 4 | Capability policies and quality: SQLite, retention | |
 | 5 | CLI, ops script, deploy kits, changelog, docs | |
+
+## Measurements after phase 2b
+
+Applied to the live stand's own `qa-accounts.json` (3 days, 9 accounts, 87
+ownership records, 25 of them carrying a frozen snapshot):
+
+| | before | after |
+| --- | --- | --- |
+| file size | 84.3 KB | 26.8 KB (−68%) |
+| snapshots stored | 25 inline copies (37.6 KB) | 2 distinct |
+
+The 25 snapshots were 45% of the file and only two distinct policies; the
+rewrite is lossless, and every ownership record still reads its snapshot
+inline.

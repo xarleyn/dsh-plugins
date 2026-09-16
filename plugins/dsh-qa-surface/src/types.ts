@@ -684,6 +684,16 @@ export interface QaSurfaceConfig {
     readonly enabled?: boolean;
     readonly allowRegistration?: boolean;
     readonly sessionTtlDays?: number;
+    /**
+     * What happens to ownership records of chats the Harness no longer knows.
+     * A record is a chat's auth boundary, so only vanished chats are ever
+     * swept, and only after `ownershipGraceHours`.
+     */
+    readonly retention?: {
+      readonly pruneVanishedSessions?: boolean;
+      readonly ownershipGraceHours?: number;
+      readonly sweepIntervalMinutes?: number;
+    };
     /** Let admins see chats owned by other QA accounts. */
     readonly showOtherUsersChats?: boolean;
     /**
@@ -826,6 +836,11 @@ export interface ResolvedQaSurfaceConfig {
     readonly sessionTtlDays: number;
     readonly showOtherUsersChats: boolean;
     readonly perUserWorkspace: boolean;
+    readonly retention: {
+      readonly pruneVanishedSessions: boolean;
+      readonly ownershipGraceHours: number;
+      readonly sweepIntervalMinutes: number;
+    };
     readonly profile: {
       readonly enabled: boolean;
       readonly inject: boolean;

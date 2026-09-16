@@ -365,6 +365,13 @@ describe("qa surface config", () => {
       sessionTtlDays: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
+      // Ownership records of chats the Harness no longer knows are reclaimed
+      // hourly, and only once they are a day old.
+      retention: {
+        pruneVanishedSessions: true,
+        ownershipGraceHours: 24,
+        sweepIntervalMinutes: 60,
+      },
       profile: {
         enabled: true,
         inject: true,
@@ -467,6 +474,11 @@ describe("qa surface config", () => {
         sessionTtlDays: 7,
         showOtherUsersChats: false,
         perUserWorkspace: false,
+        retention: {
+          pruneVanishedSessions: true,
+          ownershipGraceHours: 24,
+          sweepIntervalMinutes: 60,
+        },
         profile: {
           enabled: true,
           inject: true,

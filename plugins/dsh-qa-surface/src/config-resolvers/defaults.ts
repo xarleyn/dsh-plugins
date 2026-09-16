@@ -85,6 +85,11 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       sessionTtlDays: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
+      retention: Object.freeze({
+        pruneVanishedSessions: true,
+        ownershipGraceHours: 24,
+        sweepIntervalMinutes: 60,
+      }),
       profile: Object.freeze({
         enabled: true,
         inject: true,

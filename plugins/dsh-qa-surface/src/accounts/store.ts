@@ -420,6 +420,46 @@ export class QaAccounts {
   }
 
   /**
+   * Drop ownership records for chats the Harness no longer knows.
+   *
+   * An ownership record is a chat's auth boundary — `ensureSessionAccess`
+   * claims an unowned session for whoever asks first — so a record is removed
+   * only when the caller reports the session gone *and* the claim is older
+   * than `graceHours`. A reservation racing its own creation therefore keeps
+   * its owner, and a live chat never becomes claimable by someone else. What
+   * this reclaims is the residue of deleted chats, which nothing else removes.
+   *
+   * @param isLive - whether the Harness still knows this session.
+   * @param graceHours - youngest claim the sweep may touch.
+   * @returns the session ids whose records were dropped.
+   */
+  pruneVanishedSessions(
+    isLive: (sessionId: string) => boolean,
+    graceHours: number,
+  ): readonly string[] {
+    this.reloadIfChanged();
+    const cutoff = Date.now() - graceHours * 3_600_000;
+    const ownership: Record<string, StoredOwnership> = {};
+    const removed: string[] = [];
+    for (const [sessionId, owner] of Object.entries(this.file.ownership)) {
+      const claimedAt = Date.parse(owner.claimedAt);
+      if (
+        Number.isFinite(claimedAt) &&
+        claimedAt < cutoff &&
+        !isLive(sessionId)
+      ) {
+        removed.push(sessionId);
+        continue;
+      }
+      ownership[sessionId] = owner;
+    }
+    if (removed.length === 0) return removed;
+    this.file = { ...this.file, ownership };
+    this.save();
+    return removed;
+  }
+
+  /**
    * Every ownership entry with the owner's display name resolved at read
    * time, oldest claim first. Admin-only: this is the cross-user view the
    * admin sidebar groups chats by; ordinary accounts get a dedicated refusal.
