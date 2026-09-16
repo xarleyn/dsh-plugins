@@ -219,9 +219,11 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # The release commit is replayed before dependencies are installed: pnpm
+      # makes a package's bin targets executable on POSIX, and `git am` refuses
+      # a worktree whose stat data no longer matches the index even when the
+      # content is identical. An install above this point rewrites that file's
+      # metadata and rejects a patch that carries nothing but versions.
       - name: Download the release commit
         if: needs.prepare.outputs.release_commit == 'true'
         uses: actions/download-artifact@v4
@@ -236,6 +238,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: git am "$RUNNER_TEMP/release-commit.patch"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Check dependency boundaries
         run: pnpm deps:check
@@ -286,9 +291,9 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+      # Replayed before the install, like the gates job: an install rewrites the
+      # stat data of pnpm's bin targets, and `git am` refuses a worktree that no
+      # longer matches the index even when the content is identical.
       - name: Download the release commit
         if: needs.prepare.outputs.release_commit == 'true'
         uses: actions/download-artifact@v4
@@ -302,6 +307,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: git am "$RUNNER_TEMP/release-commit.patch"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Verify project
         env:
