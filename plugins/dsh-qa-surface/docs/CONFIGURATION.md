@@ -195,8 +195,8 @@ confined to the user's directory, and writes are never exempted.
 ## Structured sources
 
 The `sources` block controls provenance independently from Activity rendering.
-The defaults collect parent and subagent results, persist a turn snapshot in
-the plugin-owned `$DSH_HOME/qa-sources.json`, hide discovery-only candidates,
+The defaults collect parent and subagent results, persist a per-turn shard under
+the plugin-owned `$DSH_HOME/qa-sources/`, hide discovery-only candidates,
 group visible evidence by kind, and promote at most five substantive
 `web_search` results when no fetch occurs. URL tracking parameters and
 overlapping file ranges are normalized during deduplication.
@@ -247,9 +247,11 @@ older prompt-authored bibliography convention.
 `accounts.enabled: true` mounts the login/registration gate in front of the
 QA surface and turns on server-side session ownership:
 
-- The store lives at `$DSH_HOME/qa-accounts.json` (created on first use). It
+- The store lives at `$DSH_HOME/qa-accounts.db` (created on first use). It
   holds scrypt password hashes, a persisted HMAC secret for the account
-  tokens, and the session ownership map. The path is not configurable and no
+  tokens, and the session ownership map. A `qa-accounts.json` written by a
+  pre-0.8.0 release beside it is imported once, verified and renamed to
+  `qa-accounts.json.migrated-<ISO>`; the path is not configurable and no
   secret ever reaches `describe()`.
 - `accounts.allowRegistration` (default true) controls self-service signup
   in the gate; the first account ever registered becomes `admin`.
@@ -546,7 +548,7 @@ Reading rules:
   best-effort skill loads with a warning that names the missing tools.
 
 Skill activation history is recorded per session in
-`$DSH_HOME/qa-accounts.json` (`skillActivations`), capped at the 100 most
+`$DSH_HOME/qa-accounts.db` (`skillActivations`), capped at the 100 most
 recent attempts.
 
 Known limitation: the `/` autocomplete menu is served by the standard DSH skill
@@ -578,8 +580,9 @@ Operators set the role with `qa-accounts add --role reviewer` or
 administrator.
 
 User feedback, reviewer verdicts, the manual review queue and the
-administrative audit trail live in `$DSH_HOME/qa-quality.json`, written
-atomically on every change and re-read when another process changes it. The
+administrative audit trail live in `$DSH_HOME/qa-quality.db` (a pre-0.8.0
+`qa-quality.json` beside it is imported on first use), one row per record,
+re-read when another process changes it. The
 file is separate from the capability policy on purpose: role configuration is
 something an operator may replace wholesale, while feedback and reviews are
 user data that must survive such a reset. Retention is bounded (most recent
@@ -593,7 +596,7 @@ same way and never overwrite the user's own signal: the two are different
 measurements and the console shows them side by side.
 
 Conversations are listed from two sources: the deployment's own session
-reservations in `qa-accounts.json`, enriched with the stored session headers
+reservations in `qa-accounts.db`, enriched with the stored session headers
 and logs when the running Harness serves a session-query backend. On a
 deployment without one, the console still lists every chat and its frozen
 capability snapshot and says why a transcript could not be shown; a log this
@@ -601,8 +604,9 @@ build cannot parse (an event type it does not know) is reported as unreadable
 instead of failing the page.
 
 Policy definitions and the compact audit trail are stored atomically in
-`$DSH_HOME/qa-capability-policies.json`. User assignments and the selected
-subrole/capability snapshot remain in `$DSH_HOME/qa-accounts.json`. Do not edit
+`$DSH_HOME/qa-capability-policies.db` (a pre-0.8.0 `qa-capability-policies.json`
+beside it is imported on first use). User assignments and the selected
+subrole/capability snapshot remain in `$DSH_HOME/qa-accounts.db`. Do not edit
 either file while the Host is running; use the administration UI. Policy
 changes apply to new conversations. Existing conversations retain their
 snapshot, except that a tool or skill removed from the live registry is no

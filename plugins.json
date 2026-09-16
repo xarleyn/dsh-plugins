@@ -5,6 +5,25 @@
   "githubTopic": "dsh-plugin",
   "plugins": [
     {
+      "name": "plugin-kit",
+      "npm": "@yadsh/dsh-plugin-kit",
+      "path": "packages/plugin-kit",
+      "description": "Shared runtime helpers for DSH plugins: logging scaffolds, config validation, compatibility checks and SQLite store plumbing",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "plugin-kit",
+        "sqlite",
+        "storage"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-kit",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
+      "client": false
+    },
+    {
       "name": "plugin-log",
       "npm": "@yadsh/dsh-plugin-log",
       "path": "packages/plugin-log",

@@ -525,6 +525,16 @@ export interface QaSkillRemoval {
 
 export interface QaSourcesConfig {
   readonly enabled?: boolean;
+  /**
+   * How much durable provenance the deployment keeps. Every bound counts
+   * turns, shards or days, and zero keeps everything for that bound.
+   */
+  readonly retention?: {
+    readonly maxTurnsPerSession?: number;
+    readonly maxSessions?: number;
+    readonly maxAgeDays?: number;
+    readonly sweepIntervalMinutes?: number;
+  };
   readonly collect?: {
     readonly parentAgent?: boolean;
     readonly subagents?: boolean;
@@ -679,6 +689,16 @@ export interface QaSurfaceConfig {
      * The limit backs the password checks, so the default stays tight.
      */
     readonly maxAuthAttemptsPerMinute?: number;
+    /**
+     * What happens to ownership records of chats the Harness no longer knows.
+     * A record is a chat's auth boundary, so only vanished chats are ever
+     * swept, and only after `ownershipGraceHours`.
+     */
+    readonly retention?: {
+      readonly pruneVanishedSessions?: boolean;
+      readonly ownershipGraceHours?: number;
+      readonly sweepIntervalMinutes?: number;
+    };
     /** Let admins see chats owned by other QA accounts. */
     readonly showOtherUsersChats?: boolean;
     /**
@@ -823,6 +843,11 @@ export interface ResolvedQaSurfaceConfig {
     readonly maxAuthAttemptsPerMinute: number;
     readonly showOtherUsersChats: boolean;
     readonly perUserWorkspace: boolean;
+    readonly retention: {
+      readonly pruneVanishedSessions: boolean;
+      readonly ownershipGraceHours: number;
+      readonly sweepIntervalMinutes: number;
+    };
     readonly profile: {
       readonly enabled: boolean;
       readonly inject: boolean;
@@ -858,6 +883,12 @@ export interface ResolvedQaSurfaceConfig {
   };
   readonly sources: {
     readonly enabled: boolean;
+    readonly retention: {
+      readonly maxTurnsPerSession: number;
+      readonly maxSessions: number;
+      readonly maxAgeDays: number;
+      readonly sweepIntervalMinutes: number;
+    };
     readonly collect: {
       readonly parentAgent: boolean;
       readonly subagents: boolean;

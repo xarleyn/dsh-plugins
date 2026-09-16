@@ -24,6 +24,11 @@ import {
 export interface QaIntegrationsConfig {
   readonly enabled?: boolean;
   readonly dataPath?: string;
+  /**
+   * How long the audit trail is kept. Rows older than this are dropped as the
+   * log is written, and a hard row cap applies whatever this says.
+   */
+  readonly auditRetentionDays?: number;
   readonly masterKeyPath?: string;
   readonly masterKeyVersion?: number;
   readonly timeoutMs?: number;
@@ -38,6 +43,7 @@ export interface QaIntegrationsConfig {
 export interface ResolvedQaIntegrationsConfig {
   readonly enabled: boolean;
   readonly dataPath: string;
+  readonly auditRetentionDays: number;
   readonly masterKeyPath: string;
   readonly masterKeyVersion: number;
   readonly timeoutMs: number;
@@ -51,6 +57,7 @@ export interface ResolvedQaIntegrationsConfig {
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   enabled: z.boolean().default(false),
   dataPath: z.string(),
+  auditRetentionDays: z.number().step(1).min(0).max(3_650).default(90),
   masterKeyPath: z.string().default("/run/secrets/qa_integrations_master_key"),
   masterKeyVersion: z.number().step(1).min(1).default(1),
   timeoutMs: z.number().step(1).min(1).default(15_000),
@@ -80,7 +87,8 @@ export function resolveConfig(
     .filter((suffix) => suffix.startsWith(".") && suffix.length > 1);
   return Object.freeze({
     enabled: input.enabled ?? false,
-    dataPath: input.dataPath?.trim() || path.join(base, "qa-integrations.json"),
+    dataPath: input.dataPath?.trim() || path.join(base, "qa-integrations.db"),
+    auditRetentionDays: input.auditRetentionDays ?? 90,
     masterKeyPath:
       input.masterKeyPath?.trim() || "/run/secrets/qa_integrations_master_key",
     masterKeyVersion: input.masterKeyVersion ?? 1,

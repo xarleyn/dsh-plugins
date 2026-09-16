@@ -212,6 +212,7 @@ function retainInstalledSnapshot(
 export class QaAccessService {
   readonly roles: QaRoleRepository;
   readonly catalog: QaCapabilityCatalog;
+  private lastOwnershipSweepAt = 0;
 
   constructor(
     private readonly ctx: Context,
@@ -261,6 +262,50 @@ export class QaAccessService {
         : { createdAt: header.createdAt }),
       ...(header.parentSession === undefined ? {} : { hasParent: true }),
     };
+  }
+
+  /**
+   * Reclaim ownership records of chats the Harness no longer knows.
+   *
+   * Nothing else removes them: the browser's "delete chat" hides a chat in one
+   * browser, and a record outlives its session forever, so a year of QA traffic
+   * accumulates one row per chat ever created. The sweep is throttled, runs
+   * off the reservation path, and is skipped entirely when the Harness cannot
+   * say what exists — an unanswerable question is never a licence to delete an
+   * auth boundary.
+   */
+  private maybePruneOwnership(): void {
+    const accounts = this.options.accounts();
+    if (accounts === undefined) return;
+    const retention = this.options.config().accounts.retention;
+    if (!retention.pruneVanishedSessions) return;
+    const sessions = this.ctx.sessions;
+    if (sessions === undefined) return;
+    const interval = retention.sweepIntervalMinutes * 60_000;
+    if (interval > 0 && Date.now() - this.lastOwnershipSweepAt < interval) {
+      return;
+    }
+    this.lastOwnershipSweepAt = Date.now();
+    try {
+      const live = new Set(
+        sessions.list().map((session) => String(session.id)),
+      );
+      const removed = accounts.pruneVanishedSessions(
+        (sessionId) => live.has(sessionId),
+        retention.ownershipGraceHours,
+      );
+      if (removed.length > 0) {
+        this.options.logger.info("accounts.ownership-pruned", {
+          count: removed.length,
+          sessionIds: removed.slice(0, 20),
+        });
+      }
+    } catch (error) {
+      // Housekeeping must never fail the chat that triggered it.
+      this.options.logger.error("accounts.ownership-prune-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   current(token: string): QaCurrentAccess {
@@ -337,10 +382,14 @@ export class QaAccessService {
         "this QA subrole is not assigned to the account",
       );
     }
-    return accounts.reserveSession(token, sessionId, {
+    const owner = accounts.reserveSession(token, sessionId, {
       subroleId: selected,
       ...(adminPreview ? { adminPreview: true } : {}),
     });
+    // Creating a chat is the moment the ownership map grows, so it is also
+    // the natural moment to reclaim what deleted chats left behind.
+    this.maybePruneOwnership();
+    return owner;
   }
 
   async policyForSession(

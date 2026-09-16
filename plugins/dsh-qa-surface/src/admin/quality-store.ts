@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
-import {
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, renameSync } from "node:fs";
 import path from "node:path";
+import {
+  SqliteDatabase,
+  type SqliteMigration,
+} from "@yadsh/dsh-plugin-kit/sqlite";
 import type {
   QaAdminAuditAction,
   QaAdminAuditEvent,
@@ -141,12 +139,58 @@ interface QualityFileShape {
   readonly audit: readonly QaAdminAuditEvent[];
 }
 
-interface Stamp {
-  readonly mtimeMs: number;
-  readonly size: number;
+/** The four record families the store keeps, one row each. */
+type QualityRowKind = "feedback" | "review" | "queue" | "audit";
+
+/** How many rows of each family survive; the oldest fall off first. */
+const ROW_CAPS: Readonly<Record<QualityRowKind, number>> = Object.freeze({
+  feedback: MAX_FEEDBACK,
+  review: MAX_REVIEWS,
+  queue: MAX_QUEUE,
+  audit: MAX_AUDIT,
+});
+
+const MIGRATIONS: readonly SqliteMigration[] = [
+  {
+    version: 1,
+    up: `
+      -- A record is stored as its own validated shape; what the table adds is
+      -- one row per record, so a rating or an audit entry writes one row
+      -- instead of rewriting the whole document. \`seq\` is the insertion order
+      -- the caps and every newest-first list are defined by.
+      CREATE TABLE quality_rows (
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        seq INTEGER NOT NULL,
+        json TEXT NOT NULL,
+        PRIMARY KEY (kind, key)
+      );
+    `,
+  },
+];
+
+/** SQLite hands back null-prototype records. */
+function asRows<T>(value: unknown): T[] {
+  return value as T[];
 }
 
 export function defaultQualityFilePath(): string {
+  const home = process.env.DSH_HOME?.trim();
+  return path.join(
+    home !== undefined && home !== "" ? home : process.cwd(),
+    "qa-quality.db",
+  );
+}
+
+/** The `.json` sibling of a `.db` path: what a deployment upgraded from. */
+function legacySiblingOf(filePath: string): string | undefined {
+  return filePath.endsWith(".db")
+    ? `${filePath.slice(0, -".db".length)}.json`
+    : undefined;
+}
+
+/** The pre-SQLite quality file, imported once on first use. */
+export function defaultLegacyQualityFilePath(): string {
   const home = process.env.DSH_HOME?.trim();
   return path.join(
     home !== undefined && home !== "" ? home : process.cwd(),
@@ -210,17 +254,20 @@ function listOf<T extends string>(
   ]);
 }
 
-function stamp(filePath: string): Stamp {
-  const stat = statSync(filePath);
-  return { mtimeMs: stat.mtimeMs, size: stat.size };
-}
+/** Identity of one queue entry: a conversation, optionally one message. */
+/**
+ * Separator for composite keys. A NUL would be the obvious choice, but the
+ * SQLite binding truncates a string at its first NUL, which would collapse
+ * every record of one conversation into a single row; the ASCII unit separator
+ * survives the round trip and cannot appear in a validated identifier.
+ */
+const KEY_SEPARATOR = "\u001f";
 
-function same(left: Stamp | undefined, right: Stamp): boolean {
-  return left?.mtimeMs === right.mtimeMs && left.size === right.size;
-}
-
-function emptyFile(): QualityFileShape {
-  return { version: 1, feedback: [], reviews: [], queue: [], audit: [] };
+function queueKey(entry: {
+  readonly conversationId: string;
+  readonly messageId?: string | undefined;
+}): string {
+  return `${entry.conversationId}${KEY_SEPARATOR}${entry.messageId ?? ""}`;
 }
 
 /** Identity of one rating: a user rates one message once. */
@@ -229,7 +276,7 @@ function feedbackKey(
   messageId: string,
   userId: string,
 ): string {
-  return `${conversationId}\u0000${messageId}\u0000${userId}`;
+  return `${conversationId}${KEY_SEPARATOR}${messageId}${KEY_SEPARATOR}${userId}`;
 }
 
 function asArray(value: unknown): readonly unknown[] {
@@ -248,11 +295,30 @@ function asArray(value: unknown): readonly unknown[] {
  * the file, and silently discarding a user's record would hide that.
  */
 export class QaQualityStore {
+  private readonly storage: SqliteDatabase;
   private file: QualityFileShape;
-  private fileStamp: Stamp | undefined;
+  private observedDataVersion: number;
 
   constructor(readonly filePath: string = defaultQualityFilePath()) {
-    this.file = this.load();
+    this.storage = new SqliteDatabase(filePath, MIGRATIONS);
+    this.observedDataVersion = this.readDataVersion();
+    try {
+      // The pre-SQLite file sat beside the database, so it is looked for as
+      // the `.json` sibling of the path this store was given.
+      this.importLegacyFile(
+        legacySiblingOf(filePath) ?? defaultLegacyQualityFilePath(),
+      );
+      this.file = this.load();
+    } catch (error) {
+      // A store that cannot start must not hold the database open: the caller
+      // may retry, and a held handle blocks cleaning up after the failure.
+      this.storage.close();
+      throw error;
+    }
+  }
+
+  close(): void {
+    this.storage.close();
   }
 
   // -------------------------------------------------------------------------
@@ -303,7 +369,8 @@ export class QaQualityStore {
       createdAt: existing?.createdAt ?? now,
       ...(existing === undefined ? {} : { updatedAt: now }),
     });
-    this.persist({
+    this.upsertRow("feedback", key, record);
+    this.file = {
       ...this.file,
       feedback: [
         ...this.file.feedback.filter(
@@ -312,7 +379,7 @@ export class QaQualityStore {
         ),
         record,
       ].slice(-MAX_FEEDBACK),
-    });
+    };
     return record;
   }
 
@@ -390,13 +457,14 @@ export class QaQualityStore {
       createdAt: existing?.createdAt ?? now,
       ...(existing === undefined ? {} : { updatedAt: now }),
     });
-    this.persist({
+    this.upsertRow("review", review.id, review);
+    this.file = {
       ...this.file,
       reviews: [
         ...this.file.reviews.filter((row) => row.id !== review.id),
         review,
       ].slice(-MAX_REVIEWS),
-    });
+    };
     return { review, created: existing === undefined };
   }
 
@@ -441,10 +509,11 @@ export class QaQualityStore {
       userId,
       createdAt: new Date().toISOString(),
     });
-    this.persist({
+    this.upsertRow("queue", queueKey(entry), entry);
+    this.file = {
       ...this.file,
       queue: [...this.file.queue, entry].slice(-MAX_QUEUE),
-    });
+    };
     return entry;
   }
 
@@ -456,7 +525,8 @@ export class QaQualityStore {
         !(row.conversationId === conversationId && row.messageId === messageId),
     );
     if (remaining.length === this.file.queue.length) return false;
-    this.persist({ ...this.file, queue: remaining });
+    this.deleteRow("queue", queueKey({ conversationId, messageId }));
+    this.file = { ...this.file, queue: remaining };
     return true;
   }
 
@@ -495,10 +565,11 @@ export class QaQualityStore {
         ? {}
         : { after: this.snapshot(input.after) }),
     });
-    this.persist({
+    this.appendRow("audit", record);
+    this.file = {
       ...this.file,
       audit: [...this.file.audit, record].slice(-MAX_AUDIT),
-    });
+    };
     return record;
   }
 
@@ -521,49 +592,178 @@ export class QaQualityStore {
   // Persistence
   // -------------------------------------------------------------------------
 
+  /** Write one record, moving it to the end of its family's order. */
+  private upsertRow(kind: QualityRowKind, key: string, value: unknown): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `INSERT INTO quality_rows (kind, key, seq, json)
+           VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = ?), ?)
+           ON CONFLICT(kind, key) DO UPDATE SET
+             seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = excluded.kind),
+             json = excluded.json`,
+        )
+        .run(kind, key, kind, JSON.stringify(value));
+      this.applyCap(kind);
+    });
+  }
+
+  /** Append a record whose identity the store mints itself. */
+  private appendRow(kind: QualityRowKind, value: unknown): void {
+    this.upsertRow(kind, randomUUID(), value);
+  }
+
+  private deleteRow(kind: QualityRowKind, key: string): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare("DELETE FROM quality_rows WHERE kind = ? AND key = ?")
+        .run(kind, key);
+    });
+  }
+
+  private applyCap(kind: QualityRowKind): void {
+    this.storage.db
+      .prepare(
+        `DELETE FROM quality_rows
+          WHERE kind = ?
+            AND seq <= (
+              SELECT MAX(seq) - ? FROM quality_rows WHERE kind = ?
+            )`,
+      )
+      .run(kind, ROW_CAPS[kind], kind);
+  }
+
+  private rowsOf(kind: QualityRowKind): readonly unknown[] {
+    return asRows<{ json: string }>(
+      this.storage.db
+        .prepare("SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq")
+        .all(kind),
+    ).map((entry) => JSON.parse(entry.json) as unknown);
+  }
+
+  private readDataVersion(): number {
+    const row = this.storage.db.prepare("PRAGMA data_version").get() as {
+      data_version: number;
+    };
+    return row.data_version;
+  }
+
   private reload(): void {
-    let current: Stamp;
-    try {
-      current = stamp(this.filePath);
-    } catch {
-      return;
-    }
-    if (same(this.fileStamp, current)) return;
+    const version = this.readDataVersion();
+    if (version === this.observedDataVersion) return;
+    this.observedDataVersion = version;
     this.file = this.load();
   }
 
   private load(): QualityFileShape {
-    try {
-      const parsed = JSON.parse(readFileSync(this.filePath, "utf8")) as unknown;
-      if (!isRecord(parsed) || parsed.version !== 1) {
-        throw new TypeError("unrecognized QA quality file");
-      }
-      this.fileStamp = stamp(this.filePath);
-      return {
-        version: 1,
-        feedback: Object.freeze(asArray(parsed.feedback).map(restoreFeedback)),
-        reviews: Object.freeze(asArray(parsed.reviews).map(restoreReview)),
-        queue: Object.freeze(asArray(parsed.queue).map(restoreQueueEntry)),
-        audit: Object.freeze(asArray(parsed.audit).map(restoreAuditEvent)),
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      const created = emptyFile();
-      this.persist(created);
-      return created;
-    }
+    return {
+      version: 1,
+      feedback: Object.freeze(this.rowsOf("feedback").map(restoreFeedback)),
+      reviews: Object.freeze(this.rowsOf("review").map(restoreReview)),
+      queue: Object.freeze(this.rowsOf("queue").map(restoreQueueEntry)),
+      audit: Object.freeze(this.rowsOf("audit").map(restoreAuditEvent)),
+    };
   }
 
-  private persist(file: QualityFileShape): void {
-    mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: FILE_MODE,
+  /**
+   * Import a pre-SQLite `qa-quality.json` exactly once, then rename it aside.
+   * A row the database already holds wins, so a leftover file cannot overwrite
+   * a verdict a person has since given.
+   */
+  private importLegacyFile(legacyFilePath: string): void {
+    let raw: string;
+    try {
+      raw = readFileSync(legacyFilePath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isRecord(parsed) || parsed.version !== 1) {
+      throw new Error(
+        `qa-quality: ${legacyFilePath} is not a recognizable quality file; refusing to import it`,
+      );
+    }
+    const existing = this.storage.db
+      .prepare("SELECT COUNT(*) AS count FROM quality_rows")
+      .get() as { count: number };
+    if (existing.count > 0) return;
+    const feedback = asArray(parsed.feedback).map(restoreFeedback);
+    const reviews = asArray(parsed.reviews).map(restoreReview);
+    const queue = asArray(parsed.queue).map(restoreQueueEntry);
+    const audit = asArray(parsed.audit).map(restoreAuditEvent);
+    this.storage.transaction(() => {
+      const insert = this.storage.db.prepare(
+        "INSERT INTO quality_rows (kind, key, seq, json) VALUES (?, ?, ?, ?)",
+      );
+      const load = (
+        kind: QualityRowKind,
+        entries: readonly { key: string; value: unknown }[],
+      ) => {
+        entries.forEach((entry, index) => {
+          insert.run(kind, entry.key, index + 1, JSON.stringify(entry.value));
+        });
+      };
+      load(
+        "feedback",
+        feedback.map((record) => ({
+          key: feedbackKey(
+            record.conversationId,
+            record.messageId,
+            record.userId,
+          ),
+          value: record,
+        })),
+      );
+      load(
+        "review",
+        reviews.map((record) => ({ key: record.id, value: record })),
+      );
+      load(
+        "queue",
+        queue.map((record) => ({ key: queueKey(record), value: record })),
+      );
+      load(
+        "audit",
+        audit.map((record) => ({ key: record.id, value: record })),
+      );
+      this.assertImportArrived({ feedback, reviews, queue, audit });
     });
-    renameSync(temporary, this.filePath);
-    this.file = file;
-    this.fileStamp = stamp(this.filePath);
+    this.observedDataVersion = this.readDataVersion();
+    renameSync(
+      legacyFilePath,
+      `${legacyFilePath}.migrated-${new Date().toISOString().replace(/[:.]/gu, "-")}`,
+    );
+  }
+
+  private assertImportArrived(expected: {
+    readonly feedback: readonly unknown[];
+    readonly reviews: readonly unknown[];
+    readonly queue: readonly unknown[];
+    readonly audit: readonly unknown[];
+  }): void {
+    const count = (kind: QualityRowKind): number =>
+      (
+        this.storage.db
+          .prepare("SELECT COUNT(*) AS count FROM quality_rows WHERE kind = ?")
+          .get(kind) as { count: number }
+      ).count;
+    const problems: string[] = [];
+    const check = (kind: QualityRowKind, wanted: number) => {
+      const kept = Math.min(wanted, ROW_CAPS[kind]);
+      if (count(kind) !== kept) {
+        problems.push(`expected ${kept} ${kind} rows, imported ${count(kind)}`);
+      }
+    };
+    check("feedback", expected.feedback.length);
+    check("review", expected.reviews.length);
+    check("queue", expected.queue.length);
+    check("audit", expected.audit.length);
+    if (problems.length > 0) {
+      throw new Error(
+        `qa-quality: importing the pre-SQLite file failed verification (${problems.join("; ")}); the file is left in place and the import was rolled back`,
+      );
+    }
   }
 }
 

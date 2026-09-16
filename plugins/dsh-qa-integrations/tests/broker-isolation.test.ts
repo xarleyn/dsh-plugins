@@ -71,14 +71,19 @@ function fakeProvider(options: {
   };
 }
 
+/** Every repository a test built, so the handles are released on cleanup. */
+const repositories: IntegrationRepository[] = [];
+
 function buildBroker(
   filePath: string,
   provider: IntegrationProvider,
 ): IntegrationBroker {
   const providers = new IntegrationProviderRegistry();
   providers.register(provider);
+  const repository = new IntegrationRepository(filePath);
+  repositories.push(repository);
   return new IntegrationBroker(
-    new IntegrationRepository(filePath),
+    repository,
     new SecretStore(new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1)),
     providers,
     fakeLogger(),
@@ -87,8 +92,13 @@ function buildBroker(
 
 describe("IntegrationBroker user isolation", () => {
   const root = mkdtempSync(path.join(tmpdir(), "qa-integrations-test-"));
-  const filePath = path.join(root, "integrations.json");
-  afterAll(() => rmSync(root, { recursive: true, force: true }));
+  const filePath = path.join(root, "integrations.db");
+  // The store is a database now, so its handle has to be released before the
+  // directory goes: on Windows an open file cannot be deleted.
+  afterAll(() => {
+    for (const repository of repositories) repository.close();
+    rmSync(root, { recursive: true, force: true });
+  });
 
   it("keeps Alice and Bob credentials separate under concurrent tool calls", async () => {
     const broker = buildBroker(

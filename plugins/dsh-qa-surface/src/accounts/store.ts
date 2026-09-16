@@ -28,15 +28,14 @@ import {
 } from "../profile.js";
 import { normalizeStarters, validateStartersWrite } from "../starters.js";
 import { validateCredentials, validatePassword } from "./credentials.js";
+import { QaAccountsDatabase } from "./database.js";
 import { QaAccountsError } from "./errors.js";
 import {
-  createFileStampRef,
   defaultAccountsFilePath,
-  loadAccountsFile,
-  persistAccountsFile,
-  reloadAccountsFileIfChanged,
+  type AccountsFile,
+  type StoredOwnership,
+  type StoredUser,
 } from "./file.js";
-import type { AccountsFile, StoredOwnership, StoredUser } from "./file.js";
 import { mintToken, verifyToken } from "./token.js";
 
 export { QaAccountsError } from "./errors.js";
@@ -55,6 +54,43 @@ export interface QaAccountsOptions {
    * omitting the list (the operator CLI) checks the key shape alone.
    */
   readonly identityFields?: readonly QaAccountIdentityField[];
+  /**
+   * Where a pre-SQLite accounts file may still live. Defaults to the `.json`
+   * sibling of the database; pass an explicit path when a deployment kept it
+   * somewhere else.
+   */
+  readonly legacyFilePath?: string;
+}
+
+/** The `.json` sibling of a `.db` path: what a deployment upgraded from. */
+function legacySiblingOf(filePath: string): string | undefined {
+  return filePath.endsWith(".db")
+    ? `${filePath.slice(0, -".db".length)}.json`
+    : undefined;
+}
+
+/**
+ * Where the database and a pre-SQLite file live, given the path an operator
+ * configured.
+ *
+ * A `.json` path is the file a pre-SQLite release wrote, so the database lands
+ * beside it as `.db` and that file is imported: passing the old filename must
+ * neither start an empty store nor truncate the file that holds the accounts.
+ */
+function resolveAccountsPaths(
+  configured: string,
+  explicitLegacy: string | undefined,
+): { databasePath: string; legacyFilePath: string | undefined } {
+  if (configured.endsWith(".json")) {
+    return {
+      databasePath: `${configured.slice(0, -".json".length)}.db`,
+      legacyFilePath: explicitLegacy ?? configured,
+    };
+  }
+  return {
+    databasePath: configured,
+    legacyFilePath: explicitLegacy ?? legacySiblingOf(configured),
+  };
 }
 
 /**
@@ -127,16 +163,17 @@ function passwordMatches(
 }
 
 /**
- * Host authority for QA accounts: the file-backed user list, the session
- * ownership map and the HMAC account tokens. All mutations are synchronous
- * and persisted atomically (temp file + rename); LAN scale keeps this trivial.
+ * Host authority for QA accounts: the account list, the session ownership map
+ * and the HMAC account tokens. Mutations are synchronous and land as the rows
+ * they change, in one transaction each.
  *
- * The class is the facade: token mechanics live in token.ts, the file format
- * and its atomic persistence plus the external-change probe in file.ts, and
- * the credential rules shared by registration and the operator CLI in
- * credentials.ts.
+ * The class is the facade: token mechanics live in token.ts, the tables and the
+ * legacy import in database.ts, and the credential rules shared by registration
+ * and the operator CLI in credentials.ts.
  */
 export class QaAccounts {
+  /** The database this store reads and writes. */
+  readonly filePath: string;
   private file: AccountsFile;
   private readonly authAttempts: number[] = [];
   private readonly maxAuthAttemptsPerMinute: number;
@@ -144,14 +181,17 @@ export class QaAccounts {
   private readonly allowRegistration: boolean;
   /** Character cap on a stored profile's agent guidance. */
   private readonly instructionsMaxLength: number;
-  /** Declared handle fields; undefined lets an operator write any shape-valid key. */
-  private readonly identityFields:
-    readonly QaAccountIdentityField[] | undefined;
-  /** mtime+size of the file as of the last load; the external-change probe. */
-  private readonly fileStamp = createFileStampRef();
+  /** Whether a deployment declares which identity handles an account may hold. */
+  readonly identityFields: readonly QaAccountIdentityField[] | undefined;
+  /**
+   * The store's tables. Every mutation writes the rows it changes and the
+   * in-memory model is refreshed only when another process wrote — which is
+   * what keeps the cost of opening a chat independent of the deployment's age.
+   */
+  private readonly database: QaAccountsDatabase;
 
   constructor(
-    readonly filePath: string = defaultAccountsFilePath(),
+    configuredPath: string = defaultAccountsFilePath(),
     options: QaAccountsOptions,
   ) {
     this.sessionTtlDays = options.sessionTtlDays;
@@ -160,21 +200,38 @@ export class QaAccounts {
     this.instructionsMaxLength =
       options.instructionsMaxLength ?? QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX;
     this.identityFields = options.identityFields;
-    this.file = loadAccountsFile(this.filePath, this.fileStamp);
+    const paths = resolveAccountsPaths(configuredPath, options.legacyFilePath);
+    this.filePath = paths.databasePath;
+    this.database = new QaAccountsDatabase(paths.databasePath);
+    try {
+      // A deployment upgrading from the JSON store keeps its accounts: the
+      // file is imported, verified and renamed aside before anything else runs.
+      this.database.importLegacyFile(paths.legacyFilePath);
+      this.file = this.database.loadAll();
+    } catch (error) {
+      // A store that cannot start must not hold the database open: the caller
+      // may retry, and a held handle blocks cleaning up after the failure.
+      this.database.close();
+      throw error;
+    }
+  }
+
+  /** Close the underlying database; the store is unusable afterwards. */
+  close(): void {
+    this.database.close();
   }
 
   /**
-   * Re-read the accounts file when it changed on disk, before every read or
-   * read-modify-write. The probe itself and its cross-process rationale live
-   * with the file layer (reloadAccountsFileIfChanged).
+   * Re-read the model when another process wrote the database, before every
+   * read or read-modify-write. The `qa-accounts` CLI runs in its own process
+   * against the same file, so without this a running Host would keep honoring
+   * tokens the CLI revoked. SQLite bumps `PRAGMA data_version` exactly when a
+   * *different* connection commits, which is the probe the previous
+   * mtime-and-size stamp of the JSON file used to provide.
    */
   private reloadIfChanged(): void {
-    const loaded = reloadAccountsFileIfChanged(this.filePath, this.fileStamp);
-    if (loaded !== undefined) this.file = loaded;
-  }
-
-  private save(): void {
-    persistAccountsFile(this.filePath, this.file, this.fileStamp);
+    if (this.database.unchangedSinceLoad) return;
+    this.file = this.database.loadAll();
   }
 
   private pruneAuthAttempts(): void {
@@ -239,8 +296,8 @@ export class QaAccounts {
       lastLoginAt: new Date().toISOString(),
       tokenVersion: 0,
     };
+    this.database.insertUser(user);
     this.file = { ...this.file, users: [...this.file.users, user] };
-    this.save();
     return { token: this.mintToken(user.id), user: toPublic(user) };
   }
 
@@ -270,7 +327,7 @@ export class QaAccounts {
       );
     }
     user.lastLoginAt = new Date().toISOString();
-    this.save();
+    this.database.touchLogin(user.id, user.lastLoginAt);
     return { token: this.mintToken(user.id), user: toPublic(user) };
   }
 
@@ -365,14 +422,15 @@ export class QaAccounts {
         // is live and its header is known.
         return toPublic(user);
       }
+      const claimed: StoredOwnership = {
+        userId: user.id,
+        claimedAt: new Date().toISOString(),
+      };
+      this.database.insertOwnership(sessionId, claimed);
       this.file = {
         ...this.file,
-        ownership: {
-          ...this.file.ownership,
-          [sessionId]: { userId: user.id, claimedAt: new Date().toISOString() },
-        },
+        ownership: { ...this.file.ownership, [sessionId]: claimed },
       };
-      this.save();
       return toPublic(user);
     }
     if (owner.userId !== user.id && user.role !== "admin") {
@@ -415,19 +473,17 @@ export class QaAccounts {
         "the requested session id is unavailable",
       );
     }
+    const reserved: StoredOwnership = {
+      userId: user.id,
+      claimedAt: new Date().toISOString(),
+      ...(access === undefined ? {} : { subroleId: access.subroleId }),
+      ...(access?.adminPreview === true ? { adminPreview: true } : {}),
+    };
+    this.database.insertOwnership(sessionId, reserved);
     this.file = {
       ...this.file,
-      ownership: {
-        ...this.file.ownership,
-        [sessionId]: {
-          userId: user.id,
-          claimedAt: new Date().toISOString(),
-          ...(access === undefined ? {} : { subroleId: access.subroleId }),
-          ...(access?.adminPreview === true ? { adminPreview: true } : {}),
-        },
-      },
+      ownership: { ...this.file.ownership, [sessionId]: reserved },
     };
-    this.save();
     return toPublic(user);
   }
 
@@ -435,10 +491,10 @@ export class QaAccounts {
   releaseSessionReservation(userId: string, sessionId: string): void {
     this.reloadIfChanged();
     if (this.file.ownership[sessionId]?.userId !== userId) return;
+    this.database.deleteOwnership([sessionId]);
     const ownership = { ...this.file.ownership };
     delete ownership[sessionId];
     this.file = { ...this.file, ownership };
-    this.save();
   }
 
   /** Bulk-claim a browser's local chat index; foreign ids come back as conflicts. */
@@ -451,24 +507,25 @@ export class QaAccounts {
     let claimed = 0;
     const conflicts: string[] = [];
     const ownership = { ...this.file.ownership };
+    const claims: { sessionId: string; owner: StoredOwnership }[] = [];
+    const claimedAt = new Date().toISOString();
     for (const raw of sessionIds) {
       const sessionId = typeof raw === "string" ? raw.trim() : "";
       if (sessionId === "" || sessionId.length > MAX_SESSION_ID_LENGTH)
         continue;
       const owner = ownership[sessionId];
       if (owner === undefined) {
-        ownership[sessionId] = {
-          userId: user.id,
-          claimedAt: new Date().toISOString(),
-        };
+        const claim: StoredOwnership = { userId: user.id, claimedAt };
+        ownership[sessionId] = claim;
+        claims.push({ sessionId, owner: claim });
         claimed += 1;
       } else if (owner.userId !== user.id) {
         conflicts.push(sessionId);
       }
     }
     if (claimed > 0) {
+      this.database.insertOwnershipMany(claims);
       this.file = { ...this.file, ownership };
-      this.save();
     }
     return { claimed, conflicts };
   }
@@ -483,6 +540,46 @@ export class QaAccounts {
         right[1].claimedAt.localeCompare(left[1].claimedAt),
       )
       .map(([sessionId]) => sessionId);
+  }
+
+  /**
+   * Drop ownership records for chats the Harness no longer knows.
+   *
+   * An ownership record is a chat's auth boundary — `ensureSessionAccess`
+   * claims an unowned session for whoever asks first — so a record is removed
+   * only when the caller reports the session gone *and* the claim is older
+   * than `graceHours`. A reservation racing its own creation therefore keeps
+   * its owner, and a live chat never becomes claimable by someone else. What
+   * this reclaims is the residue of deleted chats, which nothing else removes.
+   *
+   * @param isLive - whether the Harness still knows this session.
+   * @param graceHours - youngest claim the sweep may touch.
+   * @returns the session ids whose records were dropped.
+   */
+  pruneVanishedSessions(
+    isLive: (sessionId: string) => boolean,
+    graceHours: number,
+  ): readonly string[] {
+    this.reloadIfChanged();
+    const cutoff = Date.now() - graceHours * 3_600_000;
+    const ownership: Record<string, StoredOwnership> = {};
+    const removed: string[] = [];
+    for (const [sessionId, owner] of Object.entries(this.file.ownership)) {
+      const claimedAt = Date.parse(owner.claimedAt);
+      if (
+        Number.isFinite(claimedAt) &&
+        claimedAt < cutoff &&
+        !isLive(sessionId)
+      ) {
+        removed.push(sessionId);
+        continue;
+      }
+      ownership[sessionId] = owner;
+    }
+    if (removed.length === 0) return removed;
+    this.database.deleteOwnership(removed);
+    this.file = { ...this.file, ownership };
+    return removed;
   }
 
   /**
@@ -685,8 +782,8 @@ export class QaAccounts {
     }
     const users = [...this.file.users];
     users[index] = { ...(users[index] as StoredUser), qaAccess: access };
+    this.database.updateUser(users[index] as StoredUser);
     this.file = { ...this.file, users };
-    this.save();
     return access;
   }
 
@@ -725,11 +822,11 @@ export class QaAccounts {
         ? {}
         : { capabilitySnapshot: update.capabilitySnapshot }),
     };
+    this.database.updateOwnership(sessionId, next);
     this.file = {
       ...this.file,
       ownership: { ...this.file.ownership, [sessionId]: next },
     };
-    this.save();
     return next;
   }
 
@@ -758,8 +855,10 @@ export class QaAccounts {
         "the session has no QA owner",
       );
     }
-    const skillActivations = [...(current.skillActivations ?? []), entry].slice(
-      -limit,
+    const skillActivations = this.database.appendSkillActivation(
+      sessionId,
+      entry,
+      limit,
     );
     this.file = {
       ...this.file,
@@ -768,7 +867,6 @@ export class QaAccounts {
         [sessionId]: { ...current, skillActivations },
       },
     };
-    this.save();
     return skillActivations;
   }
 
@@ -808,8 +906,8 @@ export class QaAccounts {
       lastLoginAt: null,
       tokenVersion: 0,
     };
+    this.database.insertUser(user);
     this.file = { ...this.file, users: [...this.file.users, user] };
-    this.save();
     return toPublic(user);
   }
 
@@ -828,8 +926,8 @@ export class QaAccounts {
     const updated = edit(this.file.users[index] as StoredUser);
     const users = [...this.file.users];
     users[index] = updated;
+    this.database.updateUser(updated);
     this.file = { ...this.file, users };
-    this.save();
     return updated;
   }
 
@@ -851,8 +949,8 @@ export class QaAccounts {
     const updated = edit(this.file.users[index] as StoredUser);
     const users = [...this.file.users];
     users[index] = updated;
+    this.database.updateUser(updated);
     this.file = { ...this.file, users };
-    this.save();
     return updated;
   }
 

@@ -1,5 +1,6 @@
 import { DEFAULT_QA_TEXT_EXTENSIONS } from "../attachment-rules.js";
 import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
+import { DEFAULT_QA_PROVENANCE_RETENTION } from "../provenance/retention.js";
 import {
   QA_SKILL_DEFAULT_RELATIVE_ROOT,
   QA_SKILL_FILE_MAX_BYTES,
@@ -85,6 +86,11 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxAuthAttemptsPerMinute: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
+      retention: Object.freeze({
+        pruneVanishedSessions: true,
+        ownershipGraceHours: 24,
+        sweepIntervalMinutes: 60,
+      }),
       profile: Object.freeze({
         enabled: true,
         inject: true,
@@ -117,6 +123,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     }),
     sources: Object.freeze({
       enabled: true,
+      retention: Object.freeze({ ...DEFAULT_QA_PROVENANCE_RETENTION }),
       collect: Object.freeze({
         parentAgent: true,
         subagents: true,

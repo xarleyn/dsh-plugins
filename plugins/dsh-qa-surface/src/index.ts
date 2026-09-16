@@ -41,7 +41,11 @@ import { QaAccessService } from "./access/service.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaTools } from "./qa-tools/index.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
-import { FileQaProvenanceSnapshotStore } from "./provenance/snapshot-store.js";
+import {
+  defaultLegacyProvenanceFilePath,
+  defaultQaProvenanceDirectoryPath,
+  FileQaProvenanceSnapshotStore,
+} from "./provenance/snapshot-store.js";
 import {
   readSourceFilePreview,
   QaSourcePreviewError,
@@ -247,7 +251,13 @@ export class QaSurface extends TypertRemoteService {
     this.provenance = new QaProvenanceHost(
       ctx,
       () => this.getConfig(),
-      new FileQaProvenanceSnapshotStore(),
+      // Sharded per chat and bounded by the resolved retention policy: the
+      // turn path must never rewrite history it did not touch.
+      new FileQaProvenanceSnapshotStore(
+        defaultQaProvenanceDirectoryPath(),
+        () => this.getConfig().sources.retention,
+        defaultLegacyProvenanceFilePath(),
+      ),
       (error) =>
         this.logger.error("sources.persistence-failed", {
           message: error instanceof Error ? error.message : String(error),

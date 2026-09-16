@@ -8,6 +8,7 @@ import {
   QA_PASTED_TEXT_LINES_MIN,
 } from "./attachment-rules.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./resolve-config.js";
+import { QA_PROVENANCE_RETENTION_LIMITS } from "./provenance/retention.js";
 import {
   QA_PROFILE_INSTRUCTIONS_MAX_MAX,
   QA_PROFILE_INSTRUCTIONS_MAX_MIN,
@@ -154,6 +155,25 @@ const configSchema = z.object({
     .object({
       enabled: z.boolean().default(D.accounts.enabled),
       allowRegistration: z.boolean().default(D.accounts.allowRegistration),
+      retention: z
+        .object({
+          pruneVanishedSessions: z
+            .boolean()
+            .default(D.accounts.retention.pruneVanishedSessions),
+          ownershipGraceHours: z
+            .number()
+            .step(1)
+            .min(1)
+            .max(8_760)
+            .default(D.accounts.retention.ownershipGraceHours),
+          sweepIntervalMinutes: z
+            .number()
+            .step(1)
+            .min(1)
+            .max(1_440)
+            .default(D.accounts.retention.sweepIntervalMinutes),
+        })
+        .default({ ...D.accounts.retention }),
       sessionTtlDays: z
         .number()
         .step(1)
@@ -218,6 +238,7 @@ const configSchema = z.object({
     })
     .default({
       ...D.accounts,
+      retention: { ...D.accounts.retention },
       profile: {
         ...D.accounts.profile,
         identities: [...D.accounts.profile.identities],
@@ -244,6 +265,34 @@ const configSchema = z.object({
   sources: z
     .object({
       enabled: z.boolean().default(D.sources.enabled),
+      retention: z
+        .object({
+          maxTurnsPerSession: z
+            .number()
+            .step(1)
+            .min(QA_PROVENANCE_RETENTION_LIMITS.maxTurnsPerSession.min)
+            .max(QA_PROVENANCE_RETENTION_LIMITS.maxTurnsPerSession.max)
+            .default(D.sources.retention.maxTurnsPerSession),
+          maxSessions: z
+            .number()
+            .step(1)
+            .min(QA_PROVENANCE_RETENTION_LIMITS.maxSessions.min)
+            .max(QA_PROVENANCE_RETENTION_LIMITS.maxSessions.max)
+            .default(D.sources.retention.maxSessions),
+          maxAgeDays: z
+            .number()
+            .step(1)
+            .min(QA_PROVENANCE_RETENTION_LIMITS.maxAgeDays.min)
+            .max(QA_PROVENANCE_RETENTION_LIMITS.maxAgeDays.max)
+            .default(D.sources.retention.maxAgeDays),
+          sweepIntervalMinutes: z
+            .number()
+            .step(1)
+            .min(QA_PROVENANCE_RETENTION_LIMITS.sweepIntervalMinutes.min)
+            .max(QA_PROVENANCE_RETENTION_LIMITS.sweepIntervalMinutes.max)
+            .default(D.sources.retention.sweepIntervalMinutes),
+        })
+        .default({ ...D.sources.retention }),
       collect: z
         .object({
           parentAgent: z.boolean().default(D.sources.collect.parentAgent),
@@ -343,6 +392,7 @@ const configSchema = z.object({
     })
     .default({
       ...D.sources,
+      retention: { ...D.sources.retention },
       collect: { ...D.sources.collect },
       display: { ...D.sources.display },
       webSearch: { ...D.sources.webSearch },

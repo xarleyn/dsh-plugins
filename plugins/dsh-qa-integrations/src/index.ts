@@ -69,6 +69,13 @@ function providerSummary(
   };
 }
 
+/** The `.json` sibling of a `.db` path: what a deployment upgraded from. */
+function legacySiblingOf(filePath: string): string | undefined {
+  return filePath.endsWith(".db")
+    ? `${filePath.slice(0, -".db".length)}.json`
+    : undefined;
+}
+
 /** Host remote, broker owner, and registration point for read-only tools. */
 export class QaIntegrations extends TypertRemoteService {
   static inject = inject;
@@ -90,7 +97,12 @@ export class QaIntegrations extends TypertRemoteService {
       pluginId: "dsh-qa-integrations",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
-    const repository = new IntegrationRepository(config.dataPath);
+    const repository = new IntegrationRepository(config.dataPath, {
+      auditRetentionDays: config.auditRetentionDays,
+    });
+    // A deployment upgrading from the JSON store keeps its connections: the
+    // file is imported, verified and renamed aside before the broker serves.
+    repository.importLegacyFile(legacySiblingOf(config.dataPath));
     const secrets = new SecretStore(
       new DockerSecretKeyProvider(
         config.masterKeyPath,

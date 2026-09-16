@@ -4,6 +4,11 @@
  * This private package provides small, focused development utilities:
  * - configuration validation
  * - `./client` scaffolding for browser bundles
+ *
+ * SQLite plumbing for stores that outgrow a JSON document lives behind the
+ * `./sqlite` subpath rather than here: it needs Node's `node:sqlite`, and this
+ * entry point is imported by test helpers that run in browser-like
+ * environments, where an eager Node import is a runtime error.
  */
 
 /**

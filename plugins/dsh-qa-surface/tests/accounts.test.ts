@@ -1,13 +1,14 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
-  existsSync,
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QA_SESSION_CLAIM_WINDOW_MS,
@@ -19,13 +20,25 @@ import { QaPolicyAdmission } from "../src/secure-session.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import type { QaAccountsGate } from "../src/secure-session.js";
 
+/** Read the first column of a query out of the store's own database. */
+function rowsOf(filePath: string, sql: string): string[] {
+  const db = new DatabaseSync(filePath);
+  try {
+    return (db.prepare(sql).all() as Record<string, unknown>[]).map(
+      (row) => Object.values(row)[0] as string,
+    );
+  } finally {
+    db.close();
+  }
+}
+
 function store(options?: {
   allowRegistration?: boolean;
   maxAuthAttemptsPerMinute?: number;
   sessionTtlDays?: number;
 }): QaAccounts {
   const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
-  return new QaAccounts(path.join(dir, "qa-accounts.json"), {
+  return new QaAccounts(path.join(dir, "qa-accounts.db"), {
     sessionTtlDays: options?.sessionTtlDays ?? 30,
     allowRegistration: options?.allowRegistration ?? true,
     maxAuthAttemptsPerMinute: options?.maxAuthAttemptsPerMinute ?? 100,
@@ -123,7 +136,7 @@ describe("QA accounts store", () => {
 
   it("persists users and ownership across store instances", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
-    const filePath = path.join(dir, "qa-accounts.json");
+    const filePath = path.join(dir, "qa-accounts.db");
     let userId: string;
     {
       const accounts = new QaAccounts(filePath, {
@@ -136,17 +149,17 @@ describe("QA accounts store", () => {
       accounts.ensureSessionAccess(session.token, "s-3", {
         createdAt: Date.now(),
       });
+      accounts.close();
     }
-    expect(existsSync(path.join(dir, "qa-accounts.json.tmp"))).toBe(false);
-    const raw = JSON.parse(readFileSync(filePath, "utf8")) as {
-      users: { id: string }[];
-      ownership: Record<string, { userId: string }>;
-    };
-    expect(raw.users).toHaveLength(1);
-    expect(raw.ownership).toMatchObject({
-      "s-1": { userId },
-      "s-3": { userId },
-    });
+    expect(existsSync(filePath)).toBe(true);
+    // Every mutation landed as a row of its own: the store is the database.
+    expect(rowsOf(filePath, "SELECT id FROM qa_accounts")).toEqual([userId]);
+    expect(
+      rowsOf(
+        filePath,
+        "SELECT session_id FROM qa_ownership ORDER BY session_id",
+      ),
+    ).toEqual(["s-1", "s-2", "s-3"]);
     const reopened = new QaAccounts(filePath, {
       sessionTtlDays: 30,
       allowRegistration: true,
@@ -158,13 +171,14 @@ describe("QA accounts store", () => {
       "s-2",
       "s-3",
     ]);
+    reopened.close();
   });
 
-  it("resets only on a missing file, not on any read failure", () => {
+  it("refuses a path it cannot open instead of starting an empty store", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
-    // A directory at the accounts path reads as EISDIR, not ENOENT: the
-    // constructor must surface it instead of silently starting a fresh store.
-    const filePath = path.join(dir, "qa-accounts.json");
+    // A directory at the database path cannot be opened, which must surface:
+    // silently starting a fresh store would lock every account out.
+    const filePath = path.join(dir, "qa-accounts.db");
     mkdirSync(filePath);
     expect(
       () =>
@@ -172,14 +186,13 @@ describe("QA accounts store", () => {
           sessionTtlDays: 30,
           allowRegistration: true,
         }),
-    ).toThrow(/EISDIR/u);
-    expect(readdirSync(dir)).toEqual(["qa-accounts.json"]);
-    expect(existsSync(`${filePath}.tmp`)).toBe(false);
+    ).toThrow(/unable to open database/u);
+    expect(readdirSync(dir)).toEqual(["qa-accounts.db"]);
   });
 
   it("sees another process's file changes instead of overwriting them", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
-    const filePath = path.join(dir, "qa-accounts.json");
+    const filePath = path.join(dir, "qa-accounts.db");
     const host = new QaAccounts(filePath, {
       sessionTtlDays: 30,
       allowRegistration: true,
@@ -647,7 +660,7 @@ describe("QA account profiles", () => {
 
   function profileStore(): QaAccounts {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-profiles-"));
-    return new QaAccounts(path.join(dir, "qa-accounts.json"), {
+    return new QaAccounts(path.join(dir, "qa-accounts.db"), {
       sessionTtlDays: 30,
       allowRegistration: true,
       instructionsMaxLength: 100,
@@ -769,7 +782,7 @@ describe("QA account profiles", () => {
   it("sees profile edits made by another process", () => {
     const filePath = path.join(
       mkdtempSync(path.join(tmpdir(), "qa-profiles-")),
-      "qa-accounts.json",
+      "qa-accounts.db",
     );
     const options = {
       sessionTtlDays: 30,

@@ -504,7 +504,7 @@ verify_package() {
   if [ "$is_plugin" -eq 1 ]; then
     local expected_name expected_repository expected_homepage
     local repository_type repository_url repository_directory homepage bugs_url
-    local publish_access publish_registry metadata_ok=1
+    local metadata_ok=1
     expected_name="@yadsh/${rel#plugins/}"
     expected_repository="git+https://github.com/xarleyn/dsh-plugins.git"
     expected_homepage="https://github.com/xarleyn/dsh-plugins/tree/main/$rel#readme"
@@ -513,8 +513,6 @@ verify_package() {
     repository_directory="$(jsonq "$packed_pkg" repository.directory)"
     homepage="$(jsonq "$packed_pkg" homepage)"
     bugs_url="$(jsonq "$packed_pkg" bugs.url)"
-    publish_access="$(jsonq "$packed_pkg" publishConfig.access)"
-    publish_registry="$(jsonq "$packed_pkg" publishConfig.registry)"
 
     if [ "$p_name" != "$expected_name" ]; then
       fail "gate 2 — plugin name must be '$expected_name', got '$p_name'"
@@ -532,13 +530,24 @@ verify_package() {
       fail "gate 2 — bugs.url must point to the monorepo issue tracker"
       metadata_ok=0
     fi
-    if [ "$publish_access" != "public" ] || [ "$publish_registry" != "https://registry.npmjs.org/" ]; then
-      fail "gate 2 — publishConfig must use public access and the npmjs registry"
-      metadata_ok=0
-    fi
     if [ "$metadata_ok" -eq 1 ]; then
       ok "gate 2 — canonical monorepo publishing metadata present"
     fi
+  fi
+
+  # ---- gate 2 (continued): publish access ----------------------------------
+  # Every package that publishes needs this, whatever directory it lives in: a
+  # scoped package defaults to restricted access, and publishing a restricted
+  # one needs a paid npm plan, so the register answers 402 after the tarball has
+  # already been built. Shared packages are checked here rather than only in the
+  # plugin block, which is where a newly publishable one slipped through before.
+  local publish_access publish_registry
+  publish_access="$(jsonq "$packed_pkg" publishConfig.access)"
+  publish_registry="$(jsonq "$packed_pkg" publishConfig.registry)"
+  if [ "$publish_access" != "public" ] || [ "$publish_registry" != "https://registry.npmjs.org/" ]; then
+    fail "gate 2 — publishConfig must use public access and the npmjs registry"
+  else
+    ok "gate 2 — publishConfig publishes publicly to the npmjs registry"
   fi
 
   # ---- gate 3: DSH bundle metadata ----------------------------------------

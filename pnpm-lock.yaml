@@ -278,6 +278,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@types/node':
+        specifier: catalog:tooling
+        version: 26.4.0
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
@@ -1207,6 +1210,9 @@ importers:
 
   plugins/dsh-qa-integrations:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -1265,9 +1271,6 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
@@ -1295,6 +1298,9 @@ importers:
 
   plugins/dsh-qa-surface:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -1404,9 +1410,6 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
