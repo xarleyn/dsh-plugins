@@ -5,6 +5,7 @@ import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
 import { JIRA_OPERATIONS } from "../src/providers/jira/catalog.js";
 import { TEAMCITY_OPERATIONS } from "../src/providers/teamcity/catalog.js";
 import { TESTIT_OPERATIONS } from "../src/providers/testit/catalog.js";
+import { WEBLATE_OPERATIONS } from "../src/providers/weblate/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
 /** Minimal valid arguments per tool, so the sweep reaches the executor. */
@@ -146,6 +147,37 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   testit_configurations: {
     projectId: "11111111-1111-1111-1111-111111111111",
   },
+  weblate_connection_get: {},
+  weblate_projects_list: {},
+  weblate_project_get: { project: "app" },
+  weblate_project_statistics_get: { project: "app" },
+  weblate_components_list: { project: "app" },
+  weblate_component_get: { project: "app", component: "frontend" },
+  weblate_component_statistics_get: { project: "app", component: "frontend" },
+  weblate_translations_list: { project: "app", component: "frontend" },
+  weblate_translation_get: {
+    project: "app",
+    component: "frontend",
+    language: "de",
+  },
+  weblate_translation_statistics_get: {
+    project: "app",
+    component: "frontend",
+    language: "de",
+  },
+  weblate_units_search: {
+    project: "app",
+    component: "frontend",
+    language: "de",
+  },
+  weblate_units_find: {},
+  weblate_unit_get: { unitId: 18219 },
+  weblate_unit_comments_list: { unitId: 18219 },
+  weblate_unit_suggestions_list: { unitId: 18219 },
+  weblate_failing_units_list: { project: "app" },
+  weblate_changes_list: { project: "app" },
+  weblate_screenshots_list: {},
+  weblate_screenshot_get: { screenshotId: 3 },
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -219,7 +251,8 @@ describe("model-visible integration tools", () => {
           GITLAB_OPERATIONS[operation] ??
           TEAMCITY_OPERATIONS[operation] ??
           JIRA_OPERATIONS[operation] ??
-          TESTIT_OPERATIONS[operation],
+          TESTIT_OPERATIONS[operation] ??
+          WEBLATE_OPERATIONS[operation],
         operation,
       ).toBeDefined();
     }

@@ -22,6 +22,7 @@ import { IntegrationProviderRegistry } from "./providers/registry.js";
 import TeamcityProvider from "./providers/teamcity/index.js";
 import { networkAllowsNothing } from "./providers/teamcity/config.js";
 import TestitProvider from "./providers/testit/index.js";
+import WeblateProvider from "./providers/weblate/index.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
@@ -86,6 +87,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly configuredServer: IntegrationInstanceSummary | null;
   /** The Test IT installations this deployment allows, in config order. */
   private readonly configuredTestitInstances: readonly IntegrationInstanceSummary[];
+  /** The Weblate instances this deployment allows, in config order. */
+  private readonly configuredWeblateInstances: readonly IntegrationInstanceSummary[];
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
@@ -126,6 +129,9 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.testit.enabled) {
       providers.register(new TestitProvider(config));
     }
+    if (config.weblate.enabled) {
+      providers.register(new WeblateProvider(config));
+    }
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
       : [];
@@ -165,6 +171,13 @@ export class QaIntegrations extends TypertRemoteService {
             baseUrl: config.teamcity.serverUrl,
           }
         : null;
+    this.configuredWeblateInstances = config.weblate.enabled
+      ? config.weblate.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.label,
+          baseUrl: instance.baseUrl,
+        }))
+      : [];
     this.broker = new IntegrationBroker(
       repository,
       secrets,
@@ -540,6 +553,57 @@ export class QaIntegrations extends TypertRemoteService {
     );
   }
 
+  /**
+   * Instances this deployment allows. The connect form picks from this list and
+   * never takes a hostname, which is what keeps the broker from being pointed at
+   * an origin the operator did not configure.
+   */
+  @Remote("weblateInstances")
+  weblateInstances(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredWeblateInstances);
+  }
+
+  @Remote("getWeblate")
+  getWeblate(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "weblate"),
+    );
+  }
+
+  @Remote("putWeblateCredential")
+  async putWeblateCredential(
+    token: string,
+    input: { readonly instanceId: string; readonly token: string },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "weblate", {
+        token: input.token,
+        options: { instanceId: input.instanceId },
+      }),
+    );
+  }
+
+  @Remote("testWeblate")
+  async testWeblate(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "weblate"),
+    );
+  }
+
+  @Remote("patchWeblatePolicy")
+  patchWeblatePolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "weblate", patch),
+    );
+  }
+
+  @Remote("disconnectWeblate")
+  disconnectWeblate(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "weblate"),
+    );
+  }
+
   private requirePrincipal(token: string): IntegrationPrincipal {
     if (!this.enabled) {
       throw new IntegrationError(
@@ -909,6 +973,61 @@ export {
   createTestitTools,
   TESTIT_TOOL_NAMES,
 } from "./providers/testit/tools.js";
+export { WeblateProvider } from "./providers/weblate/index.js";
+export {
+  WEBLATE_CAPABILITIES,
+  WEBLATE_CAPABILITY_INFO,
+  WEBLATE_OPERATIONS,
+  enabledCapabilities as weblateEnabledCapabilities,
+  weblateOperationCapability,
+  type WeblateCapability,
+  type WeblateCapabilityDefinition,
+  type WeblateOperationDefinition,
+} from "./providers/weblate/catalog.js";
+export {
+  WEBLATE_DEFAULTS,
+  resolveWeblateConfig,
+  weblateConfigSchema,
+  weblateInstance,
+  type WeblateFlags,
+  type WeblateInstance,
+} from "./providers/weblate/config.js";
+export {
+  WEBLATE_HANDLERS,
+  WEBLATE_PROJECTIONS,
+  WEBLATE_UNTRUSTED_OPERATIONS,
+  accountFromUsers,
+  componentRef,
+  projectRef as weblateProjectRef,
+  sameOriginUrl,
+  translationRef as weblateTranslationRef,
+  unitState as weblateUnitState,
+  type WeblateProjection,
+  type WeblateProjectionContext,
+} from "./providers/weblate/operations.js";
+export {
+  FAILING_CHECK_CLAUSE,
+  UNIT_STATE_FILTERS,
+  UNIT_TEXT_FIELDS,
+  buildUnitQuery,
+  exactClause as weblateExactClause,
+  quoteQueryValue,
+  stateClause as weblateStateClause,
+  textClause as weblateTextClause,
+  type UnitStateFilter,
+  type UnitTextField,
+} from "./providers/weblate/query.js";
+export {
+  WeblateTransport,
+  credentialFromPlaintext as weblateCredentialFromPlaintext,
+  credentialInstance as weblateCredentialInstance,
+  resultsOf,
+  type WeblateCredential,
+} from "./providers/weblate/transport.js";
+export {
+  createWeblateTools,
+  WEBLATE_TOOL_NAMES,
+} from "./providers/weblate/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {

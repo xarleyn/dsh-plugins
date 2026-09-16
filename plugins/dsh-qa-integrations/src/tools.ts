@@ -22,6 +22,10 @@ import {
   createTeamcityTools,
   TEAMCITY_TOOL_NAMES,
 } from "./providers/teamcity/tools.js";
+import {
+  createWeblateTools,
+  WEBLATE_TOOL_NAMES,
+} from "./providers/weblate/tools.js";
 
 export interface IntegrationToolOptions {
   readonly broker: IntegrationBroker;
@@ -42,6 +46,7 @@ export const INTEGRATION_TOOL_NAMES = [
   ...TEAMCITY_TOOL_NAMES,
   ...JIRA_TOOL_NAMES,
   ...TESTIT_TOOL_NAMES,
+  ...WEBLATE_TOOL_NAMES,
 ] as const;
 
 /** Provider tool modules, composed into one registration list. */
@@ -55,5 +60,6 @@ export function createIntegrationTools(
     ...createTeamcityTools(options),
     ...createJiraTools(options),
     ...createTestitTools(options),
+    ...createWeblateTools(options),
   ];
 }

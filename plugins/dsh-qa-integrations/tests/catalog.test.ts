@@ -164,7 +164,7 @@ describe("provider boundary", () => {
       // Any provider's name in the shared engine means the abstraction is gone;
       // the composition roots are the only places allowed to name them.
       expect(source, `${file} must stay provider-agnostic`).not.toMatch(
-        /bitrix|confluence|gitlab|jira|teamcity|testit/iu,
+        /bitrix|confluence|gitlab|jira|teamcity|testit|weblate/iu,
       );
     }
   });
@@ -177,7 +177,7 @@ describe("provider boundary", () => {
       { encoding: "utf8" },
     );
     expect(brokerSuite).not.toMatch(
-      /bitrix|confluence|gitlab|jira|teamcity|testit/iu,
+      /bitrix|confluence|gitlab|jira|teamcity|testit|weblate/iu,
     );
   });
 });
