@@ -742,6 +742,7 @@ export class QaBrowserSessionManager {
       navigationTimeoutMs: this.options.config.runtime.navigationTimeoutMs,
       validateRequest: async (url) => {
         await this.options.policy.assertAllowed(url);
+        await this.options.policy.assertUnchangedResolution(url);
       },
     });
     const record: SessionRecord = {

@@ -93,4 +93,58 @@ describe("BrowserNetworkPolicy", () => {
       errorCode(policy().assertAllowed("https://dsh.example/settings")),
     ).resolves.toBe("BROWSER_DSH_ORIGIN_BLOCKED");
   });
+
+  it("blocks a navigation whose host re-resolves to unverified addresses", async () => {
+    const answers: Record<string, string[]> = {
+      "public.example": ["203.0.113.10"],
+    };
+    const config = resolveQaBrowserConfig({ security: { network: {} } });
+    const policy = new BrowserNetworkPolicy(config.security.network, {
+      lookup: (async (hostname: string) =>
+        (answers[hostname] ?? []).map((address) => ({
+          address,
+          family: address.includes(":") ? 6 : 4,
+        }))) as unknown as typeof lookup,
+    });
+    await expect(
+      policy.assertAllowed("https://public.example/path"),
+    ).resolves.toBeInstanceOf(URL);
+    await expect(
+      policy.assertUnchangedResolution("https://public.example/path"),
+    ).resolves.toBeUndefined();
+
+    answers["public.example"] = ["203.0.113.10", "192.168.1.5"];
+    await expect(
+      errorCode(policy.assertUnchangedResolution("https://public.example")),
+    ).resolves.toBe("BROWSER_HOST_BLOCKED");
+
+    answers["public.example"] = ["10.0.0.5"];
+    await expect(
+      errorCode(policy.assertUnchangedResolution("https://public.example")),
+    ).resolves.toBe("BROWSER_HOST_BLOCKED");
+
+    answers["public.example"] = ["203.0.113.10"];
+    await expect(
+      policy.assertUnchangedResolution("https://public.example/path"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("fails the re-resolution closed when the second resolve drops the host", async () => {
+    const answers: Record<string, string[]> = {
+      "public.example": ["203.0.113.10"],
+    };
+    const config = resolveQaBrowserConfig({ security: { network: {} } });
+    const policy = new BrowserNetworkPolicy(config.security.network, {
+      lookup: (async (hostname: string) =>
+        (answers[hostname] ?? []).map((address) => ({
+          address,
+          family: 4,
+        }))) as unknown as typeof lookup,
+    });
+    await policy.assertAllowed("https://public.example/");
+    answers["public.example"] = [];
+    await expect(
+      errorCode(policy.assertUnchangedResolution("https://public.example/")),
+    ).resolves.toBe("BROWSER_HOST_BLOCKED");
+  });
 });
