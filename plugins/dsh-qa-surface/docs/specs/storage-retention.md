@@ -144,7 +144,7 @@ becomes one row plus 25 hashes, losslessly.
 `qa-accounts`, `qa-integrations`, `qa-capability-policies` and `qa-quality`
 are keyed records with append-only audit logs — the shape SQLite is for. Each
 becomes a `<name>.db` file (mode 0600) opened through one shared helper
-(`src/storage/sqlite.ts`) that owns:
+(`SqliteDatabase` in `packages/plugin-kit`) that owns:
 
 - `PRAGMA journal_mode = WAL`, `synchronous = NORMAL`, `busy_timeout = 5000`
   — WAL is what lets the `qa-accounts` CLI work against the same database from
@@ -159,12 +159,14 @@ Audit retention becomes a `DELETE` with a `LIMIT`-bounded keep instead of
 (`*.retention.auditDays`, default 90) so a burst of tool calls cannot pin the
 maximum row count forever.
 
-**Open decision before phase 3.** `dsh-qa-integrations` needs the same helper,
-and it already depends on `dsh-qa-surface` — but only through type imports.
-Importing a runtime module across the two would deepen that coupling and add an
-exports subpath to the published package. The helper belongs in
-`packages/plugin-kit`, which both can depend on; moving it there is a decision
-to take deliberately rather than as a side effect of the integrations store.
+**Where the helper lives.** Two plugins need this plumbing —
+`dsh-qa-surface` for its accounts, roles and quality stores, and
+`dsh-qa-integrations` for its registry and audit trail — so it is
+`SqliteDatabase` in `packages/plugin-kit`, the shared home §27.1 of the
+monorepo spec names for `packages/*`. Runtime imports need it to be resolvable
+from `node_modules` at install time, so the kit is now a publishable package in
+the release projects instead of a private one; its first release must reach the
+registry before a plugin that imports it at runtime is deployed.
 
 `qa-integrations` additionally stops writing an audit row for every successful
 read call in the same transaction as the call itself: the row is buffered and
@@ -213,8 +215,8 @@ the `.gitignore` fix that stops any of these files from being staged.
 | Phase | Content | State |
 | --- | --- | --- |
 | 1 | Sources: shard per session, retention, legacy split | landed (`36fdb91`) |
-| 2a | `src/storage/sqlite.ts` helper + tests | landed |
-| 2b | Accounts: ownership eviction, snapshot dedup | landed |
+| 2a | `SqliteDatabase` helper in `packages/plugin-kit` + tests | landed (`015af1c`, `0d40aa5`) |
+| 2b | Accounts: ownership eviction, snapshot dedup | landed (`09bebd9`) |
 | 2c | Accounts: move the store onto SQLite | next |
 | 3 | Integrations: SQLite, batched audit, retention | |
 | 4 | Capability policies and quality: SQLite, retention | |
