@@ -1274,6 +1274,9 @@ importers:
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
+      '@yadsh/dsh-test-kit':
+        specifier: workspace:^
+        version: link:../../packages/test-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)

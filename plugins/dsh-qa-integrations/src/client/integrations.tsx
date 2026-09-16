@@ -1,10 +1,12 @@
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { createBitrix24Card, type IntegrationsRemote } from "./bitrix24.js";
+import { createConfluenceCard, type ConfluenceRemote } from "./confluence.js";
 import { createGitlabCard, type GitlabRemote } from "./gitlab.js";
 import { createJiraCard, type JiraRemote } from "./jira.js";
 import { createTeamcityCard, type TeamcityRemote } from "./teamcity.js";
 
 export type IntegrationsClientRemote = IntegrationsRemote &
+  ConfluenceRemote &
   GitlabRemote &
   TeamcityRemote &
   JiraRemote;
@@ -31,6 +33,7 @@ export const INTEGRATIONS_DISCLOSURE =
  */
 export function createProviderCards(remote: IntegrationsClientRemote) {
   const Bitrix24Card = createBitrix24Card(remote);
+  const ConfluenceCard = createConfluenceCard(remote);
   const GitlabCard = createGitlabCard(remote);
   const TeamcityCard = createTeamcityCard(remote);
   const JiraCard = createJiraCard(remote);
@@ -38,6 +41,9 @@ export function createProviderCards(remote: IntegrationsClientRemote) {
     return (
       <>
         {providers.includes("bitrix24") ? <Bitrix24Card token={token} /> : null}
+        {providers.includes("confluence") ? (
+          <ConfluenceCard token={token} />
+        ) : null}
         {providers.includes("gitlab") ? <GitlabCard token={token} /> : null}
         {providers.includes("teamcity") ? <TeamcityCard token={token} /> : null}
         {providers.includes("jira") ? <JiraCard token={token} /> : null}
