@@ -30,6 +30,18 @@ const REQUIRED_KEYWORDS = ["deepseek-harness", "dsh", "dsh-plugin", "cordis"];
 
 const VERSION_PLANS_DIRECTORY = path.join(".nx", "version-plans");
 const FRONT_MATTER_FENCE = "---";
+const QA_SURFACE_DIRECTORY = path.join("plugins", "dsh-qa-surface");
+const QA_SURFACE_PROJECT = "@yadsh/dsh-qa-surface";
+const QA_CHANGELOG_SOURCE = path.join(
+  "src",
+  "client",
+  "components",
+  "QaChangelog.tsx",
+);
+// A plugin registers its configuration card under this client slot, and the
+// registration must stay guarded by the shared verification contract.
+const SETTINGS_CARD_SLOT = "settings.plugin.item";
+const CARD_CONTRACT_MODULE = "verify-plugin-card-contract";
 const RELEASE_TYPES = new Set([
   "major",
   "minor",
@@ -407,6 +419,11 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
       })) {
         failures.push(`${manifest.name}: ${error}`);
       }
+      if (group === "plugins") {
+        for (const error of validateClientContractGates(directory, manifest)) {
+          failures.push(`${manifest.name}: ${error}`);
+        }
+      }
       if (manifest.private === true) continue;
       verified += 1;
       const errors = [
@@ -446,6 +463,181 @@ function readWorkspacePackageNames(repoRoot) {
     }
   }
   return names;
+}
+
+function walkFiles(directory, out = []) {
+  if (!existsSync(directory)) return out;
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(full, out);
+    } else if (entry.isFile()) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function anyScriptMentions(directory, needle) {
+  return walkFiles(directory).some((file) =>
+    readFileSync(file, "utf8").includes(needle),
+  );
+}
+
+/** Semver precedence for the versions the curated changelog declares. */
+export function compareVersions(a, b) {
+  const parse = (version) => {
+    const separator = version.indexOf("-");
+    const core = separator === -1 ? version : version.slice(0, separator);
+    const prerelease = separator === -1 ? "" : version.slice(separator + 1);
+    const [major = 0, minor = 0, patch = 0] = core
+      .split(".")
+      .map((part) => Number(part));
+    return { major, minor, patch, prerelease };
+  };
+
+  const left = parse(a);
+  const right = parse(b);
+  for (const key of ["major", "minor", "patch"]) {
+    if (left[key] !== right[key]) return left[key] < right[key] ? -1 : 1;
+  }
+
+  // A prerelease precedes the release of the same core.
+  if (left.prerelease !== right.prerelease) {
+    if (left.prerelease === "") return 1;
+    if (right.prerelease === "") return -1;
+    const ids = [left.prerelease.split("."), right.prerelease.split(".")];
+    for (
+      let index = 0;
+      index < Math.max(ids[0].length, ids[1].length);
+      index += 1
+    ) {
+      const [x, y] = [ids[0][index], ids[1][index]];
+      if (x === undefined) return -1;
+      if (y === undefined) return 1;
+      const numeric = [/^\d+$/u.test(x), /^\d+$/u.test(y)];
+      if (numeric[0] && numeric[1]) {
+        const delta = Number(x) - Number(y);
+        if (delta !== 0) return delta < 0 ? -1 : 1;
+      } else if (numeric[0] !== numeric[1]) {
+        return numeric[0] ? -1 : 1;
+      } else if (x !== y) {
+        return x < y ? -1 : 1;
+      }
+    }
+  }
+  return 0;
+}
+
+/** Project names a plan's front matter declares bumps for. */
+export function planProjects(content) {
+  const lines = content.split("\n");
+  if (lines[0]?.trim() !== FRONT_MATTER_FENCE) return [];
+  const closingFence = lines.findIndex(
+    (line, index) => index > 0 && line.trim() === FRONT_MATTER_FENCE,
+  );
+  if (closingFence === -1) return [];
+  return lines
+    .slice(1, closingFence)
+    .map((line) => /^(?<key>.+?)\s*:\s*\S+$/u.exec(line.trim())?.groups.key)
+    .filter((key) => key !== undefined)
+    .map((key) => key.replace(/^"|"$/gu, ""));
+}
+
+/**
+ * The version literals of the curated end-user changelog (QaChangelog.tsx),
+ * where each entry declares `version: "x.y.z"` as a plain literal.
+ */
+export function curatedChangelogVersions(changelogSource) {
+  return [...changelogSource.matchAll(/\bversion:\s*"([^"]+)"/gu)].map(
+    (match) => match[1],
+  );
+}
+
+/**
+ * AGENTS.md ("QA surface release notes"): a version plan for the qa-surface
+ * project must come with a curated changelog entry for a version strictly
+ * newer than the manifest's current version. The gate is a tripwire — it
+ * only fires when qa-surface has plans but no such record at all.
+ */
+export function validateQaChangelogCoverage(repoRoot, plans) {
+  const mentionsQaSurface = plans.some((plan) =>
+    planProjects(plan.content).includes(QA_SURFACE_PROJECT),
+  );
+  if (!mentionsQaSurface) return [];
+
+  const packageDirectory = path.join(repoRoot, QA_SURFACE_DIRECTORY);
+  const manifestPath = path.join(packageDirectory, "package.json");
+  if (!existsSync(manifestPath)) {
+    return [
+      "plugins/dsh-qa-surface: version plans declare the project, but its package.json is missing",
+    ];
+  }
+  const currentVersion = readJson(manifestPath).version;
+
+  const changelogPath = path.join(packageDirectory, QA_CHANGELOG_SOURCE);
+  if (!existsSync(changelogPath)) {
+    return [
+      "plugins/dsh-qa-surface: version plans declare the project, but src/client/components/QaChangelog.tsx is missing",
+    ];
+  }
+  const versions = curatedChangelogVersions(
+    readFileSync(changelogPath, "utf8"),
+  );
+  if (
+    versions.some((version) => compareVersions(version, currentVersion) > 0)
+  ) {
+    return [];
+  }
+  return [
+    `plugins/dsh-qa-surface: a version plan declares the project, but QaChangelog.tsx has no entry newer than the current ${currentVersion}; add the planned version to QA_CHANGELOG in the same change`,
+  ];
+}
+
+/**
+ * A plugin that ships a browser bundle must keep a verification script that
+ * asserts the bundle registration id equals the full package name, and a
+ * plugin registering a configuration card must route its client through the
+ * shared card-contract gate — the AGENTS.md contracts the bundles can
+ * otherwise drift away from unnoticed.
+ */
+export function validateClientContractGates(directory, manifest) {
+  const errors = [];
+  const scripts = path.join(directory, "scripts");
+  const sources = path.join(directory, "src");
+
+  if (manifest.dsh?.client) {
+    const directoryName = path.basename(directory);
+    // Regex literals escape the slash (`@yadsh\/name`), so compare with the
+    // escapes dropped before looking for the full package name.
+    const asserted = walkFiles(scripts)
+      .filter((file) => file.endsWith(".mjs"))
+      .some((file) =>
+        readFileSync(file, "utf8")
+          .replaceAll("\\", "")
+          .includes(`@yadsh/${directoryName}`),
+      );
+    if (!asserted) {
+      errors.push(
+        `dsh.client is declared, but no scripts/*.mjs asserts the full package name "@yadsh/${directoryName}"; assert it in verify-package.mjs or verify-client-bundle.mjs`,
+      );
+    }
+  }
+
+  if (
+    walkFiles(sources).some((file) =>
+      readFileSync(file, "utf8").includes(SETTINGS_CARD_SLOT),
+    )
+  ) {
+    if (!anyScriptMentions(scripts, CARD_CONTRACT_MODULE)) {
+      errors.push(
+        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs`,
+      );
+    }
+  }
+
+  return errors;
 }
 
 /**
@@ -524,16 +716,17 @@ export function verifyVersionPlans(
     : [];
   const knownProjects = readWorkspacePackageNames(repoRoot);
   const failures = [];
+  const plans = planFiles.map((planFile) => ({
+    file: planFile,
+    content: readFileSync(path.join(plansRoot, planFile), "utf8"),
+  }));
 
-  for (const planFile of planFiles) {
+  for (const plan of plans) {
     failures.push(
-      ...validateVersionPlan(
-        planFile,
-        readFileSync(path.join(plansRoot, planFile), "utf8"),
-        knownProjects,
-      ),
+      ...validateVersionPlan(plan.file, plan.content, knownProjects),
     );
   }
+  failures.push(...validateQaChangelogCoverage(repoRoot, plans));
   if (requirePlans && planFiles.length === 0) {
     failures.push("at least one version plan file is required");
   }
