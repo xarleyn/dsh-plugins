@@ -348,9 +348,31 @@ export class QaPolicyAdmission {
 
     const basePolicyAllow =
       capability?.policy.tools ?? lockdown.toolPolicy.allow;
+    // One mount test for the whole policy: a name that is neither visible to
+    // this agent nor declared by the QA catalog is refused below, so nothing
+    // may be added to the list without passing it.
+    const isMounted = (toolName: string): boolean =>
+      this.ctx.tools.get(toolName, agent) !== undefined ||
+      this.knownDynamicToolNames().includes(toolName);
+    // The provenance reporter is this plugin's own tool, mounted only while the
+    // deployment runs the sources fallback. Naming it in a deployment that does
+    // not mount it would refuse every chat instead of degrading that fallback,
+    // so the append is gated on the mount test like every configured name.
+    const reportToolMissing =
+      config.sources.enabled &&
+      config.sources.subagents.enableReportToolFallback &&
+      !basePolicyAllow.includes(QA_REPORT_SOURCES_TOOL) &&
+      !isMounted(QA_REPORT_SOURCES_TOOL);
+    if (reportToolMissing) {
+      this.logger.warn("sources.report-tool-unmounted", {
+        sessionId,
+        tool: QA_REPORT_SOURCES_TOOL,
+      });
+    }
     const configuredPolicyAllow =
       config.sources.enabled &&
       config.sources.subagents.enableReportToolFallback &&
+      !reportToolMissing &&
       !basePolicyAllow.includes(QA_REPORT_SOURCES_TOOL)
         ? [...basePolicyAllow, QA_REPORT_SOURCES_TOOL]
         : basePolicyAllow;
@@ -364,12 +386,7 @@ export class QaPolicyAdmission {
         ...(capability === undefined ? this.principalScopedTools : []),
       ]),
     ];
-    const policy = qaToolPolicyPlan(
-      policyAllow,
-      (toolName) =>
-        this.ctx.tools.get(toolName, agent) !== undefined ||
-        this.knownDynamicToolNames().includes(toolName),
-    );
+    const policy = qaToolPolicyPlan(policyAllow, isMounted);
     if (policy.unknown.length > 0) {
       throw new QaAttestationError(
         "unknown-tools",

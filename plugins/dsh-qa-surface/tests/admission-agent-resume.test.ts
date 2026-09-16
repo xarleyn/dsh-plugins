@@ -17,6 +17,10 @@ function world(
     live?: boolean;
     fail?: string;
     capability?: readonly string[];
+    /** Tools the deployment does not mount, though its config names them. */
+    unmounted?: readonly string[];
+    /** Turn the sources feature on, including the reporter fallback. */
+    sources?: boolean;
   } = {},
 ) {
   const workspace = mkdtempSync(path.join(tmpdir(), "qa-resume-"));
@@ -65,7 +69,8 @@ function world(
     },
     tools: {
       guard: () => () => undefined,
-      get: () => ({}),
+      get: (name: string) =>
+        options.unmounted?.includes(name) === true ? undefined : {},
     },
   };
   const admission = new QaPolicyAdmission(
@@ -74,12 +79,31 @@ function world(
       resolveConfig({
         session: { workspaceId: "workspace-1" },
         lockdown: { toolPolicy: { allow: ["read"] } },
-        sources: { enabled: false },
+        sources:
+          options.sources === true
+            ? {
+                enabled: true,
+                subagents: {
+                  inheritSources: true,
+                  enableReportToolFallback: true,
+                  markIncompleteOpaqueRuns: true,
+                  validateReportedSources: false,
+                },
+              }
+            : { enabled: false },
       }),
     {
       debug() {},
       info() {},
-      warn() {},
+      warn(...args: unknown[]) {
+        logged.push(
+          args
+            .map((value) =>
+              typeof value === "string" ? value : JSON.stringify(value),
+            )
+            .join(" "),
+        );
+      },
       error(...args: unknown[]) {
         logged.push(
           args
@@ -138,6 +162,30 @@ describe("agent materialization in policy admission", () => {
       admission.secureSession("token", "session-cold"),
     ).resolves.toMatchObject({ sessionId: "session-cold" });
     expect(resolved.count).toBe(0);
+    admission.dispose();
+  });
+
+  it("never pins a tool this deployment does not mount", async () => {
+    // The sources fallback names this plugin's own reporter. A deployment that
+    // turned the fallback on but does not mount the tool must lose the fallback,
+    // not every chat: the policy may only name what the session can resolve.
+    const { admission, restricted, logged } = world({
+      live: true,
+      sources: true,
+      unmounted: ["qa_report_sources"],
+    });
+    const proof = await admission.secureSession("token", "session-cold");
+    expect(proof.toolAllowList).toEqual(["read"]);
+    expect(restricted).toEqual([["read"]]);
+    expect(logged.join("\n")).toContain("sources.report-tool-unmounted");
+    admission.dispose();
+  });
+
+  it("pins the reporter when the deployment does mount it", async () => {
+    const { admission, restricted } = world({ live: true, sources: true });
+    const proof = await admission.secureSession("token", "session-cold");
+    expect(proof.toolAllowList).toEqual(["read"]);
+    expect(restricted).toEqual([["read", "qa_report_sources"]]);
     admission.dispose();
   });
 
