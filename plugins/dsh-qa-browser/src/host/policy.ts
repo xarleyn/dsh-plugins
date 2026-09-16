@@ -19,6 +19,9 @@ const METADATA_HOSTS = new Set([
   "metadata.azure.internal",
 ]);
 
+/** Remembered host resolutions before the map is dropped wholesale. */
+const VERIFIED_RESOLUTIONS_LIMIT = 256;
+
 function hostMatches(hostname: string, pattern: string): boolean {
   if (pattern.startsWith("*.")) {
     const suffix = pattern.slice(1);
@@ -73,6 +76,8 @@ function isMetadataAddress(address: string): boolean {
 export class BrowserNetworkPolicy {
   private readonly resolveHost: typeof lookup;
   private readonly dshOrigins: ReadonlySet<string>;
+  /** Address sets a successful `assertAllowed` verified, per hostname. */
+  private readonly verifiedResolutions = new Map<string, readonly string[]>();
 
   constructor(
     readonly config: NetworkPolicyConfig,
@@ -183,6 +188,67 @@ export class BrowserNetworkPolicy {
         );
       }
     }
+    if (this.verifiedResolutions.size >= VERIFIED_RESOLUTIONS_LIMIT) {
+      this.verifiedResolutions.clear();
+    }
+    this.verifiedResolutions.set(
+      hostname,
+      addresses.map(({ address }) => address),
+    );
     return target;
+  }
+
+  /**
+   * Double-resolve defense for the gap between this resolver and Chromium's
+   * own: re-resolve the host a request is about to dial and compare against
+   * the addresses `assertAllowed` just verified. An authoritative DNS that
+   * answers differently between the two resolutions — the classic rebinding
+   * move — is refused with the same taxonomy as `assertAllowed`.
+   *
+   * Residual TOCTOU: after this check passes and the request continues,
+   * Chromium still resolves through its own recursive resolver, and a DNS
+   * that pins a clean answer for this resolver and a private one for
+   * Chromium's queries escapes both checks. The verification narrows the
+   * rebinding window to a single hostile answer that must additionally be
+   * consistent per resolver; it cannot close it without pinning the
+   * connection to a verified address inside Chromium itself.
+   */
+  async assertUnchangedResolution(rawUrl: string): Promise<void> {
+    let target: URL;
+    try {
+      target = new URL(rawUrl);
+    } catch (error) {
+      throw new QaBrowserError(
+        "BROWSER_NAVIGATION_BLOCKED",
+        "Navigation URL is not valid.",
+        { cause: error },
+      );
+    }
+    const hostname = target.hostname.toLowerCase().replace(/\.$/u, "");
+    const verified = this.verifiedResolutions.get(hostname);
+    if (verified === undefined || isIP(hostname) !== 0) return;
+    let addresses: readonly { address: string }[];
+    try {
+      addresses = await this.resolveHost(hostname, {
+        all: true,
+        verbatim: true,
+      });
+    } catch (error) {
+      throw new QaBrowserError(
+        "BROWSER_HOST_BLOCKED",
+        "The destination host could not be resolved safely.",
+        { cause: error },
+      );
+    }
+    const current = addresses.map(({ address }) => address);
+    if (
+      current.length !== verified.length ||
+      verified.some((address) => !current.includes(address))
+    ) {
+      throw new QaBrowserError(
+        "BROWSER_HOST_BLOCKED",
+        "The destination host resolved to different addresses than the ones the policy verified.",
+      );
+    }
   }
 }

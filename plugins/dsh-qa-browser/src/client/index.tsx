@@ -74,6 +74,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           });
           stopProbe();
         }
+      } catch (cause) {
+        console.warn(
+          "[dsh-qa-browser] panel state probe failed",
+          cause instanceof Error ? cause.message : cause,
+        );
       } finally {
         probing = false;
       }

@@ -35,6 +35,18 @@ should first exist without a server-enforced boundary. Redirect and subresource
 requests are rechecked by Playwright routing; metadata endpoints remain denied
 even when a hostname is explicitly allowed.
 
+Because Chromium resolves DNS with its own recursive resolver, a policy check
+that resolves the host server-side can be detached from the address the browser
+finally dials: an authoritative DNS answerer is free to hand the two resolvers
+different answers. Every request now passes a double resolve immediately before
+`route.continue()`: the host is resolved a second time and compared with the
+address set the policy check just verified, and a divergence is refused with
+the same `BROWSER_HOST_BLOCKED` taxonomy. A residual TOCTOU remains — after the
+check passes, Chromium may still be handed a different answer by a DNS that
+pins its replies per resolver — so the verification narrows the rebinding
+window rather than closing it; closing it would require pinning the verified
+address inside Chromium itself.
+
 ## Semantic slice
 
 The second implementation stage adds semantic snapshots, revision-bound refs
