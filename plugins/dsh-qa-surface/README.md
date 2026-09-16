@@ -728,7 +728,8 @@ session resolves them: the deployment's pinned tools plus Common and the role,
 the skill-grantable ceiling separately, and declared audiences among the
 skills.
 
-The configuration lives in `$DSH_HOME/qa-capability-policies.json`; user
+The configuration lives in `$DSH_HOME/qa-capability-policies.db` (a pre-0.8.0
+`qa-capability-policies.json` beside it is imported on first use); user
 assignments and session snapshots stay with the existing account store. Tools
 are filtered with an agent-scoped restriction and a pre-execution gate. Skills
 use an agent-scoped `skill` consumer that publishes only the allow-listed

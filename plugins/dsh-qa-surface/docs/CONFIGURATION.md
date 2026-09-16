@@ -603,7 +603,8 @@ build cannot parse (an event type it does not know) is reported as unreadable
 instead of failing the page.
 
 Policy definitions and the compact audit trail are stored atomically in
-`$DSH_HOME/qa-capability-policies.json`. User assignments and the selected
+`$DSH_HOME/qa-capability-policies.db` (a pre-0.8.0 `qa-capability-policies.json`
+beside it is imported on first use). User assignments and the selected
 subrole/capability snapshot remain in `$DSH_HOME/qa-accounts.db`. Do not edit
 either file while the Host is running; use the administration UI. Policy
 changes apply to new conversations. Existing conversations retain their
