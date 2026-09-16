@@ -103,7 +103,7 @@ my-project
 
 - Node.js `^22.19.0` или `>=24.0.0`
 - pnpm 10.4.1 для разработки
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` с публичным list-slot `sidebar.footer.action`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` с публичным list-slot `sidebar.footer.action`
 
 Опубликованный клиент rc.2 поддерживается без патчей. Sidebar host с вкладками определяется через опциональный версионированный протокол `__dshNativeTabs@1`; если его нет, плагин использует штатный footer action и не заменяет workspace browser.
 

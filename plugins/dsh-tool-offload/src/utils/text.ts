@@ -24,7 +24,8 @@ export function truncateHead(text: string, maxBytes: number): string {
   const marker = "\n[…truncated]";
   const budget = Math.max(0, maxBytes - byteLength(marker));
   let cut = text.length;
-  while (cut > 0 && byteLength(text.slice(0, cut)) > budget) cut -= Math.ceil(cut / 2);
+  while (cut > 0 && byteLength(text.slice(0, cut)) > budget)
+    cut -= Math.ceil(cut / 2);
   return `${text.slice(0, cut)}${marker}`;
 }
 
@@ -33,7 +34,11 @@ export function truncateHead(text: string, maxBytes: number): string {
  * (SPEC §9.7): the head carries openers/paths, the tail carries conclusions
  * and error summaries. Never exceeds `maxBytes`.
  */
-export function truncateMiddle(text: string, maxBytes: number, headRatio = 0.6): string {
+export function truncateMiddle(
+  text: string,
+  maxBytes: number,
+  headRatio = 0.6,
+): string {
   const total = byteLength(text);
   if (total <= maxBytes) return text;
   const headBudget = Math.max(0, Math.floor(maxBytes * headRatio) - 40);
@@ -47,14 +52,16 @@ export function truncateMiddle(text: string, maxBytes: number, headRatio = 0.6):
 /** Longest prefix of `text` whose UTF-8 size is at most `maxBytes`. */
 function cutToBytes(text: string, maxBytes: number): string {
   let cut = text.length;
-  while (cut > 0 && byteLength(text.slice(0, cut)) > maxBytes) cut -= Math.ceil(cut / 2);
+  while (cut > 0 && byteLength(text.slice(0, cut)) > maxBytes)
+    cut -= Math.ceil(cut / 2);
   return text.slice(0, cut);
 }
 
 /** Longest suffix of `text` whose UTF-8 size is at most `maxBytes`. */
 function cutToBytesFromEnd(text: string, maxBytes: number): string {
   let cut = 0;
-  while (cut < text.length && byteLength(text.slice(cut)) > maxBytes) cut += Math.ceil((text.length - cut) / 2);
+  while (cut < text.length && byteLength(text.slice(cut)) > maxBytes)
+    cut += Math.ceil((text.length - cut) / 2);
   return text.slice(cut);
 }
 
@@ -64,5 +71,8 @@ function cutToBytesFromEnd(text: string, maxBytes: number): string {
  * payload sections (SPEC §6.3, §32.1 "hostile prompt-injection fixture").
  */
 export function sanitizeBoundaryTags(text: string): string {
-  return text.replace(/<\/(TOOL_RESULT|PARENT_TASK|TOOL_CALL|OFFLOAD_NOTE)>/gi, "<\\/$1>");
+  return text.replace(
+    /<\/(TOOL_RESULT|PARENT_TASK|TOOL_CALL|OFFLOAD_NOTE)>/gi,
+    "<\\/$1>",
+  );
 }

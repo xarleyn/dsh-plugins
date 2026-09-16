@@ -9,11 +9,25 @@ import { describe, expect, it } from "vitest";
 import { buildWorkerPrompt } from "../../src/worker/payload.js";
 import { BUNDLED_PROMPT_PROFILES } from "../../src/prompts/profiles.js";
 import { inspectResult } from "../../src/routing/inspect-result.js";
-import { fakeExec, injectionFixture, makeText, successResult } from "../fixtures/offload-fixtures.js";
+import {
+  fakeExec,
+  injectionFixture,
+  makeText,
+  successResult,
+} from "../fixtures/offload-fixtures.js";
 
-function promptFor(text: string, tool = "read", args: unknown = { path: "src/auth/retry.ts" }, parentTask: string | null = "Find how authentication retries are implemented."): string {
+function promptFor(
+  text: string,
+  tool = "read",
+  args: unknown = { path: "src/auth/retry.ts" },
+  parentTask:
+    string | null = "Find how authentication retries are implemented.",
+): string {
   return buildWorkerPrompt({
-    candidate: inspectResult(fakeExec(tool, { arguments: args }), successResult(text)),
+    candidate: inspectResult(
+      fakeExec(tool, { arguments: args }),
+      successResult(text),
+    ),
     parentTask,
     profileJob: BUNDLED_PROMPT_PROFILES.generic!,
   });

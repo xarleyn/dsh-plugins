@@ -1,9 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type {
-  SessionListState,
-  SessionId,
-  WorkspaceListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { SessionId } from "@deepseek-ai/dsh-session/types";
+import type { WorkspaceSnapshot } from "@deepseek-ai/dsh-api-workspace-controller/client";
 import {
   createElement,
   useEffect,
@@ -28,13 +26,13 @@ interface DraftContributionProps {
   readonly surface?: "inline" | "tab" | "popover";
   readonly useDrafts: SelectorHook<readonly DraftSession[]>;
   readonly useSessions: SelectorHook<SessionListState>;
-  readonly useWorkspaces: SelectorHook<WorkspaceListState>;
+  readonly useWorkspaces: SelectorHook<WorkspaceSnapshot>;
 }
 
 interface DraftFooterProps {
   readonly wide: boolean;
   readonly useSessions: SelectorHook<SessionListState>;
-  readonly useWorkspaces: SelectorHook<WorkspaceListState>;
+  readonly useWorkspaces: SelectorHook<WorkspaceSnapshot>;
 }
 
 interface ComposableSlots {

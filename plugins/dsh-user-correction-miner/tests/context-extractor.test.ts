@@ -10,7 +10,10 @@ import {
   userEvent,
 } from "./fixtures/sessions.js";
 
-function extractPreviousAssistant(text: string, maxContextBytes: number): string | undefined {
+function extractPreviousAssistant(
+  text: string,
+  maxContextBytes: number,
+): string | undefined {
   const events = [assistantEvent(0, text), userEvent(1, "Не делай так.")];
   return extractCorrectionEvidence(
     header(),
@@ -79,19 +82,36 @@ describe("extractCorrectionEvidence", () => {
       { maxContextEvents: 20, maxContextBytes: 32_768 },
     );
     expect(evidence.previousUserEvent).toBe(0);
-    expect(evidence.contextEvents.some((event) => event.text.includes("Injected"))).toBe(false);
+    expect(
+      evidence.contextEvents.some((event) => event.text.includes("Injected")),
+    ).toBe(false);
   });
 
   it.each([
     ["keeps ASCII within the byte budget", "abc", 3, "abc"],
-    ["truncates ASCII and reserves three bytes for the ellipsis", "abcdef", 5, "ab…"],
+    [
+      "truncates ASCII and reserves three bytes for the ellipsis",
+      "abcdef",
+      5,
+      "ab…",
+    ],
     ["handles BMP Cyrillic", "абвг", 7, "аб…"],
     ["does not split an emoji outside the BMP", "😀abcd", 7, "😀…"],
     ["keeps several emoji at the exact boundary", "😀😃", 8, "😀😃"],
     ["truncates several emoji at a boundary", "😀😃x", 7, "😀…"],
-    ["does not detach a combining mark from a retained base", "e\u0301x", 6, "e\u0301x"],
+    [
+      "does not detach a combining mark from a retained base",
+      "e\u0301x",
+      6,
+      "e\u0301x",
+    ],
     ["returns no event for empty text", "", 3, undefined],
-    ["returns no event when the byte budget is below the ellipsis", "abc", 2, undefined],
+    [
+      "returns no event when the byte budget is below the ellipsis",
+      "abc",
+      2,
+      undefined,
+    ],
     ["uses an ellipsis when no source code point fits", "😀", 3, "…"],
     ["does not skip an oversized first code point", "😀a", 4, "…"],
   ])("%s", (_name, text, maxBytes, expected) => {
@@ -111,7 +131,9 @@ describe("extractCorrectionEvidence", () => {
   ])("never stores %s beyond a %i-byte budget", (text, maxBytes) => {
     const result = extractPreviousAssistant(text, maxBytes);
     expect(result).toBeDefined();
-    expect(Buffer.byteLength(result ?? "", "utf8")).toBeLessThanOrEqual(maxBytes);
+    expect(Buffer.byteLength(result ?? "", "utf8")).toBeLessThanOrEqual(
+      maxBytes,
+    );
     expect(hasLoneSurrogate(result ?? "")).toBe(false);
   });
 });

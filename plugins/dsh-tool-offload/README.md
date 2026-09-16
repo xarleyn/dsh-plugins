@@ -37,11 +37,13 @@ agent picks tools.
 
 ## Install
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-tool-offload
+dsh plugin --profile <profile> add @yadsh/dsh-tool-offload
 ```
 
-Requires a DSH release in the `>=0.1.1-rc.2 <0.2.0` range with a subagent
+Requires a DSH release in the `>=0.1.5-rc.2 <0.2.0` range with a subagent
 provider that supports tool restrictions (the in-process `spawn` provider).
 
 ## Configuration
@@ -100,7 +102,7 @@ Example `cordis.patch.yml` profile override:
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (tested on `0.1.1-rc.2`); requires the
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested on `0.1.5-rc.2`); requires the
   `tools/post-execute` seam and the `subagents/start` service with a
   tool-restriction-capable provider — see `compatibility.json`.
 - Node.js `^22.19.0 || >=24.0.0`.
@@ -115,7 +117,8 @@ pnpm nx run dsh-tool-offload:verify   # package gate
 ```
 
 The full design document (routing policy, safety model, phased plan) lives in
-`dsh-tool-offload-SPEC.md`; the behavioral contract is `SPEC.md`.
+[`docs/specs/design.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/docs/specs/design.md);
+the behavioral contract is [`SPEC.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-tool-offload/SPEC.md).
 
 ## Credits
 

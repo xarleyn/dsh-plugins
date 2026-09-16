@@ -40,6 +40,14 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.bugs).toEqual({
       url: "https://github.com/xarleyn/dsh-plugins/issues",
     });
+    expect(packageJson.keywords).toEqual([
+      "deepseek",
+      "deepseek-harness",
+      "dsh",
+      "dsh-plugin",
+      "cordis",
+      "dsh-example-plugin",
+    ]);
     expect(packageJson.publishConfig).toEqual({
       access: "public",
       registry: "https://registry.npmjs.org/",
@@ -51,11 +59,12 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.scripts).toMatchObject({
       build: "tsc -p tsconfig.build.json && tsdown",
       check:
-        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify:package",
+        "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
       lint: "eslint src tests scripts",
       test: "vitest run",
       typecheck: "tsc --noEmit",
-      prepack: "pnpm run build",
+      verify: "pnpm run verify:package",
+      prepack: "pnpm run build && pnpm run verify",
     });
     expect(packageJson.dependencies).not.toHaveProperty(
       "@yadsh/dsh-plugin-kit",
@@ -71,8 +80,8 @@ describe("dsh-plugin generator", () => {
       JSON.parse(tree.read(`${root}/compatibility.json`, "utf8") ?? "{}"),
     ).toMatchObject({
       deepseekHarness: {
-        range: ">=0.1.1-rc.2 <0.2.0",
-        testedReleases: ["0.1.1-rc.2"],
+        range: ">=0.1.5-rc.2 <0.2.0",
+        testedReleases: ["0.1.5-rc.2"],
       },
       node: "^22.19.0 || >=24.0.0",
     });
@@ -116,7 +125,9 @@ describe("dsh-plugin generator", () => {
     });
     expect(packageJson.dsh.client).toEqual({ platform: "web" });
     expect(packageJson.devDependencies.tsdown).toBe("catalog:tooling");
-    expect(packageJson.scripts.build).toBe("tsc -p tsconfig.build.json && tsdown");
+    expect(packageJson.scripts.build).toBe(
+      "tsc -p tsconfig.build.json && tsdown",
+    );
     expect(packageJson.scripts.lint).toBe(
       "eslint src scripts tsdown.config.ts",
     );
@@ -124,7 +135,10 @@ describe("dsh-plugin generator", () => {
       "node scripts/verify-client-bundle.mjs",
     );
     expect(packageJson.scripts.check).toBe(
-      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify:package && pnpm run verify:client",
+      "pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run verify",
+    );
+    expect(packageJson.scripts.verify).toBe(
+      "pnpm run verify:package && pnpm run verify:client",
     );
     expect(packageJson.scripts.test).toBeUndefined();
     expect(tree.read(`${root}/tsconfig.json`, "utf8")).toContain(
@@ -133,7 +147,8 @@ describe("dsh-plugin generator", () => {
     expect(tree.exists(`${root}/src/client/index.tsx`)).toBe(true);
     expect(tree.exists(`${root}/tests/index.test.ts`)).toBe(false);
 
-    const clientSource = tree.read(`${root}/src/client/index.tsx`, "utf8") ?? "";
+    const clientSource =
+      tree.read(`${root}/src/client/index.tsx`, "utf8") ?? "";
     expect(clientSource).toContain("export function apply(");
     expect(clientSource).not.toContain("initializeClient");
 

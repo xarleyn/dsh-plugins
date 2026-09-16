@@ -35,9 +35,17 @@ describe("host scope state", () => {
     const selected = join(workspace, "selected");
     mkdirSync(selected);
     const append = vi.fn();
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append };
+    const session: ScopeSession = {
+      header: { cwd: workspace },
+      snapshotEvents: () => [],
+      append,
+    };
 
-    const event = setScope(session, { mode: "focused", roots: [selected], source: "ui" });
+    const event = setScope(session, {
+      mode: "focused",
+      roots: [selected],
+      source: "ui",
+    });
 
     expect(event).toMatchObject({
       version: 1,
@@ -54,14 +62,24 @@ describe("host scope state", () => {
     mkdirSync(selected);
     const session: ScopeSession = {
       header: { cwd: workspace },
-      events: [{
-        type: "session-scope/set",
-        data: { version: 1, mode: "focused", roots: [selected], workspaceRoot: workspace },
-      }],
+      snapshotEvents: () => [
+        {
+          type: "session-scope/set",
+          data: {
+            version: 1,
+            mode: "focused",
+            roots: [selected],
+            workspaceRoot: workspace,
+          },
+        },
+      ],
       append: vi.fn(),
     };
 
-    expect(getScope(session)).toMatchObject({ mode: "focused", roots: [canonicalPath(selected)] });
+    expect(getScope(session)).toMatchObject({
+      mode: "focused",
+      roots: [canonicalPath(selected)],
+    });
   });
 
   test("does not append a durable snapshot when the effective scope is unchanged", () => {
@@ -78,20 +96,29 @@ describe("host scope state", () => {
     };
     const session: ScopeSession = {
       header: { cwd: workspace },
-      events: [{ type: "session-scope/set", data: event }],
+      snapshotEvents: () => [{ type: "session-scope/set", data: event }],
       append,
     };
 
-    expect(setScope(session, { mode: "focused", roots: [selected], source: "ui" })).toEqual(event);
+    expect(
+      setScope(session, { mode: "focused", roots: [selected], source: "ui" }),
+    ).toEqual(event);
     expect(append).not.toHaveBeenCalled();
   });
 
   test("does not materialize the implicit full default as an event", () => {
     const workspace = temporaryWorkspace();
     const append = vi.fn();
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append };
+    const session: ScopeSession = {
+      header: { cwd: workspace },
+      snapshotEvents: () => [],
+      append,
+    };
 
-    expect(setScope(session, { mode: "full", source: "ui" })).toMatchObject({ mode: "full", roots: [] });
+    expect(setScope(session, { mode: "full", source: "ui" })).toMatchObject({
+      mode: "full",
+      roots: [],
+    });
     expect(append).not.toHaveBeenCalled();
   });
 });
@@ -102,11 +129,22 @@ describe("host directory API", () => {
     const visible = join(workspace, "visible");
     const outside = temporaryWorkspace();
     mkdirSync(visible);
-    const session: ScopeSession = { header: { cwd: workspace }, events: [], append: vi.fn() };
+    const session: ScopeSession = {
+      header: { cwd: workspace },
+      snapshotEvents: () => [],
+      append: vi.fn(),
+    };
 
-    await expect(listScopeDirectory(session, workspace)).resolves.toMatchObject({
-      entries: [expect.objectContaining({ name: "visible", path: canonicalPath(visible) })],
-    });
+    await expect(listScopeDirectory(session, workspace)).resolves.toMatchObject(
+      {
+        entries: [
+          expect.objectContaining({
+            name: "visible",
+            path: canonicalPath(visible),
+          }),
+        ],
+      },
+    );
     await expect(listScopeDirectory(session, outside)).rejects.toMatchObject({
       code: SESSION_SCOPE_ERROR.OUTSIDE_WORKSPACE,
     });

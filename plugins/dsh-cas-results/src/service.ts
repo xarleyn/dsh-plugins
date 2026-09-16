@@ -35,8 +35,16 @@ import type {
   CasStore,
   CasStoreStats,
 } from "./cas/types.js";
-import { CasResultsConfigSchema, resolveCasResultsConfig, type CasResultsConfig, type ResolvedCasResultsConfig } from "./config.js";
-import { createPostExecuteListener, type CasPostExecuteListener } from "./integration/post-execute.js";
+import {
+  CasResultsConfigSchema,
+  resolveCasResultsConfig,
+  type CasResultsConfig,
+  type ResolvedCasResultsConfig,
+} from "./config.js";
+import {
+  createPostExecuteListener,
+  type CasPostExecuteListener,
+} from "./integration/post-execute.js";
 import type { PluginLoggerLike } from "./logging.js";
 import { CasCounters, deriveCasMetrics } from "./observability/counters.js";
 import { createGcTool } from "./tools/gc.js";
@@ -49,7 +57,10 @@ import { createStatsTool } from "./tools/stats.js";
  * Store root resolution (SPEC §14): explicit config path wins, otherwise
  * `<$DSH_HOME>/storages/dsh-cas-results`.
  */
-export function resolveStoreDir(config: ResolvedCasResultsConfig, env: NodeJS.ProcessEnv = process.env): string {
+export function resolveStoreDir(
+  config: ResolvedCasResultsConfig,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
   if (config.storeDir !== null) return resolve(config.storeDir);
   return join(resolveDshHome(env), "storages", "dsh-cas-results");
 }
@@ -105,7 +116,11 @@ export class CasResultsService extends Service {
   private gcTimer: NodeJS.Timeout | undefined;
   private disposed = false;
 
-  constructor(ctx: Context, config: CasResultsConfig = {}, deps: CasResultsServiceDeps = {}) {
+  constructor(
+    ctx: Context,
+    config: CasResultsConfig = {},
+    deps: CasResultsServiceDeps = {},
+  ) {
     super(ctx, "casResults");
     this.config = resolveCasResultsConfig(config);
     this.logger =
@@ -134,13 +149,31 @@ export class CasResultsService extends Service {
           }),
         ),
       );
-      const toolDeps = { store: this.store, counters: this.counters, readConfig: () => this.config };
+      const toolDeps = {
+        store: this.store,
+        counters: this.counters,
+        readConfig: () => this.config,
+      };
       disposers.push(toolCtx.tools.register(createRetrieveTool(toolDeps)));
-      disposers.push(toolCtx.tools.register(createSearchTool({ store: this.store, counters: this.counters })));
-      disposers.push(toolCtx.tools.register(createInfoTool({ store: this.store })));
-      disposers.push(toolCtx.tools.register(createStatsTool({ store: this.store, counters: this.counters })));
+      disposers.push(
+        toolCtx.tools.register(
+          createSearchTool({ store: this.store, counters: this.counters }),
+        ),
+      );
+      disposers.push(
+        toolCtx.tools.register(createInfoTool({ store: this.store })),
+      );
+      disposers.push(
+        toolCtx.tools.register(
+          createStatsTool({ store: this.store, counters: this.counters }),
+        ),
+      );
       if (this.config.exposeGcTool) {
-        disposers.push(toolCtx.tools.register(createGcTool({ store: this.store, readConfig: () => this.config })));
+        disposers.push(
+          toolCtx.tools.register(
+            createGcTool({ store: this.store, readConfig: () => this.config }),
+          ),
+        );
       }
     });
 
@@ -152,12 +185,16 @@ export class CasResultsService extends Service {
     });
     // Best-effort startup collection: expired objects and orphan temp files.
     void this.gc().catch((error: unknown) => {
-      this.logger.warn("cas.startup_gc_failed", { error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn("cas.startup_gc_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
     if (this.config.gc.enabled) {
       this.gcTimer = setInterval(() => {
         void this.gc().catch((error: unknown) => {
-          this.logger.warn("cas.background_gc_failed", { error: error instanceof Error ? error.message : String(error) });
+          this.logger.warn("cas.background_gc_failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
       }, this.config.gc.intervalMs);
       this.gcTimer.unref?.();
@@ -173,7 +210,10 @@ export class CasResultsService extends Service {
   }
 
   /** Read a stored object by reference with verified, bounded access. */
-  async read(ref: string, options: CasReadOptions = {}): Promise<CasReadResult> {
+  async read(
+    ref: string,
+    options: CasReadOptions = {},
+  ): Promise<CasReadResult> {
     return this.store.read(parseCasRef(ref), options);
   }
 
@@ -193,7 +233,10 @@ export class CasResultsService extends Service {
       maxBytes: this.config.storage.maxBytes,
     });
     if (outcome.deletedObjects > 0) {
-      this.counters.add({ gcObjectsDeleted: outcome.deletedObjects, gcBytesFreed: outcome.freedBytes });
+      this.counters.add({
+        gcObjectsDeleted: outcome.deletedObjects,
+        gcBytesFreed: outcome.freedBytes,
+      });
       this.logger.info("cas.gc_completed", {
         deleted: outcome.deletedObjects,
         freedBytes: outcome.freedBytes,

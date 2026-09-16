@@ -23,7 +23,8 @@ export const SESSION_SCOPE_ERROR = Object.freeze({
   STALE_WORKSPACE: "SESSION_SCOPE_STALE_WORKSPACE",
 } as const);
 
-export type SessionScopeErrorCode = (typeof SESSION_SCOPE_ERROR)[keyof typeof SESSION_SCOPE_ERROR];
+export type SessionScopeErrorCode =
+  (typeof SESSION_SCOPE_ERROR)[keyof typeof SESSION_SCOPE_ERROR];
 export type SessionScopeMode = "full" | "focused" | "isolated";
 export type SessionScopeSource = "ui" | "command" | "migration" | "delegation";
 
@@ -96,16 +97,22 @@ export function collapseNestedRoots(
     unique.set(comparisonKey(root, caseSensitive), root);
   }
   const candidates = [...unique.values()].sort(
-    (left, right) => left.length - right.length
-      || comparisonKey(left, caseSensitive).localeCompare(comparisonKey(right, caseSensitive)),
+    (left, right) =>
+      left.length - right.length ||
+      comparisonKey(left, caseSensitive).localeCompare(
+        comparisonKey(right, caseSensitive),
+      ),
   );
   const result: string[] = [];
   for (const candidate of candidates) {
-    if (result.some((root) => isLexicallyUnder(candidate, root, caseSensitive))) continue;
+    if (result.some((root) => isLexicallyUnder(candidate, root, caseSensitive)))
+      continue;
     result.push(candidate);
   }
   return result.sort((left, right) =>
-    comparisonKey(left, caseSensitive).localeCompare(comparisonKey(right, caseSensitive))
+    comparisonKey(left, caseSensitive).localeCompare(
+      comparisonKey(right, caseSensitive),
+    ),
   );
 }
 
@@ -122,7 +129,11 @@ export function navigationRootsFor(
     let current = dirname(root);
     while (isLexicallyUnder(current, workspaceRoot, caseSensitive)) {
       ancestors.set(comparisonKey(current, caseSensitive), current);
-      if (comparisonKey(current, caseSensitive) === comparisonKey(workspaceRoot, caseSensitive)) break;
+      if (
+        comparisonKey(current, caseSensitive) ===
+        comparisonKey(workspaceRoot, caseSensitive)
+      )
+        break;
       const parent = dirname(current);
       if (parent === current) break;
       current = parent;
@@ -131,7 +142,10 @@ export function navigationRootsFor(
   const distanceFromWorkspace = (path: string): number => {
     let distance = 0;
     let current = path;
-    while (comparisonKey(current, caseSensitive) !== comparisonKey(workspaceRoot, caseSensitive)) {
+    while (
+      comparisonKey(current, caseSensitive) !==
+      comparisonKey(workspaceRoot, caseSensitive)
+    ) {
       const parent = dirname(current);
       if (parent === current) return Number.MAX_SAFE_INTEGER;
       distance += 1;
@@ -139,9 +153,12 @@ export function navigationRootsFor(
     }
     return distance;
   };
-  return [...ancestors.values()].sort((left, right) =>
-    distanceFromWorkspace(left) - distanceFromWorkspace(right)
-      || comparisonKey(left, caseSensitive).localeCompare(comparisonKey(right, caseSensitive))
+  return [...ancestors.values()].sort(
+    (left, right) =>
+      distanceFromWorkspace(left) - distanceFromWorkspace(right) ||
+      comparisonKey(left, caseSensitive).localeCompare(
+        comparisonKey(right, caseSensitive),
+      ),
   );
 }
 
@@ -157,7 +174,10 @@ export function normalizeSessionScopeRoots(
     paths = DEFAULT_PATH_SERVICES,
   } = options;
   if (!Array.isArray(input)) {
-    throw new SessionScopeError(SESSION_SCOPE_ERROR.INVALID_ROOT, "Invalid session scope root list.");
+    throw new SessionScopeError(
+      SESSION_SCOPE_ERROR.INVALID_ROOT,
+      "Invalid session scope root list.",
+    );
   }
   if (input.length > MAX_ROOTS) {
     throw new SessionScopeError(
@@ -166,14 +186,21 @@ export function normalizeSessionScopeRoots(
     );
   }
   if (!isAbsolute(workspaceRoot) || !paths.isDirectory(workspaceRoot)) {
-    throw new SessionScopeError(SESSION_SCOPE_ERROR.STALE_WORKSPACE, "The session workspace is unavailable.");
+    throw new SessionScopeError(
+      SESSION_SCOPE_ERROR.STALE_WORKSPACE,
+      "The session workspace is unavailable.",
+    );
   }
 
   const lexicalWorkspace = resolve(workspaceRoot);
   const canonicalWorkspace = paths.canonical(workspaceRoot);
   const roots: string[] = [];
   for (const candidate of input) {
-    if (typeof candidate !== "string" || !isAbsolute(candidate) || !paths.isDirectory(candidate)) {
+    if (
+      typeof candidate !== "string" ||
+      !isAbsolute(candidate) ||
+      !paths.isDirectory(candidate)
+    ) {
       throw new SessionScopeError(
         SESSION_SCOPE_ERROR.INVALID_ROOT,
         "A selected session scope root is invalid or unavailable.",
@@ -181,8 +208,16 @@ export function normalizeSessionScopeRoots(
     }
     const lexicalCandidate = resolve(candidate);
     const canonicalCandidate = paths.canonical(candidate);
-    const lexicalInside = isLexicallyUnder(lexicalCandidate, lexicalWorkspace, caseSensitive);
-    const canonicalInside = isLexicallyUnder(canonicalCandidate, canonicalWorkspace, caseSensitive);
+    const lexicalInside = isLexicallyUnder(
+      lexicalCandidate,
+      lexicalWorkspace,
+      caseSensitive,
+    );
+    const canonicalInside = isLexicallyUnder(
+      canonicalCandidate,
+      canonicalWorkspace,
+      caseSensitive,
+    );
     if (!allowExternalRoots && !lexicalInside && !canonicalInside) {
       throw new SessionScopeError(
         SESSION_SCOPE_ERROR.OUTSIDE_WORKSPACE,
@@ -204,7 +239,9 @@ function isScopeMode(value: unknown): value is SessionScopeMode {
   return typeof value === "string" && MODES.has(value as SessionScopeMode);
 }
 
-function latestScopeData(events: readonly SessionEvent[]): Record<string, unknown> | undefined {
+function latestScopeData(
+  events: readonly SessionEvent[],
+): Record<string, unknown> | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     if (events[index]?.type === SESSION_SCOPE_EVENT) return events[index]?.data;
   }
@@ -234,26 +271,33 @@ export function effectiveSessionScope(
   caseSensitive = process.platform !== "win32",
 ): EffectiveSessionScope {
   const data = latestScopeData(events);
-  const headerRoot = typeof sessionHeader.cwd === "string" ? sessionHeader.cwd : "";
+  const headerRoot =
+    typeof sessionHeader.cwd === "string" ? sessionHeader.cwd : "";
   const canonicalHeaderRoot = headerRoot ? canonicalPath(headerRoot) : "";
   if (data !== undefined) {
     const validSnapshot = data.version === 1 && isScopeMode(data.mode);
-    const mode: SessionScopeMode = validSnapshot ? data.mode as SessionScopeMode : "focused";
-    const eventRoot = typeof data.workspaceRoot === "string" ? data.workspaceRoot : "";
+    const mode: SessionScopeMode = validSnapshot
+      ? (data.mode as SessionScopeMode)
+      : "focused";
+    const eventRoot =
+      typeof data.workspaceRoot === "string" ? data.workspaceRoot : "";
     const canonicalEventRoot = eventRoot ? canonicalPath(eventRoot) : "";
     const workspaceRoot = canonicalHeaderRoot || canonicalEventRoot;
-    if (mode === "full") return { mode, workspaceRoot, roots: [], navigationRoots: [] };
+    if (mode === "full")
+      return { mode, workspaceRoot, roots: [], navigationRoots: [] };
 
     // Malformed or stale persisted restrictions fail closed instead of widening
     // the session back to the full workspace.
     const stale = Boolean(
-      canonicalHeaderRoot
-      && canonicalEventRoot
-      && comparisonKey(canonicalHeaderRoot, caseSensitive) !== comparisonKey(canonicalEventRoot, caseSensitive),
+      canonicalHeaderRoot &&
+      canonicalEventRoot &&
+      comparisonKey(canonicalHeaderRoot, caseSensitive) !==
+        comparisonKey(canonicalEventRoot, caseSensitive),
     );
-    const roots = validSnapshot && !stale
-      ? foldedRoots(data.roots, workspaceRoot, caseSensitive)
-      : [];
+    const roots =
+      validSnapshot && !stale
+        ? foldedRoots(data.roots, workspaceRoot, caseSensitive)
+        : [];
     return {
       mode,
       workspaceRoot,
@@ -264,8 +308,9 @@ export function effectiveSessionScope(
 
   if (events.some((event) => event.type === SELECTION_EVENT)) {
     const legacy = selectionOf(events);
-    const workspaceRoot = canonicalHeaderRoot
-      || (legacy.workspaceRoot ? canonicalPath(legacy.workspaceRoot) : "");
+    const workspaceRoot =
+      canonicalHeaderRoot ||
+      (legacy.workspaceRoot ? canonicalPath(legacy.workspaceRoot) : "");
     const roots = foldedRoots(legacy.roots, workspaceRoot, caseSensitive);
     return {
       mode: "focused",
@@ -275,7 +320,12 @@ export function effectiveSessionScope(
     };
   }
 
-  return { mode: "full", workspaceRoot: canonicalHeaderRoot, roots: [], navigationRoots: [] };
+  return {
+    mode: "full",
+    workspaceRoot: canonicalHeaderRoot,
+    roots: [],
+    navigationRoots: [],
+  };
 }
 
 export function createSessionScopeEvent(
@@ -285,12 +335,17 @@ export function createSessionScopeEvent(
   source: SessionScopeSource,
   options?: NormalizeSessionScopeOptions,
 ): SessionScopeEventData {
-  const canonicalWorkspaceRoot = (options?.paths ?? DEFAULT_PATH_SERVICES).canonical(workspaceRoot);
+  const canonicalWorkspaceRoot = (
+    options?.paths ?? DEFAULT_PATH_SERVICES
+  ).canonical(workspaceRoot);
   return {
     version: 1,
     mode,
     workspaceRoot: canonicalWorkspaceRoot,
-    roots: mode === "full" ? [] : normalizeSessionScopeRoots(roots, workspaceRoot, options),
+    roots:
+      mode === "full"
+        ? []
+        : normalizeSessionScopeRoots(roots, workspaceRoot, options),
     source,
   };
 }

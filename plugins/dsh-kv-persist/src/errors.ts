@@ -27,7 +27,11 @@ export type KvPersistErrorCode =
 export class KvPersistError extends Error {
   readonly code: KvPersistErrorCode;
 
-  constructor(code: KvPersistErrorCode, message: string, options?: ErrorOptions) {
+  constructor(
+    code: KvPersistErrorCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = new.target.name;
     this.code = code;
@@ -53,7 +57,10 @@ export class KvSlotNotFoundError extends KvPersistError {
   readonly slotId: number;
 
   constructor(slotId: number, message?: string) {
-    super("KV_SLOT_NOT_FOUND", message ?? `slot ${slotId} not found on the server`);
+    super(
+      "KV_SLOT_NOT_FOUND",
+      message ?? `slot ${slotId} not found on the server`,
+    );
     this.slotId = slotId;
   }
 }

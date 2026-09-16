@@ -6,7 +6,10 @@
 export { createLogger } from "@yadsh/dsh-plugin-kit";
 export { makeLogDir, readLogLines } from "./log-fixtures.js";
 export { createModuleLoaderStub } from "./module-loader.js";
-export type { ModuleLoaderRegistration, ModuleLoaderStub } from "./module-loader.js";
+export type {
+  ModuleLoaderRegistration,
+  ModuleLoaderStub,
+} from "./module-loader.js";
 
 export interface MockContext {
   pluginName: string;

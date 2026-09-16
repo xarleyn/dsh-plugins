@@ -2,11 +2,22 @@
 // matching the classic ModuleLoader client convention of this plugin).
 import { createElement } from "react";
 
-export function FieldHead(t: any, id: string, labelKey: string, state: any, disabled: boolean, onReset: () => void) {
+export function FieldHead(
+  t: any,
+  id: string,
+  labelKey: string,
+  state: any,
+  disabled: boolean,
+  onReset: () => void,
+) {
   return createElement(
     "div",
     { className: "ddi_head" },
-    createElement("label", { className: "ddi_label", htmlFor: id }, t(labelKey)),
+    createElement(
+      "label",
+      { className: "ddi_label", htmlFor: id },
+      t(labelKey),
+    ),
     state.overridden
       ? createElement(
           "span",
@@ -14,11 +25,16 @@ export function FieldHead(t: any, id: string, labelKey: string, state: any, disa
           createElement("span", { className: "ddi_badge" }, t("overridden")),
           createElement(
             "button",
-            { type: "button", className: "ddi_reset", disabled: disabled, onClick: onReset },
-            t("reset")
-          )
+            {
+              type: "button",
+              className: "ddi_reset",
+              disabled: disabled,
+              onClick: onReset,
+            },
+            t("reset"),
+          ),
         )
-      : null
+      : null,
   );
 }
 
@@ -27,7 +43,14 @@ export function TextField(props: any) {
   return createElement(
     "div",
     { className: "ddi_field" },
-    FieldHead(props.t, props.id, props.labelKey, state, props.disabled, props.onReset),
+    FieldHead(
+      props.t,
+      props.id,
+      props.labelKey,
+      state,
+      props.disabled,
+      props.onReset,
+    ),
     createElement("input", {
       id: props.id,
       className: state.invalid ? "ddi_input ddi_inputInvalid" : "ddi_input",
@@ -36,13 +59,13 @@ export function TextField(props: any) {
       disabled: props.disabled,
       onChange: function (event: any) {
         props.onEdit(event.target.value);
-      }
+      },
     }),
     createElement(
       "p",
       { className: state.invalid ? "ddi_invalid" : "ddi_hint" },
-      state.invalid ? props.t("invalidValue") : props.t(props.hintKey)
-    )
+      state.invalid ? props.t("invalidValue") : props.t(props.hintKey),
+    ),
   );
 }
 
@@ -51,7 +74,14 @@ export function NumberField(props: any) {
   return createElement(
     "div",
     { className: "ddi_field" },
-    FieldHead(props.t, props.id, props.labelKey, state, props.disabled, props.onReset),
+    FieldHead(
+      props.t,
+      props.id,
+      props.labelKey,
+      state,
+      props.disabled,
+      props.onReset,
+    ),
     createElement("input", {
       id: props.id,
       className: state.invalid ? "ddi_input ddi_inputInvalid" : "ddi_input",
@@ -62,13 +92,13 @@ export function NumberField(props: any) {
       disabled: props.disabled,
       onChange: function (event: any) {
         props.onEdit(event.target.value);
-      }
+      },
     }),
     createElement(
       "p",
       { className: state.invalid ? "ddi_invalid" : "ddi_hint" },
-      state.invalid ? props.t("invalidNumber") : props.t(props.hintKey)
-    )
+      state.invalid ? props.t("invalidNumber") : props.t(props.hintKey),
+    ),
   );
 }
 
@@ -78,7 +108,14 @@ export function ChoiceField(props: any) {
   return createElement(
     "div",
     { className: "ddi_field" },
-    FieldHead(props.t, props.id, props.labelKey, state, props.disabled, props.onReset),
+    FieldHead(
+      props.t,
+      props.id,
+      props.labelKey,
+      state,
+      props.disabled,
+      props.onReset,
+    ),
     createElement(
       "select",
       {
@@ -88,13 +125,13 @@ export function ChoiceField(props: any) {
         disabled: props.disabled,
         onChange: function (event: any) {
           props.onChoose(event.target.value);
-        }
+        },
       },
       props.options.map(function (option: string) {
         return createElement("option", { key: option, value: option }, option);
-      })
+      }),
     ),
-    createElement("p", { className: "ddi_hint" }, props.t(props.hintKey))
+    createElement("p", { className: "ddi_hint" }, props.t(props.hintKey)),
   );
 }
 
@@ -104,7 +141,14 @@ export function BoolField(props: any) {
   return createElement(
     "div",
     { className: "ddi_field" },
-    FieldHead(props.t, props.id, props.labelKey, state, props.disabled, props.onReset),
+    FieldHead(
+      props.t,
+      props.id,
+      props.labelKey,
+      state,
+      props.disabled,
+      props.onReset,
+    ),
     createElement(
       "select",
       {
@@ -114,12 +158,11 @@ export function BoolField(props: any) {
         disabled: props.disabled,
         onChange: function (event: any) {
           props.onChoose(event.target.value === "true");
-        }
+        },
       },
       createElement("option", { value: "true" }, props.t("on")),
-      createElement("option", { value: "false" }, props.t("off"))
+      createElement("option", { value: "false" }, props.t("off")),
     ),
-    createElement("p", { className: "ddi_hint" }, props.t(props.hintKey))
+    createElement("p", { className: "ddi_hint" }, props.t(props.hintKey)),
   );
 }
-

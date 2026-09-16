@@ -124,7 +124,7 @@ plugins/<name>/
 │   └── runtime/          # механизмы клиента (DOM, подписки, хуки)
 ├── tests/                # *.test.ts, зеркалит src
 ├── scripts/              # verify-*.mjs, smoke-packed-*.mjs
-├── docs/                 # images/, superpowers/{specs,plans}
+├── docs/                 # images/, specs/
 ├── cordis.patch.yml
 ├── compatibility.json
 ├── package.json, tsconfig*.json, tsdown.config.ts, vitest.config.ts
@@ -269,7 +269,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `package.json` | ✔ | Манифест по §4.2 |
 | `cordis.patch.yml` | ✔ | Вставка в composition хоста |
 | `README.md` | ✔ | См. §8 |
-| `SPEC.md` | ✔ | Продуктовый контракт, см. §8.2 |
+| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/SPEC-<plugin>-<topic>.md`, см. §8.2. В tarball не публикуется (§4.2) |
 | `LICENSE` | ✔ | Копия корневого MIT |
 | `compatibility.json` | ✔ (publishable) | Машиночитаемая совместимость, см. §7 |
 | `tsconfig.json` / `tsconfig.build.json` | ✔ | Расширяют `@yadsh/dsh-config` |
@@ -325,12 +325,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
-    "verify": "pnpm run test:package",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepack": "pnpm run build"
+    "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
   },
-  "keywords": ["deepseek", "deepseek-harness", "dsh", "dsh-plugin", "…"],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "<feature-specific words>"
+  ],
   "license": "MIT",
   "engines": { "node": "^22.19.0 || >=24.0.0" },
   "peerDependencies": { "@deepseek-ai/cordis": "catalog:dsh" },
@@ -346,12 +353,39 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   совпадать с примером выше. Это требуется для npm Trusted Publishing и
   provenance и проверяется tarball-gate. Новый пакет начинает с `0.0.0`, а
   первая пользовательская версия получается из обязательного Nx Version Plan.
+- **`keywords` — это контракт обнаружения, а не вкусовщина.** Канонический
+  набор: `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` — DSH-
+  индексаторы, маркетплейсы и npm-поиск ищут именно по ним; дальше — слова про
+  возможности. Только lowercase, без повторов. Гейт `pnpm verify:packages`
+  жёстко требует `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` и непустой
+  `description` с упоминанием DeepSeek Harness или DSH, вместе с
+  `repository.directory` и `homepage`: индексатор, который не может связать
+  npm-пакет с его директорией в монорепе, показывает пакет как «без публичного
+  репозитория». Генератор нового плагина сразу ставит весь канонический набор.
+- **Каталог `plugins.json` в корне.** Он генерируется из манифестов
+  (`pnpm plugins:manifest`) и связывает npm-имя, директорию, описание, keywords,
+  команду установки и homepage; `pnpm verify:packages` падает, пока файл
+  устарел. После генератора, изменения описания/keywords или появления нового
+  пакета его нужно перегенерировать — руками не редактировать.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
   — внутреннее (проверяется гейтом §27.10). Каждый вход: `types` + `default`.
   Всегда включайте `./package.json`.
-- **`files` — белый список.** В tarball не должно попадать ничего лишнего:
-  только `lib/`, патч, `compatibility.json`, README, LICENSE (и
-  `docs/images/*` при наличии скриншотов).
+- **`files` — белый список того, что нужно установленному пакету.** Публикуются
+  только: собранный рантайм (`lib/**`), `cordis.patch.yml`, `compatibility.json`
+  (и другие рантайм-данные вроде `capability-policy.json`), юридические
+  уведомления (`LICENSE`, `NOTICE.md`, `THIRD_PARTY_NOTICES.md`), `README.md`
+  как его рендерит npm и картинки, на которые он ссылается (`docs/images/*`).
+  **Документация не публикуется**: `SPEC.md`, `CHANGELOG.md`, `ROADMAP.md`,
+  `docs/**` (кроме `docs/images/`), `INVESTIGATE.md`, переводы README —
+  всё это остаётся в репозитории. Так установка не тянет лишние килобайты,
+  а реестр не превращается в файлопомойку. Правило проверяет
+  `pnpm verify:packages`.
+- **Ссылки в README — либо внутрь пакета, либо абсолютные.** README попадает в
+  tarball, поэтому относительная ссылка на непубликуемый документ на странице
+  npm рендерится мёртвой. Ссылайтесь как
+  `https://github.com/xarleyn/dsh-plugins/blob/main/<path-from-repo-root>`;
+  гейт `pnpm verify:packages` отвергает относительную ссылку, которую тарбол не
+  покрывает.
 - **`dsh.client.inject`** перечисляет ровно те DSH-клиентские пакеты, чьи
   поверхности импортирует client-часть.
 - **Скрипты:** `check` — полный локальный конвейер; `verify` — package-гейты;
@@ -476,14 +510,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ### 6.3 Definition of Done (локально)
 
 ```bash
-pnpm nx <plugin>:lint typecheck test build   # или pnpm affected:check
-pnpm verify --filter <plugin>                # package-гейты
-pnpm deps:check                              # границы §27
-pnpm tarball:verify plugins/<name>           # тарбол + чистая установка
+pnpm --filter <plugin> check                        # все package-local гейты
+pnpm deps:check                                     # границы §27
+pnpm tarball:verify:packages plugins/<name>         # тарбол + чистая установка
 ```
 
-CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
-`release plan:check` и tarball-verify затронутых пакетов. Всё это должно
+CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build/verify`,
+`pnpm release:check` и tarball-verify затронутых пакетов. Всё это должно
 проходить локально до PR.
 
 ---
@@ -500,8 +533,8 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.1-rc.2 <0.2.0",
-    "testedReleases": ["0.1.1-rc.2"],
+    "range": ">=0.1.5-rc.2 <0.2.0",
+    "testedReleases": ["0.1.5-rc.2"],
     "requiredClientFeatures": ["sidebar.footer.action"],
     "optionalClientProtocols": ["__dshNativeTabs@1"]
   },
@@ -527,9 +560,16 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 Эталон: `plugins/dsh-draft-sessions/README.md`. Обязательные секции, в порядке:
 
 1. Название + одно предложение «что это для пользователя DSH».
-2. Скриншот/демо (если есть UI) — `docs/images/`, попадает в tarball.
+2. Скриншот/демо (если есть UI) — `docs/images/`, попадает в tarball; остальные
+   ссылки на документы репозитория (`SPEC.md`, `docs/**`, `ROADMAP.md`,
+   `CHANGELOG.md`, переводы README) — абсолютными URL на GitHub (§4.2).
 3. **Features** — маркированный список реальных возможностей.
-4. **Install** — `dsh plugin add @yadsh/dsh-<name>` (+ вариант из исходников).
+4. **Install** — `dsh plugin --profile <profile> add @yadsh/dsh-<name>` для
+   host-плагина и `dsh plugin --profile web add @yadsh/dsh-<name>` для плагина с
+   клиентской частью (`dsh.client`), плюс вариант из исходников
+   (`pnpm nx run @yadsh/dsh-<name>:build` + `dsh plugin --profile … add
+   ./plugins/dsh-<name>`). `--profile` обязателен: `dsh plugin add <pkg>` CLI
+   отвергает.
 5. **Configuration** — таблица «опция / тип / default / описание» (зеркало
    Config-схемы).
 6. **Compatibility** — диапазон DSH, Node; ссылка на `compatibility.json`.
@@ -556,11 +596,26 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build`,
 SPEC.md обновляется вместе с изменением поведения; статус-таблица не должна
 врать. Это первый файл, который читает новый контрибьютор и рецензент.
 
+**В корне плагина ровно одна спека — `SPEC.md`.** Исходная спека реализации и
+есть этот файл (после первых итераций он становится продуктовым контрактом).
+Спеки доработок и дизайн-доки живут в `docs/specs/` под именем
+`docs/specs/<topic>.md` (kebab-case, без имени плагина в имени файла) —
+например `docs/specs/accounts.md` (аккаунты, dsh-qa-surface),
+`docs/specs/design.md` (исходный дизайн, dsh-tool-offload). Не заводить в корне
+`SPEC-<plugin>.md`, `dsh-<plugin>-SPEC.md` и файлы с неанглийскими именами;
+в `docs/` не заводить спеки в старых стилях (`SPEC-<plugin>-<topic>.md`,
+`<ТЕМА>-SPEC.md`, `<topic>-spec.md`):
+`SPEC.md` в корне — единственная точка входа, остальное ссылки из него.
+
 ### 8.3 Прочее
 
 - `docs/architecture.md` — при сложности: слои, потоки данных, решения.
-- `docs/superpowers/specs|plans/` — дизайн-доки и планы работ с датами;
-  не заменяют SPEC.md.
+- `docs/INVESTIGATE.md` — рабочие заметки по интеграции с хостом: какие DSH API
+  и версии предполагаются, что проверено на живом стенде. Ссылки на конкретные
+  § этого файла из `src/` допустимы и ожидаемы.
+- `docs/specs/` — спеки доработок и дизайн-доки (`<topic>.md`); не заменяют
+  SPEC.md.
+- `docs/images/` — скриншоты для README (попадают в tarball).
 - `ROADMAP.md` — только публичные намерения, без внутренних деталей.
 - Язык: EN — первичный; RU/ZH — переводы. Код, идентификаторы, коды ошибок —
   всегда английские.
@@ -664,7 +719,7 @@ docs: add plugin guidelines
 | §27.9 | Нет кросс-пакетных относительных/абсолютных импортов | `pnpm deps:check` |
 | §27.10 | Workspace-пакеты потребляются через `exports` | `pnpm deps:check` |
 | Tarball 1–7 | lib есть; манифест корректен; патч объявлен и упакован; exports существуют; нет `workspace:`/`catalog:` утечек; чистая установка + smoke-импорт | `scripts/tarball-verify.sh` |
-| Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `nx release plan:check`, `release.yml` |
+| Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `pnpm release:check`, `release.yml` |
 
 ## Приложение B: известные расхождения
 

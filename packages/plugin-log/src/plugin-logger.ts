@@ -6,6 +6,10 @@
  *   `<$DSH_HOME>/logs/<pluginId>`;
  * - mirrors selected records to an injectable console sink (default level
  *   `warn`) so operators still see problems live;
+ * - republishes every recorded record on a process-wide bus
+ *   ({@link subscribePluginLogRecords}) for live consumers such as the log
+ *   panel in `@yadsh/dsh-plugin-log-ui`, which the file destination cannot
+ *   serve without parsing it back;
  * - never throws at runtime: file-system failures degrade to console-only
  *   logging (fail-open), and closed loggers silently drop records;
  * - disables file output when `DSH_LOG_DISABLED=1`, and under `NODE_ENV=test`
@@ -78,12 +82,18 @@ function weightOf(level: PluginLogLevel): number {
 
 /** Type guard for level strings (config parsing, env overrides). */
 export function isPluginLogLevel(value: unknown): value is PluginLogLevel {
-  return typeof value === "string" && (PLUGIN_LOG_LEVELS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (PLUGIN_LOG_LEVELS as readonly string[]).includes(value)
+  );
 }
 
 /** Type guard for file serialization format strings. */
 export function isPluginLogFormat(value: unknown): value is PluginLogFormat {
-  return typeof value === "string" && (PLUGIN_LOG_FORMATS as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (PLUGIN_LOG_FORMATS as readonly string[]).includes(value)
+  );
 }
 
 /** Logger configuration; every field except `pluginId` is optional. */
@@ -154,6 +164,103 @@ export type PluginLoggerRegistryListener = (
   loggers: readonly RegisteredPluginLogger[],
 ) => void;
 
+/**
+ * One record a plugin logger emitted, as the record bus delivers it.
+ *
+ * A consumer that wants to draw or forward live output subscribes with
+ * {@link subscribePluginLogRecords} and keeps its own buffer: the bus holds no
+ * history, so a subscriber sees exactly what is emitted while it is attached.
+ * Records carry the caller's raw `fields`, because rendering is the consumer's
+ * decision; a transport that serializes them owns the sanitizing.
+ */
+export interface PluginLogRecord {
+  /** Process-wide monotonic sequence; a consumer resumes from it instead of from time. */
+  readonly seq: number;
+  /** Emission time in epoch ms, from the logger's own clock. */
+  readonly time: number;
+  /** Severity the logger recorded at. Never `silent`: that level emits nothing. */
+  readonly level: ConsoleLevel;
+  /** Owner of the emitting logger. */
+  readonly pluginId: string;
+  /** `child(module)` scope, or `undefined` for the root logger. */
+  readonly module: string | undefined;
+  /** The stable event code (pino's `msg`). */
+  readonly event: string;
+  /** The caller's fields, exactly as the logger received them. */
+  readonly fields: Readonly<Record<string, unknown>>;
+}
+
+/** Receives every record a plugin logger emits. Must not throw; the bus guards the call. */
+export type PluginLogRecordListener = (record: PluginLogRecord) => void;
+
+/** The record bus as it lives in the shared registry state, optional because an older copy of this package may have created that state. */
+interface RecordBusState {
+  recordListeners?: Set<PluginLogRecordListener>;
+  nextRecordSeq?: number;
+}
+
+/**
+ * The record bus, lazily completed on the shared registry symbol.
+ *
+ * Only a level threshold decides what reaches the bus: a record below its
+ * logger's level is not emitted at all, exactly as it is not written to the
+ * file, so a consumer never sees output the logger considered suppressed.
+ * Emission is fail-open — a throwing listener cannot affect the logger.
+ */
+function recordBus(): Required<RecordBusState> {
+  const state = registryState() as GlobalRegistryState & RecordBusState;
+  state.recordListeners ??= new Set<PluginLogRecordListener>();
+  state.nextRecordSeq ??= 1;
+  return state as Required<RecordBusState>;
+}
+
+/**
+ * Subscribe to every record the plugin loggers emit from now on.
+ *
+ * The listener runs synchronously inside the emitting `write`, so it must stay
+ * cheap and must not log through a plugin logger (that would recurse).
+ * @param listener - synchronous record callback.
+ * @returns idempotent unsubscribe.
+ */
+export function subscribePluginLogRecords(
+  listener: PluginLogRecordListener,
+): () => void {
+  const bus = recordBus();
+  bus.recordListeners.add(listener);
+  return () => {
+    bus.recordListeners.delete(listener);
+  };
+}
+
+/** Publish one record to the attached consumers. */
+function publishPluginLogRecord(
+  pluginId: string,
+  module: string | undefined,
+  level: ConsoleLevel,
+  time: number,
+  event: string,
+  fields: Record<string, unknown> | undefined,
+): void {
+  const bus = recordBus();
+  const record: PluginLogRecord = Object.freeze({
+    seq: bus.nextRecordSeq,
+    time,
+    level,
+    pluginId,
+    module,
+    event,
+    fields: Object.freeze(fields ?? {}),
+  });
+  bus.nextRecordSeq += 1;
+  for (const listener of bus.recordListeners) {
+    try {
+      listener(record);
+    } catch {
+      // Consumers must never affect logging or plugin execution.
+    }
+  }
+}
+
 /** Internal structural contract shared safely across duplicate package loads. */
 interface RegistryLoggerCore {
   readonly pluginId: string;
@@ -184,7 +291,8 @@ const REGISTRY_SYMBOL = Symbol.for("@yadsh/dsh-plugin-log/registry/v1");
 
 function registryState(): GlobalRegistryState {
   const globalObject = globalThis as unknown as Record<PropertyKey, unknown>;
-  const existing = globalObject[REGISTRY_SYMBOL] as GlobalRegistryState | undefined;
+  const existing = globalObject[REGISTRY_SYMBOL] as
+    GlobalRegistryState | undefined;
   if (existing?.version === 1) return existing;
   const created: GlobalRegistryState = {
     version: 1,
@@ -254,7 +362,10 @@ export function subscribePluginLoggerRegistry(
 }
 
 /** Change the level of every active logger owned by `pluginId`. */
-export function setPluginLogLevel(pluginId: string, level: PluginLogLevel): number {
+export function setPluginLogLevel(
+  pluginId: string,
+  level: PluginLogLevel,
+): number {
   if (!isPluginLogLevel(level)) {
     throw new TypeError(`unknown plugin log level: ${JSON.stringify(level)}`);
   }
@@ -283,7 +394,10 @@ export function setPluginLogFormat(format: PluginLogFormat): number {
   return updated;
 }
 
-function formatConsole(event: string, fields?: Record<string, unknown>): string {
+function formatConsole(
+  event: string,
+  fields?: Record<string, unknown>,
+): string {
   if (fields === undefined) return event;
   const parts = Object.entries(fields).map(([key, value]) => {
     const rendered = typeof value === "string" ? value : JSON.stringify(value);
@@ -302,19 +416,25 @@ function dayStamp(ms: number): string {
 
 function envLevelOverride(pluginId: string): PluginLogLevel | undefined {
   const env = process.env;
-  const specific = env[`DSH_LOG_LEVEL_${pluginId.replaceAll("-", "_").toUpperCase()}`];
+  const specific =
+    env[`DSH_LOG_LEVEL_${pluginId.replaceAll("-", "_").toUpperCase()}`];
   if (isPluginLogLevel(specific)) return specific;
   return isPluginLogLevel(env.DSH_LOG_LEVEL) ? env.DSH_LOG_LEVEL : undefined;
 }
 
 function envFileDisabled(explicitDir: boolean): boolean {
-  const flag = process.env.DSH_LOG_DISABLED ?? process.env.DSH_PLUGIN_LOG_DISABLED;
+  const flag =
+    process.env.DSH_LOG_DISABLED ?? process.env.DSH_PLUGIN_LOG_DISABLED;
   if (flag === "1" || flag === "true") return true;
   // Unit tests must never write into a real DSH home unless a dir is explicit.
   return process.env.NODE_ENV === "test" && !explicitDir;
 }
 
-async function sweepOldLogFiles(dir: string, retentionDays: number, nowMs: number): Promise<void> {
+async function sweepOldLogFiles(
+  dir: string,
+  retentionDays: number,
+  nowMs: number,
+): Promise<void> {
   if (retentionDays <= 0) return;
   const cutoff = nowMs - retentionDays * DAY_MS;
   const entries = await readdir(dir).catch(() => [] as string[]);
@@ -335,7 +455,10 @@ type ClosableDestination = DestinationStream & {
 };
 
 const LEVEL_LABEL = new Map<number, string>(
-  Object.entries(LEVEL_WEIGHT).map(([level, weight]) => [weight, level.toUpperCase()]),
+  Object.entries(LEVEL_WEIGHT).map(([level, weight]) => [
+    weight,
+    level.toUpperCase(),
+  ]),
 );
 
 function textValue(value: unknown): string {
@@ -347,13 +470,18 @@ function textValue(value: unknown): string {
 function renderTextRecord(line: string): string {
   try {
     const record = JSON.parse(line) as Record<string, unknown>;
-    const time = typeof record["time"] === "number"
-      ? new Date(record["time"]).toISOString()
-      : String(record["time"] ?? "-");
-    const numericLevel = typeof record["level"] === "number" ? record["level"] : Number.NaN;
-    const level = (LEVEL_LABEL.get(numericLevel) ?? String(record["level"] ?? "LOG")).padEnd(5);
+    const time =
+      typeof record["time"] === "number"
+        ? new Date(record["time"]).toISOString()
+        : String(record["time"] ?? "-");
+    const numericLevel =
+      typeof record["level"] === "number" ? record["level"] : Number.NaN;
+    const level = (
+      LEVEL_LABEL.get(numericLevel) ?? String(record["level"] ?? "LOG")
+    ).padEnd(5);
     const plugin = String(record["plugin"] ?? "unknown");
-    const module = typeof record["module"] === "string" ? `/${record["module"]}` : "";
+    const module =
+      typeof record["module"] === "string" ? `/${record["module"]}` : "";
     const event = String(record["msg"] ?? "");
     const reserved = new Set(["level", "time", "plugin", "module", "msg"]);
     const fields = Object.entries(record)
@@ -513,14 +641,19 @@ class LoggerCore {
     this.pluginId = options.pluginId;
     const home = options.dshHome ?? resolveDshHome();
     this.dir = options.dir ?? join(home, "logs", options.pluginId);
-    this.levelName = options.level ?? envLevelOverride(options.pluginId) ?? "info";
+    this.levelName =
+      options.level ?? envLevelOverride(options.pluginId) ?? "info";
     this.formatName = options.format ?? "json";
     this.consoleLevel = options.console ?? DEFAULT_CONSOLE_LEVEL;
     this.sink = options.consoleSink ?? defaultSink;
-    this.retentionDays = Math.max(0, Math.floor(options.retentionDays ?? DEFAULT_LOG_RETENTION_DAYS));
+    this.retentionDays = Math.max(
+      0,
+      Math.floor(options.retentionDays ?? DEFAULT_LOG_RETENTION_DAYS),
+    );
     this.redact = options.redact ?? [];
     this.clock = options.now ?? Date.now;
-    this.fileEnabled = (options.file ?? true) && !envFileDisabled(options.dir !== undefined);
+    this.fileEnabled =
+      (options.file ?? true) && !envFileDisabled(options.dir !== undefined);
   }
 
   isClosed(): boolean {
@@ -562,7 +695,9 @@ class LoggerCore {
 
   setFormat(format: PluginLogFormat): void {
     if (!isPluginLogFormat(format)) {
-      throw new TypeError(`unknown plugin log format: ${JSON.stringify(format)}`);
+      throw new TypeError(
+        `unknown plugin log format: ${JSON.stringify(format)}`,
+      );
     }
     if (format === this.formatName) return;
     this.formatName = format;
@@ -581,6 +716,14 @@ class LoggerCore {
       this.mirror(moduleField, level, event, fields);
       return;
     }
+    publishPluginLogRecord(
+      this.pluginId,
+      moduleField,
+      level,
+      this.clock(),
+      event,
+      fields,
+    );
     this.open();
     const target = this.targetFor(moduleField);
     if (target !== undefined) {
@@ -641,14 +784,17 @@ class LoggerCore {
           sync: false,
           minLength: 0,
         }) as ClosableDestination;
-        next = this.formatName === "text"
-          ? (new TextDestination(fileDestination) as ClosableDestination)
-          : fileDestination;
+        next =
+          this.formatName === "text"
+            ? (new TextDestination(fileDestination) as ClosableDestination)
+            : fileDestination;
       } catch (error) {
         // Fail-open: an unusable log directory degrades to console-only.
         this.fileEnabled = false;
         next = undefined;
-        this.mirror(undefined, "warn", "logging.file_disabled", { reason: errorMessage(error) });
+        this.mirror(undefined, "warn", "logging.file_disabled", {
+          reason: errorMessage(error),
+        });
       }
     }
     const previous = this.destination;
@@ -687,7 +833,10 @@ class LoggerCore {
     if (weightOf(level) < weightOf(this.consoleLevel)) return;
     const scope = moduleField === undefined ? "" : `/${moduleField}`;
     try {
-      this.sink(level, `[${this.pluginId}${scope}] ${formatConsole(event, fields)}`);
+      this.sink(
+        level,
+        `[${this.pluginId}${scope}] ${formatConsole(event, fields)}`,
+      );
     } catch {
       // Fail-open.
     }
@@ -695,7 +844,11 @@ class LoggerCore {
 
   private scheduleRetentionSweep(): void {
     if (this.retentionDays <= 0 || this.retention !== undefined) return;
-    this.retention = sweepOldLogFiles(this.dir, this.retentionDays, this.clock()).then(
+    this.retention = sweepOldLogFiles(
+      this.dir,
+      this.retentionDays,
+      this.clock(),
+    ).then(
       () => undefined,
       () => undefined,
     );
@@ -781,7 +934,10 @@ export function getPluginLogger(options: PluginLoggerOptions): PluginLogger {
   const state = registryState();
   const existing = state.cache.get(key);
   if (existing === undefined || existing.core.isClosed()) {
-    const entry: RegistryEntry = { core: candidate, root: new PluginLoggerImpl(candidate) };
+    const entry: RegistryEntry = {
+      core: candidate,
+      root: new PluginLoggerImpl(candidate),
+    };
     state.cache.set(key, entry);
     candidate.activate();
     return entry.root;

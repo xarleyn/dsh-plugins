@@ -1,5 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+import type {} from "@deepseek-ai/dsh-settings";
 import { createHostLoggerSink, getPluginLogger } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema } from "./config.js";
 import {
@@ -9,7 +9,7 @@ import {
 
 export const name = "dsh-ui-repair";
 export const inject: readonly string[] = [];
-export const UI_REPAIR_SETTINGS_NAMESPACE = settingsNamespace("ui-repair");
+export const UI_REPAIR_SETTINGS_NAMESPACE = "ui-repair";
 export type Config = UIRepairPluginConfig;
 export const Config = ConfigSchema;
 
@@ -24,25 +24,27 @@ export function apply(
   });
   const entryConfig = structuredClone(config);
   let source = (): UIRepairPluginConfig => entryConfig;
-  installSettingsSection(
-    ctx,
-    UI_REPAIR_SETTINGS_NAMESPACE,
-    ConfigSchema,
-    entryConfig,
-    {
-      setSource: (current) => {
-        source = current;
+  ctx.inject(["settings"], (settingsCtx) => {
+    settingsCtx.settings.installSection(
+      ctx,
+      UI_REPAIR_SETTINGS_NAMESPACE,
+      ConfigSchema,
+      entryConfig,
+      {
+        setSource: (current) => {
+          source = current;
+        },
+        onChange: () => {
+          const resolved = resolvePluginConfig(source());
+          logger.info("config.changed", {
+            enabled: resolved.enabled,
+            mode: resolved.mode,
+            ignoreRules: resolved.ignore.length,
+          });
+        },
       },
-      onChange: () => {
-        const resolved = resolvePluginConfig(source());
-        logger.info("config.changed", {
-          enabled: resolved.enabled,
-          mode: resolved.mode,
-          ignoreRules: resolved.ignore.length,
-        });
-      },
-    },
-  );
+    );
+  });
   const resolved = resolvePluginConfig(config);
   logger.info("plugin.ready", {
     enabled: resolved.enabled,

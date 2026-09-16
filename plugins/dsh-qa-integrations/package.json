@@ -1,0 +1,131 @@
+{
+  "name": "@yadsh/dsh-qa-integrations",
+  "version": "0.2.0",
+  "description": "Principal-scoped, encrypted user integrations for DSH QA Surface",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-qa-integrations"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-integrations#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./types": {
+      "types": "./lib/types/types.d.ts",
+      "default": "./lib/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "lib/**/*.d.ts",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@yadsh/dsh-qa-surface"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@yadsh/dsh-qa-surface"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
+    "lint": "eslint src tests scripts tsdown.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "qa",
+    "integrations",
+    "bitrix24",
+    "gitlab",
+    "teamcity",
+    "credentials"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^",
+    "@yadsh/dsh-qa-surface": "workspace:^",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
+    "eslint": "catalog:tooling",
+    "jsdom": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

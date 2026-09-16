@@ -1,0 +1,11 @@
+# dsh-openviking-memory bundle patch. This is the row a profile gets when the
+# plugin is installed: the host half mounts the OpenViking MCP tools, the
+# vendored `openviking-memory` skill, conversation capture/commit, the
+# `viking://` guard, and the automatic context injection that `autoInject`
+# controls. The upstream bundle wrapped the same plugin in a
+# `@deepseek-ai/cordis-plugin-group` row with `isolate: { openvikingMemory:
+# true }`; this repository's canonical single-row shape is used instead, and
+# the service is published by a Cordis `Service` subclass.
+- insert:
+    - id: dsh-openviking-memory
+      name: "@yadsh/dsh-openviking-memory"

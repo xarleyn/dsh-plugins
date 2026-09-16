@@ -13,7 +13,11 @@
  * fail-open).
  */
 
-import type { PostToolDecision, ToolExecution, ToolExecutionResult } from "@deepseek-ai/dsh-tools";
+import type {
+  PostToolDecision,
+  ToolExecution,
+  ToolExecutionResult,
+} from "@deepseek-ai/dsh-tools";
 
 import type { ResolvedToolOffloadConfig } from "../config.js";
 import { extractParentTask } from "../context/parent-context.js";
@@ -21,8 +25,14 @@ import { buildFallbackText } from "../fallback/fallback.js";
 import type { PluginLoggerLike } from "../logging.js";
 import { BUNDLED_PROMPT_PROFILES } from "../prompts/profiles.js";
 import { decideRoute, type OffloadSkipReason } from "../routing/policy.js";
-import { inspectResult, type OffloadCandidate } from "../routing/inspect-result.js";
-import { deriveOffloadMetrics, OffloadCounters } from "../telemetry/counters.js";
+import {
+  inspectResult,
+  type OffloadCandidate,
+} from "../routing/inspect-result.js";
+import {
+  deriveOffloadMetrics,
+  OffloadCounters,
+} from "../telemetry/counters.js";
 import { KeyedLimiter, Semaphore } from "../utils/semaphore.js";
 import { byteLength, estimateTokens } from "../utils/text.js";
 import { buildWorkerPrompt } from "../worker/payload.js";
@@ -48,10 +58,17 @@ export interface PostExecuteOptions {
 /** Optional machine-generated prefix on transformed content (SPEC §6.4). */
 export const OFFLOAD_ANNOTATION_MARKER = "[offloaded result]";
 
-type SkipReason = OffloadSkipReason | "no-parent-agent" | "worker-session" | "concurrency-limit";
+type SkipReason =
+  | OffloadSkipReason
+  | "no-parent-agent"
+  | "worker-session"
+  | "concurrency-limit";
 
-export function createPostExecuteListener(options: PostExecuteOptions): ToolOffloadListener {
-  const { readConfig, runner, counters, logger, globalGate, agentGate } = options;
+export function createPostExecuteListener(
+  options: PostExecuteOptions,
+): ToolOffloadListener {
+  const { readConfig, runner, counters, logger, globalGate, agentGate } =
+    options;
   return async (exec, result, next) => {
     const downstream = await next();
     let attemptStarted = false;
@@ -62,12 +79,27 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
       if (!config.enabled) return downstream;
 
       const agent = exec.agent;
-      if (!agent) return skip(counters, logger, config, exec.name, downstream, "no-parent-agent");
+      if (!agent)
+        return skip(
+          counters,
+          logger,
+          config,
+          exec.name,
+          downstream,
+          "no-parent-agent",
+        );
       if (isDelegatedChild(agent)) {
         // Recursion guard (SPEC §25): never offload inside delegated child
         // sessions. Our own workers additionally carry no tools at all, so
         // they cannot reach this seam even in theory.
-        return skip(counters, logger, config, exec.name, downstream, "worker-session");
+        return skip(
+          counters,
+          logger,
+          config,
+          exec.name,
+          downstream,
+          "worker-session",
+        );
       }
 
       const candidate = inspectResult(exec, result);
@@ -76,22 +108,45 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
 
       const route = decideRoute(candidate, config);
       if (route.kind === "passthrough") {
-        return skip(counters, logger, config, candidate.toolName, downstream, route.reason);
+        return skip(
+          counters,
+          logger,
+          config,
+          candidate.toolName,
+          downstream,
+          route.reason,
+        );
       }
 
       // Non-blocking budgets (SPEC §24): never queue inside post-execute.
       if (!globalGate.tryAcquire()) {
-        return skip(counters, logger, config, candidate.toolName, downstream, "concurrency-limit");
+        return skip(
+          counters,
+          logger,
+          config,
+          candidate.toolName,
+          downstream,
+          "concurrency-limit",
+        );
       }
       const agentKey = sessionKey(agent);
       if (!agentGate.tryAcquire(agentKey)) {
         globalGate.release();
-        return skip(counters, logger, config, candidate.toolName, downstream, "concurrency-limit");
+        return skip(
+          counters,
+          logger,
+          config,
+          candidate.toolName,
+          downstream,
+          "concurrency-limit",
+        );
       }
 
       attemptStarted = true;
-      const profile = config.workers[route.worker] ?? config.workers[config.defaultWorker];
-      if (!profile) throw new Error(`worker profile "${route.worker}" is not resolved`);
+      const profile =
+        config.workers[route.worker] ?? config.workers[config.defaultWorker];
+      if (!profile)
+        throw new Error(`worker profile "${route.worker}" is not resolved`);
       counters.increment("started");
       counters.increment("inputBytes", candidate.byteLength);
       counters.increment("estimatedInputTokens", candidate.estimatedTokens);
@@ -105,7 +160,11 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
       });
 
       const parentTask = extractParentTask(agent, config);
-      const prompt = buildWorkerPrompt({ candidate, parentTask, profileJob: resolvePromptJob(route.prompt, config) });
+      const prompt = buildWorkerPrompt({
+        candidate,
+        parentTask,
+        profileJob: resolvePromptJob(route.prompt, config),
+      });
       const outcome = await runner.run({
         label: `${WORKER_LABEL_PREFIX}${candidate.toolName}`,
         parent: agent,
@@ -130,7 +189,11 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
         return applyFallback(downstream, candidate, config, detail);
       }
 
-      const validation = validateWorkerOutput(outcome.outputText, candidate.byteLength, config.validation);
+      const validation = validateWorkerOutput(
+        outcome.outputText,
+        candidate.byteLength,
+        config.validation,
+      );
       if (!validation.ok) {
         counters.increment("failed");
         counters.increment("fallbacks");
@@ -142,13 +205,21 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
           outputBytes: byteLength(outcome.outputText),
           durationMs,
         });
-        return applyFallback(downstream, candidate, config, `output rejected: ${validation.reason}`);
+        return applyFallback(
+          downstream,
+          candidate,
+          config,
+          `output rejected: ${validation.reason}`,
+        );
       }
 
       const outputBytes = byteLength(validation.text);
       counters.increment("completed");
       counters.increment("outputBytes", outputBytes);
-      counters.increment("estimatedOutputTokens", estimateTokens(validation.text));
+      counters.increment(
+        "estimatedOutputTokens",
+        estimateTokens(validation.text),
+      );
       const derived = deriveOffloadMetrics(counters.snapshot());
       logger.info("offload.completed", {
         tool: candidate.toolName,
@@ -160,7 +231,9 @@ export function createPostExecuteListener(options: PostExecuteOptions): ToolOffl
         estimatedTokensSaved: derived.estimatedTokensSaved,
         durationMs,
       });
-      const text = config.annotation.enabled ? `${OFFLOAD_ANNOTATION_MARKER}\n${validation.text}` : validation.text;
+      const text = config.annotation.enabled
+        ? `${OFFLOAD_ANNOTATION_MARKER}\n${validation.text}`
+        : validation.text;
       return { kind: "accept", content: [{ type: "text", text }] };
     } catch (error) {
       if (attemptStarted) counters.increment("failed");
@@ -188,7 +261,8 @@ function skip(
 ): PostToolDecision {
   counters.increment("passthrough");
   counters.recordReason(reason);
-  if (config.telemetry.enabled) logger.debug("offload.skipped", { tool, reason });
+  if (config.telemetry.enabled)
+    logger.debug("offload.skipped", { tool, reason });
   return downstream;
 }
 
@@ -198,7 +272,12 @@ function applyFallback(
   config: ResolvedToolOffloadConfig,
   detail: string,
 ): PostToolDecision {
-  const text = buildFallbackText(config.fallback.mode, candidate.contentText, detail, config.validation.maxOutputBytes);
+  const text = buildFallbackText(
+    config.fallback.mode,
+    candidate.contentText,
+    detail,
+    config.validation.maxOutputBytes,
+  );
   if (text === null) return downstream;
   return { kind: "accept", content: [{ type: "text", text }] };
 }
@@ -210,7 +289,8 @@ function applyFallback(
  * our own workers carry no tools (SPEC §25).
  */
 function isDelegatedChild(agent: NonNullable<ToolExecution["agent"]>): boolean {
-  const header = (agent as { session?: { header?: { origin?: unknown } } }).session?.header;
+  const header = (agent as { session?: { header?: { origin?: unknown } } })
+    .session?.header;
   return header?.origin === "subagent";
 }
 
@@ -219,11 +299,19 @@ function sessionKey(agent: NonNullable<ToolExecution["agent"]>): string {
   return typeof id === "string" ? id : "unknown";
 }
 
-function resolvePromptJob(name: string, config: ResolvedToolOffloadConfig): string {
-  return config.prompts[name] ?? BUNDLED_PROMPT_PROFILES[name] ?? BUNDLED_PROMPT_PROFILES.generic!;
+function resolvePromptJob(
+  name: string,
+  config: ResolvedToolOffloadConfig,
+): string {
+  return (
+    config.prompts[name] ??
+    BUNDLED_PROMPT_PROFILES[name] ??
+    BUNDLED_PROMPT_PROFILES.generic!
+  );
 }
 
 function describeFailure(outcome: WorkerOutcome): string {
-  if (outcome.kind === "unavailable" || outcome.kind === "failed") return outcome.detail;
+  if (outcome.kind === "unavailable" || outcome.kind === "failed")
+    return outcome.detail;
   return outcome.kind;
 }

@@ -23,8 +23,14 @@ export interface GuardToolResult {
 }
 
 export type PostToolDecisionStruct =
-  | { readonly kind: "accept"; readonly content?: ReadonlyArray<GuardContentBlock> }
-  | { readonly kind: "block"; readonly feedback: ReadonlyArray<GuardContentBlock> };
+  | {
+      readonly kind: "accept";
+      readonly content?: ReadonlyArray<GuardContentBlock>;
+    }
+  | {
+      readonly kind: "block";
+      readonly feedback: ReadonlyArray<GuardContentBlock>;
+    };
 
 export type PostExecuteListener = (
   exec: GuardToolExecution,
@@ -38,7 +44,8 @@ const MAX_RESULT_CHARS = 16_000;
 export function extractResultText(result: GuardToolResult): string {
   const parts: string[] = [];
   for (const block of result.content) {
-    if (block.type === "text" && typeof block.text === "string") parts.push(block.text);
+    if (block.type === "text" && typeof block.text === "string")
+      parts.push(block.text);
   }
   return parts.join("\n").slice(0, MAX_RESULT_CHARS);
 }
@@ -56,7 +63,9 @@ const RISK_CATEGORIES: ReadonlySet<string> = new Set([
   "credential_exfiltration",
 ]);
 
-export function createPostExecuteGuard(deps: PostExecuteGuardDeps): PostExecuteListener {
+export function createPostExecuteGuard(
+  deps: PostExecuteGuardDeps,
+): PostExecuteListener {
   return async (exec, result, next) => {
     if (!deps.config.toolResults.enabled || result.isError) return next();
 
@@ -68,7 +77,9 @@ export function createPostExecuteGuard(deps: PostExecuteGuardDeps): PostExecuteL
       content,
       channel: "tool-result",
       direction: "tool-results",
-      classifierTrigger: deps.config.toolResults.classifyUntrustedSources ? "suspicious" : "never",
+      classifierTrigger: deps.config.toolResults.classifyUntrustedSources
+        ? "suspicious"
+        : "never",
       toolName: exec.name,
       sessionId,
       turn: null,
@@ -77,14 +88,19 @@ export function createPostExecuteGuard(deps: PostExecuteGuardDeps): PostExecuteL
 
     if (sessionId !== null && checkResult.decision !== "allow") {
       const riskLevel: RiskLevel =
-        checkResult.decision === "block" || checkResult.verdict.categories.some((category) => RISK_CATEGORIES.has(category))
+        checkResult.decision === "block" ||
+        checkResult.verdict.categories.some((category) =>
+          RISK_CATEGORIES.has(category),
+        )
           ? "high"
           : "elevated";
       deps.risk.mark(sessionId, {
         riskLevel,
         source: exec.name,
         signalKey:
-          checkResult.verdict.policyRuleIds?.join("+") || checkResult.verdict.categories.join("+") || "unknown",
+          checkResult.verdict.policyRuleIds?.join("+") ||
+          checkResult.verdict.categories.join("+") ||
+          "unknown",
       });
     }
 

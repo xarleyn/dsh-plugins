@@ -15,7 +15,11 @@ export type {
   KvPersistDoctorReport,
   KvPersistServiceDeps,
 } from "./service.js";
-export { resolveKvPersistConfig, isManagedProvider, KvPersistConfigSchema } from "./config.js";
+export {
+  resolveKvPersistConfig,
+  isManagedProvider,
+  KvPersistConfigSchema,
+} from "./config.js";
 export type { KvPersistConfig, ResolvedKvPersistConfig } from "./config.js";
 export {
   KvPersistError,
@@ -25,8 +29,14 @@ export {
   KvRestoreFailedError,
   KvEraseFailedError,
 } from "./errors.js";
-export type { KvPersistErrorCode, SnapshotInvalidationReason } from "./errors.js";
-export type { KvPersistenceBackend, BackendCapabilities } from "./backends/types.js";
+export type {
+  KvPersistErrorCode,
+  SnapshotInvalidationReason,
+} from "./errors.js";
+export type {
+  KvPersistenceBackend,
+  BackendCapabilities,
+} from "./backends/types.js";
 export { LlamaCppBackend } from "./backends/llama-cpp/backend.js";
 export { SingleSlotCoordinator } from "./coordinator/coordinator.js";
 export { SnapshotRepository } from "./snapshots/repository.js";

@@ -69,8 +69,7 @@ describe("spacing and containment rules", () => {
       );
       vi.spyOn(label, "getBoundingClientRect").mockImplementation(() =>
         rect(
-          rowId === "row-out" &&
-            !row.hasAttribute("data-dsh-ui-repair-target")
+          rowId === "row-out" && !row.hasAttribute("data-dsh-ui-repair-target")
             ? 30
             : 34,
           0,
@@ -135,8 +134,9 @@ describe("spacing and containment rules", () => {
       "padding-left": "12px",
     });
     expect(report.applied).toContain(issue?.id);
-    expect(getComputedStyle(document.querySelector("#pad-out")!).paddingLeft)
-      .toBe("12px");
+    expect(
+      getComputedStyle(document.querySelector("#pad-out")!).paddingLeft,
+    ).toBe("12px");
   });
 
   it("wraps explicitly owned clipped text and verifies the new geometry", async () => {
@@ -156,7 +156,8 @@ describe("spacing and containment rules", () => {
       clientWidth: { configurable: true, value: 100 },
       scrollWidth: {
         configurable: true,
-        get: () => label.hasAttribute("data-dsh-ui-repair-target") ? 100 : 160,
+        get: () =>
+          label.hasAttribute("data-dsh-ui-repair-target") ? 100 : 160,
       },
     });
     const runtime = new UIRepairRuntime(
@@ -246,13 +247,14 @@ describe("spacing and containment rules", () => {
     );
 
     const report = await runtime.scan();
-    const issues = report.issues.filter(({ ruleId }) =>
-      ruleId === "R012" || ruleId === "R013",
+    const issues = report.issues.filter(
+      ({ ruleId }) => ruleId === "R012" || ruleId === "R013",
     );
 
     expect(issues.map(({ ruleId }) => ruleId)).toEqual(["R012", "R013"]);
-    expect(issues.every(({ suggestedCss }) => suggestedCss === undefined))
-      .toBe(true);
+    expect(issues.every(({ suggestedCss }) => suggestedCss === undefined)).toBe(
+      true,
+    );
     expect(report.applied).toEqual([]);
   });
 });

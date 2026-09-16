@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { uniqueSorted } from '../utils/paths.js';
+import { createHash } from "node:crypto";
+import { uniqueSorted } from "../utils/paths.js";
 
 export function createImpactFingerprint(
   ruleId: string,
@@ -11,5 +11,5 @@ export function createImpactFingerprint(
     uniqueSorted(triggerFiles),
     uniqueSorted(targetFiles),
   ]);
-  return createHash('sha256').update(serialized).digest('hex');
+  return createHash("sha256").update(serialized).digest("hex");
 }

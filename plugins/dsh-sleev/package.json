@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-sleev",
-  "version": "0.0.4",
+  "version": "0.1.2",
   "description": "Sleev routing observability for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -40,6 +40,7 @@
     "client": {
       "inject": [
         "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-store",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
       ],
@@ -51,25 +52,21 @@
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "compatibility.json",
-    "docs/*",
     "README.md",
-    "README.zh-CN.md",
     "LICENSE"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint src tests scripts",
-    "format": "prettier --check . --end-of-line auto",
-    "format:write": "prettier --write . --end-of-line auto",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:package": "node scripts/verify-package.mjs",
-    "verify": "pnpm run test:package",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
     "smoke:packed": "node scripts/smoke-packed-dsh.mjs",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
     "smoke:neuraldeep": "tsx scripts/smoke-neuraldeep.ts",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepack": "tsdown && tsc -p tsconfig.build.json",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [
@@ -77,7 +74,10 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "sleev",
+    "routing",
+    "observability",
     "context-optimization"
   ],
   "license": "MIT",
@@ -88,7 +88,8 @@
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-store": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
@@ -102,7 +103,8 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-store": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
@@ -115,7 +117,6 @@
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "eslint": "catalog:tooling",
-    "prettier": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "tsx": "catalog:tooling",

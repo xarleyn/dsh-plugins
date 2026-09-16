@@ -1,21 +1,38 @@
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.1-rc.2 <0.2.0",
-    "testedReleases": ["0.1.1-rc.2"],
+    "range": ">=0.1.5-rc.2 <0.2.0",
+    "testedReleases": ["0.1.5-rc.2"],
     "requiredClientFeatures": [
       "shell.overlay",
-      "connection.api.sessions",
+      "remote.session.selectModel",
+      "remote.agentPresets.select",
+      "uiConversation.binding",
       "sessions.binding",
       "settingsScope",
+      "settings.onboarding list-slot shadowing",
+      "keyed child slots with owner props",
       "webServer.register",
       "typert.remote",
       "agentPresets.composedPreset",
       "permissionPresets.set",
+      "tools.schemas",
       "tools.restrict",
       "tools.guard",
-      "workspaceRegistry.get"
+      "tools.register",
+      "session.event-extension",
+      "agent.turn-stopping",
+      "agent.currentInitiator",
+      "systemPrompt.section",
+      "workspaceRegistry.get",
+      "skills.registerProvider",
+      "skills.change"
     ]
+  },
+  "qaSurfacePanelExtensions": {
+    "version": 1,
+    "service": "qaSurfacePanels",
+    "bodySlot": "qa.surface.panel"
   },
   "node": "^22.19.0 || >=24.0.0"
 }

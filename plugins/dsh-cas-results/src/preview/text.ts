@@ -14,18 +14,34 @@ interface TakenBlock {
   readonly count: number;
 }
 
-export function previewText(value: string, options: PreviewOptions): TextPreview {
+export function previewText(
+  value: string,
+  options: PreviewOptions,
+): TextPreview {
   if (value.length <= options.maxChars) return { body: value };
   const lines = value.split(/\r\n|\r|\n/);
 
-  const head = takeLines(lines, 0, Math.min(options.keepHeadLines, lines.length), Math.floor(options.maxChars * 0.55));
+  const head = takeLines(
+    lines,
+    0,
+    Math.min(options.keepHeadLines, lines.length),
+    Math.floor(options.maxChars * 0.55),
+  );
   const tailStart = Math.max(head.count, lines.length - options.keepTailLines);
-  const tail = takeLines(lines, tailStart, lines.length, Math.floor(options.maxChars * 0.35));
+  const tail = takeLines(
+    lines,
+    tailStart,
+    lines.length,
+    Math.floor(options.maxChars * 0.35),
+  );
 
   const omittedLines = Math.max(0, lines.length - head.count - tail.count);
   const parts: string[] = [];
   if (head.text.length > 0) parts.push(head.text);
-  if (omittedLines > 0) parts.push(`[dsh-cas-results: ${formatOmitted(omittedLines)} lines omitted]`);
+  if (omittedLines > 0)
+    parts.push(
+      `[dsh-cas-results: ${formatOmitted(omittedLines)} lines omitted]`,
+    );
   if (tail.text.length > 0) parts.push(tail.text);
   return { body: parts.join("\n\n") };
 }
@@ -35,7 +51,12 @@ export function previewText(value: string, options: PreviewOptions): TextPreview
  * the very next line alone exceeds the budget, a partial slice of it is
  * taken so a giant single line still yields a bounded, informative preview.
  */
-function takeLines(lines: readonly string[], start: number, end: number, maxChars: number): TakenBlock {
+function takeLines(
+  lines: readonly string[],
+  start: number,
+  end: number,
+  maxChars: number,
+): TakenBlock {
   const collected: string[] = [];
   let used = 0;
   let count = 0;
@@ -69,7 +90,12 @@ export interface BoundedBlock {
 }
 
 /** Take up to `limitLines` whole lines and at most `maxChars` characters. */
-export function boundedBlock(lines: readonly string[], start: number, end: number, maxChars: number): BoundedBlock {
+export function boundedBlock(
+  lines: readonly string[],
+  start: number,
+  end: number,
+  maxChars: number,
+): BoundedBlock {
   const collected: string[] = [];
   let used = 0;
   let count = 0;

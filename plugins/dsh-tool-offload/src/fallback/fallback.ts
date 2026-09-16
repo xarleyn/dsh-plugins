@@ -15,7 +15,12 @@ export type FallbackMode = ResolvedToolOffloadConfig["fallback"]["mode"];
  * Replacement content for a failed offload. Returns `null` for the
  * `original` mode: the caller then returns the downstream decision as-is.
  */
-export function buildFallbackText(mode: FallbackMode, originalText: string, failureDetail: string, maxBytes: number): string | null {
+export function buildFallbackText(
+  mode: FallbackMode,
+  originalText: string,
+  failureDetail: string,
+  maxBytes: number,
+): string | null {
   switch (mode) {
     case "original":
       return null;

@@ -48,7 +48,9 @@ describe("dirty generations (SPEC §28)", () => {
 describe("checkpoint policy (SPEC §26)", () => {
   const defaults = resolveKvPersistConfig({});
 
-  function policyWith(overrides: Parameters<typeof resolveKvPersistConfig>[0]): CheckpointPolicy {
+  function policyWith(
+    overrides: Parameters<typeof resolveKvPersistConfig>[0],
+  ): CheckpointPolicy {
     return new CheckpointPolicy(resolveKvPersistConfig(overrides));
   }
 

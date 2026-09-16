@@ -10,7 +10,7 @@ Prompt hygiene, observability, and policy middleware for [DeepSeek Harness](http
 
 `dsh-prompt-firewall` inspects the final structured system-prompt assembly, audits every section, and can remove explicitly denied sections without changing user messages, tool calls, contexts, variables, or allowed section objects. It is a policy and observability layer, not a security sandbox.
 
-[Specification](SPEC.md)
+[Specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-prompt-firewall/SPEC.md)
 
 ## Installation
 
@@ -136,7 +136,7 @@ When the DSH settings provider is mounted, configuration is registered under `pr
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 
 ## Development
@@ -154,11 +154,11 @@ pnpm --filter @yadsh/dsh-prompt-firewall verify
 
 ## Releases
 
-This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](../../docs/RELEASING.md).
+This package uses independent Nx Version Plans from the monorepo. Add a plan with `pnpm release:plan`; maintainers publish verified tarballs through the shared [release workflow](https://github.com/xarleyn/dsh-plugins/blob/main/docs/RELEASING.md).
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Read the monorepo [contribution guide](../../CONTRIBUTING.md) and run the package checks before submitting a change.
+Issues and focused pull requests are welcome. Read the monorepo [contribution guide](https://github.com/xarleyn/dsh-plugins/blob/main/CONTRIBUTING.md) and run the package checks before submitting a change.
 
 ## License
 

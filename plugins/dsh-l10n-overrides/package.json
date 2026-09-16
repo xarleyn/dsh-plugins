@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-l10n-overrides",
-  "version": "0.1.2",
+  "version": "0.1.5",
   "description": "English localization overrides for DeepSeek Harness plugins",
   "repository": {
     "type": "git",
@@ -45,21 +45,18 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "ROADMAP.md",
     "LICENSE"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
     "lint": "eslint src tests scripts",
-    "format": "prettier --check . --end-of-line auto",
-    "format:write": "prettier --write . --end-of-line auto",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
-    "test:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
-    "verify": "pnpm run test:package",
-    "check": "pnpm run format && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run test:package",
-    "prepack": "tsdown && tsc -p tsconfig.build.json",
+    "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify",
     "prepublishOnly": "pnpm run check"
   },
   "keywords": [
@@ -67,7 +64,9 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "localization",
+    "i18n",
     "web-ui"
   ],
   "license": "MIT",
@@ -88,7 +87,6 @@
     "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
-    "prettier": "catalog:tooling",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

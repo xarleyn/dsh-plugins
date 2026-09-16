@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-user-correction-miner",
-  "version": "0.1.1",
+  "version": "0.2.2",
   "description": "Mine durable project-rule candidates from user corrections in DeepSeek Harness sessions",
   "repository": {
     "type": "git",
@@ -11,6 +11,17 @@
   "bugs": {
     "url": "https://github.com/xarleyn/dsh-plugins/issues"
   },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "project-rules",
+    "memory",
+    "corrections",
+    "knowledge-extraction"
+  ],
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -41,7 +52,8 @@
     "test": "vitest run",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify"
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
   },
   "publishConfig": {
     "access": "public",

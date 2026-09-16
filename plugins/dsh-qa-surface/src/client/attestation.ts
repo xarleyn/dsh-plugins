@@ -10,10 +10,23 @@ const ATTESTATION_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
  * reason class and an operator hint.
  */
 export class QaPolicyAttestationError extends Error {
-  constructor() {
+  constructor(readonly reason: string | null = null) {
     super("QA session policy could not be attested.");
     this.name = "QaPolicyAttestationError";
   }
+}
+
+/**
+ * Refusals that classify an existing chat as belonging to an older deployment
+ * composition. Keeping only its transcript is safe: policyReady stays false,
+ * so no prompt, cancel, approval or question reaches the Host.
+ */
+export function canOpenAsCompatibilityReadOnly(reason: string | null): boolean {
+  return (
+    reason === "composition-mismatch" ||
+    reason === "agent-unavailable" ||
+    reason === "adoption-refused"
+  );
 }
 
 /**
@@ -34,6 +47,9 @@ export function attestationReasonOf(
 }
 
 export function attestationHint(reason: string | null): string {
+  if (reason === "agent-unavailable") {
+    return "The Host could not put a live agent behind this chat: resuming the composition its session recorded failed (a preset that no longer mounts does this). The refusal detail is in the Host logs.";
+  }
   if (reason === "unknown-tools") {
     return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
   }
@@ -44,10 +60,16 @@ export function attestationHint(reason: string | null): string {
     return "The session's agent preset, workspace or model no longer matches the deployment QA config.";
   }
   if (reason === "permission-preset") {
-    return "The configured permission preset did not resolve to the pinned sandbox/approval policy.";
+    return "The configured permission preset did not resolve to the pinned sandbox/approval policy. Keep approval=never even when interaction.approvals is interactive; QA parks composed tool-gate requests itself.";
   }
   if (reason === "adoption-refused") {
     return "This browser tried to adopt a session created outside the current QA policy.";
+  }
+  if (reason === "session-owned-elsewhere") {
+    return "The session belongs to another QA account; the deployment's ownership map refused this browser.";
+  }
+  if (reason === "auth-required") {
+    return "The account token is absent, expired or rotated - sign in again through the QA gate.";
   }
   return "The specific mismatch facts are written to the Host logs.";
 }
@@ -68,7 +90,7 @@ export function proofMatchesConfig(
     proof.agentPresetMatches &&
     proof.workspaceMatches &&
     proof.modelMatches &&
-    proof.sandboxIsReadOnly &&
+    proof.sandboxModeMatches &&
     proof.approvalIsNever &&
     proof.permissionPreset === lockdown.permissionPreset &&
     proof.toolPolicyLoaded &&

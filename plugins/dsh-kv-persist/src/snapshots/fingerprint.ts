@@ -45,7 +45,9 @@ export function deriveServerInstanceKey(baseURL: string): string {
   try {
     origin = new URL(baseURL).origin;
   } catch {
-    throw new KvInvariantError(`backend.baseURL is not a valid URL: "${baseURL}"`);
+    throw new KvInvariantError(
+      `backend.baseURL is not a valid URL: "${baseURL}"`,
+    );
   }
   return `llama-${sha256Hex(origin).slice(0, 12)}`;
 }

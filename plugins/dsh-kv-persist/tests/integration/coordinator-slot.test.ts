@@ -13,7 +13,10 @@ describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
     const harness = await createHarness();
     try {
       const chunks = await run(harness, "session-a");
-      expect(chunks.map((chunk) => chunk.type)).toEqual(["text-delta", "finish"]);
+      expect(chunks.map((chunk) => chunk.type)).toEqual([
+        "text-delta",
+        "finish",
+      ]);
       expect(harness.backend.eraseCount).toBe(1);
       expect(harness.backend.saveCount).toBe(0);
       expect(harness.backend.restoreCount).toBe(0);
@@ -51,7 +54,9 @@ describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
       await run(harness, "session-b");
       expect(harness.backend.saveCount).toBe(1);
       expect(harness.coordinator.slot.ownerSessionId).toBe("session-b");
-      const manifest = await harness.repository.load(buildIdentity(harness, "session-a"));
+      const manifest = await harness.repository.load(
+        buildIdentity(harness, "session-a"),
+      );
       expect(manifest?.state).toBe("ready");
       const runtimeA = harness.coordinator.getSessionState("session-a");
       expect(runtimeA?.persistedRevision).toBe(1);
@@ -84,9 +89,14 @@ describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
       const key = residentKey(harness, "session-a");
       harness.backend.corruptSnapshot(key);
       const chunks = await run(harness, "session-a"); // restore fails -> cold
-      expect(chunks.map((chunk) => chunk.type)).toEqual(["text-delta", "finish"]);
+      expect(chunks.map((chunk) => chunk.type)).toEqual([
+        "text-delta",
+        "finish",
+      ]);
       expect(harness.metrics.counters.restoreFailures).toBe(1);
-      const manifest = await harness.repository.load(buildIdentity(harness, "session-a"));
+      const manifest = await harness.repository.load(
+        buildIdentity(harness, "session-a"),
+      );
       expect(manifest?.state).toBe("invalid");
       expect(manifest?.invalidReason).toBe("RESTORE_FAILED");
     } finally {
@@ -149,7 +159,9 @@ describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
       await run(harness, "session-a");
       await harness.coordinator.checkpoint("session-a", "manual");
       await harness.coordinator.invalidate("session-a", "EXPLICIT");
-      const manifest = await harness.repository.load(buildIdentity(harness, "session-a"));
+      const manifest = await harness.repository.load(
+        buildIdentity(harness, "session-a"),
+      );
       expect(manifest?.state).toBe("invalid");
       await run(harness, "session-a"); // invalid snapshot -> cold
       expect(harness.metrics.counters.coldPrefills).toBeGreaterThanOrEqual(2);

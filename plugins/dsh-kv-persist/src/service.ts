@@ -16,13 +16,20 @@ import { join, resolve } from "node:path";
 import { Context, Service } from "@deepseek-ai/cordis";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
 import { resolveDshHome } from "@yadsh/dsh-plugin-log";
-import { KvPersistConfigSchema, resolveKvPersistConfig, isManagedProvider } from "./config.js";
+import {
+  KvPersistConfigSchema,
+  resolveKvPersistConfig,
+  isManagedProvider,
+} from "./config.js";
 import type { KvPersistConfig, ResolvedKvPersistConfig } from "./config.js";
 import type { SnapshotInvalidationReason } from "./errors.js";
 import { LlamaCppBackend } from "./backends/llama-cpp/backend.js";
 import type { KvPersistenceBackend } from "./backends/types.js";
 import { SingleSlotCoordinator } from "./coordinator/coordinator.js";
-import type { RestoreOutcome, SnapshotResult } from "./coordinator/state-machine.js";
+import type {
+  RestoreOutcome,
+  SnapshotResult,
+} from "./coordinator/state-machine.js";
 import { createKvPersistLogger } from "./observability/diagnostics.js";
 import type { KvPersistLogger } from "./observability/diagnostics.js";
 import { KvPersistMetrics } from "./observability/metrics.js";
@@ -116,7 +123,9 @@ function registerHostEvent(
   event: string,
   listener: (...args: never[]) => unknown,
 ): void {
-  (ctx.on as (name: string, listener: (...args: never[]) => unknown) => unknown)(event, listener);
+  (
+    ctx.on as (name: string, listener: (...args: never[]) => unknown) => unknown
+  )(event, listener);
 }
 
 export class KvPersistService extends Service {
@@ -129,7 +138,11 @@ export class KvPersistService extends Service {
   private readonly metrics = new KvPersistMetrics();
   private readonly coordinator: SingleSlotCoordinator;
 
-  constructor(ctx: Context, config: KvPersistConfig = {}, deps: KvPersistServiceDeps = {}) {
+  constructor(
+    ctx: Context,
+    config: KvPersistConfig = {},
+    deps: KvPersistServiceDeps = {},
+  ) {
     super(ctx, "kvPersist");
     const resolved = resolveKvPersistConfig(config);
     this.config = resolved;
@@ -168,7 +181,9 @@ export class KvPersistService extends Service {
 
   /** Diagnostics snapshot (SPEC §47). */
   async status(): Promise<KvPersistStatus> {
-    const counts = await this.repository.counts().catch(() => ({ known: 0, valid: 0, invalid: 0 }));
+    const counts = await this.repository
+      .counts()
+      .catch(() => ({ known: 0, valid: 0, invalid: 0 }));
     const counters = this.metrics.snapshot();
     const slot = this.coordinator.slot;
     return {
@@ -222,7 +237,10 @@ export class KvPersistService extends Service {
   }
 
   /** Mark every snapshot of the session invalid, without deleting (§31). */
-  invalidate(sessionId: string, reason?: SnapshotInvalidationReason): Promise<void> {
+  invalidate(
+    sessionId: string,
+    reason?: SnapshotInvalidationReason,
+  ): Promise<void> {
     return this.coordinator.invalidate(sessionId, reason ?? "EXPLICIT");
   }
 
@@ -279,18 +297,31 @@ export class KvPersistService extends Service {
 
     // Session lifecycle hooks through a structural registration (the
     // `session/*` event vocabulary belongs to the host's session service).
-    registerHostEvent(ctx, "session/flush", (session: { readonly id: string }) =>
-      this.coordinator.checkpoint(String(session.id), "session-flush").catch(() => undefined),
+    registerHostEvent(
+      ctx,
+      "session/flush",
+      (session: { readonly id: string }) =>
+        this.coordinator
+          .checkpoint(String(session.id), "session-flush")
+          .catch(() => undefined),
     );
-    registerHostEvent(ctx, "session/disposed", (session: { readonly id: string }) => {
-      void this.coordinator.handleSessionDisposed(String(session.id)).catch(() => undefined);
-    });
+    registerHostEvent(
+      ctx,
+      "session/disposed",
+      (session: { readonly id: string }) => {
+        void this.coordinator
+          .handleSessionDisposed(String(session.id))
+          .catch(() => undefined);
+      },
+    );
     registerHostEvent(
       ctx,
       "session/event",
       (session: { readonly id: string }, event: { readonly type: string }) => {
         if (event.type !== "turn/end") return;
-        void this.coordinator.checkpoint(String(session.id), "turn-end").catch(() => undefined);
+        void this.coordinator
+          .checkpoint(String(session.id), "turn-end")
+          .catch(() => undefined);
       },
     );
 
@@ -319,7 +350,8 @@ export class KvPersistService extends Service {
     const coordinator = this.coordinator;
     return (async function* (): AsyncIterable<StreamChunk> {
       const stream = await coordinator.runSessionRequest({
-        sessionId: options.sessionId === undefined ? null : String(options.sessionId),
+        sessionId:
+          options.sessionId === undefined ? null : String(options.sessionId),
         provider: options.provider,
         model: options.model,
         purpose: options.purpose,
@@ -329,9 +361,16 @@ export class KvPersistService extends Service {
     })();
   }
 
-  private async checkMetadataWritable(): Promise<{ name: string; ok: boolean; detail: string }> {
+  private async checkMetadataWritable(): Promise<{
+    name: string;
+    ok: boolean;
+    detail: string;
+  }> {
     const dir = resolveMetadataDir(this.config);
-    const probeFile = join(dir, `.probe-${process.pid}-${Date.now().toString(36)}`);
+    const probeFile = join(
+      dir,
+      `.probe-${process.pid}-${Date.now().toString(36)}`,
+    );
     try {
       await mkdir(dir, { recursive: true });
       await writeFile(probeFile, "probe\n", "utf8");

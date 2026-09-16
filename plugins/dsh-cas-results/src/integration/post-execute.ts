@@ -17,7 +17,11 @@
 
 import { Buffer } from "node:buffer";
 
-import type { PostToolDecision, ToolExecution, ToolExecutionResult } from "@deepseek-ai/dsh-tools";
+import type {
+  PostToolDecision,
+  ToolExecution,
+  ToolExecutionResult,
+} from "@deepseek-ai/dsh-tools";
 
 import type { ResolvedCasResultsConfig } from "../config.js";
 import { transformValue, type JsonValue } from "../transform/scan-value.js";
@@ -45,7 +49,9 @@ interface TextBlockLike {
   readonly text?: unknown;
 }
 
-export function createPostExecuteListener(options: PostExecuteListenerOptions): CasPostExecuteListener {
+export function createPostExecuteListener(
+  options: PostExecuteListenerOptions,
+): CasPostExecuteListener {
   const { store, counters, readConfig, logger } = options;
   return async (exec, result, next) => {
     const decision = await next();
@@ -58,11 +64,28 @@ export function createPostExecuteListener(options: PostExecuteListenerOptions): 
       if (result.isError && !config.includeErrors) return decision; // errors untouched by default (SPEC AC8)
 
       const previewText = result.isError
-        ? await transformErrorContent(result, exec, config, store, counters, logger)
-        : await transformSuccessValue(result.value as JsonValue, exec, config, store, counters, logger);
+        ? await transformErrorContent(
+            result,
+            exec,
+            config,
+            store,
+            counters,
+            logger,
+          )
+        : await transformSuccessValue(
+            result.value as JsonValue,
+            exec,
+            config,
+            store,
+            counters,
+            logger,
+          );
       if (previewText === null) return decision;
 
-      counters.increment("previewBytes", Buffer.byteLength(previewText, "utf8"));
+      counters.increment(
+        "previewBytes",
+        Buffer.byteLength(previewText, "utf8"),
+      );
       return {
         kind: "accept",
         content: [{ type: "text", text: previewText }],
@@ -107,7 +130,9 @@ async function transformSuccessValue(
   });
   // Every oversized field of a structured value becomes one bounded preview
   // block; they share the model-facing content replacement.
-  return outcome.replacements.map((replacement) => replacement.previewText).join("\n\n");
+  return outcome.replacements
+    .map((replacement) => replacement.previewText)
+    .join("\n\n");
 }
 
 /**
@@ -132,7 +157,10 @@ async function transformErrorContent(
   for (let index = 0; index < blocks.length; index += 1) {
     const text = blocks[index]?.text as string;
     const bytes = Buffer.byteLength(text, "utf8");
-    if (bytes >= policy.thresholds.textBytes && (largest === undefined || bytes > largest.bytes)) {
+    if (
+      bytes >= policy.thresholds.textBytes &&
+      (largest === undefined || bytes > largest.bytes)
+    ) {
       largest = { index, text, bytes };
     }
   }
@@ -151,7 +179,11 @@ async function transformErrorContent(
     casHits: object.reused ? 1 : 0,
     logicalBytesOffloaded: largest.bytes,
   });
-  logger.debug("cas.offloaded_error_block", { tool: exec.name, ref: object.ref, bytes: largest.bytes });
+  logger.debug("cas.offloaded_error_block", {
+    tool: exec.name,
+    ref: object.ref,
+    bytes: largest.bytes,
+  });
   const head = largest.text.slice(0, Math.min(policy.preview.maxChars, 2048));
   return [
     `[dsh-cas-results: ${largest.bytes}B text → ${Buffer.byteLength(head, "utf8")}B preview; ${object.ref}; use dsh_cas_retrieve]`,

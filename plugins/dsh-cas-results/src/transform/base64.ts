@@ -15,7 +15,8 @@ import { Buffer } from "node:buffer";
 
 import { sniffBinaryMediaType } from "./classify.js";
 
-const DATA_URI_PATTERN = /^\s*data:([a-z0-9.+-]+\/[a-z0-9.+-]+)?;base64,([A-Za-z0-9+/=\s]+)\s*$/;
+const DATA_URI_PATTERN =
+  /^\s*data:([a-z0-9.+-]+\/[a-z0-9.+-]+)?;base64,([A-Za-z0-9+/=\s]+)\s*$/;
 const RAW_BASE64_PATTERN = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export interface Base64DetectionOptions {
@@ -46,7 +47,10 @@ export function isBinaryLike(bytes: Uint8Array): boolean {
  * Detect and decode a confident base64 payload. Returns `null` when the
  * string is not confidently base64; the caller then treats it as text.
  */
-export function decodeBase64Candidate(value: string, options: Base64DetectionOptions): DecodedBase64 | null {
+export function decodeBase64Candidate(
+  value: string,
+  options: Base64DetectionOptions,
+): DecodedBase64 | null {
   if (!options.enabled || value.length < options.minChars) return null;
 
   const dataUri = DATA_URI_PATTERN.exec(value);
@@ -63,7 +67,8 @@ export function decodeBase64Candidate(value: string, options: Base64DetectionOpt
   }
 
   const trimmed = value.trim();
-  if (!RAW_BASE64_PATTERN.test(trimmed) || !isPlausibleBase64Shape(trimmed)) return null;
+  if (!RAW_BASE64_PATTERN.test(trimmed) || !isPlausibleBase64Shape(trimmed))
+    return null;
   const bytes = strictDecode(trimmed);
   if (bytes === null) return null;
 

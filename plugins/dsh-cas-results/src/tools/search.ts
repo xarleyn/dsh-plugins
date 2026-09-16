@@ -11,7 +11,12 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { CasError } from "../cas/errors.js";
 import type { CasStore } from "../cas/types.js";
 import { CasCounters } from "../observability/counters.js";
-import { missingObjectMessage, readOptionalBoolean, readOptionalInteger, readRefArg } from "./refs.js";
+import {
+  missingObjectMessage,
+  readOptionalBoolean,
+  readOptionalInteger,
+  readRefArg,
+} from "./refs.js";
 
 export interface SearchDeps {
   readonly store: CasStore;
@@ -31,12 +36,26 @@ export function createSearchTool(deps: SearchDeps) {
       ref: {
         type: "string",
         required: true,
-        description: 'Content reference from the offload marker, e.g. "sha256:ab12...".',
+        description:
+          'Content reference from the offload marker, e.g. "sha256:ab12...".',
       },
-      query: { type: "string", required: true, description: "Plain substring to search for." },
-      maxMatches: { type: "integer", description: "Maximum number of matches to return. Default: 20." },
-      contextLines: { type: "integer", description: "Context lines before and after each match. Default: 3." },
-      caseSensitive: { type: "boolean", description: "Match case exactly. Default: false." },
+      query: {
+        type: "string",
+        required: true,
+        description: "Plain substring to search for.",
+      },
+      maxMatches: {
+        type: "integer",
+        description: "Maximum number of matches to return. Default: 20.",
+      },
+      contextLines: {
+        type: "integer",
+        description: "Context lines before and after each match. Default: 3.",
+      },
+      caseSensitive: {
+        type: "boolean",
+        description: "Match case exactly. Default: false.",
+      },
     },
     output: {
       schema: {
@@ -57,8 +76,16 @@ export function createSearchTool(deps: SearchDeps) {
               properties: {
                 line: { type: "integer", required: true },
                 text: { type: "string", required: true },
-                before: { type: "array", required: true, items: { type: "string" } },
-                after: { type: "array", required: true, items: { type: "string" } },
+                before: {
+                  type: "array",
+                  required: true,
+                  items: { type: "string" },
+                },
+                after: {
+                  type: "array",
+                  required: true,
+                  items: { type: "string" },
+                },
               },
             },
           },
@@ -66,7 +93,12 @@ export function createSearchTool(deps: SearchDeps) {
       },
       render: (_args, value) => {
         if (value.totalMatches === 0) {
-          return [{ type: "text", text: `No matches for ${JSON.stringify(value.query)} in ${value.ref}.` }];
+          return [
+            {
+              type: "text",
+              text: `No matches for ${JSON.stringify(value.query)} in ${value.ref}.`,
+            },
+          ];
         }
         const blocks = value.matches.map((match) => {
           const lines = [
@@ -79,7 +111,12 @@ export function createSearchTool(deps: SearchDeps) {
         const suffix = value.truncated
           ? `\n\nShowing ${value.returnedMatches} of ${value.totalMatches} matches; raise maxMatches to see more.`
           : "";
-        return [{ type: "text", text: `Found ${value.totalMatches} match(es) for ${JSON.stringify(value.query)}:\n\n${blocks.join("\n---\n")}${suffix}` }];
+        return [
+          {
+            type: "text",
+            text: `Found ${value.totalMatches} match(es) for ${JSON.stringify(value.query)}:\n\n${blocks.join("\n---\n")}${suffix}`,
+          },
+        ];
       },
     },
     async execute(args: unknown) {
@@ -87,19 +124,30 @@ export function createSearchTool(deps: SearchDeps) {
       const hash = readRefArg(query);
       const needle = query.query;
       if (typeof needle !== "string" || needle.length === 0) {
-        throw new CasError("CAS_INVALID_ARGUMENT", 'argument "query" must be a non-empty string');
+        throw new CasError(
+          "CAS_INVALID_ARGUMENT",
+          'argument "query" must be a non-empty string',
+        );
       }
-      const outcome = await store.search(hash, {
-        query: needle,
-        maxMatches: readOptionalInteger(query, "maxMatches"),
-        contextLines: readOptionalInteger(query, "contextLines"),
-        caseSensitive: readOptionalBoolean(query, "caseSensitive"),
-      }).catch((error: unknown) => {
-        if (error instanceof CasError && error.code === "CAS_OBJECT_MISSING") {
-          throw new CasError("CAS_OBJECT_MISSING", missingObjectMessage(`sha256:${hash}`));
-        }
-        throw error;
-      });
+      const outcome = await store
+        .search(hash, {
+          query: needle,
+          maxMatches: readOptionalInteger(query, "maxMatches"),
+          contextLines: readOptionalInteger(query, "contextLines"),
+          caseSensitive: readOptionalBoolean(query, "caseSensitive"),
+        })
+        .catch((error: unknown) => {
+          if (
+            error instanceof CasError &&
+            error.code === "CAS_OBJECT_MISSING"
+          ) {
+            throw new CasError(
+              "CAS_OBJECT_MISSING",
+              missingObjectMessage(`sha256:${hash}`),
+            );
+          }
+          throw error;
+        });
       counters.increment("searchCalls");
       return {
         ref: outcome.ref,

@@ -1,7 +1,12 @@
 // Staged settings form over the `doc-impact` settings namespace — a port of
 // the first-party CardForm semantics: staged drafts never write; Save commits
 // field-granular set/unset calls in staging order (SPEC §37).
-export const MODE_OPTIONS = ["remind", "require-review", "require-resolution", "require-update"];
+export const MODE_OPTIONS = [
+  "remind",
+  "require-review",
+  "require-resolution",
+  "require-update",
+];
 export const ON_LIMIT_OPTIONS = ["allow", "warn", "error"];
 
 /** Field specs: kind text/number render as inputs, choice/bool as selects. */
@@ -10,9 +15,14 @@ export const FIELDS = [
   { field: "configFile", kind: "text", fallback: ".dsh/doc-impact.yml" },
   { field: "mode", kind: "choice", options: MODE_OPTIONS, fallback: "remind" },
   { field: "maxReminderRounds", kind: "number", fallback: 2 },
-  { field: "onLimit", kind: "choice", options: ON_LIMIT_OPTIONS, fallback: "allow" },
+  {
+    field: "onLimit",
+    kind: "choice",
+    options: ON_LIMIT_OPTIONS,
+    fallback: "allow",
+  },
   { field: "maxSnapshotFiles", kind: "number", fallback: 10000 },
-  { field: "debug", kind: "bool", fallback: false }
+  { field: "debug", kind: "bool", fallback: false },
 ];
 
 function formatText(value: unknown): string {
@@ -20,15 +30,21 @@ function formatText(value: unknown): string {
 }
 
 function formatNumber(value: unknown): string {
-  return typeof value === "number" && Number.isFinite(value) ? String(value) : "";
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : "";
 }
 
-function parseText(text: string): { kind: "clear" } | { kind: "set"; value: string } {
+function parseText(
+  text: string,
+): { kind: "clear" } | { kind: "set"; value: string } {
   const trimmed = text.trim();
   return trimmed === "" ? { kind: "clear" } : { kind: "set", value: trimmed };
 }
 
-function parseNumber(text: string): { kind: "clear" } | { kind: "set"; value: number } | undefined {
+function parseNumber(
+  text: string,
+): { kind: "clear" } | { kind: "set"; value: number } | undefined {
   const trimmed = text.trim();
   if (trimmed === "") return { kind: "clear" };
   if (!/^\d+$/u.test(trimmed)) return undefined;
@@ -85,12 +101,16 @@ SettingsForm.prototype.snapshotOf = function () {
 
 SettingsForm.prototype.sectionValue = function (field: string) {
   const value = this.snapshotOf().value;
-  return value !== undefined && value !== null && Object.hasOwn(value, field) ? value[field] : undefined;
+  return value !== undefined && value !== null && Object.hasOwn(value, field)
+    ? value[field]
+    : undefined;
 };
 
 SettingsForm.prototype.baseValue = function (field: string) {
   const base = this.snapshotOf().base;
-  return base !== undefined && base !== null && Object.hasOwn(base, field) ? base[field] : undefined;
+  return base !== undefined && base !== null && Object.hasOwn(base, field)
+    ? base[field]
+    : undefined;
 };
 
 SettingsForm.prototype.userLayer = function () {
@@ -117,26 +137,35 @@ SettingsForm.prototype.plan = function () {
       if (this.stored(field)) {
         plan.push({
           field: field,
-          run: () => this.runClear(field)
+          run: () => this.runClear(field),
         });
       }
       return;
     }
     if (spec.kind === "text" || spec.kind === "number") {
-      if (staged.text === (spec.kind === "number" ? formatNumber(this.sectionValue(field)) : formatText(this.sectionValue(field)))) return;
-      const write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
+      if (
+        staged.text ===
+        (spec.kind === "number"
+          ? formatNumber(this.sectionValue(field))
+          : formatText(this.sectionValue(field)))
+      )
+        return;
+      const write =
+        spec.kind === "number"
+          ? parseNumber(staged.text)
+          : parseText(staged.text);
       if (write === undefined) {
         plan.push({ field: field, run: undefined });
       } else if (write.kind === "clear") {
         plan.push({
           field: field,
-          run: () => this.runClear(field)
+          run: () => this.runClear(field),
         });
       } else {
         const value = write.value;
         plan.push({
           field: field,
-          run: () => this.runSet(field, value)
+          run: () => this.runSet(field, value),
         });
       }
       return;
@@ -145,7 +174,7 @@ SettingsForm.prototype.plan = function () {
     if (staged.value === this.sectionValue(field)) return;
     plan.push({
       field: field,
-      run: () => this.runSet(field, staged.value)
+      run: () => this.runSet(field, staged.value),
     });
   });
   return plan;
@@ -173,7 +202,7 @@ SettingsForm.prototype.shell = function () {
       return item.run === undefined;
     }),
     saving: this.saving,
-    failed: this.failed
+    failed: this.failed,
   };
 };
 
@@ -183,22 +212,30 @@ SettingsForm.prototype.field = function (field: string) {
   if (staged !== undefined && staged.op === "clear") {
     const cleared = this.clearedValue(field);
     return {
-      text: spec.kind === "number" ? formatNumber(cleared) : formatText(cleared),
+      text:
+        spec.kind === "number" ? formatNumber(cleared) : formatText(cleared),
       value: cleared,
       overridden: false,
-      invalid: false
+      invalid: false,
     };
   }
-  if (staged !== undefined && staged.op === "set" && (spec.kind === "choice" || spec.kind === "bool")) {
+  if (
+    staged !== undefined &&
+    staged.op === "set" &&
+    (spec.kind === "choice" || spec.kind === "bool")
+  ) {
     return { text: "", value: staged.value, overridden: true, invalid: false };
   }
   if (staged !== undefined && staged.op === "set") {
-    const write = spec.kind === "number" ? parseNumber(staged.text) : parseText(staged.text);
+    const write =
+      spec.kind === "number"
+        ? parseNumber(staged.text)
+        : parseText(staged.text);
     return {
       text: staged.text,
       value: undefined,
       overridden: write !== undefined && write.kind === "set",
-      invalid: write === undefined
+      invalid: write === undefined,
     };
   }
   const current = this.sectionValue(field);
@@ -206,7 +243,7 @@ SettingsForm.prototype.field = function (field: string) {
     text: spec.kind === "number" ? formatNumber(current) : formatText(current),
     value: current === undefined ? spec.fallback : current,
     overridden: this.stored(field),
-    invalid: false
+    invalid: false,
   };
 };
 
@@ -230,8 +267,11 @@ SettingsForm.prototype.actions = function () {
         const cleared = this.clearedValue(field);
         this.stage(field, {
           op: "set",
-          text: spec.kind === "number" ? formatNumber(cleared) : formatText(cleared),
-          clear: true
+          text:
+            spec.kind === "number"
+              ? formatNumber(cleared)
+              : formatText(cleared),
+          clear: true,
         });
       } else {
         this.stage(field, { op: "clear" });
@@ -245,7 +285,7 @@ SettingsForm.prototype.actions = function () {
       this.staged.clear();
       this.failed = false;
       this.publish();
-    }
+    },
   };
 };
 
@@ -287,13 +327,13 @@ SettingsForm.prototype.inject = function () {
     hooks: {
       docImpactCard: {
         getSnapshot: () => this.getSnapshot(),
-        subscribe: (listener: () => void) => this.subscribe(listener)
-      }
+        subscribe: (listener: () => void) => this.subscribe(listener),
+      },
     },
     edit: this.actions().edit,
     choose: this.actions().choose,
     resetField: this.actions().resetField,
     save: this.actions().save,
-    discard: this.actions().discard
+    discard: this.actions().discard,
   };
 };

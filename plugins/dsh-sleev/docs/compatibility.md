@@ -4,10 +4,10 @@ Last verified: 2026-08-27.
 
 | Component           | Version / route                         | Result                                      |
 | ------------------- | --------------------------------------- | ------------------------------------------- |
-| DeepSeek Harness    | `0.1.1-rc.2`                            | supported                                   |
+| DeepSeek Harness    | `0.1.5-rc.2`                            | supported                                   |
 | Cordis              | `4.0.1`                                 | supported                                   |
 | Sleev CLI + gateway | `1.7.7`                                 | healthy                                     |
-| DSH adapter         | `@deepseek-ai/dsh-llm-pi-ai@0.1.1-rc.2` | supported                                   |
+| DSH adapter         | `@deepseek-ai/dsh-llm-pi-ai@0.1.5-rc.2` | supported                                   |
 | Web settings        | DSH plugin configuration surface        | client bundle and `sleev` namespace served  |
 | Sleev harness id    | `pi`                                    | works; still not a documented native DSH id |
 | Upstream            | NeuralDeep / `gpt-oss-20b`              | compatibility smoke passed                  |

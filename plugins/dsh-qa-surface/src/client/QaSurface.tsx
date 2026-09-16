@@ -6,47 +6,149 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type CSSProperties,
   type KeyboardEvent,
 } from "react";
-import type { HostDescriptionSource } from "@deepseek-ai/dsh-client-connection/client";
+import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
 import type {
   InjectFace,
+  PropsRenderSlots,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import type { QaImageDraft, QaSessionState } from "../types.js";
+import type {
+  QaAccountProfileInput,
+  QaAccountStartersInput,
+  QaApprovalDecision,
+  QaAttachmentDraft,
+  QaQuestionAnswerItem,
+  QaCurrentAccess,
+  QaSubrole,
+  QaFeedbackReason,
+} from "../types.js";
+import { effectiveQuickQuestions } from "../starters.js";
+import type { QaQuickQuestion } from "./types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
+import type {
+  QaAccountsController,
+  QaAccountsSnapshot,
+} from "./QaAccountsController.js";
 import { QaSessionController } from "./QaSessionController.js";
-import type { QaSecureSession, QaSessions, QaSessionsApi } from "./types.js";
+import { attachmentLimits } from "./attachments.js";
+import type {
+  QaApprovalApi,
+  QaAccessApi,
+  QaAdminApi,
+  QaBoundSkillApi,
+  QaConversation,
+  QaCreateSession,
+  QaFileUpload,
+  QaSecureSession,
+  QaSessions,
+  QaSessionsApi,
+  QaQuestionApi,
+  QaSkillApi,
+  QaSourceApi,
+} from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
+import { QaAuthGate } from "./components/QaAuthGate.js";
+import { QaApproval } from "./components/QaApproval.js";
+import { QaQuestions } from "./components/QaQuestions.js";
 import { QaComposer } from "./components/QaComposer.js";
+import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 import {
   QaAgentsDrawer,
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
-import { QaSourcesDrawer } from "./components/QaSourcesDrawer.js";
+import { collectChatFiles, countChatAttachments } from "./chat-files.js";
+import { QaFilesPanel } from "./components/QaFilesPanel.js";
+import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
+import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
 import {
-  collectVariantGroups,
-  VariantSwitcher,
-} from "./components/VariantSwitcher.js";
+  QA_TURN_FOLLOW_PX,
+  QaTurnRail,
+  computeActiveTurn,
+  scrollToTranscriptAnchor,
+  type QaTurnRailItem,
+} from "./components/QaTurnRail.js";
+import {
+  QaWidthHandle,
+  useQaContentWidth,
+} from "./components/QaWidthHandle.js";
+import { VariantSwitcher } from "./components/VariantSwitcher.js";
+import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
+import { statusText, titleFromMessages } from "./components/surface-utils.js";
+import { useThinkingPhrase } from "./components/thinking-phrases.js";
+import {
+  QaUserSettingsDialog,
+  type QaSettingsSectionId,
+} from "./user-settings/UserSettingsDialog.js";
+import { useTranscriptView } from "./use-transcript-view.js";
+import { useSessionUiState } from "./use-session-ui-state.js";
+import { useRightRail } from "./use-right-rail.js";
+import { qaStorageNamespace } from "../shared/session-key.js";
+import { QaPanelHost } from "./panels/PanelHost.js";
+import { QaPanelLauncher } from "./panels/PanelLauncher.js";
+import type { QaSurfacePanelRegistry } from "./panels/registry.js";
+import type { QaUserSettingsSections } from "./settings-extensions/index.js";
+import { QaAdmin } from "./admin/QaAdmin.js";
+import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 
 const noopSubscribe = () => () => undefined;
 
 /** Stable empty stand-in so memoized children see one identity, not a fresh []. */
-const NO_QUESTIONS: readonly string[] = Object.freeze([]);
+const NO_QUESTIONS: readonly QaQuickQuestion[] = Object.freeze([]);
+
+const ACCOUNTS_CHECKING_SNAPSHOT: QaAccountsSnapshot = { stage: "checking" };
+const noopAccountsSnapshot = (): QaAccountsSnapshot =>
+  ACCOUNTS_CHECKING_SNAPSHOT;
 
 export interface QaSurfaceFace {
   readonly route: QaRouteController;
   readonly config: QaConfigController;
   readonly sessions: QaSessions;
+  readonly conversation: QaConversation;
   readonly api: QaSessionsApi;
-  readonly connection: HostDescriptionSource;
+  readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
+  readonly createSession: QaCreateSession;
+  readonly accessApi: QaAccessApi;
+  /**
+   * The administrative console's surface. Optional so an older Host that does
+   * not answer it still renders the capability editors.
+   */
+  readonly adminApi?: QaAdminApi;
+  readonly sourceApi: QaSourceApi;
+  /**
+   * Personal-skill half of the plugin's namespace. Absent on a page whose Host
+   * build does not answer it; the settings dialog then has no skills section.
+   */
+  readonly skillApi?: QaSkillApi;
+  /**
+   * Approval half of the plugin's namespace. Absent on a page whose Host build
+   * does not answer it; the surface then only blocks sends it cannot attest.
+   */
+  readonly approvalApi?: QaApprovalApi;
+  /** Question half of the plugin's namespace, when the Host answers it. */
+  readonly questionApi?: QaQuestionApi;
+  /**
+   * Browser file-upload service, when the page serves the upload plugin.
+   * Resolved per send so a page that loads it later still gets file support.
+   */
+  readonly fileUpload?: () => QaFileUpload | undefined;
+  /** Present when the deployment mounts the QA account gate. */
+  readonly accounts?: QaAccountsController;
+  /** Global client-only panel metadata and presentation navigation. */
+  readonly panels: QaSurfacePanelRegistry;
+  /** First-class settings pages registered by additive QA plugins. */
+  readonly settingsSections: QaUserSettingsSections;
 }
 
-type QaSurfaceProps = PropsRuntime<"shell.overlay"> & InjectFace<QaSurfaceFace>;
+export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
+  PropsRenderSlots<"qa.surface.panel"> &
+  InjectFace<QaSurfaceFace>;
 
 function focusable(root: HTMLElement): HTMLElement[] {
   return [
@@ -76,41 +178,11 @@ function trapKeys(event: KeyboardEvent<HTMLElement>): void {
   }
 }
 
-function statusText(state: QaSessionState): string | null {
-  if (state.phase === "creating") return "Подключаюсь…";
-  if (state.phase === "reconnecting")
-    return "Связь потерялась. Подключаюсь снова…";
-  if (state.phase === "running") return "Скребу по сусекам…";
-  return null;
-}
-
-function titleFromMessages(state: QaSessionState): string | null {
-  const firstUser = state.messages.find((message) => message.role === "user");
-  if (firstUser === undefined) return null;
-  const title = firstUser.text.replace(/\s+/gu, " ").trim();
-  if (title === "") return null;
-  if (title.length <= 52) return title;
-  return `${title.slice(0, 51).trimEnd()}…`;
-}
-
-function modeLabel(agentPreset: string | null): string {
-  if (agentPreset === null) return "Режим вопросов";
-  const name = agentPreset
-    .replace(/[-_]+/gu, " ")
-    .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
-  return `Режим «${name}»`;
-}
-
-function RobotBadge() {
+/** Same follow threshold the rail uses: this close to the floor is "at bottom". */
+function isNearBottom(element: HTMLElement): boolean {
   return (
-    <svg
-      className="dsh-qa-agentview__icon"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
-      <rect x="3" y="5" width="10" height="7.5" rx="1.75" />
-      <path d="M8 2.5V5m0-.25a.9.9 0 1 0-.01-1.8.9.9 0 0 0 .01 1.8ZM5.4 8.4h1.7M8.9 8.4h1.7M6 10.4h4" />
-    </svg>
+    element.scrollHeight - element.scrollTop - element.clientHeight <
+    QA_TURN_FOLLOW_PX
   );
 }
 
@@ -126,71 +198,255 @@ export function QaSurface(props: QaSurfaceProps) {
     props.config.getSnapshot,
   );
   const config = configState.config;
+  const accounts = props.accounts;
+  const accountsSnapshot = useSyncExternalStore(
+    accounts?.subscribe ?? noopSubscribe,
+    accounts?.getSnapshot ?? noopAccountsSnapshot,
+    accounts?.getSnapshot ?? noopAccountsSnapshot,
+  );
+  const accountsStage = accountsSnapshot.stage;
+  const adminRoute =
+    route.pathname.replace(/\/+$/u, "") ===
+    `${config.route.path === "/" ? "" : config.route.path}/admin`;
+  const [access, setAccess] = useState<QaCurrentAccess>();
+  const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
+  const [adminPreview, setAdminPreview] = useState(false);
+  const [sessionRole, setSessionRole] = useState<QaSubrole>();
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
+  const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
-  /** Per group: how many answers back from the newest is shown (0 = newest). */
-  const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
-    {},
-  );
-  const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [agentsOpen, setAgentsOpen] = useState(false);
-  const [pendingImages, setPendingImages] = useState<readonly QaImageDraft[]>(
-    [],
-  );
+  /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
+  const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
+  const activeTurnFrame = useRef<number | null>(null);
+  const stateKey = qaStorageNamespace(config);
+  const widthHandlers = useQaContentWidth({
+    active: route.active && !adminRoute,
+    root: chat,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:content-width`,
+    minContentWidth: config.ui.minContentWidth,
+  });
 
   useEffect(() => {
-    if (!route.active) {
+    if (accountsSnapshot.stage !== "authed") {
+      setAccess(undefined);
+      setSelectedSubrole(null);
+      setAdminPreview(false);
+      return;
+    }
+    let live = true;
+    void props.accessApi.current(accounts?.token() ?? "").then((result) => {
+      if (!live || !result.ok) return;
+      const preview =
+        accountsSnapshot.user.role === "admin" &&
+        typeof window.history.state?.qaPreview === "string"
+          ? result.value.subroles.find(
+              ({ id }) => id === window.history.state.qaPreview,
+            )
+          : undefined;
+      setAccess(result.value);
+      setSelectedSubrole(preview?.id ?? result.value.defaultSubrole);
+      setAdminPreview(preview !== undefined);
+    });
+    return () => {
+      live = false;
+    };
+  }, [accounts, accountsSnapshot, props.accessApi]);
+
+  useEffect(() => {
+    if (!route.active || adminRoute) {
       setController(undefined);
       return;
     }
+    const accountsEnabled = config.accounts.enabled && accounts !== undefined;
+    // The gate owns the frame until the browser holds a valid identity; the
+    // session controller (and every attestation it triggers) waits for it.
+    if (accountsEnabled && accountsStage !== "authed") {
+      setController(undefined);
+      return;
+    }
+    if (accountsEnabled && access === undefined) {
+      setController(undefined);
+      return;
+    }
+    const facade =
+      accountsEnabled && accounts
+        ? {
+            token: () => accounts.token(),
+            ownedIds: () => accounts.ownedIds(),
+            messageAuthorOf: (sessionId: string) =>
+              accounts.messageAuthorOf(sessionId),
+            onSessionCreated: (sessionId: string) => {
+              void accounts.claimNewSession(sessionId);
+            },
+            onAuthRequired: () => accounts.signOut(),
+          }
+        : undefined;
     const next = new QaSessionController({
       sessions: props.sessions,
       api: props.api,
+      conversation: props.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
+      createSession: props.createSession,
+      sourceApi: props.sourceApi,
+      ...(props.approvalApi === undefined
+        ? {}
+        : { approvalApi: props.approvalApi }),
+      ...(props.questionApi === undefined
+        ? {}
+        : { questionApi: props.questionApi }),
       config,
+      initialSubrole: selectedSubrole,
+      adminPreview,
       storage: window.localStorage,
+      accounts: facade,
+      ...(props.fileUpload === undefined
+        ? {}
+        : { fileUpload: props.fileUpload }),
     });
     setController(next);
     void next.ensureSession();
     return () => next.dispose();
   }, [
+    accounts,
+    accountsStage,
+    access,
+    adminPreview,
+    adminRoute,
     config,
     props.api,
+    props.conversation,
     props.connection,
+    props.createSession,
+    props.fileUpload,
+    props.approvalApi,
+    props.questionApi,
     props.secureSession,
+    props.sourceApi,
     props.sessions,
     route.active,
   ]);
+
+  // The drawer receives a token-bound view; its props keep the simple shape.
+  // The settings dialog speaks to the skills namespace with the account token
+  // already bound, so its pages never see an identity.
+  const boundSkillApi = useMemo((): QaBoundSkillApi | undefined => {
+    if (props.skillApi === undefined) return undefined;
+    const skillApi = props.skillApi;
+    const token = () => accounts?.token() ?? "";
+    return {
+      list: async () => {
+        const result = await skillApi.skillsList(token());
+        return result.ok
+          ? { ok: true, value: result.value.skills }
+          : { ok: false, error: result.error };
+      },
+      get: (name) => skillApi.skillsGet(token(), name),
+      create: (input) => skillApi.skillsCreate(token(), input),
+      update: (name, input) => skillApi.skillsUpdate(token(), name, input),
+      remove: (name, revision) =>
+        skillApi.skillsRemove(token(), name, revision),
+      tools: async () => {
+        const result = await skillApi.skillsTools(token());
+        return result.ok
+          ? { ok: true, value: result.value.tools }
+          : { ok: false, error: result.error };
+      },
+      validate: (name, input) => skillApi.skillsValidate(token(), name, input),
+    };
+  }, [props.skillApi, accounts]);
+  const boundSourceApi = useMemo(
+    () => ({
+      sources: (sessionId: string) =>
+        props.sourceApi.sources(accounts?.token() ?? "", sessionId),
+      readSourceFile: (sessionId: string, sourcePath: string) =>
+        props.sourceApi.readSourceFile(
+          accounts?.token() ?? "",
+          sessionId,
+          sourcePath,
+        ),
+    }),
+    [accounts, props.sourceApi],
+  );
+  const handleLogout = useCallback(() => {
+    accounts?.signOut();
+  }, [accounts]);
+  // The settings dialog is owned here, not by the sidebar: its pages read the
+  // deployment config, the account and the skill namespace, while the sidebar
+  // only offers the button that opens it.
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const state = useSyncExternalStore(
     controller?.subscribe ?? noopSubscribe,
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
+  useEffect(() => {
+    if (
+      state.sessionId === null ||
+      accountsSnapshot.stage !== "authed" ||
+      adminRoute
+    ) {
+      setSessionRole(undefined);
+      return;
+    }
+    let live = true;
+    void props.accessApi
+      .session(accounts?.token() ?? "", state.sessionId)
+      .then((result) => {
+        if (!live || !result.ok) return;
+        setSessionRole(result.value.subrole);
+        setAdminPreview(result.value.adminPreview);
+        if (
+          !result.value.adminPreview &&
+          access?.subroles.some(({ id }) => id === result.value.subrole.id)
+        ) {
+          setSelectedSubrole(result.value.subrole.id);
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [
+    access,
+    accounts,
+    accountsSnapshot.stage,
+    adminRoute,
+    props.accessApi,
+    state.sessionId,
+  ]);
   const listState = useSyncExternalStore(
     props.sessions.list.subscribe,
     props.sessions.list.getSnapshot,
     props.sessions.list.getSnapshot,
   );
+  // Draft text, attachments, variant offsets and drawers are chat-local; the
+  // hook clears them whenever the bound session changes. The rail controller
+  // takes the drawer slice; the surface keeps the composer and marks state.
+  const ui = useSessionUiState(state.sessionId);
+  const rail = useRightRail(ui);
+  const {
+    activeTurn,
+    setActiveTurn,
+    variantOffsets,
+    setVariantOffsets,
+    agentsOpen,
+    setAgentsOpen,
+    pendingAttachments,
+    setPendingAttachments,
+  } = ui;
 
   useEffect(() => {
     if (!route.active) return;
-    const previousBodyOverflow = document.body.style.overflow;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    document.body.dataset.dshQaSurface = "active";
-    document.body.style.overflow = "hidden";
-    document.documentElement.style.overflow = "hidden";
+    // Body ownership (the shell-mask attribute, scroll locking) lives in the
+    // guard above this surface: it must survive a crash that unmounts this
+    // subtree.
     const frame = requestAnimationFrame(() => {
       document.querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")?.focus();
     });
-    return () => {
-      cancelAnimationFrame(frame);
-      delete document.body.dataset.dshQaSurface;
-      document.body.style.overflow = previousBodyOverflow;
-      document.documentElement.style.overflow = previousHtmlOverflow;
-    };
+    return () => cancelAnimationFrame(frame);
   }, [route.active]);
 
   // Stable identities for the memoized render path: message rows, the sidebar
@@ -203,6 +459,9 @@ export function QaSurface(props: QaSurfaceProps) {
         : (attachmentId: string) => controller.readImage(attachmentId),
     [controller],
   );
+  // One identity per configuration: the composer is memoized on shallow
+  // comparison, so a fresh limits object would re-render it every frame.
+  const limits = useMemo(() => attachmentLimits(config), [config]);
   const handleRegenerate = useCallback(() => {
     void controller?.regenerate();
   }, [controller]);
@@ -222,340 +481,772 @@ export function QaSurface(props: QaSurfaceProps) {
     [controller],
   );
   const handleSend = useCallback(
-    (text: string, images: readonly QaImageDraft[]) =>
-      controller?.send(text, images) ?? Promise.resolve(false),
+    (text: string, attachments: readonly QaAttachmentDraft[]) =>
+      controller?.send(text, attachments) ?? Promise.resolve(false),
     [controller],
   );
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
   );
+  const handleAnswerApproval = useCallback(
+    (requestId: string, decision: QaApprovalDecision) =>
+      controller?.answerApproval(requestId, decision) ?? Promise.resolve(),
+    [controller],
+  );
+  const handleAnswerQuestion = useCallback(
+    (requestId: string, answers: readonly QaQuestionAnswerItem[]) =>
+      controller?.answerQuestion(requestId, answers) ?? Promise.resolve(),
+    [controller],
+  );
+  const handleCancelQuestion = useCallback(
+    (requestId: string) =>
+      controller?.cancelQuestion(requestId) ?? Promise.resolve(),
+    [controller],
+  );
+  const handleCloseSubagent = useCallback(() => {
+    void controller?.closeSubagent();
+  }, [controller]);
+  /** Turn the transcript's reading line currently owns; rAF-throttled. */
+  const syncActiveTurn = useCallback(() => {
+    const element = transcript.current;
+    const items = railItemsRef.current;
+    if (element === null || items.length === 0) {
+      setActiveTurn((current) => (current === null ? current : null));
+      return;
+    }
+    const next = computeActiveTurn(element, items);
+    setActiveTurn((current) => (current === next ? current : next));
+  }, []);
+  const scheduleActiveTurnSync = useCallback(() => {
+    if (activeTurnFrame.current !== null) return;
+    if (typeof requestAnimationFrame === "undefined") {
+      syncActiveTurn();
+      return;
+    }
+    activeTurnFrame.current = requestAnimationFrame(() => {
+      activeTurnFrame.current = null;
+      syncActiveTurn();
+    });
+  }, [syncActiveTurn]);
+  useEffect(
+    () => () => {
+      if (
+        activeTurnFrame.current !== null &&
+        typeof cancelAnimationFrame !== "undefined"
+      ) {
+        cancelAnimationFrame(activeTurnFrame.current);
+      }
+    },
+    [],
+  );
+  const handleTurnNavigate = useCallback((item: QaTurnRailItem) => {
+    const element = transcript.current;
+    if (element === null || !scrollToTranscriptAnchor(element, item.id)) return;
+    nearBottom.current = isNearBottom(element);
+    setActiveTurn(item.turn);
+  }, []);
+  /** The files tab's jump control: land the transcript on the sender. */
+  const handleJumpToMessage = useCallback((messageId: string) => {
+    const element = transcript.current;
+    if (element === null || !scrollToTranscriptAnchor(element, messageId)) {
+      return;
+    }
+    nearBottom.current = isNearBottom(element);
+  }, []);
+
+  const view = useTranscriptView(state.messages, variantOffsets);
+  const railItems = view.railItems;
+  // Publish the visible turn marks before the follow/reading-line effects
+  // read them: layout effects flush in declaration order, and the sync below
+  // reads exactly this ref.
+  useLayoutEffect(() => {
+    railItemsRef.current = railItems;
+  }, [railItems]);
 
   useLayoutEffect(() => {
     const element = transcript.current;
     if (element !== null && nearBottom.current) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [state.messages]);
+    scheduleActiveTurnSync();
+  }, [state.messages, state.pendingMessage, scheduleActiveTurnSync]);
 
-  if (!route.active) return null;
-
-  const status = statusText(state);
-  const empty = state.messages.length === 0;
+  // The composer hint repeats the work list's phrase, so both advance in step
+  // off the same turn start.
+  const runningStartedAt = useMemo(() => {
+    if (state.phase !== "running") return undefined;
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index];
+      if (message?.role === "work" && message.status === "running") {
+        return message.startedAt;
+      }
+    }
+    return undefined;
+  }, [state.messages, state.phase]);
+  const runningPhrase = useThinkingPhrase(
+    state.phase === "running",
+    runningStartedAt,
+    config.thinkingPhrases,
+  );
+  const status = statusText(state, runningPhrase);
+  const empty = state.messages.length === 0 && state.pendingMessage === null;
   const conversationTitle = titleFromMessages(state);
   const showSidebar = config.ui.showSessionList && controller !== undefined;
   const allowNewChat =
     config.session.policy !== "fixed" &&
     (!config.lockdown.enabled || config.lockdown.allowSessionReset);
-  const stateKey = `${config.session.storageKey}:v1:${config.route.path}`;
-  const groups = collectVariantGroups(state.messages);
-  const turnToGroup = new Map<number, string>();
-  const selectedTurn = new Map<string, number>();
-  for (const group of groups) {
-    const offset = variantOffsets[group.groupId] ?? 0;
-    const turn =
-      group.turns[Math.max(0, group.turns.length - 1 - offset)] ??
-      group.turns.at(-1);
-    if (turn !== undefined) {
-      selectedTurn.set(group.groupId, turn);
-      for (const groupTurn of group.turns)
-        turnToGroup.set(groupTurn, group.groupId);
+  const visibleMessages = view.visibleMessages;
+  const activeSessionId = controller?.activeSessionId() ?? null;
+  const agentRows = useMemo(
+    () => collectSubagents(listState.byId, activeSessionId),
+    [listState, activeSessionId],
+  );
+  // The files tab projects the chat's durable attachments; the header badge
+  // and the panel read the same memoized roster.
+  const fileGroups = useMemo(
+    () => collectChatFiles(state.messages),
+    [state.messages],
+  );
+  const attachmentCount = useMemo(
+    () => countChatAttachments(fileGroups),
+    [fileGroups],
+  );
+  // Buttons above an empty composer: the account's own starters, then the
+  // deployment's suggestions unless the account hid them. Anonymous visitors
+  // (and deployments with the feature off) see the deployment list alone.
+  const quickQuestions = useMemo(
+    () =>
+      effectiveQuickQuestions(
+        config.accounts.starters.enabled && accountsSnapshot.stage === "authed"
+          ? accountsSnapshot.user.starters
+          : undefined,
+        config.suggestedQuestions,
+      ),
+    [config, accountsSnapshot],
+  );
+  // Admins group the sidebar by chat owner; everyone else sees the flat list.
+  const ownerNames = useMemo(
+    () =>
+      config.accounts.enabled &&
+      config.accounts.showOtherUsersChats &&
+      accounts !== undefined &&
+      accountsSnapshot.stage === "authed" &&
+      accountsSnapshot.user.role === "admin"
+        ? accounts.ownerNames()
+        : undefined,
+    [config, accounts, accountsSnapshot],
+  );
+  // The sidebar compares this by reference, so the entry point is stable
+  // until the label or the callback identity actually changes.
+  const settingsEntry = useMemo(
+    () =>
+      accountsSnapshot.stage === "authed"
+        ? {
+            label:
+              accountsSnapshot.user.profile.fullName === ""
+                ? accountsSnapshot.user.email
+                : accountsSnapshot.user.profile.fullName,
+            onOpen: () => setSettingsOpen(true),
+          }
+        : undefined,
+    [accountsSnapshot],
+  );
+  // Everything the dialog needs, assembled once per change. Each face is
+  // absent where the deployment withheld the feature, and the dialog simply
+  // renders the sections it was given.
+  const settingsDialog = useMemo(() => {
+    if (accounts === undefined || accountsSnapshot.stage !== "authed") {
+      return undefined;
     }
-  }
-  const visibleMessages = state.messages.filter((message) => {
-    if (
-      (message.role === "assistant" || message.role === "work") &&
-      message.turn !== undefined
-    ) {
-      const groupId = turnToGroup.get(message.turn);
+    const profile = config.accounts.profile.enabled
+      ? {
+          profile: accountsSnapshot.user.profile,
+          fields: config.accounts.profile.identities,
+          instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
+          onSave: (input: QaAccountProfileInput) =>
+            accounts.updateProfile(input),
+        }
+      : undefined;
+    const starters = config.accounts.starters.enabled
+      ? {
+          starters: accountsSnapshot.user.starters,
+          onSave: (input: QaAccountStartersInput) =>
+            accounts.updateStarters(input),
+        }
+      : undefined;
+    const skills =
+      config.accounts.skills.enabled && boundSkillApi !== undefined
+        ? boundSkillApi
+        : undefined;
+    return { profile, starters, skills };
+  }, [accounts, accountsSnapshot, config, boundSkillApi]);
+  const busyTurn =
+    state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
+  const chatRows = useMemo(
+    () =>
+      showSidebar
+        ? buildChatRows(
+            controller?.chatIds() ?? [],
+            listState.byId,
+            activeSessionId,
+            (id) => ownerNames?.get(id),
+          )
+        : [],
+    [
+      showSidebar,
+      controller,
+      listState,
+      activeSessionId,
+      ownerNames,
+      state.chatsRevision,
+    ],
+  );
+  // Message ids repeat across chats (`assistant:<seq>`), so the persisted
+  // ratings key is chat-scoped; the sidebar keeps the deployment-wide key.
+  const messageStateKey =
+    state.sessionId === null
+      ? undefined
+      : `${stateKey}:chat:${state.sessionId}`;
+  if (!route.active) return null;
+
+  const showResetButton = config.ui.showReset && allowNewChat;
+  // Rebuilt per frame, but reconciliation keeps each panel mounted in place,
+  // so the sources detail and the files roster carry their state across.
+  const railTabs: readonly QaRailTabModel[] = [
+    ...(config.sources.enabled
+      ? [
+          {
+            id: "sources" as const,
+            title: "Источники",
+            count: (rail.drawerSources ?? state.sources).length,
+            body: (
+              <QaSourcesPanel
+                // Remount on a new detail request: the panel is internal-state
+                // driven, so an already-mounted panel would ignore a changed
+                // initialDetail otherwise.
+                key={rail.drawerDetail?.id ?? "list"}
+                sources={rail.drawerSources ?? state.sources}
+                complete={
+                  rail.drawerCompleteness?.complete ?? state.sourcesComplete
+                }
+                incompleteOrigins={
+                  rail.drawerCompleteness?.incompleteOrigins ??
+                  state.incompleteSourceOrigins
+                }
+                sessionId={state.sessionId}
+                sourceApi={boundSourceApi}
+                display={config.sources.display}
+                filePreview={config.sources.filePreview}
+                initialDetail={rail.drawerDetail}
+                pinned={rail.drawerSources !== null}
+                onShowAll={rail.showAllSources}
+              />
+            ),
+          },
+        ]
+      : []),
+    {
+      id: "files" as const,
+      title: "Файлы",
+      count: attachmentCount,
+      body: (
+        <QaFilesPanel
+          groups={fileGroups}
+          resolveImage={resolveImage}
+          onJumpToMessage={handleJumpToMessage}
+        />
+      ),
+    },
+  ];
+
+  // DSH only seats onboarding while the active Session is blank. Keep the QA
+  // disclosure in this route-owned overlay so sending a prompt cannot dismiss
+  // it; the shadow step registered in index.tsx only suppresses the stock copy.
+  const welcomeNotice = (
+    <QaWelcomeNotice
+      key={stateKey}
+      storage={window.localStorage}
+      storageKey={`${stateKey}:welcome-notice`}
+    />
+  );
+
+  if (config.accounts.enabled && accounts !== undefined) {
+    if (accountsStage === "checking") {
       return (
-        groupId === undefined || selectedTurn.get(groupId) === message.turn
+        <>
+          {welcomeNotice}
+          <main
+            className="dsh-qa-surface"
+            aria-busy="true"
+            aria-label={config.branding.title}
+            tabIndex={-1}
+          />
+        </>
       );
     }
-    return true;
-  });
-  const agentRows = collectSubagents(
-    listState.byId,
-    controller?.activeSessionId() ?? null,
-  );
-  const chatRows = showSidebar
-    ? buildChatRows(
-        controller?.chatIds() ?? [],
-        listState.byId,
-        controller?.activeSessionId() ?? null,
-      )
-    : [];
+    if (accountsStage === "gate") {
+      return (
+        <>
+          {welcomeNotice}
+          <QaAuthGate
+            accounts={accounts}
+            snapshot={accountsSnapshot}
+            title={config.branding.title}
+            logoUrl={config.branding.logoUrl}
+            allowRegistration={config.accounts.allowRegistration}
+          />
+        </>
+      );
+    }
+  }
+
+  // The console admits administrators and reviewers: a reviewer answers
+  // conversations, and the Host re-checks every permission it serves.
+  const consoleRole =
+    accountsSnapshot.stage === "authed" &&
+    (accountsSnapshot.user.role === "admin" ||
+      accountsSnapshot.user.role === "reviewer")
+      ? accountsSnapshot.user.role
+      : undefined;
+  /**
+   * Persist a rating of one answer. The control is offered only where the
+   * rating can be stored: an accounts-enabled deployment, an authenticated
+   * owner, and an answer whose log position the Host knows.
+   */
+  const rateFeedback =
+    props.adminApi === undefined ||
+    accounts === undefined ||
+    accountsStage !== "authed" ||
+    state.sessionId === null
+      ? undefined
+      : (input: {
+          readonly messageId?: number;
+          readonly rating: "positive" | "negative";
+          readonly reasons?: readonly QaFeedbackReason[];
+          readonly comment?: string;
+        }) => {
+          if (input.messageId === undefined) return;
+          const conversationId = state.sessionId;
+          const token = accounts.token();
+          if (conversationId === null || token === null) return;
+          void props
+            .adminApi!.rateMessage(
+              token,
+              conversationId,
+              String(input.messageId),
+              {
+                rating: input.rating,
+                ...(input.reasons === undefined
+                  ? {}
+                  : { reasons: input.reasons }),
+                ...(input.comment === undefined
+                  ? {}
+                  : { comment: input.comment }),
+              },
+            )
+            .then((result) => {
+              if (!result.ok) {
+                // The rating stays local when the Host refuses it; the console
+                // still shows the user's own choice for this browser.
+                console.warn(
+                  "QA feedback was not stored:",
+                  result.error ?? "unknown",
+                );
+              }
+            });
+        };
+
+  if (adminRoute && consoleRole !== undefined) {
+    return (
+      <QaAdmin
+        api={props.accessApi}
+        {...(props.adminApi === undefined ? {} : { adminApi: props.adminApi })}
+        role={consoleRole}
+        token={accounts?.token() ?? ""}
+        routePath={config.route.path}
+        onPreview={(role) => {
+          setSelectedSubrole(role.id);
+          setAdminPreview(true);
+          window.history.pushState(
+            { qaPreview: role.id },
+            "",
+            config.route.path,
+          );
+        }}
+      />
+    );
+  }
+  if (adminRoute) {
+    return (
+      <main className="dsh-qa-admin" aria-label="Администрирование QA">
+        <div className="dsh-qa-admin__loading">
+          <p>Этот раздел доступен только администратору.</p>
+          <button
+            type="button"
+            onClick={() =>
+              window.history.pushState(null, "", config.route.path)
+            }
+          >
+            Вернуться в чат
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main
-      className="dsh-qa-surface"
-      data-phase={state.phase}
-      aria-label={config.branding.title}
-      tabIndex={-1}
-      onKeyDown={trapKeys}
-    >
-      {showSidebar ? (
-        <QaSidebar
-          rows={chatRows}
-          title={config.branding.title}
-          logoUrl={config.branding.logoUrl}
-          stateKey={stateKey}
-          showNewChat={allowNewChat}
-          busy={state.phase === "creating"}
-          onSwitch={handleSwitch}
-          onNewChat={handleNewChat}
-          onDelete={handleDelete}
+    <>
+      {welcomeNotice}
+      {settingsDialog === undefined ? null : (
+        <QaUserSettingsDialog
+          open={settingsOpen}
+          initialSection={
+            (config.accounts.profile.enabled
+              ? "profile"
+              : "general") satisfies QaSettingsSectionId
+          }
+          email={
+            accountsSnapshot.stage === "authed"
+              ? accountsSnapshot.user.email
+              : ""
+          }
+          role={
+            accountsSnapshot.stage === "authed"
+              ? accountsSnapshot.user.role
+              : ""
+          }
+          chatCount={controller?.chatIds().length ?? 0}
+          onClose={() => setSettingsOpen(false)}
+          extensions={props.settingsSections}
+          token={accounts?.token() ?? ""}
+          {...(settingsDialog.profile === undefined
+            ? {}
+            : { profile: settingsDialog.profile })}
+          {...(settingsDialog.starters === undefined
+            ? {}
+            : { starters: settingsDialog.starters })}
+          {...(settingsDialog.skills === undefined
+            ? {}
+            : { skills: settingsDialog.skills })}
         />
-      ) : null}
-      <div className="dsh-qa-body">
-        {state.viewingSubagent !== null && !config.ui.showHeader ? (
-          <div className="dsh-qa-agentview" role="status">
-            <RobotBadge />
-            <span>Просмотр субагента</span>
-            <button
-              type="button"
-              onClick={() => void controller?.closeSubagent()}
-            >
-              ← В чат
-            </button>
-          </div>
+      )}
+      <main
+        className="dsh-qa-surface"
+        data-phase={state.phase}
+        aria-label={config.branding.title}
+        tabIndex={-1}
+        onKeyDown={trapKeys}
+      >
+        {adminPreview && sessionRole !== undefined ? (
+          <QaAdminPreviewBanner role={sessionRole.name} />
         ) : null}
-        {config.ui.showHeader ? (
-          <header className="dsh-qa-header">
-            <div className="dsh-qa-header__inner">
-              <div className="dsh-qa-header__title-row">
-                {config.branding.logoUrl === null ? null : (
-                  <img
-                    className="dsh-qa-header__logo"
-                    src={config.branding.logoUrl}
-                    alt=""
+        {showSidebar ? (
+          <QaSidebar
+            rows={chatRows}
+            groupByOwner={ownerNames !== undefined}
+            title={config.branding.title}
+            logoUrl={config.branding.logoUrl}
+            stateKey={stateKey}
+            showNewChat={allowNewChat}
+            busy={state.phase === "creating"}
+            onSwitch={handleSwitch}
+            onNewChat={handleNewChat}
+            onDelete={handleDelete}
+            account={
+              config.accounts.enabled &&
+              accounts !== undefined &&
+              accountsStage === "authed"
+                ? {
+                    email: accountsSnapshot.user.email,
+                    role: accountsSnapshot.user.role,
+                    onLogout: handleLogout,
+                    ...(settingsEntry === undefined
+                      ? {}
+                      : { settings: settingsEntry }),
+                  }
+                : undefined
+            }
+          />
+        ) : null}
+        <div className="dsh-qa-body">
+          {state.viewingSubagent !== null && !config.ui.showHeader ? (
+            <QaSubagentBanner onClose={handleCloseSubagent} />
+          ) : null}
+          {config.ui.showHeader ? (
+            <QaHeader
+              logoUrl={config.branding.logoUrl}
+              title={conversationTitle}
+              viewingSubagent={state.viewingSubagent !== null}
+              onCloseSubagent={handleCloseSubagent}
+              agentPreset={config.session.agentPreset}
+              roleSelector={
+                access === undefined ||
+                selectedSubrole === null ||
+                adminPreview ? undefined : (
+                  <QaRoleSelector
+                    roles={access.subroles}
+                    selected={selectedSubrole}
+                    conversationStarted={!empty}
+                    disabled={
+                      config.session.policy === "fixed" ||
+                      state.phase === "creating" ||
+                      state.phase === "running"
+                    }
+                    onSelect={(id) => {
+                      window.history.replaceState(
+                        null,
+                        "",
+                        window.location.pathname,
+                      );
+                      setAdminPreview(false);
+                      setSelectedSubrole(id);
+                      setSessionRole(
+                        access.subroles.find((role) => role.id === id),
+                      );
+                      void controller?.selectSubrole(id, false);
+                    }}
+                  />
+                )
+              }
+              administration={
+                accountsSnapshot.stage === "authed" &&
+                accountsSnapshot.user.role === "admin"
+                  ? {
+                      onOpen: () =>
+                        window.history.pushState(
+                          null,
+                          "",
+                          `${config.route.path === "/" ? "" : config.route.path}/admin`,
+                        ),
+                    }
+                  : undefined
+              }
+              agentCount={agentRows.length}
+              agentsOpen={agentsOpen}
+              onToggleAgents={rail.toggleAgents}
+              sourcesVisible={
+                config.sources.enabled && config.sources.display.sidebar
+              }
+              sourcesCount={state.sources.length}
+              sourcesComplete={state.sourcesComplete}
+              sourcesOpen={rail.railOpen && rail.railTab === "sources"}
+              onOpenSources={() => rail.openTab("sources")}
+              fileCount={attachmentCount}
+              filesOpen={rail.railOpen && rail.railTab === "files"}
+              onOpenFiles={() => rail.openTab("files")}
+              panelLauncher={<QaPanelLauncher panels={props.panels} />}
+              showReset={showResetButton}
+              resetDisabled={
+                controller === undefined || state.phase === "creating"
+              }
+              onReset={handleNewChat}
+            />
+          ) : null}
+
+          <div className="dsh-qa-workspace">
+            <div
+              ref={chat}
+              className="dsh-qa-chat"
+              style={
+                {
+                  "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
+                } as CSSProperties
+              }
+            >
+              <div
+                ref={transcript}
+                className="dsh-qa-transcript"
+                onScroll={(event) => {
+                  const element = event.currentTarget;
+                  nearBottom.current = isNearBottom(element);
+                  scheduleActiveTurnSync();
+                }}
+              >
+                {empty ? null : (
+                  <QaTurnRail
+                    items={railItems}
+                    activeTurn={activeTurn}
+                    busyTurn={busyTurn}
+                    scrollerRef={transcript}
+                    onNavigate={handleTurnNavigate}
                   />
                 )}
-                {conversationTitle === null ? null : (
-                  <h1 title={conversationTitle}>{conversationTitle}</h1>
-                )}
-                {state.viewingSubagent !== null ? (
-                  <span className="dsh-qa-header__viewing">
-                    <RobotBadge />
-                    Просмотр субагента
-                    <button
-                      type="button"
-                      className="dsh-qa-header__back"
-                      onClick={() => void controller?.closeSubagent()}
+                <div className="dsh-qa-transcript__inner">
+                  {empty ? (
+                    <section
+                      className="dsh-qa-welcome"
+                      aria-labelledby="dsh-qa-welcome-title"
                     >
-                      ← В чат
-                    </button>
-                  </span>
-                ) : (
-                  <span className="dsh-qa-header__mode">
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="8" cy="3.25" r="1.5" />
-                      <circle cx="4" cy="11.75" r="1.5" />
-                      <circle cx="12" cy="11.75" r="1.5" />
-                      <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-                    </svg>
-                    {modeLabel(config.session.agentPreset)}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={
-                    config.ui.showToolActivity
-                      ? "dsh-qa-header__agents"
-                      : "dsh-qa-header__agents dsh-qa-header__agents--end"
-                  }
-                  disabled={agentRows.length === 0}
-                  aria-expanded={agentsOpen}
-                  onClick={() => {
-                    setAgentsOpen((open) => !open);
-                    setSourcesOpen(false);
-                  }}
-                >
-                  <svg viewBox="0 0 16 16" aria-hidden="true">
-                    <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
-                    <path d="M8 3v2.5M6.2 9h.01M9.8 9h.01M6.2 11h3.6" />
-                  </svg>
-                  Агенты
-                  {agentRows.length === 0 ? null : ` (${agentRows.length})`}
-                </button>
-                {config.ui.showToolActivity ? (
-                  <button
-                    type="button"
-                    className={
-                      config.ui.showReset &&
-                      config.session.policy !== "fixed" &&
-                      (!config.lockdown.enabled ||
-                        config.lockdown.allowSessionReset)
-                        ? "dsh-qa-header__sources"
-                        : "dsh-qa-header__sources dsh-qa-header__sources--end"
-                    }
-                    disabled={state.sources.length === 0}
-                    aria-expanded={sourcesOpen}
-                    onClick={() => {
-                      setSourcesOpen((open) => !open);
-                      setAgentsOpen(false);
-                    }}
-                  >
-                    <svg viewBox="0 0 16 16" aria-hidden="true">
-                      <circle cx="8" cy="8" r="5.75" />
-                      <path d="M2.25 8h11.5M8 2.25c1.6 1.55 2.4 3.5 2.4 5.75S9.6 12.2 8 13.75C6.4 12.2 5.6 10.25 5.6 8S6.4 3.8 8 2.25Z" />
-                    </svg>
-                    Источники
-                    {state.sources.length === 0
-                      ? null
-                      : ` (${state.sources.length})`}
-                  </button>
-                ) : null}
-                {config.ui.showReset &&
-                config.session.policy !== "fixed" &&
-                (!config.lockdown.enabled ||
-                  config.lockdown.allowSessionReset) ? (
-                  <button
-                    type="button"
-                    className="dsh-qa-header__reset"
-                    disabled={
-                      controller === undefined || state.phase === "creating"
-                    }
-                    onClick={() => void controller?.startDraft()}
-                  >
-                    Новый чат
-                  </button>
-                ) : null}
-              </div>
-              <div className="dsh-qa-header__tabs" aria-label="Вид беседы">
-                <span aria-current="page">Чат</span>
-              </div>
-            </div>
-          </header>
-        ) : null}
-
-        <div
-          ref={transcript}
-          className="dsh-qa-transcript"
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            nearBottom.current =
-              element.scrollHeight - element.scrollTop - element.clientHeight <
-              96;
-          }}
-        >
-          <div
-            className="dsh-qa-transcript__inner"
-            style={{ maxWidth: config.ui.maxContentWidth }}
-          >
-            {empty ? (
-              <section
-                className="dsh-qa-welcome"
-                aria-labelledby="dsh-qa-welcome-title"
-              >
-                <h2 id="dsh-qa-welcome-title">
-                  {config.branding.welcomeMessage}
-                </h2>
-                {config.branding.subtitle === "" ? null : (
-                  <p>{config.branding.subtitle}</p>
-                )}
-              </section>
-            ) : (
-              visibleMessages.map((message, index) => {
-                const group =
-                  message.role === "user"
-                    ? groups.find(
-                        (candidate) => candidate.groupId === message.id,
-                      )
-                    : undefined;
-                const isLast = index === visibleMessages.length - 1;
-                return (
-                  <div key={message.id} className="dsh-qa-message-slot">
-                    <QaMessage
-                      message={message}
-                      renderMarkdown={config.ui.renderMarkdown}
-                      showTimestamp={config.ui.showTimestamps}
-                      stateKey={stateKey}
-                      resolveImage={resolveImage}
-                      onRegenerate={
-                        isLast &&
-                        message.role === "assistant" &&
-                        message.status === "committed" &&
-                        controller !== undefined
-                          ? handleRegenerate
-                          : undefined
-                      }
-                    />
-                    {group !== undefined && group.turns.length > 1 ? (
-                      <VariantSwitcher
-                        count={group.turns.length}
-                        offset={variantOffsets[group.groupId] ?? 0}
-                        onStep={(step) =>
-                          setVariantOffsets((offsets) => ({
-                            ...offsets,
-                            [group.groupId]: step,
-                          }))
-                        }
+                      <h2 id="dsh-qa-welcome-title">
+                        {config.branding.welcomeMessage}
+                      </h2>
+                      {config.branding.subtitle === "" ? null : (
+                        <p>{config.branding.subtitle}</p>
+                      )}
+                    </section>
+                  ) : (
+                    visibleMessages.map((message, index) => {
+                      const group =
+                        message.role === "user"
+                          ? view.groupByPromptId.get(message.id)
+                          : undefined;
+                      const isLast = index === visibleMessages.length - 1;
+                      return (
+                        <div
+                          key={message.id}
+                          className="dsh-qa-message-slot"
+                          data-dsh-qa-turn-anchor={
+                            message.role === "user" ? message.id : undefined
+                          }
+                        >
+                          <QaMessage
+                            message={message}
+                            renderMarkdown={config.ui.renderMarkdown}
+                            showTimestamp={config.ui.showTimestamps}
+                            stateKey={messageStateKey}
+                            thinkingPhrases={config.thinkingPhrases}
+                            resolveImage={resolveImage}
+                            onRegenerate={
+                              isLast &&
+                              message.role === "assistant" &&
+                              message.status === "committed" &&
+                              controller !== undefined
+                                ? handleRegenerate
+                                : undefined
+                            }
+                            onOpenSources={
+                              config.sources.enabled &&
+                              config.sources.display.footer
+                                ? rail.openSources
+                                : undefined
+                            }
+                            onSourceDetail={
+                              config.sources.enabled
+                                ? rail.openSourceDetail
+                                : undefined
+                            }
+                            onRateFeedback={rateFeedback}
+                          />
+                          {group !== undefined && group.turns.length > 1 ? (
+                            <VariantSwitcher
+                              count={group.turns.length}
+                              offset={variantOffsets[group.groupId] ?? 0}
+                              onStep={(step) =>
+                                setVariantOffsets((offsets) => ({
+                                  ...offsets,
+                                  [group.groupId]: step,
+                                }))
+                              }
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                  {state.pendingMessage === null ? null : (
+                    <div className="dsh-qa-message-slot">
+                      <QaMessage
+                        message={state.pendingMessage}
+                        renderMarkdown={false}
+                        showTimestamp={false}
+                        thinkingPhrases={config.thinkingPhrases}
                       />
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
-            {state.error === null ? null : (
-              <div className="dsh-qa-error" role="alert">
-                <span>{state.error}</span>
-                {state.phase === "error" ? (
-                  <button
-                    type="button"
-                    onClick={() => void controller?.ensureSession()}
-                  >
-                    Повторить
-                  </button>
-                ) : null}
+                    </div>
+                  )}
+                  {state.compatibilityReadOnly === true ? (
+                    <div className="dsh-qa-compatibility" role="status">
+                      Этот чат создан при другой конфигурации стенда и открыт
+                      только для чтения. История сохранена; чтобы продолжить
+                      работу с текущими настройками, создайте новый чат.
+                    </div>
+                  ) : null}
+                  {state.error === null ? null : (
+                    <div className="dsh-qa-error" role="alert">
+                      <span>{state.error}</span>
+                      {state.phase === "error" ? (
+                        <button
+                          type="button"
+                          onClick={() => void controller?.ensureSession()}
+                        >
+                          Повторить
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+
+              <footer className="dsh-qa-footer">
+                <div className="dsh-qa-footer__inner">
+                  <QaApproval
+                    approvals={state.approvals}
+                    onAnswer={handleAnswerApproval}
+                  />
+                  <QaQuestions
+                    questions={state.questions}
+                    onAnswer={handleAnswerQuestion}
+                    onCancel={handleCancelQuestion}
+                  />
+                  {/* Keyed by chat: the composer's draft text is chat-local, so a
+                  switch remounts it empty instead of carrying text across. */}
+                  <QaComposer
+                    key={state.sessionId ?? "draft"}
+                    placeholder={config.branding.placeholder}
+                    quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
+                    canSend={state.canSend}
+                    canStop={state.canStop}
+                    running={state.phase === "running"}
+                    showStop={config.ui.showStop}
+                    status={status}
+                    attachments={pendingAttachments}
+                    limits={limits}
+                    onAttachmentsChange={setPendingAttachments}
+                    onSend={handleSend}
+                    onStop={handleStop}
+                  />
+                  {config.branding.disclaimer === "" ? null : (
+                    <p className="dsh-qa-footer__disclaimer">
+                      <svg viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="5.75" />
+                        <path d="M8 7.25v3.5m0-5.25v.5" />
+                      </svg>
+                      {config.branding.disclaimer}
+                    </p>
+                  )}
+                </div>
+              </footer>
+              {!empty
+                ? (["left", "right"] as const).map((side) => (
+                    <QaWidthHandle key={side} side={side} {...widthHandlers} />
+                  ))
+                : null}
+            </div>
+            <QaPanelHost
+              panels={props.panels}
+              sessionId={state.sessionId}
+              qaToken={accounts?.token() ?? ""}
+              renderSlot={props.renderSlot}
+            />
           </div>
         </div>
-
-        <footer className="dsh-qa-footer">
-          <div
-            className="dsh-qa-footer__inner"
-            style={{ maxWidth: config.ui.maxContentWidth }}
-          >
-            <QaComposer
-              placeholder={config.branding.placeholder}
-              quickQuestions={empty ? config.suggestedQuestions : NO_QUESTIONS}
-              canSend={state.canSend}
-              canStop={state.canStop}
-              running={state.phase === "running"}
-              showStop={config.ui.showStop}
-              status={status}
-              images={pendingImages}
-              onImagesChange={setPendingImages}
-              onSend={handleSend}
-              onStop={handleStop}
-            />
-            {config.branding.disclaimer === "" ? null : (
-              <p className="dsh-qa-footer__disclaimer">
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <circle cx="8" cy="8" r="5.75" />
-                  <path d="M8 7.25v3.5m0-5.25v.5" />
-                </svg>
-                {config.branding.disclaimer}
-              </p>
-            )}
-          </div>
-        </footer>
-      </div>
-      {agentsOpen && agentRows.length > 0 ? (
-        <QaAgentsDrawer
-          agents={agentRows}
-          activeId={state.viewingSubagent?.id ?? null}
-          onView={(id, title) => void controller?.viewSubagent(id, title)}
-          onClose={() => setAgentsOpen(false)}
-        />
-      ) : null}
-      {sourcesOpen && state.sources.length > 0 ? (
-        <QaSourcesDrawer
-          sources={state.sources}
-          onClose={() => setSourcesOpen(false)}
-        />
-      ) : null}
-    </main>
+        {agentsOpen && agentRows.length > 0 ? (
+          <QaAgentsDrawer
+            agents={agentRows}
+            activeId={state.viewingSubagent?.id ?? null}
+            onView={(id, title) => void controller?.viewSubagent(id, title)}
+            onClose={() => setAgentsOpen(false)}
+          />
+        ) : null}
+        {rail.railOpen ? (
+          <QaRightRail
+            tabs={railTabs}
+            activeTab={rail.railTab}
+            onTabSelect={rail.selectTab}
+            onClose={rail.close}
+          />
+        ) : null}
+      </main>
+    </>
   );
 }

@@ -7,14 +7,25 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import type { ToolExecution, ToolExecutionResult } from "@deepseek-ai/dsh-tools";
+import type {
+  ToolExecution,
+  ToolExecutionResult,
+} from "@deepseek-ai/dsh-tools";
 
-import { resolveToolOffloadConfig, type ToolOffloadConfig } from "../../src/config.js";
+import {
+  resolveToolOffloadConfig,
+  type ToolOffloadConfig,
+} from "../../src/config.js";
 import type { PluginLoggerLike } from "../../src/logging.js";
 import type { ResolvedToolOffloadConfig } from "../../src/config.js";
-import type { WorkerOutcome, WorkerRunRequest, WorkerRunnerLike } from "../../src/worker/runner.js";
+import type {
+  WorkerOutcome,
+  WorkerRunRequest,
+  WorkerRunnerLike,
+} from "../../src/worker/runner.js";
 
-const FILLER = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu\n";
+const FILLER =
+  "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu\n";
 
 /** Deterministic filler text of at least `targetBytes` UTF-8 bytes. */
 export function makeText(targetBytes: number): string {
@@ -24,17 +35,24 @@ export function makeText(targetBytes: number): string {
 
 /** Deterministic log-like filler with warn/error patterns. */
 export function makeLog(targetBytes: number): string {
-  const line = "2026-09-09T12:00:00Z WARN  worker pool saturated; retrying (error=ETIMEDOUT)\n";
+  const line =
+    "2026-09-09T12:00:00Z WARN  worker pool saturated; retrying (error=ETIMEDOUT)\n";
   const lines = Math.max(1, Math.ceil(targetBytes / line.length));
   return line.repeat(lines).slice(0, Math.max(targetBytes, line.length));
 }
 
 /** Prompt-injection fixture (SPEC §32.4). */
 export async function injectionFixture(): Promise<string> {
-  return readFile(fileURLToPath(new URL("./injection.txt", import.meta.url)), "utf8");
+  return readFile(
+    fileURLToPath(new URL("./injection.txt", import.meta.url)),
+    "utf8",
+  );
 }
 
-export function fakeExec(name: string, overrides: Partial<ToolExecution> = {}): ToolExecution {
+export function fakeExec(
+  name: string,
+  overrides: Partial<ToolExecution> = {},
+): ToolExecution {
   return {
     callId: "call-1",
     rootCallId: "call-1",
@@ -47,7 +65,11 @@ export function fakeExec(name: string, overrides: Partial<ToolExecution> = {}): 
 }
 
 export function successResult(text: string): ToolExecutionResult {
-  return { isError: false, value: { text }, content: [{ type: "text", text }] } as ToolExecutionResult;
+  return {
+    isError: false,
+    value: { text },
+    content: [{ type: "text", text }],
+  } as ToolExecutionResult;
 }
 
 export function errorResult(text: string): ToolExecutionResult {
@@ -59,7 +81,9 @@ export function errorResult(text: string): ToolExecutionResult {
 }
 
 /** Fake parent agent with a structural session; `origin` defaults to a local session. */
-export function fakeAgent(options: { origin?: string; id?: string; userMessage?: string } = {}): NonNullable<ToolExecution["agent"]> {
+export function fakeAgent(
+  options: { origin?: string; id?: string; userMessage?: string } = {},
+): NonNullable<ToolExecution["agent"]> {
   const events: unknown[] = [];
   if (options.userMessage !== undefined) {
     events.push({
@@ -96,7 +120,11 @@ export class FakeRunner implements WorkerRunnerLike {
     const outcome = this.queue.shift();
     if (outcome) return outcome;
     if (request.signal.aborted) return { kind: "aborted" };
-    return { kind: "completed", outputText: "compact answer", stopReason: "completed" };
+    return {
+      kind: "completed",
+      outputText: "compact answer",
+      stopReason: "completed",
+    };
   }
 }
 
@@ -130,7 +158,9 @@ export class CapturingLogger implements PluginLoggerLike {
 }
 
 /** Resolved config with test-sized thresholds; `routing.thresholds` stays small unless overridden. */
-export function testConfig(overrides: ToolOffloadConfig = {}): ResolvedToolOffloadConfig {
+export function testConfig(
+  overrides: ToolOffloadConfig = {},
+): ResolvedToolOffloadConfig {
   const { routing, ...rest } = overrides;
   return resolveToolOffloadConfig({
     ...rest,

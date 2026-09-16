@@ -22,7 +22,11 @@ function summarize(event: SessionEvent): CorrectionContextEvent | undefined {
       return { seq: event.seq, kind: "user", text: messageText(event.data) };
     }
     case "assistant/message":
-      return { seq: event.seq, kind: "assistant", text: messageText(event.data.message) };
+      return {
+        seq: event.seq,
+        kind: "assistant",
+        text: messageText(event.data.message),
+      };
     case "tool/call":
       return {
         seq: event.seq,
@@ -30,7 +34,11 @@ function summarize(event: SessionEvent): CorrectionContextEvent | undefined {
         text: `${event.data.name} ${event.data.arguments}`.trim(),
       };
     case "tool/result":
-      return { seq: event.seq, kind: "tool-result", text: messageText(event.data.message) };
+      return {
+        seq: event.seq,
+        kind: "tool-result",
+        text: messageText(event.data.message),
+      };
     default:
       return undefined;
   }
@@ -44,14 +52,23 @@ export function extractCorrectionEvidence(
   limits: ContextLimits,
 ): CorrectionEvidence {
   const correction = events[correctionIndex];
-  if (correction?.type !== "user/message" || !isDirectUserMessage(correction.data)) {
-    throw new TypeError("correctionIndex must point to a direct user/message event");
+  if (
+    correction?.type !== "user/message" ||
+    !isDirectUserMessage(correction.data)
+  ) {
+    throw new TypeError(
+      "correctionIndex must point to a direct user/message event",
+    );
   }
   const userText = messageText(correction.data);
   const newestFirst: CorrectionContextEvent[] = [];
   let remainingBytes = limits.maxContextBytes;
 
-  for (let index = correctionIndex - 1; index >= 0 && newestFirst.length < limits.maxContextEvents; index -= 1) {
+  for (
+    let index = correctionIndex - 1;
+    index >= 0 && newestFirst.length < limits.maxContextEvents;
+    index -= 1
+  ) {
     const event = events[index];
     if (event === undefined) continue;
     const summary = summarize(event);
@@ -64,12 +81,16 @@ export function extractCorrectionEvidence(
   }
 
   const contextEvents = newestFirst.reverse();
-  const previousUser = contextEvents.find((event) => event.kind === "user")?.seq;
+  const previousUser = contextEvents.find(
+    (event) => event.kind === "user",
+  )?.seq;
   const previousAssistantEvents = contextEvents
     .filter((event) => event.kind === "assistant")
     .map((event) => event.seq);
   const previousToolEvents = contextEvents
-    .filter((event) => event.kind === "tool-call" || event.kind === "tool-result")
+    .filter(
+      (event) => event.kind === "tool-call" || event.kind === "tool-result",
+    )
     .map((event) => event.seq);
 
   return {

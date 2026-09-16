@@ -33,23 +33,26 @@ falls back to normal inference. The model never knows this plugin exists.
 
 ## Requirements
 
-- DeepSeek Harness >= 0.1.1-rc.2 < 0.2.0
+- DeepSeek Harness >= 0.1.5-rc.2 < 0.2.0
 - A llama.cpp `llama-server` started with `--slots --slot-save-path <dir>`
-  and `--parallel 1` for the single-slot mode (see the [design doc](./docs/dsh-kv-persist.md) §6).
+  and `--parallel 1` for the single-slot mode (see the [design doc](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/specs/design.md) §6).
   The server flag does not replace the plugin's local lease, which also
   serializes save, restore, erase, and terminal stream bookkeeping.
 - Node.js >= 22
 
 ## Installation
 
+Install the published npm package by name:
+
 ```bash
-dsh plugin add @yadsh/dsh-kv-persist
+dsh plugin --profile <profile> add @yadsh/dsh-kv-persist
 ```
 
-From sources:
+From sources, build the package and link the checkout:
 
 ```bash
 pnpm nx run @yadsh/dsh-kv-persist:build
+dsh plugin --profile <profile> add ./plugins/dsh-kv-persist
 ```
 
 ## Configuration
@@ -81,11 +84,11 @@ providers listed under `providers` are ever coordinated.
 | `metadata.path` | string | `<DSH home>/cache/dsh-kv-persist` | Manifest storage directory. DSH home is non-blank `$DSH_HOME`, otherwise `~/.dsh`. |
 | `logging.level` | `"debug" \| "info" \| "off"` | `"info"` | Structured `kv.*` event verbosity. |
 
-Full configuration rationale: [design doc §35](./docs/dsh-kv-persist.md).
+Full configuration rationale: [design doc §35](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/specs/design.md).
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.1-rc.2 <0.2.0` (see `compatibility.json`)
+- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (see `compatibility.json`)
 - Node.js >= 22
 - llama.cpp server with the slots management API enabled
 
@@ -105,7 +108,7 @@ Optional end-to-end check against a live server (no GPU in CI):
 DSH_KV_TEST_LLAMA_URL=http://127.0.0.1:8080 pnpm --filter @yadsh/dsh-kv-persist test:llama
 ```
 
-See [SPEC.md](./SPEC.md) for the product contract and implementation status.
+See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/SPEC.md) for the product contract and implementation status.
 
 ## License
 

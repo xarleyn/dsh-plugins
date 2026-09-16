@@ -3,7 +3,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { parseCasRef } from "../../src/cas/hash.js";
-import { buildStore, cleanupTempRoots, tempRoot } from "../fixtures/store-fixtures.js";
+import {
+  buildStore,
+  cleanupTempRoots,
+  tempRoot,
+} from "../fixtures/store-fixtures.js";
 import type { FilesystemCasStore } from "../../src/cas/filesystem-store.js";
 
 const encoder = new TextEncoder();
@@ -20,8 +24,20 @@ describe("storage deduplication", () => {
     root = await tempRoot();
     store = buildStore(root);
     const payload = encoder.encode("identical output ".repeat(1_000));
-    const first = await store.put({ payload, kind: "log", mediaType: "text/log", encoding: "utf8", firstTool: "bash" });
-    const second = await store.put({ payload, kind: "log", mediaType: "text/log", encoding: "utf8", firstTool: "bash" });
+    const first = await store.put({
+      payload,
+      kind: "log",
+      mediaType: "text/log",
+      encoding: "utf8",
+      firstTool: "bash",
+    });
+    const second = await store.put({
+      payload,
+      kind: "log",
+      mediaType: "text/log",
+      encoding: "utf8",
+      firstTool: "bash",
+    });
 
     expect(second.ref).toBe(first.ref);
     expect(first.reused).toBe(false);
@@ -33,8 +49,18 @@ describe("storage deduplication", () => {
   });
 
   it("keeps different payloads in different blobs", async () => {
-    const a = await store.put({ payload: encoder.encode("content A"), kind: "text", mediaType: "text/plain", encoding: "utf8" });
-    const b = await store.put({ payload: encoder.encode("content B"), kind: "text", mediaType: "text/plain", encoding: "utf8" });
+    const a = await store.put({
+      payload: encoder.encode("content A"),
+      kind: "text",
+      mediaType: "text/plain",
+      encoding: "utf8",
+    });
+    const b = await store.put({
+      payload: encoder.encode("content B"),
+      kind: "text",
+      mediaType: "text/plain",
+      encoding: "utf8",
+    });
     expect(a.ref).not.toBe(b.ref);
     expect(await store.stats()).toMatchObject({ objects: 2 });
   });
@@ -43,7 +69,12 @@ describe("storage deduplication", () => {
     const payload = encoder.encode("stable");
     const refs = new Set<string>();
     for (let index = 0; index < 5; index += 1) {
-      const object = await store.put({ payload, kind: "text", mediaType: "text/plain", encoding: "utf8" });
+      const object = await store.put({
+        payload,
+        kind: "text",
+        mediaType: "text/plain",
+        encoding: "utf8",
+      });
       refs.add(object.ref);
     }
     expect(refs.size).toBe(1);

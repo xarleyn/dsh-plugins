@@ -14,7 +14,7 @@ function proof(overrides: Partial<QaLockdownProof> = {}): QaLockdownProof {
     agentPresetMatches: true,
     workspaceMatches: true,
     modelMatches: true,
-    sandboxIsReadOnly: true,
+    sandboxModeMatches: true,
     approvalIsNever: true,
     permissionPreset: "qa-read-only",
     toolPolicyLoaded: true,
@@ -36,16 +36,21 @@ describe("attestation diagnostics", () => {
   });
 
   it("maps known reason codes to operator hints and falls back generically", () => {
+    // A hint may point at the Host logs for details; what it must not be is the
+    // fallback, which says nothing but that.
+    const fallback =
+      "The specific mismatch facts are written to the Host logs.";
     for (const reason of [
       "unknown-tools",
+      "agent-unavailable",
       "composition-mismatch",
       "permission-preset",
       "adoption-refused",
     ]) {
-      expect(attestationHint(reason)).not.toContain("Host logs");
+      expect(attestationHint(reason)).not.toBe(fallback);
     }
-    expect(attestationHint("attestation-failed")).toContain("Host logs");
-    expect(attestationHint(null)).toContain("Host logs");
+    expect(attestationHint("attestation-failed")).toBe(fallback);
+    expect(attestationHint(null)).toBe(fallback);
   });
 });
 
@@ -68,7 +73,7 @@ describe("proofMatchesConfig", () => {
       "agentPresetMatches",
       "workspaceMatches",
       "modelMatches",
-      "sandboxIsReadOnly",
+      "sandboxModeMatches",
       "approvalIsNever",
       "toolPolicyLoaded",
     ] as const) {

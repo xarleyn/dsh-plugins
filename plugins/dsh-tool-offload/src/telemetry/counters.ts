@@ -33,7 +33,9 @@ export interface OffloadCounterSnapshot {
 }
 
 type MutableSnapshot = {
-  -readonly [K in keyof OffloadCounterSnapshot]: OffloadCounterSnapshot[K] extends number ? number : Record<string, number>;
+  -readonly [
+    K in keyof OffloadCounterSnapshot
+  ]: OffloadCounterSnapshot[K] extends number ? number : Record<string, number>;
 };
 
 export class OffloadCounters {
@@ -74,11 +76,17 @@ export class OffloadCounters {
   }
 }
 
-export type NumericCounterField = Exclude<keyof OffloadCounterSnapshot, "reasons" | "tools">;
+export type NumericCounterField = Exclude<
+  keyof OffloadCounterSnapshot,
+  "reasons" | "tools"
+>;
 
 function recordDimension(map: Record<string, number>, key: string): void {
   // Reserve one slot for the `other` bucket so the total stays capped.
-  const normalized = Object.hasOwn(map, key) || Object.keys(map).length < MAX_DIMENSION_KEYS - 1 ? key : "other";
+  const normalized =
+    Object.hasOwn(map, key) || Object.keys(map).length < MAX_DIMENSION_KEYS - 1
+      ? key
+      : "other";
   map[normalized] = (map[normalized] ?? 0) + 1;
 }
 
@@ -92,12 +100,24 @@ export interface OffloadDerivedMetrics {
   readonly estimatedTokensSaved: number;
 }
 
-export function deriveOffloadMetrics(snapshot: OffloadCounterSnapshot): OffloadDerivedMetrics {
-  const reductionRatio = snapshot.inputBytes > 0 ? 1 - snapshot.outputBytes / snapshot.inputBytes : 0;
+export function deriveOffloadMetrics(
+  snapshot: OffloadCounterSnapshot,
+): OffloadDerivedMetrics {
+  const reductionRatio =
+    snapshot.inputBytes > 0
+      ? 1 - snapshot.outputBytes / snapshot.inputBytes
+      : 0;
   return {
     reductionRatio: Math.max(0, reductionRatio),
-    avgDurationMs: snapshot.completed > 0 ? Math.round(snapshot.durationMsTotal / snapshot.completed) : 0,
-    completionRate: snapshot.started > 0 ? snapshot.completed / snapshot.started : 0,
-    estimatedTokensSaved: Math.max(0, snapshot.estimatedInputTokens - snapshot.estimatedOutputTokens),
+    avgDurationMs:
+      snapshot.completed > 0
+        ? Math.round(snapshot.durationMsTotal / snapshot.completed)
+        : 0,
+    completionRate:
+      snapshot.started > 0 ? snapshot.completed / snapshot.started : 0,
+    estimatedTokensSaved: Math.max(
+      0,
+      snapshot.estimatedInputTokens - snapshot.estimatedOutputTokens,
+    ),
   };
 }

@@ -13,6 +13,16 @@ type ExportTarget = { types: string; default: string } | string;
 
 const DEFAULT_SCOPE = "@yadsh";
 
+// DSH indexes and npm search find packages through these keywords, so the
+// package-hygiene gate rejects a published manifest without them.
+const CANONICAL_KEYWORDS = [
+  "deepseek",
+  "deepseek-harness",
+  "dsh",
+  "dsh-plugin",
+  "cordis",
+];
+
 export default async function generatePlugin(
   tree: Tree,
   options: Schema,
@@ -102,15 +112,19 @@ export default async function generatePlugin(
     scripts["verify:client"] = "node scripts/verify-client-bundle.mjs";
   }
 
+  scripts.verify = [
+    "pnpm run verify:package",
+    ...(options.client ? ["pnpm run verify:client"] : []),
+  ].join(" && ");
+
   scripts.check = [
     "pnpm run lint",
     "pnpm run typecheck",
     ...(withTests ? ["pnpm run test"] : []),
     "pnpm run build",
-    "pnpm run verify:package",
-    ...(options.client ? ["pnpm run verify:client"] : []),
+    "pnpm run verify",
   ].join(" && ");
-  scripts.prepack = "pnpm run build";
+  scripts.prepack = "pnpm run build && pnpm run verify";
 
   tree.write(
     `${projectRoot}/package.json`,
@@ -152,6 +166,7 @@ export default async function generatePlugin(
           registry: "https://registry.npmjs.org/",
         },
         engines: { node: "^22.19.0 || >=24.0.0" },
+        keywords: [...CANONICAL_KEYWORDS, `dsh-${pluginName}`],
         scripts,
       },
       null,
@@ -320,8 +335,8 @@ console.log("verify-package: all gates passed");
       {
         deepseekHarness: {
           channel: "next",
-          range: ">=0.1.1-rc.2 <0.2.0",
-          testedReleases: ["0.1.1-rc.2"],
+          range: ">=0.1.5-rc.2 <0.2.0",
+          testedReleases: ["0.1.5-rc.2"],
         },
         node: "^22.19.0 || >=24.0.0",
       },
@@ -352,7 +367,7 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.1-rc.2 <0.2.0
+- DeepSeek Harness >=0.1.5-rc.2 <0.2.0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -367,7 +382,7 @@ Configure the plugin under the \`${pluginName}\` key in the DSH profile.
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.1-rc.2 <0.2.0 (see \`compatibility.json\`)
+- DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see \`compatibility.json\`)
 
 ## Development
 

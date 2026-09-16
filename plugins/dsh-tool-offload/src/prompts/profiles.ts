@@ -18,7 +18,7 @@ export const BUNDLED_PROMPT_PROFILES: Readonly<Record<string, string>> = {
     "- Preserve filenames, symbols, and exact signatures where relevant.",
     "- Preserve line numbers or ranges when the tool result contains them.",
     "- Retain TODO/FIXME markers and error text verbatim where useful.",
-    "- Answer the parent task, not \"summarize the file\" generically.",
+    '- Answer the parent task, not "summarize the file" generically.',
   ].join("\n"),
 
   "search-results": [

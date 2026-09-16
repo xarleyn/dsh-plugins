@@ -23,7 +23,10 @@ export interface DshLlmRuntime {
 export interface DSHStreamChunk {
   readonly type: string;
   readonly text?: string;
-  readonly usage?: { readonly inputTokens?: number; readonly outputTokens?: number };
+  readonly usage?: {
+    readonly inputTokens?: number;
+    readonly outputTokens?: number;
+  };
   readonly reason?: { readonly kind: string };
 }
 
@@ -59,7 +62,8 @@ export function createDshClassifierTransport(
           outputTokens: chunk.usage.outputTokens ?? 0,
         };
       } else if (chunk.type === "finish" && chunk.reason !== undefined) {
-        if (chunk.reason.kind === "error") throw new Error("classifier request failed at the provider");
+        if (chunk.reason.kind === "error")
+          throw new Error("classifier request failed at the provider");
         if (chunk.reason.kind === "aborted") {
           const abortError = new Error("classifier request aborted");
           abortError.name = "AbortError";
