@@ -34,6 +34,7 @@ instance.
 | --- | --- |
 | `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
+| `@yadsh/dsh-documents` | Cordis, schemastery, tools, settings, client settings/settings-plugins/slots, React |
 | `@yadsh/dsh-domain-experts` | Cordis, schemastery, agent, session, settings, storage-domain, subagent, tools, gateway, client renderer/settings, Typert protocol, React |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
 | `@yadsh/dsh-git-readonly` | tools, schemastery |
@@ -43,6 +44,8 @@ instance.
 | `@yadsh/dsh-openviking-memory` | Cordis, schemastery, agent, LLM, session, tools, MCP client, skill filesystem |
 | `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/renderer/settings/settings-plugins/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client renderer/settings/slots, settings, system prompt, Typert protocol |
+| `@yadsh/dsh-qa-browser` | Cordis, schemastery, agent, attachment, gateway, api-session-controller, webserver, tools, client renderer/slots, Typert protocol, React, React DOM |
+| `@yadsh/dsh-qa-integrations` | Cordis, schemastery, tools, settings, client settings/settings-plugins, Typert protocol, React |
 | `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, api-session-controller, api-workspace-controller, permissions, session, settings, tools, workspace, webserver, client connection/conversation/chat/renderer/layout/settings/slots/theme, Typert protocol, React |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/renderer/store/settings/slots, LLM, settings |
@@ -52,11 +55,12 @@ instance.
 | `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
+| `@yadsh/dsh-plugin-scripts` (private) | none |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
 | `@yadsh/dsh-config` (private) | none |
 
-`@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, and `@yadsh/dsh-test-kit` are
-private workspace packages and are not published.
+`@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, `@yadsh/dsh-plugin-scripts`, and
+`@yadsh/dsh-test-kit` are private workspace packages and are not published.
 
 ## DSH 0.1.5 migration notes
 
@@ -78,7 +82,8 @@ no longer run on `0.1.1-rc.2` hosts.
 1. Update peer ranges in `catalog:dsh` and exact CI versions in
    `catalog:dsh-dev` together.
 2. Run `pnpm install` to refresh the single root lockfile.
-3. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
+3. Run `pnpm check` (its chain ends with `deps:check`) and
+   `pnpm tarball:verify`.
 4. Update this matrix and affected plugin READMEs if the supported surface
    changes.
 5. Treat a dropped compatible runtime range as a breaking package change.
