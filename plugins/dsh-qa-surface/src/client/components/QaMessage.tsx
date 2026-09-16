@@ -445,10 +445,17 @@ export const QaMessage = memo(
       },
     ) => {
       if (next === null || onRateFeedback === undefined) return;
+      if (message.role !== "assistant" || message.seq === undefined) {
+        // The thumbs state is already written, so a rating the Host cannot key
+        // to a log position would otherwise look filed while never leaving the
+        // browser — say so instead of losing it quietly.
+        console.warn(
+          "QA feedback was not sent: this answer carries no durable log position.",
+        );
+        return;
+      }
       onRateFeedback({
-        ...(message.role === "assistant" && message.seq !== undefined
-          ? { messageId: message.seq }
-          : {}),
+        messageId: message.seq,
         rating: next === "up" ? "positive" : "negative",
         ...(detail?.reasons === undefined ? {} : { reasons: detail.reasons }),
         ...(detail?.comment === undefined ? {} : { comment: detail.comment }),
