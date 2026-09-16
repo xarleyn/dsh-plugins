@@ -154,6 +154,10 @@ config:
     enabled: false
     allowRegistration: true
     sessionTtlDays: 30
+    # Login/registration attempts accepted per rolling minute, store-wide
+    # (optional). The limit backs the password checks; raise it only when a
+    # shared kiosk genuinely needs the headroom.
+    maxAuthAttemptsPerMinute: 30
     showOtherUsersChats: false
     perUserWorkspace: false
     profile:
@@ -187,6 +191,13 @@ config:
     # unsupported: refuse ask_user_question with an actionable reason.
     # interactive: park the request over the composer as an answerable form.
     questions: unsupported
+  # Root-page entry behavior (optional; see "Serving the QA rig over the LAN").
+  entry:
+    # Inject the root → /qa redirect for non-loopback hostnames.
+    redirectNonLoopback: true
+    # Let the /qa route run the one-time ?token= host-cookie exchange itself,
+    # so transparent entry works without the deploy proxy.
+    cookieBootstrap: true
   lockdown:
     enabled: true
     enforceFixedAgentPreset: true
@@ -881,6 +892,14 @@ sees the namespace as unavailable reads the effective configuration through
 the `qaSurface/describe` Host Remote, so branding, session pinning and
 lockdown UI switches keep working over the LAN. Host-side enforcement was
 never dependent on that read path.
+
+`describe` takes no token on purpose — the browser needs the configuration
+before it can render anything — so treat its answer as public deployment
+metadata: any `/qa` visitor can read the full resolved configuration, not
+only the audience-facing projection, including operator-side values such as
+the `lockdown.sharedReadOnlyRoots` paths. Keep credentials and secrets out of
+the `qa-surface` configuration entirely; the plugin declares no field for
+them, and nothing in the channel redacts the resolved values.
 
 What a LAN deployment does not change:
 

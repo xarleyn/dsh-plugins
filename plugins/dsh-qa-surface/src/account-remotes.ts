@@ -83,6 +83,7 @@ export function createQaAccountRemotes(options: {
     const memoKey = JSON.stringify([
       config.accounts.sessionTtlDays,
       config.accounts.allowRegistration,
+      config.accounts.maxAuthAttemptsPerMinute,
       config.accounts.profile.instructionsMaxLength,
       config.accounts.profile.identities,
     ]);
@@ -90,6 +91,7 @@ export function createQaAccountRemotes(options: {
       accounts = new QaAccounts(defaultAccountsFilePath(), {
         sessionTtlDays: config.accounts.sessionTtlDays,
         allowRegistration: config.accounts.allowRegistration,
+        maxAuthAttemptsPerMinute: config.accounts.maxAuthAttemptsPerMinute,
         instructionsMaxLength: config.accounts.profile.instructionsMaxLength,
         identityFields: config.accounts.profile.identities,
       });

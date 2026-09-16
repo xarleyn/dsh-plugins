@@ -674,6 +674,11 @@ export interface QaSurfaceConfig {
     readonly enabled?: boolean;
     readonly allowRegistration?: boolean;
     readonly sessionTtlDays?: number;
+    /**
+     * Login/registration attempts accepted per rolling minute, store-wide.
+     * The limit backs the password checks, so the default stays tight.
+     */
+    readonly maxAuthAttemptsPerMinute?: number;
     /** Let admins see chats owned by other QA accounts. */
     readonly showOtherUsersChats?: boolean;
     /**
@@ -814,6 +819,8 @@ export interface ResolvedQaSurfaceConfig {
     readonly enabled: boolean;
     readonly allowRegistration: boolean;
     readonly sessionTtlDays: number;
+    /** Login/registration attempts accepted per rolling minute, store-wide. */
+    readonly maxAuthAttemptsPerMinute: number;
     readonly showOtherUsersChats: boolean;
     readonly perUserWorkspace: boolean;
     readonly profile: {
