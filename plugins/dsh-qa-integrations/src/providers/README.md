@@ -22,6 +22,15 @@ src/
       transport.ts     HTTP-граница: разбор credential, таймаут, лимит размера
       config.ts        срез конфига и дефолты включённости
       tools.ts         model-visible тулы провайдера
+    confluence/
+      index.ts         ConfluenceProvider: validate / execute / parseCredential
+      catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
+      operations.ts    валидация аргументов, выбор коллекции, курсоры, проекции ответов
+      cql.ts           сборка CQL из типизированных фильтров и экранирование литералов
+      adf.ts           Atlassian Document Format → markdown-подобный текст, плейсхолдеры макросов
+      transport.ts     HTTP-граница: сайт из конфига, Basic-пара, повторы, лимит размера
+      config.ts        список сайтов (SSRF-граница), политика пространств, бюджеты ответов
+      tools.ts         model-visible тулы провайдера
     gitlab/
       index.ts         GitlabProvider: validate / execute / parseCredential
       catalog.ts       возможности (capability ↔ scope) и операции (operation ↔ POST-путь)
@@ -42,7 +51,7 @@ src/
       tools.ts         model-visible тулы провайдера
 ```
 
-## Что должен реализовать новый провайдер (gitlab, teamcity, …)
+## Что должен реализовать новый провайдер (bitrix24, confluence, gitlab, teamcity, …)
 
 1. `providers/<id>/catalog.ts` — список возможностей и операций. Это
    permission surface: всё, что не описано здесь, недостижимо для модели.
@@ -84,7 +93,8 @@ src/
 - В общих модулях хоста (`broker.ts`, `repository.ts`, `secrets/**`,
   `tool-kit.ts`, `providers/contract.ts`, `providers/registry.ts`, `types.ts`)
   не должно быть упоминаний конкретной интеграции: `pnpm verify:package`
-  падает на `/bitrix|gitlab|teamcity/iu` вне каталога самого провайдера.
+  падает на `/bitrix|gitlab|teamcity|confluence/iu` вне каталога самого
+  провайдера.
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
@@ -94,3 +104,11 @@ src/
 - В каталоге TeamCity у каждой операции `method: "GET"`, пути не заходят в
   `/parameters`, тэги, комментарии, mute-ы и администрирование, а `transport.ts`
   обязан слать `GET`, `redirect: "error"` и `Authorization: Bearer`.
+- В каталоге Confluence у каждой операции `method: "GET"`, пути лежат под
+  `/wiki/api/v2` или `/wiki/rest/api` и не заходят в снятый v1 content API,
+  администрирование, свойства, операции, лайки, наблюдателей и ограничения; у
+  каждой списочной операции объявлено, как она листается (`cursor: "offset"` у
+  поиска, `cursor: "upstream"` у v2), а `transport.ts` обязан слать `GET`,
+  `redirect: "error"` и пару `Authorization: Basic` — токен не попадает ни в
+  URL, ни в тело. Политику пространств (`allowedSpaces`) провайдер применяет и
+  к поиску, и к прямому чтению: отказ обязан быть `OperationDeniedByPolicy`.

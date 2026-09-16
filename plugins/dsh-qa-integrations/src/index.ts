@@ -16,6 +16,7 @@ import {
 } from "./config.js";
 import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
+import ConfluenceProvider from "./providers/confluence/index.js";
 import type { IntegrationProvider } from "./providers/contract.js";
 import GitlabProvider from "./providers/gitlab/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
@@ -79,6 +80,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly enabled: boolean;
   private readonly providerSummaries: readonly IntegrationProviderSummary[];
   private readonly configuredInstances: readonly IntegrationInstanceSummary[];
+  /** The Confluence sites this deployment dials, for the connect form. */
+  private readonly configuredSites: readonly IntegrationInstanceSummary[];
   /** The TeamCity server this deployment dials, or null when it mounts none. */
   private readonly configuredServer: IntegrationInstanceSummary | null;
 
@@ -101,6 +104,9 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.bitrix24.enabled) {
       providers.register(new Bitrix24Provider(config));
     }
+    if (config.confluence.enabled) {
+      providers.register(new ConfluenceProvider(config));
+    }
     if (config.gitlab.enabled) {
       providers.register(new GitlabProvider(config));
     }
@@ -109,6 +115,13 @@ export class QaIntegrations extends TypertRemoteService {
     }
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
+      : [];
+    this.configuredSites = config.confluence.enabled
+      ? config.confluence.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.label,
+          baseUrl: instance.baseUrl,
+        }))
       : [];
     this.configuredInstances = config.gitlab.enabled
       ? config.gitlab.instances.map((instance) => ({
@@ -290,6 +303,66 @@ export class QaIntegrations extends TypertRemoteService {
     );
   }
 
+  /**
+   * Sites this deployment allows. The connect form picks from this list and
+   * never takes a hostname, which is what keeps the broker from being pointed
+   * at an origin the operator did not configure.
+   */
+  @Remote("confluenceSites")
+  confluenceSites(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredSites);
+  }
+
+  @Remote("getConfluence")
+  getConfluence(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "confluence"),
+    );
+  }
+
+  /**
+   * The account e-mail is not a secret, but it is half of the Basic pair, so it
+   * travels with the secret instead of being a separate field: both halves land
+   * in one encrypted record, and a token can never be spent as another account.
+   */
+  @Remote("putConfluenceCredential")
+  async putConfluenceCredential(
+    token: string,
+    input: {
+      readonly instanceId: string;
+      readonly email: string;
+      readonly token: string;
+    },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "confluence", {
+        token: input.token,
+        options: { instanceId: input.instanceId, email: input.email },
+      }),
+    );
+  }
+
+  @Remote("testConfluence")
+  async testConfluence(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "confluence"),
+    );
+  }
+
+  @Remote("patchConfluencePolicy")
+  patchConfluencePolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "confluence", patch),
+    );
+  }
+
+  @Remote("disconnectConfluence")
+  disconnectConfluence(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "confluence"),
+    );
+  }
+
   @Remote("getTeamcity")
   getTeamcity(token: string): IntegrationSummary {
     return this.run(token, (principal) =>
@@ -455,6 +528,66 @@ export {
   GITLAB_HANDLERS,
   GITLAB_PROJECTIONS,
 } from "./providers/gitlab/operations.js";
+export { ConfluenceProvider } from "./providers/confluence/index.js";
+export { adfToText, textBudget } from "./providers/confluence/adf.js";
+export {
+  CONFLUENCE_CAPABILITIES,
+  CONFLUENCE_CAPABILITY_INFO,
+  CONFLUENCE_OPERATIONS,
+  confluenceOperationCapability,
+  type ConfluenceCapability,
+  type ConfluenceCapabilityDefinition,
+  type ConfluenceOperationDefinition,
+} from "./providers/confluence/catalog.js";
+export {
+  CONFLUENCE_DEFAULTS,
+  confluenceConfigSchema,
+  resolveConfluenceConfig,
+  spaceAllowed,
+  type ConfluenceFlags,
+  type ConfluenceInstance,
+} from "./providers/confluence/config.js";
+export {
+  buildCql,
+  cqlLiteral,
+  CONTENT_TYPES,
+  ORDER_BY,
+  type ConfluenceOrder,
+  type ConfluenceSearchFilter,
+} from "./providers/confluence/cql.js";
+export {
+  COMMENT_KINDS,
+  CONFLUENCE_HANDLERS,
+  CONFLUENCE_PROJECTIONS,
+  DEFAULT_LIMIT,
+  bodyLimit,
+  commentChildrenPath,
+  commentCollections,
+  commentKind,
+  commentPath,
+  commentReplies,
+  isNumericSpace,
+  numericId,
+  offsetCursor,
+  pageLimit,
+  plainExcerpt,
+  spaceRef,
+  upstreamCursor,
+  type ConfluenceCommentKind,
+  type ConfluenceProjection,
+  type ConfluenceProjectionContext,
+  type ConfluenceRequest,
+} from "./providers/confluence/operations.js";
+export {
+  createConfluenceTools,
+  CONFLUENCE_TOOL_NAMES,
+} from "./providers/confluence/tools.js";
+export {
+  ConfluenceTransport,
+  credentialFromPlaintext as confluenceCredentialFromPlaintext,
+  credentialInstance as confluenceCredentialInstance,
+  type ConfluenceCredential,
+} from "./providers/confluence/transport.js";
 export { TeamcityProvider } from "./providers/teamcity/index.js";
 export {
   TEAMCITY_CAPABILITIES,

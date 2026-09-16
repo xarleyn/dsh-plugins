@@ -28,6 +28,14 @@ for (const file of [
   "lib/providers/bitrix24/transport.js",
   "lib/providers/bitrix24/config.js",
   "lib/providers/bitrix24/tools.js",
+  "lib/providers/confluence/index.js",
+  "lib/providers/confluence/catalog.js",
+  "lib/providers/confluence/operations.js",
+  "lib/providers/confluence/transport.js",
+  "lib/providers/confluence/config.js",
+  "lib/providers/confluence/tools.js",
+  "lib/providers/confluence/adf.js",
+  "lib/providers/confluence/cql.js",
   "lib/providers/gitlab/index.js",
   "lib/providers/gitlab/catalog.js",
   "lib/providers/gitlab/operations.js",
@@ -70,8 +78,15 @@ assert.doesNotMatch(client, /Показать токен|Копировать т
 // The section renders the providers the host declares, so both cards are
 // mounted from one bundle and neither ships its provider's catalog.
 assert.match(client, /"bitrix24"/u);
+assert.match(client, /"confluence"/u);
 assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
+// The Confluence site is operator configuration too: the connect form picks one
+// and asks for the account e-mail next to the secret, never for an address.
+assert.match(client, /Почта аккаунта Atlassian/u);
+assert.match(client, /Atlassian API token/u);
+assert.match(client, /Оператор не настроил ни одного сайта Confluence/u);
+assert.doesNotMatch(client, /atlassian\.net|api\.atlassian\.com/u);
 // The TeamCity address is stand-wide configuration: the card sends the token
 // alone, shows the address the Host resolved, and says so when there is none.
 assert.doesNotMatch(client, /serverUrl/u);
@@ -328,7 +343,7 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix|gitlab|teamcity/iu,
+    /bitrix|gitlab|teamcity|confluence/iu,
     `${file} must stay provider-agnostic`,
   );
 }
@@ -455,6 +470,130 @@ for (const label of [
   "Читать агентов",
 ]) {
   assert.match(teamcityCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
+}
+
+// The Confluence provider is read-only over one documented API surface. Its
+// paths live under `/wiki`, every one of them is a GET, and the retired v1
+// content endpoints are gone from the catalog rather than merely unused.
+const confluenceTools = await readFile(
+  new URL("src/providers/confluence/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "confluence_connection_get",
+  "confluence_search",
+  "confluence_get_page",
+  "confluence_get_page_comments",
+  "confluence_get_page_attachments",
+  "confluence_get_page_versions",
+  "confluence_get_space",
+  "confluence_list_spaces",
+]) {
+  assert.match(confluenceTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "instanceId:",
+  "cloudId:",
+  "siteAlias:",
+  "baseUrl:",
+  "email:",
+  "raw_rest",
+  "raw_api",
+  "search_cql",
+]) {
+  assert.doesNotMatch(confluenceTools, new RegExp(forbidden, "u"));
+}
+
+const confluenceCatalog = await readFile(
+  new URL("src/providers/confluence/catalog.ts", root),
+  "utf8",
+);
+const confluencePaths = [
+  ...confluenceCatalog.matchAll(/\bpath: "([^"]+)"/gu),
+].map((match) => match[1]);
+const confluenceToolCount = [
+  ...confluenceTools.matchAll(/operation: "([^"]+)"/gu),
+].length;
+assert.equal(
+  confluencePaths.length,
+  confluenceToolCount,
+  "every Confluence tool must name exactly one catalog operation",
+);
+assert.doesNotMatch(confluenceCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+for (const path of confluencePaths) {
+  assert.match(
+    path,
+    /^\/wiki\/(?:api\/v2|rest\/api)\//u,
+    `${path} must be a wiki API path`,
+  );
+  assert.doesNotMatch(
+    path,
+    /\/rest\/api\/content|\/admin|properties|operations|likes|watchers|permissions|restrictions|blueprint|template/u,
+    `${path} is not a read-only endpoint`,
+  );
+}
+
+const confluenceTransport = await readFile(
+  new URL("src/providers/confluence/transport.ts", root),
+  "utf8",
+);
+assert.match(confluenceTransport, /method: "GET"/u);
+assert.match(confluenceTransport, /redirect: "error"/u);
+// The credential reaches the service as a Basic pair and nowhere else: no
+// query parameter is ever built out of a token.
+assert.match(confluenceTransport, /Basic \$\{pair\}/u);
+assert.match(confluenceTransport, /toString\("base64"\)/u);
+assert.doesNotMatch(confluenceTransport, /searchParams\.set\([^)]*token/u);
+
+// The page's space is what the operator allowlist is written in, so the guard
+// sits in the provider and answers a refusal of its own: a page outside the
+// policy is denied, not silently trimmed out of a search result.
+const confluenceHost = await readFile(
+  new URL("src/providers/confluence/index.ts", root),
+  "utf8",
+);
+assert.match(confluenceHost, /assertSpaceAllowed/u);
+assert.match(confluenceHost, /OperationDeniedByPolicy/u);
+assert.doesNotMatch(confluenceHost, /baseUrl:\s*input/u);
+const confluenceConfig = await readFile(
+  new URL("src/providers/confluence/config.ts", root),
+  "utf8",
+);
+assert.match(confluenceConfig, /spaceAllowed/u);
+assert.match(
+  confluenceConfig,
+  /maxBodyChars must be at least defaultBodyChars/u,
+);
+// The catalog builds CQL from typed fields, so no operation hands the model a
+// way to send a query of its own.
+assert.match(
+  await readFile(new URL("src/providers/confluence/cql.ts", root), "utf8"),
+  /export function buildCql/u,
+);
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of every catalog.
+const confluenceCapabilityCatalog = await readFile(
+  new URL("lib/providers/confluence/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Свой профиль",
+  "Читать пространства",
+  "Искать по Confluence",
+  "Читать страницы",
+  "Читать комментарии",
+  "Читать вложения",
+  "Читать версии страниц",
+]) {
+  assert.match(confluenceCapabilityCatalog, new RegExp(label, "u"));
   assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 

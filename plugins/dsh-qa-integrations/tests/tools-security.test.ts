@@ -1,5 +1,6 @@
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { BITRIX_OPERATIONS } from "../src/providers/bitrix24/catalog.js";
+import { CONFLUENCE_OPERATIONS } from "../src/providers/confluence/catalog.js";
 import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
 import { TEAMCITY_OPERATIONS } from "../src/providers/teamcity/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
@@ -49,6 +50,14 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   bitrix_get_drives: {},
   bitrix_get_storage_items: { storageId: 1 },
   bitrix_get_folder_items: { folderId: 1 },
+  confluence_connection_get: {},
+  confluence_search: {},
+  confluence_get_page: { pageId: "123456" },
+  confluence_get_page_comments: { pageId: "123456" },
+  confluence_get_page_attachments: { pageId: "123456" },
+  confluence_get_page_versions: { pageId: "123456" },
+  confluence_get_space: { space: "ENG" },
+  confluence_list_spaces: {},
   gitlab_connection_get: {},
   gitlab_projects_list: {},
   gitlab_project_get: { project: 12 },
@@ -154,6 +163,7 @@ describe("model-visible integration tools", () => {
     for (const operation of called) {
       expect(
         BITRIX_OPERATIONS[operation] ??
+          CONFLUENCE_OPERATIONS[operation] ??
           GITLAB_OPERATIONS[operation] ??
           TEAMCITY_OPERATIONS[operation],
         operation,

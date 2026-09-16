@@ -305,6 +305,7 @@
         "qa",
         "integrations",
         "bitrix24",
+        "confluence",
         "gitlab",
         "teamcity",
         "credentials"
