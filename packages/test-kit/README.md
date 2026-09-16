@@ -7,9 +7,12 @@ published to npm.
 
 ## Features
 
-- Mock DSH plugin context (`createMockContext`)
-- Temporary fixture helpers (`createTempFixture`)
-- Re-exports `createLogger` from `@yadsh/dsh-plugin-kit` for test scaffolds
+- Deterministic clock for time-dependent tests (`fixedClock`)
+- In-memory KV table stand-in (`memoryTable`)
+- Collector for the listeners a fake host context registers
+  (`listenerCollector`)
+- Log-directory fixtures (`makeLogDir`, `readLogLines`) and a module-loader
+  stub (`createModuleLoaderStub`)
 
 ## Workspace usage
 
