@@ -2,13 +2,46 @@
 // scripts/generate-typert.mjs files are thin shims passing the plugin's
 // identity; the staged-workspace layout and emitted lib/typert.* artifacts
 // are identical for every plugin (SPEC §5, remote protocol).
-import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   FaceModelEmitter,
   WorkspaceAnalyzer,
 } from "@deepseek-ai/dsh-typert-generator";
+
+/**
+ * The ambient declaration that keeps `import ... from "<packageName>/remote"`
+ * typed on a clean tree and in editors that have not run `generate-typert`
+ * yet (the generated artifact only exists under lib/ after a build).
+ */
+function remoteShimSource(packageName) {
+  return `/**
+ * The generated Remote artifact ships as \`lib/typert.remote-client.js\` after a
+ * build; this shim keeps the self-import typed on a clean tree and in editors
+ * that have not run \`generate-typert\` yet.
+ */
+declare module "${packageName}/remote" {
+  import type { TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
+
+  const contribution: TypertRemoteContribution;
+  export default contribution;
+}
+`;
+}
+
+/** Rewrite only on content drift so regeneration stays byte-idempotent. */
+function writeIfChanged(path, contents) {
+  if (existsSync(path) && readFileSync(path, "utf8") === contents) return;
+  writeFileSync(path, contents);
+}
 
 /**
  * @param {object} options
@@ -29,6 +62,14 @@ export async function generateTypert(options) {
       `refusing to prepare Typert workspace outside ${packageRoot}`,
     );
   }
+  // The typed self-import shim travels with the source tree, so every
+  // regeneration emits it (a no-op when the content already matches — safe
+  // for packages whose copy was written by hand).
+  mkdirSync(join(packageRoot, "src", "client"), { recursive: true });
+  writeIfChanged(
+    join(packageRoot, "src", "client", "remote-shim.d.ts"),
+    remoteShimSource(options.packageName),
+  );
   rmSync(workspaceRoot, { recursive: true, force: true });
   mkdirSync(stagedRoot, { recursive: true });
   cpSync(join(packageRoot, "src"), join(stagedRoot, "src"), {
