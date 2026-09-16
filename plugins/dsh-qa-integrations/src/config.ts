@@ -11,6 +11,11 @@ import {
   type GitlabFlags,
 } from "./providers/gitlab/config.js";
 import {
+  jiraConfigSchema,
+  resolveJiraConfig,
+  type JiraFlags,
+} from "./providers/jira/config.js";
+import {
   resolveTeamCityConfig,
   teamcityConfigSchema,
   type TeamCityConfigInput,
@@ -33,6 +38,7 @@ export interface QaIntegrationsConfig {
   readonly bitrix24?: Partial<Bitrix24Flags>;
   readonly gitlab?: Partial<GitlabFlags>;
   readonly teamcity?: TeamCityConfigInput;
+  readonly jira?: Partial<JiraFlags>;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -46,6 +52,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly bitrix24: Bitrix24Flags;
   readonly gitlab: GitlabFlags;
   readonly teamcity: TeamCityFlags;
+  readonly jira: JiraFlags;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -61,6 +68,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   bitrix24: bitrix24ConfigSchema,
   gitlab: gitlabConfigSchema,
   teamcity: teamcityConfigSchema,
+  jira: jiraConfigSchema,
 });
 
 export function resolveConfig(
@@ -90,5 +98,6 @@ export function resolveConfig(
     bitrix24: resolveBitrix24Config(input.bitrix24),
     gitlab: resolveGitlabConfig(input.gitlab),
     teamcity: resolveTeamCityConfig(input.teamcity),
+    jira: resolveJiraConfig(input.jira),
   });
 }

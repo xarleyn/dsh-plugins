@@ -9,6 +9,7 @@ import {
   createGitlabTools,
   GITLAB_TOOL_NAMES,
 } from "./providers/gitlab/tools.js";
+import { createJiraTools, JIRA_TOOL_NAMES } from "./providers/jira/tools.js";
 import {
   createTeamcityTools,
   TEAMCITY_TOOL_NAMES,
@@ -30,6 +31,7 @@ export const INTEGRATION_TOOL_NAMES = [
   ...BITRIX24_TOOL_NAMES,
   ...GITLAB_TOOL_NAMES,
   ...TEAMCITY_TOOL_NAMES,
+  ...JIRA_TOOL_NAMES,
 ] as const;
 
 /** Provider tool modules, composed into one registration list. */
@@ -40,5 +42,6 @@ export function createIntegrationTools(
     ...createBitrix24Tools(options),
     ...createGitlabTools(options),
     ...createTeamcityTools(options),
+    ...createJiraTools(options),
   ];
 }
