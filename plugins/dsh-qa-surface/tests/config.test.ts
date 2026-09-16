@@ -363,6 +363,7 @@ describe("qa surface config", () => {
       enabled: false,
       allowRegistration: true,
       sessionTtlDays: 30,
+      maxAuthAttemptsPerMinute: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
       profile: {
@@ -387,6 +388,31 @@ describe("qa surface config", () => {
       redirectNonLoopback: true,
       cookieBootstrap: true,
     });
+  });
+
+  it("resolves the login attempt budget and the cookie bootstrap flag", () => {
+    expect(resolveConfig().accounts.maxAuthAttemptsPerMinute).toBe(30);
+    expect(
+      resolveConfig({ accounts: { maxAuthAttemptsPerMinute: 120 } }).accounts
+        .maxAuthAttemptsPerMinute,
+    ).toBe(120);
+    for (const maxAuthAttemptsPerMinute of [0, -5, 601, 1.5]) {
+      expect(() =>
+        resolveConfig({ accounts: { maxAuthAttemptsPerMinute } }),
+      ).toThrow(/maxAuthAttemptsPerMinute/u);
+    }
+    // The schema exposes the entry keys: an operator can disable the /qa
+    // cookie bootstrap without patching the plugin.
+    expect(resolveConfig().entry.cookieBootstrap).toBe(true);
+    expect(resolveConfig({ entry: { cookieBootstrap: false } }).entry).toEqual({
+      redirectNonLoopback: true,
+      cookieBootstrap: false,
+    });
+    expect(
+      ConfigSchema["~standard"].validate({
+        entry: { cookieBootstrap: "yes" },
+      }),
+    ).toHaveProperty("issues");
   });
 
   it("resolves the per-account starters flag", () => {
@@ -465,6 +491,7 @@ describe("qa surface config", () => {
         enabled: false,
         allowRegistration: true,
         sessionTtlDays: 7,
+        maxAuthAttemptsPerMinute: 30,
         showOtherUsersChats: false,
         perUserWorkspace: false,
         profile: {

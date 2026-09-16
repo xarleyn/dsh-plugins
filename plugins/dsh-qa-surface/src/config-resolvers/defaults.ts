@@ -82,6 +82,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       enabled: false,
       allowRegistration: true,
       sessionTtlDays: 30,
+      maxAuthAttemptsPerMinute: 30,
       showOtherUsersChats: false,
       perUserWorkspace: false,
       profile: Object.freeze({
