@@ -15,7 +15,7 @@ import {
   formatCount,
   formatRate,
   formatStamp,
-} from "../format.js";
+} from "../copy.js";
 import {
   Badge,
   FilterField,

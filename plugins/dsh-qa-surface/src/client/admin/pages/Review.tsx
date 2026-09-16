@@ -16,7 +16,7 @@ import {
   SEVERITY_LABELS,
   TARGET_LABELS,
   formatStamp,
-} from "../format.js";
+} from "../copy.js";
 import {
   Badge,
   FilterField,

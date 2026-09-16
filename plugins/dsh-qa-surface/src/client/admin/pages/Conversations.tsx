@@ -14,7 +14,7 @@ import {
   formatCount,
   formatDuration,
   formatStamp,
-} from "../format.js";
+} from "../copy.js";
 import {
   Badge,
   Empty,
