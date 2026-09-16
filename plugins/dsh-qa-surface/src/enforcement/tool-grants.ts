@@ -51,9 +51,13 @@ function describe(tools: readonly string[]): string {
  * subrole was configured with. A skill file can therefore ask for anything —
  * the intersection with the role ceiling is what it gets.
  *
- * A restriction may only name tools the scope inherits, so a grant is verified
- * by applying it: a name the registry refuses (agent-local, unregistered) is
- * dropped from the grant instead of breaking the session.
+ * A restriction may only name tools the scope INHERITS. The QA tool catalog
+ * attaches its tools to the agent itself, and such a registration is visible to
+ * the model without ever being nameable in a restriction: handing one to
+ * `restrict()` makes the registry refuse the whole call. Every restriction this
+ * class installs is therefore filtered to the inheritable names, and a grant is
+ * verified against the same view — a name no layer holds is dropped from the
+ * grant instead of breaking the session.
  */
 export class QaAgentToolGrants {
   private readonly active = new Map<string, QaSkillGrant>();
@@ -68,6 +72,26 @@ export class QaAgentToolGrants {
   /** Whether the model would see this tool right now. */
   effectiveTools(): ReadonlySet<string> {
     return this.tools;
+  }
+
+  /**
+   * Whether the scoped registry can admit this name under a restriction.
+   *
+   * `restrict()` accepts the names a scope inherits — the global and ancestor
+   * layers — and nothing else. A tool the agent registered for itself is
+   * deliberately absent here even though it is visible.
+   */
+  private restrictable(tool: string): boolean {
+    return this.options.agent.ctx.tools.get(tool) !== undefined;
+  }
+
+  /** Whether any layer makes this tool callable for the agent at all. */
+  private mounted(tool: string): boolean {
+    const tools = this.options.agent.ctx.tools;
+    return (
+      this.restrictable(tool) ||
+      tools.get(tool, this.options.agent) !== undefined
+    );
   }
 
   /** Grants currently held, newest last; one entry per activated skill. */
@@ -102,13 +126,16 @@ export class QaAgentToolGrants {
         accepted.push(tool);
         continue;
       }
+      // A name no layer holds cannot be granted; an agent-local one is already
+      // visible to the model, so it needs no mask of its own.
+      if (!this.mounted(tool)) continue;
       try {
         this.applyRestriction([...this.tools, tool]);
         this.tools.add(tool);
         accepted.push(tool);
       } catch {
-        // The registry refused the name (unregistered or agent-local), so the
-        // tool stays out of the grant rather than breaking the activation.
+        // The registry refused the name after all, so the tool stays out of
+        // the grant rather than breaking the activation.
       }
     }
     const denied = requested.filter((tool) => !accepted.includes(tool));
@@ -190,7 +217,12 @@ export class QaAgentToolGrants {
    * unrestricted, and a rejected name would then leave it that way.
    */
   private applyRestriction(allow: readonly string[]): void {
-    const next = this.options.agent.ctx.tools.restrict({ allow: [...allow] });
+    // Only inheritable names may reach the registry: a base set that carries an
+    // agent-local tool (the QA activation diagnostic is one) would otherwise
+    // make `restrict()` refuse the call and fail the whole attestation.
+    const next = this.options.agent.ctx.tools.restrict({
+      allow: allow.filter((tool) => this.restrictable(tool)),
+    });
     const previous = this.disposeRestriction;
     this.disposeRestriction = next;
     previous?.();

@@ -383,6 +383,17 @@ export class QaPolicyAdmission {
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
+      // `restrict()` accepts only names the agent INHERITS, and the QA tool
+      // catalog attaches its tools to the agent itself. The activation
+      // diagnostic therefore passes the `unknown-tools` check above — the
+      // catalog declares it — and would still make `restrict()` refuse the
+      // whole call and fail every chat's attestation. It keeps its place in the
+      // policy and in the guard below; only the mask skips it, which is also
+      // what makes a name the registry does not hold globally a loud refusal
+      // above rather than a silent omission here.
+      const restrictable = policy.allow.filter(
+        (name) => this.ctx.tools.get(name) !== undefined,
+      );
       // A capability policy owns the scoped restriction, because activating a
       // skill has to widen it later. The account-free path keeps the static
       // mask it has always used.
@@ -393,7 +404,7 @@ export class QaPolicyAdmission {
       try {
         disposeTools =
           grants === undefined
-            ? agent.ctx.tools.restrict({ allow: policy.allow })
+            ? agent.ctx.tools.restrict({ allow: restrictable })
             : () => grants.dispose();
         disposeGuard = agent.ctx.tools.guard((execution) => {
           const subject = execution.agent;

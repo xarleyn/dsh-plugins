@@ -41,6 +41,8 @@ async function setup(options: {
   readonly registered: readonly string[];
   readonly baseTools: readonly string[];
   readonly grantableTools: readonly string[];
+  /** Tools the agent registers for itself, the way the QA catalog does. */
+  readonly localTools?: readonly string[];
   readonly descriptors: readonly QaSkillDescriptor[];
 }) {
   const ctx = new Context();
@@ -58,6 +60,9 @@ async function setup(options: {
       (inner: Context) => {
         const scope = createScope(inner, agent);
         (agent as unknown as { ctx: Context }).ctx = scope.ctx;
+        for (const name of options.localTools ?? []) {
+          scope.ctx.tools.register(globalTool(name));
+        }
       },
       { inject: ["tools"] },
     ),
@@ -209,6 +214,46 @@ describe("dynamic skill tool grants", () => {
       grant: { grantedTools: [], deniedTools: ["browser_open", "shell"] },
     });
     expect(grants.effectiveTools()).toEqual(new Set(["read"]));
+  });
+
+  it("keeps an agent-local base tool out of the mask instead of failing", async () => {
+    // The QA activation diagnostic registers into the agent's own scope, and
+    // `restrict()` may only name inherited tools. Before the base set was
+    // filtered for the mask, this constructor threw and every chat's
+    // attestation failed with "unknown global tool".
+    const { ctx, agent, grants } = await setup({
+      registered: ["read"],
+      localTools: ["qa_tools_selfcheck"],
+      baseTools: ["read", "qa_tools_selfcheck"],
+      grantableTools: [],
+      descriptors: [],
+    });
+    expect(grants.effectiveTools()).toEqual(
+      new Set(["read", "qa_tools_selfcheck"]),
+    );
+    // An agent-local registration is visible outside the mask, so the tool the
+    // restriction cannot name stays callable.
+    expect(visible(ctx, agent)).toEqual(["read", "qa_tools_selfcheck"]);
+  });
+
+  it("grants a tool the agent owns without naming it in the mask", async () => {
+    const { grants } = await setup({
+      registered: ["read"],
+      localTools: ["qa_tools_selfcheck"],
+      baseTools: ["read"],
+      grantableTools: ["qa_tools_selfcheck"],
+      descriptors: [
+        descriptor("qa-diagnostic", {
+          version: 1,
+          audience: { type: "common" },
+          tools: { requires: ["qa_tools_selfcheck"] },
+        }),
+      ],
+    });
+    expect(grants.activate("qa-diagnostic", "model")).toMatchObject({
+      status: "activated",
+      grant: { grantedTools: ["qa_tools_selfcheck"], deniedTools: [] },
+    });
   });
 
   it("records a denied audience without touching the toolset", async () => {

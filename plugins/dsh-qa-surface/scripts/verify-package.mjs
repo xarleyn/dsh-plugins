@@ -163,7 +163,11 @@ assert.match(admission, /agentPresets\.composedPreset/u);
 assert.match(admission, /\.tools\.restrict/u);
 assert.match(admission, /\.tools\.guard/u);
 assert.match(admission, /qaToolPolicyPlan/u);
-assert.match(admission, /allow:\s*policy\.allow/u);
+// The account-free path masks the agent to the policy's own allow-list, and to
+// the subset of it the registry can actually put in a restriction: a QA catalog
+// tool is registered on the agent itself, and naming one fails the attestation.
+assert.match(admission, /policy\.allow\.filter/u);
+assert.match(admission, /allow:\s*restrictable/u);
 assert.match(admission, /installQaSkillPolicy/u);
 // The capability policy owns the scoped restriction, so activating a skill can
 // widen the toolset; the guard reads the same live set.
@@ -194,7 +198,11 @@ assert.match(skillMetadata, /audience lists no known subrole/u);
 assert.match(skillMetadata, /unsupported qa-surface metadata version/u);
 assert.doesNotMatch(skillMetadata, /writeFileSync|SKILL\.md/u);
 // A grant intersects the role ceiling and is reported when it cannot be given.
-assert.match(toolGrants, /restrict\(\{ allow/u);
+// Every restriction this class installs is filtered to the names the registry
+// can actually restrict: an agent-local one (the QA activation diagnostic) is
+// visible without being nameable, and naming it refuses the whole call.
+assert.match(toolGrants, /\.tools\.restrict\(\{/u);
+assert.match(toolGrants, /allow: allow\.filter/u);
 assert.match(toolGrants, /effectiveTools/u);
 assert.match(toolGrants, /cannot be activated because required tool/u);
 assert.match(toolGrants, /Unavailable required tools/u);
