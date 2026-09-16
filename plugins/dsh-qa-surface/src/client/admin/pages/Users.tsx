@@ -360,8 +360,14 @@ export function AdminUserDetail(props: {
               <li key={row.subroleId}>
                 <strong>{row.name}</strong>
                 <span>
-                  {formatCount(row.tools)} инструментов ·{" "}
-                  {formatCount(row.skills)} навыков
+                  {/* The counts say what a chat under this profile resolves:
+                      the pinned system tools included, and the skill-grantable
+                      ceiling reported as a ceiling rather than as visibility. */}
+                  {`${formatCount(row.tools)} инструментов${
+                    row.grantableTools === 0
+                      ? ""
+                      : ` (плюс ${formatCount(row.grantableTools)} по навыкам)`
+                  }, ${formatCount(row.skills)} навыков`}
                 </span>
               </li>
             ))}

@@ -518,8 +518,15 @@ export class QaAccessService {
     return accounts;
   }
 
-  /** The activation diagnostic is runtime plumbing, not an administrator grant. */
-  private systemRequiredTools(): readonly string[] {
+  /**
+   * Tools every session resolves regardless of the role it runs under: the
+   * deployment's pinned allow-list plus the activation diagnostic.
+   *
+   * Readable outside the service because the administration surface reports a
+   * profile's effective capabilities next to the configured ones, and the
+   * pinned set is part of that answer whatever the profile says.
+   */
+  systemRequiredTools(): readonly string[] {
     return [
       ...new Set([
         ...this.options.config().lockdown.toolPolicy.allow,

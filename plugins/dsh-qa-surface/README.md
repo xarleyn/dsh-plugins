@@ -710,8 +710,14 @@ audit trail at `/qa/admin`. Capability choices come from the live tool and
 skill registries; configured-but-missing entries remain visible and are not
 deleted. Admin authorization affects only the management API and never grants
 agent capabilities. `Preview as role` creates an ordinary session using the
-selected role's real server-enforced policy and shows a persistent preview
-banner.
+selected role's real server-enforced policy and shows the preview banner, which
+carries the way out. The preview belongs to the navigation that opened it: it
+ends when that entry is left, and an ordinary account never holds it, so a chat
+started later in the same tab runs under the account's own default profile.
+A user page reports each assigned profile's effective capabilities the way a
+session resolves them: the deployment's pinned tools plus Common and the role,
+the skill-grantable ceiling separately, and declared audiences among the
+skills.
 
 The configuration lives in `$DSH_HOME/qa-capability-policies.json`; user
 assignments and session snapshots stay with the existing account store. Tools

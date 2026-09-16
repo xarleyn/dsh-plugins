@@ -1585,7 +1585,10 @@ export interface QaAdminUserDetail {
   readonly effective: readonly {
     readonly subroleId: string;
     readonly name: string;
+    /** Visible from the first step: system-required, Common and the role. */
     readonly tools: number;
+    /** The role's ceiling for tools a loaded skill requires. */
+    readonly grantableTools: number;
     readonly skills: number;
   }[];
   readonly activity: {

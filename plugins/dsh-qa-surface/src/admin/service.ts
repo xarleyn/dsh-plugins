@@ -6,6 +6,7 @@ import type { QaRoleRepository } from "../access/role-repository.js";
 import {
   defaultCapabilityConfig,
   normalizeUserAccess,
+  resolveSkillAccess,
 } from "../access/model.js";
 import type {
   QaAccountRole,
@@ -462,23 +463,51 @@ export class QaAdminService {
       .listOwnershipRecords()
       .filter((record) => record.userId === userId);
     const catalog = await this.options.access().catalog.snapshot();
+    const systemTools = this.options.access().systemRequiredTools();
+    // Declared audiences are part of the effective set: a skill that names this
+    // role reaches it without the administrator assigning it.
+    const skills = resolveSkillAccess({
+      config,
+      descriptors: catalog.skillMetadata,
+      rows: catalog.descriptors.filter(({ type }) => type === "skill"),
+      installedTools: catalog.toolIds,
+    });
     const effective = row.access.allowedSubroles.map((subroleId) => {
       const role = config.subroles.find(({ id }) => id === subroleId);
       const installed = (values: readonly string[], set: ReadonlySet<string>) =>
         [...new Set(values)].filter((id) => set.has(id)).length;
-      const toolIds = [
+      // What a session under this profile resolves: the deployment's pinned
+      // system set, the Common list and the role's own list. Counting the
+      // configured lists alone reported "0 tools" for a profile whose sessions
+      // run with the whole pinned set, and it counted the skill-grantable
+      // ceiling as if those tools were already visible.
+      const always = [
+        ...systemTools,
         ...config.common.tools.always,
-        ...config.common.tools.skillGrantable,
         ...(role?.capabilities.tools.always ?? []),
+      ];
+      const grantable = [
+        ...config.common.tools.skillGrantable,
         ...(role?.capabilities.tools.skillGrantable ?? []),
       ];
+      const declared = skills
+        .filter(({ roles }) =>
+          roles.some(({ roleId, visible }) => roleId === subroleId && visible),
+        )
+        .map(({ name }) => name);
       return Object.freeze({
         subroleId,
         name: role?.name ?? subroleId,
-        tools: installed(toolIds, catalog.toolIds),
-        skills:
-          installed(config.common.skills, catalog.skillIds) +
-          installed(role?.capabilities.skills ?? [], catalog.skillIds),
+        tools: installed(always, catalog.toolIds),
+        grantableTools: installed(grantable, catalog.toolIds),
+        skills: installed(
+          [
+            ...config.common.skills,
+            ...(role?.capabilities.skills ?? []),
+            ...declared,
+          ],
+          catalog.skillIds,
+        ),
       });
     });
     let messages = 0;

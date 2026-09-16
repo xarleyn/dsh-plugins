@@ -73,10 +73,32 @@ export function QaRoleSelector(props: QaRoleSelectorProps) {
   );
 }
 
-export function QaAdminPreviewBanner({ role }: { readonly role: string }) {
+/**
+ * The banner that keeps a preview from being mistaken for an ordinary chat.
+ *
+ * It carries the way out as well: while previewing, the header's role selector
+ * is hidden — the previewed profile need not be one the account holds — so
+ * without a control here the only exit was the browser's Back button, and a new
+ * chat meanwhile ran as the previewed profile instead of the account's default.
+ * @param props - the previewed role's name, and how to leave the preview.
+ */
+export function QaAdminPreviewBanner(props: {
+  readonly role: string;
+  readonly onExit?: () => void;
+}) {
   return (
     <div className="dsh-qa-admin-preview" role="status">
-      ПРОСМОТР АДМИНИСТРАТОРА · {role}
+      <span>ПРОСМОТР АДМИНИСТРАТОРА: {props.role}</span>
+      {props.onExit === undefined ? null : (
+        <button
+          type="button"
+          className="dsh-qa-admin-preview__exit"
+          onClick={props.onExit}
+          title="Вернуться к своему профилю по умолчанию: просмотр закончится, следующий чат начнётся заново"
+        >
+          Выйти из просмотра
+        </button>
+      )}
     </div>
   );
 }

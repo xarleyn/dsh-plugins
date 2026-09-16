@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { QaRoleSelector } from "../src/client/role/RoleSelector.js";
+import {
+  QaAdminPreviewBanner,
+  QaRoleSelector,
+} from "../src/client/role/RoleSelector.js";
 
 const roles = [
   {
@@ -50,5 +53,22 @@ describe("QA role selector", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByText("Начать новый чат как Developer"));
     expect(onSelect).toHaveBeenCalledWith("developer");
+  });
+});
+
+describe("administrator preview banner", () => {
+  it("names the previewed profile without an exit while only reporting", () => {
+    render(<QaAdminPreviewBanner role="Аналитик" />);
+    expect(screen.getByRole("status").textContent).toContain("Аналитик");
+    expect(
+      screen.queryByRole("button", { name: "Выйти из просмотра" }),
+    ).toBeNull();
+  });
+
+  it("offers the way out of the preview", () => {
+    const onExit = vi.fn();
+    render(<QaAdminPreviewBanner role="Аналитик" onExit={onExit} />);
+    fireEvent.click(screen.getByRole("button", { name: "Выйти из просмотра" }));
+    expect(onExit).toHaveBeenCalledTimes(1);
   });
 });

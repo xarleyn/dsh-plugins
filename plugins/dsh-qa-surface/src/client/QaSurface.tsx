@@ -96,6 +96,7 @@ import type { QaUserSettingsSections } from "./settings-extensions/index.js";
 import { QaAdmin } from "./admin/QaAdmin.js";
 import { isAdminPath } from "./admin/routes.js";
 import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
+import { useQaAdminPreview } from "./role/preview.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -209,8 +210,9 @@ export function QaSurface(props: QaSurfaceProps) {
   const adminRoute = isAdminPath(route.pathname, config.route.path);
   const [access, setAccess] = useState<QaCurrentAccess>();
   const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
-  const [adminPreview, setAdminPreview] = useState(false);
   const [sessionRole, setSessionRole] = useState<QaSubrole>();
+  /** Whether the chat on screen was itself created as an administrator preview. */
+  const [sessionPreview, setSessionPreview] = useState(false);
   const [controller, setController] = useState<QaSessionController>();
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
@@ -219,6 +221,29 @@ export function QaSurface(props: QaSurfaceProps) {
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
   const stateKey = qaStorageNamespace(config);
+  const isAdmin =
+    accountsSnapshot.stage === "authed" &&
+    accountsSnapshot.user.role === "admin";
+  // The preview belongs to the history entry that asked for it, so the
+  // browser's own navigation is what enters and leaves it. Reading the marker
+  // once, on mount, latched the mode for the whole tab: the entry's state
+  // outlives the visit, the role selector — the one control that names the
+  // profile in force — is hidden while previewing, and every later new chat in
+  // that tab was therefore created as a preview of the previewed profile
+  // instead of the account's default one, with nothing on screen saying so.
+  const onPreviewRole = useCallback((roleId: string | null) => {
+    if (roleId === null) return;
+    setSessionPreview(false);
+    setSelectedSubrole(roleId);
+  }, []);
+  const { preview, enter, clear, leave } = useQaAdminPreview({
+    isAdmin,
+    fallbackSubrole: access?.defaultSubrole ?? null,
+    previewUrl: config.route.path,
+    routeKey: route.pathname,
+    onSelect: onPreviewRole,
+  });
+  const previewing = preview !== null;
   const widthHandlers = useQaContentWidth({
     active: route.active && !adminRoute,
     root: chat,
@@ -231,27 +256,33 @@ export function QaSurface(props: QaSurfaceProps) {
     if (accountsSnapshot.stage !== "authed") {
       setAccess(undefined);
       setSelectedSubrole(null);
-      setAdminPreview(false);
+      clear();
       return;
     }
     let live = true;
     void props.accessApi.current(accounts?.token() ?? "").then((result) => {
       if (!live || !result.ok) return;
-      const preview =
-        accountsSnapshot.user.role === "admin" &&
-        typeof window.history.state?.qaPreview === "string"
-          ? result.value.subroles.find(
-              ({ id }) => id === window.history.state.qaPreview,
-            )
-          : undefined;
       setAccess(result.value);
-      setSelectedSubrole(preview?.id ?? result.value.defaultSubrole);
-      setAdminPreview(preview !== undefined);
+      setSelectedSubrole(result.value.defaultSubrole);
     });
     return () => {
       live = false;
     };
-  }, [accounts, accountsSnapshot, props.accessApi]);
+  }, [accounts, accountsSnapshot, props.accessApi, clear]);
+
+  /**
+   * Leave the preview for the account's own default profile.
+   *
+   * The previewed chat is not deleted — it stays in the history — but the role
+   * cannot change inside a running conversation, so the way out is a new chat,
+   * exactly as switching roles from the header is.
+   */
+  const exitPreview = useCallback(() => {
+    leave();
+    setSessionPreview(false);
+    const fallback = access?.defaultSubrole ?? null;
+    if (fallback !== null) void controller?.selectSubrole(fallback, false);
+  }, [access, controller, leave]);
 
   useEffect(() => {
     if (!route.active || adminRoute) {
@@ -298,7 +329,7 @@ export function QaSurface(props: QaSurfaceProps) {
         : { questionApi: props.questionApi }),
       config,
       initialSubrole: selectedSubrole,
-      adminPreview,
+      adminPreview: previewing,
       storage: window.localStorage,
       accounts: facade,
       ...(props.fileUpload === undefined
@@ -312,7 +343,7 @@ export function QaSurface(props: QaSurfaceProps) {
     accounts,
     accountsStage,
     access,
-    adminPreview,
+    previewing,
     adminRoute,
     config,
     props.api,
@@ -397,11 +428,13 @@ export function QaSurface(props: QaSurfaceProps) {
       .then((result) => {
         if (!live || !result.ok) return;
         setSessionRole(result.value.subrole);
-        setAdminPreview(result.value.adminPreview);
-        if (
-          !result.value.adminPreview &&
-          access?.subroles.some(({ id }) => id === result.value.subrole.id)
-        ) {
+        setSessionPreview(result.value.adminPreview);
+        if (result.value.adminPreview) return;
+        // An ordinary chat is not a preview. Opening one leaves the mode the
+        // history entry may still carry, so the next new chat starts under the
+        // account's default profile rather than the previewed one.
+        clear();
+        if (access?.subroles.some(({ id }) => id === result.value.subrole.id)) {
           setSelectedSubrole(result.value.subrole.id);
         }
       });
@@ -413,6 +446,7 @@ export function QaSurface(props: QaSurfaceProps) {
     accounts,
     accountsSnapshot.stage,
     adminRoute,
+    clear,
     props.accessApi,
     state.sessionId,
   ]);
@@ -865,13 +899,9 @@ export function QaSurface(props: QaSurfaceProps) {
         token={accounts?.token() ?? ""}
         routePath={config.route.path}
         onPreview={(role) => {
-          setSelectedSubrole(role.id);
-          setAdminPreview(true);
-          window.history.pushState(
-            { qaPreview: role.id },
-            "",
-            config.route.path,
-          );
+          // The entry carries the preview, so the browser's Back button leaves
+          // it and the mode cannot outlive the entry that asked for it.
+          enter(role);
         }}
       />
     );
@@ -937,8 +967,17 @@ export function QaSurface(props: QaSurfaceProps) {
         tabIndex={-1}
         onKeyDown={trapKeys}
       >
-        {adminPreview && sessionRole !== undefined ? (
-          <QaAdminPreviewBanner role={sessionRole.name} />
+        {previewing || sessionPreview ? (
+          <QaAdminPreviewBanner
+            role={
+              preview?.name ??
+              sessionRole?.name ??
+              sessionRole?.id ??
+              selectedSubrole ??
+              ""
+            }
+            {...(previewing ? { onExit: exitPreview } : {})}
+          />
         ) : null}
         {showSidebar ? (
           <QaSidebar
@@ -982,7 +1021,7 @@ export function QaSurface(props: QaSurfaceProps) {
               roleSelector={
                 access === undefined ||
                 selectedSubrole === null ||
-                adminPreview ? undefined : (
+                previewing ? undefined : (
                   <QaRoleSelector
                     roles={access.subroles}
                     selected={selectedSubrole}
@@ -998,7 +1037,8 @@ export function QaSurface(props: QaSurfaceProps) {
                         "",
                         window.location.pathname,
                       );
-                      setAdminPreview(false);
+                      clear();
+                      setSessionPreview(false);
                       setSelectedSubrole(id);
                       setSessionRole(
                         access.subroles.find((role) => role.id === id),
