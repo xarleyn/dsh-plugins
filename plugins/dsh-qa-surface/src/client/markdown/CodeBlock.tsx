@@ -1,6 +1,7 @@
-import { Fragment, memo, useCallback, useMemo, useState } from "react";
+import { Fragment, memo, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import { highlightLines } from "./highlight.js";
+import { useTransientFlag } from "./use-transient-flag.js";
 
 /** Copied-label window: long enough to read, short enough to not stick. */
 const COPIED_MS = 1200;
@@ -19,20 +20,12 @@ export const CodeBlock = memo(function CodeBlock({
   readonly lang?: string;
 }) {
   const lines = useMemo(() => highlightLines(code, lang), [code, lang]);
-  const [copied, setCopied] = useState(false);
+  const { on: copied, pulse: pulseCopied } = useTransientFlag(COPIED_MS);
   const onCopy = useCallback(() => {
     const clipboard = navigator.clipboard;
     if (clipboard === undefined) return;
-    clipboard.writeText(code).then(
-      () => {
-        setCopied(true);
-        window.setTimeout(() => {
-          setCopied(false);
-        }, COPIED_MS);
-      },
-      () => undefined,
-    );
-  }, [code]);
+    clipboard.writeText(code).then(pulseCopied, () => undefined);
+  }, [code, pulseCopied]);
   return (
     <div className="dsh-qa-md-code">
       <div className="dsh-qa-md-code__banner">

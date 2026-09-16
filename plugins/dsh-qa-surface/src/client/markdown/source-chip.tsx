@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useId } from "react";
 import type { QaSource } from "../../types.js";
 import { SourceIcon } from "../components/source-icon.js";
 import {
@@ -17,7 +18,8 @@ export interface MarkdownSourceContext {
  * One inline source footnote: a pill over the matched link or path with a
  * hover/focus preview card (title, target, snippet). A URL-backed source is
  * an anchor that opens right away; a path-backed one is a button whose click
- * the owner routes to the sources drawer.
+ * the owner routes to the sources drawer. The hover card stays out of the
+ * chip's accessible name and rides along as its description instead.
  */
 export function SourceChip({
   source,
@@ -30,6 +32,7 @@ export function SourceChip({
   readonly href?: string;
   readonly onOpen?: (source: QaSource) => void;
 }): ReactNode {
+  const cardId = useId();
   const target = source.path ?? source.uri ?? source.title;
   const face = (
     <>
@@ -37,7 +40,12 @@ export function SourceChip({
         <SourceIcon kind={source.kind} />
       </span>
       <span className="dsh-qa-srcref__label">{label}</span>
-      <span className="dsh-qa-srcref__card" aria-hidden="true">
+      <span
+        className="dsh-qa-srcref__card"
+        id={cardId}
+        role="tooltip"
+        aria-hidden="true"
+      >
         <span className="dsh-qa-srcref__card-title">
           <span className="dsh-qa-srcref__icon" data-kind={source.kind}>
             <SourceIcon kind={source.kind} />
@@ -59,6 +67,7 @@ export function SourceChip({
         href={href}
         target="_blank"
         rel="noopener noreferrer"
+        aria-describedby={cardId}
       >
         {face}
       </a>
@@ -69,6 +78,7 @@ export function SourceChip({
       type="button"
       className="dsh-qa-srcref"
       data-kind={source.kind}
+      aria-describedby={cardId}
       onClick={onOpen === undefined ? undefined : () => onOpen(source)}
     >
       {face}
@@ -118,7 +128,7 @@ export function linkChip(
   );
 }
 
-/** http(s) destinations only; the renderer never emits another protocol. */
+/** http(s)/mailto destinations only; images are narrowed further to http(s). */
 export function safeHref(value: string): string | undefined {
   try {
     const url = new URL(value);
