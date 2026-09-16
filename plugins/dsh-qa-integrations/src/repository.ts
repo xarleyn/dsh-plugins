@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync, renameSync } from "node:fs";
+import { SqliteDatabase, type SqliteMigration } from "@yadsh/dsh-plugin-kit";
 import type {
   EncryptedSecretRecord,
   IntegrationAuditEntry,
@@ -12,78 +12,272 @@ import type {
   StoredIntegration,
 } from "./types.js";
 
-const EMPTY_FILE: IntegrationFile = Object.freeze({
-  version: 1,
-  integrations: Object.freeze([]),
-  secrets: Object.freeze({}),
-  policies: Object.freeze({}),
-  audit: Object.freeze([]),
-});
+/** The store keeps this many audit rows, whatever the age bound says. */
 const MAX_AUDIT_ENTRIES = 5_000;
+/** Audit rows older than this are dropped on the next write; 0 keeps all. */
+const DEFAULT_AUDIT_RETENTION_DAYS = 90;
+
+const MIGRATIONS: readonly SqliteMigration[] = [
+  {
+    version: 1,
+    up: `
+      CREATE TABLE integrations (
+        id TEXT PRIMARY KEY,
+        owner_user_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        auth_kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        external_tenant_id TEXT,
+        external_user_id TEXT,
+        display_name TEXT,
+        capabilities_json TEXT NOT NULL,
+        secret_ref TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_validated_at TEXT,
+        last_error_code TEXT
+      );
+      -- One connection per account and provider: the pair the repository is
+      -- always addressed by, and the one that must not be duplicated.
+      CREATE UNIQUE INDEX integrations_owner_provider
+        ON integrations (owner_user_id, provider);
+
+      CREATE TABLE integration_secrets (
+        id TEXT PRIMARY KEY,
+        ciphertext TEXT NOT NULL,
+        nonce TEXT NOT NULL,
+        auth_tag TEXT NOT NULL,
+        wrapped_dek TEXT NOT NULL,
+        wrap_nonce TEXT NOT NULL,
+        wrap_auth_tag TEXT NOT NULL,
+        key_version INTEGER NOT NULL,
+        secret_type TEXT NOT NULL,
+        expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE integration_policies (
+        integration_id TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        PRIMARY KEY (integration_id, operation)
+      );
+
+      -- Append-only, and the one table that grows with usage rather than with
+      -- configuration: an audit row lands per tool call. Ordered by insertion
+      -- so the newest can be kept without parsing the log.
+      CREATE TABLE integration_audit (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL,
+        owner_user_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        result TEXT NOT NULL,
+        source_session_id TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX integration_audit_created ON integration_audit (created_at);
+    `,
+  },
+];
+
+/** SQLite hands back null-prototype records; the row shapes describe them. */
+function asRows<T>(value: unknown): T[] {
+  return value as T[];
+}
+
+interface IntegrationRow {
+  readonly id: string;
+  readonly owner_user_id: string;
+  readonly provider: string;
+  readonly auth_kind: string;
+  readonly status: string;
+  readonly external_tenant_id: string | null;
+  readonly external_user_id: string | null;
+  readonly display_name: string | null;
+  readonly capabilities_json: string;
+  readonly secret_ref: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+  readonly last_validated_at: string | null;
+  readonly last_error_code: string | null;
+}
+
+interface SecretRow {
+  readonly id: string;
+  readonly ciphertext: string;
+  readonly nonce: string;
+  readonly auth_tag: string;
+  readonly wrapped_dek: string;
+  readonly wrap_nonce: string;
+  readonly wrap_auth_tag: string;
+  readonly key_version: number;
+  readonly secret_type: string;
+  readonly expires_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+interface AuditRow {
+  readonly id: string;
+  readonly owner_user_id: string;
+  readonly provider: string;
+  readonly operation: string;
+  readonly result: string;
+  readonly source_session_id: string | null;
+  readonly created_at: string;
+}
+
+function toIntegration(row: IntegrationRow): StoredIntegration {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    provider: row.provider as IntegrationProviderId,
+    authKind: row.auth_kind as StoredIntegration["authKind"],
+    status: row.status as StoredIntegration["status"],
+    externalTenantId: row.external_tenant_id,
+    externalUserId: row.external_user_id,
+    displayName: row.display_name,
+    capabilities: Object.freeze(
+      JSON.parse(row.capabilities_json) as IntegrationCapability[],
+    ),
+    secretRef: row.secret_ref,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastValidatedAt: row.last_validated_at,
+    lastErrorCode: row.last_error_code,
+  };
+}
+
+function toSecret(row: SecretRow): EncryptedSecretRecord {
+  return {
+    id: row.id,
+    ciphertext: row.ciphertext,
+    nonce: row.nonce,
+    authTag: row.auth_tag,
+    wrappedDek: row.wrapped_dek,
+    wrapNonce: row.wrap_nonce,
+    wrapAuthTag: row.wrap_auth_tag,
+    keyVersion: row.key_version,
+    secretType: row.secret_type as EncryptedSecretRecord["secretType"],
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toAuditEntry(row: AuditRow): IntegrationAuditEntry {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    provider: row.provider as IntegrationProviderId,
+    operation: row.operation,
+    result: row.result as IntegrationAuditEntry["result"],
+    sourceSessionId: row.source_session_id,
+    createdAt: row.created_at,
+  };
+}
 
 function policyKey(integrationId: string, operation: string): string {
   return `${integrationId}:${operation}`;
 }
 
-/** Durable plugin-owned store. Every lookup starts from principal + provider. */
+/**
+ * Durable plugin-owned store, as tables. Every lookup starts from principal +
+ * provider, which is the pair the unique index covers, so a lookup reads the
+ * one row it needs instead of parsing the whole store — including the audit
+ * log, which was inside the same document as the connections.
+ *
+ * The audit trail is the part that grows with usage, so it is bounded twice
+ * over: a hard row count, and an age bound the operator can set. Rows are
+ * deleted as a set on the next write rather than rewritten per row.
+ */
 export class IntegrationRepository {
-  constructor(private readonly filePath: string) {}
+  private readonly storage: SqliteDatabase;
+  private readonly auditRetentionDays: number;
 
+  constructor(
+    filePath: string,
+    options: { readonly auditRetentionDays?: number } = {},
+  ) {
+    this.storage = new SqliteDatabase(filePath, MIGRATIONS);
+    this.auditRetentionDays =
+      options.auditRetentionDays ?? DEFAULT_AUDIT_RETENTION_DAYS;
+  }
+
+  close(): void {
+    this.storage.close();
+  }
+
+  /** The whole store, for maintenance surfaces that need the aggregate. */
   read(): IntegrationFile {
-    try {
-      const parsed: unknown = JSON.parse(readFileSync(this.filePath, "utf8"));
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        (parsed as IntegrationFile).version !== 1 ||
-        !Array.isArray((parsed as IntegrationFile).integrations)
-      ) {
-        throw new Error("unrecognized integrations store");
-      }
-      const file = parsed as IntegrationFile;
-      return {
-        version: 1,
-        integrations: file.integrations,
-        secrets: file.secrets ?? {},
-        policies: file.policies ?? {},
-        audit: file.audit ?? [],
-      };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return EMPTY_FILE;
-      throw error;
-    }
+    const integrations = asRows<IntegrationRow>(
+      this.storage.db.prepare("SELECT * FROM integrations").all(),
+    ).map(toIntegration);
+    const secrets = asRows<SecretRow>(
+      this.storage.db.prepare("SELECT * FROM integration_secrets").all(),
+    ).map(toSecret);
+    const policies = asRows<{
+      integration_id: string;
+      operation: string;
+      mode: string;
+    }>(this.storage.db.prepare("SELECT * FROM integration_policies").all());
+    const audit = asRows<AuditRow>(
+      this.storage.db
+        .prepare("SELECT * FROM integration_audit ORDER BY seq")
+        .all(),
+    ).map(toAuditEntry);
+    return {
+      version: 1,
+      integrations,
+      secrets: Object.fromEntries(secrets.map((secret) => [secret.id, secret])),
+      policies: Object.fromEntries(
+        policies.map((policy) => [
+          policyKey(policy.integration_id, policy.operation),
+          policy.mode as IntegrationPolicyMode,
+        ]),
+      ),
+      audit,
+    };
   }
 
   find(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
   ): StoredIntegration | undefined {
-    return this.read().integrations.find(
-      (item) =>
-        item.ownerUserId === principal.userId && item.provider === provider,
-    );
+    const row = this.storage.db
+      .prepare(
+        "SELECT * FROM integrations WHERE owner_user_id = ? AND provider = ?",
+      )
+      .get(principal.userId, provider) as IntegrationRow | undefined;
+    return row === undefined ? undefined : toIntegration(row);
   }
 
   secretFor(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
   ): EncryptedSecretRecord | undefined {
-    const file = this.read();
-    const integration = file.integrations.find(
-      (item) =>
-        item.ownerUserId === principal.userId && item.provider === provider,
-    );
-    return integration?.secretRef === null ||
-      integration?.secretRef === undefined
-      ? undefined
-      : file.secrets[integration.secretRef];
+    const row = this.storage.db
+      .prepare(
+        `SELECT s.* FROM integration_secrets s
+           JOIN integrations i ON i.secret_ref = s.id
+          WHERE i.owner_user_id = ? AND i.provider = ?`,
+      )
+      .get(principal.userId, provider) as SecretRow | undefined;
+    return row === undefined ? undefined : toSecret(row);
   }
 
   policy(
     integration: StoredIntegration,
     operation: IntegrationCapability,
   ): IntegrationPolicyMode {
-    return this.read().policies[policyKey(integration.id, operation)] ?? "deny";
+    const row = this.storage.db
+      .prepare(
+        "SELECT mode FROM integration_policies WHERE integration_id = ? AND operation = ?",
+      )
+      .get(integration.id, operation) as { mode: string } | undefined;
+    return (row?.mode as IntegrationPolicyMode | undefined) ?? "deny";
   }
 
   connect(options: {
@@ -95,49 +289,81 @@ export class IntegrationRepository {
     displayName: string;
     capabilities: readonly IntegrationCapability[];
   }): StoredIntegration {
-    const file = this.read();
-    const existing = file.integrations.find(
-      (item) =>
-        item.ownerUserId === options.principal.userId &&
-        item.provider === options.provider,
-    );
-    const now = new Date().toISOString();
-    const integration: StoredIntegration = Object.freeze({
-      id: existing?.id ?? randomUUID(),
-      ownerUserId: options.principal.userId,
-      provider: options.provider,
-      authKind: "token",
-      status: "connected",
-      externalTenantId: options.tenantId,
-      externalUserId: options.externalUserId,
-      displayName: options.displayName,
-      capabilities: Object.freeze([...options.capabilities]),
-      secretRef: options.secret.id,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      lastValidatedAt: now,
-      lastErrorCode: null,
+    return this.storage.transaction(() => {
+      const existing = this.find(options.principal, options.provider);
+      const now = new Date().toISOString();
+      const integration: StoredIntegration = Object.freeze({
+        id: existing?.id ?? randomUUID(),
+        ownerUserId: options.principal.userId,
+        provider: options.provider,
+        authKind: "token",
+        status: "connected",
+        externalTenantId: options.tenantId,
+        externalUserId: options.externalUserId,
+        displayName: options.displayName,
+        capabilities: Object.freeze([...options.capabilities]),
+        secretRef: options.secret.id,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+        lastValidatedAt: now,
+        lastErrorCode: null,
+      });
+      // A reconnect replaces the credential: the previous one is dropped with
+      // the row that referenced it, so no stale secret stays readable.
+      if (
+        existing?.secretRef !== null &&
+        existing?.secretRef !== undefined &&
+        existing.secretRef !== options.secret.id
+      ) {
+        this.storage.db
+          .prepare("DELETE FROM integration_secrets WHERE id = ?")
+          .run(existing.secretRef);
+      }
+      this.writeSecret(options.secret);
+      this.storage.db
+        .prepare(
+          `INSERT INTO integrations
+             (id, owner_user_id, provider, auth_kind, status, external_tenant_id,
+              external_user_id, display_name, capabilities_json, secret_ref,
+              created_at, updated_at, last_validated_at, last_error_code)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             status = excluded.status,
+             external_tenant_id = excluded.external_tenant_id,
+             external_user_id = excluded.external_user_id,
+             display_name = excluded.display_name,
+             capabilities_json = excluded.capabilities_json,
+             secret_ref = excluded.secret_ref,
+             updated_at = excluded.updated_at,
+             last_validated_at = excluded.last_validated_at,
+             last_error_code = excluded.last_error_code`,
+        )
+        .run(
+          integration.id,
+          integration.ownerUserId,
+          integration.provider,
+          integration.authKind,
+          integration.status,
+          integration.externalTenantId,
+          integration.externalUserId,
+          integration.displayName,
+          JSON.stringify(integration.capabilities),
+          integration.secretRef,
+          integration.createdAt,
+          integration.updatedAt,
+          integration.lastValidatedAt,
+          integration.lastErrorCode,
+        );
+      const setPolicy = this.storage.db.prepare(
+        `INSERT INTO integration_policies (integration_id, operation, mode)
+         VALUES (?, ?, 'allow')
+         ON CONFLICT(integration_id, operation) DO UPDATE SET mode = 'allow'`,
+      );
+      for (const capability of options.capabilities) {
+        setPolicy.run(integration.id, capability);
+      }
+      return integration;
     });
-    const integrations = file.integrations.filter(
-      (item) =>
-        item.ownerUserId !== options.principal.userId ||
-        item.provider !== options.provider,
-    );
-    const secrets = { ...file.secrets, [options.secret.id]: options.secret };
-    if (existing?.secretRef !== null && existing?.secretRef !== undefined) {
-      delete secrets[existing.secretRef];
-    }
-    const policies = { ...file.policies };
-    for (const capability of options.capabilities) {
-      policies[policyKey(integration.id, capability)] = "allow";
-    }
-    this.persist({
-      ...file,
-      integrations: [...integrations, integration],
-      secrets,
-      policies,
-    });
-    return integration;
   }
 
   updateValidation(
@@ -147,25 +373,29 @@ export class IntegrationRepository {
     errorCode: string | null,
     capabilities?: readonly IntegrationCapability[],
   ): void {
-    const file = this.read();
-    const now = new Date().toISOString();
-    this.persist({
-      ...file,
-      integrations: file.integrations.map((item) =>
-        item.ownerUserId === principal.userId && item.provider === provider
-          ? {
-              ...item,
-              status: success ? "connected" : "error",
-              updatedAt: now,
-              lastValidatedAt: success ? now : item.lastValidatedAt,
-              lastErrorCode: errorCode,
-              capabilities:
-                success && capabilities !== undefined
-                  ? Object.freeze([...capabilities])
-                  : item.capabilities,
-            }
-          : item,
-      ),
+    this.storage.transaction(() => {
+      const existing = this.find(principal, provider);
+      if (existing === undefined) return;
+      const now = new Date().toISOString();
+      this.storage.db
+        .prepare(
+          `UPDATE integrations
+              SET status = ?, updated_at = ?, last_validated_at = ?,
+                  last_error_code = ?, capabilities_json = ?
+            WHERE id = ?`,
+        )
+        .run(
+          success ? "connected" : "error",
+          now,
+          success ? now : existing.lastValidatedAt,
+          errorCode,
+          JSON.stringify(
+            success && capabilities !== undefined
+              ? [...capabilities]
+              : existing.capabilities,
+          ),
+          existing.id,
+        );
     });
   }
 
@@ -175,18 +405,16 @@ export class IntegrationRepository {
     operation: IntegrationCapability,
     mode: IntegrationPolicyMode,
   ): void {
-    const file = this.read();
-    const integration = file.integrations.find(
-      (item) =>
-        item.ownerUserId === principal.userId && item.provider === provider,
-    );
-    if (integration === undefined) return;
-    this.persist({
-      ...file,
-      policies: {
-        ...file.policies,
-        [policyKey(integration.id, operation)]: mode,
-      },
+    this.storage.transaction(() => {
+      const integration = this.find(principal, provider);
+      if (integration === undefined) return;
+      this.storage.db
+        .prepare(
+          `INSERT INTO integration_policies (integration_id, operation, mode)
+           VALUES (?, ?, ?)
+           ON CONFLICT(integration_id, operation) DO UPDATE SET mode = excluded.mode`,
+        )
+        .run(integration.id, operation, mode);
     });
   }
 
@@ -194,46 +422,218 @@ export class IntegrationRepository {
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
   ): boolean {
-    const file = this.read();
-    const integration = file.integrations.find(
-      (item) =>
-        item.ownerUserId === principal.userId && item.provider === provider,
-    );
-    if (integration === undefined) return false;
-    const secrets = { ...file.secrets };
-    if (integration.secretRef !== null) delete secrets[integration.secretRef];
-    const policies = Object.fromEntries(
-      Object.entries(file.policies).filter(
-        ([key]) => !key.startsWith(`${integration.id}:`),
-      ),
-    );
-    this.persist({
-      ...file,
-      integrations: file.integrations.filter(
-        (item) => item.id !== integration.id,
-      ),
-      secrets,
-      policies,
+    return this.storage.transaction(() => {
+      const integration = this.find(principal, provider);
+      if (integration === undefined) return false;
+      this.storage.db
+        .prepare("DELETE FROM integration_policies WHERE integration_id = ?")
+        .run(integration.id);
+      this.storage.db
+        .prepare("DELETE FROM integrations WHERE id = ?")
+        .run(integration.id);
+      if (integration.secretRef !== null) {
+        this.storage.db
+          .prepare("DELETE FROM integration_secrets WHERE id = ?")
+          .run(integration.secretRef);
+      }
+      return true;
     });
-    return true;
   }
 
   audit(entry: Omit<IntegrationAuditEntry, "id" | "createdAt">): void {
-    const file = this.read();
-    const audit = [
-      ...file.audit,
-      { ...entry, id: randomUUID(), createdAt: new Date().toISOString() },
-    ].slice(-MAX_AUDIT_ENTRIES);
-    this.persist({ ...file, audit });
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `INSERT INTO integration_audit
+             (id, owner_user_id, provider, operation, result, source_session_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          randomUUID(),
+          entry.ownerUserId,
+          entry.provider,
+          entry.operation,
+          entry.result,
+          entry.sourceSessionId,
+          new Date().toISOString(),
+        );
+      this.applyAuditRetention();
+    });
   }
 
-  private persist(file: IntegrationFile): void {
-    mkdirSync(path.dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, {
-      encoding: "utf8",
-      mode: 0o600,
+  /**
+   * Import a pre-SQLite `qa-integrations.json` exactly once, then rename it
+   * aside. A database that already holds a connection is never overwritten by
+   * a leftover file: the operator's live credential wins.
+   */
+  importLegacyFile(legacyFilePath: string | undefined): void {
+    if (legacyFilePath === undefined) return;
+    let raw: string;
+    try {
+      raw = readFileSync(legacyFilePath, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as IntegrationFile).version !== 1 ||
+      !Array.isArray((parsed as IntegrationFile).integrations)
+    ) {
+      throw new Error(
+        `qa-integrations: ${legacyFilePath} is not a recognizable integrations store; refusing to import it`,
+      );
+    }
+    const file = parsed as IntegrationFile;
+    const existing = this.storage.db
+      .prepare("SELECT COUNT(*) AS count FROM integrations")
+      .get() as { count: number };
+    if (existing.count > 0) return;
+    this.storage.transaction(() => {
+      for (const secret of Object.values(file.secrets ?? {})) {
+        this.writeSecret(secret);
+      }
+      const insert = this.storage.db.prepare(
+        `INSERT INTO integrations
+           (id, owner_user_id, provider, auth_kind, status, external_tenant_id,
+            external_user_id, display_name, capabilities_json, secret_ref,
+            created_at, updated_at, last_validated_at, last_error_code)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const item of file.integrations) {
+        insert.run(
+          item.id,
+          item.ownerUserId,
+          item.provider,
+          item.authKind,
+          item.status,
+          item.externalTenantId,
+          item.externalUserId,
+          item.displayName,
+          JSON.stringify(item.capabilities ?? []),
+          item.secretRef,
+          item.createdAt,
+          item.updatedAt,
+          item.lastValidatedAt,
+          item.lastErrorCode,
+        );
+      }
+      const setPolicy = this.storage.db.prepare(
+        `INSERT INTO integration_policies (integration_id, operation, mode)
+         VALUES (?, ?, ?)
+         ON CONFLICT(integration_id, operation) DO UPDATE SET mode = excluded.mode`,
+      );
+      for (const [key, mode] of Object.entries(file.policies ?? {})) {
+        const separator = key.indexOf(":");
+        if (separator <= 0) continue;
+        setPolicy.run(key.slice(0, separator), key.slice(separator + 1), mode);
+      }
+      const insertAudit = this.storage.db.prepare(
+        `INSERT INTO integration_audit
+           (id, owner_user_id, provider, operation, result, source_session_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const entry of file.audit ?? []) {
+        insertAudit.run(
+          entry.id,
+          entry.ownerUserId,
+          entry.provider,
+          entry.operation,
+          entry.result,
+          entry.sourceSessionId,
+          entry.createdAt,
+        );
+      }
+      this.applyAuditRetention();
+      this.assertImportArrived(file);
     });
-    renameSync(temporary, this.filePath);
+    renameSync(
+      legacyFilePath,
+      `${legacyFilePath}.migrated-${new Date().toISOString().replace(/[:.]/gu, "-")}`,
+    );
+  }
+
+  private assertImportArrived(file: IntegrationFile): void {
+    const integrations = this.storage.db
+      .prepare("SELECT COUNT(*) AS count FROM integrations")
+      .get() as { count: number };
+    const secrets = this.storage.db
+      .prepare("SELECT COUNT(*) AS count FROM integration_secrets")
+      .get() as { count: number };
+    const problems: string[] = [];
+    if (integrations.count !== file.integrations.length) {
+      problems.push(
+        `expected ${file.integrations.length} connections, imported ${integrations.count}`,
+      );
+    }
+    const expectedSecrets = Object.keys(file.secrets ?? {}).length;
+    if (secrets.count !== expectedSecrets) {
+      problems.push(
+        `expected ${expectedSecrets} credentials, imported ${secrets.count}`,
+      );
+    }
+    if (problems.length > 0) {
+      throw new Error(
+        `qa-integrations: importing the pre-SQLite store failed verification (${problems.join("; ")}); the file is left in place and the import was rolled back`,
+      );
+    }
+  }
+
+  private writeSecret(secret: EncryptedSecretRecord): void {
+    this.storage.db
+      .prepare(
+        `INSERT INTO integration_secrets
+           (id, ciphertext, nonce, auth_tag, wrapped_dek, wrap_nonce,
+            wrap_auth_tag, key_version, secret_type, expires_at, created_at,
+            updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           ciphertext = excluded.ciphertext,
+           nonce = excluded.nonce,
+           auth_tag = excluded.auth_tag,
+           wrapped_dek = excluded.wrapped_dek,
+           wrap_nonce = excluded.wrap_nonce,
+           wrap_auth_tag = excluded.wrap_auth_tag,
+           key_version = excluded.key_version,
+           secret_type = excluded.secret_type,
+           expires_at = excluded.expires_at,
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        secret.id,
+        secret.ciphertext,
+        secret.nonce,
+        secret.authTag,
+        secret.wrappedDek,
+        secret.wrapNonce,
+        secret.wrapAuthTag,
+        secret.keyVersion,
+        secret.secretType,
+        secret.expiresAt,
+        secret.createdAt,
+        secret.updatedAt,
+      );
+  }
+
+  /** Keep the newest rows, then the youngest ones. */
+  private applyAuditRetention(): void {
+    if (this.auditRetentionDays > 0) {
+      const cutoff = new Date(
+        Date.now() - this.auditRetentionDays * 86_400_000,
+      ).toISOString();
+      this.storage.db
+        .prepare("DELETE FROM integration_audit WHERE created_at < ?")
+        .run(cutoff);
+    }
+    this.storage.db
+      .prepare(
+        `DELETE FROM integration_audit
+          WHERE seq <= (
+            SELECT MAX(seq) - ? FROM integration_audit
+          )`,
+      )
+      .run(MAX_AUDIT_ENTRIES);
   }
 }
