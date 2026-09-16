@@ -1,5 +1,11 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { createTreeWithEmptyWorkspace } from "@nx/devkit/testing";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import generatePlugin from "../src/index";
 
 function createTestTree() {
@@ -69,6 +75,7 @@ describe("dsh-plugin generator", () => {
     expect(packageJson.dependencies).not.toHaveProperty(
       "@yadsh/dsh-plugin-kit",
     );
+    expect(packageJson.dependencies).not.toHaveProperty("@yadsh/dsh-ui-kit");
     expect(tree.exists(`${root}/src/index.ts`)).toBe(true);
     expect(tree.exists(`${root}/src/logger.ts`)).toBe(false);
     expect(tree.exists(`${root}/src/logging`)).toBe(false);
@@ -177,11 +184,62 @@ describe("dsh-plugin generator", () => {
     );
   });
 
-  it("does not invent a UI contract when ui-kit is absent", async () => {
-    const tree = createTestTree();
+  describe("generated verify-package.mjs", () => {
+    const fixtures: string[] = [];
 
-    await expect(
-      generatePlugin(tree, { name: "ui-plugin", withUi: true }),
-    ).rejects.toThrow("requires packages/ui-kit");
+    afterAll(async () => {
+      for (const directory of fixtures.splice(0)) {
+        await rm(directory, { recursive: true, force: true });
+      }
+    });
+
+    async function materializeGeneratedPlugin() {
+      const tree = createTestTree();
+      tree.write("LICENSE", "MIT License\n");
+      await generatePlugin(tree, { name: "example-plugin" });
+
+      const root = path.join("plugins", "dsh-example-plugin");
+      const output = mkdtempSync(path.join(tmpdir(), "dsh-generated-"));
+      fixtures.push(output);
+      for (const file of [
+        "package.json",
+        "cordis.patch.yml",
+        "README.md",
+        "LICENSE",
+        path.join("scripts", "verify-package.mjs"),
+      ]) {
+        const target = path.join(output, root, file);
+        mkdirSync(path.dirname(target), { recursive: true });
+        writeFileSync(target, tree.read(path.join(root, file), "utf8") ?? "");
+      }
+      const lib = path.join(output, root, "lib");
+      mkdirSync(lib, { recursive: true });
+      writeFileSync(path.join(lib, "index.js"), "export {};\n");
+      writeFileSync(path.join(lib, "index.d.ts"), "export {};\n");
+      return path.join(output, root);
+    }
+
+    it("is free of control characters and keeps a real word boundary", async () => {
+      const root = await materializeGeneratedPlugin();
+      const verifier = readFileSync(
+        path.join(root, "scripts", "verify-package.mjs"),
+        "utf8",
+      );
+      // A backspace (U+0008) inside the emitted template literal would leave
+      // the patch-id gate unable to match any cordis.patch.yml.
+      // eslint-disable-next-line no-control-regex -- detecting control characters is the point
+      expect(verifier).not.toMatch(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/u);
+      expect(verifier).toContain("/id: dsh-example-plugin\\b/u");
+    });
+
+    it("parses and passes against the generated plugin tree", async () => {
+      const root = await materializeGeneratedPlugin();
+      const verifier = path.join(root, "scripts", "verify-package.mjs");
+      execFileSync(process.execPath, ["--check", verifier]);
+      const output = execFileSync(process.execPath, [verifier], {
+        encoding: "utf8",
+      });
+      expect(output).toContain("verify-package: all gates passed");
+    });
   });
 });

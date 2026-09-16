@@ -3,6 +3,5 @@ export interface Schema {
   client?: boolean;
   description?: string;
   scope?: string;
-  withUi?: boolean;
   withTests?: boolean;
 }
