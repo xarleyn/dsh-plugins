@@ -57,6 +57,7 @@ export function normalizeToolSelection(
     return Object.freeze({
       always: uniqueIds(value, label),
       skillGrantable: Object.freeze([]) as readonly string[],
+      deny: Object.freeze([]) as readonly string[],
     });
   }
   const selection = value as QaToolSelection | undefined;
@@ -66,6 +67,7 @@ export function normalizeToolSelection(
       selection?.skillGrantable ?? [],
       `${label}.skillGrantable`,
     ),
+    deny: uniqueIds(selection?.deny ?? [], `${label}.deny`),
   });
 }
 
@@ -211,18 +213,26 @@ export function roleToolSelection(
     (candidate) => candidate.id === subroleId && candidate.enabled,
   );
   if (role === undefined) throw new TypeError("QA subrole is unavailable");
+  // A denial from either layer wins over every grant, including the pinned
+  // system tools: that is the only way an administrator can withdraw a name
+  // the deployment hands out to every profile. It narrows the grant ceiling
+  // too, so a skill cannot hand back what the role takes away.
+  const denied = new Set([
+    ...(config.common.tools.deny ?? []),
+    ...(role.capabilities.tools.deny ?? []),
+  ]);
+  const granted = (values: readonly string[]): readonly string[] =>
+    uniqueIds(values, "tools").filter((name) => !denied.has(name));
   return Object.freeze({
-    always: uniqueIds(
-      [...config.common.tools.always, ...role.capabilities.tools.always],
-      "tools.always",
-    ),
-    skillGrantable: uniqueIds(
-      [
-        ...config.common.tools.skillGrantable,
-        ...role.capabilities.tools.skillGrantable,
-      ],
-      "tools.skillGrantable",
-    ),
+    always: granted([
+      ...config.common.tools.always,
+      ...role.capabilities.tools.always,
+    ]),
+    skillGrantable: granted([
+      ...config.common.tools.skillGrantable,
+      ...role.capabilities.tools.skillGrantable,
+    ]),
+    deny: Object.freeze([...denied]),
   });
 }
 
@@ -359,7 +369,12 @@ export function resolveCapabilityPolicy({
   const systemToolIds = uniqueIds(systemTools, "system tools");
   const systemSkillIds = uniqueIds(systemSkills, "system skills");
   const selection = roleToolSelection(config, role.id);
-  const configuredBase = [...new Set([...systemToolIds, ...selection.always])];
+  // The denial reaches the system tools too: the deployment pins them for every
+  // profile, and withdrawing one is the only reason this list exists.
+  const denied = new Set(selection.deny ?? []);
+  const configuredBase = [
+    ...new Set([...systemToolIds, ...selection.always]),
+  ].filter((name) => !denied.has(name));
   const configuredGrantable = selection.skillGrantable;
   const { visible: configuredSkills, declared: declaredSkills } =
     resolveVisibleSkills(

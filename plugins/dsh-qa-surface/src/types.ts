@@ -59,6 +59,17 @@ export type QaPermission =
 export interface QaToolSelection {
   readonly always: readonly string[];
   readonly skillGrantable: readonly string[];
+  /**
+   * Names this layer takes away, whatever grants them.
+   *
+   * The deployment's pinned tools and the Common layer reach every role, so
+   * without this a system tool could only be withdrawn by editing the profile
+   * and restarting the Host. A denial beats every grant — system, Common, the
+   * role's own list and every skill — and it narrows the ceiling a delegated
+   * assistant is held to, so one checkbox takes a tool away from a role and
+   * from the experts that role may spawn.
+   */
+  readonly deny?: readonly string[];
 }
 
 /** Tool/skill selection shared by the common layer and one QA subrole. */
@@ -1589,6 +1600,8 @@ export interface QaAdminUserDetail {
     readonly tools: number;
     /** The role's ceiling for tools a loaded skill requires. */
     readonly grantableTools: number;
+    /** Tools the profile withdraws, whatever else grants them. */
+    readonly deniedTools: number;
     readonly skills: number;
   }[];
   readonly activity: {

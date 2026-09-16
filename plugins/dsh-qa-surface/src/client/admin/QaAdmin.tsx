@@ -23,12 +23,16 @@ import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
 
 type Page = QaAdminRoute["page"];
 type CapabilityType = "tool" | "skill";
-/** The two tool classes: visible immediately, or only through a loaded skill. */
-type ToolBucket = "always" | "skillGrantable";
+/**
+ * The three tool classes: visible immediately, reachable through a loaded
+ * skill, or withdrawn from the profile whatever grants them.
+ */
+type ToolBucket = "always" | "skillGrantable" | "deny";
 
 const TOOL_BUCKET_LABELS: Record<ToolBucket, string> = {
   always: "Всегда доступны",
   skillGrantable: "Доступны через навыки",
+  deny: "Запрещённые",
 };
 
 /**
@@ -180,6 +184,7 @@ function bucketOf(
   selection: QaCapabilitySelection,
   bucket: ToolBucket,
 ): readonly string[] {
+  if (bucket === "deny") return selection.tools.deny ?? [];
   return selection.tools[bucket];
 }
 
@@ -346,15 +351,22 @@ function roleEffective(
   },
   roleId: string,
 ) {
+  // A denial beats every grant, the pinned system set included: it is the one
+  // way an administrator withdraws a tool the deployment hands to everyone.
+  const denied = unique([
+    ...(props.common.tools.deny ?? []),
+    ...(props.role.tools.deny ?? []),
+  ]);
+  const withheld = new Set(denied);
   const alwaysTools = unique([
     ...props.system.tools.always,
     ...props.common.tools.always,
     ...props.role.tools.always,
-  ]);
+  ]).filter((tool) => !withheld.has(tool));
   const grantable = unique([
     ...props.common.tools.skillGrantable,
     ...props.role.tools.skillGrantable,
-  ]);
+  ]).filter((tool) => !withheld.has(tool));
   const via = new Map<string, string[]>();
   for (const skill of props.skills) {
     const grant = skill.roles.find(({ roleId: id }) => id === roleId);
@@ -373,7 +385,7 @@ function roleEffective(
       skill.roles.some(({ roleId: id, declared }) => id === roleId && declared),
     )
     .map(({ name }) => name);
-  return { alwaysTools, grantable, via, managed, declared };
+  return { alwaysTools, grantable, denied, via, managed, declared };
 }
 
 function RoleEditor(props: {
@@ -538,6 +550,21 @@ function RoleEditor(props: {
               </div>
             )}
           </section>
+          <section>
+            <h3>{TOOL_BUCKET_LABELS.deny}</h3>
+            <p>
+              Инструменты, которые снимаются с этой саброли, даже если их выдают
+              системный набор стенда, общие возможности или навык. Запрет
+              сильнее любой выдачи и сужает набор, доступный делегированным
+              экспертам.
+            </p>
+            <CapabilityPicker
+              type="tool"
+              catalog={props.catalog}
+              selected={draft.capabilities.tools.deny ?? []}
+              onChange={(values) => setTools("deny", values)}
+            />
+          </section>
         </div>
       ) : tab === "skills" ? (
         <div className="dsh-qa-role-skills">
@@ -623,6 +650,19 @@ function RoleEditor(props: {
               </ul>
             )}
           </section>
+          {effective.denied.length === 0 ? null : (
+            <section>
+              <h4>{TOOL_BUCKET_LABELS.deny}</h4>
+              <ul className="dsh-qa-effective__list">
+                {effective.denied.map((tool) => (
+                  <li key={tool}>
+                    <code>{tool}</code>
+                    <span>Снят с этой саброли</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           <section>
             <h4>Навыки</h4>
             <ul className="dsh-qa-effective__list">
@@ -1208,6 +1248,9 @@ export function QaAdmin(props: {
                         +{role.capabilities.tools.skillGrantable.length} по
                         навыкам
                       </span>
+                      <span>
+                        {(role.capabilities.tools.deny ?? []).length} запрещено
+                      </span>
                       <span>{role.capabilities.skills.length} навыков</span>
                       <span>
                         +{" "}
@@ -1350,6 +1393,15 @@ export function QaAdmin(props: {
                     onClick={() => setCommonToolBucket("skillGrantable")}
                   >
                     {TOOL_BUCKET_LABELS.skillGrantable}
+                  </button>
+                  <button
+                    type="button"
+                    aria-current={
+                      commonToolBucket === "deny" ? "page" : undefined
+                    }
+                    onClick={() => setCommonToolBucket("deny")}
+                  >
+                    {TOOL_BUCKET_LABELS.deny}
                   </button>
                 </div>
               ) : null}

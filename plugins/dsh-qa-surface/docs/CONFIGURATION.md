@@ -480,18 +480,29 @@ skill catalog/loader. A newly installed capability is therefore unavailable
 until explicitly selected. Missing capability IDs remain in the policy file
 and appear with a warning in the editor.
 
-Tools are listed in two classes per role (and per Common layer):
+Tools are listed in three classes per role (and per Common layer):
 
 ```yaml
 common:
   tools:
     always: [web_search]          # visible from the first model step
     skillGrantable: [browser_open] # only after a skill that requires it loads
+    deny: [dsh_git_blame]          # withdrawn whatever grants it
 ```
 
 A flat `tools: [web_search]` from an older policy file is read as `always`.
 `skillGrantable` is a ceiling: an activated skill receives the intersection of
 its own requirements with it, and never anything else.
+
+`deny` is what takes a tool away. The deployment's pinned `toolPolicy.allow`
+list reaches every profile, so a pinned name — the read-only `dsh_git_*`
+provenance tools, for instance — cannot be withdrawn by unchecking it in a
+role. A denial beats every grant, the pinned set and the Common layer included,
+and it narrows the skill-grantable ceiling too, so a skill cannot hand back
+what the profile withdraws. A denial in the Common layer applies to every
+profile; one in a role applies to that role. Both are inherited by the agents
+a chat delegates to: the conversation has one ceiling, and a subagent or a
+domain expert can reach anything inside it, never beyond it.
 
 A skill declares its audience and requirements in its own frontmatter:
 

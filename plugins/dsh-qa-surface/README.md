@@ -727,14 +727,23 @@ catalog and rejects direct out-of-policy loads with `SKILL_NOT_AVAILABLE`.
 The browser selector is hidden for a single assigned role. Switching roles
 after a meaningful turn requires confirmation and creates a new conversation.
 
-### Tools that arrive with a skill
+### Tools that arrive with a skill, and tools taken away
 
-A role's tools are split into two classes. `always` tools are visible from the
-first model step. `skillGrantable` tools are a ceiling, not a grant: they stay
-out of the model's tool list until an activated skill requires them, which
+A role's tools are split into three classes. `always` tools are visible from
+the first model step. `skillGrantable` tools are a ceiling, not a grant: they
+stay out of the model's tool list until an activated skill requires them, which
 keeps a large catalog such as browser automation out of every step of every
 conversation. An older flat `tools: []` list is read as `always`, so an
 upgraded deployment never hands out more than it did before.
+
+`deny` withdraws a tool. The deployment's pinned `toolPolicy.allow` reaches
+every profile, so a pinned name cannot simply be unchecked in a role; a denial
+beats it, beats the Common layer and beats every skill, and it narrows the
+ceiling below. Because the ceiling is a property of the conversation rather
+than of one agent, the agents a chat delegates to — subagents and the named
+domain experts — are held to it as well: they may reach anything the role can
+reach, including tools a skill would grant, and nothing beyond it. Withdrawing
+`dsh_git_*` from a role therefore withdraws it from that role's experts too.
 
 ### Skills declare their own audience
 
