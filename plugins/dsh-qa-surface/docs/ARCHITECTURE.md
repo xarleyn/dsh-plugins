@@ -148,7 +148,7 @@ composes them.
 Two boundaries are worth stating explicitly:
 
 * **Conversations come from two sources.** The deployment's own reservation
-  index (`qa-accounts.json`) always knows which chats exist and what role and
+  index (`qa-accounts.db`) always knows which chats exist and what role and
   capabilities they were created with; the stored log knows what was said.
   `session-log.ts` joins them and reads the optional session-query service
   structurally, so the package keeps loading on a deployment that serves no

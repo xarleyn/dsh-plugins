@@ -214,11 +214,11 @@ the `.gitignore` fix that stops any of these files from being staged.
 
 | Phase | Content | State |
 | --- | --- | --- |
-| 1 | Sources: shard per session, retention, legacy split | landed (`36fdb91`) |
-| 2a | `SqliteDatabase` helper in `packages/plugin-kit` + tests | landed (`015af1c`, `0d40aa5`) |
-| 2b | Accounts: ownership eviction, snapshot dedup | landed (`09bebd9`) |
-| 2c | Accounts: move the store onto SQLite | next |
-| 3 | Integrations: SQLite, batched audit, retention | |
+| 1 | Sources: shard per session, retention, legacy split | landed (`ce4ba09`) |
+| 2a | `SqliteDatabase` helper in `packages/plugin-kit` + tests | landed (`015af1c`, `0d40aa5`, `1778812`) |
+| 2b | Accounts: ownership eviction, snapshot dedup | landed (`a8626d1`) |
+| 2c | Accounts: the store runs on SQLite, importing the old file | landed |
+| 3 | Integrations: SQLite, batched audit, retention | next |
 | 4 | Capability policies and quality: SQLite, retention | |
 | 5 | CLI, ops script, deploy kits, changelog, docs | |
 

@@ -23,7 +23,7 @@ function io() {
 function file(): string {
   return path.join(
     mkdtempSync(path.join(tmpdir(), "qa-accounts-cli-")),
-    "qa-accounts.json",
+    "qa-accounts.db",
   );
 }
 
