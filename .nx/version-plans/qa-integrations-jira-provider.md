@@ -1,0 +1,57 @@
+---
+"@yadsh/dsh-qa-integrations": minor
+---
+
+Add a fourth integration provider, `jira`. A QA user connects their own
+Atlassian account with an API token and gets a read-only catalog of eight tools:
+the connected identity and site; issue search over projects, statuses,
+assignee/reporter, labels and dates; one issue with its description, relations,
+attachment metadata, a comment count and its custom fields; the comments of an
+issue with their visibility; attachment metadata; the transitions available to
+the connected user; one project; and the site's field catalog.
+
+Sites are operator configuration, never user input: the connect form picks from
+the configured list and sends the e-mail and the token alone, so an arbitrary
+hostname can never reach the broker. A site address is validated at config load
+(HTTPS unless a deployment opts into plain HTTP for a lab, no credentials or
+query in the URL, stable id) and is not stored in the credential — it is
+re-resolved on every call, so removing or repointing a site closes the
+connections made against it instead of silently redirecting a token. The token
+travels as HTTP Basic over `email:token` in the `Authorization` header of a GET
+that never follows a redirect, and the credential is refused outright when it is
+not an Atlassian API token — a pasted URL, a `email:token` pair or a YAML snippet
+never leaves the process.
+
+The model gets no JQL. Every tool carries typed filters, and the provider builds
+one query from them: values are quoted as JQL string literals with the quote and
+the backslash escaped, control characters are refused, project and issue keys are
+shape-checked, a name where Jira needs an account id is refused (Jira would
+answer an empty page instead), labels are ANDed, and a search without a single
+filter is refused rather than turned into "every issue of the site". Search reads
+the enhanced endpoint Jira Cloud serves today (`/rest/api/3/search/jql`) with
+Jira's own continuation token as the cursor, keeps the page inside the
+deployment's ceiling and Jira's own 100 rows, and never walks pages by itself.
+Issue bodies arrive as Atlassian Document Format and are rendered to bounded
+markdown-like text (headings, lists, code, links, mentions, tables, media
+markers) — a JSON tree and an embedded card are never handed to the model, and
+nothing a node points at is fetched. Custom fields are named from the site's
+field schema, read after the issue answered and never cached, because the same
+site answers a different field list to two users with different permissions.
+
+The catalog is an explicit allow-list of Jira Cloud read endpoints, asserted by
+the package gate along with the `GET` method of every entry, the absence of the
+legacy `/search` endpoint Atlassian removed, and the absence of any JQL argument
+in a tool schema. A deployment type check refuses a Data Center instance at
+connect instead of pretending the Cloud API is compatible. Capabilities are
+bounded by the deployment switches alone (`identity.read`, `issues.read`,
+`comments.read`, `attachments.read`, `transitions.read`, `projects.read`,
+`fields.read`): Jira reports no granted scopes for an API token and probing with
+a write is not an option, so the site's own permissions decide upstream and a
+refusal stays a refusal.
+
+OAuth 2.0 3LO with rotating refresh tokens, the shared Atlassian
+account/resource layer the specification describes, the workspace-to-project
+binding, the pending-action confirmation flow every write needs, attachment
+content download, changelog summaries, caching and per-principal rate limiting
+stay out of this release; the provider's README states each deferred item and
+what stands in for it today.

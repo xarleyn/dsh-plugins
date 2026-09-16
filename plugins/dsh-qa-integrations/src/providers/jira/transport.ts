@@ -1,0 +1,297 @@
+import type { ResolvedQaIntegrationsConfig } from "../../config.js";
+import { IntegrationError } from "../../errors.js";
+import { jiraSite, type JiraFlags, type JiraSite } from "./config.js";
+
+/**
+ * Encrypted payload of one Jira connection: which configured site the token
+ * belongs to, the Atlassian account it authenticates as, and the API token
+ * itself.
+ *
+ * The site's address is not stored — it is re-resolved from operator config on
+ * every call, so removing or repointing a site takes effect at once instead of
+ * at the next connect. The e-mail is not a secret, but it is what makes the
+ * token usable (Jira Cloud authenticates an API token with HTTP Basic over
+ * `email:token`), so it travels in the same encrypted blob rather than in a
+ * second record that could go missing.
+ */
+export interface JiraCredential {
+  readonly siteId: string;
+  readonly email: string;
+  readonly token: string;
+}
+
+function invalidCredential(): never {
+  throw new IntegrationError(
+    "CredentialRevoked",
+    "Stored credential is invalid",
+  );
+}
+
+export function credentialFromPlaintext(plaintext: string): JiraCredential {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(plaintext);
+  } catch {
+    invalidCredential();
+  }
+  if (typeof parsed !== "object" || parsed === null) invalidCredential();
+  const record = parsed as Record<string, unknown>;
+  const siteId = record["siteId"];
+  const email = record["email"];
+  const token = record["token"];
+  if (
+    typeof siteId !== "string" ||
+    typeof email !== "string" ||
+    typeof token !== "string" ||
+    siteId === "" ||
+    email === "" ||
+    token === ""
+  ) {
+    invalidCredential();
+  }
+  return { siteId, email, token };
+}
+
+/**
+ * The configured site a credential belongs to. A credential minted for a site
+ * the operator has since removed fails closed: it never falls back to another
+ * site, however permissive that one is.
+ */
+export function credentialSite(
+  flags: JiraFlags,
+  credential: JiraCredential,
+): JiraSite {
+  const site = jiraSite(flags, credential.siteId);
+  if (site === undefined) {
+    throw new IntegrationError(
+      "CredentialRevoked",
+      "Jira site is no longer configured",
+    );
+  }
+  return site;
+}
+
+export type JiraQuery = Readonly<
+  Record<string, string | number | boolean | undefined>
+>;
+
+const RETRY_CAP_MS = 2_000;
+const BACKOFF_BASE_MS = 250;
+
+/** Upstream codes that mean "the TLS handshake did not succeed". */
+const TLS_FAILURE =
+  /CERT|TLS|SSL|UNABLE_TO_VERIFY|SELF_SIGNED|DEPTH_ZERO|ERR_TLS/u;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The first upstream error code in a fetch failure chain, if any. */
+function causeCode(error: unknown): string {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4; depth += 1) {
+    if (typeof current !== "object" || current === null) break;
+    const code = (current as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return "";
+}
+
+/** Jira Cloud authenticates an API token with HTTP Basic over `email:token`. */
+export function basicAuthorization(credential: JiraCredential): string {
+  const pair = Buffer.from(
+    `${credential.email}:${credential.token}`,
+    "utf8",
+  ).toString("base64");
+  return `Basic ${pair}`;
+}
+
+/**
+ * HTTP boundary of the provider: one documented Jira Cloud REST call, bounded in
+ * time and size, with upstream failures folded into safe domain errors and
+ * bounded retries for the transient ones.
+ *
+ * Requests are GET-only and never follow a redirect: the token must not travel
+ * to another origin, and an Atlassian login page is an authentication answer
+ * rather than a new address to try.
+ */
+export class JiraTransport {
+  constructor(
+    private readonly config: ResolvedQaIntegrationsConfig,
+    private readonly flags: JiraFlags,
+    private readonly fetcher: typeof fetch = fetch,
+  ) {}
+
+  async getJson<T>(
+    site: JiraSite,
+    credential: JiraCredential,
+    path: string,
+    query: JiraQuery = {},
+  ): Promise<T> {
+    const response = await this.request(site, credential, path, query);
+    const body = await this.readText(response, this.config.maxResponseBytes);
+    if (body.truncated) {
+      throw new IntegrationError(
+        "ResultTooLarge",
+        "Provider response is too large",
+      );
+    }
+    try {
+      return JSON.parse(body.text) as T;
+    } catch {
+      throw new IntegrationError(
+        "ProviderUnavailable",
+        "Provider returned invalid JSON",
+      );
+    }
+  }
+
+  private url(site: JiraSite, path: string, query: JiraQuery): string {
+    const url = new URL(`${site.baseUrl}${path}`);
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined) continue;
+      url.searchParams.set(key, String(value));
+    }
+    return url.toString();
+  }
+
+  private async request(
+    site: JiraSite,
+    credential: JiraCredential,
+    path: string,
+    query: JiraQuery,
+  ): Promise<Response> {
+    const target = this.url(site, path, query);
+    let lastError: IntegrationError | undefined;
+    for (let attempt = 0; ; attempt += 1) {
+      let response: Response;
+      let timedOut = false;
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, this.config.timeoutMs);
+      try {
+        response = await this.fetcher(target, {
+          method: "GET",
+          redirect: "error",
+          headers: {
+            authorization: basicAuthorization(credential),
+            accept: "application/json",
+          },
+          signal: controller.signal,
+        });
+      } catch (error) {
+        lastError = timedOut
+          ? new IntegrationError("UpstreamTimeout", "Jira did not answer")
+          : TLS_FAILURE.test(causeCode(error))
+            ? new IntegrationError("TlsFailure", "Jira TLS handshake failed")
+            : new IntegrationError(
+                "ProviderUnavailable",
+                "Jira request failed",
+              );
+        if (attempt >= this.flags.retries) throw lastError;
+        await sleep(this.retryDelay(attempt));
+        continue;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (response.ok) return response;
+      lastError = this.failure(response);
+      // Only throttling and upstream faults are retried; an authorization or
+      // not-found answer will not change by asking again. Jira rate-limits with
+      // 429 and, historically, 403 with a rate-limit body — the 403 case keeps
+      // its permission meaning and is left to the user.
+      const transient = response.status === 429 || response.status >= 500;
+      if (!transient || attempt >= this.flags.retries) throw lastError;
+      await sleep(this.backoff(response, attempt));
+    }
+  }
+
+  /** Jira asks for a pause through `retry-after`; honour it, but bounded. */
+  private backoff(response: Response, attempt: number): number {
+    const header = response.headers.get("retry-after");
+    const seconds = header === null ? Number.NaN : Number(header.trim());
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1_000, RETRY_CAP_MS);
+    }
+    return this.retryDelay(attempt);
+  }
+
+  private retryDelay(attempt: number): number {
+    const backoff = BACKOFF_BASE_MS * 2 ** attempt;
+    return Math.min(backoff + Math.floor(Math.random() * 100), RETRY_CAP_MS);
+  }
+
+  /**
+   * The provider error model. Jira answers a refused permission with 403 — a
+   * permission scheme the connected user is not in, an issue security level, or
+   * a project they cannot browse — and an unknown or invisible resource with
+   * 404; both stay distinct so the model can tell "you may not" from "it is not
+   * there". Neither answer ever carries the upstream body.
+   */
+  private failure(response: Response): IntegrationError {
+    const status = response.status;
+    if (status === 401) {
+      return new IntegrationError(
+        "CredentialRevoked",
+        "Jira rejected the stored API token",
+      );
+    }
+    if (status === 403) {
+      return new IntegrationError(
+        "ProviderPermissionDenied",
+        "Jira denied this operation",
+      );
+    }
+    if (status === 404) {
+      return new IntegrationError(
+        "ResourceNotFound",
+        "Jira resource not found",
+      );
+    }
+    if (status === 429) {
+      return new IntegrationError("RateLimited", "Jira rate limit reached");
+    }
+    if (status === 400 || status === 405 || status === 406 || status === 422) {
+      return new IntegrationError(
+        "InvalidRequest",
+        "Jira rejected the request",
+      );
+    }
+    return new IntegrationError("ProviderUnavailable", "Jira request failed");
+  }
+
+  /**
+   * Read a body without letting upstream decide how much memory the broker
+   * spends. A body over the cap is reported as truncated instead of surfacing a
+   * raw `content-length` nobody can verify.
+   */
+  private async readText(
+    response: Response,
+    maxBytes: number,
+  ): Promise<{ text: string; truncated: boolean }> {
+    if (response.body === null) return { text: "", truncated: false };
+    const declared = Number(response.headers.get("content-length"));
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let bytes = 0;
+    let truncated = Number.isFinite(declared) && declared > maxBytes;
+    for (;;) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > maxBytes) {
+        const room = maxBytes - (bytes - next.value.byteLength);
+        if (room > 0) chunks.push(next.value.subarray(0, room));
+        await reader.cancel();
+        truncated = true;
+        break;
+      }
+      chunks.push(next.value);
+    }
+    const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
+    return { text: body.toString("utf8"), truncated };
+  }
+}

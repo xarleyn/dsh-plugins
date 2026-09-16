@@ -18,6 +18,7 @@ import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
 import type { IntegrationProvider } from "./providers/contract.js";
 import GitlabProvider from "./providers/gitlab/index.js";
+import JiraProvider from "./providers/jira/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
 import TeamcityProvider from "./providers/teamcity/index.js";
 import { networkAllowsNothing } from "./providers/teamcity/config.js";
@@ -79,6 +80,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly enabled: boolean;
   private readonly providerSummaries: readonly IntegrationProviderSummary[];
   private readonly configuredInstances: readonly IntegrationInstanceSummary[];
+  /** The Jira Cloud sites this deployment allows, in config order. */
+  private readonly configuredSites: readonly IntegrationInstanceSummary[];
   /** The TeamCity server this deployment dials, or null when it mounts none. */
   private readonly configuredServer: IntegrationInstanceSummary | null;
 
@@ -107,6 +110,9 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.teamcity.enabled) {
       providers.register(new TeamcityProvider(config));
     }
+    if (config.jira.enabled) {
+      providers.register(new JiraProvider(config));
+    }
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
       : [];
@@ -115,6 +121,13 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+        }))
+      : [];
+    this.configuredSites = config.jira.enabled
+      ? config.jira.sites.map((site) => ({
+          id: site.id,
+          label: site.label,
+          baseUrl: site.baseUrl,
         }))
       : [];
     this.configuredServer =
@@ -345,6 +358,62 @@ export class QaIntegrations extends TypertRemoteService {
     );
   }
 
+  /**
+   * Sites this deployment allows. Like the GitLab instance list, the connect
+   * form picks from it and never takes a hostname: the Atlassian site a token is
+   * spent against is operator configuration, and the e-mail the form collects
+   * next to the token is an identity, not a secret.
+   */
+  @Remote("jiraSites")
+  jiraSites(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredSites);
+  }
+
+  @Remote("getJira")
+  getJira(token: string): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, "jira"),
+    );
+  }
+
+  @Remote("putJiraCredential")
+  async putJiraCredential(
+    token: string,
+    input: {
+      readonly siteId: string;
+      readonly email: string;
+      readonly token: string;
+    },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(principal, "jira", {
+        token: input.token,
+        options: { siteId: input.siteId, email: input.email },
+      }),
+    );
+  }
+
+  @Remote("testJira")
+  async testJira(token: string): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, "jira"),
+    );
+  }
+
+  @Remote("patchJiraPolicy")
+  patchJiraPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, "jira", patch),
+    );
+  }
+
+  @Remote("disconnectJira")
+  disconnectJira(token: string): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, "jira"),
+    );
+  }
+
   private requirePrincipal(token: string): IntegrationPrincipal {
     if (!this.enabled) {
       throw new IntegrationError(
@@ -530,6 +599,65 @@ export {
   createTeamcityTools,
   TEAMCITY_TOOL_NAMES,
 } from "./providers/teamcity/tools.js";
+export { JiraProvider } from "./providers/jira/index.js";
+export {
+  JIRA_CAPABILITIES,
+  JIRA_CAPABILITY_INFO,
+  JIRA_OPERATIONS,
+  JIRA_READ_PATHS,
+  enabledCapabilities as enabledJiraCapabilities,
+  jiraOperationCapability,
+  type JiraCapability,
+  type JiraCapabilityDefinition,
+  type JiraOperationDefinition,
+} from "./providers/jira/catalog.js";
+export {
+  JIRA_DEFAULTS,
+  SEARCH_PAGE_CAP,
+  jiraConfigSchema,
+  jiraSite,
+  resolveJiraConfig,
+  type JiraFlags,
+  type JiraSite,
+} from "./providers/jira/config.js";
+export {
+  adfToText,
+  bodyText,
+  isAdf,
+  type AdfText,
+} from "./providers/jira/adf.js";
+export {
+  buildJql,
+  commentLimit,
+  commentStart,
+  issueKey as jiraIssueKey,
+  jqlDateTime,
+  jqlLiteral,
+  pageToken,
+  projectKey as jiraProjectKey,
+  searchLimit,
+  textFilter,
+} from "./providers/jira/jql.js";
+export {
+  ISSUE_INCLUDES,
+  JIRA_HANDLERS,
+  JIRA_PROJECTIONS,
+  SEARCH_FIELDS as JIRA_SEARCH_FIELDS,
+  customFieldValue,
+  issueFields,
+  issueUrl,
+  requestedIncludes,
+  wantsFieldNames,
+  type JiraProjection,
+} from "./providers/jira/operations.js";
+export {
+  JiraTransport,
+  basicAuthorization,
+  credentialFromPlaintext as jiraCredentialFromPlaintext,
+  credentialSite,
+  type JiraCredential,
+} from "./providers/jira/transport.js";
+export { createJiraTools, JIRA_TOOL_NAMES } from "./providers/jira/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
 export { IntegrationRepository } from "./repository.js";
 export {

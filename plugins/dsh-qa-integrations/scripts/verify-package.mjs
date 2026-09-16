@@ -44,6 +44,14 @@ for (const file of [
   "lib/providers/teamcity/logs.js",
   "lib/providers/teamcity/network.js",
   "lib/providers/teamcity/locators.js",
+  "lib/providers/jira/index.js",
+  "lib/providers/jira/catalog.js",
+  "lib/providers/jira/operations.js",
+  "lib/providers/jira/transport.js",
+  "lib/providers/jira/config.js",
+  "lib/providers/jira/tools.js",
+  "lib/providers/jira/jql.js",
+  "lib/providers/jira/adf.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -72,11 +80,20 @@ assert.doesNotMatch(client, /Показать токен|Копировать т
 assert.match(client, /"bitrix24"/u);
 assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
+assert.match(client, /"jira"/u);
 // The TeamCity address is stand-wide configuration: the card sends the token
 // alone, shows the address the Host resolved, and says so when there is none.
 assert.doesNotMatch(client, /serverUrl/u);
 assert.match(client, /задан оператором стенда/u);
 assert.match(client, /Оператор не настроил адрес TeamCity/u);
+// The Jira card follows the same rule: the site list comes from the Host, the
+// account e-mail is an identity rather than a secret, and the token stays a
+// write-only field.
+assert.match(client, /API-токен Jira/u);
+assert.match(client, /Аккаунт Atlassian \(e-mail\)/u);
+assert.match(client, /Сайт Jira/u);
+assert.match(client, /Оператор не настроил ни одного сайта Jira/u);
+assert.doesNotMatch(client, /atlassian\.net/u);
 
 // The card of "Plugin configuration": one bundle mounts both surfaces, and the
 // key it claims has to be the namespace the Host serves, or the Host's tab
@@ -328,7 +345,7 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix|gitlab|teamcity/iu,
+    /bitrix|gitlab|teamcity|jira/iu,
     `${file} must stay provider-agnostic`,
   );
 }
@@ -455,6 +472,125 @@ for (const label of [
   "Читать агентов",
 ]) {
   assert.match(teamcityCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
+}
+
+// The Jira provider is the same shape again, with two rules of its own: the
+// catalog is an explicit allow-list of Jira Cloud read endpoints (so a write
+// endpoint Jira serves on the same path can never slip in), and no tool takes
+// JQL — the provider builds it from typed filters.
+const jiraTools = await readFile(
+  new URL("src/providers/jira/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "jira_get_current_user",
+  "jira_search_issues",
+  "jira_get_issue",
+  "jira_get_issue_comments",
+  "jira_get_issue_attachments",
+  "jira_get_available_transitions",
+  "jira_get_project",
+  "jira_get_fields",
+]) {
+  assert.match(jiraTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "siteId:",
+  "cloudId:",
+  "siteUrl:",
+  "instanceId:",
+  "jql:",
+  "raw_rest",
+]) {
+  assert.doesNotMatch(jiraTools, new RegExp(forbidden, "u"));
+}
+
+const jiraCatalog = await readFile(
+  new URL("src/providers/jira/catalog.ts", root),
+  "utf8",
+);
+const jiraPaths = [...jiraCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
+  (match) => match[1],
+);
+const jiraReadPaths = [
+  ...jiraCatalog.matchAll(/^\s*"(\/rest\/api\/3\/[^"]+)",$/gmu),
+].map((match) => match[1]);
+const jiraToolCount = [...jiraTools.matchAll(/operation: "([^"]+)"/gu)].length;
+assert.equal(
+  jiraPaths.length,
+  jiraToolCount,
+  "every Jira tool must name exactly one catalog operation",
+);
+assert.doesNotMatch(jiraCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+assert.match(jiraCatalog, /"\/rest\/api\/3\/search\/jql"/u);
+// The legacy endpoint Atlassian removed must never come back as the runtime
+// path: it answers with an error page instead of issues.
+assert.doesNotMatch(jiraCatalog, /"\/rest\/api\/3\/search"/u);
+assert.doesNotMatch(jiraCatalog, /\bjql\s*:/iu);
+for (const path of jiraPaths) {
+  assert.match(path, /^\/rest\/api\/3\//u, `${path} must be a v3 API path`);
+  assert(
+    jiraReadPaths.includes(path),
+    `${path} is not in the provider's read-only allow-list`,
+  );
+}
+for (const forbidden of [
+  '/rest/api/3/search"',
+  "expression",
+  "/worklog",
+  "/watchers",
+  "/votes",
+  "issueLinkType",
+  "/attachment/",
+  "raw",
+]) {
+  assert.equal(
+    jiraReadPaths.some((path) => path.includes(forbidden)),
+    false,
+    `Jira allow-list must not carry ${forbidden}`,
+  );
+}
+
+const jiraTransport = await readFile(
+  new URL("src/providers/jira/transport.ts", root),
+  "utf8",
+);
+assert.match(jiraTransport, /method: "GET"/u);
+assert.match(jiraTransport, /redirect: "error"/u);
+assert.match(jiraTransport, /authorization: basicAuthorization/u);
+// The API token travels as HTTP Basic over `email:token`, never in the URL.
+assert.match(jiraTransport, /`Basic \$\{pair\}`/u);
+const jiraHost = await readFile(
+  new URL("src/providers/jira/index.ts", root),
+  "utf8",
+);
+assert.match(jiraHost, /requireCloud/u);
+assert.match(jiraHost, /credentialSite/u);
+assert.doesNotMatch(jiraHost, /baseUrl:\s*input/u);
+assert.match(jiraHost, /\/rest\/api\/3\/myself/u);
+
+// Capability labels come from the provider at runtime, so the card renders a
+// provider it has never heard of and the bundle stays free of every catalog.
+const jiraCapabilityCatalog = await readFile(
+  new URL("lib/providers/jira/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Читать задачи",
+  "Читать комментарии",
+  "Читать вложения",
+  "Читать переходы статуса",
+  "Читать проекты",
+  "Читать схему полей",
+]) {
+  assert.match(jiraCapabilityCatalog, new RegExp(label, "u"));
   assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 

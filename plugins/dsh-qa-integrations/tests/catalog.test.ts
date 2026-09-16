@@ -161,10 +161,10 @@ describe("provider boundary", () => {
       const source = readFileSync(new URL(`../src/${file}`, import.meta.url), {
         encoding: "utf8",
       });
-      // Either provider's name in the shared engine means the abstraction is
-      // gone; the composition roots are the only places allowed to name them.
+      // Any provider's name in the shared engine means the abstraction is gone;
+      // the composition roots are the only places allowed to name them.
       expect(source, `${file} must stay provider-agnostic`).not.toMatch(
-        /bitrix|gitlab|teamcity/iu,
+        /bitrix|gitlab|teamcity|jira/iu,
       );
     }
   });
@@ -176,6 +176,6 @@ describe("provider boundary", () => {
       new URL("./broker-isolation.test.ts", import.meta.url),
       { encoding: "utf8" },
     );
-    expect(brokerSuite).not.toMatch(/bitrix|gitlab|teamcity/iu);
+    expect(brokerSuite).not.toMatch(/bitrix|gitlab|teamcity|jira/iu);
   });
 });
