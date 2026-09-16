@@ -11,12 +11,12 @@ import type {
   ToolExecution,
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 import {
   resolveToolOffloadConfig,
   type ToolOffloadConfig,
 } from "../../src/config.js";
-import type { PluginLoggerLike } from "../../src/logging.js";
 import type { ResolvedToolOffloadConfig } from "../../src/config.js";
 import type {
   WorkerOutcome,
