@@ -172,7 +172,7 @@ describe("effective quick questions", () => {
 describe("QA account starters store", () => {
   function startersStore(): QaAccounts {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-starters-"));
-    return new QaAccounts(path.join(dir, "qa-accounts.json"), {
+    return new QaAccounts(path.join(dir, "qa-accounts.db"), {
       sessionTtlDays: 30,
       allowRegistration: true,
     });

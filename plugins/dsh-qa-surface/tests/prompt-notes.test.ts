@@ -25,7 +25,7 @@ const FIELDS: readonly QaAccountIdentityField[] = [
 
 function store(): QaAccounts {
   const dir = mkdtempSync(path.join(tmpdir(), "qa-notes-"));
-  return new QaAccounts(path.join(dir, "qa-accounts.json"), {
+  return new QaAccounts(path.join(dir, "qa-accounts.db"), {
     sessionTtlDays: 30,
     allowRegistration: true,
     instructionsMaxLength: 2_000,

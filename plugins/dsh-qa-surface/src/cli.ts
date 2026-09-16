@@ -31,7 +31,8 @@ const USAGE = `Usage:
       [--identity <key>=<value>]... [--clear-identity <key>]...
       [--instructions-file <path|->] [--clear-full-name] [--clear-instructions]
 
-The accounts file defaults to \\$DSH_HOME/qa-accounts.json. Passwords are read
+The accounts database defaults to \\$DSH_HOME/qa-accounts.db; a pre-0.8.0
+qa-accounts.json beside it is imported on first use. Passwords are read
 from stdin (one line) so they never land in shell history; --instructions-file -
 reads that text from stdin too. Profile identity keys are free-form here: the
 deployment's accounts.profile.identities decides which of them reach the prompt.`;
