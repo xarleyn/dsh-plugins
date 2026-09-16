@@ -18,6 +18,7 @@ import {
   createHostLoggerSink,
   getPluginLogger,
   type PluginLogger,
+  type PluginLoggerLike,
 } from "@yadsh/dsh-plugin-log";
 
 import {
@@ -30,7 +31,6 @@ import {
   createPostExecuteListener,
   type ToolOffloadListener,
 } from "./integration/post-execute.js";
-import type { PluginLoggerLike } from "./logging.js";
 import {
   deriveOffloadMetrics,
   OffloadCounters,

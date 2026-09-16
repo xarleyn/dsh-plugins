@@ -6,7 +6,7 @@ import { GIT_READONLY_DEFAULTS } from "../src/config.js";
 import { GitToolError } from "../src/errors.js";
 import { createGitBlameTool } from "../src/tools/blame.js";
 import type { GitBlameResult } from "../src/tools/blame.js";
-import { silentPluginLogger } from "../src/logging.js";
+import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
 import { createTempRepo, makeExec, type TempRepo } from "./fixtures/git.js";
 
 let repo: TempRepo;

@@ -18,11 +18,11 @@ import type {
   ToolExecution,
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 import type { ResolvedToolOffloadConfig } from "../config.js";
 import { extractParentTask } from "../context/parent-context.js";
 import { buildFallbackText } from "../fallback/fallback.js";
-import type { PluginLoggerLike } from "../logging.js";
 import { BUNDLED_PROMPT_PROFILES } from "../prompts/profiles.js";
 import { decideRoute, type OffloadSkipReason } from "../routing/policy.js";
 import {

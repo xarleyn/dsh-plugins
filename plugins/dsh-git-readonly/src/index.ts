@@ -9,7 +9,11 @@
  * environment, byte-capped and time-boxed (SPEC §1, §6).
  */
 
-import { getPluginLogger } from "@yadsh/dsh-plugin-log";
+import {
+  getPluginLogger,
+  silentPluginLogger,
+  type PluginLoggerLike,
+} from "@yadsh/dsh-plugin-log";
 
 import {
   GitReadonlyConfigSchema,
@@ -59,7 +63,7 @@ export {
   validateRepoRelativePath,
   validateSearchLiteral,
 } from "./git/validate.js";
-export { silentPluginLogger, type PluginLoggerLike } from "./logging.js";
+export { silentPluginLogger, type PluginLoggerLike };
 export { createGitBlameTool, type GitBlameResult } from "./tools/blame.js";
 export {
   createGitContextTool,

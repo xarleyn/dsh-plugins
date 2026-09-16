@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { GIT_READONLY_DEFAULTS } from "../src/config.js";
 import { createGitContextTool } from "../src/tools/context.js";
 import type { GitContextResult } from "../src/tools/context.js";
-import { silentPluginLogger } from "../src/logging.js";
+import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   createTempRepo,
   makeExec,
