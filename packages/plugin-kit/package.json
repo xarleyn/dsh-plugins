@@ -1,6 +1,5 @@
 {
   "name": "@yadsh/dsh-plugin-kit",
-  "private": true,
   "version": "0.1.0",
   "description": "Shared runtime helpers for DSH plugins",
   "license": "MIT",
@@ -28,6 +27,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",

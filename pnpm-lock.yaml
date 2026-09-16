@@ -275,6 +275,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@types/node':
+        specifier: catalog:tooling
+        version: 26.4.0
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28

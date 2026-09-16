@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
  * One schema step. Versions are dense and increasing; every step is applied
  * exactly once, in order, inside its own transaction.
  */
-export interface QaSqliteMigration {
+export interface SqliteMigration {
   readonly version: number;
   /** SQL for this step; may hold several statements. */
   readonly up: string;
@@ -17,41 +17,43 @@ const META_TABLE = "qa_meta";
 const SCHEMA_VERSION_KEY = "schema_version";
 
 /** A database this process cannot safely interpret. */
-export class QaSqliteStoreError extends Error {
+export class SqliteStoreError extends Error {
   constructor(message: string, options?: { cause?: unknown }) {
     super(message, options);
-    this.name = "QaSqliteStoreError";
+    this.name = "SqliteStoreError";
   }
 }
 
 /**
- * The shared SQLite plumbing behind the QA surface's keyed stores.
+ * Shared SQLite plumbing for plugin stores that keep records plus append-only
+ * audit logs.
  *
- * Those stores are records plus append-only audit logs, and they were JSON
- * documents: every mutation read, parsed and rewrote the whole history, so the
- * cost of a write grew with everything ever written. Opening the same data as
- * tables makes a write touch only the rows it changes, which is what removes
- * the growth from the hot path.
+ * Such stores are tempting to keep as JSON documents, and the temptation is
+ * what makes them expensive: every mutation reads, parses and rewrites the
+ * whole history, so the cost of a write grows with everything ever written.
+ * Opening the same data as tables makes a write touch only the rows it
+ * changes, which is what removes the growth from the hot path.
  *
- * Two guarantees the previous temp-file-plus-rename ritual provided are kept
+ * Two guarantees a temp-file-plus-rename ritual used to provide are kept
  * explicitly, because they are now the database's business:
  *
  * - **Atomicity** — `transaction` wraps a read-modify-write in one
- *   `BEGIN IMMEDIATE`, so a CLI write and a Host write cannot interleave into
- *   a state neither of them intended (replacing the mtime stamp dance).
- * - **Durability of secrets** — the database file is chmod 0600 after creation.
+ *   `BEGIN IMMEDIATE`, so a second process writing the same file (a plugin's
+ *   CLI) cannot interleave into a state neither of them intended.
+ * - **Durability of secrets** — the database file is chmod 0600 after creation,
+ *   rather than whatever the process umask happens to say.
  *
- * WAL is enabled so the `qa-accounts` CLI can work against the same file from
- * a second process while the Host serves it.
+ * WAL is enabled for that same second-process case: readers do not block the
+ * writer and the writer does not block readers.
  */
-export class QaSqliteDatabase {
+export class SqliteDatabase {
   private readonly connection: DatabaseSync;
   private depth = 0;
   private closed = false;
 
   constructor(
     readonly filePath: string,
-    migrations: readonly QaSqliteMigration[],
+    migrations: readonly SqliteMigration[],
   ) {
     mkdirSync(path.dirname(filePath), { recursive: true });
     this.connection = new DatabaseSync(filePath);
@@ -128,14 +130,14 @@ export class QaSqliteDatabase {
     this.connection.close();
   }
 
-  private migrate(migrations: readonly QaSqliteMigration[]): void {
+  private migrate(migrations: readonly SqliteMigration[]): void {
     const ordered = [...migrations].sort(
       (left, right) => left.version - right.version,
     );
     const highest = ordered.at(-1)?.version ?? 0;
     const current = this.schemaVersion;
     if (current > highest) {
-      throw new QaSqliteStoreError(
+      throw new SqliteStoreError(
         `${this.filePath} was written by a newer schema (version ${current}, this build knows ${highest}); refusing to open it`,
       );
     }
@@ -171,12 +173,7 @@ export class QaSqliteDatabase {
 
   private assertOpen(): void {
     if (this.closed) {
-      throw new QaSqliteStoreError(`${this.filePath} is already closed`);
+      throw new SqliteStoreError(`${this.filePath} is already closed`);
     }
   }
-}
-
-/** Rows come back as null-prototype objects; stores spread them into shapes. */
-export function rowToObject<T>(row: unknown): T {
-  return { ...(row as Record<string, unknown>) } as T;
 }

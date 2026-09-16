@@ -9,7 +9,7 @@
     ]
   },
   "release": {
-    "projects": ["plugins/*", "packages/plugin-log"],
+    "projects": ["plugins/*", "packages/plugin-log", "packages/plugin-kit"],
     "projectsRelationship": "independent",
     "versionPlans": {
       "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
