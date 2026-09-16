@@ -5,7 +5,6 @@ export interface Schema {
   client?: boolean;
   description?: string;
   scope?: string;
-  withUi?: boolean;
   withTests?: boolean;
 }
 
@@ -48,12 +47,6 @@ export default async function generatePlugin(
     throw new Error(`Plugin directory already exists: ${projectRoot}`);
   }
 
-  if (options.withUi && !tree.exists("packages/ui-kit/package.json")) {
-    throw new Error(
-      "--with-ui requires packages/ui-kit. Add the shared UI kit only when a real reusable UI contract exists.",
-    );
-  }
-
   const exportsMap: Record<string, ExportTarget> = {
     ".": {
       types: "./lib/index.d.ts",
@@ -72,10 +65,6 @@ export default async function generatePlugin(
   const dependencies: Record<string, string> = {
     "@yadsh/dsh-plugin-log": "workspace:^",
   };
-
-  if (options.withUi) {
-    dependencies["@yadsh/dsh-ui-kit"] = "workspace:^";
-  }
 
   const devDependencies: Record<string, string> = {
     "@deepseek-ai/cordis": "catalog:dsh",
@@ -309,8 +298,8 @@ const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "u
 assert.equal(manifest.name, ${JSON.stringify(packageName)});
 assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml");
 assert.ok(Object.hasOwn(manifest.exports, "."));
-assert.match(patch, new RegExp(\`id: dsh-${pluginName}\b\`, "u"));
-assert.match(patch, new RegExp(\`name: "\${manifest.name}"\`, "u"));
+assert.match(patch, /id: dsh-${pluginName}\\b/u);
+assert.match(patch, new RegExp(\`name: ['"]\${manifest.name}['"]\`, "u"));
 
 for (const path of ["../lib/index.js", "../lib/index.d.ts", "../README.md", "../LICENSE"]) {
   await access(new URL(path, import.meta.url));
@@ -353,7 +342,6 @@ console.log("verify-package: all gates passed");
 
   const features = ["Server-side DSH entrypoint"];
   if (options.client) features.push("Browser-compatible client entrypoint");
-  if (options.withUi) features.push("Shared DSH UI kit integration");
 
   tree.write(
     `${projectRoot}/README.md`,
