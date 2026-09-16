@@ -115,14 +115,6 @@ const MAX_NOTE_LENGTH = 4_000;
 const MAX_ACTION_LENGTH = 2_000;
 const MAX_ID_LENGTH = 200;
 const MAX_SNAPSHOT_LENGTH = 20_000;
-/**
- * Created owner-only, like the accounts file: the quality rows name users and
- * carry conversation content, and the audit trail carries before/after
- * images. POSIX applies the mode at creation (the atomic rename keeps it);
- * Windows ignores it.
- */
-const FILE_MODE = 0o600;
-
 export interface QaManualQueueEntry {
   readonly conversationId: string;
   readonly messageId?: string;

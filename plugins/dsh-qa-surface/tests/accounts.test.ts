@@ -3,7 +3,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  readFileSync,
   statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
