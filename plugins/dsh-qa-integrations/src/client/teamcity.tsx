@@ -3,6 +3,7 @@ import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/se
 import { useCallback, useEffect, useState } from "react";
 import type {
   IntegrationCapability,
+  IntegrationInstanceSummary,
   IntegrationSummary,
   PolicyPatch,
 } from "../types.js";
@@ -10,9 +11,17 @@ import { dateTime, failureCopy } from "./copy.js";
 
 export interface TeamcityRemote {
   getTeamcity(token: string): Promise<RemoteResult<IntegrationSummary>>;
+  /**
+   * The address this deployment dials, or null when it configured none. The
+   * connect form shows it and never asks for it: the server one token is spent
+   * against is stand-wide configuration, not a choice each user makes.
+   */
+  teamcityServer(
+    token: string,
+  ): Promise<RemoteResult<IntegrationInstanceSummary | null>>;
   putTeamcityCredential(
     token: string,
-    input: { readonly serverUrl: string; readonly token: string },
+    input: { readonly token: string },
   ): Promise<RemoteResult<IntegrationSummary>>;
   testTeamcity(token: string): Promise<RemoteResult<IntegrationSummary>>;
   patchTeamcityPolicy(
@@ -25,11 +34,11 @@ export interface TeamcityRemote {
 const ERROR_COPY: Readonly<Record<string, string>> = {
   PrincipalNotResolved: "Сессия истекла. Войдите заново.",
   InvalidCredential:
-    "Проверьте адрес TeamCity, порт и access token. Адрес должен входить в список, разрешённый оператором стенда.",
+    "Проверьте access token: адрес TeamCity задаёт оператор стенда.",
   ProviderPermissionDenied:
     "TeamCity не разрешил это действие: проверьте права токена на нужные проекты.",
   ProviderUnavailable:
-    "TeamCity недоступен с этого стенда. Проверьте адрес и сетевую доступность.",
+    "TeamCity недоступен с этого стенда. Проверьте адрес, заданный оператором, и сетевую доступность.",
   IntegrationNotConnected: "Интеграция не подключена.",
   CredentialExpired: "Срок действия токена истёк. Создайте новый токен.",
   CredentialRevoked: "TeamCity отклонил токен. Создайте новый и замените его.",
@@ -44,7 +53,11 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
 export function createTeamcityCard(remote: TeamcityRemote) {
   return function TeamcityCard({ token }: QaUserSettingsSectionProps) {
     const [summary, setSummary] = useState<IntegrationSummary>();
-    const [serverUrl, setServerUrl] = useState("");
+    // undefined while the answer is on its way, null when this deployment
+    // configured no address at all.
+    const [server, setServer] = useState<
+      IntegrationInstanceSummary | null | undefined
+    >(undefined);
     const [credential, setCredential] = useState("");
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -70,6 +83,12 @@ export function createTeamcityCard(remote: TeamcityRemote) {
 
     const load = useCallback(async () => {
       try {
+        const address = await remote.teamcityServer(token);
+        if (!address.ok) {
+          fail(address.error);
+          return;
+        }
+        setServer(address.value);
         accept(await remote.getTeamcity(token));
       } catch (cause) {
         fail(cause);
@@ -84,10 +103,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
       setBusy(true);
       try {
         const saved = accept(
-          await remote.putTeamcityCredential(token, {
-            serverUrl,
-            token: credential,
-          }),
+          await remote.putTeamcityCredential(token, { token: credential }),
         );
         if (saved) {
           setCredential("");
@@ -137,7 +153,6 @@ export function createTeamcityCard(remote: TeamcityRemote) {
         if (result.ok) {
           setSummary(undefined);
           setConfirmDisconnect(false);
-          setServerUrl("");
           await load();
         } else {
           fail(result.error);
@@ -152,6 +167,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
     const connected =
       summary !== undefined && summary.status !== "not_connected";
     const showCredential = !connected || replace;
+    const configured = server !== null && server !== undefined;
     return (
       <article className="dsh-qa-integrations__card">
         {error === null ? null : (
@@ -191,20 +207,11 @@ export function createTeamcityCard(remote: TeamcityRemote) {
           </div>
         ) : null}
 
-        {showCredential ? (
+        {showCredential && configured ? (
           <div className="dsh-qa-integrations__section">
-            <label className="dsh-qa-integrations__field">
-              Адрес TeamCity
-              <input
-                className="dsh-qa-integrations__input"
-                type="url"
-                autoComplete="off"
-                value={serverUrl}
-                disabled={busy}
-                onChange={(event) => setServerUrl(event.currentTarget.value)}
-                placeholder="https://teamcity.example.com"
-              />
-            </label>
+            <span className="dsh-qa-integrations__muted">
+              Адрес TeamCity: {server?.label ?? ""} — задан оператором стенда
+            </span>
             <label className="dsh-qa-integrations__field">
               Access token TeamCity
               <input
@@ -225,9 +232,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
               <button
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
-                disabled={
-                  busy || credential.trim() === "" || serverUrl.trim() === ""
-                }
+                disabled={busy || credential.trim() === ""}
                 onClick={() => void save()}
               >
                 Сохранить и проверить
@@ -239,7 +244,6 @@ export function createTeamcityCard(remote: TeamcityRemote) {
                   disabled={busy}
                   onClick={() => {
                     setCredential("");
-                    setServerUrl("");
                     setReplace(false);
                   }}
                 >
@@ -248,6 +252,13 @@ export function createTeamcityCard(remote: TeamcityRemote) {
               ) : null}
             </div>
           </div>
+        ) : null}
+
+        {!configured && server !== undefined ? (
+          <p className="dsh-qa-integrations__hint">
+            Оператор не настроил адрес TeamCity, подключать нечего. Адрес стенда
+            задаётся в конфигурации развёртывания — он один на всех.
+          </p>
         ) : null}
 
         {connected && !showCredential ? (

@@ -72,6 +72,11 @@ assert.doesNotMatch(client, /Показать токен|Копировать т
 assert.match(client, /"bitrix24"/u);
 assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
+// The TeamCity address is stand-wide configuration: the card sends the token
+// alone, shows the address the Host resolved, and says so when there is none.
+assert.doesNotMatch(client, /serverUrl/u);
+assert.match(client, /задан оператором стенда/u);
+assert.match(client, /Оператор не настроил адрес TeamCity/u);
 
 // The card of "Plugin configuration": one bundle mounts both surfaces, and the
 // key it claims has to be the namespace the Host serves, or the Host's tab
@@ -421,8 +426,17 @@ const teamcityHost = await readFile(
   new URL("src/providers/teamcity/index.ts", root),
   "utf8",
 );
-assert.match(teamcityHost, /serverUrlProblem/u);
-assert.match(teamcityHost, /credentialServer/u);
+// The address is operator configuration: it is canonicalized and policy-checked
+// while the deployment's config is resolved, re-checked on every call, and never
+// taken from whatever a connect form or a tool call supplied.
+const teamcityConfig = await readFile(
+  new URL("src/providers/teamcity/config.ts", root),
+  "utf8",
+);
+assert.match(teamcityConfig, /resolveServerUrl/u);
+assert.match(teamcityConfig, /serverUrlProblem/u);
+assert.match(teamcityHost, /configuredServer/u);
+assert.doesNotMatch(teamcityHost, /serverUrl:\s*input/u);
 assert.match(teamcityHost, /sanitizeLog/u);
 assert.match(teamcityHost, /artifactBinaryProblem/u);
 

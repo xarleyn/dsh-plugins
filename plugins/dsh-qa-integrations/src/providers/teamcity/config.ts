@@ -1,8 +1,10 @@
 import z from "@deepseek-ai/schemastery";
 import {
   PRIVATE_CIDRS,
+  canonicalServerUrl,
   cidrProblem,
   hostPatternProblem,
+  serverUrlProblem,
   type TeamCityNetworkMode,
   type TeamCityNetworkPolicy,
 } from "./network.js";
@@ -15,6 +17,14 @@ import {
  */
 export interface TeamCityFlags {
   readonly enabled: boolean;
+  /**
+   * The one TeamCity server this deployment dials, canonical `<origin><path>`,
+   * or `""` when the operator mounted none. It is operator configuration and
+   * never user input: every user connects *there* with their own token, which
+   * is what keeps the broker from being pointed at a host of the caller's
+   * choosing.
+   */
+  readonly serverUrl: string;
   /** Which addresses this deployment may dial at all. */
   readonly network: TeamCityNetworkPolicy;
   readonly identityRead: boolean;
@@ -58,6 +68,7 @@ const DEFAULT_NETWORK: TeamCityNetworkPolicy = Object.freeze({
 
 export const TEAMCITY_DEFAULTS: TeamCityFlags = Object.freeze({
   enabled: true,
+  serverUrl: "",
   network: DEFAULT_NETWORK,
   identityRead: true,
   projectsRead: true,
@@ -158,6 +169,25 @@ function resolveNetwork(
 }
 
 /**
+ * Canonicalize the address this deployment dials. Everything here is operator
+ * input, so a typo must fail loudly at load: an address the policy refuses
+ * anyway would leave every user with a form that cannot be saved and no
+ * explanation. An empty value is deliberately not an error — the plugin has to
+ * load in a deployment that mounts no TeamCity yet, and the card says so
+ * instead of offering a form.
+ */
+function resolveServerUrl(
+  input: string | undefined,
+  network: TeamCityNetworkPolicy,
+): string {
+  const raw = (input ?? "").trim();
+  if (raw === "") return "";
+  const problem = serverUrlProblem(raw, network);
+  if (problem !== undefined) throw configError(`serverUrl: ${problem}`);
+  return canonicalServerUrl(raw);
+}
+
+/**
  * True when the policy dials nothing at all. That is the default, and it is
  * deliberately not an error: the plugin has to load in a deployment that mounts
  * no TeamCity yet. The plugin logs it once at startup, so an operator who
@@ -180,6 +210,7 @@ export function networkAllowsNothing(policy: TeamCityNetworkPolicy): boolean {
 export const teamcityConfigSchema = z
   .object({
     enabled: z.boolean().default(TEAMCITY_DEFAULTS.enabled),
+    serverUrl: z.string().default(TEAMCITY_DEFAULTS.serverUrl),
     network: z
       .object({
         mode: z.string().default(DEFAULT_NETWORK.mode),
@@ -243,6 +274,7 @@ export const teamcityConfigSchema = z
   // the address policy, which is where a deployment typo fails loudly.
   .default({
     enabled: TEAMCITY_DEFAULTS.enabled,
+    serverUrl: TEAMCITY_DEFAULTS.serverUrl,
     network: {
       mode: DEFAULT_NETWORK.mode,
       allowedHosts: [],
@@ -282,9 +314,11 @@ export function resolveTeamCityConfig(
   if (defaultArtifactBytes > maxArtifactBytes) {
     throw configError("defaultArtifactBytes must not exceed maxArtifactBytes");
   }
+  const network = resolveNetwork(input.network);
   return Object.freeze({
     enabled: input.enabled ?? TEAMCITY_DEFAULTS.enabled,
-    network: resolveNetwork(input.network),
+    serverUrl: resolveServerUrl(input.serverUrl, network),
+    network,
     identityRead: input.identityRead ?? TEAMCITY_DEFAULTS.identityRead,
     projectsRead: input.projectsRead ?? TEAMCITY_DEFAULTS.projectsRead,
     buildConfigsRead:

@@ -79,6 +79,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly enabled: boolean;
   private readonly providerSummaries: readonly IntegrationProviderSummary[];
   private readonly configuredInstances: readonly IntegrationInstanceSummary[];
+  /** The TeamCity server this deployment dials, or null when it mounts none. */
+  private readonly configuredServer: IntegrationInstanceSummary | null;
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
@@ -115,6 +117,14 @@ export class QaIntegrations extends TypertRemoteService {
           baseUrl: instance.baseUrl,
         }))
       : [];
+    this.configuredServer =
+      config.teamcity.enabled && config.teamcity.serverUrl !== ""
+        ? {
+            id: "teamcity",
+            label: new URL(config.teamcity.serverUrl).host,
+            baseUrl: config.teamcity.serverUrl,
+          }
+        : null;
     this.broker = new IntegrationBroker(
       repository,
       secrets,
@@ -288,22 +298,30 @@ export class QaIntegrations extends TypertRemoteService {
   }
 
   /**
-   * The TeamCity address is user input, unlike the operator-configured GitLab
-   * instances, so it travels with the secret as a non-secret connect-form
-   * option and is checked against the deployment's address policy by the
-   * provider before anything is stored.
+   * The TeamCity address is operator configuration, so the connect form sends
+   * the token alone: a user cannot point the broker at a host of their choosing,
+   * and the address a token is spent against is re-read from the deployment on
+   * every call.
    */
   @Remote("putTeamcityCredential")
   async putTeamcityCredential(
     token: string,
-    input: { readonly serverUrl: string; readonly token: string },
+    input: { readonly token: string },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "teamcity", {
-        token: input.token,
-        options: { serverUrl: input.serverUrl },
-      }),
+      this.broker.connect(principal, "teamcity", { token: input.token }),
     );
+  }
+
+  /**
+   * The address the connect form shows next to the token field, or null when
+   * this deployment configured none. Token-gated like the GitLab instance list:
+   * a card has to be able to say "nothing to connect to here", and the address
+   * of the stand's CI is not something an unauthenticated caller needs.
+   */
+  @Remote("teamcityServer")
+  teamcityServer(token: string): IntegrationInstanceSummary | null {
+    return this.run(token, () => this.configuredServer);
   }
 
   @Remote("testTeamcity")
@@ -504,7 +522,7 @@ export {
 } from "./providers/teamcity/operations.js";
 export {
   TeamCityTransport,
-  credentialServer as teamcityCredentialServer,
+  configuredServer as teamcityConfiguredServer,
   credentialFromPlaintext as teamcityCredentialFromPlaintext,
   type TeamCityCredential,
 } from "./providers/teamcity/transport.js";

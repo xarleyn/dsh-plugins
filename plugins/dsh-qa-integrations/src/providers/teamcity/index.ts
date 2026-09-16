@@ -27,7 +27,6 @@ import {
   selectLogWindow,
   trimToBytes,
 } from "./logs.js";
-import { canonicalServerUrl, serverUrlProblem } from "./network.js";
 import {
   TEAMCITY_HANDLERS,
   TEAMCITY_PROJECTIONS,
@@ -40,14 +39,14 @@ import {
 } from "./operations.js";
 import {
   TeamCityTransport,
+  configuredServer,
   credentialFromPlaintext,
-  credentialServer,
   type TeamCityCredential,
 } from "./transport.js";
 
 export {
+  configuredServer,
   credentialFromPlaintext,
-  credentialServer,
   type TeamCityCredential,
 } from "./transport.js";
 
@@ -101,15 +100,17 @@ export class TeamcityProvider implements IntegrationProvider {
   }
 
   /**
-   * Keep the pasted token and the server it was minted for. The address comes
-   * from the connect form — never from a tool argument — and it is checked
-   * against the address policy here, so a connection to an address this
-   * deployment is not willing to dial cannot be stored at all.
+   * Keep the pasted token. The server it will be dialled at is this
+   * deployment's configuration — never a connect-form field and never a tool
+   * argument — so a token minted for another TeamCity fails against the address
+   * the operator set instead of pointing the broker at a host the caller chose.
+   * A deployment with no address configured refuses here, so the connect form
+   * cannot store a credential that could never be used.
    */
-  parseCredential(
-    raw: string,
-    options?: Readonly<Record<string, string>>,
-  ): { readonly credential: string; readonly portal: string } {
+  parseCredential(raw: string): {
+    readonly credential: string;
+    readonly portal: string;
+  } {
     const token = raw.trim();
     if (!TOKEN_SHAPE.test(token) || URL_LIKE.test(token)) {
       throw new IntegrationError(
@@ -117,18 +118,16 @@ export class TeamcityProvider implements IntegrationProvider {
         "Use a TeamCity access token",
       );
     }
-    const serverUrl = (options?.["serverUrl"] ?? "").trim();
-    const problem = serverUrlProblem(serverUrl, this.config.teamcity.network);
-    if (problem !== undefined) {
-      throw new IntegrationError("InvalidCredential", problem);
+    const serverUrl = this.config.teamcity.serverUrl;
+    if (serverUrl === "") {
+      throw new IntegrationError(
+        "ProviderUnavailable",
+        "This deployment has no TeamCity address configured",
+      );
     }
-    const canonical = canonicalServerUrl(serverUrl);
     return {
-      credential: JSON.stringify({
-        serverUrl: canonical,
-        token,
-      } satisfies TeamCityCredential),
-      portal: canonical,
+      credential: JSON.stringify({ token } satisfies TeamCityCredential),
+      portal: serverUrl,
     };
   }
 
@@ -138,7 +137,7 @@ export class TeamcityProvider implements IntegrationProvider {
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
-    const baseUrl = credentialServer(this.config.teamcity.network, credential);
+    const baseUrl = configuredServer(this.config.teamcity);
     const server = await this.transport.getJson<Record<string, unknown>>(
       baseUrl,
       credential.token,
@@ -182,7 +181,7 @@ export class TeamcityProvider implements IntegrationProvider {
     input: Readonly<Record<string, unknown>>,
   ): Promise<unknown> {
     const credential = credentialFromPlaintext(context.credential);
-    const baseUrl = credentialServer(this.config.teamcity.network, credential);
+    const baseUrl = configuredServer(this.config.teamcity);
     const definition = TEAMCITY_OPERATIONS[operation];
     const handler = TEAMCITY_HANDLERS[operation];
     if (definition === undefined || handler === undefined) {
