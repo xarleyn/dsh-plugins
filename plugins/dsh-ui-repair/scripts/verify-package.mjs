@@ -1,37 +1,32 @@
-import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+/**
+ * Package gate for @yadsh/dsh-ui-repair.
+ *
+ * Validates the manifest and the built exports. The shared checks come from
+ * @yadsh/dsh-plugin-scripts/run-verify-package; the card shell itself is
+ * asserted by scripts/verify-client-bundle.mjs through
+ * verify-plugin-card-contract.
+ */
+import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
 
-const manifest = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-);
-
-assert.equal(manifest.name, "@yadsh/dsh-ui-repair");
-assert.equal(manifest.dsh?.client?.platform, "web");
-assert.deepEqual(manifest.dsh?.client?.inject, [
-  "@deepseek-ai/dsh-client-ui-settings",
-  "@deepseek-ai/dsh-client-ui-settings-plugins",
-]);
-for (const exportPath of [".", "./client", "./types", "./package.json"]) {
-  assert.ok(
-    Object.hasOwn(manifest.exports, exportPath),
-    `missing export ${exportPath}`,
-  );
-}
-for (const file of [
-  "cordis.patch.yml",
-  "compatibility.json",
-  "README.md",
-  "LICENSE",
-]) {
-  assert.ok(manifest.files.includes(file), `${file} is not published`);
-  await access(new URL(`../${file}`, import.meta.url));
-}
-for (const builtFile of [
-  "lib/index.js",
-  "lib/client.js",
-  "lib/types/index.d.ts",
-]) {
-  await access(new URL(`../${builtFile}`, import.meta.url));
-}
-
-process.stdout.write("verify-package: manifest and built exports passed\n");
+await runVerifyPackage({
+  packageRoot: new URL("../", import.meta.url),
+  packageName: "@yadsh/dsh-ui-repair",
+  exports: [".", "./client", "./types", "./package.json"],
+  client: {
+    platform: "web",
+    injectEquals: [
+      "@deepseek-ai/dsh-client-ui-settings",
+      "@deepseek-ai/dsh-client-ui-settings-plugins",
+    ],
+  },
+  files: ["cordis.patch.yml", "compatibility.json", "README.md", "LICENSE"],
+  requiredFiles: [
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "LICENSE",
+    "lib/index.js",
+    "lib/client.js",
+    "lib/types/index.d.ts",
+  ],
+});

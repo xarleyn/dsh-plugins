@@ -116,6 +116,7 @@
     "@types/react": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
