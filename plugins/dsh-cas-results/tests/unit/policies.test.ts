@@ -2,12 +2,21 @@
 
 import { describe, expect, it } from "vitest";
 
-import { isOwnToolName, resolveToolPolicy } from "../../src/integration/policies.js";
+import {
+  isOwnToolName,
+  resolveToolPolicy,
+} from "../../src/integration/policies.js";
 import { resolveCasResultsConfig } from "../../src/config.js";
 
 describe("isOwnToolName", () => {
   it("matches every dsh_cas_* tool (SPEC §21)", () => {
-    for (const name of ["dsh_cas_retrieve", "dsh_cas_search", "dsh_cas_info", "dsh_cas_stats", "dsh_cas_gc"]) {
+    for (const name of [
+      "dsh_cas_retrieve",
+      "dsh_cas_search",
+      "dsh_cas_info",
+      "dsh_cas_stats",
+      "dsh_cas_gc",
+    ]) {
       expect(isOwnToolName(name)).toBe(true);
     }
     expect(isOwnToolName("bash")).toBe(false);

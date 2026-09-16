@@ -1,9 +1,6 @@
 import { Context, Service } from "@deepseek-ai/cordis";
 import type { GenerateOptions, StreamChunk } from "@deepseek-ai/dsh-llm";
-import {
-  installSettingsSection,
-  settingsNamespace,
-} from "@deepseek-ai/dsh-settings";
+import type {} from "@deepseek-ai/dsh-settings";
 import {
   createHostLoggerSink,
   getPluginLogger,
@@ -29,9 +26,7 @@ function pluginLogLevel(level: ResolvedConfig["logLevel"]): PluginLogLevel {
 }
 
 /** User-editable settings section rendered by the browser client card. */
-export const SLEEV_SETTINGS_NAMESPACE = settingsNamespace(
-  SLEEV_SETTINGS_NAMESPACE_ID,
-);
+export const SLEEV_SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -63,28 +58,34 @@ export class SleevIntegrationService extends Service {
       console: "trace",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
-    ctx.effect(
-      () => async () => this.logger.close(),
-      "dsh-sleev.logger",
-    );
-    this.telemetry = new CallTelemetryStore(this.logger.child("telemetry"), () =>
-      resolveConfig(configSource()),
+    ctx.effect(() => async () => this.logger.close(), "dsh-sleev.logger");
+    this.telemetry = new CallTelemetryStore(
+      this.logger.child("telemetry"),
+      () => resolveConfig(configSource()),
     );
 
-    installSettingsSection(ctx, SLEEV_SETTINGS_NAMESPACE, ConfigSchema, entry, {
-      setSource: (current) => {
-        configSource = current;
-      },
-      // Route matching and telemetry policy read through configSource for
-      // each operation, so a committed setting needs no re-registration.
-      onChange: () => {
-        const config = this.telemetry.reconfigure();
-        this.logger.setLevel(pluginLogLevel(config.logLevel));
-        this.logger.info("telemetry.config.updated", {
-          logLevel: config.logLevel,
-          maxRecentCalls: config.maxRecentCalls,
-        });
-      },
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        SLEEV_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        entry,
+        {
+          setSource: (current) => {
+            configSource = current;
+          },
+          // Route matching and telemetry policy read through configSource for
+          // each operation, so a committed setting needs no re-registration.
+          onChange: () => {
+            const config = this.telemetry.reconfigure();
+            this.logger.setLevel(pluginLogLevel(config.logLevel));
+            this.logger.info("telemetry.config.updated", {
+              logLevel: config.logLevel,
+              maxRecentCalls: config.maxRecentCalls,
+            });
+          },
+        },
+      );
     });
 
     ctx.on(

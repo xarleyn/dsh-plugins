@@ -1,6 +1,13 @@
-import { normalizeWorkspacePath } from '../utils/paths.js';
-import { hashFile } from '../utils/hashing.js';
-import type { ChangeDetector, ChangeDiff, DetectorOptions, FileChange, FileSnapshot, TurnBaseline } from './types.js';
+import { normalizeWorkspacePath } from "../utils/paths.js";
+import { hashFile } from "../utils/hashing.js";
+import type {
+  ChangeDetector,
+  ChangeDiff,
+  DetectorOptions,
+  FileChange,
+  FileSnapshot,
+  TurnBaseline,
+} from "./types.js";
 import {
   EMPTY_TREE,
   absoluteWorkspacePath,
@@ -9,10 +16,10 @@ import {
   nameStatusRange,
   resolveHead,
   statusEntries,
-} from './git.js';
-import { anySelectorMatches } from './snapshot.js';
+} from "./git.js";
+import { anySelectorMatches } from "./snapshot.js";
 
-type ChangeKind = 'added' | 'modified' | 'deleted';
+type ChangeKind = "added" | "modified" | "deleted";
 
 interface GitState {
   head: string | undefined;
@@ -21,19 +28,24 @@ interface GitState {
   degraded: boolean;
 }
 
-async function captureGitState(cwd: string, options: DetectorOptions): Promise<GitState> {
+async function captureGitState(
+  cwd: string,
+  options: DetectorOptions,
+): Promise<GitState> {
   const head = await resolveHead(cwd);
   const entries = await statusEntries(cwd);
 
   // Path → status entry; renames contribute both of their paths.
   const dirty = new Map<string, { untracked: boolean }>();
   for (const entry of entries) {
-    const untracked = entry.x === '?' && entry.y === '?';
+    const untracked = entry.x === "?" && entry.y === "?";
     for (const path of entry.paths) {
       dirty.set(path, { untracked });
     }
   }
-  const ordered = [...dirty.entries()].sort(([left], [right]) => left.localeCompare(right));
+  const ordered = [...dirty.entries()].sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
   let degraded = false;
   if (ordered.length > options.maxFiles) {
     degraded = true;
@@ -60,13 +72,13 @@ async function captureGitState(cwd: string, options: DetectorOptions): Promise<G
 
 export function createGitDetector(options: DetectorOptions): ChangeDetector {
   return {
-    kind: 'git',
+    kind: "git",
 
     async captureBaseline(cwd: string): Promise<TurnBaseline> {
       const state = await captureGitState(cwd, options);
       return {
         cwd,
-        kind: 'git',
+        kind: "git",
         ...(state.head === undefined ? {} : { head: state.head }),
         files: state.files,
         createdAt: Date.now(),
@@ -74,7 +86,10 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
       };
     },
 
-    async computeChanges(cwd: string, baseline: TurnBaseline): Promise<ChangeDiff> {
+    async computeChanges(
+      cwd: string,
+      baseline: TurnBaseline,
+    ): Promise<ChangeDiff> {
       const current = await captureGitState(cwd, options);
       const rangeKinds = new Map<string, ChangeKind>();
       const currentHead = current.head;
@@ -84,15 +99,15 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
           try {
             for (const entry of await nameStatusRange(cwd, from, currentHead)) {
               const [toPath, fromPath] = entry.paths;
-              if (entry.status === 'A') {
-                if (toPath !== undefined) rangeKinds.set(toPath, 'added');
-              } else if (entry.status === 'D') {
-                if (toPath !== undefined) rangeKinds.set(toPath, 'deleted');
-              } else if (entry.status === 'R' || entry.status === 'C') {
-                if (toPath !== undefined) rangeKinds.set(toPath, 'added');
-                if (fromPath !== undefined) rangeKinds.set(fromPath, 'deleted');
+              if (entry.status === "A") {
+                if (toPath !== undefined) rangeKinds.set(toPath, "added");
+              } else if (entry.status === "D") {
+                if (toPath !== undefined) rangeKinds.set(toPath, "deleted");
+              } else if (entry.status === "R" || entry.status === "C") {
+                if (toPath !== undefined) rangeKinds.set(toPath, "added");
+                if (fromPath !== undefined) rangeKinds.set(fromPath, "deleted");
               } else if (toPath !== undefined) {
-                rangeKinds.set(toPath, 'modified');
+                rangeKinds.set(toPath, "modified");
               }
             }
           } catch {
@@ -102,7 +117,8 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
         }
       }
 
-      const headsDiffer = (baseline.head ?? undefined) !== (current.head ?? undefined);
+      const headsDiffer =
+        (baseline.head ?? undefined) !== (current.head ?? undefined);
       const paths = new Set<string>([
         ...baseline.files.keys(),
         ...current.files.keys(),
@@ -117,7 +133,8 @@ export function createGitDetector(options: DetectorOptions): ChangeDetector {
           rangeKinds.get(rawPath),
           headsDiffer,
         );
-        if (kind !== undefined) changes.push({ path: normalizeWorkspacePath(rawPath), type: kind });
+        if (kind !== undefined)
+          changes.push({ path: normalizeWorkspacePath(rawPath), type: kind });
       }
 
       return { changes, degraded: baseline.degraded || current.degraded };
@@ -148,20 +165,20 @@ function classifyChange(
   if (before === undefined && after !== undefined) {
     // Absent from the baseline means clean-or-nonexistent at turn start:
     // an untracked path is brand new, a tracked path existed with HEAD content.
-    if (after.untracked === true) return 'added';
-    return after.exists ? 'modified' : 'deleted';
+    if (after.untracked === true) return "added";
+    return after.exists ? "modified" : "deleted";
   }
   if (before !== undefined && after === undefined) {
-    if (before.untracked === true) return 'deleted';
-    if (!headsDiffer) return before.exists ? 'modified' : 'added';
+    if (before.untracked === true) return "deleted";
+    if (!headsDiffer) return before.exists ? "modified" : "added";
     return rangeKind;
   }
   if (before !== undefined && after !== undefined) {
     if (before.exists && after.exists) {
-      return before.hash !== after.hash ? 'modified' : undefined;
+      return before.hash !== after.hash ? "modified" : undefined;
     }
-    if (before.exists && !after.exists) return 'deleted';
-    if (!before.exists && after.exists) return 'added';
+    if (before.exists && !after.exists) return "deleted";
+    if (!before.exists && after.exists) return "added";
   }
   return undefined;
 }

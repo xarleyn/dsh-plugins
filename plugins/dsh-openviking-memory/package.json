@@ -1,0 +1,103 @@
+{
+  "name": "@yadsh/dsh-openviking-memory",
+  "version": "0.1.0",
+  "description": "OpenViking memory integration for DeepSeek Harness with configurable automatic context injection; derived from the official OpenViking DSH plugin.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-openviking-memory"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-openviking-memory#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "skills",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src tests scripts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "openviking",
+    "memory",
+    "agent-memory",
+    "long-term-memory",
+    "manual-recall",
+    "auto-recall",
+    "context"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-agent": "catalog:dsh",
+    "@deepseek-ai/dsh-llm": "catalog:dsh",
+    "@deepseek-ai/dsh-mcp-client": "catalog:dsh",
+    "@deepseek-ai/dsh-session": "catalog:dsh",
+    "@deepseek-ai/dsh-skill-filesystem": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-fs": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-home-paths": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-mcp-client": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-session": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-skill": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-skill-filesystem": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-test-kit": "workspace:^",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling",
+    "yaml": "^2.8.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

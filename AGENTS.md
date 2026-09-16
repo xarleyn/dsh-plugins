@@ -11,6 +11,14 @@
 - Report the exact verification commands and their results in the final
   handoff.
 
+## QA surface release notes
+
+- Every user-visible `@yadsh/dsh-qa-surface` change that adds or updates an Nx
+  version plan must also update
+  `plugins/dsh-qa-surface/src/client/components/QaChangelog.tsx` for the
+  planned version in the same change. Do not bump `package.json` manually; Nx
+  materializes the version during release.
+
 ## Browser client module identity
 
 - Every package that declares `dsh.client` must ship a classic browser bundle

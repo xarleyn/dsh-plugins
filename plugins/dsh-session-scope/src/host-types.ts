@@ -4,7 +4,10 @@ import type { HostLoggerLike } from "@yadsh/dsh-plugin-log";
 import type { SessionEvent } from "./core.js";
 import type { ScopeSession } from "./host-api.js";
 import type { ScopeAwareFileSystem, ScopeFsTarget } from "./scope-fs.js";
-import type { ScopeProcessOwner, ScopeProcessServices } from "./scope-processes.js";
+import type {
+  ScopeProcessOwner,
+  ScopeProcessServices,
+} from "./scope-processes.js";
 import type {
   ScopeConfinedArgv,
   ScopeSandboxPolicy,
@@ -32,7 +35,9 @@ export interface SandboxPolicyServiceLike {
   resolve(request?: SandboxPolicyRequest): SandboxPolicyLike;
 }
 
-export type ResolvePolicyLike = (request?: SandboxPolicyRequest) => SandboxPolicyLike;
+export type ResolvePolicyLike = (
+  request?: SandboxPolicyRequest,
+) => SandboxPolicyLike;
 
 export interface SandboxedFsTarget extends ScopeFsTarget {
   targetKey: string;
@@ -50,7 +55,10 @@ export interface SandboxedFileSystemLike extends ScopeAwareFileSystem {
 }
 
 export interface SandboxProviderLike {
-  confine(argv: readonly string[], policy: SandboxPolicyLike): ScopeConfinedArgv;
+  confine(
+    argv: readonly string[],
+    policy: SandboxPolicyLike,
+  ): ScopeConfinedArgv;
 }
 
 export interface PromptContextLike {
@@ -78,7 +86,10 @@ export interface SystemPromptServiceLike {
 }
 
 export interface HostSessionLike extends ScopeSession {
-  append(type: "session-scope/set", data: Parameters<ScopeSession["append"]>[1]): unknown;
+  append(
+    type: "session-scope/set",
+    data: Parameters<ScopeSession["append"]>[1],
+  ): unknown;
   append(
     type: "workspace-scope/selection",
     data: { roots: string[]; workspaceRoot: string; workspace: boolean },
@@ -103,7 +114,9 @@ interface CommandDefinitionLike {
   name: string;
   description: string;
   input: { hint: string };
-  handler(invocation: CommandInvocationLike): CommandResultLike | Promise<CommandResultLike>;
+  handler(
+    invocation: CommandInvocationLike,
+  ): CommandResultLike | Promise<CommandResultLike>;
 }
 
 export interface CommandsServiceLike {
@@ -149,7 +162,10 @@ export interface SessionScopeProjectionState {
   hasSnapshot: boolean;
 }
 
-export interface SessionScopeProjectionView extends Omit<SessionScopeProjectionState, "hasSnapshot"> {
+export interface SessionScopeProjectionView extends Omit<
+  SessionScopeProjectionState,
+  "hasSnapshot"
+> {
   capabilities: {
     focused: boolean;
     isolated: boolean;
@@ -182,7 +198,9 @@ interface ProjectionDefinitionLike<TState, TView> {
 }
 
 export interface SessionProjectionsServiceLike {
-  register<TState, TView>(definition: ProjectionDefinitionLike<TState, TView>): unknown;
+  register<TState, TView>(
+    definition: ProjectionDefinitionLike<TState, TView>,
+  ): unknown;
 }
 
 export interface ProjectionContextLike {
@@ -214,7 +232,10 @@ export interface HostContextLike {
     listener: (session: DelegatedScopeSession) => void,
     options?: { global?: boolean },
   ): Disposer;
-  inject<TContext>(services: readonly string[], callback: (ctx: TContext) => void): unknown;
+  inject<TContext>(
+    services: readonly string[],
+    callback: (ctx: TContext) => void,
+  ): unknown;
 }
 
 /** Cordis owns the runtime context; this cast is isolated to the Remote constructor seam. */

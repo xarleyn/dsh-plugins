@@ -28,7 +28,8 @@ function serializeDeclaration(property: string, value: string): string {
   if (property === "min-width" && value === "0px") return "min-width:0px";
   if (property === "flex-shrink" && value === "0") return "flex-shrink:0";
   if (property === "max-width" && value === "100%") return "max-width:100%";
-  if (property === "white-space" && value === "normal") return "white-space:normal";
+  if (property === "white-space" && value === "normal")
+    return "white-space:normal";
   if (property === "overflow-wrap" && value === "anywhere") {
     return "overflow-wrap:anywhere";
   }
@@ -44,10 +45,7 @@ function serializeDeclaration(property: string, value: string): string {
   ) {
     return `${property}:${value}`;
   }
-  if (
-    property === "translate" &&
-    /^-?\d+(?:\.\d+)?px 0$/u.test(value)
-  ) {
+  if (property === "translate" && /^-?\d+(?:\.\d+)?px 0$/u.test(value)) {
     return `translate:${value}`;
   }
   throw new Error(`unsafe CSS repair declaration: ${property}: ${value}`);
@@ -70,7 +68,8 @@ export class RepairEngine {
     const repairId = safeRepairId(candidate.issue.id);
     if (this.#applied.has(repairId)) return false;
     const changes = candidate.issue.suggestedCss;
-    if (changes === undefined || Object.keys(changes).length === 0) return false;
+    if (changes === undefined || Object.keys(changes).length === 0)
+      return false;
 
     const declarations = Object.entries(changes)
       .map(([property, value]) => serializeDeclaration(property, value))
@@ -86,12 +85,13 @@ export class RepairEngine {
     addTokenAttribute(candidate.root, ROOT_ATTRIBUTE, repairId);
     addTokenAttribute(candidate.target, TARGET_ATTRIBUTE, repairId);
     this.#document.head.append(style);
-    const historyIndex = this.#history.push({
-      repairId,
-      timestamp: new Date().toISOString(),
-      issue: candidate.issue,
-      status: "applied",
-    }) - 1;
+    const historyIndex =
+      this.#history.push({
+        repairId,
+        timestamp: new Date().toISOString(),
+        issue: candidate.issue,
+        status: "applied",
+      }) - 1;
     this.#applied.set(repairId, { candidate, style, historyIndex });
     return true;
   }
@@ -107,10 +107,7 @@ export class RepairEngine {
     return true;
   }
 
-  rollback(
-    repairId: string,
-    verification?: RepairVerification,
-  ): boolean {
+  rollback(repairId: string, verification?: RepairVerification): boolean {
     const applied = this.#applied.get(repairId);
     if (applied === undefined) return false;
     applied.style.remove();
@@ -119,9 +116,8 @@ export class RepairEngine {
     this.#applied.delete(repairId);
     this.#history[applied.historyIndex] = {
       ...this.#history[applied.historyIndex]!,
-      status: verification === undefined
-        ? "rolled-back"
-        : "verification-failed",
+      status:
+        verification === undefined ? "rolled-back" : "verification-failed",
       ...(verification === undefined ? {} : { verification }),
     };
     return true;

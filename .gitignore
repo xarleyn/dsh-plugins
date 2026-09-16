@@ -12,6 +12,10 @@ lib/
 dist/
 *.tsbuildinfo
 
+# Scratch tree the typert generator builds a package in; it removes it again,
+# but a build in progress must not be stageable.
+.typert-workspace/
+
 # ---------------------------------------------------------------------------
 # Nx runtime state
 # `.nx/version-plans/` holds nx release version plans and IS source-controlled

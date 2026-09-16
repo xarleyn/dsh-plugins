@@ -6,47 +6,78 @@
  * @module config
  */
 
-import z from '@deepseek-ai/schemastery'
+import z from "@deepseek-ai/schemastery";
 import type {
+  AdapterConfig,
   AuthConfig,
   AuditConfig,
   AuthenticatedFetchRule,
   WebFetchAuthConfig,
   DefaultPolicy,
+  DocumentsConfig,
   FetchLimits,
   NetworkPolicy,
+  ResolvedAdapter,
   ResolvedConfig,
+  ResolvedDocuments,
   ResolvedRule,
   RedirectPolicy,
   RuleMatch,
-} from './types.js'
-import { validateRule } from './rule-validation.js'
+  CleanupLevel,
+} from "./types.js";
+import { CLEANUP_LEVELS } from "./types.js";
+import { validateRule } from "./rule-validation.js";
 
 export const DEFAULT_LIMITS: Readonly<Required<FetchLimits>> = Object.freeze({
   timeoutMs: 30_000,
   maxResponseBytes: 5_242_880,
   maxBodyChars: 100_000,
-})
+});
 
-export const DEFAULT_USER_AGENT = 'deepseek-harness-authenticated-fetch (+https://github.com/xarleyn/dsh-plugins)'
+/**
+ * Extraction caps applied when neither the rule nor the global config names
+ * them. `maxBytes` is deliberately below `maxResponseBytes`: a document is
+ * downloaded for its TEXT, and a file that large usually means the model asked
+ * for the wrong thing.
+ */
+export const DEFAULT_DOCUMENTS: Readonly<Required<DocumentsConfig>> =
+  Object.freeze({
+    enabled: true,
+    maxBytes: 4_194_304,
+    maxChars: 40_000,
+  });
+
+/** How many attachments the Confluence adapter's appended list reports by default. */
+export const DEFAULT_MAX_ATTACHMENTS = 50;
+
+export const DEFAULT_USER_AGENT =
+  "deepseek-harness-authenticated-fetch (+https://github.com/xarleyn/dsh-plugins)";
 /** Maximum accepted request URL length; a transport constant, not a rule limit. */
-export const DEFAULT_MAX_URL_LENGTH = 2048
-export const DEFAULT_MAX_REDIRECTS = 3
+export const DEFAULT_MAX_URL_LENGTH = 2048;
+export const DEFAULT_MAX_REDIRECTS = 3;
 
-const EMPTY_NETWORK_POLICY: Readonly<Required<Omit<NetworkPolicy, 'allowedCidrs' | 'deniedCidrs'>>> = Object.freeze({
+const EMPTY_NETWORK_POLICY: Readonly<
+  Required<Omit<NetworkPolicy, "allowedCidrs" | "deniedCidrs">>
+> = Object.freeze({
   allowPublic: true,
   allowPrivate: false,
   allowLoopback: false,
   allowLinkLocal: false,
   allowCGNAT: false,
   allowIPv6ULA: false,
-})
+});
 
 const fetchLimitsSchema = z.object({
   timeoutMs: z.number().step(1).min(1),
   maxResponseBytes: z.number().step(1).min(1),
   maxBodyChars: z.number().step(1).min(1),
-})
+});
+
+const documentsSchema = z.object({
+  enabled: z.boolean(),
+  maxBytes: z.number().step(1).min(1),
+  maxChars: z.number().step(1).min(1),
+});
 
 const networkPolicySchema = z.object({
   allowPublic: z.boolean(),
@@ -57,20 +88,29 @@ const networkPolicySchema = z.object({
   allowIPv6ULA: z.boolean(),
   allowedCidrs: z.array(z.string()),
   deniedCidrs: z.array(z.string()),
-})
+});
 
 const redirectSchema = z.object({
-  mode: z.union(['none', 'same-origin', 'allowlist'] as const),
+  mode: z.union(["none", "same-origin", "allowlist"] as const),
   maxRedirects: z.number().step(1).min(0),
   allowedOrigins: z.array(z.string()),
-})
+});
 
 const authSchema = z.union([
-  z.object({ type: z.union(['none'] as const) }),
-  z.object({ type: z.union(['bearer'] as const), credential: z.string() }),
-  z.object({ type: z.union(['basic'] as const), username: z.string(), passwordCredential: z.string() }),
-  z.object({ type: z.union(['header'] as const), headerName: z.string(), credential: z.string(), prefix: z.string() }),
-]) as unknown as z<AuthConfig>
+  z.object({ type: z.union(["none"] as const) }),
+  z.object({ type: z.union(["bearer"] as const), credential: z.string() }),
+  z.object({
+    type: z.union(["basic"] as const),
+    username: z.string(),
+    passwordCredential: z.string(),
+  }),
+  z.object({
+    type: z.union(["header"] as const),
+    headerName: z.string(),
+    credential: z.string(),
+    prefix: z.string(),
+  }),
+]) as unknown as z<AuthConfig>;
 
 const ruleSchema = z.object({
   id: z.string(),
@@ -79,7 +119,7 @@ const ruleSchema = z.object({
   enabled: z.boolean(),
   testUrl: z.string(),
   match: z.object({
-    schemes: z.array(z.union(['https', 'http'] as const)),
+    schemes: z.array(z.union(["https", "http"] as const)),
     hosts: z.array(z.string()),
     ports: z.array(z.number().step(1).min(1).max(65535)),
     allowPaths: z.array(z.string()),
@@ -89,7 +129,16 @@ const ruleSchema = z.object({
   networkPolicy: networkPolicySchema as z<NetworkPolicy>,
   redirects: redirectSchema as z<RedirectPolicy>,
   limits: fetchLimitsSchema as z<FetchLimits>,
-})
+  adapter: z.object({
+    type: z.union(["none", "jira", "confluence"] as const),
+    jiraFlavor: z.union(["server", "cloud"] as const),
+    includeComments: z.boolean(),
+    includeLinks: z.boolean(),
+    cleanup: z.union([...CLEANUP_LEVELS]),
+    maxAttachments: z.number().step(1).min(0),
+  }) as z<AdapterConfig>,
+  documents: documentsSchema as z<DocumentsConfig>,
+});
 
 /** Runtime schema consumed by the Cordis loader and the settings section. */
 export const ConfigSchema: z<WebFetchAuthConfig> = z.object({
@@ -97,45 +146,110 @@ export const ConfigSchema: z<WebFetchAuthConfig> = z.object({
   enabled: z.boolean().default(true),
   rules: z.array(ruleSchema).default([]) as z<AuthenticatedFetchRule[]>,
   defaultPolicy: z.object({
-    unmatched: z.union(['block'] as const),
+    unmatched: z.union(["block"] as const),
   }) as z<DefaultPolicy>,
   limits: fetchLimitsSchema as z<FetchLimits>,
-  audit: z.object({
-    enabled: z.boolean().default(true),
-  }).default({ enabled: true } satisfies AuditConfig) as z<AuditConfig>,
-})
+  documents: documentsSchema as z<DocumentsConfig>,
+  audit: z
+    .object({
+      enabled: z.boolean().default(true),
+    })
+    .default({ enabled: true } satisfies AuditConfig) as z<AuditConfig>,
+});
 
 /** Merge one rule's limits over the global defaults. */
-function resolveLimits(globalLimits: FetchLimits | undefined, ruleLimits: FetchLimits | undefined): Required<FetchLimits> {
+function resolveLimits(
+  globalLimits: FetchLimits | undefined,
+  ruleLimits: FetchLimits | undefined,
+): Required<FetchLimits> {
   return {
-    timeoutMs: ruleLimits?.timeoutMs ?? globalLimits?.timeoutMs ?? DEFAULT_LIMITS.timeoutMs,
-    maxResponseBytes: ruleLimits?.maxResponseBytes ?? globalLimits?.maxResponseBytes ?? DEFAULT_LIMITS.maxResponseBytes,
-    maxBodyChars: ruleLimits?.maxBodyChars ?? globalLimits?.maxBodyChars ?? DEFAULT_LIMITS.maxBodyChars,
-  }
+    timeoutMs:
+      ruleLimits?.timeoutMs ??
+      globalLimits?.timeoutMs ??
+      DEFAULT_LIMITS.timeoutMs,
+    maxResponseBytes:
+      ruleLimits?.maxResponseBytes ??
+      globalLimits?.maxResponseBytes ??
+      DEFAULT_LIMITS.maxResponseBytes,
+    maxBodyChars:
+      ruleLimits?.maxBodyChars ??
+      globalLimits?.maxBodyChars ??
+      DEFAULT_LIMITS.maxBodyChars,
+  };
 }
 
-function resolveRule(rule: AuthenticatedFetchRule, globalLimits: FetchLimits | undefined): ResolvedRule {
-  const networkPolicySource = rule.networkPolicy ?? {}
-  const redirects = rule.redirects ?? {}
+/** Cleanup level applied when a rule does not name one. */
+export const DEFAULT_CLEANUP_LEVEL = "balanced" satisfies CleanupLevel;
+
+function resolveAdapter(adapter: AdapterConfig | undefined): ResolvedAdapter {
+  return Object.freeze({
+    type: adapter?.type ?? "none",
+    jiraFlavor: adapter?.jiraFlavor ?? "server",
+    includeComments: adapter?.includeComments ?? false,
+    includeLinks: adapter?.includeLinks ?? false,
+    cleanup: adapter?.cleanup ?? DEFAULT_CLEANUP_LEVEL,
+    maxAttachments: adapter?.maxAttachments ?? DEFAULT_MAX_ATTACHMENTS,
+  });
+}
+
+/** Merge one rule's extraction caps over the global defaults. */
+function resolveDocuments(
+  globalDocuments: DocumentsConfig | undefined,
+  ruleDocuments: DocumentsConfig | undefined,
+): ResolvedDocuments {
+  return Object.freeze({
+    enabled:
+      ruleDocuments?.enabled ??
+      globalDocuments?.enabled ??
+      DEFAULT_DOCUMENTS.enabled,
+    maxBytes:
+      ruleDocuments?.maxBytes ??
+      globalDocuments?.maxBytes ??
+      DEFAULT_DOCUMENTS.maxBytes,
+    maxChars:
+      ruleDocuments?.maxChars ??
+      globalDocuments?.maxChars ??
+      DEFAULT_DOCUMENTS.maxChars,
+  });
+}
+
+function resolveRule(
+  rule: AuthenticatedFetchRule,
+  globalLimits: FetchLimits | undefined,
+  globalDocuments: DocumentsConfig | undefined,
+): ResolvedRule {
+  const networkPolicySource = rule.networkPolicy ?? {};
+  const redirects = rule.redirects ?? {};
   return {
     source: rule,
     networkPolicy: Object.freeze({
-      allowPublic: networkPolicySource.allowPublic ?? EMPTY_NETWORK_POLICY.allowPublic,
-      allowPrivate: networkPolicySource.allowPrivate ?? EMPTY_NETWORK_POLICY.allowPrivate,
-      allowLoopback: networkPolicySource.allowLoopback ?? EMPTY_NETWORK_POLICY.allowLoopback,
-      allowLinkLocal: networkPolicySource.allowLinkLocal ?? EMPTY_NETWORK_POLICY.allowLinkLocal,
-      allowCGNAT: networkPolicySource.allowCGNAT ?? EMPTY_NETWORK_POLICY.allowCGNAT,
-      allowIPv6ULA: networkPolicySource.allowIPv6ULA ?? EMPTY_NETWORK_POLICY.allowIPv6ULA,
-      allowedCidrs: Object.freeze([...(networkPolicySource.allowedCidrs ?? [])]),
+      allowPublic:
+        networkPolicySource.allowPublic ?? EMPTY_NETWORK_POLICY.allowPublic,
+      allowPrivate:
+        networkPolicySource.allowPrivate ?? EMPTY_NETWORK_POLICY.allowPrivate,
+      allowLoopback:
+        networkPolicySource.allowLoopback ?? EMPTY_NETWORK_POLICY.allowLoopback,
+      allowLinkLocal:
+        networkPolicySource.allowLinkLocal ??
+        EMPTY_NETWORK_POLICY.allowLinkLocal,
+      allowCGNAT:
+        networkPolicySource.allowCGNAT ?? EMPTY_NETWORK_POLICY.allowCGNAT,
+      allowIPv6ULA:
+        networkPolicySource.allowIPv6ULA ?? EMPTY_NETWORK_POLICY.allowIPv6ULA,
+      allowedCidrs: Object.freeze([
+        ...(networkPolicySource.allowedCidrs ?? []),
+      ]),
       deniedCidrs: Object.freeze([...(networkPolicySource.deniedCidrs ?? [])]),
     }),
     redirects: Object.freeze({
-      mode: redirects.mode ?? 'same-origin',
+      mode: redirects.mode ?? "same-origin",
       maxRedirects: redirects.maxRedirects ?? DEFAULT_MAX_REDIRECTS,
       allowedOrigins: Object.freeze([...(redirects.allowedOrigins ?? [])]),
     }),
     limits: Object.freeze(resolveLimits(globalLimits, rule.limits)),
-  }
+    adapter: resolveAdapter(rule.adapter),
+    documents: resolveDocuments(globalDocuments, rule.documents),
+  };
 }
 
 /**
@@ -143,35 +257,39 @@ function resolveRule(rule: AuthenticatedFetchRule, globalLimits: FetchLimits | u
  * reported through `configErrors` — an invalid rule must never half-apply.
  */
 export function resolveConfig(config: WebFetchAuthConfig = {}): ResolvedConfig {
-  const globalLimits = config.limits
-  const rules: ResolvedRule[] = []
-  const configErrors: string[] = []
-  const perRuleErrors = groupRuleErrors(config.rules ?? [])
+  const globalLimits = config.limits;
+  const globalDocuments = config.documents;
+  const rules: ResolvedRule[] = [];
+  const configErrors: string[] = [];
+  const perRuleErrors = groupRuleErrors(config.rules ?? []);
   for (const [index, rule] of (config.rules ?? []).entries()) {
-    const ruleErrors = perRuleErrors.get(index) ?? []
+    const ruleErrors = perRuleErrors.get(index) ?? [];
     if (ruleErrors.length > 0) {
-      configErrors.push(...ruleErrors)
-      continue
+      configErrors.push(...ruleErrors);
+      continue;
     }
-    rules.push(resolveRule(rule, globalLimits))
+    rules.push(resolveRule(rule, globalLimits, globalDocuments));
   }
   return Object.freeze({
     configVersion: config.configVersion ?? 1,
     enabled: config.enabled ?? true,
-    unmatchedPolicy: config.defaultPolicy?.unmatched ?? 'block',
+    unmatchedPolicy: config.defaultPolicy?.unmatched ?? "block",
     rules: Object.freeze(rules),
     limits: Object.freeze(resolveLimits(globalLimits, undefined)),
+    documents: resolveDocuments(globalDocuments, undefined),
     audit: Object.freeze({ enabled: config.audit?.enabled ?? true }),
     configErrors: Object.freeze([...configErrors]),
-  })
+  });
 }
 
 /** Run `validateRule` per rule and key the diagnostics by rule index. */
-function groupRuleErrors(rules: readonly AuthenticatedFetchRule[]): Map<number, string[]> {
-  const grouped = new Map<number, string[]>()
+function groupRuleErrors(
+  rules: readonly AuthenticatedFetchRule[],
+): Map<number, string[]> {
+  const grouped = new Map<number, string[]>();
   for (const [index, rule] of rules.entries()) {
-    const errors = validateRule(rule, index)
-    if (errors.length > 0) grouped.set(index, errors)
+    const errors = validateRule(rule, index);
+    if (errors.length > 0) grouped.set(index, errors);
   }
-  return grouped
+  return grouped;
 }

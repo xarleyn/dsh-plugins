@@ -1,4 +1,4 @@
-import type { SessionSummary } from "@deepseek-ai/dsh-client-runtime/client";
+import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 import { relativeTime } from "./format.js";
 
 /** One row of the agents panel: a subagent session of the open chat. */

@@ -11,7 +11,11 @@
 
 export type RiskLevel = "low" | "elevated" | "high";
 
-const RISK_ORDER: Readonly<Record<RiskLevel, number>> = { low: 0, elevated: 1, high: 2 };
+const RISK_ORDER: Readonly<Record<RiskLevel, number>> = {
+  low: 0,
+  elevated: 1,
+  high: 2,
+};
 
 export interface TurnRiskState {
   readonly turn: number;
@@ -43,7 +47,12 @@ export class TurnRiskTracker {
     const previous = this.states.get(sessionId);
     if (previous !== undefined && previous.turn === turn) return;
     this.states.delete(sessionId);
-    this.states.set(sessionId, { turn, riskLevel: "low", sources: [], signals: [] });
+    this.states.set(sessionId, {
+      turn,
+      riskLevel: "low",
+      sources: [],
+      signals: [],
+    });
     this.prune();
   }
 
@@ -53,9 +62,16 @@ export class TurnRiskTracker {
     if (base === undefined) return undefined;
     const next: TurnRiskState = {
       turn: base.turn,
-      riskLevel: RISK_ORDER[signal.riskLevel] > RISK_ORDER[base.riskLevel] ? signal.riskLevel : base.riskLevel,
-      sources: base.sources.includes(signal.source) ? base.sources : [...base.sources, signal.source].slice(-16),
-      signals: base.signals.includes(signal.signalKey) ? base.signals : [...base.signals, signal.signalKey].slice(-32),
+      riskLevel:
+        RISK_ORDER[signal.riskLevel] > RISK_ORDER[base.riskLevel]
+          ? signal.riskLevel
+          : base.riskLevel,
+      sources: base.sources.includes(signal.source)
+        ? base.sources
+        : [...base.sources, signal.source].slice(-16),
+      signals: base.signals.includes(signal.signalKey)
+        ? base.signals
+        : [...base.signals, signal.signalKey].slice(-32),
     };
     // Refresh insertion order for the size cap.
     this.states.delete(sessionId);
@@ -68,7 +84,10 @@ export class TurnRiskTracker {
   }
 
   /** Escalate a surface decision according to the current risk level. */
-  escalate(decision: "allow" | "warn" | "review" | "block", riskLevel: RiskLevel | undefined): "allow" | "ask" | "deny" {
+  escalate(
+    decision: "allow" | "warn" | "review" | "block",
+    riskLevel: RiskLevel | undefined,
+  ): "allow" | "ask" | "deny" {
     if (riskLevel === "high") {
       if (decision === "allow" || decision === "warn") return "ask";
       return "deny";

@@ -36,17 +36,25 @@ export class LlamaCppBackend implements KvPersistenceBackend {
   }
 
   inspectSlots(): Promise<readonly BackendSlot[]> {
-    return this.#client.inspectSlots().then((response) =>
-      response.slots.map((slot): BackendSlot => ({ id: slot.id })),
-    );
+    return this.#client
+      .inspectSlots()
+      .then((response) =>
+        response.slots.map((slot): BackendSlot => ({ id: slot.id })),
+      );
   }
 
-  async saveSlot(slotId: number, snapshotKey: string): Promise<BackendSaveResult> {
+  async saveSlot(
+    slotId: number,
+    snapshotKey: string,
+  ): Promise<BackendSaveResult> {
     const result = await this.#client.saveSlot(slotId, snapshotKey);
     return { success: result.success, bytes: null };
   }
 
-  async restoreSlot(slotId: number, snapshotKey: string): Promise<BackendRestoreResult> {
+  async restoreSlot(
+    slotId: number,
+    snapshotKey: string,
+  ): Promise<BackendRestoreResult> {
     const result = await this.#client.restoreSlot(slotId, snapshotKey);
     return { success: result.success, nRestored: result.nRestored };
   }

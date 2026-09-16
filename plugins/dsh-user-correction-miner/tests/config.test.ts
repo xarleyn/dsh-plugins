@@ -27,11 +27,19 @@ describe("user correction miner config", () => {
   });
 
   it.each([
-    ["retention.maxRecordsPerWorkspace", { retention: { maxRecordsPerWorkspace: 0 } }],
+    [
+      "retention.maxRecordsPerWorkspace",
+      { retention: { maxRecordsPerWorkspace: 0 } },
+    ],
     ["live.maxPendingSessions", { live: { maxPendingSessions: 0 } }],
-    ["live.maxPendingEventsPerSession", { live: { maxPendingEventsPerSession: 0 } }],
+    [
+      "live.maxPendingEventsPerSession",
+      { live: { maxPendingEventsPerSession: 0 } },
+    ],
     ["live.pendingTtlMs", { live: { pendingTtlMs: 0 } }],
   ] as const)("rejects invalid %s", (name, config) => {
-    expect(() => resolveConfig(config)).toThrow(`${name} must be a positive safe integer`);
+    expect(() => resolveConfig(config)).toThrow(
+      `${name} must be a positive safe integer`,
+    );
   });
 });

@@ -1,5 +1,5 @@
-import { spawn } from 'node:child_process';
-import { join } from 'node:path';
+import { spawn } from "node:child_process";
+import { join } from "node:path";
 
 export interface GitStatusEntry {
   /** Staged status letter (' ' when none). */
@@ -18,60 +18,78 @@ export interface GitNameStatusEntry {
 }
 
 export class GitError extends Error {
-  constructor(args: readonly string[], exitCode: number | undefined, stderr: string) {
-    super(`git ${args.join(' ')} failed (exit ${exitCode ?? '?'}): ${stderr.trim()}`);
-    this.name = 'GitError';
+  constructor(
+    args: readonly string[],
+    exitCode: number | undefined,
+    stderr: string,
+  ) {
+    super(
+      `git ${args.join(" ")} failed (exit ${exitCode ?? "?"}): ${stderr.trim()}`,
+    );
+    this.name = "GitError";
   }
-}function runGit(cwd: string, args: readonly string[]): Promise<Buffer> {
+}
+function runGit(cwd: string, args: readonly string[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', args, { cwd, windowsHide: true });
+    const child = spawn("git", args, { cwd, windowsHide: true });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
-    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
-    child.on('error', reject);
-    child.on('close', (code) => {
+    child.stdout.on("data", (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on("data", (chunk: Buffer) => stderr.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
       if (code === 0) resolve(Buffer.concat(stdout));
-      else reject(new GitError(args, code ?? undefined, Buffer.concat(stderr).toString('utf8')));
+      else
+        reject(
+          new GitError(
+            args,
+            code ?? undefined,
+            Buffer.concat(stderr).toString("utf8"),
+          ),
+        );
     });
   });
 }
 
 /** Run git treating exit code 128 "not a repository / bad revision" as `undefined`. */
-async function runGitOptional(cwd: string, args: readonly string[]): Promise<Buffer | undefined> {
+async function runGitOptional(
+  cwd: string,
+  args: readonly string[],
+): Promise<Buffer | undefined> {
   try {
     return await runGit(cwd, args);
   } catch (error) {
-    if (error instanceof GitError && error.message.includes('exit 128')) return undefined;
+    if (error instanceof GitError && error.message.includes("exit 128"))
+      return undefined;
     throw error;
   }
 }
 
 export async function isGitWorktree(cwd: string): Promise<boolean> {
-  const out = await runGitOptional(cwd, ['rev-parse', '--is-inside-work-tree']);
-  return out?.toString('utf8').trim() === 'true';
+  const out = await runGitOptional(cwd, ["rev-parse", "--is-inside-work-tree"]);
+  return out?.toString("utf8").trim() === "true";
 }
 
 export async function resolveHead(cwd: string): Promise<string | undefined> {
-  const out = await runGitOptional(cwd, ['rev-parse', 'HEAD']);
-  const head = out?.toString('utf8').trim();
-  return head === '' ? undefined : head;
+  const out = await runGitOptional(cwd, ["rev-parse", "HEAD"]);
+  const head = out?.toString("utf8").trim();
+  return head === "" ? undefined : head;
 }
 
 function splitNul(buffer: Buffer): string[] {
-  const text = buffer.toString('utf8');
-  if (text === '') return [];
-  return text.split('\0').slice(0, -1);
+  const text = buffer.toString("utf8");
+  if (text === "") return [];
+  return text.split("\0").slice(0, -1);
 }
 
 /** `git status --porcelain=v1 -z --untracked-files=all`; never mutates the index. */
 export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
   const out = await runGit(cwd, [
-    '--no-optional-locks',
-    'status',
-    '--porcelain=v1',
-    '-z',
-    '--untracked-files=all',
+    "--no-optional-locks",
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=all",
   ]);
   const fields = splitNul(out);
   const entries: GitStatusEntry[] = [];
@@ -83,10 +101,14 @@ export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
     const y = record[1] as string;
     const first = record.slice(3);
     // Rename/copy records carry the destination first, then the original path.
-    if (x === 'R' || x === 'C' || y === 'R' || y === 'C') {
+    if (x === "R" || x === "C" || y === "R" || y === "C") {
       const second = fields[index];
       index += 1;
-      entries.push({ x, y, paths: second === undefined ? [first] : [first, second] });
+      entries.push({
+        x,
+        y,
+        paths: second === undefined ? [first] : [first, second],
+      });
     } else {
       entries.push({ x, y, paths: [first] });
     }
@@ -95,22 +117,36 @@ export async function statusEntries(cwd: string): Promise<GitStatusEntry[]> {
 }
 
 /** `git diff --name-status -z` between two commits (rename detection on). */
-export async function nameStatusRange(cwd: string, from: string, to: string): Promise<GitNameStatusEntry[]> {
-  const out = await runGit(cwd, ['diff', '--name-status', '-z', '-M', from, to]);
+export async function nameStatusRange(
+  cwd: string,
+  from: string,
+  to: string,
+): Promise<GitNameStatusEntry[]> {
+  const out = await runGit(cwd, [
+    "diff",
+    "--name-status",
+    "-z",
+    "-M",
+    from,
+    to,
+  ]);
   const fields = splitNul(out);
   const entries: GitNameStatusEntry[] = [];
   for (let index = 0; index < fields.length;) {
     const status = fields[index];
     index += 1;
-    if (status === undefined || status === '') continue;
-    const kind = (status.match(/^([A-Z])/u)?.[1]) ?? status;
+    if (status === undefined || status === "") continue;
+    const kind = status.match(/^([A-Z])/u)?.[1] ?? status;
     const first = fields[index];
     index += 1;
     if (first === undefined) continue;
-    if (kind === 'R' || kind === 'C') {
+    if (kind === "R" || kind === "C") {
       const second = fields[index];
       index += 1;
-      entries.push({ status: kind, paths: second === undefined ? [first] : [first, second] });
+      entries.push({
+        status: kind,
+        paths: second === undefined ? [first] : [first, second],
+      });
     } else {
       entries.push({ status: kind, paths: [first] });
     }
@@ -124,12 +160,12 @@ export async function nameStatusRange(cwd: string, from: string, to: string): Pr
  */
 export async function listGitFiles(cwd: string): Promise<string[]> {
   const out = await runGit(cwd, [
-    '--no-optional-locks',
-    'ls-files',
-    '--cached',
-    '--others',
-    '--exclude-standard',
-    '-z',
+    "--no-optional-locks",
+    "ls-files",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "-z",
   ]);
   return splitNul(out);
 }
@@ -137,8 +173,11 @@ export async function listGitFiles(cwd: string): Promise<string[]> {
 export { runGit };
 
 /** The well-known empty-tree object id, used to diff against an unborn HEAD. */
-export const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+export const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
-export function absoluteWorkspacePath(cwd: string, workspacePath: string): string {
-  return join(cwd, ...workspacePath.split('/'));
+export function absoluteWorkspacePath(
+  cwd: string,
+  workspacePath: string,
+): string {
+  return join(cwd, ...workspacePath.split("/"));
 }

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QA Browser fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Isolated browser fixture</h1>
+      <form id="fixture-form">
+        <label>Email <input name="email" /></label>
+        <label>
+          Plan
+          <select name="plan">
+            <option value="free">Free</option>
+            <option value="pro">Pro</option>
+          </select>
+        </label>
+        <label><input name="remember" type="checkbox" /> Remember me</label>
+        <button type="submit">Continue</button>
+      </form>
+      <output id="result"></output>
+    </main>
+    <script>
+      document
+        .querySelector("#fixture-form")
+        .addEventListener("submit", (event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          document.querySelector("#result").textContent =
+            `Done: ${data.get("email")} / ${data.get("plan")} / ${data.has("remember")}`;
+        });
+    </script>
+  </body>
+</html>

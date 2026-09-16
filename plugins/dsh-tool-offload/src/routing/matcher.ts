@@ -10,6 +10,9 @@ export function matchesToolPattern(pattern: string, toolName: string): boolean {
   return pattern === toolName;
 }
 
-export function matchesAnyTool(patterns: readonly string[], toolName: string): boolean {
+export function matchesAnyTool(
+  patterns: readonly string[],
+  toolName: string,
+): boolean {
   return patterns.some((pattern) => matchesToolPattern(pattern, toolName));
 }

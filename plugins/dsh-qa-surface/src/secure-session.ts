@@ -1,16 +1,48 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import { SessionId } from "@deepseek-ai/dsh-session";
+// The `types` subpath keeps the client ISessions Context merge authoritative;
+// the package root merges a conflicting host `sessions` service type.
+import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
+import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
 import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+import type { QaResolvedSessionPolicy } from "./access/service.js";
+import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
+import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
+import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
 interface AppliedPolicy {
   readonly fingerprint: string;
   readonly disposeGuard: () => void;
-  readonly disposeRestriction: () => void;
+  /** Owns the scoped restriction; disposed to lift the agent's tool mask. */
+  readonly disposeTools: () => void;
+  readonly disposeSkillPolicy: () => void;
+}
+
+interface UserWorkspaceAccess {
+  root: string;
+  sharedReadOnlyRoots: readonly string[];
+}
+
+interface QaDeploymentPins {
+  readonly pinnedWorkspace?: { readonly path: string };
+  readonly permission?: { readonly sandbox: string; readonly approval: string };
+}
+
+/**
+ * The accounts half of admission, resolved per call by the entry (accounts
+ * may be toggled at runtime). A gate must either accept the token/session
+ * pair or throw the coarse `QaAttestationError`; see {@link QaAccounts}.
+ */
+export interface QaAccountsGate {
+  enforceSessionAccess(
+    token: string,
+    sessionId: string,
+  ): { readonly id: string } | undefined;
+  userWorkspace(userId: string, registeredWorkspacePath: string): string;
 }
 
 /** Grace period in which a fresh session may still be pinned to the QA preset. */
@@ -42,32 +74,184 @@ function cwdMatches(headerCwd: string | undefined, pinned: string): boolean {
  */
 export class QaPolicyAdmission {
   private readonly appliedPolicies = new Map<Agent, AppliedPolicy>();
+  /** Host-trusted principal-scoped plugin tools enabled outside static config. */
+  private readonly principalScopedTools = new Set<string>();
+  /**
+   * Sessions the QA surface has attested. The provenance note is written for
+   * exactly these, and a delegated child resolves through its root session, so
+   * one set answers for the whole chat.
+   */
+  private readonly attested = new Set<string>();
+  private readonly workspaceAccess = new Map<string, UserWorkspaceAccess>();
+  private readonly disposeWorkspaceGuard: () => void;
 
   constructor(
     private readonly ctx: Context,
     private readonly config: () => ResolvedQaSurfaceConfig,
     private readonly logger: PluginLogger,
+    private readonly accounts?: QaAccountsGate,
+    /**
+     * Names the QA tool catalog attached to one agent after its activation
+     * skill loaded. Read per execution, so a tool becomes callable exactly when
+     * it is registered and stops being callable once the agent is disposed.
+     */
+    private readonly dynamicToolNames: (
+      agent: Agent,
+    ) => readonly string[] = () => [],
+    /** Resolve and freeze the session's subrole policy after its agent exists. */
+    private readonly capabilityPolicy?: (
+      token: string,
+      sessionId: string,
+      agent: Agent,
+    ) => Promise<QaResolvedSessionPolicy | undefined>,
+    /** Scope-local catalog entries may be known before they are activated. */
+    private readonly knownDynamicToolNames: () => readonly string[] = () => [],
   ) {
+    this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
+      const session = execution.agent?.session;
+      if (session === undefined) return undefined;
+      const access = this.workspaceAccess.get(String(session.id));
+      if (access === undefined) return undefined;
+      if (!cwdMatches(session.header.cwd, access.root)) {
+        return "QA workspace boundary: session cwd is outside this user's directory.";
+      }
+      return qaUserWorkspaceDenial(
+        execution,
+        access.root,
+        this.attachmentRoot(),
+        access,
+      );
+    });
+    ctx.on("session/created", (session) => {
+      const parent = session.header.parentSession;
+      if (parent === undefined) return;
+      const access = this.workspaceAccess.get(String(parent));
+      if (access !== undefined) {
+        this.workspaceAccess.set(String(session.id), access);
+      }
+    });
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
+      this.workspaceAccess.delete(String(agent.session.id));
     });
   }
 
-  secureSession(sessionId: string): QaLockdownProof {
+  /**
+   * Add tools whose own executor resolves the QA principal server-side.
+   * Enabling the contributing plugin is the operator decision; model arguments
+   * still cannot select an owner. The returned disposer mirrors tool lifetime.
+   */
+  registerPrincipalScopedTools(names: readonly string[]): () => void {
+    const normalized = names.map((name) => name.trim()).filter(Boolean);
+    for (const name of normalized) this.principalScopedTools.add(name);
+    return () => {
+      for (const name of normalized) this.principalScopedTools.delete(name);
+    };
+  }
+
+  /**
+   * Validate deployment-owned facts before a Host session is materialized.
+   * Agent-scoped facts (preset composition and tools) remain in secureSession,
+   * but a missing Workspace or mismatched permission preset must not leave a
+   * newly-created, permanently unusable chat behind.
+   */
+  preflightDeployment(): void {
+    this.deploymentPins(this.config());
+  }
+
+  /**
+   * The mounted attachment store's verbatim root, when the backend exposes
+   * one. It sits outside every workspace, so the per-user fence would
+   * otherwise deny the model the exact file an upload produced and the prompt
+   * points it at. A backend without a resolvable root simply keeps the fence
+   * closed — attachments then only work where reads are not fenced per user.
+   * Source preview asks for the same root, so one upload is readable by both.
+   */
+  attachmentRoot(): string | undefined {
+    const store = this.ctx.get("attachments") as
+      { readonly root?: unknown } | undefined;
+    return typeof store?.root === "string" ? store.root : undefined;
+  }
+
+  /**
+   * The live agent for one session, resuming a Session the Host has not
+   * materialized in this process.
+   *
+   * DSH builds an agent on demand: a session's journal opens straight from
+   * persistence (`session/page` reads the durable log), and only Agent-bound
+   * operations — a prompt, a model selection, renaming, an upload — resolve or
+   * resume one. So a chat from an earlier Host run has a readable transcript
+   * and no agent at all, and attestation, which pins the tool policy ON that
+   * agent, is the first thing here that needs one. Refusing instead would make
+   * every restored chat unopenable until something else in the Host happened
+   * to wake it.
+   *
+   * The resume composes the session's OWN recorded preset — the same
+   * composition a stock prompt would produce — so a session composed outside
+   * the QA preset still lands on the mismatch refusals below ("composition
+   * mismatch"), and the adoption and permission checks stay the gate.
+   */
+  private async liveAgent(sessionId: string): Promise<Agent> {
+    const live = this.ctx.agents.get(SessionId(sessionId));
+    if (live !== undefined) return live;
+    try {
+      const resolved = await this.ctx.sessionController.resolveAgent(
+        SessionId(sessionId),
+      );
+      if (!("error" in resolved)) return resolved.agent;
+      this.logger.error("session.agent-resolve-rejected", {
+        sessionId,
+        error: resolved.error.message,
+      });
+    } catch (error) {
+      // Either the composition itself failed (a preset that no longer mounts,
+      // a log the Host refuses to read) or the resolution threw before it
+      // could classify itself. Both are the same coarse fact for the browser.
+      this.logger.error("session.agent-resolve-rejected", {
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+  }
+
+  async secureSession(
+    token: string,
+    sessionId: string,
+  ): Promise<QaLockdownProof> {
     const config = this.config();
     const lockdown = config.lockdown;
-    const agent = this.ctx.agents.get(SessionId(sessionId));
-    if (agent === undefined) {
-      throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+    // Account identity is checked before any policy work: an invalid token
+    // must not learn whether a session exists or how the deployment composes.
+    // Independent of lockdown — a deployment may gate users without pinning
+    // the policy, and the gate itself no-ops while accounts are disabled.
+    let sessionOwner: { readonly id: string } | undefined;
+    if (this.accounts !== undefined) {
+      try {
+        sessionOwner = this.accounts.enforceSessionAccess(token, sessionId);
+      } catch (error) {
+        if (error instanceof QaAccountsError) {
+          throw new QaAttestationError(
+            error.reason === "session-owned-elsewhere"
+              ? "session-owned-elsewhere"
+              : "auth-required",
+            error.message,
+          );
+        }
+        throw error;
+      }
     }
+    const agent = await this.liveAgent(sessionId);
+    const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {
+      this.attested.add(sessionId);
       return {
         sessionId,
         enabled: false,
         agentPresetMatches: true,
         workspaceMatches: true,
         modelMatches: true,
-        sandboxIsReadOnly: false,
+        sandboxModeMatches: false,
         approvalIsNever: false,
         permissionPreset: "",
         toolPolicyLoaded: false,
@@ -76,18 +260,26 @@ export class QaPolicyAdmission {
     }
 
     const expectedWorkspace = config.session.workspaceId;
-    const pinnedWorkspace =
-      expectedWorkspace === null
-        ? undefined
-        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
-    // A pin that resolves to nothing would refuse the cwd comparison anyway,
-    // but the precise reason saves an operator a round trip: the surface
-    // stays closed until the workspace exists or the id is fixed.
-    if (expectedWorkspace !== null && pinnedWorkspace === undefined) {
-      throw new QaAttestationError(
-        "workspace-unavailable",
-        `workspace ${expectedWorkspace} is not registered`,
-      );
+    const pinnedWorkspace = pins.pinnedWorkspace;
+    let expectedUserRoot: string | undefined;
+    if (config.accounts.perUserWorkspace) {
+      if (sessionOwner === undefined || pinnedWorkspace === undefined) {
+        throw new QaAttestationError(
+          "workspace-unavailable",
+          "per-user workspace identity is unavailable",
+        );
+      }
+      try {
+        expectedUserRoot = this.accounts?.userWorkspace(
+          sessionOwner.id,
+          pinnedWorkspace.path,
+        );
+      } catch (error) {
+        throw new QaAttestationError(
+          "workspace-unavailable",
+          error instanceof Error ? error.message : String(error),
+        );
+      }
     }
 
     const expectedPreset = config.session.agentPreset;
@@ -99,7 +291,10 @@ export class QaPolicyAdmission {
     const workspaceMatches =
       !lockdown.enforceFixedWorkspace ||
       (expectedWorkspace === null && config.session.cwd === null) ||
-      (pinnedWorkspace !== undefined &&
+      (expectedUserRoot !== undefined &&
+        cwdMatches(agent.session.header.cwd, expectedUserRoot)) ||
+      (!config.accounts.perUserWorkspace &&
+        pinnedWorkspace !== undefined &&
         cwdMatches(agent.session.header.cwd, pinnedWorkspace.path)) ||
       (expectedWorkspace === null &&
         config.session.cwd !== null &&
@@ -123,24 +318,14 @@ export class QaPolicyAdmission {
       );
     }
 
-    const permission = this.ctx.permissionPresets.resolve(
-      lockdown.permissionPreset,
-    );
-    if (
-      permission.sandbox !== lockdown.sandboxMode ||
-      permission.approval !== lockdown.approvalPolicy
-    ) {
-      throw new QaAttestationError(
-        "permission-preset",
-        `permission preset ${lockdown.permissionPreset} does not resolve to read-only/never`,
-      );
-    }
+    const permission = pins.permission!;
 
-    const currentPermission = this.ctx.permissionPresets.current(
-      agent.session.events,
-    );
-    const hasUserHistory = agent.session.events.some(
-      (event) => event.type === "user/message",
+    const currentPermission = this.ctx.permissionPresets.current(agent.session);
+    // History check over the model-visible surface: `user/message` is a
+    // surface event, so any adopted conversation shows up here regardless of
+    // window pagination.
+    const hasUserHistory = agent.session.surface.nodes.some(
+      (seq) => agent.session.eventAt(seq)?.type === "user/message",
     );
     if (
       currentPermission !== lockdown.permissionPreset &&
@@ -154,9 +339,35 @@ export class QaPolicyAdmission {
       );
     }
 
+    // Resolve and persist a role snapshot only after every Host-owned
+    // composition and adoption check passed. A browser cannot make a
+    // foreign/non-QA agent leave behind a trusted capability record by merely
+    // asking to attest it.
+    const capability = await this.capabilityPolicy?.(token, sessionId, agent);
+
+    const basePolicyAllow =
+      capability?.policy.tools ?? lockdown.toolPolicy.allow;
+    const configuredPolicyAllow =
+      config.sources.enabled &&
+      config.sources.subagents.enableReportToolFallback &&
+      !basePolicyAllow.includes(QA_REPORT_SOURCES_TOOL)
+        ? [...basePolicyAllow, QA_REPORT_SOURCES_TOOL]
+        : basePolicyAllow;
+    // Principal-bound integrations were historically appended to the global
+    // allow-list. Once capability policies are active they must be selected by
+    // the role like every other tool; their own principal checks remain a
+    // second, independent boundary.
+    const policyAllow = [
+      ...new Set([
+        ...configuredPolicyAllow,
+        ...(capability === undefined ? this.principalScopedTools : []),
+      ]),
+    ];
     const policy = qaToolPolicyPlan(
-      lockdown.toolPolicy.allow,
-      (toolName) => this.ctx.tools.get(toolName, agent) !== undefined,
+      policyAllow,
+      (toolName) =>
+        this.ctx.tools.get(toolName, agent) !== undefined ||
+        this.knownDynamicToolNames().includes(toolName),
     );
     if (policy.unknown.length > 0) {
       throw new QaAttestationError(
@@ -164,25 +375,60 @@ export class QaPolicyAdmission {
         `unknown QA tool(s): ${policy.unknown.join(", ")}`,
       );
     }
-    const fingerprint = JSON.stringify(policy.allow);
+    const fingerprint = JSON.stringify([
+      policy.allow,
+      capability?.policy.skills ?? [],
+      capability?.policy.grantableTools ?? [],
+    ]);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
       const allowed = new Set(policy.allow);
-      const disposeGuard = agent.ctx.tools.guard((execution) =>
-        qaToolDenial(allowed, execution.name),
-      );
+      // A capability policy owns the scoped restriction, because activating a
+      // skill has to widen it later. The account-free path keeps the static
+      // mask it has always used.
+      const grants = capability?.createGrants();
+      let disposeTools: () => void = () => undefined;
+      let disposeGuard: () => void = () => undefined;
+      let disposeSkillPolicy: () => void = () => undefined;
       try {
-        const disposeRestriction = agent.ctx.tools.restrict({
-          allow: policy.allow,
+        disposeTools =
+          grants === undefined
+            ? agent.ctx.tools.restrict({ allow: policy.allow })
+            : () => grants.dispose();
+        disposeGuard = agent.ctx.tools.guard((execution) => {
+          const subject = execution.agent;
+          return qaToolDenial(
+            grants?.effectiveTools() ?? allowed,
+            execution.name,
+            capability === undefined && subject !== undefined
+              ? this.dynamicToolNames(subject)
+              : [],
+          );
         });
+        // A role snapshot cannot change for this session, but a restarted Host
+        // materializes a new Agent and therefore a fresh scoped loader.
+        prior?.disposeSkillPolicy();
+        if (capability !== undefined && grants !== undefined) {
+          disposeSkillPolicy = installQaSkillPolicy({
+            agent,
+            policy: capability.policy,
+            discovered: capability.skills,
+            grants,
+            logger: this.logger,
+            preview: capability.adminPreview,
+          });
+        }
         this.appliedPolicies.set(agent, {
           fingerprint,
           disposeGuard,
-          disposeRestriction,
+          disposeTools,
+          disposeSkillPolicy,
         });
-        prior?.disposeRestriction();
+        prior?.disposeTools();
         prior?.disposeGuard();
       } catch (error) {
+        disposeSkillPolicy();
+        disposeTools();
         disposeGuard();
         throw error;
       }
@@ -190,13 +436,13 @@ export class QaPolicyAdmission {
 
     this.ctx.permissionPresets.set(agent.session, lockdown.permissionPreset);
     const effectivePermission = this.ctx.permissionPresets.current(
-      agent.session.events,
+      agent.session,
     );
-    const sandboxIsReadOnly = permission.sandbox === "read-only";
+    const sandboxModeMatches = permission.sandbox === lockdown.sandboxMode;
     const approvalIsNever = permission.approval === "never";
     if (
       effectivePermission !== lockdown.permissionPreset ||
-      !sandboxIsReadOnly ||
+      !sandboxModeMatches ||
       !approvalIsNever
     ) {
       throw new QaAttestationError(
@@ -204,7 +450,24 @@ export class QaPolicyAdmission {
         "permission attestation failed",
       );
     }
+    if (expectedUserRoot !== undefined) {
+      const currentAccess = this.workspaceAccess.get(sessionId);
+      if (currentAccess === undefined) {
+        this.workspaceAccess.set(sessionId, {
+          root: expectedUserRoot,
+          sharedReadOnlyRoots: lockdown.sharedReadOnlyRoots,
+        });
+      } else {
+        // Children share this object, so a re-attestation also revokes stale
+        // roots from already-running subagent sessions.
+        currentAccess.root = expectedUserRoot;
+        currentAccess.sharedReadOnlyRoots = lockdown.sharedReadOnlyRoots;
+      }
+    } else {
+      this.workspaceAccess.delete(sessionId);
+    }
 
+    this.attested.add(sessionId);
     this.logger.debug("lockdown.attested", {
       sessionId,
       permissionPreset: lockdown.permissionPreset,
@@ -216,20 +479,77 @@ export class QaPolicyAdmission {
       agentPresetMatches,
       workspaceMatches,
       modelMatches,
-      sandboxIsReadOnly,
+      sandboxModeMatches,
       approvalIsNever,
       permissionPreset: lockdown.permissionPreset,
       toolPolicyLoaded: true,
-      toolAllowList: policy.allow,
+      // The fallback reporter is an internal read-only provenance capability,
+      // not an operator-configured QA tool grant.
+      toolAllowList: capability?.policy.tools ?? lockdown.toolPolicy.allow,
     };
+  }
+
+  /** Resolve the deployment facts shared by creation and full attestation. */
+  private deploymentPins(config: ResolvedQaSurfaceConfig): QaDeploymentPins {
+    if (!config.lockdown.enabled) return {};
+
+    const expectedWorkspace = config.session.workspaceId;
+    const pinnedWorkspace =
+      expectedWorkspace === null
+        ? undefined
+        : this.ctx.workspaceRegistry.get(WorkspaceId(expectedWorkspace));
+    if (expectedWorkspace !== null && pinnedWorkspace === undefined) {
+      throw new QaAttestationError(
+        "workspace-unavailable",
+        `workspace ${expectedWorkspace} is not registered`,
+      );
+    }
+
+    let permission: QaDeploymentPins["permission"];
+    try {
+      permission = this.ctx.permissionPresets.resolve(
+        config.lockdown.permissionPreset,
+      );
+    } catch (error) {
+      throw new QaAttestationError(
+        "permission-preset",
+        `permission preset ${config.lockdown.permissionPreset} is unavailable: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (
+      permission.sandbox !== config.lockdown.sandboxMode ||
+      permission.approval !== config.lockdown.approvalPolicy
+    ) {
+      throw new QaAttestationError(
+        "permission-preset",
+        `permission preset ${config.lockdown.permissionPreset} does not resolve to ${config.lockdown.sandboxMode}/${config.lockdown.approvalPolicy}`,
+      );
+    }
+    return pinnedWorkspace === undefined
+      ? { permission }
+      : { pinnedWorkspace, permission };
+  }
+
+  /**
+   * Whether one session went through this boundary. The provenance note is
+   * written only for attested sessions, which is what keeps a deployment's
+   * source rules out of unrelated chats served by the same process.
+   */
+  knowsSession(sessionId: string): boolean {
+    return this.attested.has(sessionId);
   }
 
   /** Detach every pinned tool policy; wired as a disposal effect by the entry. */
   dispose(): void {
     for (const policy of this.appliedPolicies.values()) {
-      policy.disposeRestriction();
+      policy.disposeSkillPolicy();
+      policy.disposeTools();
       policy.disposeGuard();
     }
     this.appliedPolicies.clear();
+    this.attested.clear();
+    this.workspaceAccess.clear();
+    this.principalScopedTools.clear();
+    this.disposeWorkspaceGuard();
   }
 }

@@ -4,13 +4,24 @@
 
 import { describe, expect, it } from "vitest";
 
-import { inspectResult, serializeArgs } from "../../src/routing/inspect-result.js";
-import { errorResult, fakeExec, makeText, successResult } from "../fixtures/offload-fixtures.js";
+import {
+  inspectResult,
+  serializeArgs,
+} from "../../src/routing/inspect-result.js";
+import {
+  errorResult,
+  fakeExec,
+  makeText,
+  successResult,
+} from "../fixtures/offload-fixtures.js";
 
 describe("inspectResult", () => {
   it("measures textual content in bytes and estimated tokens (SPEC §11)", () => {
     const text = makeText(8_192);
-    const candidate = inspectResult(fakeExec("read", { arguments: { path: "src/a.ts" } }), successResult(text));
+    const candidate = inspectResult(
+      fakeExec("read", { arguments: { path: "src/a.ts" } }),
+      successResult(text),
+    );
     expect(candidate.toolName).toBe("read");
     expect(candidate.resultKind).toBe("success");
     expect(candidate.isTextual).toBe(true);
@@ -23,7 +34,10 @@ describe("inspectResult", () => {
     const result = {
       isError: false,
       value: null,
-      content: [{ type: "text", text: "screenshot saved" }, { type: "image", data: "base64…" }],
+      content: [
+        { type: "text", text: "screenshot saved" },
+        { type: "image", data: "base64…" },
+      ],
     } as unknown as Parameters<typeof inspectResult>[1];
     const candidate = inspectResult(fakeExec("screenshot"), result);
     expect(candidate.isTextual).toBe(false);

@@ -98,10 +98,14 @@ export class CallTelemetryStore {
             durationMs: telemetry.durationMs,
             ...(telemetry.providerUsage === undefined
               ? {}
-              : { providerUsage: telemetry.providerUsage, derived: telemetry.derived }),
+              : {
+                  providerUsage: telemetry.providerUsage,
+                  derived: telemetry.derived,
+                }),
             result: telemetry.result,
           };
-          if (finishConfig.logLevel === "debug") this.logger.debug("sleev.call.end", fields);
+          if (finishConfig.logLevel === "debug")
+            this.logger.debug("sleev.call.end", fields);
           else this.logger.info("sleev.call.end", fields);
         }
       },

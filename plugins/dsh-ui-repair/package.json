@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-ui-repair",
-  "version": "0.1.1",
+  "version": "0.2.2",
   "description": "Reversible DOM diagnostics and scoped UI repairs for DeepSeek Harness plugins",
   "repository": {
     "type": "git",
@@ -49,8 +49,6 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "CHANGELOG.md",
-    "INVESTIGATE.md",
     "LICENSE"
   ],
   "scripts": {
@@ -59,7 +57,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsdown && vitest run",
     "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
-    "verify": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
+    "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
+    "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "prepack": "pnpm run build && pnpm run verify",
     "prepublishOnly": "pnpm run check"
@@ -69,8 +68,11 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "ui-repair",
-    "accessibility"
+    "accessibility",
+    "dom",
+    "diagnostics"
   ],
   "license": "MIT",
   "engines": {
@@ -79,7 +81,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
@@ -92,7 +94,7 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-runtime": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",

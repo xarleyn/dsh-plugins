@@ -55,6 +55,19 @@ line). Repo conventions verified against `plugins/dsh-prompt-firewall` and
 - `CredentialRef` is a POSIX env-var-style name (`/^[A-Za-z_][A-Za-z0-9_]*$/`,
   helpers `credentialRef()` / `isCredentialRefName()`). Rule configs store the
   ref NAME only.
+- Reading the service is late-bound by contract. Cordis' `Reflect.get` is strict
+  by default: it reports a service whose providing fiber is not ACTIVE yet as
+  absent, and `@deepseek-ai/dsh-credentials-local` reaches ACTIVE only after
+  load (async document read + watcher), while profile bundles — this one
+  included — are applied earlier. `ctx.credentials` captured in a constructor
+  is therefore `undefined` for the whole process lifetime (verified on
+  0.1.5-rc.2: a sibling probe declaring `inject = ['web']` sees
+  `ctx.get('credentials') === undefined` while
+  `ctx.get('credentials', false) !== undefined` and `fiber.state === 1`).
+  Read the provider per operation — `createCredentialResolver` takes a source
+  callback for exactly this reason — and never cache the instance; the
+  first-party consumers do the same (`llm-deepseek`, `web-search-deepseek`
+  call `ctx.get('credentials')` inside their methods).
 - Browser clients do NOT touch `ctx.credentials` directly. The first-party
   client path is the apiproxy credentials domain
   (`packages/host/apiproxy/src/api/credentials.ts`):

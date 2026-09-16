@@ -101,15 +101,75 @@ switch (format) {
         .join("\n") + (packages.length > 0 ? "\n" : ""),
     );
     break;
-  case "github-output":
+  case "github-matrix": {
+    if (!selected) {
+      throw new Error(
+        "DSH_PROJECTS_JSON is required for the github-matrix format.",
+      );
+    }
+
+    const publishableByName = new Map(
+      workspacePackages().map((item) => [item.name, item]),
+    );
+    const include = [...selected].sort().map((project) => {
+      const publishablePackage = publishableByName.get(project);
+      return publishablePackage
+        ? {
+            project,
+            publishable: true,
+            directory: publishablePackage.directory,
+          }
+        : { project, publishable: false, directory: "" };
+    });
+
+    process.stdout.write(
+      [`count=${include.length}`, `matrix=${JSON.stringify({ include })}`].join(
+        "\n",
+      ) + "\n",
+    );
+    break;
+  }
+  // The release workflow fans out one job per released package and verifies
+  // every other project in a sweep that runs beside it, so the two lists are
+  // published together: the matrix below has to name the projects that sweep
+  // must leave alone, or they would be verified twice on different runners.
+  case "release-matrix": {
+    const allProjectsJson = process.env.DSH_ALL_PROJECTS_JSON;
+    if (!allProjectsJson) {
+      throw new Error(
+        "DSH_ALL_PROJECTS_JSON is required for the release-matrix format.",
+      );
+    }
+    const allProjects = JSON.parse(allProjectsJson);
+    if (!Array.isArray(allProjects)) {
+      throw new Error("DSH_ALL_PROJECTS_JSON must contain a JSON array.");
+    }
+
+    // Sorted, because the selection arrives as directory names in readdir
+    // order and a matrix that reorders between runs is hard to read.
+    const include = [...packages]
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((item) => ({
+        project: item.name,
+        directory: item.directory,
+        // Artifact names reject `/`, so the scope and the group directory are
+        // dropped: the directory basename is unique among workspace packages.
+        slug: path.posix.basename(item.directory),
+      }));
+    const released = new Set(include.map((item) => item.project));
+
     process.stdout.write(
       [
-        `count=${packages.length}`,
-        `projects=${packages.map((item) => item.name).join(",")}`,
-        `directories=${packages.map((item) => item.directory).join(" ")}`,
+        `count=${include.length}`,
+        `projects=${include.map((item) => item.project).join(",")}`,
+        `gates_projects=${allProjects
+          .filter((name) => !released.has(name))
+          .join(",")}`,
+        `matrix=${JSON.stringify({ include })}`,
       ].join("\n") + "\n",
     );
     break;
+  }
   case "json":
     process.stdout.write(JSON.stringify(packages));
     break;

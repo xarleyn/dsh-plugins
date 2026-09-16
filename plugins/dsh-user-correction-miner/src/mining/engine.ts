@@ -1,5 +1,8 @@
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
-import type { SessionLogSnapshot, SessionRecord } from "@deepseek-ai/dsh-session-query";
+import type {
+  SessionLogSnapshot,
+  SessionRecord,
+} from "@deepseek-ai/dsh-session-query";
 import type { ResolvedUserCorrectionMinerConfig } from "../config.js";
 import type {
   CorrectionEvidence,
@@ -38,7 +41,9 @@ function emptyCursor(key: string): ScanCursor {
 }
 
 function abortReason(signal: AbortSignal): unknown {
-  return signal.reason instanceof Error ? signal.reason : new Error("The operation was aborted");
+  return signal.reason instanceof Error
+    ? signal.reason
+    : new Error("The operation was aborted");
 }
 
 export class CorrectionMinerEngine {
@@ -68,10 +73,14 @@ export class CorrectionMinerEngine {
     if (event.type === "user/message" && isDirectUserMessage(event.data)) {
       const result = prefilterCorrection(messageText(event.data));
       if (result.matched) {
-        const pending = current ?? this.createPendingSession(sessionId, observedAt);
+        const pending =
+          current ?? this.createPendingSession(sessionId, observedAt);
         pending.eventSeqs.add(event.seq);
-        while (pending.eventSeqs.size > this.config.live.maxPendingEventsPerSession) {
-          const oldestEventSeq = pending.eventSeqs.values().next().value as number;
+        while (
+          pending.eventSeqs.size > this.config.live.maxPendingEventsPerSession
+        ) {
+          const oldestEventSeq = pending.eventSeqs.values().next()
+            .value as number;
           pending.eventSeqs.delete(oldestEventSeq);
           this.warnPendingEviction("event-cap", sessionId, 1);
         }
@@ -106,23 +115,32 @@ export class CorrectionMinerEngine {
     this.pending.delete(sessionId);
     const cwd = session.header.cwd;
     if (cwd === undefined) {
-      this.warnPendingEviction("no-cwd", sessionId, pending?.eventSeqs.size ?? 0);
+      this.warnPendingEviction(
+        "no-cwd",
+        sessionId,
+        pending?.eventSeqs.size ?? 0,
+      );
       return;
     }
     const snapshot: SessionSnapshot = {
       session: session.header,
-      events: session.events,
+      events: session.snapshotEvents(),
     };
     const key = workspaceKey(cwd);
-    void this.enqueue(key, () => this.runSnapshot(snapshot, key, true)).catch((error: unknown) => {
-      this.logger.warn("incremental_scan.failed", {
-        sessionId,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    });
+    void this.enqueue(key, () => this.runSnapshot(snapshot, key, true)).catch(
+      (error: unknown) => {
+        this.logger.warn("incremental_scan.failed", {
+          sessionId,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
   }
 
-  private async runHistoricalScan(request: ScanRequest, signal?: AbortSignal): Promise<ScanReport> {
+  private async runHistoricalScan(
+    request: ScanRequest,
+    signal?: AbortSignal,
+  ): Promise<ScanReport> {
     const key = workspaceKey(request.cwd);
     const sessions = await this.source.list(request, signal);
     let sessionsScanned = 0;
@@ -135,7 +153,11 @@ export class CorrectionMinerEngine {
       if (signal?.aborted === true) throw abortReason(signal);
       try {
         const snapshot = await this.source.read(String(record.header.id));
-        const report = await this.runSnapshot(snapshot, key, request.incremental !== false);
+        const report = await this.runSnapshot(
+          snapshot,
+          key,
+          request.incremental !== false,
+        );
         sessionsScanned += 1;
         eventsScanned += report.eventsScanned;
         correctionsFound += report.correctionsFound;
@@ -166,23 +188,34 @@ export class CorrectionMinerEngine {
     snapshot: SessionSnapshot,
     key: string,
     incremental: boolean,
-  ): Promise<{ eventsScanned: number; correctionsFound: number; correctionsAdded: number }> {
+  ): Promise<{
+    eventsScanned: number;
+    correctionsFound: number;
+    correctionsAdded: number;
+  }> {
     const cursor = this.store.getCursor(key) ?? emptyCursor(key);
     const sessionId = String(snapshot.session.id);
-    const afterSeq = incremental ? (cursor.sessionWatermarks[sessionId] ?? -1) : -1;
+    const afterSeq = incremental
+      ? (cursor.sessionWatermarks[sessionId] ?? -1)
+      : -1;
     const result = scanSession(snapshot, afterSeq, this.config.analysis);
     let correctionsAdded = 0;
     for (const evidence of result.evidence) {
       const record = this.toRecord(evidence, key);
       const existed = this.store.hasCorrection(record.id);
-      await this.store.putCorrection(record, this.config.retention.maxRecordsPerWorkspace);
+      await this.store.putCorrection(
+        record,
+        this.config.retention.maxRecordsPerWorkspace,
+      );
       if (!existed) correctionsAdded += 1;
     }
     const capturedThroughSeq = result.capturedThroughSeq;
     const nextCursor: ScanCursor = {
       workspaceKey: key,
       lastAnalyzedSession: sessionId,
-      ...(capturedThroughSeq === null ? {} : { lastAnalyzedEventSeq: capturedThroughSeq }),
+      ...(capturedThroughSeq === null
+        ? {}
+        : { lastAnalyzedEventSeq: capturedThroughSeq }),
       sessionWatermarks: {
         ...cursor.sessionWatermarks,
         ...(capturedThroughSeq === null
@@ -199,9 +232,14 @@ export class CorrectionMinerEngine {
     };
   }
 
-  private toRecord(evidence: CorrectionEvidence, key: string): CorrectionRecord {
+  private toRecord(
+    evidence: CorrectionEvidence,
+    key: string,
+  ): CorrectionRecord {
     const sanitize = (text: string): string => {
-      const redacted = this.config.privacy.redactSecrets ? redactSecrets(text) : text;
+      const redacted = this.config.privacy.redactSecrets
+        ? redactSecrets(text)
+        : text;
       return this.config.privacy.persistRawMessages
         ? redacted
         : boundText(redacted, this.config.privacy.maxStoredTextChars);
@@ -215,7 +253,10 @@ export class CorrectionMinerEngine {
       text: sanitize(evidence.userText),
       textDigest: sha256(evidence.userText),
       contextDigest: evidence.contextDigest,
-      contextEvents: evidence.contextEvents.map((event) => ({ ...event, text: sanitize(event.text) })),
+      contextEvents: evidence.contextEvents.map((event) => ({
+        ...event,
+        text: sanitize(event.text),
+      })),
       ...(evidence.previousUserEvent === undefined
         ? {}
         : { previousUserEvent: evidence.previousUserEvent }),
@@ -231,13 +272,19 @@ export class CorrectionMinerEngine {
     const previous = this.workspaceQueues.get(key) ?? Promise.resolve();
     const next = previous.catch(() => undefined).then(work);
     this.workspaceQueues.set(key, next);
-    void next.finally(() => {
-      if (this.workspaceQueues.get(key) === next) this.workspaceQueues.delete(key);
-    }).catch(() => undefined);
+    void next
+      .finally(() => {
+        if (this.workspaceQueues.get(key) === next)
+          this.workspaceQueues.delete(key);
+      })
+      .catch(() => undefined);
     return next;
   }
 
-  private createPendingSession(sessionId: string, observedAt: number): PendingSession {
+  private createPendingSession(
+    sessionId: string,
+    observedAt: number,
+  ): PendingSession {
     while (this.pending.size >= this.config.live.maxPendingSessions) {
       let oldestSessionId: string | undefined;
       let oldestObservedAt = Number.POSITIVE_INFINITY;
@@ -250,7 +297,11 @@ export class CorrectionMinerEngine {
       if (oldestSessionId === undefined) break;
       const evicted = this.pending.get(oldestSessionId);
       this.pending.delete(oldestSessionId);
-      this.warnPendingEviction("session-cap", oldestSessionId, evicted?.eventSeqs.size ?? 0);
+      this.warnPendingEviction(
+        "session-cap",
+        oldestSessionId,
+        evicted?.eventSeqs.size ?? 0,
+      );
     }
     const pending = { eventSeqs: new Set<number>(), lastEventAt: observedAt };
     this.pending.set(sessionId, pending);
@@ -259,7 +310,8 @@ export class CorrectionMinerEngine {
 
   private evictExpired(observedAt: number): void {
     for (const [sessionId, pending] of this.pending) {
-      if (observedAt - pending.lastEventAt < this.config.live.pendingTtlMs) continue;
+      if (observedAt - pending.lastEventAt < this.config.live.pendingTtlMs)
+        continue;
       this.pending.delete(sessionId);
       this.warnPendingEviction("ttl", sessionId, pending.eventSeqs.size);
     }

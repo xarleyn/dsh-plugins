@@ -1,0 +1,126 @@
+{
+  "name": "@yadsh/dsh-documents",
+  "version": "0.1.0",
+  "description": "Managed document pipeline for the DeepSeek Harness: Markdown to DOCX/PDF, DOCX/PDF back to Markdown, and online sources as agent tools",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "documents",
+    "docx",
+    "pdf",
+    "markdown",
+    "ocr"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "plugins/dsh-documents"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-documents#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./types": {
+      "types": "./lib/types/documents/types.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.js.map",
+    "lib/**/*.d.ts",
+    "cordis.patch.yml",
+    "compatibility.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^",
+    "yaml": "^2.9.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-settings": "catalog:dsh",
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-tools": "catalog:dsh"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^",
+    "eslint": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "typescript": "catalog:plugin-tooling",
+    "vitest": "catalog:tooling",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
+    "@types/react-dom": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "jsdom": "catalog:tooling"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json && tsdown",
+    "lint": "eslint src tests scripts tsdown.config.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "prepack": "pnpm run build && pnpm run verify"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
+    }
+  }
+}

@@ -19,14 +19,19 @@ import { sanitizeBoundaryTags, truncateHead } from "../utils/text.js";
 
 type ParentAgent = NonNullable<ToolExecution["agent"]>;
 
-export function extractParentTask(agent: ParentAgent | undefined, config: ResolvedToolOffloadConfig): string | null {
+export function extractParentTask(
+  agent: ParentAgent | undefined,
+  config: ResolvedToolOffloadConfig,
+): string | null {
   if (!agent || !config.context.includeLastUserMessage) return null;
   try {
     const events = readSessionEvents(agent);
     for (let index = events.length - 1; index >= 0; index -= 1) {
       const text = readHumanMessageText(events[index]);
       if (text !== null) {
-        return sanitizeBoundaryTags(truncateHead(text, config.context.maxParentContextBytes));
+        return sanitizeBoundaryTags(
+          truncateHead(text, config.context.maxParentContextBytes),
+        );
       }
     }
   } catch {
@@ -37,7 +42,8 @@ export function extractParentTask(agent: ParentAgent | undefined, config: Resolv
 }
 
 function readSessionEvents(agent: ParentAgent): readonly unknown[] {
-  const session = (agent as { session?: { events?: readonly unknown[] } }).session;
+  const session = (agent as { session?: { events?: readonly unknown[] } })
+    .session;
   return session?.events ?? [];
 }
 
@@ -49,14 +55,21 @@ function readSessionEvents(agent: ParentAgent): readonly unknown[] {
 function readHumanMessageText(event: unknown): string | null {
   const record = event as { type?: unknown; data?: unknown } | undefined;
   if (record?.type !== "user/message") return null;
-  const data = record.data as { source?: { kind?: unknown }; content?: unknown } | undefined;
+  const data = record.data as
+    { source?: { kind?: unknown }; content?: unknown } | undefined;
   if (data?.source?.kind !== "user") return null;
   const content = data.content;
-  if (!Array.isArray(content)) return typeof data.content === "string" ? data.content : null;
+  if (!Array.isArray(content))
+    return typeof data.content === "string" ? data.content : null;
   const parts: string[] = [];
   for (const block of content) {
-    const text = (block as { type?: unknown; text?: unknown } | undefined)?.text;
-    if ((block as { type?: unknown } | undefined)?.type === "text" && typeof text === "string") parts.push(text);
+    const text = (block as { type?: unknown; text?: unknown } | undefined)
+      ?.text;
+    if (
+      (block as { type?: unknown } | undefined)?.type === "text" &&
+      typeof text === "string"
+    )
+      parts.push(text);
   }
   const joined = parts.join("\n").trim();
   return joined === "" ? null : joined;

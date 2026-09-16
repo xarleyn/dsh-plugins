@@ -8,18 +8,55 @@
  */
 
 /** Zero-width and invisible formatting characters (Unicode Cf/Co + ZWSP etc.). */
-const ZERO_WIDTH = /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u{E0000}-\u{E007F}]/gu;
+const ZERO_WIDTH =
+  /[\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF\u{E0000}-\u{E007F}]/gu;
 
 /**
  * Common Cyrillic/Greek homoglyphs folded onto their Latin counterparts.
  * Deliberately small: only letters whose substitution would hide a keyword.
  */
 const HOMOGLYPHS: Readonly<Record<string, string>> = {
-  а: "a", е: "e", о: "o", р: "p", с: "c", у: "y", х: "x", і: "i", ѕ: "s", ј: "j",
-  А: "A", В: "B", Е: "E", К: "K", М: "M", Н: "H", О: "O", Р: "P", С: "C", Т: "T",
-  У: "Y", Х: "X", І: "I", Ѕ: "S", Ј: "J",
-  Α: "A", Β: "B", Ε: "E", Ζ: "Z", Η: "H", Κ: "K", Μ: "M", Ν: "N", Ο: "O", Ρ: "P",
-  Τ: "T", Υ: "Y", Χ: "X", ο: "o", α: "a", ε: "e",
+  а: "a",
+  е: "e",
+  о: "o",
+  р: "p",
+  с: "c",
+  у: "y",
+  х: "x",
+  і: "i",
+  ѕ: "s",
+  ј: "j",
+  А: "A",
+  В: "B",
+  Е: "E",
+  К: "K",
+  М: "M",
+  Н: "H",
+  О: "O",
+  Р: "P",
+  С: "C",
+  Т: "T",
+  У: "Y",
+  Х: "X",
+  І: "I",
+  Ѕ: "S",
+  Ј: "J",
+  Α: "A",
+  Β: "B",
+  Ε: "E",
+  Ζ: "Z",
+  Η: "H",
+  Κ: "K",
+  Μ: "M",
+  Ν: "N",
+  Ο: "O",
+  Ρ: "P",
+  Τ: "T",
+  Υ: "Y",
+  Χ: "X",
+  ο: "o",
+  α: "a",
+  ε: "e",
 };
 
 const BASE64_RUN = /[A-Za-z0-9+/=]{24,}/g;
@@ -102,10 +139,17 @@ function decodeBase64(run: string): string | null {
  * cannot make the scanner quadratic. At most 16 candidates per encoding, each
  * truncated to 4096 characters.
  */
-export function decodeEncodings(raw: string, limit = 4_096): DecodedCandidate[] {
+export function decodeEncodings(
+  raw: string,
+  limit = 4_096,
+): DecodedCandidate[] {
   const candidates: DecodedCandidate[] = [];
-  const push = (encoding: DecodedCandidate["encoding"], text: string | null): void => {
-    if (text !== null && text.length >= 8) candidates.push({ encoding, text: text.slice(0, limit) });
+  const push = (
+    encoding: DecodedCandidate["encoding"],
+    text: string | null,
+  ): void => {
+    if (text !== null && text.length >= 8)
+      candidates.push({ encoding, text: text.slice(0, limit) });
   };
 
   let seen = 0;
@@ -129,7 +173,9 @@ export function decodeEncodings(raw: string, limit = 4_096): DecodedCandidate[] 
     if (hex.length % 2 !== 0) continue;
     let text = "";
     for (let index = 0; index < hex.length && text.length < limit; index += 2) {
-      text += String.fromCharCode(Number.parseInt(hex.slice(index, index + 2), 16));
+      text += String.fromCharCode(
+        Number.parseInt(hex.slice(index, index + 2), 16),
+      );
     }
     push("hex", /^[\x20-\x7E\s]+$/.test(text) ? text : null);
   }

@@ -7,10 +7,14 @@ describe("client polling", () => {
     let visibilityListener: (() => void) | undefined;
     let intervalHandler: (() => void) | undefined;
     const documentTarget = {
-      get hidden() { return hidden; },
-      addEventListener: vi.fn((_type: "visibilitychange", listener: () => void) => {
-        visibilityListener = listener;
-      }),
+      get hidden() {
+        return hidden;
+      },
+      addEventListener: vi.fn(
+        (_type: "visibilitychange", listener: () => void) => {
+          visibilityListener = listener;
+        },
+      ),
       removeEventListener: vi.fn(),
     };
     const windowTarget = {
@@ -22,7 +26,12 @@ describe("client polling", () => {
     };
     const refresh = vi.fn();
 
-    const stop = startVisibilityAwarePolling(refresh, 2_000, documentTarget, windowTarget);
+    const stop = startVisibilityAwarePolling(
+      refresh,
+      2_000,
+      documentTarget,
+      windowTarget,
+    );
     expect(refresh).not.toHaveBeenCalled();
 
     intervalHandler?.();
@@ -42,7 +51,9 @@ describe("client polling", () => {
 
     stop();
     expect(windowTarget.clearInterval).toHaveBeenCalledWith(17);
-    expect(documentTarget.removeEventListener)
-      .toHaveBeenCalledWith("visibilitychange", visibilityListener);
+    expect(documentTarget.removeEventListener).toHaveBeenCalledWith(
+      "visibilitychange",
+      visibilityListener,
+    );
   });
 });

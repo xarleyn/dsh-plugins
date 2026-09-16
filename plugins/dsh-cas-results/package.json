@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-cas-results",
-  "version": "0.1.0",
+  "version": "0.1.3",
   "description": "Content-addressed offload store for bulky DeepSeek Harness tool results",
   "repository": {
     "type": "git",
@@ -31,7 +31,6 @@
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
-    "SPEC.md",
     "NOTICE.md",
     "LICENSE"
   ],
@@ -43,7 +42,7 @@
     "test": "vitest run",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
-    "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
     "prepack": "pnpm run build && pnpm run verify"
   },
   "keywords": [
@@ -51,6 +50,7 @@
     "deepseek-harness",
     "dsh",
     "dsh-plugin",
+    "cordis",
     "tool-results",
     "content-addressed-storage",
     "deduplication",

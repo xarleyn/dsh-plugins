@@ -24,7 +24,10 @@ function registeredProjections(): ProjectionDefinition[] {
     },
     on: () => () => {},
     inject(dependencies: string[], callback: (child: unknown) => void) {
-      if (dependencies.length === 1 && dependencies[0] === "sessionProjections") {
+      if (
+        dependencies.length === 1 &&
+        dependencies[0] === "sessionProjections"
+      ) {
         callback({
           sessionProjections: {
             register(definition: ProjectionDefinition) {
@@ -47,7 +50,10 @@ describe("session projection registration", () => {
   test("uses the current state and wire projection contract", () => {
     const definitions = registeredProjections();
 
-    expect(definitions.map(({ key }) => key)).toEqual(["session-scope", "workspace-scope"]);
+    expect(definitions.map(({ key }) => key)).toEqual([
+      "session-scope",
+      "workspace-scope",
+    ]);
     for (const definition of definitions) {
       expect(definition.stateSchema?.parse).toBeTypeOf("function");
       expect(definition.wire?.viewSchema.parse).toBeTypeOf("function");
@@ -56,7 +62,9 @@ describe("session projection registration", () => {
   });
 
   test("publishes the session scope without its migration-only marker", () => {
-    const definition = registeredProjections().find(({ key }) => key === "session-scope");
+    const definition = registeredProjections().find(
+      ({ key }) => key === "session-scope",
+    );
     const state = {
       mode: "focused",
       workspaceRoot: "/workspace",

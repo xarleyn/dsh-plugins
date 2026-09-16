@@ -1,5 +1,5 @@
 {
   "version": 1,
-  "description": "Reviewed capabilities in the shipped default QA tool allow-list.",
+  "description": "Minimal system-required tools inherited by every QA subrole. Common and role-specific grants are managed in /qa/admin.",
   "tools": []
 }

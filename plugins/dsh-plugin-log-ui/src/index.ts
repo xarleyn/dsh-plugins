@@ -1,5 +1,5 @@
 import { Context } from "@deepseek-ai/cordis";
-import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
+import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
@@ -7,12 +7,15 @@ import {
   getRegisteredPluginLoggers,
   setPluginLogFormat,
   setPluginLogLevel,
+  subscribePluginLogRecords,
   subscribePluginLoggerRegistry,
 } from "@yadsh/dsh-plugin-log";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
+import { PluginLogBuffer } from "./log-buffer.js";
 import type {
   PluginLogConsumerSnapshot,
+  PluginLogTail,
   PluginLogUiConfig,
   PluginLogUiService,
   PluginLogUiSnapshot,
@@ -21,7 +24,7 @@ import type {
 
 export const name = "plugin-log-ui";
 export const inject: readonly string[] = [];
-export const PLUGIN_LOG_SETTINGS_NAMESPACE = settingsNamespace("plugin-log");
+export const PLUGIN_LOG_SETTINGS_NAMESPACE = "plugin-log";
 export type Config = PluginLogUiConfig;
 export const Config = ConfigSchema;
 
@@ -31,13 +34,18 @@ declare module "@deepseek-ai/cordis" {
   }
 }
 
-export class PluginLogUi extends TypertRemoteService implements PluginLogUiService {
+export class PluginLogUi
+  extends TypertRemoteService
+  implements PluginLogUiService
+{
   static inject = inject;
   static Config = ConfigSchema;
 
   private configSource: () => PluginLogUiConfig;
   private applying = false;
   private readonly logger: PluginLogger;
+  /** Live output for the right-Sidebar panel; the file destination cannot serve it. */
+  private readonly buffer = new PluginLogBuffer();
 
   constructor(ctx: Context, input: PluginLogUiConfig = {}) {
     super(ctx, "pluginLogUi", { namespace: "pluginLogUi" });
@@ -49,14 +57,28 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
       () => async () => this.logger.close(),
       "dsh-plugin-log-ui.logger",
     );
+    // Every plugin's records reach the panel, this plugin's own diagnostics
+    // included: the stream is the host's output, not one plugin's.
+    ctx.effect(
+      () => subscribePluginLogRecords((record) => this.buffer.append(record)),
+      "dsh-plugin-log-ui.record-bus",
+    );
     const entry = resolveConfig(input);
     this.configSource = () => entry;
 
-    installSettingsSection(ctx, PLUGIN_LOG_SETTINGS_NAMESPACE, ConfigSchema, entry, {
-      setSource: (current) => {
-        this.configSource = current;
-      },
-      onChange: () => this.applyPolicy(),
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        PLUGIN_LOG_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        entry,
+        {
+          setSource: (current) => {
+            this.configSource = current;
+          },
+          onChange: () => this.applyPolicy(),
+        },
+      );
     });
 
     ctx.effect(
@@ -69,6 +91,11 @@ export class PluginLogUi extends TypertRemoteService implements PluginLogUiServi
 
   getConfig(): ResolvedPluginLogUiConfig {
     return resolveConfig(this.configSource());
+  }
+
+  @Remote("tail")
+  tail(cursor: number, limit: number): PluginLogTail {
+    return this.buffer.read(cursor, limit);
   }
 
   @Remote("inspect")

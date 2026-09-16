@@ -149,12 +149,19 @@ function requireInt(
 ): number {
   if (value === undefined) return fallback;
   if (!Number.isInteger(value) || value < minimum) {
-    throw new KvPersistError("KV_INVARIANT", `config "${name}" must be an integer >= ${minimum}`);
+    throw new KvPersistError(
+      "KV_INVARIANT",
+      `config "${name}" must be an integer >= ${minimum}`,
+    );
   }
   return value;
 }
 
-function requirePositiveMs(name: string, value: number | undefined, fallback: number): number {
+function requirePositiveMs(
+  name: string,
+  value: number | undefined,
+  fallback: number,
+): number {
   return requireInt(name, value, fallback, 1);
 }
 
@@ -163,15 +170,24 @@ function requirePositiveMs(name: string, value: number | undefined, fallback: nu
  * for structurally impossible config so misconfiguration is loud (SPEC §32
  * only applies to runtime persistence failures, not to broken config).
  */
-export function resolveKvPersistConfig(input: KvPersistConfig = {}): ResolvedKvPersistConfig {
+export function resolveKvPersistConfig(
+  input: KvPersistConfig = {},
+): ResolvedKvPersistConfig {
   if (input.backend?.type !== undefined && input.backend.type !== "llama.cpp") {
     throw new KvPersistError(
       "KV_BACKEND_UNSUPPORTED",
       `backend type "${String(input.backend.type)}" is not supported in v0.1 (SPEC §12)`,
     );
   }
-  if (input.mode !== undefined && input.mode !== "single-slot" && input.mode !== "managed-slots") {
-    throw new KvPersistError("KV_INVARIANT", `unknown mode "${String(input.mode)}"`);
+  if (
+    input.mode !== undefined &&
+    input.mode !== "single-slot" &&
+    input.mode !== "managed-slots"
+  ) {
+    throw new KvPersistError(
+      "KV_INVARIANT",
+      `unknown mode "${String(input.mode)}"`,
+    );
   }
   if (input.mode === "managed-slots") {
     throw new KvPersistError(
@@ -181,19 +197,30 @@ export function resolveKvPersistConfig(input: KvPersistConfig = {}): ResolvedKvP
   }
   const logLevel = input.logging?.level ?? KV_PERSIST_DEFAULTS.logLevel;
   if (logLevel !== "debug" && logLevel !== "info" && logLevel !== "off") {
-    throw new KvPersistError("KV_INVARIANT", `unknown logging.level "${String(logLevel)}"`);
+    throw new KvPersistError(
+      "KV_INVARIANT",
+      `unknown logging.level "${String(logLevel)}"`,
+    );
   }
 
-  const baseURL = (input.backend?.baseURL ?? KV_PERSIST_DEFAULTS.baseURL).trim();
+  const baseURL = (
+    input.backend?.baseURL ?? KV_PERSIST_DEFAULTS.baseURL
+  ).trim();
   if (baseURL.length === 0) {
-    throw new KvPersistError("KV_INVARIANT", "backend.baseURL must not be blank");
+    throw new KvPersistError(
+      "KV_INVARIANT",
+      "backend.baseURL must not be blank",
+    );
   }
 
   return {
     enabled: input.enabled ?? KV_PERSIST_DEFAULTS.enabled,
     backendType: input.backend?.type ?? "llama.cpp",
     baseURL: baseURL.replace(/\/+$/, ""),
-    apiKey: input.backend?.apiKey && input.backend.apiKey.length > 0 ? input.backend.apiKey : null,
+    apiKey:
+      input.backend?.apiKey && input.backend.apiKey.length > 0
+        ? input.backend.apiKey
+        : null,
     requestTimeoutMs: requirePositiveMs(
       "backend.requestTimeoutMs",
       input.backend?.requestTimeoutMs,
@@ -202,12 +229,20 @@ export function resolveKvPersistConfig(input: KvPersistConfig = {}): ResolvedKvP
     providers: (input.providers ?? []).filter((p) => p.length > 0),
     mode: input.mode ?? KV_PERSIST_DEFAULTS.mode,
     slotId: requireInt("slotId", input.slotId, KV_PERSIST_DEFAULTS.slotId, 0),
-    runtimeKey: input.runtimeKey && input.runtimeKey.length > 0 ? input.runtimeKey : null,
+    runtimeKey:
+      input.runtimeKey && input.runtimeKey.length > 0 ? input.runtimeKey : null,
     checkpoint: {
       onSwitch: input.checkpoint?.onSwitch ?? KV_PERSIST_DEFAULTS.onSwitch,
-      onShutdown: input.checkpoint?.onShutdown ?? KV_PERSIST_DEFAULTS.onShutdown,
-      onSessionFlush: input.checkpoint?.onSessionFlush ?? KV_PERSIST_DEFAULTS.onSessionFlush,
-      idleMs: requireInt("checkpoint.idleMs", input.checkpoint?.idleMs, KV_PERSIST_DEFAULTS.idleMs, 0),
+      onShutdown:
+        input.checkpoint?.onShutdown ?? KV_PERSIST_DEFAULTS.onShutdown,
+      onSessionFlush:
+        input.checkpoint?.onSessionFlush ?? KV_PERSIST_DEFAULTS.onSessionFlush,
+      idleMs: requireInt(
+        "checkpoint.idleMs",
+        input.checkpoint?.idleMs,
+        KV_PERSIST_DEFAULTS.idleMs,
+        0,
+      ),
       onTurnEnd: input.checkpoint?.onTurnEnd ?? KV_PERSIST_DEFAULTS.onTurnEnd,
       onStepEnd: input.checkpoint?.onStepEnd ?? KV_PERSIST_DEFAULTS.onStepEnd,
     },
@@ -239,7 +274,10 @@ export function resolveKvPersistConfig(input: KvPersistConfig = {}): ResolvedKvP
 }
 
 /** True when the request route is explicitly managed (SPEC §37). */
-export function isManagedProvider(config: ResolvedKvPersistConfig, provider: string): boolean {
+export function isManagedProvider(
+  config: ResolvedKvPersistConfig,
+  provider: string,
+): boolean {
   return config.providers.includes(provider);
 }
 
@@ -255,7 +293,9 @@ export const KvPersistConfigSchema = z.object({
       type: z.const("llama.cpp").default("llama.cpp"),
       baseURL: z.string().default(KV_PERSIST_DEFAULTS.baseURL),
       apiKey: z.string().default(""),
-      requestTimeoutMs: z.number().default(KV_PERSIST_DEFAULTS.requestTimeoutMs),
+      requestTimeoutMs: z
+        .number()
+        .default(KV_PERSIST_DEFAULTS.requestTimeoutMs),
     })
     .default({
       type: "llama.cpp",
@@ -289,11 +329,16 @@ export const KvPersistConfigSchema = z.object({
       enabled: z.boolean().default(KV_PERSIST_DEFAULTS.restoreEnabled),
       verify: z.boolean().default(KV_PERSIST_DEFAULTS.restoreVerify),
     })
-    .default({ enabled: KV_PERSIST_DEFAULTS.restoreEnabled, verify: KV_PERSIST_DEFAULTS.restoreVerify }),
+    .default({
+      enabled: KV_PERSIST_DEFAULTS.restoreEnabled,
+      verify: KV_PERSIST_DEFAULTS.restoreVerify,
+    }),
   failure: z
     .object({
       strict: z.boolean().default(KV_PERSIST_DEFAULTS.strict),
-      maxConsecutiveFailures: z.number().default(KV_PERSIST_DEFAULTS.maxConsecutiveFailures),
+      maxConsecutiveFailures: z
+        .number()
+        .default(KV_PERSIST_DEFAULTS.maxConsecutiveFailures),
       cooldownMs: z.number().default(KV_PERSIST_DEFAULTS.cooldownMs),
     })
     .default({
@@ -308,7 +353,9 @@ export const KvPersistConfigSchema = z.object({
     .default({ path: "" }),
   logging: z
     .object({
-      level: z.union([z.const("debug"), z.const("info"), z.const("off")]).default("info"),
+      level: z
+        .union([z.const("debug"), z.const("info"), z.const("off")])
+        .default("info"),
     })
     .default({ level: "info" }),
 });

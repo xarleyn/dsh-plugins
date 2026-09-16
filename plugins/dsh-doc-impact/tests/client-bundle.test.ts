@@ -1,13 +1,18 @@
-import { describe, expect, it } from 'vitest';
-import { createModuleLoaderStub } from '@yadsh/dsh-test-kit';
-import { readFile } from 'node:fs/promises';
-import vm from 'node:vm';
-import { join } from 'node:path';
+import { describe, expect, it } from "vitest";
+import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
+import { readFile } from "node:fs/promises";
+import vm from "node:vm";
+import { join } from "node:path";
 
-const CLIENT_BUNDLE_PATH = join(import.meta.dirname, '..', 'lib', 'client.js');
+const CLIENT_BUNDLE_PATH = join(import.meta.dirname, "..", "lib", "client.js");
 
 interface SlotEntry {
-  options: { name: string; key?: string; locale?: string; inject?: () => unknown };
+  options: {
+    name: string;
+    key?: string;
+    locale?: string;
+    inject?: () => unknown;
+  };
   component: unknown;
 }
 
@@ -22,14 +27,18 @@ interface LoadedBundle {
 
 function fakeReact() {
   return {
-    createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({ type, props, children }),
+    createElement: (type: unknown, props: unknown, ...children: unknown[]) => ({
+      type,
+      props,
+      children,
+    }),
     useState: (initial: unknown) => [initial, () => undefined],
     useSyncExternalStore: () => undefined,
   };
 }
 
 interface ScopeState {
-  status: 'loading' | 'ready' | 'unavailable';
+  status: "loading" | "ready" | "unavailable";
   value?: Record<string, unknown>;
   base?: Record<string, unknown>;
   user?: Record<string, unknown>;
@@ -77,12 +86,17 @@ function makeCtx(scope: unknown) {
   const ctx = {
     registered,
     slotInjections,
-    get(service: string) {
-      if (service === 'settingsScope' && scope !== undefined) {
-        return { bind: (options: { namespace: string }) => (void options, scope) };
-      }
-      return undefined;
+    // The 0.1.5 client runtime exposes declared inject services as context
+    // properties, so the stub mirrors that contract (the former ctx.get
+    // indirection was a 0.1.1 leftover that left the card unregistered).
+    locale: {
+      register: () => undefined,
+      bind: () => (text: string) => text,
     },
+    settingsScope:
+      scope === undefined
+        ? undefined
+        : { bind: (options: { namespace: string }) => (void options, scope) },
     slots: {
       // The kit bootstrap registers through a plain factory that returns the
       // register disposer (the shared host contract), not a generator.
@@ -90,7 +104,7 @@ function makeCtx(scope: unknown) {
         slotInjections.push(slot);
         factory();
       },
-      register(options: SlotEntry['options'], component: unknown) {
+      register(options: SlotEntry["options"], component: unknown) {
         const entry = { options, component };
         registered.push(entry);
         return () => undefined;
@@ -101,43 +115,54 @@ function makeCtx(scope: unknown) {
 }
 
 async function loadBundle(): Promise<LoadedBundle> {
-  const source = await readFile(CLIENT_BUNDLE_PATH, 'utf8');
+  const source = await readFile(CLIENT_BUNDLE_PATH, "utf8");
   const loader = createModuleLoaderStub();
   const sandbox = { window: loader.window };
   vm.createContext(sandbox);
-  new vm.Script(source, { filename: 'client.js' }).runInContext(sandbox);
-  if (loader.registrations.length === 0) throw new Error('bundle never called ModuleLoader.load');
+  new vm.Script(source, { filename: "client.js" }).runInContext(sandbox);
+  if (loader.registrations.length === 0)
+    throw new Error("bundle never called ModuleLoader.load");
   return loader.registrations[0]! as LoadedBundle;
 }
 
-describe('client bundle', () => {
-  it('loads as a ModuleLoader module and registers the card into the plugin config slot', async () => {
+describe("client bundle", () => {
+  it("loads as a ModuleLoader module and registers the card into the plugin config slot", async () => {
     const bundle = await loadBundle();
-    expect(bundle.id).toBe('@yadsh/dsh-doc-impact');
+    expect(bundle.id).toBe("@yadsh/dsh-doc-impact");
 
-    const scope = fakeScope({ status: 'ready', value: {}, base: {}, user: {}, writable: true });
+    const scope = fakeScope({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
     const ctx = makeCtx(scope);
     bundle.factory(fakeReact).apply(ctx);
 
-    expect(ctx.slotInjections).toEqual(['settings.plugin.item']);
+    expect(ctx.slotInjections).toEqual(["settings.plugin.item"]);
     expect(ctx.registered).toHaveLength(1);
-    expect(ctx.registered[0]!.options.name).toBe('settings.plugin.item');
-    expect(ctx.registered[0]!.options.key).toBe('doc-impact');
-    expect(ctx.registered[0]!.component).toBeTypeOf('function');
+    expect(ctx.registered[0]!.options.name).toBe("settings.plugin.item");
+    expect(ctx.registered[0]!.options.key).toBe("doc-impact");
+    expect(ctx.registered[0]!.component).toBeTypeOf("function");
   });
 
-  it('skips registration when the settingsScope service is absent', async () => {
+  it("skips registration when the settingsScope service is absent", async () => {
     const bundle = await loadBundle();
     const ctx = makeCtx(undefined);
     bundle.factory(fakeReact).apply(ctx);
     expect(ctx.registered).toHaveLength(0);
   });
 
-  it('stages edits without writing; save is dirty-gated and commits field-granular writes', async () => {
+  it("stages edits without writing; save is dirty-gated and commits field-granular writes", async () => {
     const bundle = await loadBundle();
     const scope = fakeScope({
-      status: 'ready',
-      value: { configFile: '.dsh/doc-impact.yml', mode: 'remind', maxReminderRounds: 2 },
+      status: "ready",
+      value: {
+        configFile: ".dsh/doc-impact.yml",
+        mode: "remind",
+        maxReminderRounds: 2,
+      },
       base: {},
       user: {},
       writable: true,
@@ -160,7 +185,7 @@ describe('client bundle', () => {
     expect(snapshot().dirty).toBe(false);
 
     // Editing stages locally: dirty, overridden preview, nothing on the wire.
-    face.edit('configFile', '.dsh/other.yml');
+    face.edit("configFile", ".dsh/other.yml");
     expect(snapshot().dirty).toBe(true);
     expect(snapshot().fields.configFile.overridden).toBe(true);
     expect(scope.sets).toHaveLength(0);
@@ -170,47 +195,57 @@ describe('client bundle', () => {
     expect(snapshot().dirty).toBe(false);
 
     // Value staging through the select.
-    face.choose('mode', 'require-review');
+    face.choose("mode", "require-review");
     expect(snapshot().dirty).toBe(true);
-    expect(snapshot().fields.mode.value).toBe('require-review');
+    expect(snapshot().fields.mode.value).toBe("require-review");
 
     await face.save();
-    expect(scope.sets).toEqual([['mode', 'require-review']]);
+    expect(scope.sets).toEqual([["mode", "require-review"]]);
     expect(snapshot().dirty).toBe(false);
   });
 
-  it('reset only plans a write when the field is actually overridden', async () => {
+  it("reset only plans a write when the field is actually overridden", async () => {
     const bundle = await loadBundle();
     const scope = fakeScope({
-      status: 'ready',
-      value: { mode: 'require-resolution' },
-      base: { mode: 'remind' },
-      user: { mode: 'require-resolution' },
+      status: "ready",
+      value: { mode: "require-resolution" },
+      base: { mode: "remind" },
+      user: { mode: "require-resolution" },
       writable: true,
     });
     const ctx = makeCtx(scope);
     bundle.factory(fakeReact).apply(ctx);
-    const face = ctx.registered[0]!.options!.inject!() as Parameters<typeof expect>[0] & {
+    const face = ctx.registered[0]!.options!.inject!() as Parameters<
+      typeof expect
+    >[0] & {
       hooks: { docImpactCard: { getSnapshot: () => Record<string, any> } };
       resetField: (field: string) => void;
       save: () => Promise<void>;
     };
 
-    expect(face.hooks.docImpactCard.getSnapshot().fields.mode.overridden).toBe(true);
-    face.resetField('mode');
+    expect(face.hooks.docImpactCard.getSnapshot().fields.mode.overridden).toBe(
+      true,
+    );
+    face.resetField("mode");
     const snapshot = face.hooks.docImpactCard.getSnapshot();
     expect(snapshot.dirty).toBe(true);
     expect(snapshot.fields.mode.overridden).toBe(false);
-    expect(snapshot.fields.mode.value).toBe('remind'); // composition base preview
+    expect(snapshot.fields.mode.value).toBe("remind"); // composition base preview
 
     await face.save();
-    expect(scope.unsets).toEqual(['mode']);
+    expect(scope.unsets).toEqual(["mode"]);
     expect(face.hooks.docImpactCard.getSnapshot().dirty).toBe(false);
   });
 
-  it('blocks saving an invalid number and reports the invalid draft', async () => {
+  it("blocks saving an invalid number and reports the invalid draft", async () => {
     const bundle = await loadBundle();
-    const scope = fakeScope({ status: 'ready', value: {}, base: {}, user: {}, writable: true });
+    const scope = fakeScope({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
     const ctx = makeCtx(scope);
     bundle.factory(fakeReact).apply(ctx);
     const face = ctx.registered[0]!.options!.inject!() as {
@@ -219,7 +254,7 @@ describe('client bundle', () => {
       save: () => Promise<void>;
     };
 
-    face.edit('maxReminderRounds', 'not-a-number');
+    face.edit("maxReminderRounds", "not-a-number");
     const snapshot = face.hooks.docImpactCard.getSnapshot();
     expect(snapshot.invalid).toBe(true);
     expect(snapshot.fields.maxReminderRounds.invalid).toBe(true);
@@ -229,9 +264,9 @@ describe('client bundle', () => {
     expect(snapshot.dirty).toBe(true); // drafts kept for correction
   });
 
-  it('renders nothing while the namespace is unavailable', async () => {
+  it("renders nothing while the namespace is unavailable", async () => {
     const bundle = await loadBundle();
-    const scope = fakeScope({ status: 'loading', writable: false });
+    const scope = fakeScope({ status: "loading", writable: false });
     const ctx = makeCtx(scope);
     bundle.factory(fakeReact).apply(ctx);
     const face = ctx.registered[0]!.options!.inject!() as {

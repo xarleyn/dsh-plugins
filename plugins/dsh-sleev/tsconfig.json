@@ -2,16 +2,7 @@
   "extends": "@yadsh/dsh-config/tsconfig/client",
   "compilerOptions": {
     "outDir": "lib/types",
-    "types": [
-      "node",
-      "vitest/globals"
-    ]
+    "types": ["node", "vitest/globals"]
   },
-  "include": [
-    "src",
-    "scripts",
-    "tests",
-    "tsdown.config.ts",
-    "vitest.config.ts"
-  ]
+  "include": ["src", "scripts", "tests", "tsdown.config.ts", "vitest.config.ts"]
 }

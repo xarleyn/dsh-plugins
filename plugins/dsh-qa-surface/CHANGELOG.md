@@ -1,4 +1,793 @@
+## 0.7.0 (2026-09-16)
+
+### 🚀 Features
+
+- Add the administrative console behind `/qa/admin`: an authorization model with ([3025adb](https://github.com/xarleyn/dsh-plugins/commit/3025adb))
+  the `reviewer` role and named permissions, user management (role, status and
+  QA subrole assignment), a filterable list of every conversation with a review
+  viewer that reads the stored transcript and the frozen capability snapshot,
+  per-message 👍/👎 feedback with an optional reason and comment, a derived review
+  queue with the reviewer taxonomy and severity, quality aggregations by subrole
+  and over time, and one audit timeline covering both writers.
+
+- Let a SKILL.md declare its own QA routing: the audience it belongs to and the ([2396f48](https://github.com/xarleyn/dsh-plugins/commit/2396f48))
+  tools it needs. Tools listed as skill-grantable stay out of the model surface
+  until the skill is loaded, activation is capped by the subrole's ceiling, and
+  an administrator can extend or withdraw the declaration without editing the
+  file.
+
+- Add server-enforced QA agent subroles with Common and role-specific Tool and ([d57c69f](https://github.com/xarleyn/dsh-plugins/commit/d57c69f))
+  Skill policies, user assignments, immutable session snapshots, administration,
+  audit, role selection, and real-policy admin preview.
+
+- Add `document_from_url`: an online source stored as a document artifact. ([04623a4](https://github.com/xarleyn/dsh-plugins/commit/04623a4))
+
+  The pipeline could already turn Markdown into DOCX/PDF and read a DOCX/PDF back
+  out of the workspace, but nothing could take a document that lives behind a URL —
+  a wiki attachment, a text document served by an authenticated provider — and put
+  it where the other tools work. The new tool fetches the URL through the
+  deployment's web provider, so the fetch rules, credentials, address policy and
+  byte/char caps configured there decide what may be read; the plugin opens no
+  socket of its own, and without a web provider the tool answers
+  `BACKEND_UNAVAILABLE` instead of guessing. A text response is written into an
+  artifact bundle whose manifest names the operation and the source file, and the
+  payload is bounded on both sides: `documents.limits.maxMarkdownChars` for what is
+  stored, `documents.extraction.maxInlineChars` for what is returned inline. An
+  HTML response is refused with `UNSUPPORTED_FORMAT` (pages are read by the web
+  fetch tool), and the fetch layer's own refusal — "the .pdf format is not
+  extracted", "no rule matches", a timeout — reaches the model unchanged rather
+  than being flattened into a generic failure.
+
+- Move the document pipeline into its own plugin. ([04007c9](https://github.com/xarleyn/dsh-plugins/commit/04007c9))
+
+  The document subsystem — the five `document_*` tools, their backends,
+  artifact store, templates, limits and retention sweep — now lives in
+  `@yadsh/dsh-documents`. It was never QA-specific: it resolves the calling
+  session's working directory and registers plain agent tools, so extracting it
+  makes the capability available to any composition and takes roughly a third of
+  this plugin's host source, its configuration section and its settings-card
+  section with it.
+
+  What a QA chat sees is unchanged: the tool names are identical and become
+  visible through the same `lockdown.toolPolicy.allow` entries, and artifacts stay
+  where they were (`<session workspace>/.qa/artifacts/documents/<id>`). What
+  changes is where the pipeline is configured: `qa-surface.documents` is gone,
+  replaced by the `documents` namespace of the new plugin and its own card, and the
+  `QA_DOCUMENTS_*`/`QA_DOCLING_*`/`QA_PANDOC_*`/`QA_LIBREOFFICE_*`/`QA_MARKITDOWN_*`
+  environment variables became `DSH_DOCUMENTS_*`.
+
+  A deployment that still carries the old section is told so: the plugin logs
+  `documents.moved` on each configuration change, naming the new plugin, so a
+  leftover cannot silently take the Docling endpoint or the artifact root with it.
+  The bundled settings card drops its «Документы» section, and the deployment must
+  install `@yadsh/dsh-documents` wherever the allow-list names those tools —
+  otherwise the names are missing from the session catalog and attestation fails
+  closed, which is the existing behaviour for any allow-list entry without a
+  matching tool.
+
+
+### 🩹 Fixes
+
+- Materialize an account's personal skill root as soon as the account works in ([caee7a8](https://github.com/xarleyn/dsh-plugins/commit/caee7a8))
+  its own directory, and make a refused source-bundle fetch visible. Opening the
+  editor and discovering skills for a session now leave
+  `<personal root>/.dsh/skills` behind, so a hand-made skill directory lands in a
+  root that already exists and the manual-edit watcher stops reporting a missing
+  directory on every boot of every account. The transcript's source bridge now
+  reports a rejected bundle fetch once per distinct reason instead of rendering
+  it as a chat that simply carries no sources.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.6.1 (2026-09-15)
+
+### 🩹 Fixes
+
+- Validate the pinned Workspace and permission preset before creating a durable ([a383035](https://github.com/xarleyn/dsh-plugins/commit/a383035))
+  QA session. Creation failures now retain a coarse `permission-preset` or
+  `workspace-unavailable` reason for browser diagnostics without exposing Host
+  details, and failed attestation no longer marks a session as trusted. Existing
+  chats whose recorded composition predates a deployment config change remain
+  available as read-only transcripts while new chats use the current policy.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.6.0 (2026-09-15)
+
+### 🚀 Features
+
+- Introduce principal-scoped user integrations for QA Surface with an initial ([0bf810f](https://github.com/xarleyn/dsh-plugins/commit/0bf810f))
+  read-only Bitrix24 provider. The plugin adds a first-class Russian Integrations
+  settings page, write-only manual webhook setup, envelope-encrypted secret
+  storage, per-user policy and audit records, and four narrowly scoped CRM/chat
+  tools whose schemas cannot select a user or credential.
+
+  QA Surface gains a public client settings-section registry and owner-attested
+  integration principal binding. Admin cross-user viewing, unowned sessions and
+  subagents do not inherit access to another account's integration.
+
+- Give the QA agent documents instead of command lines. Four tools — ([0d1c51f](https://github.com/xarleyn/dsh-plugins/commit/0d1c51f))
+  `document_create`, `document_to_markdown`, `document_convert` and
+  `document_inspect` — sit on top of a document pipeline that owns every backend
+  invocation itself: the model supplies Markdown, a template name and formats and
+  receives DOCX and/or PDF, or hands over a DOCX/PDF and receives Markdown with
+  its images extracted. Markdown is the canonical source, so the artifact bundle
+  keeps the source, the assets, the produced files and a manifest recording the
+  input hash, the template hash, the backend versions and every warning.
+
+  The agent cannot reach the converters. As in the git tools, the command line is
+  built by the orchestrator and never by the caller: there is no parameter for a
+  Lua filter, a resource path or a PDF engine option, remote image references are
+  refused rather than fetched, paths are resolved and checked against the session
+  workspace before anything is opened, `.docm` files and encrypted PDFs are
+  refused with their own codes, and the backends run with a filtered environment
+  so ambient secrets and proxies do not reach them.
+
+  Nothing is registered until a deployment wants it: the plugin registers the
+  tools when `documents.enabled` is true (the default) and a QA chat still sees
+  them only if the deployment lists their names in `lockdown.toolPolicy.allow`.
+  Pandoc and headless LibreOffice are assumed to exist where the plugin runs
+  (a missing executable answers `BACKEND_UNAVAILABLE`), docling-serve is the
+  extractor and defaults to `http://docling:5001`, and Typst and MarkItDown stay
+  disabled until a deployment enables them. A second format that fails no longer
+  discards the first: partial success is returned with a `FORMAT_FAILED` warning
+  and the failed file named. Artifacts live under
+  `<session workspace>/.qa/artifacts/documents/<id>` — inside the per-user
+  workspace when accounts are on — or in a pinned `documents.storage.root`, where
+  retention also works. The settings card gains a «Документы» section for the
+  endpoint, the template root, the artifact root and the default choices.
+
+- Attach the plugin's QA tools only after the QA skill has been loaded, so the ([3e73ccc](https://github.com/xarleyn/dsh-plugins/commit/3e73ccc))
+  first request of every chat carries the composition's own tool schemas and
+  nothing else. Loading the configured skill — by default `qa-surface`, or
+  whatever `tools.activationSkill` names — is what unlocks the catalog;
+  `qa_tools_selfcheck` reports the resulting state for the calling agent.
+
+  The catalog is registered per agent, so the tools genuinely do not exist for an
+  agent that has not loaded the skill: no deny-list has to be kept in sync, and a
+  newly added QA tool cannot leak into a chat that never entered the QA workflow.
+  Activation follows the authoritative successful result of the built-in `skill`
+  tool, never the model's attempt or conversation text. Loading an unrelated
+  skill, a refused or failed load, and a repeat load all leave the tool surface
+  unchanged, and a registration failure unwinds every tool that attempt
+  registered rather than leaving a partial surface behind. Registrations live as
+  long as the agent that owns them, so disposal and plugin unload leave no scoped
+  tool behind.
+
+  A resumed chat gets its catalog back from its own journal before the first
+  model step: the successful skill load is already recorded there as a standard
+  tool-call/result pair. The plugin writes no session event of its own — an
+  unknown event type without an `ignorable` marker makes a log unreadable to a
+  harness that does not mount this plugin, so the restoration marker stays
+  derived and a QA session stays openable in a plain DSH deployment.
+
+  QA tools cannot be `lockdown.toolPolicy.allow` entries, because that list is
+  validated against the mounted catalog before activation can run and a tool that
+  appears only later would fail the check. The QA execution guard therefore
+  authorizes exactly the names the activation manager reports for the calling
+  agent, which keeps a dynamically attached tool as checked as an allow-listed
+  one. Tool visibility is not an authorization boundary.
+
+  New configuration under `tools`: `dynamicActivation` (default `true`; `false`
+  attaches the catalog to every managed agent at creation), `activationSkill`,
+  `activationMode` (reserved; `all` only), and `activationPresets` — the preset
+  gate that keeps an unrelated DSH agent from unlocking the same catalog by
+  loading a skill of the same name.
+
+  The shipped catalog contains `qa_tools_selfcheck`. `qa_report_sources` keeps
+  its existing registration: it is a subagent provenance fallback, and moving it
+  behind a model-visible skill load would remove it from delegated children.
+
+- Show an optimistic user bubble immediately after Send, including local image ([a3f385e](https://github.com/xarleyn/dsh-plugins/commit/a3f385e))
+  previews and file handles, while session creation, policy admission and the
+  Host's pre-loop preparation are still pending. The bubble carries an animated
+  «Подготавливаю ответ…» status, reconciles with the durable user message without
+  duplication, and disappears on a refused send while the composer keeps its
+  draft.
+
+- Turn `/qa` into a small extension host for optional feature panels. External ([a3f385e](https://github.com/xarleyn/dsh-plugins/commit/a3f385e))
+  client plugins register metadata and navigation through `qaSurfacePanels` and
+  provide their body separately through the keyed `qa.surface.panel` slot. QA
+  Surface supplies launcher ordering, a resizable width-reserving desktop column,
+  narrow-screen fullscreen presentation, focus restoration, `keepMounted`
+  lifecycle behavior and crash isolation without importing any concrete Browser,
+  logs, artifacts or terminal implementation. The stable public types live at
+  `@yadsh/dsh-qa-surface/client/panels`, with an external consumer compile
+  fixture guarding the contract.
+
+- Give every account skills of its own, and one settings dialog to manage them. ([4a0b429](https://github.com/xarleyn/dsh-plugins/commit/4a0b429))
+
+  A QA user could shape how the assistant answers only through the profile: the
+  preset, the tools and the model all belong to the deployment. A skill is the
+  first artifact a visitor authors themselves, so it is stored as what the
+  harness already defines — an ordinary `SKILL.md` directory below the account's
+  own workspace, `<workspace>/.qa-users/<uuid>/.dsh/skills/<name>/SKILL.md` —
+  rather than as a format of this plugin's invention. The file stays editable by
+  hand, copyable as a directory, and readable by DSH itself; the frontmatter
+  fields the editor does not own survive a save verbatim.
+
+  The catalog reaches the model through a `qa-user-skills` provider the plugin
+  registers with `ctx.skills`, not through the shipped filesystem provider: that
+  one resolves its project root through the nearest `.git`, which for an account
+  directory inside a larger checkout climbs above the account and mixes users
+  together. Discovery reads exactly one place and only for a cwd that matches the
+  `.qa-users/<uuid>` layout, so no account sees another's skills and an arbitrary
+  cwd names nothing. Saving invalidates the registry, so a new skill is usable
+  without a restart, and a lazy bounded watcher covers files edited outside the
+  editor.
+
+  `allowed-tools` is stored as declared and never grants anything: the effective
+  set is the intersection of what the QA scope allows with what the skill
+  declares, an unavailable tool is reported and kept in the file so an imported
+  skill stays repairable, and the editor says so in as many words. Runtime
+  restriction of an active skill's turn is deliberately not implemented — the
+  harness has no reliable active-skill seam for a plugin, and promising
+  enforcement the code does not perform is worse than not offering it.
+
+  The separate profile modal is gone. The account button now opens one
+  `Настройки` dialog with a section list — `Профиль`, `Общие`, `Навыки` — and
+  the profile page inside it is the old form unchanged: same fields, same
+  storage, same limits, same instruction that it widens no tools. The skills
+  section is a catalog with search plus an editor carrying the description, the
+  "when to use" hint, the invocation flags, the Markdown body, a tool picker over
+  the deployment's registry and a preview produced by the same serializer a save
+  uses. Saving is atomic and carries the revision the editor read, so an edit
+  made in another tab or by hand is refused instead of overwritten, and a delete
+  moves the whole directory to `.dsh/skills-trash/`.
+
+  The editor asks the Host for the file a draft would write and for the
+  authoritative diagnostics (`skillsValidate`, which also carries the operator's
+  own size limit), because a YAML library's Node build carries `require` calls
+  the DSH client module loader cannot answer: bundling it stopped the packed
+  surface from mounting at all. The shared rules that need no YAML live in one
+  browser-safe module, and the package gate now rejects any Node builtin in the
+  client bundle.
+
+  Deployments that cannot host the feature — accounts off, or
+  `accounts.perUserWorkspace` off, since there is no shared fallback to store a
+  personal skill in — resolve `accounts.skills.enabled` to false and simply see
+  no Навыки section.
+
+- Let every account define its own starter messages. ([d92eb2f](https://github.com/xarleyn/dsh-plugins/commit/d92eb2f))
+
+  The three pills above an empty composer were deployment-wide and
+  label-equals-prompt: `suggestedQuestions` is a list of strings where the text
+  on the button is also what pressing it sends. A user whose everyday request is
+  a long tracker query had no way to keep a short button for it.
+
+  The `Настройки` dialog gains a «Быстрые сообщения» section. Each entry is a
+  pair — the label the button shows and the prompt pressing it sends — and a
+  toggle hides the deployment's standard suggestions for that account. The list
+  is stored on the account next to its profile, replaces wholesale on save
+  through the new `accountsUpdateStarters` remote (token-scoped like the profile
+  write), and is projected to browsers on `QaAccountUserPublic`, so the composer
+  picks the change up without a reload. An anonymous visitor, a deployment with
+  accounts off, or one with the new `accounts.starters.enabled` flag off sees
+  exactly the previous behavior. The stored record is pure UI preference: unlike
+  the profile, none of it is injected into the agent prompt.
+
+  Validation and limits live in one browser-safe module (`src/starters.ts`) the
+  Host store and the editor form both import: at most 12 starters, labels up to
+  80 characters, prompts up to 2 000, and an incomplete pair — a label or a
+  prompt left empty — is refused on the write path and dropped on the read path,
+  so a hand-edited accounts file never yields a dead button.
+
+- Sign subagent completion notices with readable names instead of raw session-id ([fe5aceb](https://github.com/xarleyn/dsh-plugins/commit/fe5aceb))
+  hashes. The projection resolves the settled child's delegation description from
+  the host session list (the same title the agents panel shows) and, when the new
+  `ui.subagentCodenames` switch is on — the default — signs the notice with a
+  deterministic adjective-noun codename («Дотошный Барсук») folded from the
+  session id. The real task name and the short id move into a muted meta line
+  inside the expanded notice, so a plaque stays matchable against the session
+  logs either way. Delegating agents are also asked, through a conversation
+  note, to give each delegation a short vivid description of its own — the
+  name that then shows up in the agents panel.
+
+
+### 🩹 Fixes
+
+- Brand the tab favicon while the surface owns the route. The guard swaps the ([a3f385e](https://github.com/xarleyn/dsh-plugins/commit/a3f385e))
+  favicon to `branding.logoUrl` for as long as the QA route is active — the same
+  logo the sidebar and the auth gate render — and restores the host's own icon
+  links on exit. On proxy-fronted deployments `DSH_QA_FAVICON_URL` pins the icon
+  from the first paint, before any bundle loads.
+
+- A crash inside the QA surface no longer uncovers the operator harness. ([8e97eb6](https://github.com/xarleyn/dsh-plugins/commit/8e97eb6))
+
+  The QA overlay is a `shell.overlay` slot entry, and the host's per-slot
+  isolation retires an entry that throws during render: the cell falls through
+  to its (empty) crash face, the overlay disappears, and the harness shell it
+  exists to cover — settings, native sessions, everything the deployment means
+  to keep away from QA visitors — becomes reachable on the same page. One
+  render-time `TypeError` anywhere in the surface tree was enough.
+
+  The registered entry is now its own error boundary (`QaSurfaceGuard`) that
+  the host never sees past: a crash swaps the surface for a fullscreen failure
+  card in the same opaque overlay class, with a reload button as the recovery,
+  and logs the error for the operator console. The slot inject joins the same
+  contract — its lazy host-service reads degrade to an empty face instead of
+  throwing, which lands in the guard as the same failure card rather than an
+  abdicated entry.
+
+  The same trade existed without any crash: the overlay only *covered* the
+  harness, which stayed mounted and fully alive beneath it, so deleting the
+  overlay element in the browser revealed the operator shell on the same page.
+  While the surface owns the route, a stylesheet rule now masks every sibling
+  of the host's overlay layer inside the app frame — hanging off the
+  `data-dsh-qa-surface` body attribute rather than off the overlay node, so
+  element deletion changes nothing. The attribute is owned by the guard, above
+  the error boundary (a crash unmounts the surface, not the mask), and a face
+  that fails to assemble keeps the page masked as well; off-route the mask
+  lifts and the host shell is the page again.
+
+  A reload on the QA route also flashed the harness for a moment, because the
+  harness mounts and paints before the plugin's client bundle registers the
+  overlay. On proxy-fronted deployments the proxy now injects a boot mask into
+  the served HTML: on `/qa` navigations the body stays hidden from the first
+  paint, and the guard lifts it in the same synchronous block that takes the
+  page over (`data-dsh-qa-boot="done"`), with a fail-open timeout so a
+  deployment whose plugin never loads still reaches the harness.
+
+  The browser tab is part of the same picture: while the surface owns the
+  route, the guard swaps the favicon to the deployment's `branding.logoUrl`
+  (the same logo the sidebar and the auth gate render) and restores the host's
+  own icons when the route is left. On proxy-fronted deployments,
+  `DSH_QA_FAVICON_URL` pins the icon from the first paint, before any bundle
+  loads.
+
+
+
+
+- Keep one leading separator on POSIX source paths. The lexical canonicalizer ([abfbaca](https://github.com/xarleyn/dsh-plugins/commit/abfbaca))
+  shared by the evidence bundle, the reported-source validation and the file
+  preview prefixed an absolute POSIX path with a second `/`, so on Linux
+  deployments a source read from a shared read-only root was echoed as
+  `//shared/...` and the preview assertion failed the Linux CI leg. A drive
+  spelling keeps its canonical `c:/` form and workspace-relative spellings are
+  unchanged.
+
+- Open the source preview over the roots the QA read policy already grants. The ([720cf66](https://github.com/xarleyn/dsh-plugins/commit/720cf66))
+  endpoint validated a source against the session's `cwd` alone, so a file the
+  assistant had legitimately read from a shared read-only directory — the normal
+  shape of a deployment that keeps `docs` and `code` beside the per-account
+  scratch directory — was refused as an escape and the panel reported it as
+  moved. The preview now reads the chat's `cwd`, every
+  `lockdown.sharedReadOnlyRoots` entry and the mounted attachment store, mirroring
+  the per-user execution guard, and it canonicalizes the requested path the same
+  way the evidence bundle did, so the browser's spelling of a file (its
+  projection uses the configured `session.cwd`, which is null for a chat pinned by
+  `workspaceId` or by an account directory) no longer decides whether a preview
+  opens. Refusals carry a coarse `(reason: <code>)` marker and the panel says
+  which directory group a file falls outside instead of calling every refusal a
+  moved file.
+
+- Restore the account settings dialog's visual quality. The dialog renders ([a3f385e](https://github.com/xarleyn/dsh-plugins/commit/a3f385e))
+  outside the `.dsh-qa-surface` element, so none of the `--dsh-qa-*` custom
+  properties reached it: the backdrop never dimmed and the primary Save button
+  lost its brand fill. The brand tokens now ride the `.dsh-qa-modal` root as
+  well, and the border-box reset covers its subtree, so full-width fields with
+  horizontal padding no longer grow past their column and run under the modal's
+  right border.
+
+  The panel drops from a fixed 920x680 to 840 wide and hugs its content up to
+  the capped height, each page gains a title, and the form actions become a
+  full-bleed footer strip (sticky within the scrolling content) so Save is
+  always visible, matching the compact profile modal this dialog replaced.
+
+- Keep the transcript's drag handles off the answer. The width handles claim a ([f9751bc](https://github.com/xarleyn/dsh-plugins/commit/f9751bc))
+  40px strip just outside the text column, and the break-out that let code blocks
+  and wide tables use the page gutter was measured against the browser viewport
+  instead of the chat column — with a side panel or drawer open it overshot both
+  the column and the strip, so the handle (and its drag glow) painted on top of
+  tables and code. The gutter is now measured from the live column the way the
+  handles are, the break-out is capped eight pixels short of the strip and is
+  zeroed on the phone layout where the handles are hidden, and tables no longer
+  break out at all: they sit in the text column, sized to their content instead
+  of stretched to the column width, with per-cell ceilings computed from the chat
+  width so a long column wraps rather than inflating the table — anything wider
+  than the column scrolls inside its own frame.
+
+- Keep plugin-specific records out of Harness session journals so sessions remain ([82d5890](https://github.com/xarleyn/dsh-plugins/commit/82d5890))
+  readable after a DSH restart even when linked packages resolve separate module
+  instances. Safety audit records now use the plugin logger with explicit session
+  ids, QA source snapshots use plugin-owned durable storage, and the QA package
+  ships a dry-run-first repair command for legacy journals with automatic backups.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.5.0 (2026-09-14)
+
+### 🚀 Features
+
+- Answer a composed tool gate's `ask` in the QA view. `interaction.approvals` ([570d010](https://github.com/xarleyn/dsh-plugins/commit/570d010))
+  now takes `blocked` (default) or `interactive`: an interactive deployment parks
+  the call on the Host, lists it over the composer with the gate's own reason and
+  the two stock outcomes (Reject / Allow once), and applies the operator's answer.
+  A request is Host state, so it survives a page reload, and the turn's own
+  cancellation settles it when it is never answered. The QA listener is owned by
+  the plugin context, so it also wraps delegated children, acts only on attested
+  chats, and never approves anything without a person — the pinned
+  `approval=never` policy stays the fail-closed backstop.
+
+  `interaction.questions` does the same for `ask_user_question`: `unsupported`
+  (default) refuses the request with a reason the model can act on, because the
+  stock DSH browser answerer sits behind the QA overlay where nobody can reach it,
+  while `interactive` parks the request as a form over the composer — one question
+  at a time with a pager, radio/checkbox options, free text, and explicit skip and
+  cancel. A skipped question is reported as skipped, never guessed. The tool
+  itself still has to be mounted by the deployment preset and named in the tool
+  allow-list.
+
+  The same listener keeps refusing a parked `ask` with the QA reason while
+  approvals are blocked, so a headless `approval=never` decision is no longer
+  misreported as a user rejection. The per-user path guard supports absolute
+  `sharedReadOnlyRoots` for reviewed filesystem read tools while keeping every
+  write inside the account directory, and no longer rejects read-only `dsh_git_*`
+  tools by name; repository selection remains the responsibility of the
+  separately configured Git plugin.
+
+- Let a deployment record sources the model reports as facts. A source reaches a ([b7621a8](https://github.com/xarleyn/dsh-plugins/commit/b7621a8))
+  turn either from a tool call the surface observed or from the `qa_report_sources`
+  tool, and the second channel refused more than it looked like it did. Only a
+  delegated run could report at all, so the QA agent reaching for the tool itself
+  was answered with `Recorded 0 source(s)`; and every entry needed a path or a URL
+  that survived normalization, so a source describing a fact — the kind `other`,
+  a title, a snippet, a note that it came from the user's profile rather than from
+  a search — was dropped even inside a run.
+
+  The new `sources.subagents.validateReportedSources` flag (default true, so the
+  shipped behaviour does not change) turns both checks off. A report from the QA
+  agent lands in that session's current turn, exactly where a tool-derived source
+  of the same turn would, and an unaddressed entry keeps the type, title and
+  snippet the model wrote under the identity `reported:<kind>:<title>`. A URL the
+  normalizer cannot parse is kept verbatim instead of discarded, and a missing
+  title falls back to the last path or URL segment. An entry with neither a title
+  nor an address is still dropped: there would be nothing to render in the source
+  panel, and the file-preview capability still follows a path alone.
+
+  The switch ships as a toggle in the settings card's «Источники» section, under
+  «Субагенты», beside the report channel it governs.
+
+- Give the accounts CLI a way to reset a password. The store keeps only scrypt ([16f6448](https://github.com/xarleyn/dsh-plugins/commit/16f6448))
+  hashes, so the `qa-accounts` command set could create an account and change its
+  role, but nothing could put a password back: a QA user who forgot theirs was
+  answered by an operator hand-editing `qa-accounts.json`, and dropping the entry
+  to re-add it would have minted a new account id and stranded every chat that
+  account owned in the ownership map.
+
+  `qa-accounts set-password <email> --password-stdin` rehashes in place. The
+  account keeps its id, so its profile and its claimed chats stay its own, while
+  the password it replaces and every token minted under it stop working: the token
+  version bumps, exactly as it does on `disable` and `revoke`, so a reset doubles
+  as the single-step answer to a leaked credential. The address is validated like
+  `add` — a weak password is refused with `weak-password` and leaves the stored
+  one untouched — and the password is read from stdin, one line, so it never lands
+  in shell history.
+
+  The length rule now lives in one shared `validatePassword`, used by
+  registration, `addUser` and the reset, so a password good enough to register is
+  exactly the one an operator can put back. `docs/CONFIGURATION.md` and the
+  accounts spec list the new command alongside the rest of the operator set.
+
+
+### 🩹 Fixes
+
+- Keep a QA chat openable after the Host restarts. DSH materializes an agent on ([7909005](https://github.com/xarleyn/dsh-plugins/commit/7909005))
+  demand — a session's journal opens straight from persistence, and only
+  Agent-bound work (a prompt, a model selection, an upload) resolves or resumes
+  one — so a chat from an earlier Host run had a readable transcript and no agent.
+  Attestation, the first thing in this surface that needs an agent, refused it
+  with `agent-unavailable`, and every restored chat was unopenable until something
+  else in the Host happened to wake it: the sidebar answered «Не удалось открыть
+  этот чат.», and the startup restore abandoned the previous chat and bootstrapped
+  a fresh session instead.
+
+  Attestation now resumes it. `secureSession` resolves the session through the
+  Host's session controller before the policy checks, composing the preset that
+  session recorded — the same composition a stock prompt would produce, so a chat
+  composed outside the QA preset still lands on the existing mismatch refusals.
+  The policy is pinned on the resumed agent, and a resume that cannot produce an
+  agent (a recorded preset that no longer mounts, a log the Host refuses to read)
+  still refuses, now with the composition detail logged Host-side under
+  `session.agent-resolve-rejected`. The browser console gained an operator hint
+  for `agent-unavailable` instead of the generic "facts are in the Host logs"
+  fallback.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.4.0 (2026-09-13)
+
+### 🚀 Features
+
+- Flip the QA transcript width bound from a cap to a floor. The surface used to ([466b4f5](https://github.com/xarleyn/dsh-plugins/commit/466b4f5))
+  carry an operator-set `ui.maxContentWidth` that no drag could pass, so a QA
+  deployment with a wide screen left the transcript boxed in at 900px. The
+  setting is now `ui.minContentWidth` (default 650): the drag handles narrow the
+  transcript no further than that, and apart from it the page is the only
+  ceiling — the content keeps widening until its handles reach the edge budget,
+  which is how the DSH conversation column itself is bounded. A window too narrow
+  to hold the floor wins over the floor, because there is no other space to take
+  and the handles have to stay reachable.
+
+  The width a browser persists is still clamped before it is written, so a stored
+  preference from the capped era resolves against the new bounds instead of
+  surviving as an out-of-range value. Deployments that still carry
+  `maxContentWidth` keep working on the shipped default: the removed key is not
+  part of the schema and is ignored, and the settings card's field is relabelled
+  "Минимальная ширина содержимого, px".
+
+- Surface provider retries and failed turns in the transcript. The Host-side ([789b986](https://github.com/xarleyn/dsh-plugins/commit/789b986))
+  llm-retry already recovers transient provider failures, but the QA projection
+  rendered neither the scheduled retries nor the failure code: a dropping turn
+  read as a normal "Готово за N с".
+
+  Model-retry nodes now project as work-group rows: the scheduled wait counts
+  down live, while started and cancelled retries settle into history. Turn-error
+  rows render copy derived from the failure code only (a transport drop, a rate
+  limit, a quota or auth escalation) instead of one generic line, so raw provider
+  messages never reach QA-facing rows. A turn the Host ended with an error marks
+  its work group as failed, which the work group labels "Прервано за N с" and
+  styles accordingly.
+
+- The sources drawer becomes a collapsible right rail with tabs, mirroring the ([908efc6](https://github.com/xarleyn/dsh-plugins/commit/908efc6))
+  Harness right Sidebar's interaction pattern (a tab strip is the panel's whole
+  top edge). The rail hosts «Источники» — the same grouped list and safe
+  file-preview the drawer rendered, with a message footnote still opening it
+  pinned to that answer's subset and a new «Все источники» way back — and a new
+  «Файлы» tab: every attachment the visitor sent in this chat, grouped by
+  message and ordered newest first, with file cards (badge, name, size) and
+  image thumbnails resolved through the session's asset repository. Each group
+  jumps back to its message in the transcript. The header gains a «Файлы»
+  button with a live count; the agents drawer keeps its behavior and closes
+  when the rail opens. Below 600px the rail goes full-bleed like the drawers
+  did.
+
+  The Host mechanism for right-sidebar tabs was deliberately not used: the QA
+  page is a full-frame overlay painted over the Host shell, so the Host's own
+  right column stays invisible and unreachable behind it while `/qa` is active.
+
+- Add an operator settings card for the deployment. The `qa-surface` namespace ([cfd56a4](https://github.com/xarleyn/dsh-plugins/commit/cfd56a4))
+  was readable from the Host settings page but editable only by hand-editing the
+  profile; the browser half now registers a card into the shared
+  `settings.plugin.item` slot — Settings → Plugins → plugin configuration →
+  «Помощник QA» — with nine sections: the running state, the route, branding, the
+  session, the interface, the lockdown, accounts, sources, and embedding.
+
+  The card writes the user layer of the namespace through path-addressed
+  mutations, so every change stays revertible through the card's own reset, and it
+  reports what the running Host resolved next to the form, read through
+  `qaSurface/describe` while the card is visible. Values the resolver refuses in
+  isolation are written together in one mutation — a provider with its model,
+  `accounts.perUserWorkspace` with the `workspace-write` sandbox, which is also
+  refused alone — and a control the resolver would reject is disabled with the
+  reason stated instead of offered. The values that cannot be configured
+  (`approvalPolicy`, the white-list mode, the forbidden capability flags) stay
+  visible as facts.
+
+  Two transport details shaped the card. A write the Host refuses does not reject
+  the settings scope's promise: the scope reloads Host state and settles, so the
+  card confirms acceptance itself — the namespace revision advances on every
+  committed change, and a write that changed nothing is answered by the section —
+  and reports a refusal instead of leaving a control that silently does nothing.
+  That report also survives the status poll, which a shared error channel would
+  have wiped within one interval. The card renders only where the settings
+  namespace is readable, which the DSH gateway pins to loopback.
+
+- Make the running indicator's phrases configurable. The list a QA surface cycles ([f99d72f](https://github.com/xarleyn/dsh-plugins/commit/f99d72f))
+  through while a turn runs was compiled into the browser bundle; it is now the
+  `thinkingPhrases` config field, so a deployment can speak its own vocabulary
+  instead of the shipped workshop imagery.
+
+  The work block's label and the composer hint read the same entry and advance it
+  together every four seconds, off the same turn start, so the two can no longer
+  disagree about what the surface is doing. The canonical default list moves out
+  of the client component into the shared config module, which keeps the schema,
+  the resolver and the browser on one list.
+
+  Like `suggestedQuestions`, the field drops blank and duplicate entries and caps
+  a phrase at 120 characters. Unlike quick questions, an empty list cannot hide
+  the control: an empty or absent list restores the built-in phrases, because the
+  indicator always needs a label.
+
+  The settings card's "Фразы ожидания" field shows the list that is actually in
+  effect — the stored list when there is one, otherwise the list the running Host
+  resolved, and the built-in list before the Remote answers — instead of an empty
+  box for a setting that is doing something. Typing in any list control now
+  survives a parent render: the draft follows the stored text rather than the
+  array identity, so a caller that renders an unset list from a literal default
+  no longer wipes the field on the next render.
+
+- Give QA accounts a self-declared profile. `accounts.profile` collects a full ([7d50bc9](https://github.com/xarleyn/dsh-plugins/commit/7d50bc9))
+  name, one handle per external system the deployment declares, and free-form
+  instructions about how the account wants answers; the owner edits them from the
+  sidebar footer, and the deployment decides which handle fields exist and how
+  long the instruction text may be.
+
+  The Host injects both into the QA agent's system prompt: one section names the
+  user with their email and handles, a second carries the user's own wording
+  framed as preferences that cannot move tools, permissions, the sandbox, or any
+  rule the deployment set. Both are re-resolved on every prompt assembly, so a
+  profile edit lands on the next turn, delegated experts included.
+
+  The account token is the only identity on the wire, so a browser can write
+  nothing but its own profile, and the prompt says the values are self-declared
+  rather than verified directory attributes.
+
+- Add opt-in per-account writable research directories below the configured DSH ([b17aee2](https://github.com/xarleyn/dsh-plugins/commit/b17aee2))
+  Workspace path. Session creation and ownership move to the Host, child
+  directories stay out of the Workspace Registry, and canonical path guards,
+  subagent inheritance, process/git denial, and storage quotas keep model file
+  access inside the owning account's directory.
+
+- Let a QA visitor attach text files, not just images. A composer attachment is ([6f29bf0](https://github.com/xarleyn/dsh-plugins/commit/6f29bf0))
+  now one of two kinds: an image still rides the prompt inline as base64, while a
+  file is staged on the Host through the browser upload service first and the
+  prompt cites the returned receipt. The Host stores the file verbatim and its
+  prompt assembly hands the model the name, the size and the read-only path of
+  the stored copy, so a `.md`, `.txt` or `.log` reaches the model through the
+  same handle every other attachment does.
+
+  Pasted plain text over a line threshold becomes an attachment instead of a wall
+  of text in the input field. `attachments.pastedTextLines` (default 200) sets
+  that threshold and `0` turns the conversion off; the resulting file is named
+  after its line count, e.g. `Вставленный текст (312 строк).txt`. Everything
+  shorter pastes into the field as before.
+
+  The `attachments` config section carries the rest of the policy:
+  `textFiles` switches file intake off entirely (images remain), `maxFileBytes`
+  caps one file, `maxPending` caps images plus files on one message — replacing
+  the compiled-in limit of eight images — and `extensions` names the accepted
+  text extensions. A file whose extension is not listed is still accepted when
+  the browser reports its type as `text/*`, so an empty list narrows the intake
+  rather than closing it.
+
+  The settings card gains a "Вложения" section for all five fields, and the
+  transcript renders a sent file as an extension badge, its name and its size.
+  Files are never readable back through the attachment route (that route serves
+  images), so the sent row shows the same handle the model resolves.
+
+  In the per-user workspace mode the monotonic path guard now exempts read-only
+  access to a single file under the mounted attachment store's root. Uploaded
+  copies are immutable, content-addressed and live outside every workspace, so
+  without that exemption the model would be denied the exact file the prompt
+  points it at. Directory-wide tools stay confined, because the store is shared
+  by every account, and writes are never exempted.
+
+- Open the "История версий" dialog at the wide panel width the profile dialog ([35514a1](https://github.com/xarleyn/dsh-plugins/commit/35514a1))
+  already uses. Its entries are full sentences, so the shared 560px panel
+  stranded a word or two on every second line; the 720px panel leaves them on
+  one line and keeps the two dialogs the same size, which is what a reader
+  opening one after the other expects.
+
+  The panel width stays a property of the dialog and not a preference: neither
+  dialog is resizable, so there is no width for the browser or the deployment to
+  persist and no bounds to keep in sync with the viewport. Both keep the
+  `max-height` cap and scroll their body on a short window.
+
+### 🩹 Fixes
+
+- Reorganize the plugin sources without behavior changes. The settings card ([789b986](https://github.com/xarleyn/dsh-plugins/commit/789b986))
+  sections, the config resolver, the accounts store, and the QA surface split
+  into per-domain modules: one file per card section, one resolver per config
+  domain, the account token/file/credential layers beside the store facade, and
+  the header, right-rail hook, prompt staging, and stream publisher extracted
+  from the surface and the session controller. The repeated browser storage-key
+  derivation and the base64 helper moved into shared modules. Public exports,
+  wire contracts, storage keys, and timing semantics are unchanged.
+
+- Remove internal project identifiers from the shipped sources and fixtures. The ([e1a4981](https://github.com/xarleyn/dsh-plugins/commit/e1a4981))
+  provenance specification (`docs/*.md` ships in the tarball) and the provenance
+  test used a real Jira project key, a real task title and real product and
+  document names in its examples; they now read `PROJ-123` with placeholder
+  titles, a generic product path and a generic knowledge-base page. Only the
+  example content changed — the provenance contract, the source-kind table and
+  the worked walkthroughs describe exactly the same behaviour.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.3.0 (2026-09-12)
+
+### 🚀 Features
+
+- Optional QA accounts and entry routing. `accounts.enabled` mounts a ([dc2f582](https://github.com/xarleyn/dsh-plugins/commit/dc2f582))
+  full-frame login/registration gate (email + password, coarse audience-safe
+  refusals, per-store rate limiting, self-registration toggle) backed by
+  `$DSH_HOME/qa-accounts.json`: scrypt password hashes, a persisted HMAC secret
+  for stateful-expiry account tokens, and a session ownership map. Ownership is
+  first come, first served - attesting or bulk-claiming an unowned session binds
+  it to the caller (the migration path for existing per-browser chats on first
+  login); sessions owned by another user refuse attestation with
+  `session-owned-elsewhere` and stay hidden from the sidebar, admins are not
+  refused. The identity rides as an explicit token argument into the gated
+  `qaSurface` remotes (the typert carrier never exposes HTTP requests), the
+  policy admission checks it before any session fact is revealed
+  (`auth-required` reopens the gate on expiry), and the account chip with
+  logout lives in the sidebar footer. `entry.redirectNonLoopback` injects a
+  guarded head script through the `webserver/index-inject` event that continues
+  non-loopback hostnames into the QA route - the navigation-marker hand-off is
+  never redirected (no loops), `/?ui=admin` persists an operator bypass and
+  `/?ui=qa` clears it. Accounts are an identity layer for the QA surface, not a
+  harness boundary: QA users still hold the shared host launch-token cookie.
+
+  Follow-ups adopted from a review of the independent dsh-auth-gate plugin: a
+  proxy-side deny list for the privileged config-plane RPC methods behind the
+  deploy proxy's Host/Origin rewrite, a plugin-side launch-token bridge
+  (`entry.cookieBootstrap`) that performs the one-time host-cookie exchange on
+  the `/qa` route itself, a `qa-accounts` bin CLI (list/add/set-role/disable/
+  enable/revoke) so account administration never requires hand-editing the
+  JSON file, and per-account state — a `disabled` flag refusing logins with
+  `account-disabled` plus a `tokenVersion` burned into tokens that
+  `disable`/`revoke` bump, making logout and lockout server-side facts.
+
+  Admins get cross-user views over the same ownership map:
+  `qaSurface/accountsListOwnership` (admin-only, `admin-required` refusal
+  otherwise) returns every chat with its owner's resolved display name, the
+  admin sidebar switches to per-owner sections ordered by their freshest chat
+  (unclaimed chats trail under "Без владельца"), and user messages in foreign
+  chats carry an `author` byline naming the chat owner. Ordinary accounts and
+  deployments with accounts disabled keep the flat sidebar and unlabeled
+  messages.
+
+- The chat-history sidebar gained a footer version button that opens an ([d9d5868](https://github.com/xarleyn/dsh-plugins/commit/d9d5868))
+  end-user changelog dialog: a curated per-version summary (new features and
+  fixes in Russian) rendered in a themed modal with Escape/backdrop close.
+  The bundled version and entries are pinned to package.json and the release
+  CHANGELOG by a unit test, so a release cannot ship a stale dialog.
+
+- Rebuild the client on the 0.1.5 surfaces: the transcript projects from the ([458b9c2](https://github.com/xarleyn/dsh-plugins/commit/458b9c2))
+  ui-chat conversation view's legacy slice, chat/model pinning moves to the
+  wire remotes (`agentPresets.select` on the still-blank session, then
+  `session.selectModel`) with the attestation ordering preserved, and
+  history reads go through the session-v3 surface. The supported host range
+  moves to `>=0.1.5-rc.2 <0.2.0`, dropping 0.1.1-rc.2.
+
+- Harden the gated QA experience and make cross-user history explicitly ([2ed2024](https://github.com/xarleyn/dsh-plugins/commit/2ed2024))
+  opt-in. A new `accounts.showOtherUsersChats` setting defaults to `false`, so
+  administrators only see their own chats unless the deployment enables the
+  shared ownership view. Account storage now follows external CLI updates and
+  uses process-scoped temporary writes, while session admission and client state
+  handling avoid stale async results and reset session-bound assets reliably.
+
+  The QA client now presents a dedicated test-interface disclosure, improves
+  chat search and owner matching, keeps row actions from disturbing result
+  layout, distinguishes administrator roles, and removes decorative middle-dot
+  separators from the sidebar, messages, and source details. Its curated 0.3.0
+  history entry is prepared in advance, while the current-version marker is
+  injected from package.json at build time so the release bump promotes it
+  without another source edit.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-10)
+
+- Added DSH-style symmetric transcript/composer width handles with adaptive
+  defaults, viewport clamping, and per-route browser persistence.
+- Added Host-owned structured source provenance for parent and delegated turns,
+  replayable `qa/sources` snapshots, dedupe/ranking, opaque-provider reporting,
+  grouped source UI, and safe rendered/raw file previews.
+- Updated packed Host/browser smoke coverage for browser authentication,
+  revisioned client batches, scoped Remote injection, and current Typert RPC
+  envelopes.
 
 ### 🚀 Features
 
@@ -18,7 +807,6 @@
   pinning with a dedicated `workspace-unavailable` refusal, the company
   interaction palette as `--dsh-qa-*` tokens, and a split of the surface into
   focused drawer, switcher, and formatting modules.
-
 
 ### 🩹 Fixes
 

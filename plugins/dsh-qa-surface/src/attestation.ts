@@ -15,6 +15,8 @@ export type QaAttestationReason =
   | "permission-preset"
   | "adoption-refused"
   | "unknown-tools"
+  | "auth-required"
+  | "session-owned-elsewhere"
   | "attestation-failed";
 
 /** Host rejection whose wire message carries the coarse reason marker. */
@@ -26,4 +28,14 @@ export class QaAttestationError extends Error {
     super(message);
     this.name = "QaAttestationError";
   }
+}
+
+/** Keep deployment details in Host logs while preserving a stable wire hint. */
+export function qaAttestationFailureMessage(
+  message: string,
+  error: unknown,
+): string {
+  return error instanceof QaAttestationError
+    ? `${message} (reason: ${error.reason})`
+    : message;
 }

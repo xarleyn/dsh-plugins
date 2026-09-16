@@ -46,18 +46,22 @@ export interface ResolvedUIRepairPluginConfig {
   readonly ignore: readonly UIRepairIgnoreRule[];
 }
 
-export const DEFAULT_PLUGIN_CONFIG: ResolvedUIRepairPluginConfig = Object.freeze({
-  enabled: true,
-  mode: "observe",
-  autoConfidence: 0.95,
-  dangerousConfidence: 0.98,
-  scanOnStartup: true,
-  scanAfterMutation: true,
-  scanAfterResize: true,
-  ignore: Object.freeze([]),
-});
+export const DEFAULT_PLUGIN_CONFIG: ResolvedUIRepairPluginConfig =
+  Object.freeze({
+    enabled: true,
+    mode: "observe",
+    autoConfidence: 0.95,
+    dangerousConfidence: 0.98,
+    scanOnStartup: true,
+    scanAfterMutation: true,
+    scanAfterResize: true,
+    ignore: Object.freeze([]),
+  });
 
-function normalizedConfidence(value: number | undefined, fallback: number): number {
+function normalizedConfidence(
+  value: number | undefined,
+  fallback: number,
+): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.min(1, Math.max(0, value));
 }
@@ -66,15 +70,18 @@ function normalizedIgnore(
   rules: readonly UIRepairIgnoreRule[] | undefined,
 ): readonly UIRepairIgnoreRule[] {
   return (rules ?? [])
-    .filter((rule) =>
-      (rule.plugin?.trim().length ?? 0) > 0 ||
-      rule.rule !== undefined ||
-      (rule.selector?.trim().length ?? 0) > 0,
+    .filter(
+      (rule) =>
+        (rule.plugin?.trim().length ?? 0) > 0 ||
+        rule.rule !== undefined ||
+        (rule.selector?.trim().length ?? 0) > 0,
     )
     .map((rule) => ({
       ...(rule.plugin === undefined ? {} : { plugin: rule.plugin.trim() }),
       ...(rule.rule === undefined ? {} : { rule: rule.rule }),
-      ...(rule.selector === undefined ? {} : { selector: rule.selector.trim() }),
+      ...(rule.selector === undefined
+        ? {}
+        : { selector: rule.selector.trim() }),
     }));
 }
 

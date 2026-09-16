@@ -1,187 +1,19 @@
-import type {
-  HostDescriptionSource,
-  IApiClient,
-  SessionId,
-} from "@deepseek-ai/dsh-client-connection/client";
-import type {
-  ConversationSnapshot,
-  SessionFace,
-  SessionListState,
-} from "@deepseek-ai/dsh-client-runtime/client";
 import { describe, expect, it, vi } from "vitest";
-import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
 import { resolveConfig } from "../src/resolve-config.js";
+import { QaSessionController } from "../src/client/QaSessionController.js";
+import { QA_REGENERATE_MARKER } from "../src/client/QaTranscriptAdapter.js";
+import type { QaFileDraft, QaImageDraft } from "../src/types.js";
 import {
-  QaSessionController,
-  type QaSessionControllerOptions,
-} from "../src/client/QaSessionController.js";
-import type { StorageLike } from "../src/client/types.js";
-
-class Source<T> {
-  private readonly listeners = new Set<() => void>();
-  constructor(private value: T) {}
-  getSnapshot = () => this.value;
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  };
-  set(value: T) {
-    this.value = value;
-    for (const listener of this.listeners) listener();
-  }
-}
-
-function conversation(id: string): ConversationSnapshot {
-  return {
-    sessionId: id as SessionId,
-    views: {} as ConversationSnapshot["views"],
-    chat: {} as ConversationSnapshot["chat"],
-    nodes: [],
-    turnTimings: new Map(),
-    turnEnds: new Map(),
-    partial: null,
-    runningCalls: [],
-    pending: [],
-    queue: [],
-    running: false,
-    subagent: null,
-    composerPhase: "blank",
-    removed: false,
-    openState: "open",
-    openError: null,
-    hasMore: false,
-    loadingOlder: false,
-    promptError: null,
-    blank: true,
-    lastAgentError: null,
-  };
-}
-
-function sessionFace(id: string) {
-  const source = new Source(conversation(id));
-  const prompt = vi.fn(async () => ({
-    ok: true as const,
-    value: { accepted: true as const },
-  }));
-  const cancel = vi.fn(async () => ({
-    ok: true as const,
-    value: { accepted: true as const },
-  }));
-  const face = {
-    sessionId: id as SessionId,
-    projections: { faceOf: vi.fn() },
-    getSnapshot: source.getSnapshot,
-    subscribe: source.subscribe,
-    prompt,
-    cancel,
-  } as unknown as SessionFace;
-  return { face, source, prompt, cancel };
-}
-
-function harness(existing: string[] = []) {
-  const faces = new Map(existing.map((id) => [id, sessionFace(id)]));
-  const list = new Source<SessionListState>({
-    ids: existing as SessionId[],
-    byId: Object.fromEntries(
-      existing.map((id) => [
-        id,
-        { id, displayTitle: id, running: false, blank: true, updatedAt: 1 },
-      ]),
-    ) as SessionListState["byId"],
-    current: undefined,
-    phase: "ready",
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
-  });
-  const open = vi.fn();
-  const sessions = {
-    list,
-    open,
-    noteAgentPreset: vi.fn(),
-    binding: (id: SessionId) => {
-      const found = faces.get(String(id));
-      return found === undefined
-        ? undefined
-        : { sessionId: id, session: found.face, ctx: {} };
-    },
-  } as unknown as QaSessionControllerOptions["sessions"];
-  let sequence = existing.length;
-  const create = vi.fn(async () => {
-    const id = `created-${++sequence}`;
-    const created = sessionFace(id);
-    faces.set(id, created);
-    const before = list.getSnapshot();
-    list.set({
-      ...before,
-      ids: [id as SessionId, ...before.ids],
-      byId: {
-        ...before.byId,
-        [id]: {
-          id,
-          displayTitle: id,
-          running: false,
-          blank: true,
-          updatedAt: 2,
-        },
-      } as SessionListState["byId"],
-    });
-    return id as SessionId;
-  });
-  Object.assign(sessions, { create });
-  const selectModel = vi.fn(async () => ({
-    result: { ok: true as const, value: { selected: {} } },
-  }));
-  const selectAgentPreset = vi.fn(async () => ({
-    result: {
-      ok: true as const,
-      value: { agentPreset: "qa-assistant" },
-    },
-  }));
-  const api = { selectModel, selectAgentPreset } as unknown as Pick<
-    IApiClient["sessions"],
-    "selectModel"
-  > & {
-    selectAgentPreset: IApiClient["agentPresets"]["select"];
-  };
-  const connection = new Source({}) as unknown as HostDescriptionSource;
-  const stored = new Map<string, string>();
-  const storage: StorageLike = {
-    getItem: (key) => stored.get(key) ?? null,
-    setItem: (key, value) => stored.set(key, value),
-    removeItem: (key) => stored.delete(key),
-  };
-  const secureSession = vi.fn<QaSessionControllerOptions["secureSession"]>(
-    async (sessionId: string) => ({
-      ok: true as const,
-      value: {
-        sessionId,
-        enabled: true,
-        agentPresetMatches: true,
-        workspaceMatches: true,
-        modelMatches: true,
-        sandboxIsReadOnly: true,
-        approvalIsNever: true,
-        permissionPreset: "qa-read-only",
-        toolPolicyLoaded: true,
-        toolAllowList: [],
-      },
-    }),
-  );
-  return {
-    sessions,
-    api,
-    connection,
-    storage,
-    stored,
-    faces,
-    create,
-    selectAgentPreset,
-    open,
-    list,
-    secureSession,
-  };
-}
+  harness,
+  sessionFace,
+  conversationBinding,
+} from "./helpers/session-fakes.js";
+import { legacy, snapshot } from "./helpers/conversation-fakes.js";
+import type {
+  ConversationNode,
+  ConversationSnapshot,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 
 describe("QA session controller", () => {
   it("restores a valid persisted session without creating one", async () => {
@@ -202,7 +34,71 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("replaces a stale id and applies configured model selection", async () => {
+  it("uses the Host provenance snapshot as the authoritative source view", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const sources = vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          version: 1 as const,
+          sessionId: "saved",
+          turn: 3,
+          complete: false,
+          incompleteOrigins: [
+            {
+              subagentRunId: "opaque-run",
+              provider: "remote",
+              reason: "opaque",
+            },
+          ],
+          sources: [
+            {
+              id: "web:https://example.com/docs",
+              kind: "web" as const,
+              title: "Host docs",
+              uri: "https://example.com/docs",
+              locations: [],
+              evidence: "reported" as const,
+              origins: [
+                {
+                  role: "subagent" as const,
+                  sessionId: "saved",
+                  turn: 3,
+                  subagentRunId: "opaque-run",
+                },
+              ],
+              score: 80,
+            },
+          ],
+        },
+      ],
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      sourceApi: {
+        sources,
+        readSourceFile: vi.fn(async () => ({
+          ok: false as const,
+          error: { code: "not-found" },
+        })),
+      },
+      config: resolveConfig(),
+    });
+
+    await controller.ensureSession();
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot()).toMatchObject({
+        sources: [{ id: "web:https://example.com/docs" }],
+        sourcesComplete: false,
+        incompleteSourceOrigins: [{ subagentRunId: "opaque-run" }],
+      });
+    });
+    expect(sources).toHaveBeenCalledWith("", "saved");
+    controller.dispose();
+  });
+
+  it("replaces a stale id through Host-authoritative creation", async () => {
     const world = harness();
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");
     const controller = new QaSessionController({
@@ -220,12 +116,8 @@ describe("QA session controller", () => {
     expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
       "created-1",
     );
-    expect(world.api.selectModel).toHaveBeenCalledWith({
-      sessionId: "created-1",
-      provider: "provider",
-      model: "model",
-      reasoningEffort: "high",
-    });
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
+    expect(world.api.selectModel).not.toHaveBeenCalled();
     controller.dispose();
   });
 
@@ -233,27 +125,28 @@ describe("QA session controller", () => {
     const world = harness(["saved"]);
     const storageKey = "dsh-qa-surface.session:v1:/qa:session";
     world.stored.set(storageKey, "saved");
-    world.secureSession.mockImplementation(async (sessionId: string) =>
-      sessionId === "saved"
-        ? {
-            ok: false as const,
-            error: { code: "policy-unavailable" },
-          }
-        : {
-            ok: true as const,
-            value: {
-              sessionId,
-              enabled: true,
-              agentPresetMatches: true,
-              workspaceMatches: true,
-              modelMatches: true,
-              sandboxIsReadOnly: true,
-              approvalIsNever: true,
-              permissionPreset: "qa-read-only",
-              toolPolicyLoaded: true,
-              toolAllowList: [],
+    world.secureSession.mockImplementation(
+      async (token: string, sessionId: string) =>
+        sessionId === "saved"
+          ? {
+              ok: false as const,
+              error: { code: "policy-unavailable" },
+            }
+          : {
+              ok: true as const,
+              value: {
+                sessionId,
+                enabled: true,
+                agentPresetMatches: true,
+                workspaceMatches: true,
+                modelMatches: true,
+                sandboxModeMatches: true,
+                approvalIsNever: true,
+                permissionPreset: "qa-read-only",
+                toolPolicyLoaded: true,
+                toolAllowList: [],
+              },
             },
-          },
     );
     const controller = new QaSessionController({
       ...world,
@@ -268,9 +161,144 @@ describe("QA session controller", () => {
       canSend: true,
       error: null,
     });
-    expect(world.secureSession).toHaveBeenNthCalledWith(1, "saved");
-    expect(world.secureSession).toHaveBeenNthCalledWith(2, "created-2");
+    expect(world.secureSession).toHaveBeenNthCalledWith(1, "", "saved");
+    expect(world.secureSession).toHaveBeenNthCalledWith(2, "", "created-2");
     expect(world.stored.get(storageKey)).toBe("created-2");
+    controller.dispose();
+  });
+
+  it.each(["composition-mismatch", "agent-unavailable", "adoption-refused"])(
+    "opens a persisted %s chat as a read-only historical transcript",
+    async (reason) => {
+      const world = harness(["saved"]);
+      const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+      world.stored.set(storageKey, "saved");
+      const face = world.faces.get("saved");
+      face?.source.set({
+        ...face.source.getSnapshot(),
+        blank: false,
+        running: true,
+      });
+      const binding = world.bindings.get("saved");
+      binding?.snapshot.set(
+        snapshot(
+          legacy({
+            nodes: [
+              {
+                kind: "user",
+                seq: 1,
+                time: 10,
+                source: {},
+                content: [{ type: "text", text: "old question" }],
+              },
+            ] as ConversationNode[],
+          }),
+        ) as ConversationSnapshot,
+      );
+      world.secureSession.mockResolvedValue({
+        ok: false as const,
+        error: {
+          code: "internal",
+          message: `Assistant configuration is unavailable. (reason: ${reason})`,
+          details: {},
+        },
+      });
+      const approvalAnswer = vi.fn(async () => ({
+        ok: true as const,
+        value: true,
+      }));
+      const controller = new QaSessionController({
+        ...world,
+        approvalApi: {
+          pendingApprovals: vi.fn(async () => ({
+            ok: true as const,
+            value: [],
+          })),
+          answerApproval: approvalAnswer,
+        },
+        config: resolveConfig(),
+      });
+
+      await controller.ensureSession();
+
+      expect(controller.getSnapshot()).toMatchObject({
+        phase: "ready",
+        sessionId: "saved",
+        compatibilityReadOnly: true,
+        canSend: false,
+        canStop: false,
+        error: null,
+      });
+      expect(
+        controller
+          .getSnapshot()
+          .messages.some(
+            (message) =>
+              message.role === "user" && message.text === "old question",
+          ),
+      ).toBe(true);
+      expect(world.create).not.toHaveBeenCalled();
+      expect(world.stored.get(storageKey)).toBe("saved");
+      expect(await controller.send("must not escape read-only mode")).toBe(
+        false,
+      );
+      await controller.stop();
+      await controller.answerApproval("approval-1", "allowed-once");
+      expect(face?.prompt).not.toHaveBeenCalled();
+      expect(face?.cancel).not.toHaveBeenCalled();
+      expect(approvalAnswer).not.toHaveBeenCalled();
+      controller.dispose();
+    },
+  );
+
+  it("opens a historical chat from the sidebar without replacing the current chat", async () => {
+    const world = harness(["historical"]);
+    world.secureSession.mockImplementation(
+      async (token: string, sessionId: string) =>
+        sessionId === "historical"
+          ? {
+              ok: false as const,
+              error: {
+                code: "internal",
+                message:
+                  "Assistant configuration is unavailable. (reason: composition-mismatch)",
+                details: {},
+              },
+            }
+          : {
+              ok: true as const,
+              value: {
+                sessionId,
+                enabled: true,
+                agentPresetMatches: true,
+                workspaceMatches: true,
+                modelMatches: true,
+                sandboxModeMatches: true,
+                approvalIsNever: true,
+                permissionPreset: "qa-read-only",
+                toolPolicyLoaded: true,
+                toolAllowList: [],
+              },
+            },
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const current = controller.getSnapshot().sessionId;
+
+    await controller.switchTo("historical");
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "historical",
+      compatibilityReadOnly: true,
+      canSend: false,
+      error: null,
+    });
+    expect(world.create).toHaveBeenCalledOnce();
+    expect(current).not.toBe("historical");
     controller.dispose();
   });
 
@@ -297,7 +325,34 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("selects a configured agent preset before policy attestation", async () => {
+  it("never downgrades a newly created mismatched session to compatibility mode", async () => {
+    const world = harness();
+    world.secureSession.mockResolvedValue({
+      ok: false as const,
+      error: {
+        code: "internal",
+        message:
+          "Assistant configuration is unavailable. (reason: composition-mismatch)",
+        details: {},
+      },
+    });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+
+    await controller.ensureSession();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      compatibilityReadOnly: false,
+      canSend: false,
+      error: "Настройки помощника недоступны.",
+    });
+    controller.dispose();
+  });
+
+  it("leaves configured composition to Host creation", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
@@ -306,15 +361,9 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
-    expect(world.selectAgentPreset).toHaveBeenCalledWith({
-      sessionId: "created-1",
-      agentPreset: "qa-assistant",
-    });
-    expect(world.sessions.noteAgentPreset).toHaveBeenCalledWith(
-      "created-1",
-      "qa-assistant",
-    );
-    expect(world.secureSession).toHaveBeenCalledWith("created-1");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
+    expect(world.selectAgentPreset).not.toHaveBeenCalled();
+    expect(world.secureSession).toHaveBeenCalledWith("", "created-1");
     controller.dispose();
   });
 
@@ -340,6 +389,181 @@ describe("QA session controller", () => {
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     await controller.stop();
     expect(saved?.cancel).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("shows an optimistic user message while send admission is pending", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+
+    let releaseAttestation!: (
+      value: Awaited<ReturnType<typeof world.secureSession>>,
+    ) => void;
+    world.secureSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseAttestation = resolve;
+        }),
+    );
+
+    const pendingImage: QaImageDraft = {
+      kind: "image",
+      id: "draft-image",
+      mediaType: "image/png",
+      name: "shot.png",
+      data: "AAAA",
+      previewUrl: "blob:composer-preview",
+    };
+    const sending = controller.send(" Долгий вопрос ", [pendingImage]);
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "running",
+      canSend: false,
+      pendingMessage: {
+        role: "user",
+        text: "Долгий вопрос",
+        status: "pending",
+        images: [
+          {
+            attachmentId: "draft-image",
+            previewUrl: "data:image/png;base64,AAAA",
+          },
+        ],
+      },
+    });
+
+    releaseAttestation({
+      ok: true,
+      value: {
+        sessionId: "saved",
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    expect(await sending).toBe(true);
+
+    const saved = world.faces.get("saved");
+    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
+    expect(controller.getSnapshot().pendingMessage).not.toBeNull();
+    saved?.source.set({ ...saved.source.getSnapshot(), running: false });
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    controller.dispose();
+  });
+
+  it("stages attached files and cites their receipts in the prompt", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const fileUpload = {
+      upload: vi.fn(async (_sessionId: string, _data: Blob, name?: string) => ({
+        ok: true as const,
+        value: {
+          receiptId: `receipt-${name ?? "file"}`,
+          file: {
+            attachmentId: `sha256:${name ?? "file"}`,
+            name: name ?? "file",
+            bytes: 5,
+          },
+        },
+      })),
+    };
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => fileUpload,
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    const image: QaImageDraft = {
+      kind: "image",
+      id: "image-1",
+      mediaType: "image/png",
+      name: "shot.png",
+      data: "AAAA",
+      previewUrl: "blob:preview",
+    };
+    expect(await controller.send("See attachments", [note, image])).toBe(true);
+    expect(fileUpload.upload).toHaveBeenCalledWith(
+      "saved",
+      note.blob,
+      "note.txt",
+    );
+    // The visitor's own order decides the prompt order, not the kind.
+    expect(world.faces.get("saved")?.prompt).toHaveBeenCalledWith(
+      [
+        { type: "text", text: "See attachments" },
+        { type: "file", receiptId: "receipt-note.txt" },
+        {
+          type: "image",
+          mediaType: "image/png",
+          data: "AAAA",
+          name: "shot.png",
+        },
+      ],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("keeps the draft when a file cannot be staged", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => ({
+        upload: vi.fn(async () => ({ ok: false as const, error: "refused" })),
+      }),
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    expect(await controller.send("hello", [note])).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().error).toMatch(/Не удалось приложить/u);
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    controller.dispose();
+  });
+
+  it("refuses a file when the page serves no upload service", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const note: QaFileDraft = {
+      kind: "file",
+      id: "file-1",
+      name: "note.txt",
+      bytes: 5,
+      blob: new Blob(["hello"]),
+    };
+    expect(await controller.send("hello", [note])).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().error).toMatch(/недоступны/u);
     controller.dispose();
   });
 
@@ -394,56 +618,33 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("blocks prompts when DSH reports a pending interaction", async () => {
-    const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    const saved = world.faces.get("saved");
-    saved?.source.set({
-      ...saved.source.getSnapshot(),
-      pending: [
-        { kind: "approval" },
-      ] as unknown as ConversationSnapshot["pending"],
-    });
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "blocked",
-      canSend: false,
-      canStop: false,
-    });
-    expect(await controller.send("do it")).toBe(false);
-    expect(saved?.prompt).not.toHaveBeenCalled();
-    controller.dispose();
-  });
-
   it.each([
     "agentPresetMatches",
     "workspaceMatches",
     "modelMatches",
-    "sandboxIsReadOnly",
+    "sandboxModeMatches",
     "approvalIsNever",
     "toolPolicyLoaded",
   ] as const)("fails closed when %s cannot be proven", async (field) => {
     const world = harness();
-    world.secureSession.mockImplementation(async (sessionId: string) => ({
-      ok: true as const,
-      value: {
-        sessionId,
-        enabled: true,
-        agentPresetMatches: true,
-        workspaceMatches: true,
-        modelMatches: true,
-        sandboxIsReadOnly: true,
-        approvalIsNever: true,
-        permissionPreset: "qa-read-only",
-        toolPolicyLoaded: true,
-        toolAllowList: [],
-        [field]: false,
-      },
-    }));
+    world.secureSession.mockImplementation(
+      async (token: string, sessionId: string) => ({
+        ok: true as const,
+        value: {
+          sessionId,
+          enabled: true,
+          agentPresetMatches: true,
+          workspaceMatches: true,
+          modelMatches: true,
+          sandboxModeMatches: true,
+          approvalIsNever: true,
+          permissionPreset: "qa-read-only",
+          toolPolicyLoaded: true,
+          toolAllowList: [],
+          [field]: false,
+        },
+      }),
+    );
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
@@ -513,6 +714,30 @@ describe("QA session controller", () => {
       [{ type: "text", text: "hello" }],
       "queue",
     );
+    const replacement = world.bindings.get("created-2");
+    replacement?.snapshot.set(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "user",
+              seq: 1,
+              time: 10,
+              source: {},
+              content: [{ type: "text", text: "hello" }],
+            },
+          ] as ConversationNode[],
+        }),
+      ) as ConversationSnapshot,
+    );
+    const chatTarget = replacement?.target.mock.results[0]?.value;
+    chatTarget?.set(undefined);
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user"),
+    ).toHaveLength(1);
     controller.dispose();
   });
 
@@ -563,6 +788,7 @@ describe("QA session controller", () => {
     // A subagent child of the chat, known to the host session list.
     const childFace = sessionFace("child-1");
     world.faces.set("child-1", childFace);
+    world.bindings.set("child-1", conversationBinding("child-1"));
     const list = world.list.getSnapshot();
     world.list.set({
       ...list,
@@ -607,14 +833,39 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("creates the chat inside the pinned cwd", async () => {
+  it("does not send the pinned cwd through browser session creation", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
     });
     await controller.ensureSession();
-    expect(world.create).toHaveBeenCalledWith({ cwd: "D:/qa-docs" });
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
+    expect(world.create).toHaveBeenCalledWith();
+    controller.dispose();
+  });
+
+  it("starts a new session when the active subrole changes", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      initialSubrole: "analyst",
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(world.createSession).toHaveBeenLastCalledWith("", "analyst", false);
+    const first = controller.activeSessionId();
+
+    await controller.selectSubrole("developer");
+    expect(controller.activeSessionId()).toBeNull();
+    await controller.send("Новый контекст роли", []);
+
+    expect(controller.activeSessionId()).not.toBe(first);
+    expect(world.createSession).toHaveBeenLastCalledWith(
+      "",
+      "developer",
+      false,
+    );
     controller.dispose();
   });
 
@@ -633,280 +884,127 @@ describe("QA session controller", () => {
     );
     controller.dispose();
   });
-});
 
-describe("QA chat index and switching", () => {
-  it("indexes each attested chat for this browser", async () => {
+  it("surfaces a parked approval of a running chat and answers it", async () => {
     const world = harness();
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    expect(controller.chatIds()).toEqual(["created-1"]);
-    expect(
-      JSON.parse(
-        world.stored.get("dsh-qa-surface.session:v1:/qa:chats") ?? "[]",
-      ),
-    ).toEqual(["created-1"]);
-    controller.dispose();
-  });
-
-  it("switches to an indexed chat and re-attests it", async () => {
-    const world = harness(["saved"]);
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    expect(controller.getSnapshot().sessionId).toBe("created-2");
-    await controller.switchTo("saved");
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "ready",
-      sessionId: "saved",
-      canSend: true,
-    });
-    expect(controller.activeSessionId()).toBe("saved");
-    expect(controller.chatIds()).toEqual(["saved", "created-2"]);
-    expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
-      "saved",
-    );
-    controller.dispose();
-  });
-
-  it("forgets and reports a chat the host no longer lists", async () => {
-    const world = harness(["saved"]);
-    world.stored.set(
-      "dsh-qa-surface.session:v1:/qa:chats",
-      JSON.stringify(["gone", "saved"]),
-    );
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    await controller.switchTo("gone");
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      error: "Не удалось открыть этот чат.",
-    });
-    expect(controller.chatIds()).toEqual(["created-2", "saved"]);
-    controller.dispose();
-  });
-
-  it("surfaces an attestation failure without dropping the chat", async () => {
-    const world = harness(["saved"]);
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    await controller.ensureSession();
-    world.secureSession.mockRejectedValueOnce(new Error("fence"));
-    await controller.switchTo("saved");
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      error: "Настройки помощника недоступны.",
-    });
-    expect(controller.chatIds()).toEqual(["created-2"]);
-    controller.dispose();
-  });
-
-  it("caps and cleans the stored chat index", () => {
-    const world = harness();
-    const junk = Array.from({ length: 60 }, (_, i) => `chat-${i}`);
-    world.stored.set(
-      "dsh-qa-surface.session:v1:/qa:chats",
-      JSON.stringify(["chat-3", 42, null, "chat-3", ...junk]),
-    );
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    const ids = controller.chatIds();
-    expect(ids.length).toBeLessThanOrEqual(50);
-    expect(ids[0]).toBe("chat-3");
-    expect(new Set(ids).size).toBe(ids.length);
-    controller.dispose();
-  });
-
-  it("ignores switching under a fixed session policy", async () => {
-    const world = harness(["saved"]);
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig({
-        session: { policy: "fixed", fixedSessionId: "saved" },
-      }),
-    });
-    await controller.ensureSession();
-    await controller.switchTo("not-in-the-list");
-    expect(world.open).toHaveBeenCalledTimes(1);
-    expect(controller.getSnapshot().sessionId).toBe("saved");
-    controller.dispose();
-  });
-});
-
-describe("attestation diagnostics", () => {
-  it("reports the Host reason code once without a wrapper stack trace", async () => {
-    const world = harness();
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    const errorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    world.secureSession.mockResolvedValueOnce({
-      ok: false as const,
-      error: {
-        code: "internal",
-        message:
-          "Assistant configuration is unavailable. (reason: unknown-tools)",
-        details: {},
-      },
-    });
-    await controller.ensureSession();
-    const texts = errorSpy.mock.calls.map((call) => String(call[0]));
-    expect(
-      texts.filter((text) => text.includes("policy attestation failed")),
-    ).toEqual([
-      "dsh-qa-surface: policy attestation failed (reason: unknown-tools). A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.",
-    ]);
-    expect(
-      texts.filter((text) => text.includes("session operation failed")),
-    ).toEqual([]);
-    expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      error: "Настройки помощника недоступны.",
-    });
-    errorSpy.mockRestore();
-    controller.dispose();
-  });
-
-  it("marks a well-formed proof that does not match the client config", async () => {
-    const world = harness();
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-    });
-    const errorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    world.secureSession.mockResolvedValueOnce({
+    const request = {
+      id: "request-1",
+      sessionId: "created-1",
+      toolName: "glob",
+      reason: "Safety gate requests approval",
+      createdAt: 1,
+      delegated: false,
+    };
+    const pendingApprovals = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [request] })
+      .mockResolvedValue({ ok: true as const, value: [] });
+    const answerApproval = vi.fn(async () => ({
       ok: true as const,
-      value: {
-        sessionId: "created-1",
-        enabled: true,
-        agentPresetMatches: true,
-        workspaceMatches: true,
-        modelMatches: true,
-        sandboxIsReadOnly: true,
-        approvalIsNever: true,
-        permissionPreset: "some-other-preset",
-        toolPolicyLoaded: true,
-        toolAllowList: [],
+      value: true,
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { approvals: "interactive" } }),
+      approvalApi: { pendingApprovals, answerApproval },
+    });
+    await controller.ensureSession();
+    // Nothing is parked until a turn runs, so the poll follows the turn.
+    expect(pendingApprovals).not.toHaveBeenCalled();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().approvals).toEqual([request]);
+    });
+    expect(pendingApprovals).toHaveBeenCalledWith("", "created-1");
+
+    await controller.answerApproval("request-1", "allowed-once");
+    expect(answerApproval).toHaveBeenCalledWith(
+      "",
+      "created-1",
+      "request-1",
+      "allowed-once",
+    );
+    expect(controller.getSnapshot().approvals).toEqual([]);
+    controller.dispose();
+  });
+
+  it("surfaces a parked question of a running chat and answers it", async () => {
+    const world = harness();
+    const request = {
+      id: "question-1",
+      sessionId: "created-1",
+      createdAt: 1,
+      questions: [
+        {
+          id: "target",
+          question: "Куда писать отчёт?",
+          header: null,
+          detail: null,
+          multiSelect: false,
+          options: [{ label: "В чат", description: null }],
+        },
+      ],
+    };
+    const pendingQuestions = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [request] })
+      .mockResolvedValue({ ok: true as const, value: [] });
+    const answerQuestion = vi.fn(async () => ({
+      ok: true as const,
+      value: true,
+    }));
+    const cancelQuestion = vi.fn(async () => ({
+      ok: true as const,
+      value: true,
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { questions: "interactive" } }),
+      questionApi: { pendingQuestions, answerQuestion, cancelQuestion },
+    });
+    await controller.ensureSession();
+    expect(pendingQuestions).not.toHaveBeenCalled();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().questions).toEqual([request]);
+    });
+    expect(pendingQuestions).toHaveBeenCalledWith("", "created-1");
+
+    await controller.answerQuestion("question-1", [
+      { id: "target", selected: ["В чат"] },
+    ]);
+    expect(answerQuestion).toHaveBeenCalledWith("", "created-1", "question-1", [
+      { id: "target", selected: ["В чат"] },
+    ]);
+    expect(controller.getSnapshot().questions).toEqual([]);
+
+    await controller.cancelQuestion("question-1");
+    expect(cancelQuestion).toHaveBeenCalledWith("", "created-1", "question-1");
+    controller.dispose();
+  });
+
+  it("never polls approvals while the deployment blocks them", async () => {
+    const world = harness();
+    const pendingApprovals = vi.fn(async () => ({
+      ok: true as const,
+      value: [],
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      approvalApi: {
+        pendingApprovals,
+        answerApproval: vi.fn(async () => ({ ok: true as const, value: true })),
       },
     });
     await controller.ensureSession();
-    const texts = errorSpy.mock.calls.map((call) => String(call[0]));
-    expect(
-      texts.some((text) => text.includes("(reason: proof-mismatch)")),
-    ).toBe(true);
-    errorSpy.mockRestore();
-    controller.dispose();
-  });
-});
-
-it("forgets a non-active chat without touching sessions", async () => {
-  const world = harness(["saved"]);
-  world.stored.set(
-    "dsh-qa-surface.session:v1:/qa:chats",
-    JSON.stringify(["saved", "other"]),
-  );
-  const controller = new QaSessionController({
-    ...world,
-    config: resolveConfig(),
-  });
-  await controller.ensureSession();
-  await controller.deleteChat("saved");
-  expect(world.create).toHaveBeenCalledTimes(1);
-  expect(controller.chatIds()).toEqual(["created-2", "other"]);
-  expect(controller.getSnapshot().sessionId).toBe("created-2");
-  controller.dispose();
-});
-
-it("deleting the active chat falls back to a draft without creating a session", async () => {
-  const world = harness();
-  const controller = new QaSessionController({
-    ...world,
-    config: resolveConfig({ lockdown: { allowSessionReset: true } }),
-  });
-  await controller.ensureSession();
-  await controller.deleteChat("created-1");
-  expect(world.create).toHaveBeenCalledOnce();
-  expect(controller.getSnapshot()).toMatchObject({
-    phase: "idle",
-    sessionId: null,
-    canSend: true,
-  });
-  expect(controller.chatIds()).toEqual([]);
-  expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(false);
-  controller.dispose();
-});
-
-describe("stream update coalescing", () => {
-  it("projects running-turn frames at most once per stream interval", async () => {
-    const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-      streamIntervalMs: 25,
-    });
-    await controller.ensureSession();
-    let publishes = 0;
-    controller.subscribe(() => {
-      publishes += 1;
-    });
-    const saved = world.faces.get("saved");
-    const partialText = (text: string) => ({
-      ...saved?.source.getSnapshot(),
-      running: true,
-      partial: { turn: 0, step: 0, blocks: [{ kind: "text", text }] },
-    });
-    // Turn start: the first frame of a window projects at once.
-    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
-    expect(publishes).toBe(1);
-    // Further frames inside the window are absorbed.
-    saved?.source.set(partialText("a") as never);
-    saved?.source.set(partialText("ab") as never);
-    expect(publishes).toBe(1);
-    // After the window passes, the next frame projects again.
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    saved?.source.set(partialText("abc") as never);
-    expect(publishes).toBe(2);
-    // Turn completion projects immediately, so the final state never waits.
-    saved?.source.set({ ...saved.source.getSnapshot(), running: false });
-    expect(publishes).toBe(3);
-    controller.dispose();
-  });
-
-  it("projects every frame when stream spacing is disabled", async () => {
-    const world = harness(["saved"]);
-    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
-    const controller = new QaSessionController({
-      ...world,
-      config: resolveConfig(),
-      streamIntervalMs: 0,
-    });
-    await controller.ensureSession();
-    let publishes = 0;
-    controller.subscribe(() => {
-      publishes += 1;
-    });
-    const saved = world.faces.get("saved");
-    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
-    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
-    expect(publishes).toBe(2);
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await Promise.resolve();
+    expect(pendingApprovals).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().approvals).toEqual([]);
     controller.dispose();
   });
 });

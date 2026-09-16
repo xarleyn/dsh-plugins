@@ -6,13 +6,13 @@
  * @module policy/redirect
  */
 
-import type { ResolvedRedirectPolicy } from '../types.js'
-import { isSameOrigin } from './url.js'
+import type { ResolvedRedirectPolicy } from "../types.js";
+import { isSameOrigin } from "./url.js";
 
 /** What may be done with a redirect to `target`. */
 export type RedirectDecision =
-  | { readonly action: 'follow'; readonly sameRule: boolean }
-  | { readonly action: 'deny'; readonly reason: string }
+  | { readonly action: "follow"; readonly sameRule: boolean }
+  | { readonly action: "deny"; readonly reason: string };
 
 /**
  * Decide a redirect from `current` to `target`.
@@ -39,25 +39,36 @@ export function decideRedirect(
   targetMatchesOriginalRule: boolean,
   targetMatchesSomeRule: boolean,
 ): RedirectDecision {
-  if (policy.mode === 'none') {
-    return { action: 'deny', reason: 'redirects are disabled for this rule (mode none)' }
+  if (policy.mode === "none") {
+    return {
+      action: "deny",
+      reason: "redirects are disabled for this rule (mode none)",
+    };
   }
   if (targetMatchesOriginalRule && isSameOrigin(target, current)) {
-    return { action: 'follow', sameRule: true }
+    return { action: "follow", sameRule: true };
   }
-  if (policy.mode === 'same-origin') {
+  if (policy.mode === "same-origin") {
     return {
-      action: 'deny',
+      action: "deny",
       reason: `cross-origin redirect to ${target.origin} is not followed (mode same-origin)`,
-    }
+    };
   }
   // mode === 'allowlist'
   if (!targetMatchesSomeRule) {
-    return { action: 'deny', reason: `redirect target ${target.origin} matches no enabled rule (mode allowlist)` }
+    return {
+      action: "deny",
+      reason: `redirect target ${target.origin} matches no enabled rule (mode allowlist)`,
+    };
   }
-  const allowed = policy.allowedOrigins.some(origin => origin === target.origin)
+  const allowed = policy.allowedOrigins.some(
+    (origin) => origin === target.origin,
+  );
   if (!allowed) {
-    return { action: 'deny', reason: `redirect target ${target.origin} is not in the rule's allowedOrigins` }
+    return {
+      action: "deny",
+      reason: `redirect target ${target.origin} is not in the rule's allowedOrigins`,
+    };
   }
-  return { action: 'follow', sameRule: targetMatchesOriginalRule }
+  return { action: "follow", sameRule: targetMatchesOriginalRule };
 }

@@ -9,9 +9,9 @@ import {
 describe("UI Repair config", () => {
   it("applies conservative defaults through both schema and resolver", () => {
     expect(ConfigSchema({})).toMatchObject(DEFAULT_PLUGIN_CONFIG);
-    expect(ConfigSchema({ ignore: [{ selector: ".intentional" }] }).ignore).toEqual([
-      { selector: ".intentional" },
-    ]);
+    expect(
+      ConfigSchema({ ignore: [{ selector: ".intentional" }] }).ignore,
+    ).toEqual([{ selector: ".intentional" }]);
     expect(resolvePluginConfig()).toEqual(DEFAULT_PLUGIN_CONFIG);
   });
 
@@ -37,9 +37,9 @@ describe("UI Repair config", () => {
   });
 
   it("never permits the risky repair threshold below 98 percent", () => {
-    expect(resolvePluginConfig({ dangerousConfidence: 0 }).dangerousConfidence).toBe(
-      0.98,
-    );
+    expect(
+      resolvePluginConfig({ dangerousConfidence: 0 }).dangerousConfidence,
+    ).toBe(0.98);
   });
 
   it("accepts every implemented rule in persistent ignore policies", () => {
@@ -59,7 +59,8 @@ describe("UI Repair config", () => {
       "R013",
     ]);
     expect(
-      ConfigSchema({ ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })) }).ignore,
+      ConfigSchema({ ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })) })
+        .ignore,
     ).toHaveLength(REPAIR_RULE_IDS.length);
   });
 });
