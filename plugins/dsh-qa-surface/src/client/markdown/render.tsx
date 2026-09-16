@@ -91,7 +91,13 @@ function renderListItem(
   const [head, ...rest] = item.blocks;
   const parts: ReactNode[] = [];
   const checkbox = item.task ? (
-    <input key="task" type="checkbox" checked={item.checked} disabled />
+    <input
+      key="task"
+      type="checkbox"
+      checked={item.checked}
+      disabled
+      aria-label="Задача"
+    />
   ) : null;
   if (head !== undefined) {
     if (head.kind === "paragraph") {
