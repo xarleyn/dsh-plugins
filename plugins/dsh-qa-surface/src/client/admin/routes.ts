@@ -26,9 +26,27 @@ export type QaAdminRoute =
   | { readonly page: "quality" }
   | { readonly page: "audit" };
 
+/** The console's own base path under the surface route. */
+export function adminBasePath(routePath: string): string {
+  return `${routePath === "/" ? "" : routePath}/admin`;
+}
+
+/**
+ * Whether a pathname addresses the console at all. Sections and entities each
+ * own a path under the base ({@link adminPath}), and the surface hosting the
+ * console must stay the console while any of them is open, so the test is by
+ * prefix. An equality test against the base alone unmounts the console on the
+ * first navigation inside it, and every deep link lands in the chat instead.
+ */
+export function isAdminPath(pathname: string, routePath: string): boolean {
+  const base = adminBasePath(routePath);
+  const trimmed = pathname.replace(/\/+$/u, "");
+  return trimmed === base || trimmed.startsWith(`${base}/`);
+}
+
 /** Path segments after `/qa/admin`, without the leading slash. */
 export function adminSegments(pathname: string, routePath: string): string[] {
-  const base = `${routePath === "/" ? "" : routePath}/admin`;
+  const base = adminBasePath(routePath);
   const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
   return rest
     .split("/")
@@ -99,7 +117,7 @@ export function adminPath(
   route: QaAdminRoute,
   search = "",
 ): string {
-  const base = `${routePath === "/" ? "" : routePath}/admin`;
+  const base = adminBasePath(routePath);
   const suffix = (() => {
     switch (route.page) {
       case "overview":

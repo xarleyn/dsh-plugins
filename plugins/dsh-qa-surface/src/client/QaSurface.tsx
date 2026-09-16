@@ -94,6 +94,7 @@ import { QaPanelLauncher } from "./panels/PanelLauncher.js";
 import type { QaSurfacePanelRegistry } from "./panels/registry.js";
 import type { QaUserSettingsSections } from "./settings-extensions/index.js";
 import { QaAdmin } from "./admin/QaAdmin.js";
+import { isAdminPath } from "./admin/routes.js";
 import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 
 const noopSubscribe = () => () => undefined;
@@ -205,9 +206,7 @@ export function QaSurface(props: QaSurfaceProps) {
     accounts?.getSnapshot ?? noopAccountsSnapshot,
   );
   const accountsStage = accountsSnapshot.stage;
-  const adminRoute =
-    route.pathname.replace(/\/+$/u, "") ===
-    `${config.route.path === "/" ? "" : config.route.path}/admin`;
+  const adminRoute = isAdminPath(route.pathname, config.route.path);
   const [access, setAccess] = useState<QaCurrentAccess>();
   const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
   const [adminPreview, setAdminPreview] = useState(false);
