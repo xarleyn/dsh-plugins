@@ -1,7 +1,7 @@
 {
   "name": "@yadsh/dsh-plugin-kit",
   "version": "0.1.0",
-  "description": "Shared runtime helpers for DSH plugins",
+  "description": "Shared runtime helpers for DSH plugins: logging scaffolds, config validation, compatibility checks and SQLite store plumbing",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -18,8 +18,28 @@
   },
   "files": [
     "lib",
+    "README.md",
     "LICENSE"
   ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "plugin-kit",
+    "sqlite",
+    "storage"
+  ],
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "packages/plugin-kit"
+  },
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
   "dependencies": {},
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
