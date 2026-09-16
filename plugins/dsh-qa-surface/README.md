@@ -13,6 +13,15 @@ Session and Agent Loop.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
+- renders assistant Markdown with this plugin's own GFM grammar — headings
+  through `######`, nested and task lists, tables, quotes, images, autolinks,
+  reference links — inside an HTML-free renderer, and relays the host theme's
+  own typography and syntax colors (`--dsw-font-markdown-*`,
+  `--dsw-alias-markdown-*`, `--shiki-token-*`) so a fenced block here reads
+  like one in DSH's own transcript, in either theme and at any font-size
+  preference. A fence carries the language banner, a copy button and a built-in
+  highlighter for the languages answers use; an unknown or absent language
+  stays plain monospace;
 - optionally shows a minimal per-browser chat-history sidebar
   (`ui.showSessionList`) whose switching re-runs policy attestation;
 - blocks unsupported approvals/questions instead of auto-approving them, and can
