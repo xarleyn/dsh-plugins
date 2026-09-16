@@ -160,6 +160,44 @@ describe("jira site configuration", () => {
     ).toBe(50);
     expect(resolveJiraConfig({ maxSearchLimit: 500 }).maxSearchLimit).toBe(100);
   });
+
+  it("takes the names of the instance's custom fields from the deployment", () => {
+    const flags = resolveJiraConfig({
+      fieldAliases: {
+        product: " customfield_10010 ",
+        team: "customfield_10011",
+      },
+    });
+    expect(flags.fieldAliases).toEqual({
+      product: "customfield_10010",
+      team: "customfield_10011",
+    });
+    // No alias is declared by default: a field id belongs to an instance.
+    expect(resolveJiraConfig().fieldAliases).toEqual({});
+
+    for (const bad of [
+      { Product: "customfield_10010" },
+      { "product name": "customfield_10010" },
+      { product: "cf_10010" },
+      { product: "10010" },
+      { product: "" },
+      { product: 10 },
+    ]) {
+      expect(() => resolveJiraConfig({ fieldAliases: bad as never })).toThrow(
+        /jira integration config/u,
+      );
+    }
+    expect(() =>
+      resolveJiraConfig({
+        fieldAliases: Object.fromEntries(
+          Array.from({ length: 33 }, (_, index) => [
+            `alias-${index}`,
+            "customfield_10010",
+          ]),
+        ),
+      }),
+    ).toThrow(/at most 32/u);
+  });
 });
 
 describe("jira connect form", () => {
@@ -1304,6 +1342,98 @@ describe("jira issue history and lists", () => {
     expect(jqlDateValue("2026-08-31T12:00:00Z", "createdAfter")).toBe(
       '"2026-08-31 12:00"',
     );
+  });
+
+  it("resolves a custom field's alias into the instance id it names", async () => {
+    const { fetcher, calls } = stub(() => ({
+      json: { issues: [], isLast: true },
+    }));
+    const provider = providerFor(fetcher, {
+      fieldAliases: { product: "customfield_10010" },
+    });
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        projectKeys: ["PROJ"],
+        customFields: [{ field: "product", value: "Dispenser" }],
+      },
+    );
+    const jql = calls[0]?.url.searchParams.get("jql") ?? "";
+    expect(jql).toContain('customfield_10010 = "Dispenser"');
+    // The alias itself never reaches Jira.
+    expect(jql).not.toContain("product");
+
+    // An id is passed through untouched, alias or no alias.
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        projectKeys: ["PROJ"],
+        customFields: [{ field: "customfield_20000", empty: true }],
+      },
+    );
+    expect(calls[1]?.url.searchParams.get("jql")).toContain(
+      "customfield_20000 IS EMPTY",
+    );
+  });
+
+  it("refuses a field name this deployment did not map, and names the ones it did", async () => {
+    const { fetcher, calls } = stub(() => ({
+      json: { issues: [], isLast: true },
+    }));
+    const mapped = providerFor(fetcher, {
+      fieldAliases: { product: "customfield_10010" },
+    });
+    const refused = await mapped
+      .execute({ credential: credentialFor(mapped) }, "issues.search", {
+        projectKeys: ["PROJ"],
+        customFields: [{ field: "team", value: "platform" }],
+      })
+      .catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(IntegrationError);
+    expect((refused as IntegrationError).code).toBe("InvalidRequest");
+    expect((refused as IntegrationError).message).toContain("product");
+    expect(calls).toEqual([]);
+
+    // With no aliases at all the refusal says so instead of listing nothing.
+    const bare = providerFor(fetcher);
+    const none = await bare
+      .execute({ credential: credentialFor(bare) }, "issues.search", {
+        projectKeys: ["PROJ"],
+        customFields: [{ field: "Продукт", value: "Dispenser" }],
+      })
+      .catch((error: unknown) => error);
+    expect(none).toBeInstanceOf(IntegrationError);
+    expect((none as IntegrationError).code).toBe("InvalidRequest");
+    expect((none as IntegrationError).message).toContain(
+      "configured no aliases",
+    );
+    expect(calls).toEqual([]);
+  });
+
+  it("publishes the deployment's aliases with the field catalog", async () => {
+    const { fetcher } = stub(() => ({
+      json: [{ id: "customfield_10010", name: "Product", custom: true }],
+    }));
+    const mapped = providerFor(fetcher, {
+      fieldAliases: { product: "customfield_10010" },
+    });
+    const answer = (await mapped.execute(
+      { credential: credentialFor(mapped) },
+      "fields.list",
+      {},
+    )) as Record<string, unknown>;
+    expect(answer["aliases"]).toEqual({ product: "customfield_10010" });
+
+    const bare = providerFor(fetcher);
+    const plain = (await bare.execute(
+      { credential: credentialFor(bare) },
+      "fields.list",
+      {},
+    )) as Record<string, unknown>;
+    expect(plain["aliases"]).toBeUndefined();
+    expect(plain["returned"]).toBe(1);
   });
 });
 

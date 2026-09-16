@@ -43,8 +43,9 @@ search can move off a query-string engine without losing questions: project, iss
 type, status and its category (`Done` covers every terminal status, whatever the
 workflow calls it), priority, resolution, components, labels (all of them, not
 any), fix and affected versions including "none set" and "set", assignee and
-reporter, created/updated bounds in both directions, and custom fields by the id
-the field catalog reported. Dates take absolute values and Jira's own relative
+reporter, created/updated bounds in both directions, and custom fields either by
+the id the field catalog reported or by an alias the deployment declared. Dates
+take absolute values and Jira's own relative
 tokens (`-3w`, `-2d`), a free-text query is either every word or the exact phrase
 (with each term its own escaped clause, so an `OR` inside a phrase stays a word),
 and the history of one issue is readable through `include: ["changelog_summary"]`
@@ -53,6 +54,13 @@ happened. A person is accepted as `me`, as an account id, or as a name: the name
 is resolved through the site's own user directory, and a name nobody matches or
 several people share is refused with what to do next instead of being spent on a
 query that quietly answers "no such issues".
+
+`jira.fieldAliases` is where an instance's custom fields get their names: which
+of a site's fields carries "the product" is knowledge about that site, so this
+package carries no field id at all, the mapping is validated when the config is
+resolved (a typo fails the load rather than answering nothing), an unknown name
+is refused together with the aliases that do exist, and `jira_get_fields` hands
+the model the aliases it may use.
 
 The catalog is an explicit allow-list of Jira Cloud read endpoints, asserted by
 the package gate along with the `GET` method of every entry, the absence of the

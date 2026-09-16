@@ -720,8 +720,16 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
         descriptionTruncated: description?.truncated ? true : undefined,
       });
     },
-    "fields.list": (data) => {
+    "fields.list": (data, context) => {
       const fields = Array.isArray(data) ? data : [];
-      return { items: fields.map(fieldSummary), returned: fields.length };
+      const aliases = context.flags.fieldAliases;
+      const names = Object.keys(aliases);
+      return compact({
+        items: fields.map(fieldSummary),
+        returned: fields.length,
+        // The deployment's own names for the instance's custom fields, so the
+        // model can filter by "product" instead of carrying an id around.
+        aliases: names.length === 0 ? undefined : aliases,
+      });
     },
   });
