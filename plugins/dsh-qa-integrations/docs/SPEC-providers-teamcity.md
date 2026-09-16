@@ -243,13 +243,29 @@ If a future TeamCity version introduces a breaking change:
 
 MVP supports TeamCity personal access tokens.
 
-The user enters:
+The deployment names the server; the user enters:
 
 ```text
-TeamCity URL
 Access Token
 Optional display name
 ```
+
+```yaml
+teamcity:
+  serverUrl: https://teamcity.example.com
+  network:
+    mode: allowlist
+    allowedHosts: [teamcity.example.com]
+```
+
+The address is operator configuration, not a form field: it is one server for
+everyone, so letting each user type it would only invite a broker pointed at a
+host of the caller's choosing. It is canonicalized and checked against the
+address policy while the deployment's config is resolved, re-checked on every
+call, and never stored in the credential — repointing or removing it therefore
+closes every connection made against the old value. A deployment that mounts
+TeamCity without an address is valid but inert: the connect form says there is
+nothing to connect to instead of offering a form that cannot be saved.
 
 Requests use:
 
@@ -276,7 +292,7 @@ Basic auth may be implemented only as an explicitly enabled legacy compatibility
 
 ### 6.3 Connection verification
 
-When the user submits a TeamCity URL + token, the backend performs:
+When the user submits a token for the configured address, the backend performs:
 
 ```text
 GET /app/rest/server

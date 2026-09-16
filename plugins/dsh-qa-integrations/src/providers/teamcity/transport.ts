@@ -1,22 +1,20 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import type { TeamCityFlags } from "./config.js";
-import {
-  canonicalServerUrl,
-  serverUrlProblem,
-  type TeamCityNetworkPolicy,
-} from "./network.js";
+import { canonicalServerUrl, serverUrlProblem } from "./network.js";
 
 /**
- * Encrypted credential payload of one TeamCity connection: the server the user
- * named and the personal access token they pasted.
+ * Encrypted payload of one TeamCity connection: the personal access token the
+ * user pasted, and nothing else.
  *
- * Unlike a provider whose hosts come from operator config, this address is user
- * input — which is why it is validated against the deployment's address policy
- * every time it is used, not only when it was stored.
+ * The server it is dialled at is operator configuration, so a connection cannot
+ * be pointed anywhere by its owner and cannot outlive a deployment that
+ * repointed or removed the address. A credential stored before that move still
+ * carries the address the connect form used to collect; it is accepted and
+ * ignored, because the token is what the user owns and the deployment decides
+ * where it may be spent.
  */
 export interface TeamCityCredential {
-  readonly serverUrl: string;
   readonly token: string;
 }
 
@@ -36,36 +34,36 @@ export function credentialFromPlaintext(plaintext: string): TeamCityCredential {
       "Stored credential is invalid",
     );
   }
-  const record = parsed as Record<string, unknown>;
-  if (
-    typeof record["serverUrl"] !== "string" ||
-    typeof record["token"] !== "string" ||
-    record["token"] === "" ||
-    record["serverUrl"] === ""
-  ) {
+  const token = (parsed as Record<string, unknown>)["token"];
+  if (typeof token !== "string" || token === "") {
     throw new IntegrationError(
       "CredentialRevoked",
       "Stored credential is invalid",
     );
   }
-  return { serverUrl: record["serverUrl"], token: record["token"] };
+  return { token };
 }
 
 /**
- * The address a stored credential may be dialled at, re-checked against the
- * policy that is configured *now*. Removing a host from the allowlist, or
- * switching the deployment to HTTPS-only, therefore closes existing connections
- * instead of only new ones.
+ * The address this deployment dials, re-checked against the policy configured
+ * *now*: removing a host from the allowlist, or switching the deployment to
+ * HTTPS-only, therefore closes existing connections instead of only new ones.
+ * A deployment that never configured an address refuses with a reason of its
+ * own, so the card and the tools say "TeamCity is not configured here" rather
+ * than blaming the caller's token.
  */
-export function credentialServer(
-  policy: TeamCityNetworkPolicy,
-  credential: TeamCityCredential,
-): string {
-  const problem = serverUrlProblem(credential.serverUrl, policy);
+export function configuredServer(flags: TeamCityFlags): string {
+  if (flags.serverUrl === "") {
+    throw new IntegrationError(
+      "ProviderUnavailable",
+      "This deployment has no TeamCity address configured",
+    );
+  }
+  const problem = serverUrlProblem(flags.serverUrl, flags.network);
   if (problem !== undefined) {
     throw new IntegrationError("ProviderUnavailable", problem);
   }
-  return canonicalServerUrl(credential.serverUrl);
+  return canonicalServerUrl(flags.serverUrl);
 }
 
 export interface TeamCityTextResponse {

@@ -47,9 +47,16 @@ const connected: IntegrationSummary = {
   lastValidatedAt: "2026-09-15T06:00:00.000Z",
 };
 
+const SERVER_ROW = {
+  id: "teamcity",
+  label: "teamcity.example.com",
+  baseUrl: SERVER,
+};
+
 function remote(overrides: Partial<TeamcityRemote> = {}): TeamcityRemote {
   return {
     getTeamcity: async () => ({ ok: true, value: disconnected }),
+    teamcityServer: async () => ({ ok: true, value: SERVER_ROW }),
     putTeamcityCredential: async () => ({ ok: true, value: connected }),
     testTeamcity: async () => ({ ok: true, value: connected }),
     patchTeamcityPolicy: async () => ({ ok: true, value: connected }),
@@ -59,8 +66,8 @@ function remote(overrides: Partial<TeamcityRemote> = {}): TeamcityRemote {
 }
 
 describe("Integrations TeamCity card", () => {
-  it("keeps the access token write-only", async () => {
-    const writes: { serverUrl: string; token: string }[] = [];
+  it("keeps the access token write-only and the address out of the form", async () => {
+    const writes: { token: string }[] = [];
     const Card = createTeamcityCard(
       remote({
         putTeamcityCredential: async (_token, input) => {
@@ -70,21 +77,22 @@ describe("Integrations TeamCity card", () => {
       }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    const address = await screen.findByLabelText("Адрес TeamCity");
-    const input = screen.getByLabelText("Access token TeamCity");
+    const input = await screen.findByLabelText("Access token TeamCity");
     expect(input).toHaveProperty("type", "password");
+    // The server is stand-wide configuration: the card shows it and never asks.
+    expect(screen.queryByLabelText("Адрес TeamCity")).toBeNull();
+    expect(
+      screen.getByText(/Адрес TeamCity: teamcity.example.com/u),
+    ).not.toBeNull();
     const connect = screen.getByRole("button", {
       name: "Сохранить и проверить",
     });
-    // Neither half of the connection alone gets to be stored.
-    expect(connect).toHaveProperty("disabled", true);
-    fireEvent.change(address, { target: { value: SERVER } });
     expect(connect).toHaveProperty("disabled", true);
     const secret = "abcdefghijklmnopqrstuvwxyz012345";
     fireEvent.change(input, { target: { value: secret } });
     fireEvent.click(connect);
     await screen.findByText(/Alice Example/u);
-    expect(writes).toEqual([{ serverUrl: SERVER, token: secret }]);
+    expect(writes).toEqual([{ token: secret }]);
     await waitFor(() =>
       expect(screen.queryByLabelText("Access token TeamCity")).toBeNull(),
     );
@@ -158,5 +166,26 @@ describe("Integrations TeamCity card", () => {
     expect(disconnectedCalls).toBe(0);
     fireEvent.click(screen.getByRole("button", { name: "Да, отключить" }));
     await waitFor(() => expect(disconnectedCalls).toBe(1));
+  });
+
+  it("offers no form while the deployment configured no address", async () => {
+    let writes = 0;
+    const Card = createTeamcityCard(
+      remote({
+        teamcityServer: async () => ({ ok: true, value: null }),
+        putTeamcityCredential: async () => {
+          writes += 1;
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    await screen.findByText(/Оператор не настроил адрес TeamCity/u);
+    expect(screen.queryByLabelText("Access token TeamCity")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Сохранить и проверить" }),
+    ).toBeNull();
+    expect(writes).toBe(0);
+    expect(container.textContent).toContain("он один на всех");
   });
 });
