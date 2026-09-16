@@ -68,8 +68,50 @@ describe("QA Browser panel authorization", () => {
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
       focusOnAutoReveal: false,
+      coordinateInputEnabled: true,
     });
     expect(secureSession).toHaveBeenCalledWith("qa-token", "session-x");
+  });
+
+  it("authorizes every chrome mutation before it touches the browser", async () => {
+    const { ctx, service } = await loadPlugin();
+
+    // Each of the panel's own controls refuses without the boundary, so a
+    // mounted-under-a-different-host panel cannot drive a browser at all.
+    await expect(
+      service.panelNewTab("qa-token", "session-x", "client-1"),
+    ).rejects.toThrow(REFUSAL);
+    await expect(
+      service.panelHistory(
+        "qa-token",
+        "session-x",
+        "tab-1",
+        "client-1",
+        "back",
+      ),
+    ).rejects.toThrow(REFUSAL);
+    await expect(
+      service.panelViewport(
+        "qa-token",
+        "session-x",
+        "tab-1",
+        "client-1",
+        800,
+        600,
+      ),
+    ).rejects.toThrow(REFUSAL);
+    await expect(
+      service.panelCloseTab("qa-token", "session-x", "tab-1", "client-1"),
+    ).rejects.toThrow(REFUSAL);
+
+    const secureSession = vi.fn(async () => ({}));
+    ctx.provide("qaSurface", { secureSession });
+    // With the boundary mounted the refusal is the browser's own: this chat has
+    // no session yet, which is a different failure than an unauthorized caller.
+    await expect(
+      service.panelCloseTab("qa-token", "session-x", "tab-1", "client-1"),
+    ).rejects.toThrow(/Browser session has not been started\./u);
+    expect(secureSession).toHaveBeenCalled();
   });
 
   it("resolves the boundary per request, so a later mount is honored", async () => {

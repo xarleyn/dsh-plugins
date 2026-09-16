@@ -35,6 +35,23 @@ export interface BrowserTabInfo {
   readonly viewport: BrowserViewport;
 }
 
+/**
+ * How far the tab's observed history reaches in either direction. It counts
+ * what the runtime has watched this tab visit, which is what a browser chrome
+ * needs to enable its back and forward controls; the agent's own tab listing
+ * stays free of it, because a tool that never greys a button has no use for
+ * the depth.
+ */
+export interface BrowserPanelTabHistory {
+  readonly back: number;
+  readonly forward: number;
+}
+
+/** A tab as the QA panel sees it: tab state plus the depth its chrome shows. */
+export interface BrowserPanelTab extends BrowserTabInfo {
+  readonly history: BrowserPanelTabHistory;
+}
+
 export interface BrowserNavigationRequest {
   readonly url: string;
   readonly waitUntil?: "commit" | "domcontentloaded" | "load";
@@ -140,12 +157,20 @@ export interface BrowserWaitRequest {
 /** Read-only state exposed to the authenticated QA Surface panel. */
 export interface BrowserPanelState {
   readonly session: BrowserSessionInfo | null;
-  readonly tabs: readonly BrowserTabInfo[];
+  readonly tabs: readonly BrowserPanelTab[];
   readonly humanControlEnabled: boolean;
   readonly humanControlLeaseSeconds: number;
   readonly autoRevealOnAgentActivity: boolean;
   readonly focusOnAutoReveal: boolean;
+  /**
+   * Whether this deployment forwards pointer input at all. The panel greys its
+   * viewport out with a reason instead of failing one click at a time.
+   */
+  readonly coordinateInputEnabled: boolean;
 }
+
+/** The history actions the panel's own toolbar can ask for. */
+export type BrowserPanelHistoryAction = "back" | "forward" | "reload";
 
 export type BrowserHumanPointerAction = "move" | "click" | "down" | "up";
 

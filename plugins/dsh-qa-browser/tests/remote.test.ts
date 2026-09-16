@@ -17,6 +17,10 @@ describe("QA Browser Remote contribution", () => {
       "panelKey",
       "panelText",
       "panelScroll",
+      "panelNewTab",
+      "panelCloseTab",
+      "panelHistory",
+      "panelViewport",
     ]);
     for (const descriptor of qaBrowserRemote.descriptors) {
       expect(descriptor.namespace).toBe("qaBrowser");
@@ -25,6 +29,41 @@ describe("QA Browser Remote contribution", () => {
       ).toBe(true);
       expect(descriptor.result.mode).toBe("strict");
     }
+  });
+
+  it("requires the chrome's own fields on a panel tab", () => {
+    const state = qaBrowserRemote.descriptors.find(
+      (item) => item.method === "panelState",
+    )?.result;
+    if (state?.mode !== "strict") throw new Error("panelState must be strict");
+    const tab = {
+      id: "tab_test",
+      url: "https://example.test",
+      title: "Example",
+      status: "ready",
+      revision: 1,
+      viewport: { width: 1_280, height: 720, deviceScaleFactor: 1 },
+      history: { back: 1, forward: 0 },
+    };
+    const state$ = {
+      session: null,
+      tabs: [tab],
+      humanControlEnabled: true,
+      humanControlLeaseSeconds: 30,
+      autoRevealOnAgentActivity: true,
+      focusOnAutoReveal: false,
+      coordinateInputEnabled: true,
+    };
+    expect(() => state.schema.parse(state$)).not.toThrow();
+    // The chrome draws its arrows from this depth, so a tab without it must
+    // never reach the browser.
+    const { id, url, title, status, revision, viewport } = tab;
+    expect(() =>
+      state.schema.parse({
+        ...state$,
+        tabs: [{ id, url, title, status, revision, viewport }],
+      }),
+    ).toThrow();
   });
 
   it("rejects oversized frame results at the transport boundary", () => {
