@@ -1,7 +1,7 @@
 /**
  * Configuration of the document subsystem (§20).
  *
- * The subsystem is part of the `qa-surface` namespace, so this resolver
+ * The subsystem is part of the `documents` namespace, so this resolver
  * follows the same shape as the other domains: it normalizes, validates and
  * freezes, and the schema in `src/config.ts` takes every default from
  * {@link DEFAULT_DOCUMENTS_CONFIG} so an untouched deployment sends the
