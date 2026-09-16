@@ -5,7 +5,9 @@
   "description": "Shared build/verify script runners for DSH plugins",
   "type": "module",
   "exports": {
-    "./generate-typert": "./generate-typert.mjs"
+    "./generate-typert": "./generate-typert.mjs",
+    "./run-verify-package": "./run-verify-package.mjs",
+    "./verify-plugin-card-contract": "./verify-plugin-card-contract.mjs"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev"
