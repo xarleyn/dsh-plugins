@@ -38,3 +38,15 @@ it, including turning it off.
 
 A completed turn that collected nothing is stored as its turn number rather
 than an empty frame, and an incomplete collection is never collapsed into one.
+
+The same treatment reached the deployment's other stores, which shared the
+problem: the capability policy and its audit trail, and the feedback, reviewer
+verdicts, review queue and administrative audit, were each one document
+rewritten whole on every change — and every audit row carries the full
+configuration that preceded it, so each change rewrote everything the change
+before it had recorded. They are tables now, in `qa-capability-policies.db` and
+`qa-quality.db`, with one row per record; a change writes what it changed.
+Their previous files are imported once, verified inside the transaction, and
+renamed beside the database, so an existing deployment upgrades without losing
+a policy, a verdict or a line of audit. A file left behind never overwrites a
+record the database already holds.

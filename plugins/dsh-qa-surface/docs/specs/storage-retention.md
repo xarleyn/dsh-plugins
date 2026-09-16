@@ -222,7 +222,7 @@ the `.gitignore` fix that stops any of these files from being staged.
 | 2b | Accounts: ownership eviction, snapshot dedup | landed (`a8626d1`) |
 | 2c | Accounts: the store runs on SQLite, importing the old file | landed |
 | 3 | Integrations: SQLite, audit retention | landed |
-| 4 | Capability policies and quality: SQLite, retention | next |
+| 4 | Capability policies and quality: SQLite, retention | landed |
 | 5 | CLI, ops script, deploy kits, changelog, docs | |
 
 ## Measurements after phase 2b

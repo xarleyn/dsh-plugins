@@ -66,6 +66,13 @@ export function defaultCapabilityFilePath(): string {
   return `${defaultBasePath()}/qa-capability-policies.db`;
 }
 
+/** The `.json` sibling of a `.db` path: what a deployment upgraded from. */
+function legacySiblingOf(filePath: string): string | undefined {
+  return filePath.endsWith(".db")
+    ? `${filePath.slice(0, -".db".length)}.json`
+    : undefined;
+}
+
 /** The pre-SQLite policy file, imported once on first use. */
 export function defaultLegacyCapabilityFilePath(): string {
   return `${defaultBasePath()}/qa-capability-policies.json`;
@@ -107,8 +114,19 @@ export class QaRoleRepository {
   constructor(readonly filePath = defaultCapabilityFilePath()) {
     this.storage = new SqliteDatabase(filePath, MIGRATIONS);
     this.observedDataVersion = this.readDataVersion();
-    this.importLegacyFile(defaultLegacyCapabilityFilePath());
-    this.config = this.readConfig();
+    try {
+      // The pre-SQLite file sat beside the database, so it is looked for as
+      // the `.json` sibling of the path this repository was given.
+      this.importLegacyFile(
+        legacySiblingOf(filePath) ?? defaultLegacyCapabilityFilePath(),
+      );
+      this.config = this.readConfig();
+    } catch (error) {
+      // A store that cannot start must not hold the database open: the caller
+      // may retry, and a held handle blocks cleaning up after the failure.
+      this.storage.close();
+      throw error;
+    }
   }
 
   close(): void {
