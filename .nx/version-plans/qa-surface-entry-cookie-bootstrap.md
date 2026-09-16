@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-qa-surface": patch
+"@yadsh/dsh-qa-surface": minor
 ---
 
 Expose the entry cookie bootstrap and the login attempt budget in the

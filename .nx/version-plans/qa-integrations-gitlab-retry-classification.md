@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-qa-integrations": patch
+"@yadsh/dsh-qa-integrations": minor
 ---
 
 Stop retrying GitLab calls the deployment itself timed out, and name a TLS refusal as such.

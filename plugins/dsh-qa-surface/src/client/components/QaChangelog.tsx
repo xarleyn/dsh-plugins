@@ -22,7 +22,7 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
-    version: "0.7.5",
+    version: "0.8.0",
     date: "2026-09-16",
     sections: [
       {

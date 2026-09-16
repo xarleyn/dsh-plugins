@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-qa-surface": patch
+"@yadsh/dsh-qa-surface": minor
 ---
 
 Harden the Host side of the QA surface against malformed and foreign input
