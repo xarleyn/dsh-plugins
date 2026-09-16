@@ -131,6 +131,11 @@ export class QaQuestionGate {
    * parked request is authoritative: a label the question never offered is
    * dropped, and a free-text answer replaces the choice in a single-select
    * rather than accompanying it, so the model only ever reads a real answer.
+   *
+   * The payload arrives over the wire from the browser, so its shape is
+   * untrusted: a non-array, a non-object entry, or a non-array/non-string
+   * selection is folded into the refusal/skip semantics instead of crashing
+   * the gate with a TypeError.
    */
   answer(
     sessionId: string,
@@ -139,6 +144,7 @@ export class QaQuestionGate {
   ): boolean {
     const entry = this.pending.get(requestId);
     if (entry === undefined || entry.view.sessionId !== sessionId) return false;
+    if (!Array.isArray(answers)) return false;
     this.logger.info("question.answered", {
       sessionId,
       requestId,
@@ -146,7 +152,16 @@ export class QaQuestionGate {
     });
     // Every question of the request is answered here, including the ones the
     // operator skipped, so the model never sees a partial form.
-    const byId = new Map(answers.map((answer) => [answer.id, answer]));
+    const byId = new Map(
+      answers
+        .filter(
+          (answer): answer is QaQuestionAnswerItem =>
+            typeof answer === "object" &&
+            answer !== null &&
+            typeof answer.id === "string",
+        )
+        .map((answer) => [answer.id, answer]),
+    );
     entry.settle({
       kind: "answered",
       answer: {
@@ -157,8 +172,11 @@ export class QaQuestionGate {
           const offered = new Set(
             question.options.map((option) => option.label),
           );
-          const selected = given.selected.filter((label) => offered.has(label));
-          const custom = given.custom?.trim() ?? "";
+          const selected = (Array.isArray(given.selected) ? given.selected : [])
+            .filter((label): label is string => typeof label === "string")
+            .filter((label) => offered.has(label));
+          const custom =
+            typeof given.custom === "string" ? given.custom.trim() : "";
           if (custom === "") return { id: question.id, selected };
           return question.multiSelect
             ? { id: question.id, selected, custom }

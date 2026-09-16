@@ -158,7 +158,9 @@ export class QaProvenanceHost {
   /**
    * Drop every per-session record of one chat. Long-lived servers outlive
    * their sessions by weeks; without this the collector, snapshot, call and
-   * lineage maps grow with every chat and turn forever.
+   * lineage maps grow with every chat and turn forever. The durable snapshot
+   * file follows: the session is gone, so nothing will ever read its stored
+   * turns again.
    */
   private forget(session: Session): void {
     const sessionId = String(session.id);
@@ -167,6 +169,11 @@ export class QaProvenanceHost {
     this.seededSessions.delete(sessionId);
     this.calls.delete(sessionId);
     this.lineage.delete(sessionId);
+    try {
+      this.store.drop(sessionId);
+    } catch (error) {
+      this.onPersistenceError(error);
+    }
   }
 
   private forgetAll(): void {

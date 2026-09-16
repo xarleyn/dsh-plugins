@@ -35,6 +35,13 @@ interface Stamp {
 }
 
 const MAX_AUDIT_EVENTS = 1_000;
+/**
+ * Created owner-only, like the other plugin data files: the capability policy
+ * names the deployment's tools and skills, and the audit trail carries full
+ * before/after images of every role change. POSIX applies the mode at
+ * creation (the atomic rename keeps it); Windows ignores it.
+ */
+const FILE_MODE = 0o600;
 
 function auditSnapshot(value: unknown): string {
   return JSON.stringify(value);
@@ -285,7 +292,10 @@ export class QaRoleRepository {
   private persist(file: RoleFile): void {
     mkdirSync(path.dirname(this.filePath), { recursive: true });
     const temporary = `${this.filePath}.${process.pid}.${randomUUID()}.tmp`;
-    writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+    writeFileSync(temporary, `${JSON.stringify(file, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: FILE_MODE,
+    });
     renameSync(temporary, this.filePath);
     this.file = file;
     this.fileStamp = stamp(this.filePath);
