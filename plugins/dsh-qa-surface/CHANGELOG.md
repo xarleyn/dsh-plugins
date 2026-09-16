@@ -1,3 +1,21 @@
+## 0.7.4 (2026-09-16)
+
+### 🩹 Fixes
+
+- Never pin a tool the session cannot resolve. With the sources fallback on, the ([7bb58f8](https://github.com/xarleyn/dsh-plugins/commit/7bb58f8))
+  admission appended `qa_report_sources` — this plugin's own provenance reporter —
+  to the session's tool policy. On a deployment that enables the fallback but does
+  not mount the tool, that name failed the mount check and refused every chat with
+  `unknown-tools`, the same way an agent-local name in a mask did. The append now
+  passes the same mount test as every configured name: where the reporter is
+  mounted nothing changes, and where it is not, the delegation fallback is what
+  gives way instead of the whole chat, with one `sources.report-tool-unmounted`
+  warning in the operator log.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.3 (2026-09-16)
 
 ### 🩹 Fixes
