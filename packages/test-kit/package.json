@@ -17,9 +17,6 @@
     "lib",
     "LICENSE"
   ],
-  "dependencies": {
-    "@yadsh/dsh-plugin-kit": "workspace:^"
-  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "vitest": "catalog:tooling"

@@ -7,9 +7,6 @@ published to npm.
 
 ## Features
 
-- Lightweight console logging for tests and local scaffolds. Production
-  plugins use `@yadsh/dsh-plugin-log`.
-- Major-version compatibility checking (`hasCompatibleMajor`)
 - Configuration validation (`validateConfig`)
 - `./client` subpath: the shared settings-card scaffolding for browser
   bundles — canonical `dsh-plugin-card` shell CSS (`PLUGIN_CARD_SHELL_CSS`),
