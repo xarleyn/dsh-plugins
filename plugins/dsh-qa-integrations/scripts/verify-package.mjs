@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, stat } from "node:fs/promises";
+import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const root = new URL("../", import.meta.url);
 const manifest = JSON.parse(
@@ -71,6 +72,43 @@ assert.doesNotMatch(client, /Показать токен|Копировать т
 assert.match(client, /"bitrix24"/u);
 assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
+
+// The card of "Plugin configuration": one bundle mounts both surfaces, and the
+// key it claims has to be the namespace the Host serves, or the Host's tab
+// never dispatches it.
+verifyPluginCardContract(client);
+assert.match(client, /"settings\.plugin\.item"/u);
+assert.match(client, /"qa-integrations"/u);
+assert.match(client, /Развернуть настройки интеграций/u);
+assert.match(client, /Свернуть настройки интеграций/u);
+// The browser has no module table for Node builtins: one `require("node:…")`
+// left in the bundle is a card that never mounts.
+for (const builtin of ["node:path", "node:fs", "node:os", "node:zlib"]) {
+  assert.equal(
+    client.includes(`require("${builtin}")`),
+    false,
+    `client bundle must not require ${builtin}`,
+  );
+}
+
+// Design tokens are the host's vocabulary: a name it does not define is not a
+// fallback but an invalid declaration, so the rule silently loses the property.
+// `--dsw-alias-label-on-brand` cost the primary button its label that way, and
+// the two state tokens printed its status and error colours as ordinary text.
+assert.match(
+  client,
+  /__button--primary\{[^}]*color:var\(--dsw-alias-label-primary-foreground\)/u,
+);
+assert.doesNotMatch(client, /--dsw-alias-label-on-brand/u);
+assert.match(
+  client,
+  /__status--ok\{color:var\(--dsw-alias-state-success-primary\)\}/u,
+);
+assert.match(
+  client,
+  /__button--danger\{color:var\(--dsw-alias-state-error-primary\)\}/u,
+);
+assert.doesNotMatch(client, /--dsw-alias-(success|error)-primary/u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of the catalog.

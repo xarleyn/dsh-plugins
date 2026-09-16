@@ -7,18 +7,47 @@ export type IntegrationsClientRemote = IntegrationsRemote &
   GitlabRemote &
   TeamcityRemote;
 
+/** What every mount of the provider cards needs. */
+export interface ProviderCardsProps {
+  /** Current QA account token; transport authentication for the remotes. */
+  readonly token: string;
+  /** Provider ids the Host declared, in mount order. */
+  readonly providers: readonly string[];
+}
+
+/** The disclosure that has to stand next to the credentials. */
+export const INTEGRATIONS_DISCLOSURE =
+  "Данные, которые агент читает через интеграцию, могут передаваться настроенному для этого чата LLM-провайдеру для выполнения запроса. Секрет подключения в модель не передаётся.";
+
 /**
- * One settings section, one card per provider the deployment mounted. The card
- * list comes from the host (`describe`), so a provider the operator switched off
- * simply never renders and the client carries no knowledge of which exist.
+ * One card per provider the deployment mounted. The list comes from the host
+ * (`describe`), so a provider the operator switched off simply never renders and
+ * the client carries no knowledge of which exist.
+ *
+ * Both mounts share this component: the page of the QA settings dialog, where
+ * the account gate lives, and the host's plugin-configuration card.
  */
+export function createProviderCards(remote: IntegrationsClientRemote) {
+  const Bitrix24Card = createBitrix24Card(remote);
+  const GitlabCard = createGitlabCard(remote);
+  const TeamcityCard = createTeamcityCard(remote);
+  return function ProviderCards({ token, providers }: ProviderCardsProps) {
+    return (
+      <>
+        {providers.includes("bitrix24") ? <Bitrix24Card token={token} /> : null}
+        {providers.includes("gitlab") ? <GitlabCard token={token} /> : null}
+        {providers.includes("teamcity") ? <TeamcityCard token={token} /> : null}
+      </>
+    );
+  };
+}
+
+/** The `Интеграции` page of the signed-in user's QA settings dialog. */
 export function createIntegrationsPage(
   remote: IntegrationsClientRemote,
   providers: readonly string[],
 ) {
-  const Bitrix24Card = createBitrix24Card(remote);
-  const GitlabCard = createGitlabCard(remote);
-  const TeamcityCard = createTeamcityCard(remote);
+  const ProviderCards = createProviderCards(remote);
   return function IntegrationsPage({ token }: QaUserSettingsSectionProps) {
     return (
       <section
@@ -37,14 +66,8 @@ export function createIntegrationsPage(
             вашему аккаунту.
           </p>
         </div>
-        {providers.includes("bitrix24") ? <Bitrix24Card token={token} /> : null}
-        {providers.includes("gitlab") ? <GitlabCard token={token} /> : null}
-        {providers.includes("teamcity") ? <TeamcityCard token={token} /> : null}
-        <p className="dsh-qa-integrations__notice">
-          Данные, которые агент читает через интеграцию, могут передаваться
-          настроенному для этого чата LLM-провайдеру для выполнения запроса.
-          Секрет подключения в модель не передаётся.
-        </p>
+        <ProviderCards token={token} providers={providers} />
+        <p className="dsh-qa-integrations__notice">{INTEGRATIONS_DISCLOSURE}</p>
       </section>
     );
   };

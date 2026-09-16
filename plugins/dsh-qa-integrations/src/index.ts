@@ -1,5 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+import z from "@deepseek-ai/schemastery";
 import {
   createHostLoggerSink,
   getPluginLogger,
@@ -22,6 +24,7 @@ import { networkAllowsNothing } from "./providers/teamcity/config.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
+import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
 import type {
   CredentialInput,
@@ -44,6 +47,14 @@ declare module "@deepseek-ai/cordis" {
     qaIntegrations: QaIntegrations;
   }
 }
+
+/**
+ * Schema of the mount-only settings section. The Plugins tab dispatches a card
+ * by the namespace its Host serves, so serving it is what puts the Integrations
+ * card in "Plugin configuration"; the section itself holds nothing an operator
+ * could edit, for the reason spelled out in `shared/settings.ts`.
+ */
+const MOUNT_SECTION_SCHEMA = z.object({});
 
 /** What the settings client needs to render a provider it has never seen. */
 function providerSummary(
@@ -110,6 +121,18 @@ export class QaIntegrations extends TypertRemoteService {
       providers,
       this.logger,
     );
+
+    // Serving the namespace is what lets the browser half mount its card; the
+    // section carries no editable value and therefore no live source.
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.settings.installSection(
+        ctx,
+        QA_INTEGRATIONS_SETTINGS_NAMESPACE,
+        MOUNT_SECTION_SCHEMA,
+        {},
+        { setSource: () => undefined, onChange: () => undefined },
+      );
+    });
 
     if (config.enabled) {
       const removeAdmission = ctx.qaSurface.registerPrincipalScopedTools(
@@ -497,6 +520,7 @@ export {
   type KeyProvider,
 } from "./secrets/key-provider.js";
 export { SecretStore } from "./secrets/secret-store.js";
+export { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 export { createToolKit, type ToolKitOptions } from "./tool-kit.js";
 export { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
 export type * from "./types.js";
