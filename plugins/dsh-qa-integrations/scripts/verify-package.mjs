@@ -305,12 +305,16 @@ for (const path of gitlabPaths) {
 // Every GitLab operation is a GET; the only write-shaped surface left in the
 // provider is the connect form, which never reaches a model tool.
 assert.doesNotMatch(gitlabCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+const sharedHttp = await readFile(
+  new URL("src/providers/shared/http.ts", root),
+  "utf8",
+);
 const gitlabTransport = await readFile(
   new URL("src/providers/gitlab/transport.ts", root),
   "utf8",
 );
-assert.match(gitlabTransport, /method: "GET"/u);
-assert.match(gitlabTransport, /redirect: "error"/u);
+assert.match(sharedHttp, /method: "GET"/u);
+assert.match(sharedHttp, /redirect: "error"/u);
 assert.match(gitlabTransport, /"private-token": token/u);
 
 // One directory per integration: the shared engine must not know any provider.
@@ -419,8 +423,8 @@ const teamcityTransport = await readFile(
   new URL("src/providers/teamcity/transport.ts", root),
   "utf8",
 );
-assert.match(teamcityTransport, /method: "GET"/u);
-assert.match(teamcityTransport, /redirect: "error"/u);
+assert.match(sharedHttp, /method: "GET"/u);
+assert.match(sharedHttp, /redirect: "error"/u);
 assert.match(teamcityTransport, /authorization: `Bearer \$\{token\}`/u);
 const teamcityHost = await readFile(
   new URL("src/providers/teamcity/index.ts", root),
