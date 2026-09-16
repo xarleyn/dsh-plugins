@@ -1,3 +1,37 @@
+## 0.7.2 (2026-09-16)
+
+### 🩹 Fixes
+
+- Keep the sources a turn produced when the Host's own collection answers with ([f6a80c2](https://github.com/xarleyn/dsh-plugins/commit/f6a80c2))
+  nothing for that turn. An empty bundle means "collection saw no sources here",
+  not "the answer had none", so it no longer erases the turn the transcript
+  itself accounts for: the sources a reader could watch appear while the answer
+  ran stay beside it afterwards. A fetched page's card no longer repeats its own
+  address either — the snippet starts after the Host web tool's envelope instead
+  of at it. The starters editor aligns its two fields on one right edge and
+  renders the row's remove control as an icon button rather than as an empty
+  input, the skill tool picker clamps long descriptions to two lines inside a
+  taller list and shows the full text on hover, and the General section no longer
+  lists personal integrations as something still to come. A deployment that hides
+  the session list — the default — no longer leaves a signed-in user with no way
+  into their own settings: the header carries the entry the sidebar would have
+  held.
+
+- Name only inheritable tools in a scoped restriction. The QA tool catalog ([85fa84d](https://github.com/xarleyn/dsh-plugins/commit/85fa84d))
+  attaches its tools to the agent itself, and `tools.restrict()` accepts only the
+  names a scope inherits: the activation diagnostic is mounted, callable and
+  still unnameable in a mask. Passing it made the registry refuse the whole call,
+  so every chat's attestation failed with `unknown global tool
+  "qa_tools_selfcheck"` and the session was rejected. The base tool set now keeps
+  that name out of the mask while the policy and the guard keep admitting it, and
+  a skill grant for a tool the agent registers for itself is accepted without a
+  mask of its own — the same name used to make every grant attempt collapse
+  silently.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.1 (2026-09-16)
 
 ### 🩹 Fixes
