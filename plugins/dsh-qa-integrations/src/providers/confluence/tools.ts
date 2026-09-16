@@ -2,7 +2,6 @@ import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import {
   optionalBoolean,
   optionalInteger,
-  requiredDate,
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
@@ -125,7 +124,8 @@ export function createConfluenceTools(options: {
         },
         modifiedAfter: {
           type: "string",
-          description: "Only pages changed on or after this date (YYYY-MM-DD).",
+          description:
+            'Only pages changed on or after this date: either an absolute day (YYYY-MM-DD) or a window counted back from today ("-7d", "-2w", "-1m", "-1y").',
         },
         includeArchived: {
           type: "boolean",
@@ -177,9 +177,12 @@ export function createConfluenceTools(options: {
         ...(args["modifiedAfter"] === undefined
           ? {}
           : {
-              modifiedAfter: requiredDate(
+              // An absolute day or a relative window; the handler resolves it.
+              modifiedAfter: requiredText(
                 args["modifiedAfter"],
                 "modifiedAfter",
+                3,
+                10,
               ),
             }),
         ...(args["includeArchived"] === undefined

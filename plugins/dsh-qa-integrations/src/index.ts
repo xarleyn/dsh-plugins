@@ -567,6 +567,7 @@ export {
   commentPath,
   commentReplies,
   isNumericSpace,
+  modifiedAfterDate,
   numericId,
   offsetCursor,
   pageLimit,

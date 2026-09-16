@@ -9,6 +9,7 @@ import {
 import { buildCql, cqlLiteral } from "../src/providers/confluence/cql.js";
 import { ConfluenceProvider } from "../src/providers/confluence/index.js";
 import {
+  modifiedAfterDate,
   pageLimit,
   plainExcerpt,
 } from "../src/providers/confluence/operations.js";
@@ -586,6 +587,34 @@ describe("confluence search", () => {
     );
     expect((calls[2]?.url as URL).searchParams.get("limit")).toBe("3");
     expect(pageLimit(undefined, config().confluence)).toBe(20);
+  });
+
+  it("resolves a relative window against the provider's own clock", async () => {
+    const today = new Date("2026-09-16T12:00:00Z");
+    // The question "what changed this week" is the common one, and an agent
+    // whose prompt carries no clock cannot turn it into a date itself.
+    expect(modifiedAfterDate("-7d", today)).toBe("2026-09-09");
+    expect(modifiedAfterDate("-2w", today)).toBe("2026-09-02");
+    expect(modifiedAfterDate("-1m", today)).toBe("2026-08-17");
+    expect(modifiedAfterDate("-1y", today)).toBe("2025-09-16");
+    // An absolute day still passes through untouched.
+    expect(modifiedAfterDate("2026-09-01", today)).toBe("2026-09-01");
+    expect(modifiedAfterDate(undefined, today)).toBeUndefined();
+    for (const bad of ["-0d", "-1h", "yesterday", "2026-09", "-4000d", "-1"]) {
+      expect(() => modifiedAfterDate(bad, today)).toThrow(
+        /modifiedAfter is invalid/u,
+      );
+    }
+
+    const { calls, fetcher } = stub(() => ({ json: { results: [] } }));
+    await call("search.run", { modifiedAfter: "-7d" }, { fetcher });
+    expect((calls[0]?.url as URL).searchParams.get("cql")).toBe(
+      `type in (page) AND lastmodified >= "${new Date(
+        Date.now() - 7 * 86_400_000,
+      )
+        .toISOString()
+        .slice(0, 10)}"`,
+    );
   });
 
   it("maps archived results onto the option Confluence has for them", async () => {

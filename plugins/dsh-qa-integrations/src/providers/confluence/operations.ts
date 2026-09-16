@@ -130,6 +130,48 @@ export function upstreamCursor(value: unknown): string | undefined {
   return text;
 }
 
+/**
+ * A relative window, as the search shorthand spells it: `-7d`, `-2w`, `-1m`,
+ * `-1y`. The question "what changed this week" is the common one, and an agent
+ * whose system prompt carries no clock cannot turn it into a date — so the
+ * provider accepts the window and resolves it against its own clock.
+ */
+const RELATIVE_WINDOW = /^-(\d{1,4})([dwmy])$/u;
+/** Longest window a shorthand may name, so a typo cannot scan the whole site. */
+const MAX_WINDOW_DAYS = 3_650;
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * The inclusive lower bound on `lastmodified`, either as an absolute date or as
+ * a window counted back from today. Resolution happens here, once, so the CQL
+ * the provider builds is always an absolute date.
+ */
+export function modifiedAfterDate(
+  value: unknown,
+  today: Date = new Date(),
+): string | undefined {
+  if (value === undefined) return undefined;
+  const text = optionalText(value, "modifiedAfter", 3, 10);
+  if (text === undefined) return undefined;
+  const match = RELATIVE_WINDOW.exec(text);
+  if (match === null) return requiredDate(value, "modifiedAfter");
+  const amount = Number(match[1]);
+  const unit = match[2];
+  if (!Number.isInteger(amount) || amount < 1) invalid("modifiedAfter");
+  const days =
+    unit === "d"
+      ? amount
+      : unit === "w"
+        ? amount * 7
+        : unit === "m"
+          ? amount * 30
+          : amount * 365;
+  if (days > MAX_WINDOW_DAYS) invalid("modifiedAfter");
+  return new Date(today.getTime() - days * MS_PER_DAY)
+    .toISOString()
+    .slice(0, 10);
+}
+
 export const COMMENT_KINDS = Object.freeze([
   "footer",
   "inline",
@@ -233,10 +275,7 @@ export const CONFLUENCE_HANDLERS: Readonly<
           : requiredStringList(input["labels"], "labels", 20, 255),
       creator: optionalText(input["creator"], "creator", 1, 255),
       contributor: optionalText(input["contributor"], "contributor", 1, 255),
-      modifiedAfter:
-        input["modifiedAfter"] === undefined
-          ? undefined
-          : requiredDate(input["modifiedAfter"], "modifiedAfter"),
+      modifiedAfter: modifiedAfterDate(input["modifiedAfter"]),
       orderBy: ordering(input["orderBy"]),
     });
     const includeArchived = optionalBoolean(

@@ -16,3 +16,8 @@ from deployment config on every call, the space allowlist
 (`confluence.allowedSpaces`) is enforced on search and on direct reads alike,
 and every page or comment body reaches the model as untrusted content under its
 own key.
+
+A search accepts its modification window either as an absolute day or as a span
+counted back from today (`-7d`, `-2w`, `-1m`, `-1y`), resolved against the
+provider's own clock, so an agent whose prompt carries no clock can still ask
+what changed this week.
