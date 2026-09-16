@@ -346,7 +346,8 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
     id: qa-integrations
     config:
       enabled: true
-      dataPath: /var/lib/dsh/qa-integrations.json
+      dataPath: /var/lib/dsh/qa-integrations.db
+      auditRetentionDays: 90
       masterKeyPath: /run/secrets/qa_integrations_master_key
       masterKeyVersion: 1
       timeoutMs: 15000
@@ -382,7 +383,7 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
             - 443
 ```
 
-`dataPath` по умолчанию — `$DSH_HOME/qa-integrations.json`. На Unix новый файл создаётся с mode `0600`. Разрешён только HTTPS URL вида `https://company.bitrix24.ru/rest/<user>/<secret>` без query, fragment, custom port или credentials в authority. Список доменных суффиксов задаётся оператором, а не пользователем.
+`dataPath` по умолчанию — `$DSH_HOME/qa-integrations.db` (база SQLite). Прежний файл `qa-integrations.json`, оставшийся от релиза до 0.5.0, переносится при первом запуске и переименовывается в `qa-integrations.json.migrated-<ISO>`. На Unix новый файл создаётся с mode `0600`. Журнал обращений к сервисам хранится `auditRetentionDays` дней (по умолчанию 90; `0` — не ограничивать по возрасту) и в любом случае не длиннее 5000 записей. Разрешён только HTTPS URL вида `https://company.bitrix24.ru/rest/<user>/<secret>` без query, fragment, custom port или credentials в authority. Список доменных суффиксов задаётся оператором, а не пользователем.
 
 ## Пользовательский сценарий
 

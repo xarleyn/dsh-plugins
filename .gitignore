@@ -78,3 +78,20 @@ Desktop.ini
 # Local-only agent state
 # ---------------------------------------------------------------------------
 AGENTS.local.md
+
+# ---------------------------------------------------------------------------
+# Plugin store files
+# A store resolves to the working directory when $DSH_HOME is unset, so running
+# a plugin's tests or a local script from its own directory drops the live
+# store — accounts, credentials, audit trail — right there.
+# ---------------------------------------------------------------------------
+qa-accounts.db
+qa-accounts.json
+qa-integrations.db
+qa-integrations.json
+qa-quality.json
+qa-capability-policies.json
+qa-sources.json
+qa-sources/
+qa-*.db-wal
+qa-*.db-shm

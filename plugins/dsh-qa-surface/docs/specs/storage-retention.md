@@ -168,9 +168,12 @@ from `node_modules` at install time, so the kit is now a publishable package in
 the release projects instead of a private one; its first release must reach the
 registry before a plugin that imports it at runtime is deployed.
 
-`qa-integrations` additionally stops writing an audit row for every successful
-read call in the same transaction as the call itself: the row is buffered and
-flushed in batches, so a 30-call minute costs one write, not thirty.
+`qa-integrations` was planned to buffer its audit rows and flush them in
+batches, on the theory that a 30-call minute should cost one write. Moving the
+store onto SQLite removed the premise: an `INSERT` is one row, not a rewrite of
+the log, so batching would buy nothing and add a window in which a crash loses
+rows that were already reported as recorded. The audit trail stays written per
+call.
 
 Because these stores are read by a second process (the CLI) and by operators,
 losing hand-editability is a real cost. The design pays it back with the CLI:
@@ -218,8 +221,8 @@ the `.gitignore` fix that stops any of these files from being staged.
 | 2a | `SqliteDatabase` helper in `packages/plugin-kit` + tests | landed (`015af1c`, `0d40aa5`, `1778812`) |
 | 2b | Accounts: ownership eviction, snapshot dedup | landed (`a8626d1`) |
 | 2c | Accounts: the store runs on SQLite, importing the old file | landed |
-| 3 | Integrations: SQLite, batched audit, retention | next |
-| 4 | Capability policies and quality: SQLite, retention | |
+| 3 | Integrations: SQLite, audit retention | landed |
+| 4 | Capability policies and quality: SQLite, retention | next |
 | 5 | CLI, ops script, deploy kits, changelog, docs | |
 
 ## Measurements after phase 2b

@@ -93,6 +93,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "@yadsh/dsh-qa-surface": "workspace:^",
     "zod": "^4.4.3"
@@ -124,7 +125,6 @@
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
-    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",

@@ -1193,6 +1193,9 @@ importers:
 
   plugins/dsh-qa-integrations:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -1251,9 +1254,6 @@ importers:
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
-      '@yadsh/dsh-plugin-kit':
-        specifier: workspace:^
-        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
