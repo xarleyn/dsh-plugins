@@ -1,3 +1,86 @@
+## 0.7.0 (2026-09-16)
+
+### 🚀 Features
+
+- Add the administrative console behind `/qa/admin`: an authorization model with ([3025adb](https://github.com/xarleyn/dsh-plugins/commit/3025adb))
+  the `reviewer` role and named permissions, user management (role, status and
+  QA subrole assignment), a filterable list of every conversation with a review
+  viewer that reads the stored transcript and the frozen capability snapshot,
+  per-message 👍/👎 feedback with an optional reason and comment, a derived review
+  queue with the reviewer taxonomy and severity, quality aggregations by subrole
+  and over time, and one audit timeline covering both writers.
+
+- Let a SKILL.md declare its own QA routing: the audience it belongs to and the ([2396f48](https://github.com/xarleyn/dsh-plugins/commit/2396f48))
+  tools it needs. Tools listed as skill-grantable stay out of the model surface
+  until the skill is loaded, activation is capped by the subrole's ceiling, and
+  an administrator can extend or withdraw the declaration without editing the
+  file.
+
+- Add server-enforced QA agent subroles with Common and role-specific Tool and ([d57c69f](https://github.com/xarleyn/dsh-plugins/commit/d57c69f))
+  Skill policies, user assignments, immutable session snapshots, administration,
+  audit, role selection, and real-policy admin preview.
+
+- Add `document_from_url`: an online source stored as a document artifact. ([04623a4](https://github.com/xarleyn/dsh-plugins/commit/04623a4))
+
+  The pipeline could already turn Markdown into DOCX/PDF and read a DOCX/PDF back
+  out of the workspace, but nothing could take a document that lives behind a URL —
+  a wiki attachment, a text document served by an authenticated provider — and put
+  it where the other tools work. The new tool fetches the URL through the
+  deployment's web provider, so the fetch rules, credentials, address policy and
+  byte/char caps configured there decide what may be read; the plugin opens no
+  socket of its own, and without a web provider the tool answers
+  `BACKEND_UNAVAILABLE` instead of guessing. A text response is written into an
+  artifact bundle whose manifest names the operation and the source file, and the
+  payload is bounded on both sides: `documents.limits.maxMarkdownChars` for what is
+  stored, `documents.extraction.maxInlineChars` for what is returned inline. An
+  HTML response is refused with `UNSUPPORTED_FORMAT` (pages are read by the web
+  fetch tool), and the fetch layer's own refusal — "the .pdf format is not
+  extracted", "no rule matches", a timeout — reaches the model unchanged rather
+  than being flattened into a generic failure.
+
+- Move the document pipeline into its own plugin. ([04007c9](https://github.com/xarleyn/dsh-plugins/commit/04007c9))
+
+  The document subsystem — the five `document_*` tools, their backends,
+  artifact store, templates, limits and retention sweep — now lives in
+  `@yadsh/dsh-documents`. It was never QA-specific: it resolves the calling
+  session's working directory and registers plain agent tools, so extracting it
+  makes the capability available to any composition and takes roughly a third of
+  this plugin's host source, its configuration section and its settings-card
+  section with it.
+
+  What a QA chat sees is unchanged: the tool names are identical and become
+  visible through the same `lockdown.toolPolicy.allow` entries, and artifacts stay
+  where they were (`<session workspace>/.qa/artifacts/documents/<id>`). What
+  changes is where the pipeline is configured: `qa-surface.documents` is gone,
+  replaced by the `documents` namespace of the new plugin and its own card, and the
+  `QA_DOCUMENTS_*`/`QA_DOCLING_*`/`QA_PANDOC_*`/`QA_LIBREOFFICE_*`/`QA_MARKITDOWN_*`
+  environment variables became `DSH_DOCUMENTS_*`.
+
+  A deployment that still carries the old section is told so: the plugin logs
+  `documents.moved` on each configuration change, naming the new plugin, so a
+  leftover cannot silently take the Docling endpoint or the artifact root with it.
+  The bundled settings card drops its «Документы» section, and the deployment must
+  install `@yadsh/dsh-documents` wherever the allow-list names those tools —
+  otherwise the names are missing from the session catalog and attestation fails
+  closed, which is the existing behaviour for any allow-list entry without a
+  matching tool.
+
+
+### 🩹 Fixes
+
+- Materialize an account's personal skill root as soon as the account works in ([caee7a8](https://github.com/xarleyn/dsh-plugins/commit/caee7a8))
+  its own directory, and make a refused source-bundle fetch visible. Opening the
+  editor and discovering skills for a session now leave
+  `<personal root>/.dsh/skills` behind, so a hand-made skill directory lands in a
+  root that already exists and the manual-edit watcher stops reporting a missing
+  directory on every boot of every account. The transcript's source bridge now
+  reports a rejected bundle fetch once per distinct reason instead of rendering
+  it as a chat that simply carries no sources.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.1 (2026-09-15)
 
 ### 🩹 Fixes
