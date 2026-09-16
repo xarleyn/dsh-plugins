@@ -361,12 +361,17 @@ export function AdminUserDetail(props: {
                 <strong>{row.name}</strong>
                 <span>
                   {/* The counts say what a chat under this profile resolves:
-                      the pinned system tools included, and the skill-grantable
-                      ceiling reported as a ceiling rather than as visibility. */}
+                      the pinned system tools included, the skill-grantable
+                      ceiling reported as a ceiling rather than as visibility,
+                      and a withdrawal subtracted from both. */}
                   {`${formatCount(row.tools)} инструментов${
                     row.grantableTools === 0
                       ? ""
                       : ` (плюс ${formatCount(row.grantableTools)} по навыкам)`
+                  }${
+                    row.deniedTools === 0
+                      ? ""
+                      : ` (минус ${formatCount(row.deniedTools)} запрещённых)`
                   }, ${formatCount(row.skills)} навыков`}
                 </span>
               </li>

@@ -199,6 +199,39 @@ describe("QA administration", () => {
     );
   });
 
+  it("offers a withdrawal bucket that beats every grant", async () => {
+    const { value } = api();
+    render(
+      <QaAdmin
+        api={value}
+        token="admin-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    // The role editor: a third bucket next to the two grants, because a pinned
+    // system tool can only be taken away through a denial.
+    await screen.findByText("Аналитик");
+    fireEvent.click(screen.getAllByText("Изменить →")[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
+    expect(screen.getByRole("heading", { name: "Запрещённые" })).toBeTruthy();
+    expect(screen.getByText(/Запрет сильнее/u)).toBeTruthy();
+
+    // The Common editor carries the same bucket, so one denial can cover every
+    // profile at once.
+    fireEvent.click(screen.getByRole("button", { name: "← Саброли" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Общие возможности" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Запрещённые" }));
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("checkbox", { name: /search/u }) as HTMLInputElement)
+          .checked,
+      ).toBe(false),
+    );
+  });
+
   it("uses administrator-facing names for role tool buckets and grants", async () => {
     const { value } = api();
     render(

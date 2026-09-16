@@ -416,6 +416,45 @@ describe("admin user management", () => {
       ),
     ).toMatchObject({ reason: "invalid-role" });
   });
+  it("subtracts a denied tool from both buckets and reports the denial", async () => {
+    const { service, admin, alice, roles, accounts } = harness({
+      // `git` is pinned by the deployment and `read` is granted by the role.
+      pinned: ["git", "glob"],
+      tools: ["git", "read", "ghost"],
+    });
+    roles.update(admin.user.id, "analyst", {
+      id: "analyst",
+      name: "Analyst",
+      enabled: true,
+      capabilities: {
+        tools: {
+          always: ["read"],
+          skillGrantable: ["ghost"],
+          deny: ["git", "ghost"],
+        },
+        skills: [],
+      },
+    });
+    accounts.setAccess(alice.user.id, {
+      allowedSubroles: ["analyst"],
+      defaultSubrole: "analyst",
+    });
+    const detail = await service.user(admin.token, alice.user.id);
+    expect(detail.effective).toEqual([
+      {
+        subroleId: "analyst",
+        name: "Analyst",
+        // The pinned git is withdrawn, the role's own read stays, and the
+        // pinned glob is not mounted in this deployment.
+        tools: 1,
+        grantableTools: 0,
+        // Both denied names are mounted, so both are worth reporting: the
+        // denial is the part an operator can undo.
+        deniedTools: 2,
+        skills: 0,
+      },
+    ]);
+  });
 
   it("reports the effective capability counts of each assigned role", async () => {
     const { service, admin, alice } = harness();
@@ -426,6 +465,7 @@ describe("admin user management", () => {
         name: "Analyst",
         tools: 0,
         grantableTools: 0,
+        deniedTools: 0,
         skills: 0,
       },
     ]);
@@ -452,6 +492,7 @@ describe("admin user management", () => {
         // ask_user_question is pinned but unmounted, git is not configured.
         tools: 3,
         grantableTools: 0,
+        deniedTools: 0,
         // The assigned skill and the one whose own SKILL.md names this role.
         skills: 2,
       },
@@ -482,6 +523,7 @@ describe("admin user management", () => {
         name: "Analyst",
         tools: 1,
         grantableTools: 0,
+        deniedTools: 0,
         skills: 0,
       },
       {
@@ -491,6 +533,7 @@ describe("admin user management", () => {
         // and nowhere else, and ghost is not mounted at all.
         tools: 0,
         grantableTools: 1,
+        deniedTools: 0,
         skills: 0,
       },
     ]);

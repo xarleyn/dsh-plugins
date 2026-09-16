@@ -62,9 +62,13 @@ function configuredCapabilities(config: QaCapabilityConfig): {
       ...new Set([
         ...config.common.tools.always,
         ...config.common.tools.skillGrantable,
+        // Denied names stay in the catalogue rows: a denial must remain
+        // visible (and fixable) even when the tool it names is not mounted.
+        ...(config.common.tools.deny ?? []),
         ...config.subroles.flatMap(({ capabilities }) => [
           ...capabilities.tools.always,
           ...capabilities.tools.skillGrantable,
+          ...(capabilities.tools.deny ?? []),
         ]),
       ]),
     ],

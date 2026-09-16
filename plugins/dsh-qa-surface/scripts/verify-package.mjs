@@ -7,6 +7,7 @@ const root = new URL("../", import.meta.url);
 const required = [
   "lib/index.js",
   "lib/secure-session.js",
+  "lib/lockdown-policy.js",
   "lib/access/model.js",
   "lib/access/role-repository.js",
   "lib/access/capability-catalog.js",
@@ -140,6 +141,14 @@ const toolGrants = await readFile(
   "utf8",
 );
 // The one place that talks to `tools.restrict()`, for both masking paths.
+const lockdown = await readFile(
+  new URL("lib/lockdown-policy.js", root),
+  "utf8",
+);
+const accessModel = await readFile(
+  new URL("lib/access/model.js", root),
+  "utf8",
+);
 const toolMask = await readFile(
   new URL("lib/enforcement/tool-mask.js", root),
   "utf8",
@@ -191,6 +200,19 @@ assert.match(admission, /installQaSkillPolicy/u);
 // widen the toolset; the guard reads the same live set.
 assert.match(admission, /createGrants/u);
 assert.match(admission, /effectiveTools\(\)/u);
+// A scoped restriction and a scoped guard cover the scope that owns them and
+// its descendants only, and a delegated child is composed from the preset
+// rather than from the parent agent — so the conversation carries a ceiling of
+// its own, inherited by every child session and enforced for every agent.
+assert.match(admission, /qaCeilingDenial/u);
+assert.match(admission, /this\.ceilings\.set/u);
+assert.match(admission, /parentSession/u);
+assert.match(lockdown, /qaCeilingDenial/u);
+// A denial beats every grant, the deployment's pinned tools included: it is the
+// only way an administrator withdraws a name the profile hands to everyone,
+// and it narrows the ceiling a skill may grant against.
+assert.match(accessModel, /tools\.deny/u);
+assert.match(accessModel, /denied\.has\(name\)/u);
 assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);

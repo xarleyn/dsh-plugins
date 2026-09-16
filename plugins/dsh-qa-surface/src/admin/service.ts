@@ -490,6 +490,18 @@ export class QaAdminService {
         ...config.common.tools.skillGrantable,
         ...(role?.capabilities.tools.skillGrantable ?? []),
       ];
+      // A denial beats every grant, the pinned set included, so the counts a
+      // user page reports have to subtract it — otherwise a profile that took
+      // `dsh_git_*` away still reads as if its chats had them.
+      const denied = new Set([
+        ...(config.common.tools.deny ?? []),
+        ...(role?.capabilities.tools.deny ?? []),
+      ]);
+      const reachable = (values: readonly string[]) =>
+        installed(
+          values.filter((id) => !denied.has(id)),
+          catalog.toolIds,
+        );
       const declared = skills
         .filter(({ roles }) =>
           roles.some(({ roleId, visible }) => roleId === subroleId && visible),
@@ -498,8 +510,9 @@ export class QaAdminService {
       return Object.freeze({
         subroleId,
         name: role?.name ?? subroleId,
-        tools: installed(always, catalog.toolIds),
-        grantableTools: installed(grantable, catalog.toolIds),
+        tools: reachable(always),
+        grantableTools: reachable(grantable),
+        deniedTools: installed([...denied], catalog.toolIds),
         skills: installed(
           [
             ...config.common.skills,
