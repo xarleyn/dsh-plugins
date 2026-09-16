@@ -1,3 +1,9 @@
+## 0.3.1 (2026-09-16)
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.7.2
+
 ## 0.3.0 (2026-09-16)
 
 ### 🚀 Features
