@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolveConfig } from "../src/config.js";
 import {
   JIRA_CAPABILITIES,
+  JIRA_COMPANION_PATHS,
   JIRA_OPERATIONS,
   JIRA_READ_PATHS,
   enabledCapabilities,
@@ -71,9 +72,14 @@ describe("Jira capability catalog", () => {
       expect(JIRA_READ_PATHS, operation).toContain(definition.path);
       used.add(definition.path);
     }
-    // The allow-list is exact: nothing in it is dead, and no endpoint reaches
-    // Jira without being declared here first.
-    expect([...used].sort()).toEqual([...JIRA_READ_PATHS].sort());
+    // The allow-list is exact: every entry is either an operation's own path or
+    // a declared companion read, and nothing reaches Jira without being
+    // declared here first.
+    const declared = new Set<string>([...used, ...JIRA_COMPANION_PATHS]);
+    expect([...declared].sort()).toEqual([...JIRA_READ_PATHS].sort());
+    for (const companion of JIRA_COMPANION_PATHS) {
+      expect(used.has(companion), companion).toBe(false);
+    }
     for (const forbidden of [
       "rest.call",
       "raw",
@@ -151,6 +157,7 @@ describe("Jira capability catalog", () => {
     expect([...ISSUE_INCLUDES]).toEqual([
       "description",
       "comments_summary",
+      "changelog_summary",
       "attachments",
       "relations",
       "custom_fields",

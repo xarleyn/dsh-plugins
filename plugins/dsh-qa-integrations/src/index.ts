@@ -603,6 +603,7 @@ export { JiraProvider } from "./providers/jira/index.js";
 export {
   JIRA_CAPABILITIES,
   JIRA_CAPABILITY_INFO,
+  JIRA_COMPANION_PATHS,
   JIRA_OPERATIONS,
   JIRA_READ_PATHS,
   enabledCapabilities as enabledJiraCapabilities,
@@ -631,12 +632,15 @@ export {
   commentLimit,
   commentStart,
   issueKey as jiraIssueKey,
-  jqlDateTime,
+  jqlDateValue,
   jqlLiteral,
+  needsUserLookup,
   pageToken,
   projectKey as jiraProjectKey,
   searchLimit,
-  textFilter,
+  textClauses,
+  textMatch,
+  type CustomFieldClause,
 } from "./providers/jira/jql.js";
 export {
   ISSUE_INCLUDES,

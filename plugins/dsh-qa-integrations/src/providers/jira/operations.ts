@@ -25,10 +25,12 @@ export const SEARCH_FIELDS: readonly string[] = Object.freeze([
   "assignee",
   "reporter",
   "labels",
+  "components",
+  "fixVersions",
+  "resolution",
   "created",
   "updated",
   "duedate",
-  "resolution",
   "project",
   "issuetype",
   "parent",
@@ -42,9 +44,9 @@ const CORE_FIELDS: readonly string[] = Object.freeze([
   "assignee",
   "reporter",
   "labels",
-  "created",
-  "updated",
-  "duedate",
+  "components",
+  "fixVersions",
+  "versions",
   "resolution",
   "resolutiondate",
   "project",
@@ -55,10 +57,14 @@ const CORE_FIELDS: readonly string[] = Object.freeze([
 export const ISSUE_INCLUDES: readonly string[] = Object.freeze([
   "description",
   "comments_summary",
+  "changelog_summary",
   "attachments",
   "relations",
   "custom_fields",
 ]);
+
+/** How many history entries one `changelog_summary` read hands over. */
+const CHANGELOG_ENTRIES = 20;
 
 /** Newest first is what a person asks for unless they say otherwise. */
 const COMMENT_ORDERS: readonly string[] = Object.freeze(["newest", "oldest"]);
@@ -162,7 +168,14 @@ export const JIRA_HANDLERS: Readonly<Record<string, JiraOperationHandler>> =
       const include = requestedIncludes(input["include"]);
       return {
         path: withIssue(issuePath(), input["issueKey"]),
-        query: { fields: issueFields(include, context.flags) },
+        query: {
+          fields: issueFields(include, context.flags),
+          // The history is an expansion, not a field: it only travels when the
+          // caller asked for it, because it is the heaviest part of an issue.
+          ...(include.includes("changelog_summary")
+            ? { expand: "changelog" }
+            : {}),
+        },
       };
     },
 
@@ -302,6 +315,19 @@ function projectRef(value: unknown): Record<string, unknown> | undefined {
 }
 
 /**
+ * The names of a value list — components, versions, labels. A search row carries
+ * the names because that is what a person reads and what a follow-up filter
+ * takes; the ids and release flags belong to the full card.
+ */
+function namesOf(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const names = value
+    .map((item) => stringOf(recordOf(item), "name"))
+    .filter((name): name is string => name !== undefined && name !== "");
+  return names.length === 0 ? undefined : names;
+}
+
+/**
  * One issue as the model sees it: the card every operation answers with. A
  * `parent` or a `subtask` is itself an issue object in Jira, so those recurse
  * through this same projection — and an optional association Jira did not send
@@ -329,6 +355,10 @@ function issueSummary(
     assignee: userSummary(fields["assignee"]),
     reporter: userSummary(fields["reporter"]),
     labels: labels.length === 0 ? undefined : labels,
+    components: namesOf(fields["components"]),
+    // An absent list is a real absence here: Jira answered the field, and it is
+    // empty. Nothing is inferred from a marker the way a search proxy had to.
+    fixVersions: namesOf(fields["fixVersions"]),
     createdAt: stringOf(fields, "created"),
     updatedAt: stringOf(fields, "updated"),
     dueAt: stringOf(fields, "duedate"),
@@ -486,6 +516,65 @@ function customFieldsOf(
   return named;
 }
 
+/**
+ * The history of one issue, flattened: Jira groups changes by the edit that
+ * made them, and a reader wants the individual field changes in time order. The
+ * answer is bounded — an issue that lived for years has thousands of changes —
+ * and it tells apart the two cuts that can happen: this projection's own entry
+ * cap, and Jira's own page of change groups (it counts every group but sends
+ * one page of them).
+ */
+function changelogSummary(
+  value: unknown,
+  flags: JiraFlags,
+): Record<string, unknown> {
+  const source = recordOf(value);
+  const histories = arrayOf(source, "histories");
+  const total = numberOf(source, "total");
+  const entries: Record<string, unknown>[] = [];
+  let cut = false;
+  for (const history of histories) {
+    const record = recordOf(history);
+    const createdAt = stringOf(record, "created");
+    const author = userSummary(record["author"]);
+    for (const item of arrayOf(record, "items")) {
+      if (entries.length >= CHANGELOG_ENTRIES) {
+        cut = true;
+        break;
+      }
+      const change = recordOf(item);
+      entries.push(
+        compact({
+          createdAt,
+          author,
+          field: stringOf(change, "field"),
+          fieldId: stringOf(change, "fieldId"),
+          from: textOf(change["fromString"], flags),
+          to: textOf(change["toString"], flags),
+        }),
+      );
+    }
+    if (cut) break;
+  }
+  return compact({
+    total,
+    groupsReturned: histories.length,
+    returned: entries.length,
+    truncated: cut ? true : undefined,
+    groupsTruncated:
+      total !== undefined && total > histories.length ? true : undefined,
+    entries,
+  });
+}
+
+/** A history value is text a person typed; it is bounded like any other body. */
+function textOf(value: unknown, flags: JiraFlags): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.length > flags.maxTextChars
+    ? `${value.slice(0, flags.maxTextChars)}…`
+    : value;
+}
+
 function issueDetail(
   data: unknown,
   context: JiraProjectionContext,
@@ -502,6 +591,7 @@ function issueDetail(
     ...issueSummary(source, context.site),
     description: description?.text,
     descriptionTruncated: description?.truncated ? true : undefined,
+    affectedVersions: namesOf(fields["versions"]),
     ...(include.includes("comments_summary")
       ? {
           comments: compact({
@@ -509,6 +599,9 @@ function issueDetail(
             returned: arrayOf(comment, "comments").length,
           }),
         }
+      : {}),
+    ...(include.includes("changelog_summary")
+      ? { changelog: changelogSummary(source["changelog"], context.flags) }
       : {}),
     ...(include.includes("attachments")
       ? {

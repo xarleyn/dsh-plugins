@@ -557,6 +557,32 @@ for (const forbidden of [
     `Jira allow-list must not carry ${forbidden}`,
   );
 }
+// The reads the provider makes beside an operation are declared in the same
+// allow-list as the operations themselves: the deployment type at connect, and
+// the people directory behind a name filter.
+for (const companion of ["/rest/api/3/serverInfo", "/rest/api/3/user/search"]) {
+  assert.match(jiraCatalog, new RegExp(`"${companion}"`, "u"));
+  assert(jiraReadPaths.includes(companion), companion);
+}
+// The filter vocabulary stays typed: custom fields are addressed by the id the
+// field catalog reported, never by a display name two fields can share, and the
+// history is an expansion this provider asks for on purpose.
+const jiraJql = await readFile(
+  new URL("src/providers/jira/jql.ts", root),
+  "utf8",
+);
+assert.match(jiraJql, /customfield_\\d\{1,10\}/u);
+// An empty version or custom field is a first-class filter, in both directions.
+assert.match(jiraJql, /IS \$\{isEmpty \? "" : "NOT "\}EMPTY/u);
+assert.match(jiraJql, /statusCategory/u);
+const jiraOperations = await readFile(
+  new URL("src/providers/jira/operations.ts", root),
+  "utf8",
+);
+// The only thing that reaches the search endpoint is the builder's own output.
+assert.match(jiraOperations, /jql: buildJql\(input\)/u);
+assert.match(jiraOperations, /expand: "changelog"/u);
+assert.match(jiraOperations, /"changelog_summary"/u);
 
 const jiraTransport = await readFile(
   new URL("src/providers/jira/transport.ts", root),

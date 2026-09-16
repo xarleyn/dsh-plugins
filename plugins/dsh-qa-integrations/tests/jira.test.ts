@@ -6,7 +6,13 @@ import {
   type JiraFlags,
 } from "../src/providers/jira/config.js";
 import { JiraProvider } from "../src/providers/jira/index.js";
-import { buildJql, jqlLiteral, textFilter } from "../src/providers/jira/jql.js";
+import {
+  buildJql,
+  jqlDateValue,
+  jqlLiteral,
+  needsUserLookup,
+  textClauses,
+} from "../src/providers/jira/jql.js";
 import {
   customFieldValue,
   issueFields,
@@ -313,14 +319,22 @@ describe("jql builder", () => {
     }
   });
 
-  it("turns a text fragment into a phrase without letting it add a clause", () => {
-    expect(textFilter("payment timeout")).toBe(
+  it("turns a text fragment into terms or a phrase, never into a clause", () => {
+    expect(textClauses("payment timeout", "phrase")).toEqual([
       'text ~ "\\"payment timeout\\""',
-    );
-    expect(textFilter("timeout")).toBe('text ~ "timeout"');
-    const jql = buildJql({ query: 'done" OR project = SECRET' });
-    expect(jql).toBe(
-      'text ~ "\\"done\\" OR project = SECRET\\"" ORDER BY updated DESC',
+    ]);
+    expect(textClauses("payment timeout", undefined)).toEqual([
+      'text ~ "payment"',
+      'text ~ "timeout"',
+    ]);
+    expect(textClauses("timeout", undefined)).toEqual(['text ~ "timeout"']);
+    expect(
+      buildJql({ query: 'done" OR project = SECRET', match: "phrase" }),
+    ).toBe('text ~ "\\"done\\" OR project = SECRET\\"" ORDER BY updated DESC');
+    // Every word is its own clause, so an OR smuggled into a term stays inside
+    // the string literal it was written in.
+    expect(buildJql({ query: "x OR project = SECRET" })).toBe(
+      'text ~ "x" AND text ~ "OR" AND text ~ "project" AND text ~ "=" AND text ~ "SECRET" ORDER BY updated DESC',
     );
   });
 
@@ -336,7 +350,100 @@ describe("jql builder", () => {
         createdAfter: "2026-09-01T10:30:00Z",
       }),
     ).toBe(
-      'project in ("PROJ", "PLATFORM") AND status in ("In Progress") AND assignee = currentUser() AND reporter = "5b10ac8d82e05b22cc7d4ef5" AND labels = "regression" AND labels = "qa" AND updated >= "2026-09-01" AND created >= "2026-09-01 10:30" ORDER BY updated DESC',
+      'project in ("PROJ", "PLATFORM") AND status in ("In Progress") AND labels = "regression" AND labels = "qa" AND assignee = currentUser() AND reporter = "5b10ac8d82e05b22cc7d4ef5" AND created >= "2026-09-01 10:30" AND updated >= "2026-09-01" ORDER BY updated DESC',
+    );
+  });
+
+  it("covers the filters a corporate Jira search is asked for", () => {
+    expect(
+      buildJql({
+        issueTypes: ["Ошибка"],
+        statusCategories: ["Done"],
+        priorities: ["Критичный"],
+        resolutions: ["Fixed"],
+        components: ["Public API"],
+        fixVersions: ["3.8"],
+        affectedVersions: ["3.7"],
+        statuses: ["Закрыт"],
+      }),
+    ).toBe(
+      'issuetype in ("Ошибка") AND status in ("Закрыт") AND statusCategory = "Done" AND priority in ("Критичный") AND resolution in ("Fixed") AND component in ("Public API") AND fixVersion in ("3.8") AND affectedVersion in ("3.7") ORDER BY updated DESC',
+    );
+    // The category is a Jira constant, whatever case the caller sends.
+    expect(buildJql({ statusCategories: ["done"] })).toContain(
+      'statusCategory = "Done"',
+    );
+    expect(() => buildJql({ statusCategories: ["Closed"] })).toThrow(
+      /statusCategories accepts To Do, In Progress, Done/u,
+    );
+  });
+
+  it("expresses an empty version field and refuses a contradiction", () => {
+    expect(buildJql({ fixVersionEmpty: true })).toBe(
+      "fixVersion IS EMPTY ORDER BY updated DESC",
+    );
+    expect(buildJql({ fixVersionEmpty: false })).toBe(
+      "fixVersion IS NOT EMPTY ORDER BY updated DESC",
+    );
+    expect(buildJql({ affectedVersionEmpty: true })).toBe(
+      "affectedVersion IS EMPTY ORDER BY updated DESC",
+    );
+    expect(() =>
+      buildJql({ fixVersions: ["3.8"], fixVersionEmpty: true }),
+    ).toThrow(/contradict each other/u);
+  });
+
+  it("filters a custom field by the id the field catalog reported", () => {
+    expect(
+      buildJql({
+        customFields: [
+          { field: "customfield_10020", value: "Release 3.8" },
+          { field: "customfield_10010", value: "high", match: "contains" },
+          { field: "customfield_20000", empty: false },
+        ],
+      }),
+    ).toBe(
+      'customfield_10020 = "Release 3.8" AND customfield_10010 ~ "high" AND customfield_20000 IS NOT EMPTY ORDER BY updated DESC',
+    );
+    // A field name is refused: an instance can carry several fields with one
+    // display name, and picking one of them would be a guess.
+    expect(() => buildJql({ customFields: [{ field: "Product" }] })).toThrow(
+      /customFields.field is invalid/u,
+    );
+    expect(
+      buildJql({
+        customFields: [
+          { field: "customfield_10020", value: 'x" OR project = SECRET' },
+        ],
+      }),
+    ).toBe(
+      'customfield_10020 = "x\\" OR project = SECRET" ORDER BY updated DESC',
+    );
+    expect(() =>
+      buildJql({
+        customFields: Array.from({ length: 6 }, () => ({
+          field: "customfield_1",
+          value: "x",
+        })),
+      }),
+    ).toThrow(/customFields is invalid/u);
+  });
+
+  it("takes Jira's relative date tokens as well as absolute dates", () => {
+    expect(buildJql({ createdAfter: "-3w" })).toBe(
+      "created >= -3w ORDER BY updated DESC",
+    );
+    expect(buildJql({ updatedBefore: "-4h" })).toBe(
+      "updated <= -4h ORDER BY updated DESC",
+    );
+    expect(buildJql({ createdAfter: "-3w", createdBefore: "-1w" })).toBe(
+      "created >= -3w AND created <= -1w ORDER BY updated DESC",
+    );
+    expect(buildJql({ updatedBefore: "2026-08-31" })).toBe(
+      'updated <= "2026-08-31" ORDER BY updated DESC',
+    );
+    expect(() => buildJql({ updatedBefore: "yesterday" })).toThrow(
+      /updatedBefore is invalid/u,
     );
   });
 
@@ -353,6 +460,9 @@ describe("jql builder", () => {
     );
     expect(() => buildJql({ updatedAfter: "yesterday" })).toThrow(
       /updatedAfter is invalid/u,
+    );
+    expect(() => buildJql({ labels: ["x".repeat(101)] })).toThrow(
+      /labels is invalid/u,
     );
   });
 });
@@ -920,6 +1030,280 @@ describe("jira project, fields and transitions", () => {
     expect(calls[0]?.url.searchParams.get("fields")).toBe("attachment");
     expect(answer["key"]).toBe("PROJ-123");
     expect(answer["returned"]).toBe(1);
+  });
+});
+
+describe("jira people filters", () => {
+  const DIRECTORY = [
+    {
+      accountId: "5b10ac8d82e05b22cc7d4ef5",
+      displayName: "Иван Иванов",
+      active: true,
+    },
+    {
+      accountId: "5b10ac8d82e05b22cc7d4ef6",
+      displayName: "Пётр Петров",
+      active: true,
+    },
+  ];
+
+  /** A search host whose directory answers with `users`. */
+  function search(users: unknown = DIRECTORY) {
+    return stub((url) => {
+      if (url.pathname.endsWith("/user/search")) {
+        return { json: users };
+      }
+      if (url.pathname.endsWith("/search/jql")) {
+        return { json: { issues: [], isLast: true } };
+      }
+      return { status: 404, json: { errorMessages: ["no"] } };
+    });
+  }
+
+  function jqlOf(call: StubCall | undefined): string {
+    return call?.url.searchParams.get("jql") ?? "";
+  }
+
+  it("turns a name into the account id Jira filters on", async () => {
+    const { fetcher, calls } = search([DIRECTORY[0]]);
+    const provider = providerFor(fetcher);
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        projectKeys: ["PROJ"],
+        assignee: "Иванов",
+      },
+    );
+    expect(calls[0]?.url.pathname).toBe("/rest/api/3/user/search");
+    expect(calls[0]?.url.searchParams.get("query")).toBe("Иванов");
+    expect(jqlOf(calls[1])).toContain('assignee = "5b10ac8d82e05b22cc7d4ef5"');
+    // The directory answer stays out of the query result.
+    expect(jqlOf(calls[1])).not.toContain("Иван Иванов");
+  });
+
+  it("costs no directory call for `me` or for an account id", async () => {
+    const { fetcher, calls } = search();
+    const provider = providerFor(fetcher);
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        assignee: "me",
+        reporter: "5b10ac8d82e05b22cc7d4ef6",
+      },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url.pathname).toBe("/rest/api/3/search/jql");
+    expect(jqlOf(calls[0])).toContain("assignee = currentUser()");
+    expect(jqlOf(calls[0])).toContain('reporter = "5b10ac8d82e05b22cc7d4ef6"');
+    expect(needsUserLookup("me")).toBe(false);
+    expect(needsUserLookup("5b10ac8d82e05b22cc7d4ef6")).toBe(false);
+    expect(needsUserLookup("Иванов")).toBe(true);
+  });
+
+  it("refuses a name nobody matches instead of answering an empty page", async () => {
+    const { fetcher, calls } = search([]);
+    const provider = providerFor(fetcher);
+    await expect(
+      provider.execute(
+        { credential: credentialFor(provider) },
+        "issues.search",
+        {
+          assignee: "Никто",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+    expect(calls).toHaveLength(1);
+  });
+
+  it("refuses an ambiguous name and names the candidates", async () => {
+    const { fetcher } = search(DIRECTORY);
+    const provider = providerFor(fetcher);
+    const cause = await provider
+      .execute({ credential: credentialFor(provider) }, "issues.search", {
+        assignee: "Петров",
+      })
+      .catch((error: unknown) => error);
+    expect(cause).toBeInstanceOf(IntegrationError);
+    const error = cause as IntegrationError;
+    expect(error.code).toBe("InvalidRequest");
+    expect(error.message).toContain("2 Jira users");
+    expect(error.message).toContain("Иван Иванов");
+  });
+
+  it("keeps a refused directory a domain error, not a crash", async () => {
+    const { fetcher } = stub((url) =>
+      url.pathname.endsWith("/user/search")
+        ? { status: 403, json: { errorMessages: ["denied"] } }
+        : { json: { issues: [], isLast: true } },
+    );
+    const provider = providerFor(fetcher);
+    await expect(
+      provider.execute(
+        { credential: credentialFor(provider) },
+        "issues.search",
+        {
+          assignee: "Иванов",
+        },
+      ),
+    ).rejects.toMatchObject({ code: "ProviderPermissionDenied" });
+  });
+});
+
+describe("jira issue history and lists", () => {
+  const ISSUE = {
+    id: "10001",
+    key: "PROJ-123",
+    fields: {
+      summary: "Payment timeout",
+      components: [{ id: "1", name: "PROJ. Техдолг" }],
+      fixVersions: [{ id: "2", name: "3.8", released: false }],
+      versions: [{ id: "3", name: "3.7" }],
+    },
+    changelog: {
+      total: 3,
+      histories: [
+        {
+          created: "2026-09-02T09:00:00.000+0300",
+          author: {
+            accountId: "5b10ac8d82e05b22cc7d4ef5",
+            displayName: "Alice",
+          },
+          items: [
+            {
+              field: "status",
+              fieldId: "status",
+              fromString: "Open",
+              toString: "In Progress",
+            },
+            {
+              field: "Fix Version",
+              fieldId: "fixVersions",
+              fromString: null,
+              toString: "3.8",
+            },
+          ],
+        },
+      ],
+    },
+  };
+
+  function issue() {
+    return stub((url) =>
+      url.pathname.includes("/issue/")
+        ? { json: ISSUE }
+        : { status: 404, json: { errorMessages: ["no"] } },
+    );
+  }
+
+  it("answers the compact card with components and versions", async () => {
+    const { fetcher } = stub(() => ({
+      json: {
+        issues: [ISSUE],
+        isLast: true,
+      },
+    }));
+    const provider = providerFor(fetcher);
+    const answer = (await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      { projectKeys: ["PROJ"] },
+    )) as Record<string, unknown>;
+    const item = (answer["items"] as Record<string, unknown>[])[0];
+    expect(item?.["components"]).toEqual(["PROJ. Техдолг"]);
+    expect(item?.["fixVersions"]).toEqual(["3.8"]);
+  });
+
+  it("adds the change history only when it was asked for", async () => {
+    const { fetcher, calls } = issue();
+    const provider = providerFor(fetcher);
+    const plain = (await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.get",
+      { issueKey: "PROJ-123" },
+    )) as Record<string, unknown>;
+    expect(plain["changelog"]).toBeUndefined();
+    expect(calls[0]?.url.searchParams.get("expand")).toBeNull();
+
+    const withHistory = (await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.get",
+      { issueKey: "PROJ-123", include: ["changelog_summary"] },
+    )) as Record<string, unknown>;
+    expect(calls[1]?.url.searchParams.get("expand")).toBe("changelog");
+    // Jira counts three change groups but sent one: the answer says so instead
+    // of pretending the history ends there.
+    expect(withHistory["changelog"]).toEqual({
+      total: 3,
+      groupsReturned: 1,
+      returned: 2,
+      groupsTruncated: true,
+      entries: [
+        {
+          createdAt: "2026-09-02T09:00:00.000+0300",
+          author: {
+            accountId: "5b10ac8d82e05b22cc7d4ef5",
+            displayName: "Alice",
+          },
+          field: "status",
+          fieldId: "status",
+          from: "Open",
+          to: "In Progress",
+        },
+        {
+          createdAt: "2026-09-02T09:00:00.000+0300",
+          author: {
+            accountId: "5b10ac8d82e05b22cc7d4ef5",
+            displayName: "Alice",
+          },
+          field: "Fix Version",
+          fieldId: "fixVersions",
+          to: "3.8",
+        },
+      ],
+    });
+    // The full card also carries the versions as a list, not just as names.
+    expect(withHistory["affectedVersions"]).toEqual(["3.7"]);
+    expect(withHistory["fixVersions"]).toEqual(["3.8"]);
+  });
+
+  it("bounds a long history and says that it did", async () => {
+    const long = {
+      ...ISSUE,
+      changelog: {
+        total: 40,
+        histories: Array.from({ length: 40 }, (_, index) => ({
+          created: `2026-09-${String(index + 1).padStart(2, "0")}T09:00:00.000+0300`,
+          author: {
+            accountId: "5b10ac8d82e05b22cc7d4ef5",
+            displayName: "Alice",
+          },
+          items: [
+            { field: "status", fieldId: "status", toString: `S${index}` },
+          ],
+        })),
+      },
+    };
+    const { fetcher } = stub(() => ({ json: long }));
+    const provider = providerFor(fetcher);
+    const answer = (await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.get",
+      { issueKey: "PROJ-123", include: ["changelog_summary"] },
+    )) as Record<string, unknown>;
+    const changelog = answer["changelog"] as Record<string, unknown>;
+    expect(changelog["returned"]).toBe(20);
+    expect(changelog["total"]).toBe(40);
+    expect(changelog["truncated"]).toBe(true);
+  });
+
+  it("takes a relative window Jira understands", () => {
+    expect(jqlDateValue("-3w", "createdAfter")).toBe("-3w");
+    expect(jqlDateValue("2026-08-31", "createdAfter")).toBe('"2026-08-31"');
+    expect(jqlDateValue("2026-08-31T12:00:00Z", "createdAfter")).toBe(
+      '"2026-08-31 12:00"',
+    );
   });
 });
 

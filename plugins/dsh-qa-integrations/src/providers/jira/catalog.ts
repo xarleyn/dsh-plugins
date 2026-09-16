@@ -172,6 +172,17 @@ export const JIRA_OPERATIONS: Readonly<
 });
 
 /**
+ * Reads the provider performs next to a catalog operation, never as one
+ * themselves: the deployment type behind a connect and the people directory
+ * behind a name filter. They are declared here so the same allow-list governs
+ * every request this provider makes.
+ */
+export const JIRA_COMPANION_PATHS: readonly string[] = Object.freeze([
+  "/rest/api/3/serverInfo",
+  "/rest/api/3/user/search",
+]);
+
+/**
  * The read-only endpoint allow-list of this provider, as path templates. Nothing
  * outside it is reachable: a new operation has to be declared here on purpose,
  * in the same change as the catalog entry that uses it.
@@ -184,6 +195,7 @@ export const JIRA_READ_PATHS: readonly string[] = Object.freeze([
   "/rest/api/3/issue/:issueKey/transitions",
   "/rest/api/3/project/:projectKey",
   "/rest/api/3/field",
+  ...JIRA_COMPANION_PATHS,
 ]);
 
 /** Capabilities this deployment allows, in catalog order. */

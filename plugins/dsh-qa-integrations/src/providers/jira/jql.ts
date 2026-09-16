@@ -1,4 +1,5 @@
 import {
+  optionalBoolean,
   optionalInteger,
   requiredStringList,
   requiredText,
@@ -11,7 +12,13 @@ import { SEARCH_PAGE_CAP, type JiraFlags } from "./config.js";
  * the model: tools carry typed filters and the builder turns them into one
  * query. Everything below exists so that a filter value — however hostile —
  * stays a value: it is quoted, escaped and length-bounded, and a clause of its
- * own can never be smuggled in through a text fragment or a label.
+ * own can never be smuggled in through a text fragment, a label or a custom
+ * field value.
+ *
+ * The filter vocabulary mirrors what a person asks a corporate Jira for:
+ * project, type, status and its category, priority, resolution, components,
+ * labels, fix and affected versions, the people, the dates, the history, and
+ * the custom fields an instance defines.
  */
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u001f\u007f]/u;
@@ -22,14 +29,22 @@ const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,31}-\d{1,10}$/u;
 /**
  * Atlassian account ids are opaque strings that have historically been 24 hex
  * characters, but some carry other alphanumerics and a colon, so the shape is
- * checked for "one identifier token" rather than for a specific alphabet. That
- * also refuses a display name, which Jira Cloud would match against nothing and
- * answer with an empty page — "no such issues" instead of "wrong kind of
- * filter" is the one answer a search tool must not give by accident.
+ * checked for "one identifier token" rather than for a specific alphabet. A
+ * person's name fails it and is resolved through Jira's user search instead.
  */
 const ACCOUNT_ID = /^[A-Za-z0-9:_.@-]{8,128}$/u;
 /** An opaque continuation token Jira minted for this exact query. */
 const PAGE_TOKEN = /^[A-Za-z0-9._~+/=-]{1,4096}$/u;
+/** A custom field id, as the site's field catalog spells it. */
+const CUSTOM_FIELD = /^customfield_\d{1,10}$/u;
+/** Jira's own relative date tokens: `-3w`, `-2d`, `-4h`, `-30m`. */
+const RELATIVE_DATE = /^-\d{1,4}[wdhm]$/u;
+/** Status categories are the three Jira defines, not a workflow state. */
+const STATUS_CATEGORIES = ["To Do", "In Progress", "Done"] as const;
+/** How many words one free-text query may carry. */
+const TEXT_TERMS = 12;
+/** How many custom-field clauses one search may carry. */
+const CUSTOM_FIELD_CLAUSES = 5;
 
 function invalid(field: string): never {
   throw new IntegrationError("InvalidRequest", `${field} is invalid`);
@@ -39,17 +54,22 @@ function invalid(field: string): never {
 export function jqlLiteral(value: string, field: string): string {
   const normalized = requiredText(value, field, 1, 200);
   if (CONTROL.test(normalized)) invalid(field);
-  const escaped = normalized.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
-  return `"${escaped}"`;
+  return `"${escapeLiteral(normalized)}"`;
+}
+
+function escapeLiteral(value: string): string {
+  return value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
 }
 
 /**
- * A Jira date or timestamp as JQL takes it. A bare date stays a date; anything
- * with a time is rendered as Jira's `yyyy-MM-dd HH:mm`, which is the format the
- * language accepts (an ISO `T`/`Z` would be a syntax error).
+ * A Jira date or timestamp as JQL takes it. A bare date stays a date; a signed
+ * token such as `-3w` stays Jira's own relative date, unquoted, because that is
+ * what the language expects; anything with a time is rendered as Jira's
+ * `yyyy-MM-dd HH:mm`, since an ISO `T`/`Z` would be a syntax error.
  */
-export function jqlDateTime(value: unknown, field: string): string {
-  const normalized = requiredText(value, field, 10, 40);
+export function jqlDateValue(value: unknown, field: string): string {
+  const normalized = requiredText(value, field, 2, 40);
+  if (RELATIVE_DATE.test(normalized)) return normalized;
   if (/^\d{4}-\d{2}-\d{2}$/u.test(normalized)) {
     if (Number.isNaN(Date.parse(`${normalized}T00:00:00Z`))) invalid(field);
     return `"${normalized}"`;
@@ -80,10 +100,12 @@ export function issueKey(value: unknown, field = "issueKey"): string {
 }
 
 /**
- * Who to filter on: the connected user (`me`), or an account id a previous
- * answer reported. A display name is refused on purpose — Jira Cloud would match
- * it against nothing and answer an empty page, which reads like "no such issues"
- * rather than "wrong kind of filter".
+ * A filter value that is a person: the connected user (`me`), or an account id.
+ * A display name is refused here on purpose — Jira Cloud would match it against
+ * nothing and answer an empty page, which reads like "no such issues" rather
+ * than "wrong kind of filter". The provider resolves a name into an account id
+ * before the builder ever sees it, so a name reaching this point means the
+ * lookup did not happen.
  */
 function userFilter(value: unknown, field: string): string {
   if (typeof value === "string" && value.trim().toLowerCase() === "me") {
@@ -99,24 +121,131 @@ function userFilter(value: unknown, field: string): string {
   return jqlLiteral(normalized, field);
 }
 
-/** A free-text fragment: a phrase when it has spaces, a word otherwise. */
-export function textFilter(value: unknown): string {
-  const normalized = requiredText(value, "query", 1, 200);
-  if (CONTROL.test(normalized)) invalid("query");
-  const escaped = normalized.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"');
-  return normalized.includes(" ")
-    ? `text ~ "\\"${escaped}\\""`
-    : `text ~ "${escaped}"`;
+/**
+ * Whether a person filter needs the directory before it becomes JQL: `me` and
+ * an account id are already unambiguous, a free-text name is not.
+ */
+export function needsUserLookup(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const normalized = value.trim();
+  if (normalized === "" || normalized.toLowerCase() === "me") return false;
+  return !ACCOUNT_ID.test(normalized);
 }
 
-function list(values: unknown, field: string): string[] {
+/** One free-text fragment: every word searched, or the exact phrase. */
+export function textClauses(
+  value: unknown,
+  match: "all" | "phrase" | undefined,
+): string[] {
+  const normalized = requiredText(value, "query", 1, 200);
+  if (CONTROL.test(normalized)) invalid("query");
+  if (match === "phrase") {
+    return [`text ~ "\\"${escapeLiteral(normalized)}\\""`];
+  }
+  const terms = normalized.split(/\s+/u).filter((term) => term !== "");
+  if (terms.length === 0 || terms.length > TEXT_TERMS) invalid("query");
+  return terms.map((term) => `text ~ "${escapeLiteral(term)}"`);
+}
+
+function textValues(values: unknown, field: string): string[] {
   return requiredStringList(values, field, 20, 100);
 }
 
-/** A final check that no filter produced a bare control character. */
-function checkClean(jql: string): string {
-  if (CONTROL.test(jql)) invalid("query");
-  return jql;
+/** `field = "a"`, one clause per value, so several values are ANDed. */
+function equalsClauses(field: string, values: string[]): string[] {
+  return values.map((value) => `${field} = ${jqlLiteral(value, field)}`);
+}
+
+/** `field in ("a", "b")`, the form Jira answers as a set filter. */
+function inClause(field: string, values: string[]): string {
+  return `${field} in (${values.map((value) => jqlLiteral(value, field)).join(", ")})`;
+}
+
+/** A version-like field: named versions, or the empty/not-empty marker. */
+function versionClauses(
+  field: string,
+  values: unknown,
+  empty: unknown,
+  labels: { readonly list: string; readonly marker: string },
+): string[] {
+  const isEmpty = optionalBoolean(empty, labels.marker);
+  if (values === undefined) {
+    if (isEmpty === undefined) return [];
+    return [`${field} IS ${isEmpty ? "" : "NOT "}EMPTY`];
+  }
+  if (isEmpty === true) {
+    // Asking for named versions and for "none at all" cannot both be answered.
+    throw new IntegrationError(
+      "InvalidRequest",
+      `${labels.list} and ${labels.marker} contradict each other`,
+    );
+  }
+  return [inClause(field, textValues(values, labels.list))];
+}
+
+/**
+ * One custom-field constraint. The field is named by id — the one
+ * `jira_get_fields` returned — and the value is escaped like any other, so an
+ * instance field can be queried without putting JQL in the model's hands.
+ */
+export interface CustomFieldClause {
+  readonly field: string;
+  readonly value?: string;
+  readonly empty?: boolean;
+  readonly match?: "equals" | "contains";
+}
+
+function customFieldClauses(value: unknown): string[] {
+  if (!Array.isArray(value) || value.length === 0) invalid("customFields");
+  if (value.length > CUSTOM_FIELD_CLAUSES) invalid("customFields");
+  return value.map((entry) => {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      invalid("customFields");
+    }
+    const record = entry as Record<string, unknown>;
+    const field = requiredText(record["field"], "customFields.field", 13, 32);
+    if (!CUSTOM_FIELD.test(field)) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        "customFields.field must be the customfield_ id jira_get_fields reported",
+      );
+    }
+    const isEmpty = optionalBoolean(record["empty"], "customFields.empty");
+    if (isEmpty !== undefined) {
+      return `${field} IS ${isEmpty ? "" : "NOT "}EMPTY`;
+    }
+    const raw = requiredText(record["value"], "customFields.value", 1, 200);
+    const match = record["match"];
+    if (match !== undefined && match !== "equals" && match !== "contains") {
+      invalid("customFields.match");
+    }
+    return match === "contains"
+      ? `${field} ~ ${jqlLiteral(raw, "customFields.value")}`
+      : `${field} = ${jqlLiteral(raw, "customFields.value")}`;
+  });
+}
+
+function statusCategoryClauses(value: unknown): string[] {
+  return textValues(value, "statusCategories").map((entry) => {
+    const wanted = STATUS_CATEGORIES.find(
+      (category) => category.toLowerCase() === entry.toLowerCase(),
+    );
+    if (wanted === undefined) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        `statusCategories accepts ${STATUS_CATEGORIES.join(", ")}`,
+      );
+    }
+    return `statusCategory = ${jqlLiteral(wanted, "statusCategories")}`;
+  });
+}
+
+/** The match mode of a free-text query: every word, or the exact phrase. */
+export function textMatch(value: unknown): "all" | "phrase" {
+  if (value === undefined) return "all";
+  const normalized = requiredText(value, "match", 3, 6);
+  if (normalized !== "all" && normalized !== "phrase") invalid("match");
+  return normalized;
 }
 
 /**
@@ -129,44 +258,95 @@ export function buildJql(input: Readonly<Record<string, unknown>>): string {
   const clauses: string[] = [];
 
   if (input["query"] !== undefined) {
-    clauses.push(textFilter(input["query"]));
+    clauses.push(...textClauses(input["query"], textMatch(input["match"])));
   }
   if (input["projectKeys"] !== undefined) {
-    const keys = list(input["projectKeys"], "projectKeys").map((key) =>
-      projectKey(key),
-    );
     clauses.push(
-      `project in (${keys.map((key) => jqlLiteral(key, "projectKeys")).join(", ")})`,
+      inClause(
+        "project",
+        textValues(input["projectKeys"], "projectKeys").map((key) =>
+          projectKey(key),
+        ),
+      ),
+    );
+  }
+  if (input["issueTypes"] !== undefined) {
+    clauses.push(
+      inClause("issuetype", textValues(input["issueTypes"], "issueTypes")),
     );
   }
   if (input["statuses"] !== undefined) {
-    const statuses = list(input["statuses"], "statuses").map((status) =>
-      jqlLiteral(status, "statuses"),
-    );
-    clauses.push(`status in (${statuses.join(", ")})`);
+    clauses.push(inClause("status", textValues(input["statuses"], "statuses")));
   }
+  if (input["statusCategories"] !== undefined) {
+    clauses.push(...statusCategoryClauses(input["statusCategories"]));
+  }
+  if (input["priorities"] !== undefined) {
+    clauses.push(
+      inClause("priority", textValues(input["priorities"], "priorities")),
+    );
+  }
+  if (input["resolutions"] !== undefined) {
+    clauses.push(
+      inClause("resolution", textValues(input["resolutions"], "resolutions")),
+    );
+  }
+  if (input["components"] !== undefined) {
+    clauses.push(
+      inClause("component", textValues(input["components"], "components")),
+    );
+  }
+  if (input["labels"] !== undefined) {
+    // One equality per label, ANDed: "has all of these" is what a person means
+    // by a label filter, while Jira's own `in` would answer "any of these".
+    clauses.push(
+      ...equalsClauses("labels", textValues(input["labels"], "labels")),
+    );
+  }
+  clauses.push(
+    ...versionClauses(
+      "fixVersion",
+      input["fixVersions"],
+      input["fixVersionEmpty"],
+      { list: "fixVersions", marker: "fixVersionEmpty" },
+    ),
+  );
+  clauses.push(
+    ...versionClauses(
+      "affectedVersion",
+      input["affectedVersions"],
+      input["affectedVersionEmpty"],
+      { list: "affectedVersions", marker: "affectedVersionEmpty" },
+    ),
+  );
   if (input["assignee"] !== undefined) {
     clauses.push(`assignee = ${userFilter(input["assignee"], "assignee")}`);
   }
   if (input["reporter"] !== undefined) {
     clauses.push(`reporter = ${userFilter(input["reporter"], "reporter")}`);
   }
-  if (input["labels"] !== undefined) {
-    // One equality per label, ANDed: "has all of these" is what a person means
-    // by a label filter, while Jira's own `in` would answer "any of these".
-    for (const label of list(input["labels"], "labels")) {
-      clauses.push(`labels = ${jqlLiteral(label, "labels")}`);
-    }
+  if (input["createdAfter"] !== undefined) {
+    clauses.push(
+      `created >= ${jqlDateValue(input["createdAfter"], "createdAfter")}`,
+    );
+  }
+  if (input["createdBefore"] !== undefined) {
+    clauses.push(
+      `created <= ${jqlDateValue(input["createdBefore"], "createdBefore")}`,
+    );
   }
   if (input["updatedAfter"] !== undefined) {
     clauses.push(
-      `updated >= ${jqlDateTime(input["updatedAfter"], "updatedAfter")}`,
+      `updated >= ${jqlDateValue(input["updatedAfter"], "updatedAfter")}`,
     );
   }
-  if (input["createdAfter"] !== undefined) {
+  if (input["updatedBefore"] !== undefined) {
     clauses.push(
-      `created >= ${jqlDateTime(input["createdAfter"], "createdAfter")}`,
+      `updated <= ${jqlDateValue(input["updatedBefore"], "updatedBefore")}`,
     );
+  }
+  if (input["customFields"] !== undefined) {
+    clauses.push(...customFieldClauses(input["customFields"]));
   }
 
   if (clauses.length === 0) {
@@ -174,10 +354,12 @@ export function buildJql(input: Readonly<Record<string, unknown>>): string {
     // site" is not a question this provider answers by default.
     throw new IntegrationError(
       "InvalidRequest",
-      "search needs at least one filter: query, projectKeys, statuses, assignee, reporter, labels, updatedAfter or createdAfter",
+      "search needs at least one filter: query, projectKeys, issueTypes, statuses, statusCategories, priorities, resolutions, components, labels, fixVersions, affectedVersions, assignee, reporter, createdAfter, createdBefore, updatedAfter, updatedBefore or customFields",
     );
   }
-  return checkClean(`${clauses.join(" AND ")} ORDER BY updated DESC`);
+  const jql = `${clauses.join(" AND ")} ORDER BY updated DESC`;
+  if (CONTROL.test(jql)) invalid("query");
+  return jql;
 }
 
 /**
@@ -207,7 +389,7 @@ export function commentStart(value: unknown): number {
 /** An opaque continuation token from a previous search answer. */
 export function pageToken(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  const normalized = requiredText(value, "cursor", 1, 4_096);
+  const normalized = requiredText(value, "cursor", 1, 4096);
   if (!PAGE_TOKEN.test(normalized)) invalid("cursor");
   return normalized;
 }
