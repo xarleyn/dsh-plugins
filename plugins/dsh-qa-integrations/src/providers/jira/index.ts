@@ -13,6 +13,7 @@ import {
   jiraOperationCapability,
 } from "./catalog.js";
 import { jiraSite, type JiraSite } from "./config.js";
+import { needsUserLookup } from "./jql.js";
 import {
   JIRA_HANDLERS,
   JIRA_PROJECTIONS,
@@ -167,7 +168,14 @@ export class JiraProvider implements IntegrationProvider {
       );
     }
     const flags = this.config.jira;
-    const request = handler(input, {
+    // A person is named the way a person actually has a name ("задачи
+    // Иванова"), and Jira filters on an account id: the directory turns one into
+    // the other before the query is built.
+    const prepared =
+      operation === "issues.search"
+        ? await this.resolvePeople(site, credential, input)
+        : input;
+    const request = handler(prepared, {
       externalUserId: context.externalUserId,
       flags,
     });
@@ -207,6 +215,79 @@ export class JiraProvider implements IntegrationProvider {
       !Array.isArray(projected)
       ? (projected as Record<string, unknown>)
       : { value: projected ?? null };
+  }
+
+  /**
+   * Replace a person's name with the account id Jira filters on, for the two
+   * filters that can carry one. `me` and an account id are already what Jira
+   * wants and cost no call.
+   *
+   * The directory is a read of the site's own user list, bounded to ten hits,
+   * and its answer is never handed to the model: it only decides the id the
+   * query is built from. A name nobody matches, or a name several people share,
+   * is refused with what to do next — an account id from an issue — because the
+   * alternative is a query that quietly answers "no such issues".
+   */
+  private async resolvePeople(
+    site: JiraSite,
+    credential: JiraCredential,
+    input: Readonly<Record<string, unknown>>,
+  ): Promise<Readonly<Record<string, unknown>>> {
+    const resolved: Record<string, unknown> = { ...input };
+    for (const field of ["assignee", "reporter"] as const) {
+      const value = input[field];
+      if (!needsUserLookup(value)) continue;
+      resolved[field] = await this.accountIdFor(
+        site,
+        credential,
+        field,
+        String(value).trim(),
+      );
+    }
+    return resolved;
+  }
+
+  private async accountIdFor(
+    site: JiraSite,
+    credential: JiraCredential,
+    field: string,
+    query: string,
+  ): Promise<string> {
+    const users = await this.transport.getJson<unknown>(
+      site,
+      credential,
+      "/rest/api/3/user/search",
+      { query, maxResults: 10 },
+    );
+    const byId = new Map<string, string>();
+    for (const entry of Array.isArray(users) ? users : []) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const record = entry as Record<string, unknown>;
+      const accountId = record["accountId"];
+      if (typeof accountId !== "string" || accountId === "") continue;
+      if (record["active"] === false) continue;
+      const displayName =
+        typeof record["displayName"] === "string"
+          ? record["displayName"]
+          : accountId;
+      byId.set(accountId, displayName);
+    }
+    const matches = [...byId.entries()];
+    if (matches.length === 1 && matches[0] !== undefined) return matches[0][0];
+    if (matches.length === 0) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        `${field} matches no Jira user named "${query}"; pass the accountId an issue reported, or "me"`,
+      );
+    }
+    const names = matches
+      .slice(0, 3)
+      .map(([, displayName]) => displayName)
+      .join(", ");
+    throw new IntegrationError(
+      "InvalidRequest",
+      `${field} "${query}" matches ${matches.length} Jira users (${names}); pass the accountId an issue reported`,
+    );
   }
 
   /**
