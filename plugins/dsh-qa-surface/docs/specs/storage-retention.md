@@ -159,6 +159,13 @@ Audit retention becomes a `DELETE` with a `LIMIT`-bounded keep instead of
 (`*.retention.auditDays`, default 90) so a burst of tool calls cannot pin the
 maximum row count forever.
 
+**Open decision before phase 3.** `dsh-qa-integrations` needs the same helper,
+and it already depends on `dsh-qa-surface` — but only through type imports.
+Importing a runtime module across the two would deepen that coupling and add an
+exports subpath to the published package. The helper belongs in
+`packages/plugin-kit`, which both can depend on; moving it there is a decision
+to take deliberately rather than as a side effect of the integrations store.
+
 `qa-integrations` additionally stops writing an audit row for every successful
 read call in the same transaction as the call itself: the row is buffered and
 flushed in batches, so a 30-call minute costs one write, not thirty.
