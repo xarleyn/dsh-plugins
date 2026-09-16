@@ -1,5 +1,8 @@
 import { readFileSync, renameSync } from "node:fs";
-import { SqliteDatabase, type SqliteMigration } from "@yadsh/dsh-plugin-kit";
+import {
+  SqliteDatabase,
+  type SqliteMigration,
+} from "@yadsh/dsh-plugin-kit/sqlite";
 import type {
   QaAccessAuditAction,
   QaAccessAuditEvent,

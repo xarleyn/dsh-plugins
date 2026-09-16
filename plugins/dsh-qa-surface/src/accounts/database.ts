@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync, renameSync } from "node:fs";
-import { SqliteDatabase, type SqliteMigration } from "@yadsh/dsh-plugin-kit";
+import {
+  SqliteDatabase,
+  type SqliteMigration,
+} from "@yadsh/dsh-plugin-kit/sqlite";
 import type {
   QaEffectiveCapabilityPolicy,
   QaSkillActivationRecord,
