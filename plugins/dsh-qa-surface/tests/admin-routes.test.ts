@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  adminBasePath,
   adminPath,
   adminSectionOf,
+  isAdminPath,
   parseAdminRoute,
 } from "../src/client/admin/routes.js";
 
@@ -103,5 +105,43 @@ describe("admin console routes", () => {
     expect(adminSectionOf({ page: "common" })).toBe("access");
     expect(adminSectionOf({ page: "skills" })).toBe("access");
     expect(adminSectionOf({ page: "review" })).toBe("review");
+  });
+});
+
+/**
+ * The surface decides "console or chat" from the pathname alone, and the
+ * console never leaves its own base: every section it opens is another path
+ * under it.
+ */
+describe("admin console path ownership", () => {
+  it("owns the base and everything under it", () => {
+    expect(adminBasePath("/qa")).toBe("/qa/admin");
+    expect(adminBasePath("/")).toBe("/admin");
+    const paths = [
+      "/qa/admin",
+      "/qa/admin/",
+      "/qa/admin/users",
+      "/qa/admin/conversations/session-1/42",
+      "/qa/admin/quality/analytics",
+    ];
+    for (const path of paths) {
+      expect(isAdminPath(path, "/qa"), path).toBe(true);
+    }
+  });
+
+  it("leaves the chat surface every other path", () => {
+    // The console is a sibling of the chat, not a parent of it: a path that
+    // merely starts with the same letters is still the chat.
+    for (const path of [
+      "/qa",
+      "/qa/",
+      "/qa/adminx",
+      "/qa/administrator",
+      "/other/admin",
+    ]) {
+      expect(isAdminPath(path, "/qa"), path).toBe(false);
+    }
+    expect(isAdminPath("/admin", "/")).toBe(true);
+    expect(isAdminPath("/", "/")).toBe(false);
   });
 });
