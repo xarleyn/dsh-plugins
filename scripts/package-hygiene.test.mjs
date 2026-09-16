@@ -10,11 +10,16 @@ import {
   serializeManifest,
 } from "./generate-plugins-manifest.mjs";
 import {
+  compareVersions,
+  curatedChangelogVersions,
+  planProjects,
+  validateClientContractGates,
   validateDiscoverability,
   validatePublishedContent,
   validatePublishablePlugin,
   validateVersionPlan,
   validateWorkspaceScripts,
+  verifyVersionPlans,
 } from "./verify-package-hygiene.mjs";
 
 function writeJson(file, value) {
@@ -590,6 +595,278 @@ test("rejects a README link the package page cannot resolve", async () => {
     );
     // Anchors, directory links, and absolute URLs are not the gate's business.
     assert.equal(errors.length, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// QA-surface changelog coverage: a qa-surface version plan demands a curated
+// changelog entry for a version newer than the manifest's current version.
+// ---------------------------------------------------------------------------
+
+const qaSurfacePlan = [
+  "---",
+  '"@yadsh/dsh-qa-surface": patch',
+  "---",
+  "",
+  "Fix the QA chat.",
+  "",
+].join("\n");
+
+const changelogOf = (versions) =>
+  `export const QA_CHANGELOG = [${versions
+    .map(
+      (version) =>
+        `{ version: "${version}", date: "2026-09-16", sections: [] }`,
+    )
+    .join(",\n")}];\n`;
+
+async function qaSurfaceFixture({
+  plans = [],
+  packages = {},
+  version = "0.7.4",
+  changelogVersions = ["0.7.4"],
+} = {}) {
+  const root = await mkdtemp(path.join(tmpdir(), "dsh-qa-changelog-"));
+  const plansRoot = path.join(root, ".nx", "version-plans");
+  mkdirSync(plansRoot, { recursive: true });
+  for (const [name, content] of plans) {
+    writeFileSync(path.join(plansRoot, name), content);
+  }
+  for (const [name, manifest] of Object.entries(packages)) {
+    const directory = path.join(root, "packages", name);
+    mkdirSync(directory, { recursive: true });
+    writeJson(path.join(directory, "package.json"), manifest);
+  }
+  const directory = path.join(root, "plugins", "dsh-qa-surface");
+  mkdirSync(path.join(directory, "src", "client", "components"), {
+    recursive: true,
+  });
+  writeJson(path.join(directory, "package.json"), {
+    name: "@yadsh/dsh-qa-surface",
+    version,
+  });
+  writeFileSync(
+    path.join(directory, "src", "client", "components", "QaChangelog.tsx"),
+    changelogOf(changelogVersions),
+  );
+  return root;
+}
+
+test("a qa-surface plan requires a changelog entry newer than the released version", async () => {
+  const root = await qaSurfaceFixture({ plans: [["plan.md", qaSurfacePlan]] });
+  try {
+    assert.throws(
+      () => verifyVersionPlans(root),
+      /QaChangelog\.tsx has no entry newer than the current 0\.7\.4/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a qa-surface plan covered by a newer curated entry passes", async () => {
+  const root = await qaSurfaceFixture({
+    plans: [["plan.md", qaSurfacePlan]],
+    changelogVersions: ["0.7.5", "0.7.4"],
+  });
+  try {
+    assert.equal(verifyVersionPlans(root), 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("no qa-surface plan means no changelog demand", async () => {
+  const root = await qaSurfaceFixture({
+    plans: [
+      [
+        "plan.md",
+        ["---", '"@yadsh/dsh-other": patch', "---", "", "Other work.", ""].join(
+          "\n",
+        ),
+      ],
+    ],
+    packages: {
+      "dsh-other": { name: "@yadsh/dsh-other", version: "1.0.0" },
+    },
+  });
+  try {
+    assert.equal(verifyVersionPlans(root), 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("an empty plan set never trips the changelog tripwire", async () => {
+  const root = await qaSurfaceFixture();
+  try {
+    assert.equal(verifyVersionPlans(root), 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("changelog coverage parses front matter, versions, and orders them", () => {
+  assert.deepEqual(planProjects(qaSurfacePlan), ["@yadsh/dsh-qa-surface"]);
+  assert.deepEqual(planProjects("no front matter"), []);
+  assert.deepEqual(curatedChangelogVersions(changelogOf(["0.7.5", "0.7.4"])), [
+    "0.7.5",
+    "0.7.4",
+  ]);
+  assert.equal(compareVersions("0.7.5", "0.7.4"), 1);
+  assert.equal(compareVersions("0.7.4", "0.7.4"), 0);
+  assert.equal(compareVersions("0.10.0", "0.9.9"), 1);
+  assert.equal(compareVersions("1.0.0-rc.1", "1.0.0"), -1);
+  assert.equal(compareVersions("1.0.0-rc.2", "1.0.0-rc.10"), -1);
+});
+
+// ---------------------------------------------------------------------------
+// Client contract gates: a dsh.client manifest demands a package-name assert
+// in the plugin's scripts, and a card source demands the card-contract gate.
+// ---------------------------------------------------------------------------
+
+const clientManifest = { dsh: { client: { platform: "web" } } };
+
+async function pluginFixture({
+  manifest = {},
+  scriptFiles = {},
+  sourceFiles = {},
+}) {
+  const root = await mkdtemp(path.join(tmpdir(), "dsh-contract-"));
+  const directory = path.join(root, "plugins", "dsh-fixture");
+  mkdirSync(directory, { recursive: true });
+  const fullManifest = {
+    name: "@yadsh/dsh-fixture",
+    version: "0.1.0",
+    ...manifest,
+  };
+  writeJson(path.join(directory, "package.json"), fullManifest);
+  for (const [name, content] of Object.entries(scriptFiles)) {
+    const file = path.join(directory, "scripts", name);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, content);
+  }
+  for (const [name, content] of Object.entries(sourceFiles)) {
+    const file = path.join(directory, "src", name);
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, content);
+  }
+  return { root, directory, manifest: fullManifest };
+}
+
+test("a client bundle whose scripts never assert the full package name fails", async () => {
+  const { root, directory, manifest } = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": 'assert.equal(manifest.name, "dsh-fixture");\n',
+    },
+  });
+  try {
+    const errors = validateClientContractGates(directory, manifest);
+    assert.equal(errors.length, 1);
+    assert.match(
+      errors[0],
+      /asserts the full package name "@yadsh\/dsh-fixture"/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("regex-literal and string asserts of the full package name both pass", async () => {
+  const regexForm = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": [
+        'import assert from "node:assert/strict";',
+        "",
+        "assert.match(",
+        "  client,",
+        '  /window\\.__ModuleLoader__\\.load\\(\\{\\s*id:\\s*"@yadsh\\/dsh-fixture"/u,',
+        ");",
+        "",
+      ].join("\n"),
+    },
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(regexForm.directory, regexForm.manifest),
+      [],
+    );
+  } finally {
+    await rm(regexForm.root, { recursive: true, force: true });
+  }
+
+  const stringForm = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "smoke-packed.mjs": "assert.equal(json.name, '@yadsh/dsh-fixture');\n",
+    },
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(stringForm.directory, stringForm.manifest),
+      [],
+    );
+  } finally {
+    await rm(stringForm.root, { recursive: true, force: true });
+  }
+});
+
+test("a card source demands a script that runs the card-contract gate", async () => {
+  const cardSource = {
+    "client/card.tsx": 'renderSlot("settings.plugin.item", Card);\n',
+  };
+  const withoutGate = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": "assert.equal(name, '@yadsh/dsh-fixture');\n",
+    },
+    sourceFiles: cardSource,
+  });
+  try {
+    const errors = validateClientContractGates(
+      withoutGate.directory,
+      withoutGate.manifest,
+    );
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /verify-plugin-card-contract/u);
+  } finally {
+    await rm(withoutGate.root, { recursive: true, force: true });
+  }
+
+  const withGate = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": [
+        'import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";',
+        "",
+        "verifyPluginCardContract(bundle);",
+        "assert.equal(name, '@yadsh/dsh-fixture');",
+        "",
+      ].join("\n"),
+    },
+    sourceFiles: cardSource,
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(withGate.directory, withGate.manifest),
+      [],
+    );
+  } finally {
+    await rm(withGate.root, { recursive: true, force: true });
+  }
+});
+
+test("a plugin without a client bundle or card owes neither gate", async () => {
+  const { root, directory, manifest } = await pluginFixture({
+    scriptFiles: { "verify-package.mjs": "assert.ok(true);\n" },
+    sourceFiles: { "index.ts": "export const name = 'dsh-fixture';\n" },
+  });
+  try {
+    assert.deepEqual(validateClientContractGates(directory, manifest), []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
