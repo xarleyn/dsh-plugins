@@ -450,17 +450,24 @@ export class QaBrowserService extends TypertRemoteService {
     return this.manager.humanScroll(sessionId, tabId, clientId, deltaX, deltaY);
   }
 
+  /**
+   * QA Surface owns the admission boundary the panel authorizes against, but
+   * it is not a declared dependency: this runtime also loads on Hosts that
+   * never mount QA Surface. The service is therefore resolved softly per
+   * request — reading `context.qaSurface` as a property throws
+   * `cannot get property "qaSurface" without inject` for a plugin that
+   * deliberately does not carry that injection, which is how the panel used to
+   * fail every poll, and every frame after it.
+   */
   private async authorizePanel(
     qaToken: string,
     sessionId: string,
   ): Promise<void> {
-    const qaSurface = (
-      this.context as Context & {
-        readonly qaSurface?: {
+    const qaSurface = this.context.get("qaSurface") as
+      | {
           secureSession(token: string, id: string): Promise<unknown>;
-        };
-      }
-    ).qaSurface;
+        }
+      | undefined;
     if (qaSurface === undefined) {
       throw new Error("QA Browser panel authorization is unavailable.");
     }
