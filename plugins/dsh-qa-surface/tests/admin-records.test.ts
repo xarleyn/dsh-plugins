@@ -1,6 +1,7 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { QaQualityStore } from "../src/admin/quality-store.js";
 import { projectTranscript } from "../src/admin/conversation-log.js";
@@ -14,14 +15,25 @@ import {
 import type { QaMessageFeedback } from "../src/types.js";
 
 const roots: string[] = [];
+const stores: QaQualityStore[] = [];
 
-function tempFile(name = "qa-quality.json"): string {
+function tempFile(name = "qa-quality.db"): string {
   const root = mkdtempSync(path.join(tmpdir(), "qa-quality-"));
   roots.push(root);
   return path.join(root, name);
 }
 
+/** Build a store the cleanup below closes and deletes. */
+function openStore(file: string): QaQualityStore {
+  const store = new QaQualityStore(file);
+  stores.push(store);
+  return store;
+}
+
 afterEach(() => {
+  // The store is a database: its handle goes before the directory does, or
+  // Windows refuses to remove a directory holding an open file.
+  for (const store of stores.splice(0)) store.close();
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -29,7 +41,7 @@ afterEach(() => {
 
 describe("quality store", () => {
   it("keeps one rating per user and message, replacing it on re-rating", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     const first = store.rateFeedback(
       { conversationId: "c1", messageId: "4", userId: "u1" },
       { rating: "negative", reasons: ["incorrect"], comment: "wrong project" },
@@ -47,7 +59,7 @@ describe("quality store", () => {
   });
 
   it("keeps each user's own verdict on the same message", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     store.rateFeedback(
       { conversationId: "c1", messageId: "4", userId: "u1" },
       { rating: "positive" },
@@ -61,7 +73,7 @@ describe("quality store", () => {
   });
 
   it("refuses an unknown rating, reason or empty identifier", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     expect(() =>
       store.rateFeedback(
         { conversationId: "c1", messageId: "4", userId: "u1" },
@@ -83,7 +95,7 @@ describe("quality store", () => {
   });
 
   it("replaces one reviewer's verdict and records a first-seen timestamp", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     const first = store.saveReview("r1", {
       conversationId: "c1",
       status: "needs_followup",
@@ -106,7 +118,7 @@ describe("quality store", () => {
   });
 
   it("parks a conversation once and drops it on dequeue", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     store.enqueueReview("r1", "c1", "4");
     store.enqueueReview("r1", "c1", "4");
     expect(store.manualQueue()).toHaveLength(1);
@@ -117,7 +129,7 @@ describe("quality store", () => {
 
   it("persists records and reads them back in a second store instance", () => {
     const file = tempFile();
-    const first = new QaQualityStore(file);
+    const first = openStore(file);
     first.rateFeedback(
       { conversationId: "c1", messageId: "4", userId: "u1" },
       {
@@ -142,7 +154,7 @@ describe("quality store", () => {
       targetId: "u2",
     });
 
-    const second = new QaQualityStore(file);
+    const second = openStore(file);
     const feedback = second.allFeedback()[0] as QaMessageFeedback;
     expect(feedback.reasons).toEqual(["missing_information"]);
     expect(feedback.comment).toBe("no facts");
@@ -152,32 +164,40 @@ describe("quality store", () => {
     expect(second.auditEvents()).toHaveLength(1);
   });
 
-  it("refuses to start on a file carrying an unusable row", () => {
+  it("refuses to start on a record carrying an unusable row", () => {
     const file = tempFile();
-    const store = new QaQualityStore(file);
+    const store = openStore(file);
     store.rateFeedback(
       { conversationId: "c1", messageId: "4", userId: "u1" },
       { rating: "positive" },
     );
-    const parsed = JSON.parse(readFileSync(file, "utf8")) as {
-      feedback: unknown[];
-    };
-    parsed.feedback.push({
-      id: "broken",
-      conversationId: "c1",
-      messageId: "4",
-      userId: "u9",
-      rating: "sideways",
-      createdAt: "2026-09-15T00:00:00.000Z",
-    });
-    writeFileSync(file, JSON.stringify(parsed), "utf8");
-    // Writes are atomic, so a malformed row means a hand-edited file: the
-    // console reports it instead of silently dropping a user's record.
+    store.close();
+    // Every write is validated, so an unusable record means a hand-edited or
+    // corrupted database: the console reports it instead of silently dropping
+    // a person's verdict.
+    const db = new DatabaseSync(file);
+    db.prepare(
+      "INSERT INTO quality_rows (kind, key, seq, json) VALUES (?, ?, ?, ?)",
+    ).run(
+      "feedback",
+      "broken",
+      99,
+      JSON.stringify({
+        id: "broken",
+        conversationId: "c1",
+        messageId: "4",
+        userId: "u9",
+        rating: "sideways",
+        createdAt: "2026-09-15T00:00:00.000Z",
+      }),
+    );
+    db.close();
+
     expect(() => new QaQualityStore(file)).toThrow(/rating must be one of/u);
   });
 
   it("bounds a before/after snapshot it cannot store", () => {
-    const store = new QaQualityStore(tempFile());
+    const store = openStore(tempFile());
     const event = store.appendAudit({
       actorId: "admin",
       action: "user.updated",

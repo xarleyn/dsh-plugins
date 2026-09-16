@@ -171,10 +171,17 @@ export class QaAccounts {
     const paths = resolveAccountsPaths(configuredPath, options.legacyFilePath);
     this.filePath = paths.databasePath;
     this.database = new QaAccountsDatabase(paths.databasePath);
-    // A deployment upgrading from the JSON store keeps its accounts: the file
-    // is imported, verified and renamed aside before anything else runs.
-    this.database.importLegacyFile(paths.legacyFilePath);
-    this.file = this.database.loadAll();
+    try {
+      // A deployment upgrading from the JSON store keeps its accounts: the
+      // file is imported, verified and renamed aside before anything else runs.
+      this.database.importLegacyFile(paths.legacyFilePath);
+      this.file = this.database.loadAll();
+    } catch (error) {
+      // A store that cannot start must not hold the database open: the caller
+      // may retry, and a held handle blocks cleaning up after the failure.
+      this.database.close();
+      throw error;
+    }
   }
 
   /** Close the underlying database; the store is unusable afterwards. */

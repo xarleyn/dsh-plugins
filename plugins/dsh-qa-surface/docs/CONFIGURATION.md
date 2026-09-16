@@ -580,8 +580,9 @@ Operators set the role with `qa-accounts add --role reviewer` or
 administrator.
 
 User feedback, reviewer verdicts, the manual review queue and the
-administrative audit trail live in `$DSH_HOME/qa-quality.json`, written
-atomically on every change and re-read when another process changes it. The
+administrative audit trail live in `$DSH_HOME/qa-quality.db` (a pre-0.8.0
+`qa-quality.json` beside it is imported on first use), one row per record,
+re-read when another process changes it. The
 file is separate from the capability policy on purpose: role configuration is
 something an operator may replace wholesale, while feedback and reviews are
 user data that must survive such a reset. Retention is bounded (most recent

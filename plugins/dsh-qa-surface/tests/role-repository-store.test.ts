@@ -190,9 +190,11 @@ describe("QaRoleRepository import of the pre-SQLite file", () => {
 
   it("refuses a file it cannot recognize and leaves it in place", () => {
     const { dir, file } = rig();
+    // Built before the broken file exists, so this checks the import itself
+    // rather than the sibling import the constructor performs.
+    const repository = openRepository(file);
     const legacy = path.join(dir, "qa-capability-policies.json");
     writeFileSync(legacy, '{"version":2}\n', "utf8");
-    const repository = openRepository(file);
 
     expect(() => repository.importLegacyFile(legacy)).toThrow(
       /refusing to import/u,
