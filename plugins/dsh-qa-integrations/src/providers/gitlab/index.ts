@@ -7,6 +7,7 @@ import type {
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
+import { accountName, objectOf } from "../shared/account.js";
 import {
   GITLAB_CAPABILITIES,
   GITLAB_CAPABILITY_INFO,
@@ -35,7 +36,6 @@ import {
   type GitlabCredential,
   type GitlabPage,
 } from "./transport.js";
-
 export {
   credentialFromPlaintext,
   credentialInstance,
@@ -48,14 +48,6 @@ export {
  * whitespace is refused before anything is sent upstream.
  */
 const TOKEN_SHAPE = /^[A-Za-z0-9_.-]{20,255}$/u;
-
-function accountName(data: Record<string, unknown>): string {
-  const name = typeof data["name"] === "string" ? data["name"].trim() : "";
-  const username =
-    typeof data["username"] === "string" ? data["username"].trim() : "";
-  if (name !== "" && username !== "") return `${name} (@${username})`;
-  return name !== "" ? name : username === "" ? "GitLab" : `@${username}`;
-}
 
 /** One answer shape for every list, so the model never loses the cursor. */
 function envelope(
@@ -87,12 +79,6 @@ function decodedPath(encoded: string): string {
   } catch {
     return encoded;
   }
-}
-
-function objectOf(data: unknown): Record<string, unknown> {
-  return typeof data === "object" && data !== null && !Array.isArray(data)
-    ? (data as Record<string, unknown>)
-    : { value: data ?? null };
 }
 
 /** GitLab provider: operator-configured instances over a personal access token. */
@@ -166,7 +152,7 @@ export class GitlabProvider implements IntegrationProvider {
     return {
       tenantId: instance.baseUrl,
       externalUserId: String(id),
-      displayName: accountName(data),
+      displayName: accountName(data, "GitLab"),
       capabilities:
         scopes === undefined ? allowed : intersectScopes(allowed, scopes),
     };
