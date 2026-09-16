@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-qa-browser": patch
+"@yadsh/dsh-qa-browser": minor
 ---
 
 Re-check DNS immediately before the browser dials a host.

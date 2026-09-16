@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-documents": patch
+"@yadsh/dsh-documents": minor
 ---
 
 Name the document retention effect after the plugin that owns it.
