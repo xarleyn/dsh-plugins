@@ -13,18 +13,22 @@ import type {
   BrowserPanelState,
 } from "./types.js";
 
-type PanelRemoteMethod =
-  | "panelState"
-  | "panelFrame"
-  | "panelTakeControl"
-  | "panelControlHeartbeat"
-  | "panelReleaseControl"
-  | "panelSelectTab"
-  | "panelNavigate"
-  | "panelPointer"
-  | "panelKey"
-  | "panelText"
-  | "panelScroll";
+/** Every panel method the Host decorates and the wire descriptors carry. */
+export const PANEL_REMOTE_METHODS = [
+  "panelState",
+  "panelFrame",
+  "panelTakeControl",
+  "panelControlHeartbeat",
+  "panelReleaseControl",
+  "panelSelectTab",
+  "panelNavigate",
+  "panelPointer",
+  "panelKey",
+  "panelText",
+  "panelScroll",
+] as const;
+
+export type PanelRemoteMethod = (typeof PANEL_REMOTE_METHODS)[number];
 
 const viewportSchema = z.strictObject({
   width: z.number().int().positive(),
