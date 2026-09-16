@@ -26,6 +26,11 @@ import {
   type TeamCityConfigInput,
   type TeamCityFlags,
 } from "./providers/teamcity/config.js";
+import {
+  resolveTestitConfig,
+  testitConfigSchema,
+  type TestitFlags,
+} from "./providers/testit/config.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -50,6 +55,7 @@ export interface QaIntegrationsConfig {
   readonly gitlab?: Partial<GitlabFlags>;
   readonly teamcity?: TeamCityConfigInput;
   readonly jira?: Partial<JiraFlags>;
+  readonly testit?: Partial<TestitFlags>;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -66,6 +72,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly gitlab: GitlabFlags;
   readonly teamcity: TeamCityFlags;
   readonly jira: JiraFlags;
+  readonly testit: TestitFlags;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -84,6 +91,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   gitlab: gitlabConfigSchema,
   teamcity: teamcityConfigSchema,
   jira: jiraConfigSchema,
+  testit: testitConfigSchema,
 });
 
 export function resolveConfig(
@@ -116,5 +124,6 @@ export function resolveConfig(
     gitlab: resolveGitlabConfig(input.gitlab),
     teamcity: resolveTeamCityConfig(input.teamcity),
     jira: resolveJiraConfig(input.jira),
+    testit: resolveTestitConfig(input.testit),
   });
 }

@@ -349,6 +349,7 @@
         "gitlab",
         "teamcity",
         "jira",
+        "testit",
         "credentials"
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",

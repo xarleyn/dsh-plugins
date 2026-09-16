@@ -4,6 +4,7 @@ import { CONFLUENCE_OPERATIONS } from "../src/providers/confluence/catalog.js";
 import { GITLAB_OPERATIONS } from "../src/providers/gitlab/catalog.js";
 import { JIRA_OPERATIONS } from "../src/providers/jira/catalog.js";
 import { TEAMCITY_OPERATIONS } from "../src/providers/teamcity/catalog.js";
+import { TESTIT_OPERATIONS } from "../src/providers/testit/catalog.js";
 import { createIntegrationTools } from "../src/tools.js";
 
 /** Minimal valid arguments per tool, so the sweep reaches the executor. */
@@ -103,6 +104,48 @@ const MINIMAL_ARGS: Readonly<Record<string, Record<string, unknown>>> = {
   jira_get_available_transitions: { issueKey: "PROJ-123" },
   jira_get_project: { projectKey: "PROJ" },
   jira_get_fields: {},
+  testit_connection_get: {},
+  testit_projects: {},
+  testit_project_get: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_sections: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_work_items: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_work_item_get: { workItemId: "22222222-2222-2222-2222-222222222222" },
+  testit_work_item_history: {
+    workItemId: "22222222-2222-2222-2222-222222222222",
+  },
+  testit_work_item_comments: {
+    workItemId: "22222222-2222-2222-2222-222222222222",
+  },
+  testit_work_item_test_results: {
+    workItemId: "22222222-2222-2222-2222-222222222222",
+  },
+  testit_test_plans: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_test_plan_get: { testPlanId: "33333333-3333-3333-3333-333333333333" },
+  testit_test_plan_summary: {
+    testPlanId: "33333333-3333-3333-3333-333333333333",
+  },
+  testit_test_runs: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_test_run_get: { testRunId: "44444444-4444-4444-4444-444444444444" },
+  testit_test_run_results: {
+    testRunId: "44444444-4444-4444-4444-444444444444",
+  },
+  testit_test_result_get: {
+    testResultId: "55555555-5555-5555-5555-555555555555",
+  },
+  testit_test_result_attachments: {
+    testResultId: "55555555-5555-5555-5555-555555555555",
+  },
+  testit_attachment_metadata: {
+    attachmentId: "66666666-6666-6666-6666-666666666666",
+  },
+  testit_attachment_text: {
+    attachmentId: "66666666-6666-6666-6666-666666666666",
+  },
+  testit_auto_tests: { projectId: "11111111-1111-1111-1111-111111111111" },
+  testit_auto_test_get: { autoTestId: "77777777-7777-7777-7777-777777777777" },
+  testit_configurations: {
+    projectId: "11111111-1111-1111-1111-111111111111",
+  },
 };
 
 function buildTools(options: { readonly owned: boolean }) {
@@ -175,7 +218,8 @@ describe("model-visible integration tools", () => {
           CONFLUENCE_OPERATIONS[operation] ??
           GITLAB_OPERATIONS[operation] ??
           TEAMCITY_OPERATIONS[operation] ??
-          JIRA_OPERATIONS[operation],
+          JIRA_OPERATIONS[operation] ??
+          TESTIT_OPERATIONS[operation],
         operation,
       ).toBeDefined();
     }
