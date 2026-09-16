@@ -55,4 +55,27 @@ describe("Markdown robustness", () => {
     expect(item?.querySelector(".dsh-qa-md-table")).toBeTruthy();
     expect(item?.querySelectorAll("td").length).toBe(2);
   });
+
+  // A closer search that rescans from every opener is quadratic per streaming
+  // frame: one delimiter-heavy line must parse fast and stay literal.
+  it("keeps a flood of delimiters linear and literal", () => {
+    // A bare asterisk line renders as a thematic break, so the runs sit
+    // inside a paragraph; a rescan-based search re-counts the tail of the
+    // 40k run at every position inside it.
+    const solid = render(<Markdown text={`x${"*".repeat(40_000)}`} />);
+    expect(solid.container.querySelector("em,strong,del")).toBeNull();
+    expect(solid.container.textContent).toBe(`x${"*".repeat(40_000)}`);
+
+    // Would-be openers that never close, one after another: each used to
+    // rescan the whole remaining line before degrading to literal text.
+    const flood = "*a ".repeat(13_334).trimEnd();
+    const openers = render(<Markdown text={flood} />);
+    expect(openers.container.querySelector("em,strong,del")).toBeNull();
+    expect(openers.container.textContent).toBe(flood);
+
+    // The audited size: a ~5000-asterisk run stays literal text.
+    const line = render(<Markdown text={`x${"*".repeat(5_000)}`} />);
+    expect(line.container.querySelector("em,strong,del")).toBeNull();
+    expect(line.container.textContent).toBe(`x${"*".repeat(5_000)}`);
+  });
 });
