@@ -5,21 +5,21 @@ import { describe, expect, it, vi } from "vitest";
 import { Markdown } from "../src/client/components/Markdown.js";
 
 /** The answer shape that prompted this renderer: MR review with C# diff. */
-const MR_REVIEW = `Ревью MR !4242: #PROJ-24859: поправка конструкторов сущностей DemoService
+const MR_REVIEW = `Ревью MR !4242: #PROJ-777: упрощение конструкторов сущностей демо-сервиса
 
 **MR:** [demo/example!4242](https://git.example.com/demo/example/-/merge_requests/4242)  
-**Автор:** Andrey ExampleAuthor (example.author)  
-**Ревьюер:** Oleg ExampleReviewer (example.reviewer) — *одобрил*
+**Автор:** Иван Примеров (i.example)  
+**Ревьюер:** Пётр Ревьюеров (r.example) — *одобрил*
 
 ---
 
 ## Суть изменений
 
-MR решает проблему формирования карты типов композитного сервиса DemoService (PROJ-24859).
+MR упрощает инициализацию карты типов демонстрационного сервиса (PROJ-777).
 
 #### 1. 🔵 Backend: EF-модели — \`protected\` → \`public\` конструкторы
 
-**7 файлов:**
+**2 файла:**
 
 - \`ExampleAssignment.cs\`
 - \`ExampleOrderState.cs\`
@@ -29,12 +29,12 @@ MR решает проблему формирования карты типов 
 \`\`\`csharp
 // Было
 protected ExampleOrderState() {
-    FromStateHistories = new HashSet<ExampleOrderStateHistory>();
+    History = new HashSet<ExampleOrderStateHistory>();
 }
 
 // Стало
 public ExampleOrderState() {
-    FromStateHistories = []; // C# 12 collection expressions
+    History = []; // C# 12 collection expressions
 }
 \`\`\`
 

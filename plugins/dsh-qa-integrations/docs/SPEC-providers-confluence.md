@@ -534,7 +534,7 @@ workspaceIntegration:
   provider: confluence
   site: company
   spaces:
-    - PROJ
+    - ENG
     - PLATFORM
 ```
 
