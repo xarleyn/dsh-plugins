@@ -7,7 +7,11 @@ import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccountsError } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
-import { qaToolDenial, qaToolPolicyPlan } from "./lockdown-policy.js";
+import {
+  qaCeilingDenial,
+  qaToolDenial,
+  qaToolPolicyPlan,
+} from "./lockdown-policy.js";
 import type { QaResolvedSessionPolicy } from "./access/service.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
@@ -84,7 +88,17 @@ export class QaPolicyAdmission {
    */
   private readonly attested = new Set<string>();
   private readonly workspaceAccess = new Map<string, UserWorkspaceAccess>();
+  /**
+   * Every name reachable anywhere in one QA conversation, keyed by session id.
+   *
+   * The chat's agent and the agents delegated from it share one entry —
+   * children inherit it when their session is created — because the ceiling is
+   * a property of the conversation, not of one scope. See
+   * {@link qaCeilingDenial} for why a scoped restriction cannot express it.
+   */
+  private readonly ceilings = new Map<string, ReadonlySet<string>>();
   private readonly disposeWorkspaceGuard: () => void;
+  private readonly disposeCeilingGuard: () => void;
 
   constructor(
     private readonly ctx: Context,
@@ -123,6 +137,18 @@ export class QaPolicyAdmission {
         access,
       );
     });
+    // The workspace guard above covers the chat's own agents; this one covers
+    // every agent of the conversation, delegated children included. They are
+    // composed from the preset rather than from the parent agent, so no scoped
+    // restriction reaches them and their preset `toolFilter` would otherwise be
+    // their whole boundary (see {@link qaCeilingDenial}).
+    this.disposeCeilingGuard = ctx.tools.guard((execution) => {
+      const session = execution.agent?.session;
+      if (session === undefined) return undefined;
+      const ceiling = this.ceilings.get(String(session.id));
+      if (ceiling === undefined) return undefined;
+      return qaCeilingDenial(ceiling, execution.name);
+    });
     ctx.on("session/created", (session) => {
       const parent = session.header.parentSession;
       if (parent === undefined) return;
@@ -130,10 +156,17 @@ export class QaPolicyAdmission {
       if (access !== undefined) {
         this.workspaceAccess.set(String(session.id), access);
       }
+      // A child inherits the conversation's ceiling, and a grandchild inherits
+      // it through the child, so one lookup answers for any depth.
+      const ceiling = this.ceilings.get(String(parent));
+      if (ceiling !== undefined) {
+        this.ceilings.set(String(session.id), ceiling);
+      }
     });
     ctx.on("agent/disposed", ({ agent }) => {
       this.appliedPolicies.delete(agent);
       this.workspaceAccess.delete(String(agent.session.id));
+      this.ceilings.delete(String(agent.session.id));
     });
   }
 
@@ -423,6 +456,24 @@ export class QaPolicyAdmission {
               : [],
           );
         });
+        // The conversation's ceiling, which also bounds the agents delegated
+        // from this chat. A subrole reaches its own tools and the ones a skill
+        // may grant it — never further — so an expert that names a tool in its
+        // preset filter still cannot hold what the role cannot grant. The
+        // session's own policy list rides along for the names the admission
+        // appends to it (the provenance reporter), which a role does not list.
+        this.ceilings.set(
+          sessionId,
+          new Set([
+            ...policy.allow,
+            ...(capability === undefined
+              ? [...this.principalScopedTools, ...this.knownDynamicToolNames()]
+              : [
+                  ...capability.policy.tools,
+                  ...capability.policy.grantableTools,
+                ]),
+          ]),
+        );
         // A role snapshot cannot change for this session, but a restarted Host
         // materializes a new Agent and therefore a fresh scoped loader.
         prior?.disposeSkillPolicy();
@@ -599,7 +650,9 @@ export class QaPolicyAdmission {
     this.appliedPolicies.clear();
     this.attested.clear();
     this.workspaceAccess.clear();
+    this.ceilings.clear();
     this.principalScopedTools.clear();
     this.disposeWorkspaceGuard();
+    this.disposeCeilingGuard();
   }
 }
