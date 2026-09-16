@@ -36,8 +36,9 @@ It does not parse assistant prose.
 ## Replay and persistence
 
 The completed implementation rebuilds collectors from persisted
-`tool/call`/`tool/result.meta` events and writes one materialized snapshot to
-the plugin-owned `$DSH_HOME/qa-sources.json` at `agent/turn-stopping`.
+`tool/call`/`tool/result.meta` events and writes one materialized snapshot per
+turn into the plugin-owned `$DSH_HOME/qa-sources/`, one shard file per chat, at
+`agent/turn-stopping`.
 
 Earlier releases declaration-merged `qa/sources`, registered it in a
 process-local `KNOWN_SESSION_EVENT_TYPES` set, and appended it to the Harness

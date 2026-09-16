@@ -9,7 +9,9 @@ and the default `sources.legacy.parseAssistantSourcesBlock` remains `false`.
 1. Keep the QA agent's existing read-only retrieval tools in
    `lockdown.toolPolicy.allow`.
 2. Leave `sources.collect.persistTurnEvent: true` so completed turns write a
-   replayable snapshot to `$DSH_HOME/qa-sources.json`.
+   replayable snapshot to `$DSH_HOME/qa-sources/` (one file per chat). A
+   pre-0.8.0 monolith at `$DSH_HOME/qa-sources.json` is split into shards on
+   first use and renamed to `qa-sources.json.migrated-<ISO>`.
 3. Remove prompt instructions that ask the assistant to manually write a
    bibliography. After QA attestation the plugin contributes its own note,
    which rides the conversation rather than the system prompt.

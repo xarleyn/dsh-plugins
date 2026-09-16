@@ -195,8 +195,8 @@ confined to the user's directory, and writes are never exempted.
 ## Structured sources
 
 The `sources` block controls provenance independently from Activity rendering.
-The defaults collect parent and subagent results, persist a turn snapshot in
-the plugin-owned `$DSH_HOME/qa-sources.json`, hide discovery-only candidates,
+The defaults collect parent and subagent results, persist a per-turn shard under
+the plugin-owned `$DSH_HOME/qa-sources/`, hide discovery-only candidates,
 group visible evidence by kind, and promote at most five substantive
 `web_search` results when no fetch occurs. URL tracking parameters and
 overlapping file ranges are normalized during deduplication.
