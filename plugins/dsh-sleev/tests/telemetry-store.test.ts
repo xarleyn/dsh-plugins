@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { GenerateOptions } from "@deepseek-ai/dsh-llm";
+import { fixedClock } from "@yadsh/dsh-test-kit";
 import { resolveConfig } from "../src/shared/config.js";
 import { CallTelemetryStore } from "../src/host/telemetry-store.js";
 
@@ -11,13 +12,13 @@ const request: GenerateOptions = {
 
 describe("call telemetry store", () => {
   it("records usage without request content and applies the history bound", () => {
-    let now = 100;
+    const now = fixedClock(100, 0);
     let id = 0;
     const logger = { debug: vi.fn(), info: vi.fn() };
     const store = new CallTelemetryStore(
       logger,
       resolveConfig({ maxRecentCalls: 1 }),
-      { now: () => now, createId: () => `call-${++id}` },
+      { now, createId: () => `call-${++id}` },
     );
 
     const first = store.begin(request, "one-shot");
@@ -26,11 +27,11 @@ describe("call telemetry store", () => {
       outputTokens: 2,
       cacheReadTokens: 5,
     });
-    now = 145;
+    now.set(145);
     first.finish({ kind: "success" });
 
     const second = store.begin(request, "one-shot");
-    now = 170;
+    now.set(170);
     second.finish({ kind: "aborted" });
 
     const recent = store.listRecent();

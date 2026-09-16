@@ -56,13 +56,7 @@ export function memoryRecordTableOf(): MemoryRecordTable {
 }
 
 /** Deterministic clock. */
-export function fixedClock(start = 1_700_000_000_000): () => number {
-  let value = start;
-  return () => {
-    value += 1_000;
-    return value;
-  };
-}
+export { fixedClock } from "@yadsh/dsh-test-kit";
 
 export interface RecordedLog {
   readonly events: { readonly level: string; readonly event: string }[];

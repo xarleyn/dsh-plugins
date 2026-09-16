@@ -22,12 +22,12 @@ import type {
   ToolExecution,
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 import type { ResolvedCasResultsConfig } from "../config.js";
 import { transformValue, type JsonValue } from "../transform/scan-value.js";
 import { CasCounters } from "../observability/counters.js";
 import type { CasStore } from "../cas/types.js";
-import type { PluginLoggerLike } from "../logging.js";
 import { isOwnToolName, resolveToolPolicy } from "./policies.js";
 
 export type CasPostExecuteListener = (

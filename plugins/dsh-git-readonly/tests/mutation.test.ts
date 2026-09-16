@@ -25,7 +25,7 @@ import type { GitContextResult } from "../src/tools/context.js";
 import { createGitHistoryTool } from "../src/tools/history.js";
 import { createGitShowTool } from "../src/tools/show.js";
 import type { GitShowResult } from "../src/tools/show.js";
-import { silentPluginLogger } from "../src/logging.js";
+import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
 import {
   createTempRepo,
   diffManifests,

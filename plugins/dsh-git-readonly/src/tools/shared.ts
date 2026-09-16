@@ -8,7 +8,7 @@ import { GitToolError } from "../errors.js";
 import type { ResolvedGitReadonlyConfig } from "../config.js";
 import type { GitRunner } from "../git/repo.js";
 import { runGit } from "../git/runner.js";
-import type { PluginLoggerLike } from "../logging.js";
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 export interface GitToolDeps {
   readonly config: ResolvedGitReadonlyConfig;
