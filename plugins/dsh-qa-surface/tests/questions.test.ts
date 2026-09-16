@@ -198,6 +198,38 @@ describe("QA question gate", () => {
     gate.dispose();
   });
 
+  it("folds a malformed wire payload into the refusal/skip semantics", async () => {
+    const { gate, ask } = gateFor({ interactive: true, attested: ["s1"] });
+    const pending = ask({
+      questions: [QUESTIONS[0], { id: "tone", question: "Каким тоном?" }],
+      agent: sessionAgent("s1"),
+    });
+    await Promise.resolve();
+    const [request] = gate.list("s1");
+    // A non-array payload is refused like a foreign id: the request stays.
+    expect(gate.answer("s1", request!.id, "answers" as unknown as [])).toBe(
+      false,
+    );
+    expect(gate.list("s1")).toHaveLength(1);
+    // A garbage array settles the form: unknown entries and non-string or
+    // non-offered selections degrade to skips, never to a crash.
+    expect(
+      gate.answer("s1", request!.id, [
+        null,
+        42,
+        { id: "target", selected: "В чат" },
+        { id: "tone", selected: ["Кратко"], custom: 7 },
+      ] as unknown as []),
+    ).toBe(true);
+    await expect(pending).resolves.toEqual({
+      answers: [
+        { id: "target", selected: [] },
+        { id: "tone", selected: [] },
+      ],
+    });
+    gate.dispose();
+  });
+
   it("closes the wait when the turn's signal aborts", async () => {
     const { gate, ask } = gateFor({ interactive: true, attested: ["s1"] });
     const controller = new AbortController();

@@ -226,6 +226,23 @@ describe("Host provenance lifecycle", () => {
     restoredHost.dispose();
   });
 
+  it("drops the durable snapshots of a disposed session", () => {
+    const store = new MemoryQaProvenanceSnapshotStore();
+    const session = fakeSession("root", readEvents("D:/repo/docs/guide.md"));
+    const world = harness([session.session]);
+    const host = new QaProvenanceHost(world.ctx, () => resolveConfig(), store);
+
+    world.emit("agent/turn-stopping", {
+      agent: { id: "root", session: session.session },
+      turn: 1,
+    });
+    expect(store.list("root")).toHaveLength(1);
+    // Disposal forgets the durable copy too: nothing will read it again.
+    world.forgetSession("root");
+    expect(store.list("root")).toEqual([]);
+    host.dispose();
+  });
+
   it("bubbles nested observable child sources to the root turn", () => {
     const root = fakeSession("root", [event("turn/start", { turn: 4 }, 0)]);
     const childA = fakeSession(

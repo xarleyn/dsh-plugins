@@ -416,6 +416,24 @@ describe("admin user management", () => {
       ),
     ).toMatchObject({ reason: "invalid-role" });
   });
+
+  it("refuses a wire role outside the role union and stores nothing", async () => {
+    const { service, admin, alice } = harness();
+    // The console sends a string over the wire; a hand-rolled request can
+    // name a role the permission tables do not know.
+    const garbage = "superadmin" as unknown as "user";
+    expect(
+      await refusal(() =>
+        service.updateUser(admin.token, alice.user.id, { role: garbage }),
+      ),
+    ).toMatchObject({ reason: "invalid-role" });
+    // The stored role is untouched, so every later permission check for the
+    // account keeps resolving instead of crashing on the unknown key.
+    const page = await service.users(admin.token, {}, undefined, undefined);
+    expect(page.items.find((row) => row.id === alice.user.id)?.role).toBe(
+      "user",
+    );
+  });
   it("subtracts a denied tool from both buckets and reports the denial", async () => {
     const { service, admin, alice, roles, accounts } = harness({
       // `git` is pinned by the deployment and `read` is granted by the role.
