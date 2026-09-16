@@ -17,8 +17,10 @@ The implemented foundation provides:
 - focused navigate, snapshot, click, type, fill, select, keyboard, hover,
   scroll, wait, tabs, viewport and history agent tools;
 - a native `browser_screenshot` result backed by durable DSH attachments;
-- a separate QA Surface panel client with tabs, URL/status, bounded on-demand
-  PNG frames, error states and non-focus-stealing activity reveal;
+- a separate QA Surface panel client with browser chrome — a tab strip with
+  open/close/select, back/forward/reload, an address field, a device row with
+  presets and a fit/scale control, a `⋯` menu, bounded on-demand PNG frames,
+  error states and non-focus-stealing activity reveal;
 - explicit same-tab human takeover with a Host-enforced lease, source-viewport
   pointer mapping, keyboard/paste, scrolling and agent/human arbitration;
 - authenticated panel remotes that ask QA Surface to authorize every session;
@@ -96,6 +98,26 @@ Human control is explicit and temporary. While the panel owns the lease,
 mutating agent Browser tools fail with `BROWSER_HUMAN_CONTROL_ACTIVE`, while
 snapshots and screenshots remain readable. Hiding or closing the panel releases
 the lease; a lost client expires automatically.
+
+The panel is a browser the operator can use, not just watch. A panel that does
+not hold the lease renders its chrome disabled — tabs as a roster, the address
+read-only — and can still copy the address or refresh the image. Taking the
+lease on a chat whose browser has not started yet starts it, because every
+control needs the lease and the lease needs a session. The device row resizes
+the emulated viewport under the same deployment bounds the agent's
+`browser_viewport` tool uses; clicks and context menus additionally require
+`capabilities.coordinateInput`, and the panel says so when a deployment has
+turned it off.
+
+Back and forward are drawn from the history the Host has watched this tab
+visit — every navigation it performed and every one it saw committed — because
+Chromium exposes no "is there an entry behind this page" question. The arrows
+are therefore honest about what the runtime knows, and a page that arrived
+through a redirect is recorded as a fresh entry rather than guessed at.
+
+The panel's own design — what each control calls, how the lease and the
+coordinate-input switch divide the chrome, how history depth is kept — is in
+[the panel chrome note](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-browser/docs/specs/browser-panel-chrome.md).
 
 For a containerized Harness, see the
 [Docker deployment guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-browser/docs/DOCKER.md).

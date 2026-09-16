@@ -10,6 +10,7 @@ import type {
   BrowserActionResult,
   BrowserControlState,
   BrowserPanelFrame,
+  BrowserPanelHistoryAction,
   BrowserPanelState,
 } from "./types.js";
 
@@ -26,6 +27,10 @@ export const PANEL_REMOTE_METHODS = [
   "panelKey",
   "panelText",
   "panelScroll",
+  "panelNewTab",
+  "panelCloseTab",
+  "panelHistory",
+  "panelViewport",
 ] as const;
 
 export type PanelRemoteMethod = (typeof PANEL_REMOTE_METHODS)[number];
@@ -66,6 +71,10 @@ const tabSchema = z.strictObject({
   status: z.enum(["loading", "ready", "failed", "closed"]),
   revision: z.number().int().nonnegative(),
   viewport: viewportSchema,
+  history: z.strictObject({
+    back: z.number().int().nonnegative(),
+    forward: z.number().int().nonnegative(),
+  }),
 });
 
 const stateSchema = z.strictObject({
@@ -75,6 +84,7 @@ const stateSchema = z.strictObject({
   humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),
   focusOnAutoReveal: z.boolean(),
+  coordinateInputEnabled: z.boolean(),
 });
 
 const frameSchema = z.strictObject({
@@ -251,6 +261,32 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
       deltaX: number,
       deltaY: number,
     ) => Promise<RemoteResult<BrowserActionResult>>;
+    "qaBrowser/panelNewTab": (
+      qaToken: string,
+      sessionId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<BrowserPanelState>>;
+    "qaBrowser/panelCloseTab": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+    ) => Promise<RemoteResult<BrowserPanelState>>;
+    "qaBrowser/panelHistory": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      action: BrowserPanelHistoryAction,
+    ) => Promise<RemoteResult<BrowserPanelState>>;
+    "qaBrowser/panelViewport": (
+      qaToken: string,
+      sessionId: string,
+      tabId: string,
+      clientId: string,
+      width: number,
+      height: number,
+    ) => Promise<RemoteResult<BrowserPanelState>>;
   }
 
   interface TypertRemoteNamespaceMap {
@@ -336,6 +372,46 @@ const qaBrowserRemote = {
       ],
       "@yadsh/dsh-qa-browser/types#BrowserActionResult",
       actionResultSchema,
+    ),
+    descriptor(
+      "panelNewTab",
+      controlParameters,
+      "@yadsh/dsh-qa-browser/types#BrowserPanelState",
+      stateSchema,
+    ),
+    descriptor(
+      "panelCloseTab",
+      tabControlParameters,
+      "@yadsh/dsh-qa-browser/types#BrowserPanelState",
+      stateSchema,
+    ),
+    descriptor(
+      "panelHistory",
+      [
+        ...tabControlParameters,
+        {
+          name: "action",
+          wire: "action",
+          source: "json",
+          codec: {
+            mode: "strict",
+            typeSymbol: "BrowserPanelHistoryAction",
+            schema: z.enum(["back", "forward", "reload"]),
+          },
+        },
+      ],
+      "@yadsh/dsh-qa-browser/types#BrowserPanelState",
+      stateSchema,
+    ),
+    descriptor(
+      "panelViewport",
+      [
+        ...tabControlParameters,
+        numberParameter("width"),
+        numberParameter("height"),
+      ],
+      "@yadsh/dsh-qa-browser/types#BrowserPanelState",
+      stateSchema,
     ),
   ],
 } satisfies TypertRemoteContribution;
