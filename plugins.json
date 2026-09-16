@@ -350,6 +350,7 @@
         "teamcity",
         "jira",
         "testit",
+        "weblate",
         "credentials"
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",

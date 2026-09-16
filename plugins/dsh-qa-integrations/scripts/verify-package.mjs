@@ -67,6 +67,13 @@ for (const file of [
   "lib/providers/testit/config.js",
   "lib/providers/testit/tools.js",
   "lib/providers/testit/attachments.js",
+  "lib/providers/weblate/index.js",
+  "lib/providers/weblate/catalog.js",
+  "lib/providers/weblate/operations.js",
+  "lib/providers/weblate/transport.js",
+  "lib/providers/weblate/config.js",
+  "lib/providers/weblate/query.js",
+  "lib/providers/weblate/tools.js",
   "cordis.patch.yml",
   "compatibility.json",
   "README.md",
@@ -98,6 +105,7 @@ assert.match(client, /"gitlab"/u);
 assert.match(client, /"teamcity"/u);
 assert.match(client, /"jira"/u);
 assert.match(client, /"testit"/u);
+assert.match(client, /"weblate"/u);
 // The Confluence site is operator configuration too: the connect form picks one
 // and asks for the account e-mail next to the secret, never for an address.
 assert.match(client, /Почта аккаунта Atlassian/u);
@@ -123,6 +131,13 @@ assert.match(client, /API-токен Test IT/u);
 assert.match(client, /Инсталляция Test IT/u);
 assert.match(client, /Оператор не настроил ни одной инсталляции Test IT/u);
 assert.doesNotMatch(client, /testit\.software|PrivateToken/u);
+// The Weblate card follows the instance rule as well: the connect form picks a
+// deployment the operator declared, asks for the API token alone, and points at
+// a project-scoped token as guidance rather than as a gate.
+assert.match(client, /API-токен Weblate/u);
+assert.match(client, /Инстанс Weblate/u);
+assert.match(client, /Оператор не настроил ни одного инстанса Weblate/u);
+assert.match(client, /ограничен одним проектом/u);
 
 // The feature-owned Plugins tab stays available without the loopback-only Host
 // settings directory. It may reuse the standard card shell inside its own list.
@@ -379,7 +394,7 @@ for (const file of [
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
     source,
-    /bitrix|confluence|gitlab|jira|teamcity|testit/iu,
+    /bitrix|confluence|gitlab|jira|teamcity|testit|weblate/iu,
     `${file} must stay provider-agnostic`,
   );
 }
@@ -922,6 +937,117 @@ for (const label of [
   "Читать версии страниц",
 ]) {
   assert.match(confluenceCapabilityCatalog, new RegExp(label, "u"));
+  assert.doesNotMatch(client, new RegExp(label, "u"));
+}
+
+// The Weblate provider is read-only over the documented localization API, and
+// its search grammar is composed from validated filters rather than accepted
+// from the model, which is what keeps a query string out of the tool surface.
+const weblateTools = await readFile(
+  new URL("src/providers/weblate/tools.ts", root),
+  "utf8",
+);
+for (const name of [
+  "weblate_connection_get",
+  "weblate_projects_list",
+  "weblate_project_get",
+  "weblate_project_statistics_get",
+  "weblate_components_list",
+  "weblate_component_get",
+  "weblate_component_statistics_get",
+  "weblate_translations_list",
+  "weblate_translation_get",
+  "weblate_translation_statistics_get",
+  "weblate_units_search",
+  "weblate_units_find",
+  "weblate_unit_get",
+  "weblate_unit_comments_list",
+  "weblate_unit_suggestions_list",
+  "weblate_failing_units_list",
+  "weblate_changes_list",
+  "weblate_screenshots_list",
+  "weblate_screenshot_get",
+]) {
+  assert.match(weblateTools, new RegExp(`name: "${name}"`, "u"));
+}
+for (const forbidden of [
+  "userId:",
+  "ownerUserId:",
+  "credentialId:",
+  "secretId:",
+  "accessToken:",
+  "refreshToken:",
+  "instanceId:",
+  "baseUrl:",
+  "serverUrl:",
+  "raw_query",
+  "raw_rest",
+  "upload",
+]) {
+  assert.doesNotMatch(weblateTools, new RegExp(forbidden, "u"));
+}
+
+const weblateCatalog = await readFile(
+  new URL("src/providers/weblate/catalog.ts", root),
+  "utf8",
+);
+const weblatePaths = [...weblateCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
+  (match) => match[1],
+);
+const weblateToolCount = [...weblateTools.matchAll(/operation: "[^"]+"/gu)]
+  .length;
+assert.equal(
+  weblatePaths.length,
+  weblateToolCount,
+  "every Weblate tool must name exactly one catalog operation",
+);
+// Localization writes and the repository, file and autotranslate endpoints stay
+// out until the confirmation framework exists.
+assert.doesNotMatch(weblateCatalog, /method:/u);
+assert.doesNotMatch(
+  weblateCatalog,
+  /\/(?:repository|file|autotranslate|addons|links|lock|announcements|backups|memory|metrics)/u,
+);
+for (const path of weblatePaths) {
+  assert.match(path, /^\//u, `${path} must be an absolute API path`);
+  assert.doesNotMatch(path, /POST|PUT|PATCH|DELETE/u, `${path} is not a read`);
+}
+const weblateTransport = await readFile(
+  new URL("src/providers/weblate/transport.ts", root),
+  "utf8",
+);
+assert.match(weblateTransport, /authorization: `Token \$\{token\}`/u);
+assert.doesNotMatch(weblateTransport, /searchParams\.set\("token"/u);
+// A hostile or misconfigured upstream must not be able to move a follow-up
+// request to another origin through the `next` link it answers with.
+assert.match(
+  weblateTransport,
+  /url\.origin !== new URL\(instance\.baseUrl\)\.origin/u,
+);
+const weblateQuery = await readFile(
+  new URL("src/providers/weblate/query.ts", root),
+  "utf8",
+);
+assert.match(weblateQuery, /is:\$\{state\}/u);
+assert.match(weblateQuery, /has:check/u);
+
+const weblateCapabilityCatalog = await readFile(
+  new URL("lib/providers/weblate/catalog.js", root),
+  "utf8",
+);
+for (const label of [
+  "Читать проекты",
+  "Читать компоненты",
+  "Читать переводы",
+  "Читать строки",
+  "Читать строки с ошибками проверок",
+  "Читать комментарии",
+  "Читать предложения перевода",
+  "Читать историю изменений",
+  "Читать статистику",
+  "Читать скриншоты",
+]) {
+  assert.match(weblateCapabilityCatalog, new RegExp(label, "u"));
   assert.doesNotMatch(client, new RegExp(label, "u"));
 }
 

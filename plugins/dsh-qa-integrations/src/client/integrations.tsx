@@ -5,13 +5,15 @@ import { createGitlabCard, type GitlabRemote } from "./gitlab.js";
 import { createJiraCard, type JiraRemote } from "./jira.js";
 import { createTeamcityCard, type TeamcityRemote } from "./teamcity.js";
 import { createTestitCard, type TestitRemote } from "./testit.js";
+import { createWeblateCard, type WeblateRemote } from "./weblate.js";
 
 export type IntegrationsClientRemote = IntegrationsRemote &
   ConfluenceRemote &
   GitlabRemote &
   TeamcityRemote &
   JiraRemote &
-  TestitRemote;
+  TestitRemote &
+  WeblateRemote;
 
 /** What every mount of the provider cards needs. */
 export interface ProviderCardsProps {
@@ -40,6 +42,7 @@ export function createProviderCards(remote: IntegrationsClientRemote) {
   const TeamcityCard = createTeamcityCard(remote);
   const JiraCard = createJiraCard(remote);
   const TestitCard = createTestitCard(remote);
+  const WeblateCard = createWeblateCard(remote);
   return function ProviderCards({ token, providers }: ProviderCardsProps) {
     return (
       <>
@@ -51,6 +54,7 @@ export function createProviderCards(remote: IntegrationsClientRemote) {
         {providers.includes("teamcity") ? <TeamcityCard token={token} /> : null}
         {providers.includes("jira") ? <JiraCard token={token} /> : null}
         {providers.includes("testit") ? <TestitCard token={token} /> : null}
+        {providers.includes("weblate") ? <WeblateCard token={token} /> : null}
       </>
     );
   };

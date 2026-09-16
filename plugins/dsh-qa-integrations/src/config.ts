@@ -31,6 +31,11 @@ import {
   testitConfigSchema,
   type TestitFlags,
 } from "./providers/testit/config.js";
+import {
+  resolveWeblateConfig,
+  weblateConfigSchema,
+  type WeblateFlags,
+} from "./providers/weblate/config.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -56,6 +61,7 @@ export interface QaIntegrationsConfig {
   readonly teamcity?: TeamCityConfigInput;
   readonly jira?: Partial<JiraFlags>;
   readonly testit?: Partial<TestitFlags>;
+  readonly weblate?: Partial<WeblateFlags>;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -73,6 +79,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly teamcity: TeamCityFlags;
   readonly jira: JiraFlags;
   readonly testit: TestitFlags;
+  readonly weblate: WeblateFlags;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -92,6 +99,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   teamcity: teamcityConfigSchema,
   jira: jiraConfigSchema,
   testit: testitConfigSchema,
+  weblate: weblateConfigSchema,
 });
 
 export function resolveConfig(
@@ -125,5 +133,6 @@ export function resolveConfig(
     teamcity: resolveTeamCityConfig(input.teamcity),
     jira: resolveJiraConfig(input.jira),
     testit: resolveTestitConfig(input.testit),
+    weblate: resolveWeblateConfig(input.weblate),
   });
 }
