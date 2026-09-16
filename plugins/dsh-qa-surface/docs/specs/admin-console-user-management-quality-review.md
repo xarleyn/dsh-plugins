@@ -468,7 +468,7 @@ Conversation отображается максимально близко к о�
 ├─────────────────────────────────────────┬────────────────────┤
 │                                         │ Review             │
 │ User                                    │                    │
-│ Find tickets related to PROJ-123         │ Status             │
+│ Find tickets related to PROJ-123        │ Status             │
 │                                         │ Needs review       │
 │ Assistant                               │                    │
 │ I found...                              │ Issues             │

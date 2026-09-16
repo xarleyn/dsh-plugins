@@ -6,6 +6,11 @@ import {
   type Bitrix24Flags,
 } from "./providers/bitrix24/config.js";
 import {
+  confluenceConfigSchema,
+  resolveConfluenceConfig,
+  type ConfluenceFlags,
+} from "./providers/confluence/config.js";
+import {
   gitlabConfigSchema,
   resolveGitlabConfig,
   type GitlabFlags,
@@ -41,6 +46,7 @@ export interface QaIntegrationsConfig {
   /** Host allowlist for providers that dial an operator-approved domain. */
   readonly allowedPortalSuffixes?: string[];
   readonly bitrix24?: Partial<Bitrix24Flags>;
+  readonly confluence?: Partial<ConfluenceFlags>;
   readonly gitlab?: Partial<GitlabFlags>;
   readonly teamcity?: TeamCityConfigInput;
   readonly jira?: Partial<JiraFlags>;
@@ -56,6 +62,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly maxResponseBytes: number;
   readonly allowedPortalSuffixes: readonly string[];
   readonly bitrix24: Bitrix24Flags;
+  readonly confluence: ConfluenceFlags;
   readonly gitlab: GitlabFlags;
   readonly teamcity: TeamCityFlags;
   readonly jira: JiraFlags;
@@ -73,6 +80,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
     .array(z.string())
     .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"]),
   bitrix24: bitrix24ConfigSchema,
+  confluence: confluenceConfigSchema,
   gitlab: gitlabConfigSchema,
   teamcity: teamcityConfigSchema,
   jira: jiraConfigSchema,
@@ -104,6 +112,7 @@ export function resolveConfig(
     maxResponseBytes: input.maxResponseBytes ?? 2_000_000,
     allowedPortalSuffixes: Object.freeze(suffixes),
     bitrix24: resolveBitrix24Config(input.bitrix24),
+    confluence: resolveConfluenceConfig(input.confluence),
     gitlab: resolveGitlabConfig(input.gitlab),
     teamcity: resolveTeamCityConfig(input.teamcity),
     jira: resolveJiraConfig(input.jira),

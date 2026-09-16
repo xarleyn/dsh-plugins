@@ -6,6 +6,10 @@ import {
   BITRIX24_TOOL_NAMES,
 } from "./providers/bitrix24/tools.js";
 import {
+  createConfluenceTools,
+  CONFLUENCE_TOOL_NAMES,
+} from "./providers/confluence/tools.js";
+import {
   createGitlabTools,
   GITLAB_TOOL_NAMES,
 } from "./providers/gitlab/tools.js";
@@ -29,6 +33,7 @@ export interface IntegrationToolOptions {
  */
 export const INTEGRATION_TOOL_NAMES = [
   ...BITRIX24_TOOL_NAMES,
+  ...CONFLUENCE_TOOL_NAMES,
   ...GITLAB_TOOL_NAMES,
   ...TEAMCITY_TOOL_NAMES,
   ...JIRA_TOOL_NAMES,
@@ -40,6 +45,7 @@ export function createIntegrationTools(
 ): readonly ToolDefinition[] {
   return [
     ...createBitrix24Tools(options),
+    ...createConfluenceTools(options),
     ...createGitlabTools(options),
     ...createTeamcityTools(options),
     ...createJiraTools(options),
