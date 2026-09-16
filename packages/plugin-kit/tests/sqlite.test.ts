@@ -3,12 +3,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  QaSqliteDatabase,
-  QaSqliteStoreError,
-  type QaSqliteMigration,
-} from "../src/storage/sqlite.js";
+  SqliteDatabase,
+  SqliteStoreError,
+  type SqliteMigration,
+} from "../src/sqlite.js";
 
-const MIGRATIONS: readonly QaSqliteMigration[] = [
+const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
     up: "CREATE TABLE notes (id TEXT PRIMARY KEY, body TEXT NOT NULL)",
@@ -23,14 +23,14 @@ function tempFile(name = "store.db"): string {
   return path.join(mkdtempSync(path.join(tmpdir(), "qa-sqlite-")), name);
 }
 
-describe("QaSqliteDatabase", () => {
+describe("SqliteDatabase", () => {
   it("creates its directory, applies every migration and records the version", () => {
     const file = path.join(
       mkdtempSync(path.join(tmpdir(), "qa-sqlite-")),
       "nested",
       "store.db",
     );
-    const store = new QaSqliteDatabase(file, MIGRATIONS);
+    const store = new SqliteDatabase(file, MIGRATIONS);
 
     expect(store.schemaVersion).toBe(2);
     store.db
@@ -46,18 +46,18 @@ describe("QaSqliteDatabase", () => {
 
   it("does not re-run a migration that already landed", () => {
     const file = tempFile();
-    new QaSqliteDatabase(file, MIGRATIONS).close();
+    new SqliteDatabase(file, MIGRATIONS).close();
     // A plain CREATE TABLE would throw on the second open, so a clean reopen
     // is the assertion that no step ran twice.
-    const reopened = new QaSqliteDatabase(file, MIGRATIONS);
+    const reopened = new SqliteDatabase(file, MIGRATIONS);
     expect(reopened.schemaVersion).toBe(2);
     reopened.close();
   });
 
   it("applies only the migrations a database is missing", () => {
     const file = tempFile();
-    new QaSqliteDatabase(file, [MIGRATIONS[0] as QaSqliteMigration]).close();
-    const extended = new QaSqliteDatabase(file, MIGRATIONS);
+    new SqliteDatabase(file, [MIGRATIONS[0] as SqliteMigration]).close();
+    const extended = new SqliteDatabase(file, MIGRATIONS);
     expect(extended.schemaVersion).toBe(2);
     // The step that ran is the new one; the old one would have thrown.
     extended.db
@@ -68,28 +68,26 @@ describe("QaSqliteDatabase", () => {
 
   it("refuses a database written by a newer schema", () => {
     const file = tempFile();
-    const newer = new QaSqliteDatabase(file, [
+    const newer = new SqliteDatabase(file, [
       ...MIGRATIONS,
       { version: 3, up: "CREATE TABLE later (id TEXT PRIMARY KEY)" },
     ]);
     newer.close();
 
-    expect(() => new QaSqliteDatabase(file, MIGRATIONS)).toThrow(
-      /newer schema/u,
-    );
-    expect(() => new QaSqliteDatabase(file, MIGRATIONS)).toThrow(
-      QaSqliteStoreError,
+    expect(() => new SqliteDatabase(file, MIGRATIONS)).toThrow(/newer schema/u);
+    expect(() => new SqliteDatabase(file, MIGRATIONS)).toThrow(
+      SqliteStoreError,
     );
   });
 
   it("reports a version of zero for a database with no migrations", () => {
-    const store = new QaSqliteDatabase(tempFile(), []);
+    const store = new SqliteDatabase(tempFile(), []);
     expect(store.schemaVersion).toBe(0);
     store.close();
   });
 
   it("commits a transaction and rolls one back", () => {
-    const store = new QaSqliteDatabase(tempFile(), MIGRATIONS);
+    const store = new SqliteDatabase(tempFile(), MIGRATIONS);
     const insert = store.db.prepare(
       "INSERT INTO notes (id, body) VALUES (?, ?)",
     );
@@ -109,7 +107,7 @@ describe("QaSqliteDatabase", () => {
   });
 
   it("joins a nested transaction to the one in flight", () => {
-    const store = new QaSqliteDatabase(tempFile(), MIGRATIONS);
+    const store = new SqliteDatabase(tempFile(), MIGRATIONS);
     const insert = store.db.prepare(
       "INSERT INTO notes (id, body) VALUES (?, ?)",
     );
@@ -134,7 +132,7 @@ describe("QaSqliteDatabase", () => {
   });
 
   it("runs in WAL mode so a second process can read it", () => {
-    const store = new QaSqliteDatabase(tempFile(), MIGRATIONS);
+    const store = new SqliteDatabase(tempFile(), MIGRATIONS);
     const mode = store.db.prepare("PRAGMA journal_mode").get() as {
       journal_mode: string;
     };
@@ -144,14 +142,14 @@ describe("QaSqliteDatabase", () => {
 
   it("keeps the database readable across a reopen", () => {
     const file = tempFile();
-    const first = new QaSqliteDatabase(file, MIGRATIONS);
+    const first = new SqliteDatabase(file, MIGRATIONS);
     first.db
       .prepare("INSERT INTO notes (id, body) VALUES (?, ?)")
       .run("a", "b");
     first.setMeta("secret", "s3cret");
     first.close();
 
-    const second = new QaSqliteDatabase(file, MIGRATIONS);
+    const second = new SqliteDatabase(file, MIGRATIONS);
     expect(second.meta("secret")).toBe("s3cret");
     expect(readFileSync(file).length).toBeGreaterThan(0);
     second.close();
@@ -159,7 +157,7 @@ describe("QaSqliteDatabase", () => {
   });
 
   it("refuses to work through a closed database", () => {
-    const store = new QaSqliteDatabase(tempFile(), MIGRATIONS);
+    const store = new SqliteDatabase(tempFile(), MIGRATIONS);
     store.close();
     expect(() => store.meta("schema_version")).toThrow(/closed/u);
     expect(() => store.transaction(() => undefined)).toThrow(/closed/u);

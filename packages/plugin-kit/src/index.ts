@@ -1,12 +1,19 @@
 /**
  * DSH Plugin Kit — shared runtime helpers for DeepSeek Harness plugins.
  *
- * This private package provides small, focused development utilities:
+ * This package provides small, focused development utilities:
  * - a lightweight console logger for tests and local scaffolds
  * - configuration validation
  * - compatibility checks
  * - safe feature detection
+ * - SQLite plumbing for stores that outgrow a JSON document
  */
+
+export {
+  SqliteDatabase,
+  SqliteStoreError,
+  type SqliteMigration,
+} from "./sqlite.js";
 
 // Minimal console interface to avoid @types/node dependency
 interface ConsoleLike {
