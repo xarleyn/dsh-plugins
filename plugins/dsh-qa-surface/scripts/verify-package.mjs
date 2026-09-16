@@ -34,6 +34,7 @@ const required = [
   "lib/client/settings-extensions/index.js",
   "lib/types/client/settings-extensions/index.d.ts",
   "lib/types/client/settings-extensions/contract.d.ts",
+  "lib/types/client/settings-extensions/user-session.d.ts",
   "scripts/repair-session-events.mjs",
   "cordis.patch.yml",
   "compatibility.json",

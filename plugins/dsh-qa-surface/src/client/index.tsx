@@ -84,6 +84,7 @@ import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 import { QaSurfacePanelRegistry } from "./panels/registry.js";
 import { QaUserSettingsSectionRegistry } from "./settings-extensions/index.js";
+import { QaUserSessionMirror } from "./settings-extensions/user-session.js";
 import type {} from "./panels/contract.js";
 
 declare module "@deepseek-ai/cordis" {
@@ -367,6 +368,10 @@ export const inject = [
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const panels = new QaSurfacePanelRegistry();
   const settingsSections = new QaUserSettingsSectionRegistry();
+  // Cards that mount outside the QA overlay (the host's plugin settings) read
+  // the signed-in account through this service; the overlay's own controllers
+  // stay the authority and attach to it below.
+  const userSession = new QaUserSessionMirror();
   ctx.effect(() => {
     const removeService = ctx.provide("qaSurfacePanels", panels);
     return () => {
@@ -384,6 +389,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       void removeService();
     };
   }, "dsh-qa-surface: user settings extension service");
+  ctx.effect(() => {
+    const removeService = ctx.provide("qaUserSession", userSession);
+    return () => {
+      userSession.dispose();
+      void removeService();
+    };
+  }, "dsh-qa-surface: user session service");
   const remote = ctx.remote as QaClientRemote;
   const disposeRemote = await remote.$mount(qaSurfaceRemote);
   await ctx.inject(
@@ -543,6 +555,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           ).forgetChat(sessionId);
         },
       });
+      // Publish the account this controller tracks to the extension service, so
+      // a card mounted outside the overlay sees the same session the pages do.
+      userSession.attach(accounts);
       const route = new QaRouteController();
       // One binding for both readers: the surface projects it into the page's
       // configuration, the settings card edits the same namespace through it.
