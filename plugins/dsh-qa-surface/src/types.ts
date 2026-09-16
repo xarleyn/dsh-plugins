@@ -525,6 +525,16 @@ export interface QaSkillRemoval {
 
 export interface QaSourcesConfig {
   readonly enabled?: boolean;
+  /**
+   * How much durable provenance the deployment keeps. Every bound counts
+   * turns, shards or days, and zero keeps everything for that bound.
+   */
+  readonly retention?: {
+    readonly maxTurnsPerSession?: number;
+    readonly maxSessions?: number;
+    readonly maxAgeDays?: number;
+    readonly sweepIntervalMinutes?: number;
+  };
   readonly collect?: {
     readonly parentAgent?: boolean;
     readonly subagents?: boolean;
@@ -851,6 +861,12 @@ export interface ResolvedQaSurfaceConfig {
   };
   readonly sources: {
     readonly enabled: boolean;
+    readonly retention: {
+      readonly maxTurnsPerSession: number;
+      readonly maxSessions: number;
+      readonly maxAgeDays: number;
+      readonly sweepIntervalMinutes: number;
+    };
     readonly collect: {
       readonly parentAgent: boolean;
       readonly subagents: boolean;

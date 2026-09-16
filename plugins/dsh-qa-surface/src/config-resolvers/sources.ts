@@ -1,3 +1,4 @@
+import { QA_PROVENANCE_RETENTION_LIMITS } from "../provenance/retention.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";
@@ -18,6 +19,27 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
   const maxMarkdownRenderBytes =
     input.sources?.filePreview?.maxMarkdownRenderBytes ??
     DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.maxMarkdownRenderBytes;
+  const retention = {
+    maxTurnsPerSession:
+      input.sources?.retention?.maxTurnsPerSession ??
+      DEFAULT_QA_SURFACE_CONFIG.sources.retention.maxTurnsPerSession,
+    maxSessions:
+      input.sources?.retention?.maxSessions ??
+      DEFAULT_QA_SURFACE_CONFIG.sources.retention.maxSessions,
+    maxAgeDays:
+      input.sources?.retention?.maxAgeDays ??
+      DEFAULT_QA_SURFACE_CONFIG.sources.retention.maxAgeDays,
+    sweepIntervalMinutes:
+      input.sources?.retention?.sweepIntervalMinutes ??
+      DEFAULT_QA_SURFACE_CONFIG.sources.retention.sweepIntervalMinutes,
+  };
+  for (const [key, value] of Object.entries(retention)) {
+    const limits =
+      QA_PROVENANCE_RETENTION_LIMITS[
+        key as keyof typeof QA_PROVENANCE_RETENTION_LIMITS
+      ];
+    assertIntInRange(`sources.retention.${key}`, value, limits.min, limits.max);
+  }
   assertIntInRange(
     "sources.display.maxInitiallyVisiblePerGroup",
     maxInitiallyVisiblePerGroup,
@@ -45,6 +67,7 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
   return Object.freeze({
     enabled:
       input.sources?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.sources.enabled,
+    retention: Object.freeze(retention),
     collect: Object.freeze({
       parentAgent:
         input.sources?.collect?.parentAgent ??
