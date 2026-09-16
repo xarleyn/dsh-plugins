@@ -169,7 +169,13 @@ const hostRuntime = `${host}\n${provenanceHost}\n${provenanceStore}`;
 assert.match(host, /webServer/u);
 assert.doesNotMatch(hostRuntime, /KNOWN_SESSION_EVENT_TYPES/u);
 assert.doesNotMatch(hostRuntime, /\.append\(["']qa\/sources/u);
-assert.match(hostRuntime, /qa-sources\.json/u);
+// Durable provenance is plugin-owned and sharded one file per chat, so a turn
+// rewrites its own chat's history and nothing else. Empty completed turns are
+// stored as turn numbers, and every shard is bounded.
+assert.match(provenanceStore, /qa-sources/u);
+assert.match(provenanceStore, /emptyTurns/u);
+assert.match(provenanceStore, /maxTurnsPerSession/u);
+assert.match(provenanceStore, /refusing to overwrite/u);
 assert.match(`${hostRoute}\n${navigationMarker}`, /__dsh_qa_route/u);
 assert.doesNotMatch(`${host}\n${hostRoute}`, /registerFallback/u);
 assert.match(admission, /permissionPresets\.set/u);
