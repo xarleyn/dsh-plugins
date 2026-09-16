@@ -52,3 +52,10 @@ export async function createTempFixture(
     },
   };
 }
+
+export { fixedClock } from "./clock.js";
+export type { FixedClock } from "./clock.js";
+export { memoryTable } from "./memory-table.js";
+export type { MemoryTable } from "./memory-table.js";
+export { listenerCollector } from "./listener-collector.js";
+export type { ListenerCollector } from "./listener-collector.js";
