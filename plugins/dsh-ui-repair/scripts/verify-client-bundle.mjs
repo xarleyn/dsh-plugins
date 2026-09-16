@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
+import { verifyPluginCardContract } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
 
 const client = await readFile(
   new URL("../lib/client.js", import.meta.url),

@@ -1,26 +1,16 @@
-import assert from "node:assert/strict";
-import { access, readFile } from "node:fs/promises";
+/**
+ * Package gate for @yadsh/dsh-l10n-overrides.
+ *
+ * Validates the client-surface manifest and the packaged files. The shared
+ * checks come from @yadsh/dsh-plugin-scripts/run-verify-package.
+ */
+import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
 
-const packageJson = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
-);
-
-for (const exportPath of [".", "./client", "./types", "./package.json"]) {
-  assert.ok(
-    Object.hasOwn(packageJson.exports, exportPath),
-    `package export is missing: ${exportPath}`,
-  );
-}
-
-assert.equal(packageJson.dsh?.client?.platform, "web");
-assert.deepEqual(packageJson.dsh?.client?.inject, [
-  "@deepseek-ai/dsh-client-locale",
-]);
-
-for (const publishedFile of ["cordis.patch.yml", "README.md", "LICENSE"]) {
-  assert.ok(
-    packageJson.files.includes(publishedFile),
-    `published file is missing from package.json: ${publishedFile}`,
-  );
-  await access(new URL(`../${publishedFile}`, import.meta.url));
-}
+await runVerifyPackage({
+  packageRoot: new URL("../", import.meta.url),
+  packageName: "@yadsh/dsh-l10n-overrides",
+  exports: [".", "./client", "./types", "./package.json"],
+  client: { platform: "web", injectEquals: ["@deepseek-ai/dsh-client-locale"] },
+  files: ["cordis.patch.yml", "README.md", "LICENSE"],
+  requiredFiles: ["cordis.patch.yml", "README.md", "LICENSE"],
+});
