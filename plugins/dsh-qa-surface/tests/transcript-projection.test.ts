@@ -382,6 +382,71 @@ describe("transcript projection", () => {
     });
   });
 
+  it("keeps the durable log position on the answer it emits", () => {
+    // A rating is filed under the log position of the answer, so an answer that
+    // reaches the browser without it can never be rated — and nothing
+    // downstream can tell that the rating was dropped. Intermediate assistant
+    // text stays inside the work group and is not rated at all.
+    const messages = projectTranscript(
+      snapshot(
+        legacy({
+          nodes: [
+            {
+              kind: "user",
+              seq: 1,
+              time: 1_000,
+              source: {},
+              content: [{ type: "text", text: "Inspect it" }],
+            },
+            {
+              kind: "assistant",
+              seq: 2,
+              time: 1_500,
+              turn: 1,
+              step: 1,
+              blocks: [
+                { kind: "text", text: "I'll inspect the repository." },
+                {
+                  kind: "tool-call",
+                  callId: "call-1",
+                  name: "bash",
+                  argsRaw: '{"command":"rg TODO"}',
+                },
+              ],
+            },
+            {
+              kind: "tool-result",
+              seq: 3,
+              time: 4_000,
+              callId: "call-1",
+              call: { name: "bash", argsRaw: '{"command":"rg TODO"}' },
+              callTime: 1_700,
+              content: [{ type: "text", text: "src/a.ts: TODO" }],
+              isError: false,
+              subCalls: [],
+            },
+            {
+              kind: "assistant",
+              seq: 4,
+              time: 6_400,
+              turn: 1,
+              step: 2,
+              blocks: [{ kind: "text", text: "Found one TODO." }],
+            },
+          ] as ConversationNode[],
+          turnEnds: new Map([[1, 5]]),
+        }),
+      ),
+      { showToolActivity: true },
+    );
+
+    expect(
+      messages
+        .filter((message) => message.role === "assistant")
+        .map((message) => ({ text: message.text, seq: message.seq })),
+    ).toEqual([{ text: "Found one TODO.", seq: 4 }]);
+  });
+
   it("derives partial stats when the step start is missing and none without timing", () => {
     const [noFirstToken] = projectTranscript(
       snapshot(

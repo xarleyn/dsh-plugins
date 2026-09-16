@@ -393,6 +393,7 @@ function emitTurn(
           text: message.text,
           status: message.status,
           turn: turn.turn,
+          ...(message.seq === undefined ? {} : { seq: message.seq }),
           ...(message.timestamp === undefined
             ? {}
             : { timestamp: message.timestamp }),
@@ -411,6 +412,9 @@ function emitTurn(
         text: finalText.text,
         status: finalText.status,
         turn: turn.turn,
+        // The durable log position is what a rating is filed under: an answer
+        // that reaches the browser without it cannot be rated at all.
+        ...(finalText.seq === undefined ? {} : { seq: finalText.seq }),
         ...(finalText.timestamp === undefined
           ? {}
           : { timestamp: finalText.timestamp }),

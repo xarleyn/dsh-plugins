@@ -458,4 +458,60 @@ describe("QA message", () => {
     expect(window.localStorage.getItem(`${chatB}:ratings`)).toBeNull();
     second.unmount();
   });
+
+  it("sends a rating under the durable log position of the answer", () => {
+    window.localStorage.clear();
+    const onRateFeedback = vi.fn();
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:df34a6e6",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+          seq: 21,
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey="dsh-qa-surface.session:v1:/qa:chat:session-a"
+        onRateFeedback={onRateFeedback}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Нравится" }));
+    expect(onRateFeedback).toHaveBeenCalledWith({
+      messageId: 21,
+      rating: "positive",
+    });
+  });
+
+  it("reports a rating it cannot file instead of dropping it quietly", () => {
+    window.localStorage.clear();
+    const onRateFeedback = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:no-position",
+          role: "assistant",
+          text: "Answer",
+          status: "committed",
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        stateKey="dsh-qa-surface.session:v1:/qa:chat:session-a"
+        onRateFeedback={onRateFeedback}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Нравится" }));
+    expect(onRateFeedback).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("no durable log position"),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Нравится" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+    warn.mockRestore();
+  });
 });
