@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { resolveQaBrowserConfig } from "../src/config.js";
 import { QaBrowserError } from "../src/errors.js";
@@ -26,6 +26,10 @@ class FakePage implements BrowserPageHandle {
   activeNavigations = 0;
   maxActiveNavigations = 0;
   readonly navigations: string[] = [];
+  readonly viewports: BrowserViewport[] = [];
+  /** A browser-like history: what the tab visited, and where it stands now. */
+  readonly historyEntries: string[] = ["about:blank"];
+  historyIndex = 0;
   readonly pointerActions: Array<{
     readonly action: "move" | "click" | "down" | "up";
     readonly x: number;
@@ -54,9 +58,24 @@ class FakePage implements BrowserPageHandle {
     await Promise.resolve();
     this.currentUrl = request.url;
     this.currentTitle = new URL(request.url).hostname;
+    this.recordEntry(request.url);
     this.activeNavigations -= 1;
     for (const listener of this.changed) listener();
     return { url: this.currentUrl, title: this.currentTitle };
+  }
+
+  /** A page that moved without anyone asking: a link, a form post, a redirect. */
+  followLink(url: string): void {
+    this.currentUrl = url;
+    this.currentTitle = new URL(url).hostname;
+    this.recordEntry(url);
+    for (const listener of this.changed) listener();
+  }
+
+  private recordEntry(url: string): void {
+    this.historyEntries.splice(this.historyIndex + 1);
+    this.historyEntries.push(url);
+    this.historyIndex = this.historyEntries.length - 1;
   }
 
   async snapshot(_mode: BrowserSnapshotMode) {
@@ -124,11 +143,25 @@ class FakePage implements BrowserPageHandle {
   ): Promise<void> {}
 
   async history(action: "back" | "forward" | "reload") {
+    if (action === "back" && this.historyIndex > 0) {
+      this.historyIndex -= 1;
+      this.currentUrl =
+        this.historyEntries[this.historyIndex] ?? this.currentUrl;
+    } else if (
+      action === "forward" &&
+      this.historyIndex < this.historyEntries.length - 1
+    ) {
+      this.historyIndex += 1;
+      this.currentUrl =
+        this.historyEntries[this.historyIndex] ?? this.currentUrl;
+    }
     this.currentTitle = action;
     return { url: this.currentUrl, title: this.currentTitle };
   }
 
-  async setViewport(_viewport: BrowserViewport): Promise<void> {}
+  async setViewport(viewport: BrowserViewport): Promise<void> {
+    this.viewports.push(viewport);
+  }
 
   async screenshot(): Promise<Buffer> {
     return Buffer.from("fake-png");
@@ -391,6 +424,120 @@ describe("QaBrowserSessionManager", () => {
     expect(manager.releaseHumanControl("owners", "client-a").control).toEqual({
       owner: "agent",
       leaseExpiresAt: null,
+    });
+    await manager.dispose();
+  });
+
+  it("counts the pages a tab visited and walks them back and forward", async () => {
+    const { manager } = createHarness();
+    const session = await manager.ensureSession("history");
+    const tabId = session.tabIds[0] ?? "";
+    await manager.navigate("history", tabId, { url: "https://one.example/" });
+    await manager.navigate("history", tabId, { url: "https://two.example/" });
+
+    const depth = async () =>
+      (await manager.listPanelTabs("history")).find((tab) => tab.id === tabId);
+    // The first entry is the blank page the tab opened on, so two navigations
+    // leave two pages behind the current one.
+    expect((await depth())?.history).toEqual({ back: 2, forward: 0 });
+
+    await manager.history("history", tabId, "back");
+    expect((await depth())?.history).toEqual({ back: 1, forward: 1 });
+    expect((await depth())?.url).toBe("https://one.example/");
+
+    await manager.history("history", tabId, "forward");
+    expect((await depth())?.history).toEqual({ back: 2, forward: 0 });
+    expect((await depth())?.url).toBe("https://two.example/");
+
+    // Reload keeps the position, so neither arrow claims a new page.
+    await manager.history("history", tabId, "reload");
+    expect((await depth())?.history).toEqual({ back: 2, forward: 0 });
+    await manager.dispose();
+  });
+
+  it("records a page that moved on its own as a new entry", async () => {
+    const { manager, provider } = createHarness();
+    const session = await manager.ensureSession("links");
+    const tabId = session.tabIds[0] ?? "";
+    await manager.navigate("links", tabId, { url: "https://one.example/" });
+    const page = [...provider.contexts.values()][0]?.pages[0];
+    page?.followLink("https://two.example/deep");
+
+    const depth = async () =>
+      (await manager.listPanelTabs("links")).find((tab) => tab.id === tabId);
+    await vi.waitFor(async () => {
+      expect((await depth())?.history).toEqual({ back: 2, forward: 0 });
+    });
+
+    // Going back from a page the runtime merely watched still lands where the
+    // browser says it landed, and the depth follows it.
+    await manager.history("links", tabId, "back");
+    expect((await depth())?.url).toBe("https://one.example/");
+    expect((await depth())?.history).toEqual({ back: 1, forward: 1 });
+    await manager.dispose();
+  });
+
+  it("keeps the panel's own tab work behind the lease", async () => {
+    const { manager } = createHarness({ maxTabs: 2 });
+    await manager.ensureSession("lease");
+    const selected = manager.getSession("lease")?.selectedTabId ?? "";
+
+    await expect(manager.humanNewTab("lease", "client-a")).rejects.toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
+    );
+    await expect(
+      manager.humanCloseTab("lease", selected, "client-a"),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
+    );
+    await expect(
+      manager.humanHistory("lease", selected, "client-a", "reload"),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
+    );
+    await expect(
+      manager.humanSetViewport("lease", selected, "client-a", {
+        width: 800,
+        height: 600,
+      }),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: "BROWSER_HUMAN_CONTROL_NOT_OWNER" }),
+    );
+
+    manager.acquireHumanControl("lease", "client-a");
+    const opened = await manager.humanNewTab("lease", "client-a");
+    expect(opened.summary).toContain("opened");
+    expect(manager.getSession("lease")?.selectedTabId).toBe(opened.tabId);
+    // The deployment's tab limit is the panel's limit too.
+    await expect(manager.humanNewTab("lease", "client-a")).rejects.toThrowError(
+      expect.objectContaining({ code: "BROWSER_TOO_MANY_TABS" }),
+    );
+
+    await manager.humanCloseTab("lease", opened.tabId, "client-a");
+    expect(manager.getSession("lease")?.tabIds.includes(opened.tabId)).toBe(
+      false,
+    );
+    await manager.dispose();
+  });
+
+  it("clamps the panel's device sizes to the deployment's bounds", async () => {
+    const { manager, provider } = createHarness();
+    await manager.ensureSession("device");
+    const tab = manager.getSession("device")?.selectedTabId ?? "";
+    manager.acquireHumanControl("device", "client-a");
+    await manager.humanSetViewport("device", tab, "client-a", {
+      width: 99_999,
+      height: 10,
+    });
+
+    const page = [...provider.contexts.values()][0]?.pages[0];
+    expect(page?.viewports).toEqual([
+      { width: 7_680, height: 240, deviceScaleFactor: 1 },
+    ]);
+    expect((await manager.listPanelTabs("device"))[0]?.viewport).toEqual({
+      width: 7_680,
+      height: 240,
+      deviceScaleFactor: 1,
     });
     await manager.dispose();
   });

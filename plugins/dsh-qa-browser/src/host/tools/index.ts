@@ -410,13 +410,12 @@ function viewportTool(service: QaBrowserService): ToolDefinition {
     async execute(args, exec) {
       const sessionId = toolSessionId(exec);
       const tabId = await selectedTabId(service, sessionId, args.tabId);
+      // The manager clamps to the deployment's bounds, so the panel's device
+      // controls and this tool cannot drift apart on what a viewport may be.
       await service.setViewport(sessionId, tabId, {
-        width: Math.min(7_680, Math.max(320, args.width)),
-        height: Math.min(4_320, Math.max(240, args.height)),
-        deviceScaleFactor: Math.min(
-          4,
-          Math.max(0.5, args.deviceScaleFactor ?? 1),
-        ),
+        width: args.width,
+        height: args.height,
+        deviceScaleFactor: args.deviceScaleFactor ?? 1,
       });
       const tab = (await service.listTabs(sessionId)).find(
         (candidate) => candidate.id === tabId,

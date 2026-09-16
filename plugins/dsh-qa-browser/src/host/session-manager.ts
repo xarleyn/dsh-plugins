@@ -11,6 +11,7 @@ import type {
   BrowserFormValue,
   BrowserHumanPointerRequest,
   BrowserNavigationRequest,
+  BrowserPanelTab,
   BrowserSessionInfo,
   BrowserSnapshot,
   BrowserSnapshotOptions,
@@ -27,6 +28,7 @@ import type {
   BrowserProvider,
 } from "./providers/contract.js";
 import type { BrowserNetworkPolicy } from "./policy.js";
+import { clampViewport } from "./viewport.js";
 
 export interface BrowserRuntimeLogger {
   debug(event: string, fields?: Record<string, unknown>): void;
@@ -42,10 +44,25 @@ export const silentBrowserLogger: BrowserRuntimeLogger = {
   error: () => undefined,
 };
 
+/**
+ * The URLs one tab has been watched visiting, with the position it currently
+ * sits at. Chromium exposes no "is there a history entry behind this page"
+ * question, so the runtime keeps what it observed: every navigation it performs
+ * or sees committed is an entry, which is also what a browser's own back and
+ * forward buttons act on. A page the browser visited without the runtime
+ * watching (a redirect that replaced an entry) is recorded as a fresh entry
+ * instead of guessing, so the arrows never claim a page that is not there.
+ */
+interface TabHistory {
+  entries: string[];
+  index: number;
+}
+
 interface TabRecord {
   readonly id: string;
   readonly page: BrowserPageHandle;
   readonly viewport: BrowserViewport;
+  readonly history: TabHistory;
   url: string;
   title: string;
   status: BrowserTabInfo["status"];
@@ -81,6 +98,9 @@ export interface QaBrowserSessionManagerOptions {
 function tabId(): string {
   return `tab_${randomUUID().replaceAll("-", "")}`;
 }
+
+/** How many observed entries one tab remembers; the oldest fall off the back. */
+const MAX_HISTORY_ENTRIES = 50;
 
 /** Owns isolated contexts, stable tab ids, per-tab mutation queues and cleanup. */
 export class QaBrowserSessionManager {
@@ -166,6 +186,16 @@ export class QaBrowserSessionManager {
     return [...record.tabs.values()].map((tab) => this.tabInfo(tab));
   }
 
+  /** The same listing with the depth the panel's own chrome renders. */
+  async listPanelTabs(sessionId: string): Promise<readonly BrowserPanelTab[]> {
+    const record = this.requireSession(sessionId);
+    await Promise.all(
+      [...record.tabs.values()].map((tab) => this.refreshTab(tab, false)),
+    );
+    this.touch(record);
+    return [...record.tabs.values()].map((tab) => this.panelTabInfo(tab));
+  }
+
   async newTab(sessionId: string): Promise<BrowserTabInfo> {
     await this.ensureSession(sessionId);
     const record = this.requireSession(sessionId);
@@ -223,6 +253,7 @@ export class QaBrowserSessionManager {
         const result = await tab.page.navigate(request);
         tab.url = result.url;
         tab.title = result.title;
+        this.recordNavigation(tab, result.url, "new");
         tab.status = "ready";
         this.advanceRevision(tab);
         await this.options.policy.assertAllowed(result.url);
@@ -514,6 +545,7 @@ export class QaBrowserSessionManager {
       await this.options.policy.assertAllowed(result.url);
       tab.url = result.url;
       tab.title = result.title;
+      this.recordNavigation(tab, result.url, action);
       return this.finishMutation(record, tab, `${action} completed.`, {
         from,
         to: result.url,
@@ -524,11 +556,12 @@ export class QaBrowserSessionManager {
   async setViewport(
     sessionId: string,
     id: string,
-    viewport: BrowserViewport,
+    request: Partial<BrowserViewport>,
   ): Promise<void> {
     const record = this.requireSession(sessionId);
     const tab = this.requireTab(record, id);
     await this.enqueueMutation(record, tab, async () => {
+      const viewport = clampViewport(request, tab.viewport);
       await tab.page.setViewport(viewport);
       Object.assign(tab.viewport, viewport);
       this.advanceRevision(tab);
@@ -626,6 +659,7 @@ export class QaBrowserSessionManager {
       await this.options.policy.assertAllowed(result.url);
       tab.url = result.url;
       tab.title = result.title;
+      this.recordNavigation(tab, result.url, "new");
       tab.status = "ready";
       return this.finishMutation(record, tab, "Human navigation completed.", {
         from,
@@ -703,6 +737,100 @@ export class QaBrowserSessionManager {
     });
   }
 
+  /**
+   * Open a tab for the human. The agent's own `newTab` asserts agent control,
+   * so a panel that merely holds the lease cannot take a tab the agent may be
+   * about to drive, and the tab limit stays the deployment's.
+   */
+  async humanNewTab(
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserActionResult> {
+    await this.ensureSession(sessionId);
+    const record = this.requireSession(sessionId);
+    return this.runHumanSessionMutation(record, clientId, async () => {
+      if (record.tabs.size >= this.options.config.session.maxTabs) {
+        throw new QaBrowserError(
+          "BROWSER_TOO_MANY_TABS",
+          `Browser session reached its ${this.options.config.session.maxTabs}-tab limit.`,
+        );
+      }
+      const tab = await this.createTab(record);
+      record.selectedTabId = tab.id;
+      this.touch(record);
+      return this.actionResult(record, tab, "Human opened a tab.");
+    });
+  }
+
+  async humanCloseTab(
+    sessionId: string,
+    id: string,
+    clientId: string,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    return this.runHumanSessionMutation(record, clientId, async () => {
+      const tab = this.requireTab(record, id);
+      const result = this.actionResult(record, tab, "Human closed the tab.");
+      await tab.queue;
+      this.disposeTabListeners(tab);
+      tab.status = "closed";
+      record.tabs.delete(id);
+      if (record.selectedTabId === id) {
+        record.selectedTabId = record.tabs.keys().next().value ?? null;
+      }
+      await tab.page.close();
+      this.touch(record);
+      return result;
+    });
+  }
+
+  async humanHistory(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    action: "back" | "forward" | "reload",
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      const from = tab.page.url();
+      const result = await tab.page.history(action);
+      await this.options.policy.assertAllowed(result.url);
+      tab.url = result.url;
+      tab.title = result.title;
+      this.recordNavigation(tab, result.url, action);
+      return this.finishMutation(record, tab, `Human ${action} completed.`, {
+        from,
+        to: result.url,
+      });
+    });
+  }
+
+  /**
+   * Resize the emulated viewport from the panel's device controls. The size is
+   * clamped here rather than in the caller, so the panel and the agent's
+   * `browser_viewport` tool share one set of deployment bounds.
+   */
+  async humanSetViewport(
+    sessionId: string,
+    id: string,
+    clientId: string,
+    request: Partial<BrowserViewport>,
+  ): Promise<BrowserActionResult> {
+    const record = this.requireSession(sessionId);
+    const tab = this.requireTab(record, id);
+    return this.enqueueHuman(record, tab, clientId, async () => {
+      const viewport = clampViewport(request, tab.viewport);
+      await tab.page.setViewport(viewport);
+      Object.assign(tab.viewport, viewport);
+      return this.finishMutation(
+        record,
+        tab,
+        `Human set the viewport to ${viewport.width}x${viewport.height}.`,
+      );
+    });
+  }
+
   async closeIdleSessions(now = this.now()): Promise<number> {
     const expired = [...this.sessions.values()].filter(
       (record) =>
@@ -775,11 +903,13 @@ export class QaBrowserSessionManager {
 
   private async createTab(record: SessionRecord): Promise<TabRecord> {
     const page = await record.context.newPage();
+    const url = page.url();
     const tab: TabRecord = {
       id: tabId(),
       page,
       viewport: { ...this.options.config.viewport },
-      url: page.url(),
+      history: { entries: [url], index: 0 },
+      url,
       title: await page.title(),
       status: "ready",
       revision: 0,
@@ -813,12 +943,42 @@ export class QaBrowserSessionManager {
   ): Promise<void> {
     if (tab.status === "closed") return;
     try {
-      tab.url = tab.page.url();
-      tab.title = await tab.page.title();
+      const url = tab.page.url();
+      const title = await tab.page.title();
+      // A page that moved without an action asking for it — a click, a form
+      // post, a script redirect — is a navigation the chrome must be able to
+      // walk back to.
+      if (url !== tab.url) this.recordNavigation(tab, url, "new");
+      tab.url = url;
+      tab.title = title;
       if (advanceRevision) this.advanceRevision(tab);
       if (tab.status === "loading") tab.status = "ready";
     } catch {
       // A simultaneous close owns the final state.
+    }
+  }
+
+  private recordNavigation(
+    tab: TabRecord,
+    url: string,
+    direction: "new" | "back" | "forward" | "reload",
+  ): void {
+    const history = tab.history;
+    if (url === history.entries[history.index]) return;
+    if (direction === "back") {
+      history.index = Math.max(0, history.index - 1);
+    } else if (direction === "forward") {
+      history.index = Math.min(history.entries.length - 1, history.index + 1);
+    }
+    if (url !== history.entries[history.index]) {
+      history.entries = history.entries.slice(0, history.index + 1);
+      history.entries.push(url);
+      history.index = history.entries.length - 1;
+    }
+    const excess = history.entries.length - MAX_HISTORY_ENTRIES;
+    if (excess > 0) {
+      history.entries = history.entries.slice(excess);
+      history.index = Math.max(0, history.index - excess);
     }
   }
 
@@ -855,6 +1015,23 @@ export class QaBrowserSessionManager {
     action: () => Promise<T>,
   ): Promise<T> {
     this.assertAgentControl(record);
+    record.activeActions += 1;
+    this.touch(record);
+    try {
+      return await action();
+    } finally {
+      record.activeActions -= 1;
+      this.touch(record);
+    }
+  }
+
+  /** The human-held twin of {@link runSessionMutation}, for whole-session work. */
+  private async runHumanSessionMutation<T>(
+    record: SessionRecord,
+    clientId: string,
+    action: () => Promise<T>,
+  ): Promise<T> {
+    this.assertHumanControl(record, clientId);
     record.activeActions += 1;
     this.touch(record);
     try {
@@ -1108,6 +1285,16 @@ export class QaBrowserSessionManager {
       status: tab.status,
       revision: tab.revision,
       viewport: { ...tab.viewport },
+    };
+  }
+
+  private panelTabInfo(tab: TabRecord): BrowserPanelTab {
+    return {
+      ...this.tabInfo(tab),
+      history: {
+        back: tab.history.index,
+        forward: tab.history.entries.length - 1 - tab.history.index,
+      },
     };
   }
 

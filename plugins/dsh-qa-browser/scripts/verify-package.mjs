@@ -73,10 +73,19 @@ assert.match(
   /window\.__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-browser"/u,
 );
 assert.match(client, /qa\.surface\.panel/u);
-assert.match(client, /dsh-qa-browser-panel__viewport/u);
+// The chrome's own seats and calls: a rename here is a panel that ships
+// without part of its browser, which is exactly what a built bundle can prove.
+assert.match(client, /dsh-qa-browser-panel__stage/u);
+assert.match(client, /dsh-qa-browser-panel__canvas/u);
+assert.match(client, /dsh-qa-browser-panel__tab-close/u);
+assert.match(client, /dsh-qa-browser-panel__newtab/u);
 assert.match(client, /panelTakeControl/u);
 assert.match(client, /panelControlHeartbeat/u);
 assert.match(client, /panelReleaseControl/u);
+assert.match(client, /panelNewTab/u);
+assert.match(client, /panelCloseTab/u);
+assert.match(client, /panelHistory/u);
+assert.match(client, /panelViewport/u);
 assert.match(client, /api-session\/status/u);
 assert.doesNotMatch(client, /<iframe|createElement\("iframe"\)/iu);
 

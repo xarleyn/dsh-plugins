@@ -26,6 +26,7 @@ import type {
   BrowserHumanPointerAction,
   BrowserNavigationRequest,
   BrowserPanelFrame,
+  BrowserPanelHistoryAction,
   BrowserPanelState,
   BrowserSessionInfo,
   BrowserSnapshot,
@@ -276,7 +277,7 @@ export class QaBrowserService extends TypertRemoteService {
   setViewport(
     sessionId: string,
     tabId: string,
-    viewport: BrowserViewport,
+    viewport: Partial<BrowserViewport>,
   ): Promise<void> {
     return this.manager.setViewport(sessionId, tabId, viewport);
   }
@@ -303,14 +304,79 @@ export class QaBrowserService extends TypertRemoteService {
     sessionId: string,
   ): Promise<BrowserPanelState> {
     await this.authorizePanel(qaToken, sessionId);
+    return this.readPanelState(sessionId);
+  }
+
+  /**
+   * Open a tab on the panel's own behalf. It travels the human-control path, so
+   * a panel that merely watches cannot take a tab out from under an agent that
+   * is driving, and the deployment's tab limit still applies.
+   */
+  async panelNewTab(
+    qaToken: string,
+    sessionId: string,
+    clientId: string,
+  ): Promise<BrowserPanelState> {
+    await this.authorizePanel(qaToken, sessionId);
+    await this.manager.humanNewTab(sessionId, clientId);
+    return this.readPanelState(sessionId);
+  }
+
+  async panelCloseTab(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+  ): Promise<BrowserPanelState> {
+    await this.authorizePanel(qaToken, sessionId);
+    await this.manager.humanCloseTab(sessionId, tabId, clientId);
+    return this.readPanelState(sessionId);
+  }
+
+  /** The panel's own back, forward and reload, under the same lease. */
+  async panelHistory(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    action: BrowserPanelHistoryAction,
+  ): Promise<BrowserPanelState> {
+    await this.authorizePanel(qaToken, sessionId);
+    await this.manager.humanHistory(sessionId, tabId, clientId, action);
+    return this.readPanelState(sessionId);
+  }
+
+  async panelViewport(
+    qaToken: string,
+    sessionId: string,
+    tabId: string,
+    clientId: string,
+    width: number,
+    height: number,
+  ): Promise<BrowserPanelState> {
+    await this.authorizePanel(qaToken, sessionId);
+    await this.manager.humanSetViewport(sessionId, tabId, clientId, {
+      width,
+      height,
+    });
+    return this.readPanelState(sessionId);
+  }
+
+  /**
+   * The panel's whole view. Every mutation that changes the tab set, the
+   * selection or a tab's size returns it, so the chrome re-renders from one
+   * authoritative snapshot instead of patching its own guess.
+   */
+  private async readPanelState(sessionId: string): Promise<BrowserPanelState> {
     const session = this.manager.getSession(sessionId);
     return {
       session,
-      tabs: session === null ? [] : await this.manager.listTabs(sessionId),
+      tabs: session === null ? [] : await this.manager.listPanelTabs(sessionId),
       humanControlEnabled: this.config.humanControl.enabled,
       humanControlLeaseSeconds: this.config.humanControl.leaseSeconds,
       autoRevealOnAgentActivity: this.config.ui.autoRevealOnAgentActivity,
       focusOnAutoReveal: this.config.ui.focusOnAutoReveal,
+      coordinateInputEnabled: this.config.capabilities.coordinateInput,
     };
   }
 
@@ -343,12 +409,19 @@ export class QaBrowserService extends TypertRemoteService {
     };
   }
 
+  /**
+   * Take the lease for this panel. Asking for control of a browser nobody has
+   * started yet starts it: the gesture is the human saying "I want to drive",
+   * and without the lease none of the panel's other controls can act at all —
+   * a panel that could only watch an unstarted browser would be a dead end.
+   */
   async panelTakeControl(
     qaToken: string,
     sessionId: string,
     clientId: string,
   ): Promise<BrowserControlState> {
     await this.authorizePanel(qaToken, sessionId);
+    await this.manager.ensureSession(sessionId);
     return this.manager.acquireHumanControl(sessionId, clientId).control;
   }
 
