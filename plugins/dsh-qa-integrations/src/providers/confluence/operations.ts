@@ -685,8 +685,12 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
     );
     const start = context.start ?? numberOf(source, "start") ?? 0;
     const totalSize = numberOf(source, "totalSize");
+    // An empty page never carries a cursor: handing back the offset it started
+    // at would let a caller that follows it loop forever.
     const nextCursor =
-      totalSize !== undefined && start + items.length < totalSize
+      items.length > 0 &&
+      totalSize !== undefined &&
+      start + items.length < totalSize
         ? String(start + items.length)
         : undefined;
     return {

@@ -695,6 +695,19 @@ describe("confluence search", () => {
       unknown
     >;
     expect(answer["nextCursor"]).toBeUndefined();
+
+    // An empty page is the end of the search, even when the count upstream
+    // still claims more: a cursor equal to the offset just asked for would be
+    // a loop, not a continuation.
+    const empty = stub(() => ({
+      json: { results: [], start: 40, totalSize: 50 },
+    }));
+    const exhausted = (await call(
+      "search.run",
+      { cursor: "40" },
+      { fetcher: empty.fetcher },
+    )) as Record<string, unknown>;
+    expect(exhausted["nextCursor"]).toBeUndefined();
   });
 
   it("leaves the URL out when the site cannot be named", async () => {
