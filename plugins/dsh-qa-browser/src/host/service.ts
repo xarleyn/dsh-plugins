@@ -19,6 +19,7 @@ import {
   type QaBrowserConfig,
   type ResolvedQaBrowserConfig,
 } from "../config.js";
+import { PANEL_REMOTE_METHODS, type PanelRemoteMethod } from "../remote.js";
 import type {
   BrowserActionResult,
   BrowserControlState,
@@ -484,20 +485,7 @@ export class QaBrowserService extends TypertRemoteService {
   }
 }
 
-type RemoteMethod =
-  | "panelState"
-  | "panelFrame"
-  | "panelTakeControl"
-  | "panelControlHeartbeat"
-  | "panelReleaseControl"
-  | "panelSelectTab"
-  | "panelNavigate"
-  | "panelPointer"
-  | "panelKey"
-  | "panelText"
-  | "panelScroll";
-
-function registerRemoteMethod(method: RemoteMethod): void {
+function registerRemoteMethod(method: PanelRemoteMethod): void {
   const initializers: Array<(this: object) => void> = [];
   const decorate = Remote as unknown as (
     value: (...args: unknown[]) => unknown,
@@ -525,18 +513,6 @@ function registerRemoteMethod(method: RemoteMethod): void {
   for (const initializer of initializers) initializer.call(markerReceiver);
 }
 
-for (const method of [
-  "panelState",
-  "panelFrame",
-  "panelTakeControl",
-  "panelControlHeartbeat",
-  "panelReleaseControl",
-  "panelSelectTab",
-  "panelNavigate",
-  "panelPointer",
-  "panelKey",
-  "panelText",
-  "panelScroll",
-] as const) {
+for (const method of PANEL_REMOTE_METHODS) {
   registerRemoteMethod(method);
 }
