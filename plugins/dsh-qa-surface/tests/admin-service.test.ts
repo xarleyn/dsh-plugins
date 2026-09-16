@@ -103,7 +103,24 @@ function logFor(
   ];
 }
 
-function harness() {
+/**
+ * One deployment's live registries. Empty by default: most admin reads answer
+ * from the stores, and the effective-capability counts of a deployment with no
+ * catalogue are all zero.
+ */
+function harness(
+  catalog: {
+    readonly tools?: readonly string[];
+    readonly skills?: readonly string[];
+    /** Skills that declare an audience in their own SKILL.md metadata. */
+    readonly declared?: readonly {
+      readonly name: string;
+      readonly roles: readonly string[];
+    }[];
+    /** The deployment's pinned tool policy, part of every profile. */
+    readonly pinned?: readonly string[];
+  } = {},
+) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-admin-"));
   const accounts = new QaAccounts(path.join(root, "accounts.json"), {
     sessionTtlDays: 30,
@@ -117,9 +134,47 @@ function harness() {
   accounts2.setUserRole("admin@example.com", "admin");
   accounts2.setUserRole("reviewer@example.com", "reviewer");
 
+  const skillNames = [...(catalog.skills ?? [])];
   const ctx = {
-    tools: { schemas: () => [] },
-    get: () => undefined,
+    tools: {
+      schemas: () => (catalog.tools ?? []).map((name) => ({ name })),
+    },
+    get: (service: string) => {
+      const declared = catalog.declared ?? [];
+      if (
+        service !== "skills" ||
+        (skillNames.length === 0 && declared.length === 0)
+      ) {
+        return undefined;
+      }
+      const names = [
+        ...new Set([...skillNames, ...declared.map(({ name }) => name)]),
+      ];
+      return {
+        snapshot: async () => ({
+          skills: names.map((name) => ({
+            name,
+            description: `${name} skill`,
+            provider: "plugin",
+            source: "plugin",
+            invocation: { modelInvocable: true, userInvocable: true },
+          })),
+        }),
+        get: async (name: string) => {
+          const entry = declared.find((candidate) => candidate.name === name);
+          return entry === undefined
+            ? { metadata: undefined }
+            : {
+                metadata: {
+                  "qa-surface": {
+                    version: 1,
+                    audience: { type: "subroles", include: [...entry.roles] },
+                  },
+                },
+              };
+        },
+      };
+    },
   } as unknown as Context;
   const logger = {
     debug() {},
@@ -157,7 +212,10 @@ function harness() {
   });
   const access = new QaAccessService(ctx, {
     accounts: () => accounts,
-    config: () => resolveConfig({}),
+    config: () =>
+      resolveConfig({
+        lockdown: { toolPolicy: { allow: [...(catalog.pinned ?? [])] } },
+      }),
     logger,
     repository: roles,
   });
@@ -363,10 +421,79 @@ describe("admin user management", () => {
     const { service, admin, alice } = harness();
     const detail = await service.user(admin.token, alice.user.id);
     expect(detail.effective).toEqual([
-      { subroleId: "analyst", name: "Analyst", tools: 0, skills: 0 },
+      {
+        subroleId: "analyst",
+        name: "Analyst",
+        tools: 0,
+        grantableTools: 0,
+        skills: 0,
+      },
     ]);
     expect(detail.activity.conversations).toBe(1);
     expect(detail.activity.messages).toBe(2);
+  });
+
+  it("counts the pinned tools a profile resolves, not only its own list", async () => {
+    const { service, admin, alice } = harness({
+      // Every session resolves the deployment's pinned set on top of the role:
+      // reporting the configured lists alone read as "0 tools" for a profile
+      // whose chats run with the whole pinned list.
+      pinned: ["glob", "grep", "ask_user_question"],
+      tools: ["glob", "grep", "read", "git"],
+      skills: ["release-notes"],
+      declared: [{ name: "sales-playbook", roles: ["analyst"] }],
+    });
+    const detail = await service.user(admin.token, alice.user.id);
+    expect(detail.effective).toEqual([
+      {
+        subroleId: "analyst",
+        name: "Analyst",
+        // glob and grep are pinned and mounted, read is the role's own tool;
+        // ask_user_question is pinned but unmounted, git is not configured.
+        tools: 3,
+        grantableTools: 0,
+        // The assigned skill and the one whose own SKILL.md names this role.
+        skills: 2,
+      },
+    ]);
+  });
+
+  it("reports the skill-grantable ceiling apart from visible tools", async () => {
+    const { service, admin, alice, roles, accounts } = harness({
+      tools: ["git", "read"],
+    });
+    roles.update(admin.user.id, "developer", {
+      id: "developer",
+      name: "Developer",
+      enabled: true,
+      capabilities: {
+        tools: { always: [], skillGrantable: ["git", "ghost"] },
+        skills: [],
+      },
+    });
+    accounts.setAccess(alice.user.id, {
+      allowedSubroles: ["analyst", "developer"],
+      defaultSubrole: "analyst",
+    });
+    const detail = await service.user(admin.token, alice.user.id);
+    expect(detail.effective).toEqual([
+      {
+        subroleId: "analyst",
+        name: "Analyst",
+        tools: 1,
+        grantableTools: 0,
+        skills: 0,
+      },
+      {
+        subroleId: "developer",
+        name: "Developer",
+        // A grantable tool is a ceiling, not a visible tool: git counts there
+        // and nowhere else, and ghost is not mounted at all.
+        tools: 0,
+        grantableTools: 1,
+        skills: 0,
+      },
+    ]);
   });
 });
 
