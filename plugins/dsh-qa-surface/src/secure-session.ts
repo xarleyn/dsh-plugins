@@ -290,36 +290,44 @@ export class QaPolicyAdmission {
     };
   }
 
+  /**
+   * Account identity and ownership are checked before any policy work: an
+   * invalid token must not learn whether a session exists or how the
+   * deployment composes. Independent of lockdown — a deployment may gate
+   * users without pinning the policy, and the gate itself no-ops while
+   * accounts are disabled.
+   */
+  private accessOwner(
+    token: string,
+    sessionId: string,
+  ): { readonly id: string } | undefined {
+    if (this.accounts === undefined) return undefined;
+    try {
+      return this.accounts.enforceSessionAccess(
+        token,
+        sessionId,
+        this.sessionFacts(sessionId),
+      );
+    } catch (error) {
+      if (error instanceof QaAccountsError) {
+        throw new QaAttestationError(
+          error.reason === "session-owned-elsewhere"
+            ? "session-owned-elsewhere"
+            : "auth-required",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   async secureSession(
     token: string,
     sessionId: string,
   ): Promise<QaLockdownProof> {
     const config = this.config();
     const lockdown = config.lockdown;
-    // Account identity is checked before any policy work: an invalid token
-    // must not learn whether a session exists or how the deployment composes.
-    // Independent of lockdown — a deployment may gate users without pinning
-    // the policy, and the gate itself no-ops while accounts are disabled.
-    let sessionOwner: { readonly id: string } | undefined;
-    if (this.accounts !== undefined) {
-      try {
-        sessionOwner = this.accounts.enforceSessionAccess(
-          token,
-          sessionId,
-          this.sessionFacts(sessionId),
-        );
-      } catch (error) {
-        if (error instanceof QaAccountsError) {
-          throw new QaAttestationError(
-            error.reason === "session-owned-elsewhere"
-              ? "session-owned-elsewhere"
-              : "auth-required",
-            error.message,
-          );
-        }
-        throw error;
-      }
-    }
+    let sessionOwner = this.accessOwner(token, sessionId);
     const agent = await this.liveAgent(sessionId);
     // A delegated subagent session is an implementation detail of one answer
     // of its parent chat: it has no QA owner, and its sources reach the
@@ -332,6 +340,15 @@ export class QaPolicyAdmission {
         "adoption-refused",
         "a delegated subagent session cannot be attested",
       );
+    }
+    if (this.accounts !== undefined) {
+      // The first check ran before the session was materialized, when its
+      // header could still be unknown — a delegated child from a previous
+      // run is then indistinguishable from a fresh chat, and the store had
+      // to leave the ownership claim deferred. Re-run it now that the
+      // header is known, so ownership is recorded only for a session that
+      // survived the refusal above.
+      sessionOwner = this.accessOwner(token, sessionId);
     }
     const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {

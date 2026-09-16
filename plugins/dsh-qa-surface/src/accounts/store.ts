@@ -357,6 +357,14 @@ export class QaAccounts {
           "an established session is not claimed automatically",
         );
       }
+      if (facts?.createdAt === undefined) {
+        // The session header is unknown — the session is not materialized in
+        // this Host process, so a delegated child from a previous run cannot
+        // be told apart from a fresh chat. Grant provisional access without
+        // recording ownership; admission re-runs this check once the session
+        // is live and its header is known.
+        return toPublic(user);
+      }
       this.file = {
         ...this.file,
         ownership: {
