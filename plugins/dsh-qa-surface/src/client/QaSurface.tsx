@@ -93,6 +93,9 @@ import { QaPanelHost } from "./panels/PanelHost.js";
 import { QaPanelLauncher } from "./panels/PanelLauncher.js";
 import type { QaSurfacePanelRegistry } from "./panels/registry.js";
 import type { QaUserSettingsSections } from "./settings-extensions/index.js";
+import type { QaAuditController } from "./audit/controller.js";
+import { QaAuditDialog } from "./audit/QaAuditDialog.js";
+import { useChatAudits } from "./audit/use-chat-audits.js";
 import { QaAdmin } from "./admin/QaAdmin.js";
 import { isAdminPath } from "./admin/routes.js";
 import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
@@ -146,6 +149,12 @@ export interface QaSurfaceFace {
   readonly panels: QaSurfacePanelRegistry;
   /** First-class settings pages registered by additive QA plugins. */
   readonly settingsSections: QaUserSettingsSections;
+  /**
+   * Whether the session-audit provider is installed. Its snapshot carries the
+   * audit API, or `null` — the badge and the dialog exist only while it is
+   * present.
+   */
+  readonly audit: QaAuditController;
 }
 
 export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
@@ -507,6 +516,14 @@ export function QaSurface(props: QaSurfaceProps) {
   const handleNewChat = useCallback(() => {
     void controller?.startDraft();
   }, [controller]);
+
+  // The audit dialog's target, not its state: opening it is a view choice, and
+  // closing it must not disturb the chat underneath.
+  const [auditTarget, setAuditTarget] = useState<string | null>(null);
+  const openAudit = useCallback((sessionId: string) => {
+    setAuditTarget(sessionId);
+  }, []);
+  const closeAudit = useCallback(() => setAuditTarget(null), []);
   const handleDelete = useCallback(
     (sessionId: string) => {
       void controller?.deleteChat(sessionId);
@@ -727,6 +744,19 @@ export function QaSurface(props: QaSurfaceProps) {
         (id) => ownerNames?.get(id),
       ),
     [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
+  );
+
+  // The audit provider is optional: `auditSnapshot.api` is null until the
+  // audit plugin's client bundle is loaded, and the badge is absent until
+  // then. Chat ids rather than rows feed the poll, so a re-render does not
+  // restart it.
+  const auditSnapshot = useSyncExternalStore(
+    props.audit.subscribe,
+    props.audit.getSnapshot,
+  );
+  const chatAudits = useChatAudits(
+    auditSnapshot.api,
+    useMemo(() => chatRows.map((row) => row.id), [chatRows]),
   );
   // Message ids repeat across chats (`assistant:<seq>`), so the persisted
   // ratings key is chat-scoped; the sidebar keeps the deployment-wide key.
@@ -984,6 +1014,8 @@ export function QaSurface(props: QaSurfaceProps) {
             onSwitch={handleSwitch}
             onNewChat={handleNewChat}
             onDelete={handleDelete}
+            audits={chatAudits}
+            {...(auditSnapshot.api === null ? {} : { onAudit: openAudit })}
             account={
               config.accounts.enabled &&
               accounts !== undefined &&
@@ -1000,6 +1032,16 @@ export function QaSurface(props: QaSurfaceProps) {
             }
           />
         ) : null}
+        <QaAuditDialog
+          open={auditTarget !== null}
+          sessionId={auditTarget}
+          title="Аудит чата"
+          api={auditSnapshot.api}
+          summary={
+            auditTarget === null ? undefined : chatAudits.get(auditTarget)
+          }
+          onClose={closeAudit}
+        />
         <div className="dsh-qa-body">
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
             <QaSubagentBanner onClose={handleCloseSubagent} />

@@ -144,6 +144,8 @@
     "react-dom": "^18.2.0"
   },
   "dependencies": {
+    "@yadsh/dsh-audit-ui": "workspace:^",
+    "@yadsh/dsh-audit-core": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "yaml": "^2.9.0",

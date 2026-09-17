@@ -1,6 +1,8 @@
 import { memo, useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 import { isDelegatedSession } from "../lineage.js";
+import { QaAuditRowBadge } from "../audit/QaAuditRowBadge.js";
+import { auditMark, type QaAuditSummary } from "../audit/types.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { relativeTime } from "./format.js";
 
@@ -105,6 +107,13 @@ export interface QaSidebarProps {
   readonly onNewChat: () => void;
   /** Removes a chat from this browser's index; omit to hide the control. */
   readonly onDelete?: (sessionId: string) => void;
+  /**
+   * Audit summaries by chat id, for the row badge. Empty when the audit plugin
+   * is not installed — the badge is then absent rather than empty.
+   */
+  readonly audits?: ReadonlyMap<string, QaAuditSummary>;
+  /** Opens the audit dialog for a chat; omit when audits are unavailable. */
+  readonly onAudit?: (sessionId: string) => void;
   /** The signed-in account; omit when accounts are disabled. */
   readonly account?: {
     readonly email: string;
@@ -290,6 +299,19 @@ export const QaSidebar = memo(
               {row.meta}
             </span>
           </button>
+          {props.onAudit === undefined
+            ? null
+            : (() => {
+                const mark = auditMark(props.audits?.get(row.id));
+                if (mark === null) return null;
+                return (
+                  <QaAuditRowBadge
+                    mark={mark}
+                    withDelete={props.onDelete !== undefined}
+                    onOpen={() => props.onAudit?.(row.id)}
+                  />
+                );
+              })()}
           {props.onDelete === undefined ? null : (
             <button
               type="button"
@@ -469,6 +491,8 @@ export const QaSidebar = memo(
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&
     prev.onDelete === next.onDelete &&
+    prev.onAudit === next.onAudit &&
+    prev.audits === next.audits &&
     prev.account?.email === next.account?.email &&
     prev.account?.role === next.account?.role &&
     prev.account?.onLogout === next.account?.onLogout &&
