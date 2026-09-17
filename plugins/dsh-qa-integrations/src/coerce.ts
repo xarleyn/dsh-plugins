@@ -9,7 +9,9 @@ const MAX_INT = 2_147_483_647;
 function invalid(field: string, explain?: string): never {
   throw new IntegrationError(
     "InvalidRequest",
-    explain === undefined ? `${field} is invalid` : `${field} is invalid: ${explain}`,
+    explain === undefined
+      ? `${field} is invalid`
+      : `${field} is invalid: ${explain}`,
   );
 }
 

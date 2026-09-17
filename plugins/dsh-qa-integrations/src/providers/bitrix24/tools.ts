@@ -56,7 +56,8 @@ export const BITRIX24_TOOL_NAMES = [
 ] as const;
 
 /** The provider's single write tool; mounted only when the operator opts in. */
-export const BITRIX24_COMMENT_TOOL_NAME = "bitrix_add_crm_timeline_comment" as const;
+export const BITRIX24_COMMENT_TOOL_NAME =
+  "bitrix_add_crm_timeline_comment" as const;
 
 const ENTITY_TYPE_HINT =
   "Bitrix CRM entity type: 1 lead, 2 deal, 3 contact, 4 company, 31 invoice, or a smart-process type id.";
@@ -142,7 +143,13 @@ export function createBitrix24Tools(options: {
         ...(args["query"] === undefined
           ? {}
           : {
-              query: requiredText(args["query"], "query", 1, 200, "a non-empty title substring of 1-200 characters, or omit the argument to list unfiltered"),
+              query: requiredText(
+                args["query"],
+                "query",
+                1,
+                200,
+                "a non-empty title substring of 1-200 characters, or omit the argument to list unfiltered",
+              ),
             }),
         ...(args["assignedToMe"] === undefined
           ? {}
@@ -157,16 +164,22 @@ export function createBitrix24Tools(options: {
           : { stageId: requiredText(args["stageId"], "stageId", 1, 64) }),
         ...(args["categoryId"] === undefined
           ? {}
-          : { categoryId: requiredInteger(args["categoryId"], "categoryId", 0) }),
+          : {
+              categoryId: requiredInteger(args["categoryId"], "categoryId", 0),
+            }),
         ...(args["openOnly"] === undefined
           ? {}
           : { openOnly: optionalBoolean(args["openOnly"], "openOnly") }),
         ...(args["createdSince"] === undefined
           ? {}
-          : { createdSince: requiredDate(args["createdSince"], "createdSince") }),
+          : {
+              createdSince: requiredDate(args["createdSince"], "createdSince"),
+            }),
         ...(args["updatedSince"] === undefined
           ? {}
-          : { updatedSince: requiredDate(args["updatedSince"], "updatedSince") }),
+          : {
+              updatedSince: requiredDate(args["updatedSince"], "updatedSince"),
+            }),
         ...(args["orderBy"] === undefined
           ? {}
           : { orderBy: requiredText(args["orderBy"], "orderBy", 2, 20) }),

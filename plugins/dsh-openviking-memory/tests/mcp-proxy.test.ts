@@ -764,15 +764,17 @@ describe("upstream tool schema adjustment", () => {
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 
-    const tools = (writtenMessages(writes)[0]!.result as {
-      tools: {
-        name: string;
-        inputSchema: {
-          properties?: Record<string, Record<string, unknown>>;
-          required?: string[];
-        };
-      }[];
-    }).tools;
+    const tools = (
+      writtenMessages(writes)[0]!.result as {
+        tools: {
+          name: string;
+          inputSchema: {
+            properties?: Record<string, Record<string, unknown>>;
+            required?: string[];
+          };
+        }[];
+      }
+    ).tools;
 
     expect(tools.map((tool) => tool.name)).toEqual(["grep", "search", "read"]);
     const grep = tools[0]!;
@@ -813,9 +815,11 @@ describe("upstream tool schema adjustment", () => {
 
     await proxy.handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list" });
 
-    const tools = (writtenMessages(writes)[0]!.result as {
-      tools: { name: string }[];
-    }).tools;
+    const tools = (
+      writtenMessages(writes)[0]!.result as {
+        tools: { name: string }[];
+      }
+    ).tools;
     expect(tools.map((tool) => tool.name)).toEqual(["kept"]);
   });
 });

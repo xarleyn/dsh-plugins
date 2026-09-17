@@ -111,9 +111,9 @@ describe("Bitrix24 capability catalog", () => {
       "calendar.read",
       "disk.read",
     ]);
-    expect(
-      enabledCapabilities(resolveConfig().bitrix24),
-    ).not.toContain("crm.comment.write");
+    expect(enabledCapabilities(resolveConfig().bitrix24)).not.toContain(
+      "crm.comment.write",
+    );
     expect(
       enabledCapabilities(
         resolveConfig({ bitrix24: { crmCommentWrite: true } }).bitrix24,
@@ -187,9 +187,16 @@ describe("Bitrix24 tool surface", () => {
     const operations: string[] = [];
     const routed = createIntegrationTools({
       broker: {
-        call: async (_principal, request) => {
+        call: async (
+          _principal: unknown,
+          request: { readonly operation: string },
+        ) => {
           operations.push(request.operation);
-          return { provider: "bitrix24", operation: request.operation, data: {} };
+          return {
+            provider: "bitrix24",
+            operation: request.operation,
+            data: {},
+          };
         },
       } as never,
       principalForSession: () => ({ userId: "alice" }),
