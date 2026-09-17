@@ -5,8 +5,13 @@ and receives DOCX/PDF, hands over a DOCX/PDF and receives Markdown, or stores
 the text of an online source — a wiki attachment, a document behind an
 authenticated fetch provider — as an artifact it can work with.
 
+It also tells two revisions of a document apart, deterministically and in the
+process: an OOXML package is read natively — paragraphs, tables, numbering,
+headers, footnotes, tracked revisions — and the diff, not the model, decides
+what changed. The model is given a change set with stable ids and interprets it.
+
 The plugin owns every backend command line, keeps the source, the assets, the
-outputs and a `manifest.json` in one artifact bundle, and exposes exactly five
+outputs and a `manifest.json` in one artifact bundle, and exposes seven
 semantic tools. An agent never calls `pandoc`, LibreOffice, Docling or a
 converter flag directly, so a deployment can replace a backend without touching
 a prompt, a skill or a workflow.
@@ -37,10 +42,14 @@ lists bundles explicitly.
 | `document_from_url` | Fetch an online document or attachment and store its text as an artifact |
 | `document_convert` | A supported document to another supported format (`md → docx/pdf`, `docx → pdf/md`, `pdf → md`) |
 | `document_inspect` | Type, metadata, page/heading/table counts, encryption and macro flags — without converting |
+| `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
+| `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
 
 Tool registration follows the configuration: `documents.enabled: false` (or a
 resolved `enabled: false` from the environment) leaves them unregistered rather
-than inert. Visibility to a chat is the deployment's decision, not the plugin's:
+than inert, and `documents.comparison.enabled: false` does the same for the
+comparison pair. Visibility to a chat is the deployment's decision, not the
+plugin's:
 
 ```yaml
 # profile settings of a deployment that wants the tools in a chat
@@ -56,6 +65,56 @@ lockdown:
 
 Every name must exist in the session's tool catalog, so the plugin must be
 installed and enabled wherever the allow-list mentions it.
+
+## Comparing two revisions
+
+```text
+document_inspect        what the two files are
+document_compare        what changed — computed here, not by the model
+document_diff_read      every change, paged and filtered
+```
+
+`document_compare` reads both sides itself: DOCX (through its own OOXML reader,
+no converter in between), Markdown and plain text natively, and PDF through the
+deployment's extraction backend. It answers with a `comparisonId`, the change
+summary, the extraction quality and a short preview; the artifact holds the rest:
+
+```text
+.qa/artifacts/documents/cmp_01J…/
+├── manifest.json       kind: document-comparison, both hashes, engine, options, quality
+├── inputs/left.docx    the bytes that were compared
+├── normalized/*.json   the canonical IR of each side
+└── diff/
+    ├── changes.jsonl   one change per line
+    ├── summary.json
+    └── report.md       the model-free human report
+```
+
+Every change carries a stable id, a location, the exact text before and after,
+and the deterministic signals the text supports — a changed number, amount,
+percentage, date, duration, negation, party, or obligation/permission/prohibition
+vocabulary. The plugin reports facts; risk is the model's business, and the
+`contract-review` skill (shipped with the package) states the rule: semantic
+analysis must rest on `document_compare` results, and a difference without a
+`changeId` does not exist.
+
+A contract-review chat needs no shell and no Markdown extraction — three tools
+are enough:
+
+```yaml
+lockdown:
+  toolPolicy:
+    allow:
+      - document_inspect
+      - document_compare
+      - document_diff_read
+```
+
+Refusals carry codes instead of degrading: `COMPARE_UNSUPPORTED_FORMAT`,
+`COMPARE_PARSE_FAILED`, `COMPARE_ENCRYPTED_DOCUMENT`, `COMPARE_INPUT_TOO_LARGE`,
+`COMPARE_TOO_MANY_NODES`, `COMPARE_TIMEOUT`, `COMPARE_DIFF_LIMIT_EXCEEDED`,
+`COMPARE_LOW_EXTRACTION_QUALITY`, `COMPARE_ARTIFACT_NOT_FOUND`. There is no
+fallback to a shell and no request that the model compare the documents itself.
 
 ## Configuration
 
@@ -89,6 +148,19 @@ Plugins → Документы) or declaratively:
     limits:
       maxInputBytes: 52428800
       maxPages: 1000
+    comparison:
+      enabled: true
+      defaultMode: contract    # contract | default
+      detectMoves: true
+      includeHeaders: true
+      includeFooters: true
+      includeFootnotes: true
+      ignoreWhitespace: true
+      ignoreFormatting: true
+      maxNodes: 100000
+      maxChanges: 50000
+      timeoutMs: 120000
+      inlineChanges: 20
 ```
 
 What the defaults assume:
@@ -170,6 +242,8 @@ and nothing else:
 The pipeline's design — provider interfaces, extraction routes, artifact
 manifest, security and resource limits — is in
 [`docs/specs/document-pipeline.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-documents/docs/specs/document-pipeline.md),
+deterministic comparison in
+[`docs/specs/document-comparison.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-documents/docs/specs/document-comparison.md),
 and the plugin surface itself in [`SPEC.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-documents/SPEC.md).
 
 ## License

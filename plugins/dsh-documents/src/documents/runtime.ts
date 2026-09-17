@@ -25,6 +25,17 @@ import {
   type ProviderSeams,
   type ProviderSet,
 } from "./providers/registry.js";
+import {
+  compareDocuments,
+  resolveComparisonOptions,
+} from "./comparison/compare.js";
+import { readComparisonChanges } from "./comparison/artifact/reader.js";
+import type {
+  DocumentCompareInput,
+  DocumentCompareResult,
+  DocumentDiffReadInput,
+  DocumentDiffReadResult,
+} from "./comparison/types.js";
 import { convertDocument } from "./orchestrator/convert-document.js";
 import { createDocument } from "./orchestrator/create-document.js";
 import { fromUrl } from "./orchestrator/fetch-document.js";
@@ -125,6 +136,50 @@ export class DocumentRuntime {
     scope: DocumentScope,
   ): Promise<DocumentFromUrlResult> {
     return await fromUrl(this.deps, input, scope);
+  }
+
+  /**
+   * Deterministic comparison (§5). Disabled means absent: a deployment that
+   * turned `comparison` off answers with an error rather than a lesser answer,
+   * and the two tools are not registered at all.
+   */
+  async compare(
+    input: DocumentCompareInput,
+    scope: DocumentScope,
+  ): Promise<DocumentCompareResult> {
+    this.assertComparisonEnabled();
+    return await compareDocuments(this.deps, input, scope);
+  }
+
+  async readDiff(
+    input: DocumentDiffReadInput,
+    scope: DocumentScope,
+  ): Promise<DocumentDiffReadResult> {
+    this.assertComparisonEnabled();
+    const resolved = await resolveDocumentScope(this.config, scope);
+    return await readComparisonChanges(resolved.store, {
+      ...input,
+      defaultLimit: this.config.comparison.defaultLimit,
+      maxLimit: this.config.comparison.maxLimit,
+    });
+  }
+
+  /** The options a comparison would run with; also the CLI's view of them. */
+  comparisonOptions(input: {
+    readonly mode?: DocumentCompareInput["mode"];
+    readonly scope?: DocumentCompareInput["scope"];
+    readonly options?: DocumentCompareInput["options"];
+  }): ReturnType<typeof resolveComparisonOptions> {
+    return resolveComparisonOptions(this.config.comparison, input);
+  }
+
+  private assertComparisonEnabled(): void {
+    if (!this.config.comparison.enabled) {
+      throw new DocumentError(
+        "BACKEND_UNAVAILABLE",
+        "deterministic document comparison is disabled in this deployment",
+      );
+    }
   }
 
   async health(

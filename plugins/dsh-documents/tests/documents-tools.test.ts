@@ -15,6 +15,7 @@ import { installDocumentSubsystem } from "../src/documents/index.js";
 import { DocumentRuntime } from "../src/documents/runtime.js";
 import {
   createDocumentTools,
+  documentToolNames,
   DOCUMENT_TOOL_NAMES,
   registerDocumentTools,
 } from "../src/documents/tools/index.js";
@@ -86,7 +87,7 @@ function render(
 }
 
 describe("document tool definitions", () => {
-  test("registers exactly the five semantic tools", () => {
+  test("registers the semantic tools and, by default, the comparison pair", () => {
     expect(DOCUMENT_TOOL_NAMES).toEqual([
       "document_create",
       "document_to_markdown",
@@ -96,7 +97,14 @@ describe("document tool definitions", () => {
     ]);
     expect(tools().map((definition) => definition.name)).toEqual([
       ...DOCUMENT_TOOL_NAMES,
+      "document_compare",
+      "document_diff_read",
     ]);
+    expect(
+      tools({ comparison: { enabled: false } }).map(
+        (definition) => definition.name,
+      ),
+    ).toEqual([...DOCUMENT_TOOL_NAMES]);
   });
 
   test("no tool accepts a free-form command line or a backend name", () => {
@@ -140,7 +148,9 @@ describe("document tool definitions", () => {
       },
       { runtime: runtime() },
     );
-    expect(registered).toEqual([...DOCUMENT_TOOL_NAMES]);
+    expect(registered).toEqual([
+      ...documentToolNames({ comparison: { enabled: true } }),
+    ]);
     dispose();
     expect(registered).toEqual([]);
   });
@@ -336,8 +346,10 @@ describe("installDocumentSubsystem", () => {
       },
       seams: { pandoc: { versionProbe: async () => "test" } },
     });
-    expect(fake.registered).toEqual([...DOCUMENT_TOOL_NAMES]);
-    expect(subsystem?.toolNames).toEqual([...DOCUMENT_TOOL_NAMES]);
+    expect(fake.registered).toEqual([
+      ...documentToolNames({ comparison: { enabled: true } }),
+    ]);
+    expect(subsystem?.toolNames).toEqual(fake.registered);
     subsystem?.dispose();
     expect(fake.registered).toEqual([]);
   });

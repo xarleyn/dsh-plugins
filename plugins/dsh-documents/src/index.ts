@@ -28,6 +28,7 @@ import {
 } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema } from "./schema.js";
 import { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
+import { CONTRACT_REVIEW_SKILL, mountDocumentSkills } from "./skills.js";
 import {
   applyDocumentsEnvOverrides,
   resolveDocumentsConfig,
@@ -56,6 +57,13 @@ interface WebFetchSeam {
 
 export { ConfigSchema } from "./schema.js";
 export { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
+export {
+  buildDocumentSkillsConfig,
+  CONTRACT_REVIEW_SKILL,
+  DOCUMENT_SKILL_PROVIDER_NAME,
+  DOCUMENT_SKILLS_DIR,
+  mountDocumentSkills,
+} from "./skills.js";
 export * from "./documents/index.js";
 
 /** Cordis plugin ID; the settings namespace lives in `shared/settings.ts`. */
@@ -126,6 +134,15 @@ export class DocumentsPlugin {
     });
 
     this.refresh();
+    // The skill teaches the comparison workflow, so it is mounted with it. The
+    // decision is taken once, at startup: a Cordis plugin mount is not a
+    // subscription, and an operator who turns comparison off later still gets
+    // an honest answer from the tools rather than a missing instruction.
+    const startup = this.resolved();
+    if (startup.enabled && startup.comparison.enabled) {
+      mountDocumentSkills(ctx);
+      this.logger.info("documents.skill", { skill: CONTRACT_REVIEW_SKILL });
+    }
     ctx.effect(
       () => () => {
         this.documents?.dispose();

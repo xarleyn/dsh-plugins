@@ -24,6 +24,8 @@ import type { CreateFormat } from "./types.js";
 export {
   DEFAULT_DOCUMENTS_CONFIG,
   type QaDocumentsCommandConfig,
+  type QaDocumentsComparisonConfig,
+  type ResolvedComparisonConfig,
   type DocumentsConfig,
   type QaDocumentsCreateConfig,
   type QaDocumentsEndpointConfig,
@@ -184,6 +186,7 @@ export function resolveDocumentsConfig(
   const workers = input.workers ?? {};
   const retention = input.retention ?? {};
   const limits = input.limits ?? {};
+  const comparison = input.comparison ?? {};
 
   const allowFormats = readStringList(
     create.allowFormats,
@@ -200,6 +203,101 @@ export function resolveDocumentsConfig(
 
   return Object.freeze({
     enabled: readBoolean(input.enabled, D.enabled),
+    comparison: Object.freeze({
+      enabled: readBoolean(comparison.enabled, D.comparison.enabled),
+      defaultMode: readEnum(
+        comparison.defaultMode,
+        ["default", "contract"] as const,
+        D.comparison.defaultMode,
+        "documents.comparison.defaultMode",
+      ),
+      detectMoves: readBoolean(
+        comparison.detectMoves,
+        D.comparison.detectMoves,
+      ),
+      includeHeaders: readBoolean(
+        comparison.includeHeaders,
+        D.comparison.includeHeaders,
+      ),
+      includeFooters: readBoolean(
+        comparison.includeFooters,
+        D.comparison.includeFooters,
+      ),
+      includeFootnotes: readBoolean(
+        comparison.includeFootnotes,
+        D.comparison.includeFootnotes,
+      ),
+      includeComments: readBoolean(
+        comparison.includeComments,
+        D.comparison.includeComments,
+      ),
+      ignoreWhitespace: readBoolean(
+        comparison.ignoreWhitespace,
+        D.comparison.ignoreWhitespace,
+      ),
+      ignoreFormatting: readBoolean(
+        comparison.ignoreFormatting,
+        D.comparison.ignoreFormatting,
+      ),
+      maxInputBytes: readInteger(
+        comparison.maxInputBytes,
+        D.comparison.maxInputBytes,
+        { min: 1_024, max: 4_294_967_296 },
+        "documents.comparison.maxInputBytes",
+      ),
+      maxNodes: readInteger(
+        comparison.maxNodes,
+        D.comparison.maxNodes,
+        { min: 1, max: 5_000_000 },
+        "documents.comparison.maxNodes",
+      ),
+      maxChanges: readInteger(
+        comparison.maxChanges,
+        D.comparison.maxChanges,
+        { min: 1, max: 1_000_000 },
+        "documents.comparison.maxChanges",
+      ),
+      maxUncompressedBytes: readInteger(
+        comparison.maxUncompressedBytes,
+        D.comparison.maxUncompressedBytes,
+        { min: 1_024, max: 8_589_934_592 },
+        "documents.comparison.maxUncompressedBytes",
+      ),
+      timeoutMs: readInteger(
+        comparison.timeoutMs,
+        D.comparison.timeoutMs,
+        { min: 1_000, max: 3_600_000 },
+        "documents.comparison.timeoutMs",
+      ),
+      inlineChanges: readInteger(
+        comparison.inlineChanges,
+        D.comparison.inlineChanges,
+        { min: 0, max: 1_000 },
+        "documents.comparison.inlineChanges",
+      ),
+      inlineTextCharsPerChange: readInteger(
+        comparison.inlineTextCharsPerChange,
+        D.comparison.inlineTextCharsPerChange,
+        { min: 100, max: 1_000_000 },
+        "documents.comparison.inlineTextCharsPerChange",
+      ),
+      defaultLimit: readInteger(
+        comparison.pageSize,
+        D.comparison.defaultLimit,
+        { min: 1, max: 1_000 },
+        "documents.comparison.pageSize",
+      ),
+      maxLimit: readInteger(
+        comparison.maxPageSize,
+        D.comparison.maxLimit,
+        { min: 1, max: 5_000 },
+        "documents.comparison.maxPageSize",
+      ),
+      retainNormalizedDocuments: readBoolean(
+        comparison.retainNormalizedDocuments,
+        D.comparison.retainNormalizedDocuments,
+      ),
+    }),
     storage: Object.freeze({
       root: readNullableAbsolutePath(storage.root, "documents.storage.root"),
       retainSource: readBoolean(storage.retainSource, D.storage.retainSource),

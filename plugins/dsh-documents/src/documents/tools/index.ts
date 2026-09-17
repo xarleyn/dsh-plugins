@@ -11,8 +11,13 @@
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 
 import type { DocumentRuntime } from "../runtime.js";
+import { createDocumentCompareTool, DOCUMENT_COMPARE_TOOL } from "./compare.js";
 import { createDocumentConvertTool, DOCUMENT_CONVERT_TOOL } from "./convert.js";
 import { createDocumentCreateTool, DOCUMENT_CREATE_TOOL } from "./create.js";
+import {
+  createDocumentDiffReadTool,
+  DOCUMENT_DIFF_READ_TOOL,
+} from "./diff-read.js";
 import {
   createDocumentFromUrlTool,
   DOCUMENT_FROM_URL_TOOL,
@@ -23,7 +28,7 @@ import {
   DOCUMENT_TO_MARKDOWN_TOOL,
 } from "./to-markdown.js";
 
-/** Exact names of the tools this subsystem registers (allow-list contract). */
+/** Exact names of the tools this subsystem always registers. */
 export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   DOCUMENT_CREATE_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
@@ -32,13 +37,40 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   DOCUMENT_INSPECT_TOOL,
 ];
 
+/**
+ * Tools that exist only while `documents.comparison.enabled` is on. They are
+ * listed apart from {@link DOCUMENT_TOOL_NAMES} because an allow-list names
+ * what a deployment expects to exist, and these two may legitimately be absent.
+ */
+export const DOCUMENT_COMPARISON_TOOL_NAMES: readonly string[] = [
+  DOCUMENT_COMPARE_TOOL,
+  DOCUMENT_DIFF_READ_TOOL,
+];
+
 export {
+  DOCUMENT_COMPARE_TOOL,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_CREATE_TOOL,
+  DOCUMENT_DIFF_READ_TOOL,
   DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_INSPECT_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
 };
+
+/**
+ * The tool names a configuration resolves to: the five semantic tools, plus
+ * the two comparison tools while `comparison.enabled` is on (§31). One
+ * function answers this for the registration, the subsystem report and the
+ * tests, so an allow-list can never be written against a set the plugin does
+ * not actually register.
+ */
+export function documentToolNames(config: {
+  readonly comparison: { readonly enabled: boolean };
+}): readonly string[] {
+  return config.comparison.enabled
+    ? [...DOCUMENT_TOOL_NAMES, ...DOCUMENT_COMPARISON_TOOL_NAMES]
+    : [...DOCUMENT_TOOL_NAMES];
+}
 
 export function createDocumentTools(options: {
   readonly runtime: DocumentRuntime;
@@ -49,6 +81,12 @@ export function createDocumentTools(options: {
     createDocumentFromUrlTool(options),
     createDocumentConvertTool(options),
     createDocumentInspectTool(options),
+    ...(options.runtime.config.comparison.enabled
+      ? [
+          createDocumentCompareTool(options),
+          createDocumentDiffReadTool(options),
+        ]
+      : []),
   ];
 }
 

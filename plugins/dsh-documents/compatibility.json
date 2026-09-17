@@ -3,7 +3,7 @@
     "channel": "next",
     "range": ">=0.1.5-rc.2 <0.2.0",
     "testedReleases": ["0.1.5-rc.2"],
-    "requiredHostFeatures": ["tools/register", "settings"],
+    "requiredHostFeatures": ["tools/register", "settings", "skills/provider"],
     "requiredClientFeatures": ["settings.plugin.item"]
   },
   "node": ">=22"

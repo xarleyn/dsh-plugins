@@ -16,9 +16,92 @@ const DD = DEFAULT_DOCUMENTS_CONFIG;
 
 const nullableString = z.union([z.string(), z.const(null)]);
 
+/**
+ * Comparison defaults as the settings namespace spells them: the resolver's
+ * `defaultLimit`/`maxLimit` are the page size knobs of `document_diff_read`,
+ * and the card edits them under the names a reader expects.
+ */
+const comparisonDefaults = {
+  ...DD.comparison,
+  pageSize: DD.comparison.defaultLimit,
+  maxPageSize: DD.comparison.maxLimit,
+};
+
 const configSchema = z
   .object({
     enabled: z.boolean().default(DD.enabled),
+    comparison: z
+      .object({
+        enabled: z.boolean().default(DD.comparison.enabled),
+        defaultMode: z
+          .union(["default", "contract"] as const)
+          .default(DD.comparison.defaultMode),
+        detectMoves: z.boolean().default(DD.comparison.detectMoves),
+        includeHeaders: z.boolean().default(DD.comparison.includeHeaders),
+        includeFooters: z.boolean().default(DD.comparison.includeFooters),
+        includeFootnotes: z.boolean().default(DD.comparison.includeFootnotes),
+        includeComments: z.boolean().default(DD.comparison.includeComments),
+        ignoreWhitespace: z.boolean().default(DD.comparison.ignoreWhitespace),
+        ignoreFormatting: z.boolean().default(DD.comparison.ignoreFormatting),
+        maxInputBytes: z
+          .number()
+          .step(1)
+          .min(1_024)
+          .max(4_294_967_296)
+          .default(DD.comparison.maxInputBytes),
+        maxNodes: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(5_000_000)
+          .default(DD.comparison.maxNodes),
+        maxChanges: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(1_000_000)
+          .default(DD.comparison.maxChanges),
+        maxUncompressedBytes: z
+          .number()
+          .step(1)
+          .min(1_024)
+          .max(8_589_934_592)
+          .default(DD.comparison.maxUncompressedBytes),
+        timeoutMs: z
+          .number()
+          .step(1)
+          .min(1_000)
+          .max(3_600_000)
+          .default(DD.comparison.timeoutMs),
+        inlineChanges: z
+          .number()
+          .step(1)
+          .min(0)
+          .max(1_000)
+          .default(DD.comparison.inlineChanges),
+        inlineTextCharsPerChange: z
+          .number()
+          .step(1)
+          .min(100)
+          .max(1_000_000)
+          .default(DD.comparison.inlineTextCharsPerChange),
+        pageSize: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(1_000)
+          .default(DD.comparison.defaultLimit),
+        maxPageSize: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(5_000)
+          .default(DD.comparison.maxLimit),
+        retainNormalizedDocuments: z
+          .boolean()
+          .default(DD.comparison.retainNormalizedDocuments),
+      })
+      .default(comparisonDefaults),
     storage: z
       .object({
         root: nullableString.default(DD.storage.root),
@@ -233,6 +316,7 @@ const configSchema = z
   })
   .default({
     ...DD,
+    comparison: comparisonDefaults,
     storage: {
       ...DD.storage,
       allowedInputRoots: [...DD.storage.allowedInputRoots],

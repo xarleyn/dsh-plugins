@@ -98,7 +98,12 @@ export function readZipEntry(
   const payload = buffer.subarray(start, end);
   try {
     if (entry.compressionMethod === 0) return Buffer.from(payload);
-    if (entry.compressionMethod === 8) return inflateRawSync(payload);
+    if (entry.compressionMethod === 8) {
+      // `maxOutputLength` is the actual defence against a ZIP bomb: the
+      // declared sizes above are the archive's claim, and an inflated entry
+      // that lies about them must fail instead of filling memory.
+      return inflateRawSync(payload, { maxOutputLength: MAX_ENTRY_BYTES });
+    }
     return undefined;
   } catch {
     return undefined;

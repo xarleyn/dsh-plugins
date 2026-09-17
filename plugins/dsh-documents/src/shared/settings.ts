@@ -21,3 +21,13 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   "document_convert",
   "document_inspect",
 ];
+
+/**
+ * Tools that only exist while `comparison.enabled` is on. Kept apart from the
+ * five above, because the inventory the card shows must say which tools can be
+ * absent from a deployment.
+ */
+export const DOCUMENT_COMPARISON_TOOL_NAMES: readonly string[] = [
+  "document_compare",
+  "document_diff_read",
+];

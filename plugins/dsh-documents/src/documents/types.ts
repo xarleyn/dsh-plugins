@@ -42,7 +42,11 @@ export type DocumentWarningCode =
   | "PAGE_SIZE_NOT_APPLIED"
   | "ASSET_MISSING"
   | "SOURCE_NOT_RETAINED"
-  | "TEMPLATE_DEFAULTED";
+  | "TEMPLATE_DEFAULTED"
+  /** Comparison: one side carries tracked revisions (§12). */
+  | "TRACK_CHANGES_PRESENT"
+  /** Comparison: the texts were matched but the extraction is lossy (§25). */
+  | "COMPARISON_QUALITY_REDUCED";
 
 export interface DocumentWarning {
   readonly code: DocumentWarningCode;
@@ -320,7 +324,8 @@ export interface DocumentManifest {
     | "document_create"
     | "document_to_markdown"
     | "document_convert"
-    | "document_from_url";
+    | "document_from_url"
+    | "document_compare";
   readonly createdAt: string;
   readonly input: {
     readonly format: DocumentFormat | "unknown";
@@ -345,6 +350,51 @@ export interface DocumentManifest {
     readonly sessionId?: string;
     readonly workspace?: string;
   };
+  /**
+   * Artifact flavour. Absent means an ordinary single-document artifact; a
+   * comparison sets it to `document-comparison` and fills {@link comparison},
+   * which is what makes a comparison reproducible rather than merely stored
+   * (comparison §23).
+   */
+  readonly kind?: "document-comparison";
+  readonly comparison?: DocumentComparisonRecord;
+}
+
+/**
+ * What a comparison artifact records about itself: the two inputs, the engine
+ * that produced the diff, the options it ran under, and where the change set
+ * lives. Re-running with the same manifest must produce the same change set.
+ */
+export interface DocumentComparisonRecord {
+  readonly left: DocumentComparisonSide;
+  readonly right: DocumentComparisonSide;
+  readonly engine: {
+    readonly extractorLeft: string;
+    readonly extractorRight: string;
+    readonly diff: string;
+  };
+  readonly options: Readonly<Record<string, unknown>>;
+  readonly quality: {
+    readonly level: string;
+    readonly reasons: readonly string[];
+    readonly ocrUsed: boolean;
+  };
+  readonly summary: Readonly<Record<string, number>>;
+  readonly changes: number;
+  readonly changesPath: string;
+  readonly reportPath: string;
+  readonly normalized?: {
+    readonly left: string;
+    readonly right: string;
+  };
+}
+
+export interface DocumentComparisonSide {
+  readonly sha256: string;
+  readonly filename: string;
+  readonly format: string;
+  readonly nodes: number;
+  readonly retainedPath?: string;
 }
 
 /** Backend availability, reported by capacity discovery and health (§42). */

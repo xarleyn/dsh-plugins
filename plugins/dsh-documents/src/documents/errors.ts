@@ -31,6 +31,18 @@ export const DOCUMENT_ERROR_CODES = [
   "BACKEND_TIMEOUT",
   "BACKEND_FAILED",
   "ARTIFACT_WRITE_FAILED",
+  // Comparison (§29). A comparison that cannot be made is reported, never
+  // approximated: there is no fallback to a shell, and no request that the
+  // model read two documents and work out the difference itself.
+  "COMPARE_UNSUPPORTED_FORMAT",
+  "COMPARE_PARSE_FAILED",
+  "COMPARE_ENCRYPTED_DOCUMENT",
+  "COMPARE_INPUT_TOO_LARGE",
+  "COMPARE_TOO_MANY_NODES",
+  "COMPARE_TIMEOUT",
+  "COMPARE_DIFF_LIMIT_EXCEEDED",
+  "COMPARE_LOW_EXTRACTION_QUALITY",
+  "COMPARE_ARTIFACT_NOT_FOUND",
 ] as const;
 
 export type DocumentErrorCode = (typeof DOCUMENT_ERROR_CODES)[number];
