@@ -1,3 +1,4 @@
+import type { OperationSecurityMetadata } from "../../service-credentials/types.js";
 import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
@@ -10,6 +11,10 @@ import type { TeamCityFlags } from "./config.js";
  * purpose: a TeamCity token grants whole areas (or is limited per project), while
  * the agent gets one switch per area, so a user who only needs "why did my build
  * fail" can hand over failures and logs without projects or agents.
+ *
+ * Logs and artifacts live under their own capability because a build log is the
+ * classic place an internal address or a secret leaks from: the deployment's
+ * managed credential reads build metadata, never the text a build printed.
  */
 export type TeamCityCapability =
   | "identity.read"
@@ -113,6 +118,39 @@ export const TEAMCITY_CAPABILITIES: readonly TeamCityCapabilityDefinition[] =
     },
   ]);
 
+/** A read of the connected identity alone: no resource, nothing personal. */
+const IDENTITY_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: false,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read of ordinary build data. Service mode holds it inside the profile's
+ * project boundary: a build addressed by its own id is resolved to the project
+ * it belongs to before the answer is fetched, so a direct object read passes the
+ * same policy a listing does.
+ */
+const PROJECT_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read whose answer is text a build produced. `failures.get` deliberately does
+ * not belong here: it answers with normalized failed tests and problems, not
+ * with the log, which is why the specification keeps it service-safe.
+ */
+const SENSITIVE_READ = {
+  effect: "read",
+  sensitivity: "sensitive",
+  serviceCredential: "deny",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
 export interface TeamCityOperationDefinition {
   readonly capability: TeamCityCapability;
   /**
@@ -131,12 +169,23 @@ export interface TeamCityOperationDefinition {
    * gate can assert that, instead of trusting the path names to look harmless.
    */
   readonly method: "GET";
+  /** What this operation does, how sensitive it is, who may reach it. */
+  readonly security: OperationSecurityMetadata;
 }
+
+/** The resource kind every project-scoped operation of this provider is bounded by. */
+export const TEAMCITY_RESOURCE_KIND = "projects";
+
+/**
+ * This provider has one server per deployment, so deployment configuration names
+ * it by this instance id when it binds a managed credential to it.
+ */
+export const TEAMCITY_INSTANCE_ID = "teamcity";
 
 /**
  * Every model-reachable operation. The provider refuses any operation that is
- * not listed here, so this table — together with `capability` — is the
- * permission surface. The catalog carries no operation that could change
+ * not listed here, so this table — together with `capability` and `security` —
+ * is the permission surface. The catalog carries no operation that could change
  * TeamCity state: trigger, retry, cancel, comment and tags wait for the
  * confirmation framework the specification requires for them.
  */
@@ -147,66 +196,79 @@ export const TEAMCITY_OPERATIONS: Readonly<
     capability: "identity.read",
     path: "/server",
     method: "GET",
+    security: IDENTITY_READ,
   },
   "projects.list": {
     capability: "projects.read",
     path: "/projects",
     method: "GET",
+    security: PROJECT_READ,
   },
   "buildConfigs.list": {
     capability: "buildConfigs.read",
     path: "/buildTypes",
     method: "GET",
+    security: PROJECT_READ,
   },
   "builds.list": {
     capability: "builds.read",
     path: "/builds",
     method: "GET",
+    security: PROJECT_READ,
   },
   "builds.get": {
     capability: "builds.read",
     path: "/builds/:buildLocator",
     method: "GET",
+    security: PROJECT_READ,
   },
   "builds.changes": {
     capability: "builds.read",
     path: "/changes",
     method: "GET",
+    security: PROJECT_READ,
   },
   "failures.get": {
     capability: "failures.read",
     path: "/testOccurrences",
     method: "GET",
+    security: PROJECT_READ,
   },
   "builds.log": {
     capability: "logs.read",
     path: "/downloadBuildLog.html",
     method: "GET",
+    security: SENSITIVE_READ,
   },
   "queue.list": {
     capability: "queue.read",
     path: "/buildQueue",
     method: "GET",
+    security: PROJECT_READ,
   },
   "investigations.list": {
     capability: "investigations.read",
     path: "/investigations",
     method: "GET",
+    security: PROJECT_READ,
   },
   "agents.list": {
     capability: "agents.read",
     path: "/agents",
     method: "GET",
+    security: IDENTITY_READ,
   },
   "artifacts.list": {
     capability: "artifacts.read",
     path: "/builds/:buildLocator/artifacts/children/:path",
     method: "GET",
+    security: PROJECT_READ,
   },
   "artifacts.text": {
     capability: "artifacts.read",
     path: "/builds/:buildLocator/artifacts/content/:path",
     method: "GET",
+    security: SENSITIVE_READ,
   },
 });
 
@@ -236,4 +298,11 @@ export function teamcityOperationCapability(
   operation: string,
 ): IntegrationCapability | undefined {
   return TEAMCITY_OPERATIONS[operation]?.capability;
+}
+
+/** Security classification of an operation, or undefined when it is unknown. */
+export function teamcityOperationMetadata(
+  operation: string,
+): OperationSecurityMetadata | undefined {
+  return TEAMCITY_OPERATIONS[operation]?.security;
 }

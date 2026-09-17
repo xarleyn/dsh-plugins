@@ -35,6 +35,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {
@@ -51,6 +53,7 @@ const SERVER_ROW = {
   id: "teamcity",
   label: "teamcity.example.com",
   baseUrl: SERVER,
+  service: null,
 };
 
 function remote(overrides: Partial<TeamcityRemote> = {}): TeamcityRemote {
@@ -61,13 +64,19 @@ function remote(overrides: Partial<TeamcityRemote> = {}): TeamcityRemote {
     testTeamcity: async () => ({ ok: true, value: connected }),
     patchTeamcityPolicy: async () => ({ ok: true, value: connected }),
     disconnectTeamcity: async () => ({ ok: true, value: true }),
+    managedServiceCredentials: async () => ({
+      ok: true,
+      value: { enabled: false, defaultForNewConnections: false },
+    }),
+    credentialSource: async () => ({ ok: true, value: connected }),
+    serviceBoundary: async () => ({ ok: true, value: connected }),
     ...overrides,
   };
 }
 
 describe("Integrations TeamCity card", () => {
   it("keeps the access token write-only and the address out of the form", async () => {
-    const writes: { token: string }[] = [];
+    const writes: { token: string; useServiceCredential?: boolean }[] = [];
     const Card = createTeamcityCard(
       remote({
         putTeamcityCredential: async (_token, input) => {
@@ -92,7 +101,7 @@ describe("Integrations TeamCity card", () => {
     fireEvent.change(input, { target: { value: secret } });
     fireEvent.click(connect);
     await screen.findByText(/Alice Example/u);
-    expect(writes).toEqual([{ token: secret }]);
+    expect(writes).toEqual([{ token: secret, useServiceCredential: false }]);
     await waitFor(() =>
       expect(screen.queryByLabelText("Access token TeamCity")).toBeNull(),
     );

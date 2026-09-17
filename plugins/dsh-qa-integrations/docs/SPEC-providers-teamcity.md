@@ -167,6 +167,12 @@ The initial provider MUST NOT:
 - expose hidden/password build parameters to the model;
 - make a shared service account the default identity for all qa-surface users.
 
+Shared credentials are forbidden except for explicitly configured Managed
+Service Credentials, as described in
+[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+There is never an implicit fallback to them: the credential source is chosen
+before the call and stored with the connection.
+
 These operations may only be introduced later through explicit provider capabilities and a separate security review.
 
 ---
@@ -239,9 +245,21 @@ If a future TeamCity version introduces a breaking change:
 
 ## 6. Authentication
 
+### 6.0 Managed service credential
+
+A deployment MAY publish one administrator-managed read-only TeamCity access
+token for its server, described in
+[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+A user chooses between their own token and the managed one at connect time and
+can switch later; nothing switches on its own, and neither mode falls back to
+the other. The managed token is expected to be minted for a dedicated service
+account with the narrowest TeamCity role that can read the projects in the
+profile's boundary.
+
 ### 6.1 Supported authentication
 
-MVP supports TeamCity personal access tokens.
+MVP supports TeamCity personal access tokens, and — when the deployment
+configures one — a managed service access token.
 
 The deployment names the server; the user enters:
 
@@ -284,7 +302,9 @@ Do not support in MVP:
 - basic username/password;
 - guest authentication;
 - TeamCity superuser password;
-- shared global token configured in DSH;
+- shared global token configured in DSH, other than through the managed
+  service credential path, which is explicit, per-instance, read-only and
+  bounded;
 - token supplied as a tool argument;
 - token stored in browser localStorage/sessionStorage.
 

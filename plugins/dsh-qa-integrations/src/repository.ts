@@ -5,6 +5,7 @@ import {
   type SqliteMigration,
 } from "@yadsh/dsh-plugin-kit/sqlite";
 import type {
+  CredentialSource,
   EncryptedSecretRecord,
   IntegrationAuditEntry,
   IntegrationCapability,
@@ -12,6 +13,7 @@ import type {
   IntegrationPolicyMode,
   IntegrationPrincipal,
   IntegrationProviderId,
+  IntegrationServiceBoundary,
   StoredIntegration,
 } from "./types.js";
 
@@ -83,6 +85,28 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       CREATE INDEX integration_audit_created ON integration_audit (created_at);
     `,
   },
+  {
+    version: 2,
+    up: `
+      -- Which credential a binding spends, and the managed profile it resolves
+      -- to. Existing connections default to their own credential: an upgrade
+      -- must never move a user onto a shared account.
+      ALTER TABLE integrations ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'personal';
+      ALTER TABLE integrations ADD COLUMN service_profile_id TEXT;
+      ALTER TABLE integrations ADD COLUMN binding_revision INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE integrations ADD COLUMN service_selection_json TEXT;
+      ALTER TABLE integrations ADD COLUMN service_policy_revision TEXT;
+
+      -- Upstream sees only the service account in service mode, so the local
+      -- trail is the one that answers "which real user did this".
+      ALTER TABLE integration_audit ADD COLUMN credential_source TEXT NOT NULL DEFAULT 'personal';
+      ALTER TABLE integration_audit ADD COLUMN service_profile_id TEXT;
+
+      -- A capability split is applied by expandCapabilities, which the
+      -- composition root calls with the provider's rename map: this module
+      -- knows the shape of a store, not the name of a provider.
+    `,
+  },
 ];
 
 /** SQLite hands back null-prototype records; the row shapes describe them. */
@@ -101,6 +125,11 @@ interface IntegrationRow {
   readonly display_name: string | null;
   readonly capabilities_json: string;
   readonly secret_ref: string | null;
+  readonly credential_source: string;
+  readonly service_profile_id: string | null;
+  readonly binding_revision: number;
+  readonly service_selection_json: string | null;
+  readonly service_policy_revision: string | null;
   readonly created_at: string;
   readonly updated_at: string;
   readonly last_validated_at: string | null;
@@ -128,6 +157,8 @@ interface AuditRow {
   readonly provider: string;
   readonly operation: string;
   readonly result: string;
+  readonly credential_source: string;
+  readonly service_profile_id: string | null;
   readonly source_session_id: string | null;
   readonly created_at: string;
 }
@@ -146,6 +177,11 @@ function toIntegration(row: IntegrationRow): StoredIntegration {
       JSON.parse(row.capabilities_json) as IntegrationCapability[],
     ),
     secretRef: row.secret_ref,
+    credentialSource: row.credential_source as CredentialSource,
+    serviceProfileId: row.service_profile_id,
+    bindingRevision: row.binding_revision,
+    serviceSelection: boundaryOf(row.service_selection_json),
+    servicePolicyRevision: row.service_policy_revision,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastValidatedAt: row.last_validated_at,
@@ -177,9 +213,46 @@ function toAuditEntry(row: AuditRow): IntegrationAuditEntry {
     provider: row.provider as IntegrationProviderId,
     operation: row.operation,
     result: row.result as IntegrationAuditEntry["result"],
+    credentialSource: row.credential_source as CredentialSource,
+    serviceProfileId: row.service_profile_id,
     sourceSessionId: row.source_session_id,
     createdAt: row.created_at,
   };
+}
+
+/** Stored boundary JSON, or null when the binder narrows nothing. */
+function boundaryOf(value: string | null): IntegrationServiceBoundary | null {
+  if (value === null || value === "") return null;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
+      return null;
+    }
+    const boundary: Record<string, readonly string[]> = {};
+    for (const [kind, refs] of Object.entries(
+      parsed as Record<string, unknown>,
+    )) {
+      if (!Array.isArray(refs)) return null;
+      boundary[kind] = Object.freeze(
+        refs.filter((ref): ref is string => typeof ref === "string"),
+      );
+    }
+    return Object.freeze(boundary);
+  } catch {
+    return null;
+  }
+}
+
+function boundaryJson(
+  boundary: IntegrationServiceBoundary | null | undefined,
+): string | null {
+  return boundary === null || boundary === undefined
+    ? null
+    : JSON.stringify(boundary);
 }
 
 function policyKey(integrationId: string, operation: string): string {
@@ -286,15 +359,33 @@ export class IntegrationRepository {
   connect(options: {
     principal: IntegrationPrincipal;
     provider: IntegrationProviderId;
-    secret: EncryptedSecretRecord;
+    /**
+     * The personal credential, or null when this connection is created in
+     * service mode. A connection that runs on the managed credential keeps any
+     * personal credential it already had, inactive: it is never a fallback, but
+     * the user can switch back without minting a new token.
+     */
+    secret: EncryptedSecretRecord | null;
     tenantId: string;
     externalUserId: string;
     displayName: string;
     capabilities: readonly IntegrationCapability[];
+    credentialSource?: CredentialSource;
+    serviceProfileId?: string | null;
   }): StoredIntegration {
     return this.storage.transaction(() => {
       const existing = this.find(options.principal, options.provider);
       const now = new Date().toISOString();
+      const credentialSource = options.credentialSource ?? "personal";
+      const serviceProfileId =
+        credentialSource === "service"
+          ? (options.serviceProfileId ?? null)
+          : null;
+      // Switching credential mode bumps the binding revision, which is what
+      // everything derived from the previous identity is keyed by.
+      const switched =
+        existing !== undefined &&
+        existing.credentialSource !== credentialSource;
       const integration: StoredIntegration = Object.freeze({
         id: existing?.id ?? randomUUID(),
         ownerUserId: options.principal.userId,
@@ -305,7 +396,19 @@ export class IntegrationRepository {
         externalUserId: options.externalUserId,
         displayName: options.displayName,
         capabilities: Object.freeze([...options.capabilities]),
-        secretRef: options.secret.id,
+        secretRef:
+          options.secret === null
+            ? (existing?.secretRef ?? null)
+            : options.secret.id,
+        credentialSource,
+        serviceProfileId,
+        bindingRevision: (existing?.bindingRevision ?? 1) + (switched ? 1 : 0),
+        serviceSelection:
+          serviceProfileId !== null &&
+          serviceProfileId === existing?.serviceProfileId
+            ? (existing?.serviceSelection ?? null)
+            : null,
+        servicePolicyRevision: null,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
         lastValidatedAt: now,
@@ -313,23 +416,27 @@ export class IntegrationRepository {
       });
       // A reconnect replaces the credential: the previous one is dropped with
       // the row that referenced it, so no stale secret stays readable.
-      if (
-        existing?.secretRef !== null &&
-        existing?.secretRef !== undefined &&
-        existing.secretRef !== options.secret.id
-      ) {
-        this.storage.db
-          .prepare("DELETE FROM integration_secrets WHERE id = ?")
-          .run(existing.secretRef);
+      if (options.secret !== null) {
+        if (
+          existing?.secretRef !== null &&
+          existing?.secretRef !== undefined &&
+          existing.secretRef !== options.secret.id
+        ) {
+          this.storage.db
+            .prepare("DELETE FROM integration_secrets WHERE id = ?")
+            .run(existing.secretRef);
+        }
+        this.writeSecret(options.secret);
       }
-      this.writeSecret(options.secret);
       this.storage.db
         .prepare(
           `INSERT INTO integrations
              (id, owner_user_id, provider, auth_kind, status, external_tenant_id,
               external_user_id, display_name, capabilities_json, secret_ref,
+              credential_source, service_profile_id, binding_revision,
+              service_selection_json, service_policy_revision,
               created_at, updated_at, last_validated_at, last_error_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              status = excluded.status,
              external_tenant_id = excluded.external_tenant_id,
@@ -337,6 +444,11 @@ export class IntegrationRepository {
              display_name = excluded.display_name,
              capabilities_json = excluded.capabilities_json,
              secret_ref = excluded.secret_ref,
+             credential_source = excluded.credential_source,
+             service_profile_id = excluded.service_profile_id,
+             binding_revision = excluded.binding_revision,
+             service_selection_json = excluded.service_selection_json,
+             service_policy_revision = excluded.service_policy_revision,
              updated_at = excluded.updated_at,
              last_validated_at = excluded.last_validated_at,
              last_error_code = excluded.last_error_code`,
@@ -352,6 +464,11 @@ export class IntegrationRepository {
           integration.displayName,
           JSON.stringify(integration.capabilities),
           integration.secretRef,
+          integration.credentialSource,
+          integration.serviceProfileId,
+          integration.bindingRevision,
+          boundaryJson(integration.serviceSelection),
+          integration.servicePolicyRevision,
           integration.createdAt,
           integration.updatedAt,
           integration.lastValidatedAt,
@@ -402,6 +519,90 @@ export class IntegrationRepository {
     });
   }
 
+  /**
+   * Move a binding between credential sources without touching upstream. The
+   * binding revision is bumped, so everything derived from the previous identity
+   * — caches, cursors, prepared actions — is stale from this moment on; the
+   * personal credential, if there is one, stays stored but unused.
+   */
+  setCredentialSource(options: {
+    principal: IntegrationPrincipal;
+    provider: IntegrationProviderId;
+    source: CredentialSource;
+    serviceProfileId: string | null;
+    capabilities: readonly IntegrationCapability[];
+    tenantId: string;
+    externalUserId: string;
+    displayName: string;
+  }): StoredIntegration | undefined {
+    return this.storage.transaction(() => {
+      const existing = this.find(options.principal, options.provider);
+      if (existing === undefined) return undefined;
+      const now = new Date().toISOString();
+      const profileChanged =
+        options.serviceProfileId !== existing.serviceProfileId;
+      this.storage.db
+        .prepare(
+          `UPDATE integrations
+              SET credential_source = ?, service_profile_id = ?,
+                  binding_revision = ?, service_selection_json = ?,
+                  service_policy_revision = NULL,
+                  capabilities_json = ?, external_tenant_id = ?,
+                  external_user_id = ?, display_name = ?, updated_at = ?,
+                  last_validated_at = ?, last_error_code = NULL
+            WHERE id = ?`,
+        )
+        .run(
+          options.source,
+          options.serviceProfileId,
+          existing.bindingRevision + 1,
+          profileChanged ? null : boundaryJson(existing.serviceSelection),
+          JSON.stringify(options.capabilities),
+          options.tenantId,
+          options.externalUserId,
+          options.displayName,
+          now,
+          now,
+          existing.id,
+        );
+      return this.find(options.principal, options.provider);
+    });
+  }
+
+  /** Store what this binding narrows the profile's allowlist to. */
+  setServiceSelection(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    selection: IntegrationServiceBoundary | null,
+  ): void {
+    this.storage.transaction(() => {
+      const integration = this.find(principal, provider);
+      if (integration === undefined) return;
+      this.storage.db
+        .prepare(
+          "UPDATE integrations SET service_selection_json = ?, updated_at = ? WHERE id = ?",
+        )
+        .run(boundaryJson(selection), new Date().toISOString(), integration.id);
+    });
+  }
+
+  /** Record which profile revision the binding was last resolved against. */
+  setServicePolicyRevision(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    revision: string,
+  ): void {
+    this.storage.transaction(() => {
+      const integration = this.find(principal, provider);
+      if (integration === undefined) return;
+      this.storage.db
+        .prepare(
+          "UPDATE integrations SET service_policy_revision = ? WHERE id = ?",
+        )
+        .run(revision, integration.id);
+    });
+  }
+
   setPolicy(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
@@ -443,13 +644,22 @@ export class IntegrationRepository {
     });
   }
 
-  audit(entry: Omit<IntegrationAuditEntry, "id" | "createdAt">): void {
+  audit(
+    entry: Omit<
+      IntegrationAuditEntry,
+      "id" | "createdAt" | "credentialSource" | "serviceProfileId"
+    > &
+      Partial<
+        Pick<IntegrationAuditEntry, "credentialSource" | "serviceProfileId">
+      >,
+  ): void {
     this.storage.transaction(() => {
       this.storage.db
         .prepare(
           `INSERT INTO integration_audit
-             (id, owner_user_id, provider, operation, result, source_session_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+             (id, owner_user_id, provider, operation, result, credential_source,
+              service_profile_id, source_session_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           randomUUID(),
@@ -457,10 +667,75 @@ export class IntegrationRepository {
           entry.provider,
           entry.operation,
           entry.result,
+          entry.credentialSource ?? "personal",
+          entry.serviceProfileId ?? null,
           entry.sourceSessionId,
           new Date().toISOString(),
         );
       this.applyAuditRetention();
+    });
+  }
+
+  /**
+   * Widen stored capability lists whose ids a provider has since split, copying
+   * each legacy policy onto every id that replaced it. A provider-agnostic
+   * repair driven by the composition root: it is idempotent, so running it on
+   * every start costs one scan and changes nothing once applied.
+   */
+  expandCapabilities(
+    renames: Readonly<Record<string, readonly string[]>>,
+  ): void {
+    const entries = Object.entries(renames).filter(
+      ([from, to]) => from !== "" && to.length > 0,
+    );
+    if (entries.length === 0) return;
+    this.storage.transaction(() => {
+      const rows = asRows<IntegrationRow>(
+        this.storage.db.prepare("SELECT * FROM integrations").all(),
+      );
+      for (const row of rows) {
+        const capabilities = JSON.parse(
+          row.capabilities_json,
+        ) as IntegrationCapability[];
+        const next: IntegrationCapability[] = [];
+        const replaced: string[] = [];
+        for (const capability of capabilities) {
+          const replacement = renames[capability];
+          if (replacement === undefined) {
+            next.push(capability);
+            continue;
+          }
+          replaced.push(capability);
+          for (const id of replacement) {
+            if (!next.includes(id)) next.push(id);
+          }
+        }
+        if (replaced.length === 0) continue;
+        if (next.length !== capabilities.length) {
+          this.storage.db
+            .prepare(
+              "UPDATE integrations SET capabilities_json = ?, updated_at = ? WHERE id = ?",
+            )
+            .run(JSON.stringify(next), new Date().toISOString(), row.id);
+        }
+        for (const legacy of replaced) {
+          for (const id of renames[legacy] ?? []) {
+            this.storage.db
+              .prepare(
+                `INSERT INTO integration_policies (integration_id, operation, mode)
+                   SELECT ?, ?, mode FROM integration_policies
+                    WHERE integration_id = ? AND operation = ?
+                   ON CONFLICT DO NOTHING`,
+              )
+              .run(row.id, id, row.id, legacy);
+          }
+          this.storage.db
+            .prepare(
+              "DELETE FROM integration_policies WHERE integration_id = ? AND operation = ?",
+            )
+            .run(row.id, legacy);
+        }
+      }
     });
   }
 

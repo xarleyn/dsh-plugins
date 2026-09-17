@@ -11,11 +11,13 @@ const COMPANY = {
   id: "company",
   label: "company.atlassian.net",
   baseUrl: "https://company.atlassian.net",
+  service: null,
 };
 const SANDBOX = {
   id: "sandbox",
   label: "Sandbox",
   baseUrl: "https://sandbox.atlassian.net",
+  service: null,
 };
 const SITES = [COMPANY, SANDBOX];
 
@@ -35,6 +37,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {

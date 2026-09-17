@@ -35,6 +35,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {
@@ -48,11 +50,16 @@ const connected: IntegrationSummary = {
 };
 
 const ONE: readonly IntegrationInstanceSummary[] = [
-  { id: "cloud", label: "Test IT Cloud", baseUrl: INSTANCE },
+  { id: "cloud", label: "Test IT Cloud", baseUrl: INSTANCE, service: null },
 ];
 const TWO: readonly IntegrationInstanceSummary[] = [
   ...ONE,
-  { id: "tms", label: "TMS стенда", baseUrl: "https://tms.corp.example" },
+  {
+    id: "tms",
+    label: "TMS стенда",
+    baseUrl: "https://tms.corp.example",
+    service: null,
+  },
 ];
 
 function remote(overrides: Partial<TestitRemote> = {}): TestitRemote {

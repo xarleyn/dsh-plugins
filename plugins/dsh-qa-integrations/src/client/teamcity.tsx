@@ -1,11 +1,13 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { useState } from "react";
 import type {
+  CredentialSource,
   IntegrationInstanceSummary,
+  IntegrationServiceBoundary,
   IntegrationSummary,
   PolicyPatch,
 } from "../types.js";
-import { createProviderCard } from "./provider-card.js";
+import { createProviderCard, serviceConnectOption } from "./provider-card.js";
 
 export interface TeamcityRemote {
   getTeamcity(token: string): Promise<RemoteResult<IntegrationSummary>>;
@@ -19,7 +21,10 @@ export interface TeamcityRemote {
   ): Promise<RemoteResult<IntegrationInstanceSummary | null>>;
   putTeamcityCredential(
     token: string,
-    input: { readonly token: string },
+    input: {
+      readonly token: string;
+      readonly useServiceCredential?: boolean;
+    },
   ): Promise<RemoteResult<IntegrationSummary>>;
   testTeamcity(token: string): Promise<RemoteResult<IntegrationSummary>>;
   patchTeamcityPolicy(
@@ -27,6 +32,23 @@ export interface TeamcityRemote {
     patch: PolicyPatch,
   ): Promise<RemoteResult<IntegrationSummary>>;
   disconnectTeamcity(token: string): Promise<RemoteResult<boolean>>;
+  managedServiceCredentials(token: string): Promise<
+    RemoteResult<{
+      readonly enabled: boolean;
+      readonly defaultForNewConnections: boolean;
+    }>
+  >;
+  credentialSource(
+    token: string,
+    input: { readonly provider: string; readonly source: CredentialSource },
+  ): Promise<RemoteResult<IntegrationSummary>>;
+  serviceBoundary(
+    token: string,
+    input: {
+      readonly provider: string;
+      readonly selection: IntegrationServiceBoundary | null;
+    },
+  ): Promise<RemoteResult<IntegrationSummary>>;
 }
 
 const ERROR_COPY: Readonly<Record<string, string>> = {
@@ -46,6 +68,20 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   UpstreamTimeout: "TeamCity не ответил вовремя. Попробуйте ещё раз.",
   TlsFailure:
     "Сертификат TeamCity не принят стендом. Нужен сертификат, которому доверяет сервер.",
+  ServiceCredentialUnavailable:
+    "Администратор не настроил сервисный токен для этого TeamCity.",
+  ServiceCredentialDisabled:
+    "Сервисный токен этого TeamCity отключён администратором.",
+  ServiceCredentialInvalid:
+    "Сервисный токен не подходит для этого TeamCity. Сообщите администратору.",
+  PersonalCredentialRequired:
+    "Личный токен не сохранён: подключите его, чтобы вернуться к личному аккаунту.",
+  ServiceResourceNotAllowed:
+    "Сервисный токен не даёт доступа к этому проекту или сборке. Сузьте доступ в списке, укажите проект или подключите личный аккаунт.",
+  SensitiveReadRequiresPersonalCredential:
+    "Эта операция может содержать личные или чувствительные данные. Подключите личный аккаунт, чтобы использовать её.",
+  OperationNotAllowedWithServiceCredential:
+    "Сервисный режим — только безопасное чтение: изменения недоступны.",
 };
 
 interface TeamcityExtra {
@@ -78,22 +114,71 @@ export function createTeamcityCard(remote: TeamcityRemote) {
       extra.setServer(address.value);
       accept(await remote.getTeamcity(token));
     },
+    serviceBinding: (extra) => extra.server?.service ?? null,
+    serviceDefault: async (token) => {
+      const result = await remote.managedServiceCredentials(token);
+      return result.ok
+        ? result.value.enabled && result.value.defaultForNewConnections
+        : false;
+    },
     calls: {
-      save: (token, credential) =>
-        remote.putTeamcityCredential(token, { token: credential }),
+      save: (token, credential, _extra, options) =>
+        remote.putTeamcityCredential(token, {
+          token: credential,
+          useServiceCredential: options.useServiceCredential,
+        }),
       test: (token) => remote.testTeamcity(token),
       patch: (token, patch) => remote.patchTeamcityPolicy(token, patch),
       disconnect: (token) => remote.disconnectTeamcity(token),
+      setSource: (token, source) =>
+        remote.credentialSource(token, { provider: "teamcity", source }),
+      setBoundary: (token, selection) =>
+        remote.serviceBoundary(token, { provider: "teamcity", selection }),
     },
     credentialSection: (state) => {
       const server = state.extra.server;
       const configured = server !== null && server !== undefined;
       if (!configured) return null;
+      const address = (
+        <span className="dsh-qa-integrations__muted">
+          Адрес TeamCity: {server.label ?? ""} — задан оператором стенда
+        </span>
+      );
+      const service = serviceConnectOption(state);
+      // A managed credential needs no token at all, so the form drops the field
+      // and keeps only the instance line and the checkbox.
+      if (state.useService) {
+        return (
+          <div className="dsh-qa-integrations__section">
+            {address}
+            {service}
+            <div className="dsh-qa-integrations__actions">
+              <button
+                className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
+                type="button"
+                disabled={state.busy}
+                onClick={state.save}
+              >
+                Подключить сервисный токен
+              </button>
+              {state.connected ? (
+                <button
+                  className="dsh-qa-integrations__button"
+                  type="button"
+                  disabled={state.busy}
+                  onClick={state.cancelCredential}
+                >
+                  Отмена
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="dsh-qa-integrations__section">
-          <span className="dsh-qa-integrations__muted">
-            Адрес TeamCity: {server.label ?? ""} — задан оператором стенда
-          </span>
+          {address}
+          {service}
           <label className="dsh-qa-integrations__field">
             Access token TeamCity
             <input

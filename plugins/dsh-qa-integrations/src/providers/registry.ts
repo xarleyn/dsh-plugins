@@ -15,6 +15,11 @@ export class IntegrationProviderRegistry {
     this.providers.set(provider.id, provider);
   }
 
+  /** The provider, or undefined; used where absence is a configuration error. */
+  find(id: IntegrationProviderId): IntegrationProvider | undefined {
+    return this.providers.get(id);
+  }
+
   get(id: IntegrationProviderId): IntegrationProvider {
     const provider = this.providers.get(id);
     if (provider === undefined) {

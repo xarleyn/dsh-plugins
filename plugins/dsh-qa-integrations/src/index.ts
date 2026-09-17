@@ -16,23 +16,32 @@ import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
 import ConfluenceProvider from "./providers/confluence/index.js";
 import type { IntegrationProvider } from "./providers/contract.js";
+import {
+  GITLAB_CI_SPLIT_CAPABILITIES,
+  GITLAB_LEGACY_CI_CAPABILITY,
+} from "./providers/gitlab/catalog.js";
 import GitlabProvider from "./providers/gitlab/index.js";
 import JiraProvider from "./providers/jira/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
 import TeamcityProvider from "./providers/teamcity/index.js";
 import { networkAllowsNothing } from "./providers/teamcity/config.js";
+import { TEAMCITY_INSTANCE_ID } from "./providers/teamcity/catalog.js";
 import TestitProvider from "./providers/testit/index.js";
 import WeblateProvider from "./providers/weblate/index.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
+import { ServiceCredentialRegistry } from "./service-credentials/registry.js";
 import { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
 import type {
   CredentialInput,
+  CredentialSource,
   IntegrationInstanceSummary,
+  ServiceCredentialHealth,
   IntegrationPrincipal,
   IntegrationProviderId,
   IntegrationProviderSummary,
+  IntegrationServiceBoundary,
   IntegrationSummary,
   PolicyPatch,
 } from "./types.js";
@@ -77,6 +86,11 @@ export class QaIntegrations extends TypertRemoteService {
   readonly broker: IntegrationBroker;
   private readonly logger: PluginLogger;
   private readonly enabled: boolean;
+  /** Providers by id; the service-credential registry resolves through them. */
+  private readonly providerRegistry: IntegrationProviderRegistry;
+  /** Absent unless the deployment configured managed service credentials. */
+  private readonly serviceCredentials: ServiceCredentialRegistry | undefined;
+  private readonly defaultForNewConnections: boolean;
   private readonly providerSummaries: readonly IntegrationProviderSummary[];
   private readonly configuredInstances: readonly IntegrationInstanceSummary[];
   /** The Confluence sites this deployment dials, for the connect form. */
@@ -104,6 +118,12 @@ export class QaIntegrations extends TypertRemoteService {
     // A deployment upgrading from the JSON store keeps its connections: the
     // file is imported, verified and renamed aside before the broker serves.
     repository.importLegacyFile(legacySiblingOf(config.dataPath));
+    // A provider that split one capability into two names the pair here; the
+    // store stays provider-agnostic and the composition root is where the
+    // knowledge of a provider belongs.
+    repository.expandCapabilities({
+      [GITLAB_LEGACY_CI_CAPABILITY]: GITLAB_CI_SPLIT_CAPABILITIES,
+    });
     const secrets = new SecretStore(
       new DockerSecretKeyProvider(
         config.masterKeyPath,
@@ -132,6 +152,30 @@ export class QaIntegrations extends TypertRemoteService {
     if (config.weblate.enabled) {
       providers.register(new WeblateProvider(config));
     }
+    this.providerRegistry = providers;
+    this.defaultForNewConnections =
+      config.managedServiceCredentials.defaultForNewConnections;
+    // Profiles are resolved to a portal here, at load: deployment configuration
+    // that names a provider instance nobody configured fails loudly instead of
+    // leaving users with a checkbox that cannot work.
+    this.serviceCredentials = config.managedServiceCredentials.enabled
+      ? new ServiceCredentialRegistry(
+          config.managedServiceCredentials,
+          (providerId, instanceId) => {
+            const provider = providers.find(providerId);
+            if (provider === undefined) {
+              throw new Error(
+                `qa-integrations managed service credentials: a profile names provider "${providerId}", which this deployment does not enable`,
+              );
+            }
+            try {
+              return provider.instancePortal?.(instanceId);
+            } catch {
+              return undefined;
+            }
+          },
+        )
+      : undefined;
     this.providerSummaries = this.enabled
       ? providers.list().map(providerSummary)
       : [];
@@ -140,6 +184,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+          service: this.serviceBinding("confluence", instance.id),
         }))
       : [];
     this.configuredInstances = config.gitlab.enabled
@@ -147,6 +192,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+          service: this.serviceBinding("gitlab", instance.id),
         }))
       : [];
     this.configuredJiraSites = config.jira.enabled
@@ -154,6 +200,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: site.id,
           label: site.label,
           baseUrl: site.baseUrl,
+          service: this.serviceBinding("jira", site.id),
         }))
       : [];
     this.configuredTestitInstances = config.testit.enabled
@@ -161,14 +208,16 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+          service: this.serviceBinding("testit", instance.id),
         }))
       : [];
     this.configuredServer =
       config.teamcity.enabled && config.teamcity.serverUrl !== ""
         ? {
-            id: "teamcity",
+            id: TEAMCITY_INSTANCE_ID,
             label: new URL(config.teamcity.serverUrl).host,
             baseUrl: config.teamcity.serverUrl,
+            service: this.serviceBinding("teamcity", TEAMCITY_INSTANCE_ID),
           }
         : null;
     this.configuredWeblateInstances = config.weblate.enabled
@@ -176,6 +225,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+          service: this.serviceBinding("weblate", instance.id),
         }))
       : [];
     this.broker = new IntegrationBroker(
@@ -183,6 +233,10 @@ export class QaIntegrations extends TypertRemoteService {
       secrets,
       providers,
       this.logger,
+      {
+        serviceCredentials: this.serviceCredentials,
+        defaultForNewConnections: this.defaultForNewConnections,
+      },
     );
 
     if (config.enabled) {
@@ -300,13 +354,23 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("putGitlabCredential")
   async putGitlabCredential(
     token: string,
-    input: { readonly instanceId: string; readonly token: string },
+    input: {
+      readonly instanceId: string;
+      readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
+    },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "gitlab", {
-        token: input.token,
-        options: { instanceId: input.instanceId },
-      }),
+      this.broker.connect(
+        principal,
+        "gitlab",
+        {
+          token: input.token,
+          options: { instanceId: input.instanceId },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 
@@ -407,10 +471,19 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("putTeamcityCredential")
   async putTeamcityCredential(
     token: string,
-    input: { readonly token: string },
+    input: {
+      readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
+    },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "teamcity", { token: input.token }),
+      this.broker.connect(
+        principal,
+        "teamcity",
+        { token: input.token },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 
@@ -604,6 +677,99 @@ export class QaIntegrations extends TypertRemoteService {
     );
   }
 
+  /**
+   * Whether this deployment offers managed service credentials at all, and
+   * whether a new connection starts on one. Token-gated like every other card
+   * call: the answer describes the deployment, not the caller.
+   */
+  @Remote("managedServiceCredentials")
+  managedServiceCredentials(token: string): {
+    readonly enabled: boolean;
+    readonly defaultForNewConnections: boolean;
+  } {
+    return this.run(token, () => ({
+      enabled: this.serviceCredentials !== undefined,
+      defaultForNewConnections: this.defaultForNewConnections,
+    }));
+  }
+
+  /**
+   * Switch one provider of the calling principal between their own credential
+   * and the deployment's. The provider id is validated against the registry, and
+   * the profile is resolved server-side, so no caller can name a credential.
+   */
+  @Remote("credentialSource")
+  async credentialSource(
+    token: string,
+    input: {
+      readonly provider: IntegrationProviderId;
+      readonly source: CredentialSource;
+    },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.setCredentialSource(principal, input.provider, input.source),
+    );
+  }
+
+  /**
+   * Narrow what this connection may read inside the profile's allowlist. A
+   * selection outside that allowlist is dropped rather than stored, so this can
+   * only ever remove.
+   */
+  @Remote("serviceBoundary")
+  serviceBoundary(
+    token: string,
+    input: {
+      readonly provider: IntegrationProviderId;
+      readonly selection: IntegrationServiceBoundary | null;
+    },
+  ): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.setServiceSelection(
+        principal,
+        input.provider,
+        input.selection,
+      ),
+    );
+  }
+
+  /**
+   * Probe the managed credential of one provider instance. Answers a health
+   * status, never the secret and never the upstream identity it carries.
+   */
+  @Remote("serviceHealth")
+  serviceHealth(
+    token: string,
+    input: {
+      readonly provider: IntegrationProviderId;
+      readonly instanceId: string;
+    },
+  ): Promise<ServiceCredentialHealth | null> {
+    return this.runAsync(token, () =>
+      this.broker.serviceCredentialHealth(input.provider, input.instanceId),
+    );
+  }
+
+  /** The safe alias of the managed credential bound to one instance, if any. */
+  private serviceBinding(
+    providerId: IntegrationProviderId,
+    instanceId: string,
+  ): { readonly label: string } | null {
+    const registry = this.serviceCredentials;
+    if (registry === undefined) return null;
+    let portal: string | undefined;
+    try {
+      portal = this.providerRegistry
+        .find(providerId)
+        ?.instancePortal?.(instanceId);
+    } catch {
+      return null;
+    }
+    if (portal === undefined || portal === "") return null;
+    const profile = registry.find(providerId, portal);
+    return profile?.enabled === true ? { label: profile.label } : null;
+  }
+
   private requirePrincipal(token: string): IntegrationPrincipal {
     if (!this.enabled) {
       throw new IntegrationError(
@@ -653,6 +819,42 @@ export {
   type QaIntegrationsConfig,
   type ResolvedQaIntegrationsConfig,
 } from "./config.js";
+export {
+  MANAGED_SERVICE_CREDENTIALS_DEFAULTS,
+  managedServiceCredentialsSchema,
+  resolveManagedServiceCredentials,
+  type ManagedServiceCredentialProfileConfig,
+  type ManagedServiceCredentialProfileInput,
+  type ManagedServiceCredentialsConfig,
+  type ManagedServiceCredentialsInput,
+} from "./service-credentials/config.js";
+export {
+  evaluateServiceOperation,
+  narrowBoundary,
+  SERVICE_CEILING,
+  type ServiceOperationQuery,
+  type ServicePolicyDecision,
+} from "./service-credentials/policy.js";
+export { ServiceCredentialRegistry } from "./service-credentials/registry.js";
+export { operationCapabilityServiceState } from "./service-credentials/state.js";
+export { profilePolicyRevision } from "./service-credentials/config.js";
+export {
+  CREDENTIAL_SOURCES,
+  isCredentialSource,
+  UNCLASSIFIED_OPERATION,
+  type CredentialSource as ManagedCredentialSource,
+  type DataSensitivity,
+  type OperationEffect,
+  type OperationSecurityMetadata,
+  type OperationServiceDecision,
+  type ResolvedCredentialContext,
+  type ResolvedServiceCredential,
+  type SafeExternalIdentity,
+  type ServiceCredentialHealth,
+  type ServiceCredentialProfile,
+  type ServiceCredentialStatus,
+  type ServiceResourceBoundary,
+} from "./service-credentials/types.js";
 export { IntegrationError } from "./errors.js";
 export {
   BITRIX_CAPABILITIES,
@@ -682,13 +884,21 @@ export {
   createBitrix24Tools,
   BITRIX24_TOOL_NAMES,
 } from "./providers/bitrix24/tools.js";
-export { GitlabProvider } from "./providers/gitlab/index.js";
+export {
+  GitlabProvider,
+  groupAllowed as gitlabGroupAllowed,
+  projectAllowed as gitlabProjectAllowed,
+} from "./providers/gitlab/index.js";
 export {
   GITLAB_CAPABILITIES,
   GITLAB_CAPABILITY_INFO,
+  GITLAB_CI_SPLIT_CAPABILITIES,
+  GITLAB_LEGACY_CI_CAPABILITY,
   GITLAB_OPERATIONS,
+  GITLAB_RESOURCE_KIND,
   capabilitiesForScopes,
   gitlabOperationCapability,
+  gitlabOperationMetadata,
   type GitlabCapability,
   type GitlabCapabilityDefinition,
   type GitlabOperationDefinition,
@@ -697,6 +907,7 @@ export {
   GITLAB_DEFAULTS,
   gitlabConfigSchema,
   resolveGitlabConfig,
+  type GitlabConfigInput,
   type GitlabFlags,
   type GitlabInstance,
 } from "./providers/gitlab/config.js";
@@ -778,14 +989,21 @@ export {
   credentialInstance as confluenceCredentialInstance,
   type ConfluenceCredential,
 } from "./providers/confluence/transport.js";
-export { TeamcityProvider } from "./providers/teamcity/index.js";
+export {
+  TeamcityProvider,
+  buildTypeAllowed as teamcityBuildTypeAllowed,
+  projectAllowed as teamcityProjectAllowed,
+} from "./providers/teamcity/index.js";
 export {
   TEAMCITY_CAPABILITIES,
   TEAMCITY_CAPABILITY_INFO,
+  TEAMCITY_INSTANCE_ID,
   TEAMCITY_OPERATIONS,
+  TEAMCITY_RESOURCE_KIND,
   TEAMCITY_STREAM_OPERATIONS,
   enabledCapabilities as enabledTeamcityCapabilities,
   teamcityOperationCapability,
+  teamcityOperationMetadata,
   type TeamCityCapability,
   type TeamCityCapabilityDefinition,
   type TeamCityOperationDefinition,
@@ -1029,6 +1247,10 @@ export {
   WEBLATE_TOOL_NAMES,
 } from "./providers/weblate/tools.js";
 export { IntegrationProviderRegistry } from "./providers/registry.js";
+export {
+  serviceBoundaryOf,
+  serviceResourceDenied,
+} from "./providers/shared/service-boundary.js";
 export { IntegrationRepository } from "./repository.js";
 export {
   DockerSecretKeyProvider,

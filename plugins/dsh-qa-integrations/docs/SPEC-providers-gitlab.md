@@ -78,7 +78,13 @@ Initial implementation MUST NOT:
 - expose GraphQL query text supplied by the model;
 - provide GitLab admin APIs;
 - use `sudo`, impersonation tokens, or administrator credentials;
-- share one service-account token across all `qa-surface` users;
+- share one service-account token across all `qa-surface` users, except
+  through the managed service credential described in
+  [`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md):
+  a deployment may publish one administrator-managed read-only credential, and
+  only the path that specification defines. Sharing a token any other way — a
+  static MCP credential, a per-deployment token handed to every user, an
+  implicit substitution — stays forbidden;
 - let users specify arbitrary GitLab base URLs at tool-call time;
 - let the model select `user_id`, `connection_id`, `credential_id`, or OAuth scopes;
 - automatically merge merge requests;
@@ -377,6 +383,33 @@ PAT scopes should follow the same least-privilege profiles where supported.
 
 ---
 
+## 8.3 Managed service credential
+
+A deployment MAY publish one administrator-managed read-only GitLab credential
+for a configured instance, described in
+[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+It is a third authentication shape next to personal OAuth and personal PAT:
+
+```text
+personal OAuth (8.1)
+personal PAT (8.2)
+managed service PAT (8.0)
+```
+
+The user chooses between their own credential and the managed one at connect
+time and can switch later; the choice is stored per connection, and switching
+never happens on its own. In service mode the upstream identity is the service
+account, while the local principal stays the authenticated `qa-surface` user,
+who remains the subject of every audit row.
+
+A service PAT should carry the provider's read scopes only (`read_user`,
+`read_api`, `read_repository` or the narrower equivalents) and must not carry
+`api`, `write_repository`, admin scopes or `sudo`. An over-wide token is reported
+by the credential probe as `unsafe_scope`; it does not widen anything, because
+the local capability ceiling is checked first.
+
+---
+
 ## 9. Connection ownership and data model
 
 Use generic integration tables where possible, with GitLab-specific metadata separated from secrets.
@@ -513,6 +546,11 @@ const account = await accountResolver.resolve({
 })
 
 if (!account) deny()
+// The binding decides which credential it spends; when it runs on the
+// deployment's managed credential, the upstream identity is the service
+// account and NOT the principal's own GitLab user. The principal is still the
+// only identity the broker knows: it is what every audit row is written
+// against, and what the user/workspace boundary is applied to.
 ```
 
 Forbidden patterns:
@@ -525,6 +563,19 @@ execute({ accountId: modelArgs.accountId })
 
 // NEVER
 const account = userAccount ?? sharedGitLabAdminAccount
+```
+
+The one permitted shared identity is an explicitly configured managed service
+credential, and it is not a fallback: the credential source is decided before the
+call, stored with the connection, and a failure in one mode is never retried in
+the other. `403` stays a denial in both directions.
+
+Principal identity and upstream credential identity are therefore not the same
+thing:
+
+```text
+principal identity  == the authenticated qa-surface user (always required)
+upstream identity   == the principal's GitLab user, or the service account
 ```
 
 Fail closed if principal/account resolution is ambiguous or missing.
@@ -577,7 +628,29 @@ Option 1 is preferred for strict confidentiality because filtering after a broad
 
 Global API operations that cannot be safely restricted SHOULD be disabled when boundary mode is `selected`.
 
-### 12.2 Boundary changes
+### 12.2 Service-mode boundary
+
+When the connection runs on a managed service credential, the boundary is the
+administrator's first and the user's second:
+
+```text
+resources visible to the service account upstream
+  ∩ administrator boundary of the service profile
+  ∩ user/workspace selection
+  = resources visible to the agent
+```
+
+The service profile's boundary is a hard upper bound. A user may narrow it and
+may never widen it: a selection that names anything outside the administrator's
+list is dropped rather than stored, and every service-mode call resolves the
+resource it touches against the narrowed boundary — a project named by id or by
+path, or a build resolved to its owning project. An operation that names no
+resource is refused rather than answered with the service account's whole view.
+
+Because the shared account can see far more than any one user, an operation that
+cannot be held inside the boundary must not run at all.
+
+### 12.3 Boundary changes
 
 Changing the boundary MUST:
 
@@ -602,7 +675,8 @@ gitlab.repository.read
 gitlab.search.read
 gitlab.issues.read
 gitlab.merge_requests.read
-gitlab.ci.read
+gitlab.ci.metadata.read
+gitlab.ci.logs.read
 
 gitlab.comments.write
 gitlab.issues.write
@@ -612,6 +686,28 @@ gitlab.repository.write
 gitlab.merge
 ```
 
+`gitlab.ci.read` was split because a pipeline listing and a job log are
+different disclosures. `ci.metadata.read` covers pipelines, jobs and their
+statuses; `ci.logs.read` covers the log a job printed, which may carry secrets
+and internal addresses, and is never reachable through a managed service
+credential. Deployment switches follow the same split (`ciMetadataRead`,
+`ciLogsRead`); the pre-split `ciRead` still works and governs both halves.
+
+Every operation carries security metadata next to its capability:
+
+```ts
+interface OperationSecurityMetadata {
+  effect: 'read' | 'write' | 'admin'
+  sensitivity: 'normal' | 'sensitive' | 'secret'
+  serviceCredential: 'allow' | 'deny'
+  requiresResourceBoundary?: boolean
+}
+```
+
+An operation with no metadata is denied in service mode: a tool added by a
+provider update does not become reachable through the shared credential until
+someone classifies it on purpose. That default is release-blocking.
+
 Capability availability is derived from:
 
 - granted OAuth/PAT scopes;
@@ -619,6 +715,8 @@ Capability availability is derived from:
 - global administrator policy;
 - per-user integration settings;
 - project boundary;
+- credential mode: in service mode only operations that are `read` of `normal`
+  sensitivity with `serviceCredential: 'allow'` may run;
 - GitLab's runtime permission checks.
 
 Never infer GitLab role solely from cached membership data and then bypass the API. GitLab remains the final authorization authority.
@@ -1861,6 +1959,11 @@ GitLab official documentation used for this specification:
 
 The core security invariant is:
 
-> GitLab data access is always performed as the GitLab identity connected to the currently authenticated `qa-surface` principal, constrained by a server-side resource boundary and action policy. Neither the model nor tool arguments can select or substitute that identity.
+> Every GitLab operation is attributable to the authenticated `qa-surface`
+> principal. The upstream GitLab identity is selected only by trusted
+> server-side credential policy, and is either the principal's own identity or
+> an administrator-managed service identity. Neither the model nor tool
+> arguments can select or substitute that identity, and neither mode falls back
+> to the other.
 
 Everything else in the provider should preserve this invariant even if transports, APIs, caching, subagents, MCP support, or UI behavior change later.
