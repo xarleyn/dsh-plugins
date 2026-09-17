@@ -42,6 +42,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-qa-surface` | `@yadsh/dsh-qa-surface` | Focused end-user QA surface backed by native sessions |
+| `plugins/dsh-session-audit` | `@yadsh/dsh-session-audit` | Session audit registry and viewer: an Audit view beside Chat and Trajectory |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
 | `plugins/dsh-sleev` | `@yadsh/dsh-sleev` | Sleev routing observability |
 | `plugins/dsh-tool-offload` | `@yadsh/dsh-tool-offload` | Offloads large tool results to small one-shot worker agents |

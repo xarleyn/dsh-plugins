@@ -48,12 +48,15 @@ instance.
 | `@yadsh/dsh-qa-browser` | Cordis, schemastery, agent, attachment, gateway, api-session-controller, webserver, tools, client renderer/slots, Typert protocol, React, React DOM |
 | `@yadsh/dsh-qa-integrations` | Cordis, schemastery, tools, settings, client settings/settings-plugins, Typert protocol, React |
 | `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, api-session-controller, api-workspace-controller, permissions, session, settings, tools, workspace, webserver, client connection/conversation/chat/renderer/layout/settings/slots/theme, Typert protocol, React |
+| `@yadsh/dsh-session-audit` | Cordis, schemastery, home paths, gateway, client conversation/renderer/slots, Typert protocol, React |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/renderer/store/settings/slots, LLM, settings |
 | `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
 | `@yadsh/dsh-ui-repair` | Cordis, schemastery, client renderer/settings/settings-plugins/slots, settings |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
 | `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/renderer/settings/slots, Typert protocol, React |
+| `@yadsh/dsh-audit-core` | none |
+| `@yadsh/dsh-audit-ui` | React |
 | `@yadsh/dsh-plugin-log` | none |
 | `@yadsh/dsh-plugin-kit` (private) | Cordis |
 | `@yadsh/dsh-plugin-scripts` (private) | none |
