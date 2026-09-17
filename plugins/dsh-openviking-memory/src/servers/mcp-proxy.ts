@@ -52,9 +52,7 @@ function hasMeaningfulText(value: unknown): boolean {
   if (typeof value === "string") return value.trim() !== "";
   // `grep` accepts a pattern list as well as a single pattern.
   if (Array.isArray(value)) {
-    return value.some(
-      (item) => typeof item === "string" && item.trim() !== "",
-    );
+    return value.some((item) => typeof item === "string" && item.trim() !== "");
   }
   return false;
 }
@@ -64,7 +62,9 @@ function hasMeaningfulText(value: unknown): boolean {
  * Everything else — unknown tools, well-formed calls, non-request messages —
  * forwards upstream untouched.
  */
-export function guardEmptySearchParams(message: unknown): RequestGuardRejection | null {
+export function guardEmptySearchParams(
+  message: unknown,
+): RequestGuardRejection | null {
   if (!message || typeof message !== "object") return null;
   const request = message as {
     readonly method?: unknown;
@@ -75,11 +75,11 @@ export function guardEmptySearchParams(message: unknown): RequestGuardRejection 
   };
   if (request.method !== "tools/call") return null;
   const name = request.params?.name;
-  const required = typeof name === "string" ? REQUIRED_TEXT_PARAMS[name] : undefined;
+  const required =
+    typeof name === "string" ? REQUIRED_TEXT_PARAMS[name] : undefined;
   if (!required) return null;
   const args =
-    request.params?.arguments &&
-    typeof request.params.arguments === "object"
+    request.params?.arguments && typeof request.params.arguments === "object"
       ? (request.params.arguments as Readonly<Record<string, unknown>>)
       : {};
   for (const param of required) {
@@ -99,11 +99,10 @@ export function guardEmptySearchParams(message: unknown): RequestGuardRejection 
  * schemas, so a model sees the contract before its first call. The tool is
  * cloned before patching: the upstream answer object must stay untouched.
  */
-export function requireSearchParamsInSchema(
-  tool: LocalTool,
-): LocalTool | null {
+export function requireSearchParamsInSchema(tool: LocalTool): LocalTool | null {
   const name = tool?.name;
-  const required = typeof name === "string" ? REQUIRED_TEXT_PARAMS[name] : undefined;
+  const required =
+    typeof name === "string" ? REQUIRED_TEXT_PARAMS[name] : undefined;
   if (!required) return tool;
   const clone = JSON.parse(JSON.stringify(tool)) as {
     inputSchema?: {

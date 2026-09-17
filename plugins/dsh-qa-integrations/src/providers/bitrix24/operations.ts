@@ -157,7 +157,10 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       if (stageId !== undefined) filter["stageId"] = stageId;
       const categoryId = optionalInteger(input["categoryId"], "categoryId", 0);
       if (categoryId !== undefined) filter["categoryId"] = categoryId;
-      const entityTypeId = requiredInteger(input["entityTypeId"], "entityTypeId");
+      const entityTypeId = requiredInteger(
+        input["entityTypeId"],
+        "entityTypeId",
+      );
       if (optionalBoolean(input["openOnly"], "openOnly") === true) {
         if (entityTypeId !== 2) {
           throw new IntegrationError(
