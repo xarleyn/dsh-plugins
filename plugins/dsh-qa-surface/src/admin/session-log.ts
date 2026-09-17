@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, rmSync } from "node:fs";
+import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { QaTranscriptUnavailableReason } from "../types.js";
@@ -56,6 +58,37 @@ export interface QaSessionListing {
 export interface QaSessionLogReader {
   list(): Promise<QaSessionListing>;
   read(sessionId: string): Promise<QaSessionReadResult>;
+  /**
+   * Whether the Harness holds this session in memory right now. Such a session
+   * is still being written: storage removal cannot take it away, because the
+   * next flush would put its log back.
+   */
+  live(sessionId: string): boolean;
+}
+
+/** What one storage-removal call did, id by id. */
+export interface QaSessionEraseOutcome {
+  /** Ids whose stored directories were removed. */
+  readonly removed: readonly string[];
+  /**
+   * Ids with no stored directory to remove: the session is already gone, or
+   * this deployment keeps it somewhere directories cannot express.
+   */
+  readonly absent: readonly string[];
+}
+
+/**
+ * Removal of stored sessions.
+ *
+ * The Harness has no deletion seam: `sessionPersistence` offers
+ * create/open/flush/stat/list, and the in-memory store drops a session only
+ * when the fiber that owns it disposes. A deployment that wants a conversation
+ * to stop existing therefore has to remove the artifacts storage keeps, which
+ * for the directory-backed backend means the session directories under the
+ * home. Implementations report what they could not do instead of guessing.
+ */
+export interface QaStoredSessionEraser {
+  erase(sessionIds: readonly string[]): Promise<QaSessionEraseOutcome>;
 }
 
 /**
@@ -171,6 +204,10 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
   };
 
   return {
+    live(sessionId: string): boolean {
+      return sessions()?.get(sessionId as SessionId) !== undefined;
+    },
+
     async list(): Promise<QaSessionListing> {
       const engine = query();
       if (engine === undefined) {
@@ -232,8 +269,14 @@ export function staticSessionLogReader(input: {
    * pass false to stand for a live-only view of a larger deployment.
    */
   readonly complete?: boolean;
+  /** Ids the fixture's Harness still holds open. */
+  readonly held?: readonly string[];
 }): QaSessionLogReader {
+  const held = new Set(input.held ?? []);
   return {
+    live(sessionId: string) {
+      return held.has(sessionId);
+    },
     async list() {
       return {
         headers: input.sessions ?? [],
@@ -245,6 +288,58 @@ export function staticSessionLogReader(input: {
       return events === undefined
         ? { ok: false, reason: "not-found" }
         : { ok: true, events };
+    },
+  };
+}
+
+/**
+ * The stored sessions of a directory-backed deployment: one directory per
+ * session under `<home>/sessions/<project>/<sessionId>`, named by the id the
+ * header carries. The home follows the same convention as the deployment's
+ * other stores (`DSH_HOME`, then the working directory).
+ *
+ * Removal is by directory name and never by guessing a project key: the id is
+ * what the caller knows, and the directory either exists under one of the
+ * projects or does not exist at all.
+ */
+export function createSessionEraser(home?: string): QaStoredSessionEraser {
+  const root = (): string =>
+    path.join(
+      home ?? process.env.DSH_HOME?.trim() ?? process.cwd(),
+      "sessions",
+    );
+
+  return {
+    async erase(sessionIds: readonly string[]): Promise<QaSessionEraseOutcome> {
+      const removed: string[] = [];
+      const absent: string[] = [];
+      const rootPath = root();
+      const projects = existsSync(rootPath)
+        ? readdirSync(rootPath, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => path.join(rootPath, entry.name))
+        : [];
+      for (const sessionId of sessionIds) {
+        // An id is a harness-minted token and the directory it names is its
+        // last path segment. Requiring exactly that — and a location inside
+        // the sessions root — means an empty string, a traversal or a path
+        // names nothing, instead of naming some other directory to remove.
+        const directory = projects
+          .map((project) => path.resolve(project, sessionId))
+          .filter(
+            (candidate) =>
+              candidate.startsWith(`${rootPath}${path.sep}`) &&
+              path.basename(candidate) === sessionId,
+          )
+          .find((candidate) => existsSync(candidate));
+        if (directory === undefined) {
+          absent.push(sessionId);
+          continue;
+        }
+        rmSync(directory, { recursive: true, force: true });
+        removed.push(sessionId);
+      }
+      return { removed, absent };
     },
   };
 }

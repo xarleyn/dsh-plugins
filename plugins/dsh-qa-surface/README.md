@@ -862,7 +862,13 @@ The console covers the quality loop end to end:
   the stored transcript: messages in recorded order, tool calls with their
   arguments, results and errors, per-message feedback, and the capability
   snapshot frozen when the session started. A link can point at one message
-  (`/qa/admin/conversations/<id>/<seq>`).
+  (`/qa/admin/conversations/<id>/<seq>`). An administrator can also delete the
+  conversation from its own page: that removes the chat itself — its stored
+  log, the sessions delegated from it, its ownership record, its ratings,
+  reviews, queue entries and collected sources — unlike the sidebar's "delete
+  chat", which hides a row in one browser. The Host refuses while the Harness
+  still holds the session open or when the deployment stores sessions
+  somewhere directories cannot express, and audits the act.
 - **Review queue** — what needs attention, derived from unanswered negative
   feedback, explicitly queued conversations and failed tool calls. A reviewer
   classifies issues across answer, context, tools, skills and access, sets a

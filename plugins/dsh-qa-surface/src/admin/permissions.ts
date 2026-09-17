@@ -16,6 +16,10 @@ const PERMISSIONS: Readonly<Record<QaAccountRole, readonly QaPermission[]>> = {
     "roles.manage",
     "conversations.read.all",
     "conversations.read.own",
+    // Deleting a conversation removes the chat itself, not just its row in a
+    // console. That is the same authority `users.manage` already carries, so
+    // it rides the admin role rather than introducing a fourth one.
+    "conversations.delete",
     "reviews.read",
     "reviews.write",
     "analytics.read",

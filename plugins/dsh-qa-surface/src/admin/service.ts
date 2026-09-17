@@ -19,6 +19,7 @@ import type {
   QaAdminUserUpdate,
   QaAuditQuery,
   QaConversationDetail,
+  QaConversationDeletion,
   QaConversationMessage,
   QaConversationQuery,
   QaConversationReview,
@@ -49,7 +50,11 @@ import {
   projectTranscript,
   type QaProjectedTranscript,
 } from "./conversation-log.js";
-import type { QaSessionLogReader } from "./session-log.js";
+import type {
+  QaSessionLogReader,
+  QaStoredSessionEraser,
+  QaStoredSessionHeader,
+} from "./session-log.js";
 
 /**
  * The administrative console's server side.
@@ -99,9 +104,42 @@ export interface QaAdminServiceOptions {
   readonly roles: () => QaRoleRepository;
   readonly access: () => QaAccessService;
   readonly sessionLog: QaSessionLogReader;
+  /**
+   * Removal of stored session logs, the one thing the Harness does not offer.
+   * Without it the console refuses to delete a conversation rather than
+   * pretending it did.
+   */
+  readonly sessionFiles?: QaStoredSessionEraser;
+  /** Drops the sources a conversation collected, when the deployment keeps any. */
+  readonly dropSources?: (sessionId: string) => void;
   readonly logger: PluginLogger;
   readonly redactor?: QaAdminRedactor;
   readonly clock?: QaServiceClock;
+}
+
+/**
+ * Every session one conversation owns: the chat itself and everything
+ * delegated from it, transitively. A subagent's session is part of the answer
+ * it ran inside, so a conversation does not leave its children behind.
+ */
+function descendantsOf(
+  sessionId: string,
+  headers: readonly QaStoredSessionHeader[],
+): readonly string[] {
+  const found: string[] = [];
+  const queue = [sessionId];
+  while (queue.length > 0) {
+    const parent = queue.shift();
+    if (parent === undefined) break;
+    for (const header of headers) {
+      if (header.parentSessionId !== parent || found.includes(header.id)) {
+        continue;
+      }
+      found.push(header.id);
+      queue.push(header.id);
+    }
+  }
+  return found;
 }
 
 function isoOf(epochMs: number): string {
@@ -880,6 +918,104 @@ export class QaAdminService {
     });
   }
 
+  /**
+   * Delete one conversation from the deployment.
+   *
+   * The Harness has no deletion seam: persistence offers create, open, flush,
+   * stat and list, and a chat stops existing only when its stored log is gone.
+   * This is where the console's delete button gets its teeth — the stored logs
+   * of the conversation and of every session delegated from it are removed,
+   * and then everything the QA layer kept about it: the ownership record that
+   * is its authorization boundary, its ratings, reviews and queue entries, and
+   * the sources it collected. The act is audited, because it destroys what a
+   * person wrote, and that is not the same as hiding a row.
+   *
+   * Every refusal comes before anything is removed, so a chat is never
+   * half-deleted: a conversation the Harness still holds open would have its
+   * log written back by the next flush, and one the deployment stores somewhere
+   * directories do not express cannot be removed at all.
+   */
+  async deleteConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<QaConversationDeletion> {
+    const { accounts, actor } = this.require(token, "conversations.delete");
+    const eraser = this.options.sessionFiles;
+    if (eraser === undefined) {
+      throw new QaAccountsError(
+        "conversation-not-removable",
+        "this deployment serves no stored-conversation removal",
+      );
+    }
+    const owner = accounts.ownerIdOf(conversationId);
+    const listing = await this.options.sessionLog.list();
+    const headers = new Map(
+      listing.headers.map((header) => [header.id, header]),
+    );
+    if (
+      owner === undefined &&
+      !headers.has(conversationId) &&
+      !this.options.sessionLog.live(conversationId)
+    ) {
+      throw new QaAccountsError(
+        "conversation-unknown",
+        "this conversation is unknown to the deployment",
+      );
+    }
+    const targets = [
+      conversationId,
+      ...descendantsOf(conversationId, listing.headers),
+    ];
+    const held = targets.find((sessionId) =>
+      this.options.sessionLog.live(sessionId),
+    );
+    if (held !== undefined) {
+      throw new QaAccountsError(
+        "conversation-live",
+        "the Harness still holds this conversation open",
+      );
+    }
+    const outcome = await eraser.erase(targets);
+    if (
+      headers.has(conversationId) &&
+      !outcome.removed.includes(conversationId)
+    ) {
+      // The Harness lists the chat, storage has no directory for it: this
+      // deployment keeps sessions somewhere directories do not express, and
+      // dropping the records would leave the chat itself behind.
+      throw new QaAccountsError(
+        "conversation-not-removable",
+        "this deployment does not store conversations as directories",
+      );
+    }
+    accounts.forgetSessions(new Set(targets));
+    const qualityRows = this.options.quality().dropConversations(targets);
+    for (const sessionId of targets) this.options.dropSources?.(sessionId);
+    this.transcripts.delete(conversationId);
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "conversation.deleted",
+      targetType: "conversation",
+      targetId: conversationId,
+      before: {
+        owner: owner ?? null,
+        sessions: targets.length,
+      },
+      after: { removed: outcome.removed.length },
+    });
+    this.options.logger.info("admin.conversation-deleted", {
+      conversationId,
+      actor: actor.id,
+      sessions: outcome.removed.length,
+      absent: outcome.absent.length,
+      qualityRows,
+    });
+    return Object.freeze({
+      conversationId,
+      sessions: Object.freeze([...outcome.removed]),
+      qualityRows,
+    });
+  }
   private failuresOf(
     conversationId: string,
     project: QaProjectedTranscript | undefined,

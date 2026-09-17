@@ -45,6 +45,7 @@ export type QaPermission =
   | "roles.manage"
   | "conversations.read.all"
   | "conversations.read.own"
+  | "conversations.delete"
   | "reviews.read"
   | "reviews.write"
   | "analytics.read"
@@ -1370,6 +1371,7 @@ export type QaAdminAuditAction =
   | "subrole.deleted"
   | "common_capabilities.updated"
   | "conversation.reviewed"
+  | "conversation.deleted"
   | "review.updated"
   | "review.queued"
   | "admin.settings.updated";
@@ -1473,6 +1475,18 @@ export interface QaConversationDetail {
   readonly messages: readonly QaConversationMessage[];
   readonly reviews: readonly QaConversationReview[];
   readonly queueItems: readonly QaReviewQueueItem[];
+}
+
+/** What one administrative deletion removed, for the console to report. */
+export interface QaConversationDeletion {
+  readonly conversationId: string;
+  /**
+   * Every session whose stored log is gone, the chat first: a conversation's
+   * subagent sessions are part of it and are removed with it.
+   */
+  readonly sessions: readonly string[];
+  /** Quality rows dropped with the conversation. */
+  readonly qualityRows: number;
 }
 
 /**

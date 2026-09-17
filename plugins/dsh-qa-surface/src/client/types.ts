@@ -45,6 +45,7 @@ import type {
   QaAdminUserUpdate,
   QaAuditQuery,
   QaConversationDetail,
+  QaConversationDeletion,
   QaConversationQuery,
   QaConversationReview,
   QaConversationReviewInput,
@@ -168,6 +169,14 @@ export interface QaAdminApi {
     token: string,
     conversationId: string,
   ): Promise<RemoteResult<QaConversationDetail>>;
+  /**
+   * Remove the conversation from the deployment, stored logs included. Only an
+   * administrator may call it; the sidebar's own delete is unrelated.
+   */
+  deleteConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<RemoteResult<QaConversationDeletion>>;
   feedback(
     token: string,
     query: QaFeedbackQuery,

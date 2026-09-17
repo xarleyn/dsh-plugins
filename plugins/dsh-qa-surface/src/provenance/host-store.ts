@@ -165,12 +165,31 @@ export class QaProvenanceHost {
    * restart. Growth of the file is bounded by the snapshot store's caps.
    */
   private forget(session: Session): void {
-    const sessionId = String(session.id);
+    this.forgetById(String(session.id));
+  }
+
+  private forgetById(sessionId: string): void {
     this.collectors.delete(sessionId);
     this.snapshots.delete(sessionId);
     this.seededSessions.delete(sessionId);
     this.calls.delete(sessionId);
     this.lineage.delete(sessionId);
+  }
+
+  /**
+   * Drop everything kept about one chat, in memory and in storage alike.
+   *
+   * Unlike {@link forget}, which runs on every teardown of a chat that still
+   * exists and deliberately keeps its stored turns, this is for a chat that is
+   * gone: nothing will reopen it, so the durable shard goes with it. The
+   * administrative deletion calls this in the same act that removes the
+   * session's logs.
+   *
+   * @param sessionId - the chat whose collected sources are dropped.
+   */
+  dropSession(sessionId: string): void {
+    this.forgetById(sessionId);
+    this.store.drop(sessionId);
   }
 
   private forgetAll(): void {

@@ -27,6 +27,15 @@ export function adminErrorMessage(error: unknown): string {
   if (/QA accounts are not enabled/u.test(message)) {
     return "Учётные записи на этом стенде выключены.";
   }
+  if (/reason: conversation-unknown/u.test(message)) {
+    return "Такого разговора на стенде уже нет.";
+  }
+  if (/reason: conversation-live/u.test(message)) {
+    return "Разговор открыт на стенде прямо сейчас — удалите его, когда он освободится.";
+  }
+  if (/reason: conversation-not-removable/u.test(message)) {
+    return "На этом стенде удаление разговоров недоступно: журналы хранятся не файлами.";
+  }
   return message;
 }
 

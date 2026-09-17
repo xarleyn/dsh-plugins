@@ -19,7 +19,10 @@ import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAdminService } from "./admin/service.js";
 import { QaQualityStore } from "./admin/quality-store.js";
-import { createSessionLogReader } from "./admin/session-log.js";
+import {
+  createSessionEraser,
+  createSessionLogReader,
+} from "./admin/session-log.js";
 import {
   createQaPersonalSkillRemotes,
   QaPersonalSkillsHost,
@@ -88,6 +91,7 @@ import type {
   QaAuditQuery,
   QaCapabilitySelection,
   QaConversationDetail,
+  QaConversationDeletion,
   QaConversationQuery,
   QaConversationReview,
   QaConversationReviewInput,
@@ -229,6 +233,10 @@ export class QaSurface extends TypertRemoteService {
       roles: () => this.access.roles,
       access: () => this.access,
       sessionLog,
+      // Deletion is the console's alone: the sidebar's delete stays a
+      // per-browser row, and only an administrator removes the chat itself.
+      sessionFiles: createSessionEraser(),
+      dropSources: (sessionId) => this.provenance.dropSession(sessionId),
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -820,6 +828,21 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaConversationDetail> {
     return this.accountRemotes.runAsync(() =>
       this.admin.conversation(token, conversationId),
+    );
+  }
+
+  /**
+   * Remove one conversation from the deployment. Admin-only, audited, and the
+   * only path that deletes what a person wrote — the sidebar's own delete
+   * stays what it always was, a per-browser row.
+   */
+  @Remote("adminDeleteConversation")
+  adminDeleteConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<QaConversationDeletion> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.deleteConversation(token, conversationId),
     );
   }
 
