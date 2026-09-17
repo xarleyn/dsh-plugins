@@ -53,6 +53,16 @@ export function StatusSection(props: StatusProps) {
   const tools =
     effective?.lockdown.toolPolicy.allow.length ??
     config?.lockdown?.toolPolicy?.allow?.length;
+  const questions =
+    effective?.interaction.questions ?? config?.interaction?.questions;
+  // The seam only ever produces a form where the tool policy lets the model
+  // call the tool: one half without the other is a setting that does nothing.
+  const questionTool = "ask_user_question";
+  const questionToolAllowed =
+    effective === null
+      ? null
+      : effective.lockdown.enabled &&
+        effective.lockdown.toolPolicy.allow.includes(questionTool);
 
   return (
     <Section
@@ -89,6 +99,11 @@ export function StatusSection(props: StatusProps) {
           tone={lockdown ? undefined : "off"}
         />
         <Chip label="Аккаунты" value={accounts ? "включены" : "выключены"} />
+        <Chip
+          label="Вопросы модели"
+          value={questions === "interactive" ? "формой в чате" : "отклоняются"}
+          tone={questions === "interactive" ? undefined : "off"}
+        />
         <Chip label="Инструменты" value={formatCount(tools)} />
         <Chip label="Проверено" value={formatClock(props.refreshedAt)} />
       </div>
@@ -96,6 +111,21 @@ export function StatusSection(props: StatusProps) {
         <Notice tone="info">
           Хост ещё не ответил: значения взяты из настроек. Как только он
           ответит, здесь появится конфигурация, с которой работает страница.
+        </Notice>
+      ) : null}
+      {questions === "interactive" && questionToolAllowed === false ? (
+        <Notice tone="warn">
+          Вопросы включены, но инструмент {questionTool} не входит в список
+          разрешённых (lockdown.toolPolicy.allow): модель не сможет задать
+          вопрос, и форма не появится. Добавьте инструмент в список или
+          выключите вопросы.
+        </Notice>
+      ) : null}
+      {questions !== "interactive" && questionToolAllowed === true ? (
+        <Notice tone="warn">
+          Инструмент {questionTool} разрешён, а вопросы выключены: каждый запрос
+          модели будет отклонён. Включите «Вопросы модели» в разделе
+          «Взаимодействие» или уберите инструмент из списка разрешённых.
         </Notice>
       ) : null}
       {props.overrides > 0 ? (

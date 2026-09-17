@@ -20,6 +20,7 @@ import type { QaResolvedSessionPolicy } from "./access/service.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
+import { QA_ASK_QUESTION_TOOL } from "./questions.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
 import { qaUserWorkspaceDenial } from "./user-workspace.js";
 
@@ -499,6 +500,28 @@ export class QaPolicyAdmission {
         "unknown-tools",
         `unknown QA tool(s): ${policy.unknown.join(", ")}`,
       );
+    }
+    // Questions are answered in the QA view only while the deployment asks for
+    // them, and only for a tool the attested session may actually call. Each
+    // half can be satisfied while the other is not — the model then has a way
+    // to ask that nobody answers, or a form nothing can raise — and neither is
+    // fatal, because the seam refuses the ask with a reason the model can act
+    // on. The mismatch is a warning on the operator's log rather than a
+    // refusal of the chat.
+    const questionsInteractive = config.interaction.questions === "interactive";
+    const questionToolAllowed = policy.allow.includes(QA_ASK_QUESTION_TOOL);
+    if (questionsInteractive && !questionToolAllowed) {
+      this.logger.warn("question.config-incomplete", {
+        sessionId,
+        tool: QA_ASK_QUESTION_TOOL,
+        reason: "not-allowed",
+      });
+    } else if (!questionsInteractive && questionToolAllowed) {
+      this.logger.warn("question.config-incomplete", {
+        sessionId,
+        tool: QA_ASK_QUESTION_TOOL,
+        reason: "unsupported",
+      });
     }
     const fingerprint = JSON.stringify([
       policy.allow,

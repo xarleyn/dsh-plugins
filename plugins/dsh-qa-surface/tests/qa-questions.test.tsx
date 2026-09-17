@@ -148,4 +148,66 @@ describe("QA question form", () => {
     expect(await screen.findByRole("alert")).toBeDefined();
     expect(screen.getByText("Куда писать отчёт?")).toBeDefined();
   });
+
+  it("sends one answer however often the operator presses the button", async () => {
+    let release: () => void;
+    const onAnswer = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(
+      <QaQuestions
+        questions={[SINGLE]}
+        onAnswer={onAnswer}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText("В чат"));
+    const submit = screen.getByText("Отправить");
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    release!();
+    await waitFor(() => {
+      expect(submit).toHaveProperty("disabled", false);
+    });
+  });
+
+  it("carries the run's own stop action while the form owns the composer", async () => {
+    const onStop = vi.fn(async () => undefined);
+    render(
+      <QaQuestions
+        questions={[SINGLE]}
+        onAnswer={vi.fn(async () => undefined)}
+        onCancel={vi.fn(async () => undefined)}
+        onStop={onStop}
+        canStop
+      />,
+    );
+    fireEvent.click(screen.getByText("Остановить"));
+    await waitFor(() => {
+      expect(onStop).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("offers the stop action disabled while the run cannot be stopped", () => {
+    render(
+      <QaQuestions
+        questions={[SINGLE]}
+        onAnswer={vi.fn(async () => undefined)}
+        onCancel={vi.fn(async () => undefined)}
+        onStop={vi.fn(async () => undefined)}
+        canStop={false}
+      />,
+    );
+    expect(screen.getByText("Остановить")).toHaveProperty("disabled", true);
+  });
+
+  it("leaves the stop action out where the surface has none", () => {
+    mount(SINGLE);
+    expect(screen.queryByText("Остановить")).toBeNull();
+  });
 });

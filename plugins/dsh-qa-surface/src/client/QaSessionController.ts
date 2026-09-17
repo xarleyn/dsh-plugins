@@ -179,6 +179,8 @@ export class QaSessionController {
   private readonly hostQuestions: QaHostQuestionBridge;
   /** Set while a running turn is polled for parked requests. */
   private pendingTimer: ReturnType<typeof setInterval> | undefined;
+  /** Chat, connection and admission state of the last one-shot probe. */
+  private pendingProbeKey = "";
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -989,6 +991,8 @@ export class QaSessionController {
     this.hostApprovals.reset();
     this.hostQuestions.reset();
     this.stopPendingPolling();
+    // The next binding probes the Host again even for the same chat.
+    this.pendingProbeKey = "";
     this.admissionPending = false;
     this.policyReady = false;
     this.compatibilityReadOnly = false;
@@ -1058,6 +1062,7 @@ export class QaSessionController {
     if (!snapshot.running) {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
+    this.probePending(sessionId, connected);
     this.syncPendingPolling(
       snapshot.running === true && !this.compatibilityReadOnly,
     );
@@ -1255,6 +1260,12 @@ export class QaSessionController {
    * inside an open turn, and it is Host state: polling is how the page learns
    * about it, and how it reappears after a reload. One timer serves both seams,
    * and each is polled only where the deployment answers it.
+   *
+   * A request that is already on screen keeps the timer alive past the end of
+   * its turn: the Host settles what the turn can no longer answer — an aborted
+   * tool call, an agent that went idle — and this keeps reading until that
+   * settlement reaches the page, so the form goes away instead of sitting
+   * there answerable but dead.
    */
   private syncPendingPolling(running: boolean): void {
     const approvals = this.hostApprovals.available
@@ -1263,9 +1274,11 @@ export class QaSessionController {
     const questions = this.hostQuestions.available
       ? this.config.interaction.questions === "interactive"
       : false;
+    const pending =
+      this.hostApprovals.list().length > 0 ||
+      this.hostQuestions.list().length > 0;
     const wanted =
-      running &&
-      (approvals || questions) &&
+      ((running && (approvals || questions)) || pending) &&
       // A subagent watched from the panel is a read-only view of a session the
       // chat owns: its own requests belong to the chat, not to this binding.
       this.viewingSubagent === null &&
@@ -1278,15 +1291,47 @@ export class QaSessionController {
     const sessionId = String(this.session.sessionId);
     const token = this.hostToken();
     const tick = () => {
-      if (approvals) {
+      // A seam still on screen is re-read even where its config gate has since
+      // closed: the Host is the authority on what it holds, and an empty answer
+      // is what takes a settled request off the screen.
+      if (approvals || this.hostApprovals.list().length > 0) {
         void this.hostApprovals.refresh(sessionId, token, () => this.publish());
       }
-      if (questions) {
+      if (questions || this.hostQuestions.list().length > 0) {
         void this.hostQuestions.refresh(sessionId, token, () => this.publish());
       }
     };
     this.pendingTimer = setInterval(tick, PENDING_POLL_MS);
     tick();
+  }
+
+  /**
+   * Read what the Host parks once per chat and connection, whether or not a
+   * turn is running. A reload binds the chat before any turn reports itself
+   * over the fresh stream, and a turn that is already waiting on a question
+   * would otherwise sit behind an empty composer until the operator happened
+   * to send something.
+   */
+  private probePending(sessionId: string, connected: boolean): void {
+    const key = `${sessionId}:${connected ? "up" : "down"}:${String(this.policyReady)}`;
+    // Attestation is what lets the Host answer about this chat at all, so the
+    // read waits for it: the publish that follows a successful attestation
+    // carries a new key and probes then.
+    if (!connected || !this.policyReady || key === this.pendingProbeKey) return;
+    this.pendingProbeKey = key;
+    const token = this.hostToken();
+    if (
+      this.hostApprovals.available &&
+      this.config.interaction.approvals === "interactive"
+    ) {
+      void this.hostApprovals.refresh(sessionId, token, () => this.publish());
+    }
+    if (
+      this.hostQuestions.available &&
+      this.config.interaction.questions === "interactive"
+    ) {
+      void this.hostQuestions.refresh(sessionId, token, () => this.publish());
+    }
   }
 
   private stopPendingPolling(): void {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QA_QUESTIONS_UNSUPPORTED, QaQuestionGate } from "../src/questions.js";
 import { QaSessionOwnership } from "../src/session-ownership.js";
 import { fakeContext, sessionAgent } from "./helpers/context-fakes.js";
@@ -21,6 +21,31 @@ const SILENT_LOGGER = {
   close() {},
 };
 
+/** A logger that keeps what the seam reported, for the observability tests. */
+function recordingLogger() {
+  const events: { level: string; event: string; payload: unknown }[] = [];
+  const at =
+    (level: string) =>
+    (event: string, payload?: unknown): void => {
+      events.push({ level, event, payload });
+    };
+  return {
+    events,
+    logger: {
+      debug: at("debug"),
+      info: at("info"),
+      warn: at("warn"),
+      error: at("error"),
+      close() {},
+    },
+    names: () => events.map((entry) => entry.event),
+    payloadOf(event: string): Record<string, unknown> {
+      const found = events.find((entry) => entry.event === event);
+      return (found?.payload ?? {}) as Record<string, unknown>;
+    },
+  };
+}
+
 const QUESTIONS = [
   {
     id: "target",
@@ -33,7 +58,11 @@ const QUESTIONS = [
   },
 ];
 
-function gateFor(input: { interactive: boolean; attested: readonly string[] }) {
+function gateFor(input: {
+  interactive: boolean;
+  attested: readonly string[];
+  logger?: unknown;
+}) {
   const fake = fakeContext();
   const ownership = new QaSessionOwnership((sessionId) =>
     input.attested.includes(sessionId),
@@ -42,7 +71,7 @@ function gateFor(input: { interactive: boolean; attested: readonly string[] }) {
     fake.context,
     () => input.interactive,
     ownership,
-    SILENT_LOGGER as never,
+    (input.logger ?? SILENT_LOGGER) as never,
   );
   gate.install();
   /** Invoke the gate exactly where the user-questions service would. */
@@ -56,7 +85,15 @@ function gateFor(input: { interactive: boolean; attested: readonly string[] }) {
       request,
       next,
     ) as Promise<QuestionAnswer>;
-  return { gate, ask, fire: fake.handler, count: fake.count };
+  return {
+    gate,
+    ask,
+    fire: fake.handler,
+    count: fake.count,
+    dispatch: fake.dispatch,
+    register: fake.register,
+    prepended: fake.prepended,
+  };
 }
 
 describe("QA question gate", () => {
@@ -271,5 +308,235 @@ describe("QA question gate", () => {
     gate.dispose();
     await expect(pending).rejects.toThrow(/closed the question/u);
     expect(count("user-questions/request")).toBe(0);
+  });
+});
+
+describe("QA question gate ownership", () => {
+  it("claims its own chat's question before any other answerer sees it", async () => {
+    const { gate, dispatch, register, prepended } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+    });
+    // The stock DSH answerer is mounted in every page the plugin runs in: it
+    // registers first, so only a prepended claim keeps a QA question out of a
+    // composer the overlay has hidden.
+    const stock = vi.fn(async () => ({
+      answers: [{ id: "target", selected: ["stock"] }],
+    }));
+    register("user-questions/request", stock as never);
+    expect(prepended("user-questions/request")).toBe(true);
+
+    const pending = dispatch(
+      "user-questions/request",
+      { questions: QUESTIONS, agent: sessionAgent("s1") },
+      async () => ({ answers: [{ id: "target", selected: ["terminal"] }] }),
+    );
+    await Promise.resolve();
+    expect(stock).not.toHaveBeenCalled();
+    const [request] = gate.list("s1");
+    expect(request).toBeDefined();
+    gate.answer("s1", request!.id, [{ id: "target", selected: ["В чат"] }]);
+    await expect(pending).resolves.toEqual({
+      answers: [{ id: "target", selected: ["В чат"] }],
+    });
+    gate.dispose();
+  });
+
+  it("leaves another surface's question to the answerer behind it", async () => {
+    const { gate, dispatch, register } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+    });
+    const stock = vi.fn(async () => ({
+      answers: [{ id: "target", selected: ["stock"] }],
+    }));
+    register("user-questions/request", stock as never);
+
+    await expect(
+      dispatch(
+        "user-questions/request",
+        { questions: QUESTIONS, agent: sessionAgent("elsewhere") },
+        async () => ({ answers: [] }),
+      ),
+    ).resolves.toEqual({ answers: [{ id: "target", selected: ["stock"] }] });
+    expect(stock).toHaveBeenCalledTimes(1);
+    expect(gate.list("elsewhere")).toEqual([]);
+    gate.dispose();
+  });
+
+  it("answers a delegated child's question under the chat that owns it", async () => {
+    const { gate, ask, fire } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+    });
+    (fire("session/created") as (session: unknown) => void)({
+      id: "child-1",
+      header: { id: "child-1", parentSession: "s1" },
+    });
+    const pending = ask({
+      questions: QUESTIONS,
+      agent: sessionAgent("child-1"),
+    });
+    await Promise.resolve();
+    // The child never appears in the admission, so a request that reaches the
+    // gate from one is listed and answered under the chat the operator sees.
+    expect(gate.list("s1")).toHaveLength(1);
+    expect(gate.list("child-1")).toEqual([]);
+    const [request] = gate.list("s1");
+    expect(gate.answer("s1", request!.id, [])).toBe(true);
+    await expect(pending).resolves.toEqual({
+      answers: [{ id: "target", selected: [] }],
+    });
+    gate.dispose();
+  });
+});
+
+describe("QA question gate lifecycle", () => {
+  it("closes a parked question when the asking agent stops running", async () => {
+    const { gate, ask, fire } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+    });
+    const pending = ask({ questions: QUESTIONS, agent: sessionAgent("s1") });
+    await Promise.resolve();
+    expect(gate.list("s1")).toHaveLength(1);
+    // A turn that is only ending elsewhere leaves the question alone.
+    (fire("agent/status") as (event: unknown) => void)({
+      agent: sessionAgent("s1"),
+      status: "running",
+    });
+    expect(gate.list("s1")).toHaveLength(1);
+    // Once the agent is idle no answer can reach the turn that asked, so the
+    // request must not stay parked in front of the operator.
+    (fire("agent/status") as (event: unknown) => void)({
+      agent: sessionAgent("s1"),
+      status: "idle",
+    });
+    await expect(pending).rejects.toThrow(/closed the question/u);
+    expect(gate.list("s1")).toEqual([]);
+    gate.dispose();
+  });
+
+  it("keeps another agent's parked question when one goes idle", async () => {
+    const { gate, ask, fire } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+    });
+    const pending = ask({ questions: QUESTIONS, agent: sessionAgent("s1") });
+    await Promise.resolve();
+    (fire("agent/status") as (event: unknown) => void)({
+      agent: sessionAgent("s2"),
+      status: "idle",
+    });
+    expect(gate.list("s1")).toHaveLength(1);
+    gate.cancel("s1", gate.list("s1")[0]!.id);
+    await pending.catch(() => undefined);
+    gate.dispose();
+  });
+});
+
+describe("QA question gate observability", () => {
+  it("reports the claim and the answer without the operator's text", async () => {
+    const recorder = recordingLogger();
+    const { gate, ask } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      logger: recorder.logger,
+    });
+    const pending = ask({
+      questions: [QUESTIONS[0], { id: "tone", question: "Каким тоном?" }],
+      agent: sessionAgent("s1"),
+    });
+    await Promise.resolve();
+    const [request] = gate.list("s1");
+    expect(recorder.payloadOf("question.claimed")).toEqual({
+      sessionId: "s1",
+      requestId: request!.id,
+      questions: 2,
+    });
+    gate.answer("s1", request!.id, [
+      { id: "target", selected: ["В чат"] },
+      { id: "tone", selected: [], custom: "Сухо и по делу" },
+    ]);
+    await pending;
+    const answered = recorder.payloadOf("question.answered");
+    expect(answered).toEqual({
+      sessionId: "s1",
+      requestId: request!.id,
+      questions: 2,
+      hasCustomAnswer: true,
+    });
+    // The answer text itself is never part of the record.
+    expect(JSON.stringify(recorder.events)).not.toContain("Сухо и по делу");
+    gate.dispose();
+  });
+
+  it("tells a cancelled question from an aborted one", async () => {
+    const recorder = recordingLogger();
+    const { gate, ask, fire } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      logger: recorder.logger,
+    });
+    const aborted = ask({ questions: QUESTIONS, agent: sessionAgent("s1") });
+    await Promise.resolve();
+    (fire("agent/status") as (event: unknown) => void)({
+      agent: sessionAgent("s1"),
+      status: "idle",
+    });
+    await aborted.catch(() => undefined);
+    expect(recorder.payloadOf("question.aborted")).toEqual({
+      sessionId: "s1",
+      requestId: expect.any(String),
+      reason: "idle",
+    });
+
+    const cancelled = ask({ questions: QUESTIONS, agent: sessionAgent("s1") });
+    await Promise.resolve();
+    gate.cancel("s1", gate.list("s1")[0]!.id);
+    await cancelled.catch(() => undefined);
+    expect(recorder.payloadOf("question.cancelled")).toEqual({
+      sessionId: "s1",
+      requestId: expect.any(String),
+    });
+    // The operator's own cancel is not an abort.
+    expect(
+      recorder.events.filter((entry) => entry.event === "question.aborted"),
+    ).toHaveLength(1);
+    gate.dispose();
+  });
+
+  it("records a delegated question without naming a foreign chat", async () => {
+    const recorder = recordingLogger();
+    const { gate, ask } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      logger: recorder.logger,
+    });
+    await ask({ questions: QUESTIONS, agent: sessionAgent("private-chat") });
+    expect(recorder.payloadOf("question.delegated")).toEqual({
+      reason: "unowned",
+    });
+    expect(JSON.stringify(recorder.events)).not.toContain("private-chat");
+    gate.dispose();
+  });
+
+  it("records an answer refused for a request it does not hold", async () => {
+    const recorder = recordingLogger();
+    const { gate, ask } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      logger: recorder.logger,
+    });
+    const pending = ask({ questions: QUESTIONS, agent: sessionAgent("s1") });
+    await Promise.resolve();
+    expect(gate.answer("s1", "unknown-request", [])).toBe(false);
+    expect(recorder.payloadOf("question.refused")).toEqual({
+      sessionId: "s1",
+      requestId: "unknown-request",
+    });
+    gate.cancel("s1", gate.list("s1")[0]!.id);
+    await pending.catch(() => undefined);
+    gate.dispose();
   });
 });

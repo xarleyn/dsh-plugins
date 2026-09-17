@@ -109,6 +109,11 @@ export function projectBoundSessionState(
         };
   });
   const latest = input.sourceBundles.at(-1);
+  const questions = input.compatibilityReadOnly === true ? [] : input.questions;
+  // A parked question owns the composer until it is answered or the turn ends:
+  // the operator is answering a tool call that is already waiting, and text
+  // sent beside it would open a second turn instead.
+  const questionPending = questions.length > 0;
   return {
     phase,
     sessionId: input.sessionId,
@@ -116,7 +121,11 @@ export function projectBoundSessionState(
     pendingMessage: null,
     error,
     compatibilityReadOnly: input.compatibilityReadOnly === true,
-    canSend: input.connected && phase === "ready" && input.policyReady,
+    canSend:
+      input.connected &&
+      phase === "ready" &&
+      input.policyReady &&
+      !questionPending,
     canStop:
       input.connected &&
       snapshot.running &&
@@ -136,6 +145,6 @@ export function projectBoundSessionState(
     incompleteSourceOrigins: latest?.incompleteOrigins,
     viewingSubagent: input.viewingSubagent,
     approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
-    questions: input.compatibilityReadOnly === true ? [] : input.questions,
+    questions,
   };
 }

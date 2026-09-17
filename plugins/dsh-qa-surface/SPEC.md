@@ -1525,14 +1525,46 @@ browser bridge sees it:
   radio buttons, multi-select as checkboxes, a free-text answer beside them, and
   explicit skip and cancel actions. Every question of the request is answered,
   the skipped ones as skips; nothing is answered on the operator's behalf. The
-  parked form is Host state, so it survives a page reload and is polled while a
-  turn runs.
+  parked form is Host state, so it survives a page reload.
+  `enabled` is accepted as the same value.
+
+While a request is parked the form takes the composer's place: the operator is
+answering a tool call that is already open, and text sent beside it would open a
+second turn instead. The composer is hidden rather than unmounted (its draft is
+chat-local component state) and a send attempted through any other path is
+refused. The run's own Stop moves into the form's header, so an operator who does
+not want to answer can still end the turn; a form cancelled on its own settles
+the request as an explicit cancel.
+
+A parked request is live only while the agent that asked is running:
+
+- the asking tool's own `AbortSignal` settles it when the turn is stopped;
+- the asking agent going idle settles it, which covers a request that arrived
+  with no signal and a turn that ended by a path that never aborted one;
+- the agent being disposed, or the plugin unloading, settles everything it
+  parked.
+
+A settled request never stays on screen: the page keeps reading the Host's list
+while a form is visible, and reads it once per chat binding and per reconnect, so
+a request that was parked before a reload comes back and one the turn can no
+longer answer goes away. An answer that arrives for a request the Host no longer
+holds is refused rather than silently resolved.
 
 Enabling this needs the tool, not just the toggle: the deployment's agent preset
 must mount `@deepseek-ai/dsh-tool-ask-user` and the tool allow-list must name
-`ask_user_question`, or the name fails attestation with `unknown-tools`.
+`ask_user_question`, or the name fails attestation with `unknown-tools`. The
+plugin never adds the name to a tool policy on its own. Two mismatches are
+diagnosed per attested session with one `question.config-incomplete` warning on
+the operator's log: questions interactive while the tool is not in the effective
+policy (`not-allowed`), and the tool allowed while questions are refused
+(`unsupported`). Neither refuses the chat — the refusal the model reads is
+actionable, so no turn hangs on it. The settings card's status view reports the
+seam's mode and raises the same warning in the page, where the operator can see
+it without reading a log.
+
 A delegated child can never ask: the harness itself refuses a request from an
-agent owned by another live agent (`DELEGATED_CALLER`).
+agent owned by another live agent (`DELEGATED_CALLER`). A request that reaches
+the gate from a child session is still listed under the chat that owns it.
 
 If the Session enters an unsupported pending interaction state (a plan review,
 or any future interaction):

@@ -41,19 +41,37 @@ export interface QaQuestionAnswer {
   readonly answers: readonly QaQuestionAnswerItem[];
 }
 
+/**
+ * Why a parked request stopped waiting without an answer. The operator closing
+ * the form is the only deliberate one; the rest are the harness taking the
+ * question away — the turn's signal aborted, the agent stopped running, the
+ * agent was disposed, or this plugin unloaded mid-wait.
+ */
+type QaQuestionCancelReason = "operator" | "aborted" | "idle" | "disposed";
+
 type QaQuestionOutcome =
   | { readonly kind: "answered"; readonly answer: QaQuestionAnswer }
-  | { readonly kind: "cancelled" };
+  | { readonly kind: "cancelled"; readonly reason: QaQuestionCancelReason };
 
 interface PendingEntry {
   readonly view: QaPendingQuestion;
+  /** The chat that owns the request: what the QA view lists it under. */
   readonly ownerSessionId: string;
+  /** The agent that asked, child agents included: what stops it being live. */
+  readonly agentId: string;
   settle(outcome: QaQuestionOutcome): void;
 }
 
 /** What the model reads when the deployment does not answer questions. */
 export const QA_QUESTIONS_UNSUPPORTED =
   "questions are not answered in this assistant view; ask the user in plain text instead";
+
+/**
+ * The harness tool that produces these requests. A deployment that parks
+ * questions still has to let the attested session call it: this plugin never
+ * adds the name to a tool policy on its own.
+ */
+export const QA_ASK_QUESTION_TOOL = "ask_user_question";
 
 const CANCELLED_MESSAGE =
   "the user closed the question without answering; ask in plain text instead";
@@ -112,7 +130,20 @@ export class QaQuestionGate {
     );
     this.disposers.push(
       this.ctx.on("agent/disposed", ({ agent }) => {
-        this.settleOwner(String(agent.session.id));
+        this.settleOwner(String(agent.session.id), "disposed");
+      }),
+    );
+    // A turn that ended cannot be answered into any more, whatever the request
+    // arrived with. The harness hands the asking tool a signal, and a stopped
+    // turn aborts it, but a request that carried none — or one whose turn went
+    // idle by a path that never aborted it — would otherwise stay parked for
+    // the life of the process: the operator would keep a form nobody can
+    // answer, and the answer they did send would resolve a promise no one
+    // awaits. The asking agent's own status is the backstop for both.
+    this.disposers.push(
+      this.ctx.on("agent/status", ({ agent, status }) => {
+        if (status === "idle")
+          this.settleAgent(String(agent.session.id), "idle");
       }),
     );
   }
@@ -143,13 +174,14 @@ export class QaQuestionGate {
     answers: readonly QaQuestionAnswerItem[],
   ): boolean {
     const entry = this.pending.get(requestId);
-    if (entry === undefined || entry.view.sessionId !== sessionId) return false;
-    if (!Array.isArray(answers)) return false;
-    this.logger.info("question.answered", {
-      sessionId,
-      requestId,
-      questions: entry.view.questions.length,
-    });
+    if (entry === undefined || entry.view.sessionId !== sessionId) {
+      this.logger.debug("question.refused", { sessionId, requestId });
+      return false;
+    }
+    if (!Array.isArray(answers)) {
+      this.logger.debug("question.refused", { sessionId, requestId });
+      return false;
+    }
     // Every question of the request is answered here, including the ones the
     // operator skipped, so the model never sees a partial form.
     const byId = new Map(
@@ -162,27 +194,33 @@ export class QaQuestionGate {
         )
         .map((answer) => [answer.id, answer]),
     );
+    const settled = entry.view.questions.map((question) => {
+      const given = byId.get(question.id);
+      // A question the browser omitted is a skip, not a silent choice.
+      if (given === undefined) return { id: question.id, selected: [] };
+      const offered = new Set(question.options.map((option) => option.label));
+      const selected = (Array.isArray(given.selected) ? given.selected : [])
+        .filter((label): label is string => typeof label === "string")
+        .filter((label) => offered.has(label));
+      const custom =
+        typeof given.custom === "string" ? given.custom.trim() : "";
+      if (custom === "") return { id: question.id, selected };
+      return question.multiSelect
+        ? { id: question.id, selected, custom }
+        : { id: question.id, selected: [], custom };
+    });
+    // The answer itself never reaches the log: only its shape does, so a
+    // deployment can tell a form that was filled from one that was skipped
+    // without recording anything the operator typed.
+    this.logger.info("question.answered", {
+      sessionId,
+      requestId,
+      questions: entry.view.questions.length,
+      hasCustomAnswer: settled.some((answer) => answer.custom !== undefined),
+    });
     entry.settle({
       kind: "answered",
-      answer: {
-        answers: entry.view.questions.map((question) => {
-          const given = byId.get(question.id);
-          // A question the browser omitted is a skip, not a silent choice.
-          if (given === undefined) return { id: question.id, selected: [] };
-          const offered = new Set(
-            question.options.map((option) => option.label),
-          );
-          const selected = (Array.isArray(given.selected) ? given.selected : [])
-            .filter((label): label is string => typeof label === "string")
-            .filter((label) => offered.has(label));
-          const custom =
-            typeof given.custom === "string" ? given.custom.trim() : "";
-          if (custom === "") return { id: question.id, selected };
-          return question.multiSelect
-            ? { id: question.id, selected, custom }
-            : { id: question.id, selected: [], custom };
-        }),
-      },
+      answer: { answers: settled },
     });
     return true;
   }
@@ -190,16 +228,19 @@ export class QaQuestionGate {
   /** Close a request without answering it. */
   cancel(sessionId: string, requestId: string): boolean {
     const entry = this.pending.get(requestId);
-    if (entry === undefined || entry.view.sessionId !== sessionId) return false;
+    if (entry === undefined || entry.view.sessionId !== sessionId) {
+      this.logger.debug("question.refused", { sessionId, requestId });
+      return false;
+    }
     this.logger.info("question.cancelled", { sessionId, requestId });
-    entry.settle({ kind: "cancelled" });
+    entry.settle({ kind: "cancelled", reason: "operator" });
     return true;
   }
 
   /** Detach the listener and fail every parked request. Wired as an effect. */
   dispose(): void {
     for (const entry of [...this.pending.values()])
-      entry.settle(CANCELLED_OUTCOME);
+      entry.settle({ kind: "cancelled", reason: "disposed" });
     this.pending.clear();
     for (const dispose of this.disposers.splice(0)) dispose();
   }
@@ -209,14 +250,23 @@ export class QaQuestionGate {
     next: () => Promise<QaQuestionAnswer>,
   ): Promise<QaQuestionAnswer> {
     const session = request.agent?.session;
-    if (session === undefined) return next();
-    const sessionId = this.ownership.rootOf(String(session.id));
-    if (sessionId === undefined) return next();
+    if (session === undefined) {
+      this.logger.debug("question.delegated", { reason: "agentless" });
+      return next();
+    }
+    const askingId = String(session.id);
+    const sessionId = this.ownership.rootOf(askingId);
+    if (sessionId === undefined) {
+      // Another surface's chat, or one this deployment never attested: the
+      // chain keeps it, and no identifier of that chat is written here.
+      this.logger.debug("question.delegated", { reason: "unowned" });
+      return next();
+    }
     if (!this.interactive()) {
       this.logger.info("question.unsupported", { sessionId });
       throw new Error(QA_QUESTIONS_UNSUPPORTED);
     }
-    const outcome = await this.park(sessionId, String(session.id), request);
+    const outcome = await this.park(sessionId, askingId, request);
     if (outcome.kind === "cancelled") throw new Error(CANCELLED_MESSAGE);
     return outcome.answer;
   }
@@ -224,22 +274,33 @@ export class QaQuestionGate {
   /** Park one request until the operator answers it, or the turn ends. */
   private park(
     sessionId: string,
-    ownerSessionId: string,
+    agentId: string,
     request: QaQuestionRequest,
   ): Promise<QaQuestionOutcome> {
     const signal = request.signal;
-    if (signal?.aborted === true) return Promise.resolve(CANCELLED_OUTCOME);
+    if (signal?.aborted === true)
+      return Promise.resolve({ kind: "cancelled", reason: "aborted" });
     return new Promise<QaQuestionOutcome>((resolve) => {
       const id = randomUUID();
-      const onAbort = () => finish(CANCELLED_OUTCOME);
+      const onAbort = () => finish({ kind: "cancelled", reason: "aborted" });
       const finish = (outcome: QaQuestionOutcome) => {
         if (!this.pending.has(id)) return;
         this.pending.delete(id);
         signal?.removeEventListener("abort", onAbort);
+        // The operator's own cancel is already logged where it was decided;
+        // every other ending is the harness taking the question away.
+        if (outcome.kind === "cancelled" && outcome.reason !== "operator") {
+          this.logger.info("question.aborted", {
+            sessionId,
+            requestId: id,
+            reason: outcome.reason,
+          });
+        }
         resolve(outcome);
       };
       this.pending.set(id, {
-        ownerSessionId,
+        ownerSessionId: sessionId,
+        agentId,
         view: {
           id,
           sessionId,
@@ -249,7 +310,7 @@ export class QaQuestionGate {
         settle: finish,
       });
       signal?.addEventListener("abort", onAbort, { once: true });
-      this.logger.info("question.pending", {
+      this.logger.info("question.claimed", {
         sessionId,
         requestId: id,
         questions: request.questions.length,
@@ -258,17 +319,24 @@ export class QaQuestionGate {
   }
 
   /** Fail the questions one session's agent owns; a disposed agent cannot ask. */
-  private settleOwner(ownerSessionId: string): void {
+  private settleOwner(
+    ownerSessionId: string,
+    reason: QaQuestionCancelReason,
+  ): void {
     for (const entry of [...this.pending.values()]) {
       if (entry.ownerSessionId === ownerSessionId)
-        entry.settle(CANCELLED_OUTCOME);
+        entry.settle({ kind: "cancelled", reason });
+    }
+  }
+
+  /** Fail the questions one agent parked; an idle agent cannot receive them. */
+  private settleAgent(agentId: string, reason: QaQuestionCancelReason): void {
+    for (const entry of [...this.pending.values()]) {
+      if (entry.agentId === agentId)
+        entry.settle({ kind: "cancelled", reason });
     }
   }
 }
-
-const CANCELLED_OUTCOME: QaQuestionOutcome = Object.freeze({
-  kind: "cancelled",
-});
 
 function normalizeQuestion(question: QaQuestionItem): QaPendingQuestionItem {
   return {

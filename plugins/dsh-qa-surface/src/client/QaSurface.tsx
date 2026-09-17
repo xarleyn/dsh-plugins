@@ -1222,24 +1222,36 @@ export function QaSurface(props: QaSurfaceProps) {
                     questions={state.questions}
                     onAnswer={handleAnswerQuestion}
                     onCancel={handleCancelQuestion}
-                  />
-                  {/* Keyed by chat: the composer's draft text is chat-local, so a
-                  switch remounts it empty instead of carrying text across. */}
-                  <QaComposer
-                    key={state.sessionId ?? "draft"}
-                    placeholder={config.branding.placeholder}
-                    quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
-                    canSend={state.canSend}
-                    canStop={state.canStop}
-                    running={state.phase === "running"}
-                    showStop={config.ui.showStop}
-                    status={status}
-                    attachments={pendingAttachments}
-                    limits={limits}
-                    onAttachmentsChange={setPendingAttachments}
-                    onSend={handleSend}
                     onStop={handleStop}
+                    canStop={state.canStop}
                   />
+                  {/* A parked question takes the composer's place: the operator
+                  answers the tool call that is already waiting, and cannot open
+                  a new turn beside it. The composer stays mounted behind the
+                  takeover — its draft is chat-local component state — so it is
+                  hidden rather than unmounted. */}
+                  <div
+                    className="dsh-qa-composer-slot"
+                    hidden={state.questions.length > 0}
+                  >
+                    {/* Keyed by chat: the composer's draft text is chat-local, so a
+                    switch remounts it empty instead of carrying text across. */}
+                    <QaComposer
+                      key={state.sessionId ?? "draft"}
+                      placeholder={config.branding.placeholder}
+                      quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
+                      canSend={state.canSend}
+                      canStop={state.canStop}
+                      running={state.phase === "running"}
+                      showStop={config.ui.showStop}
+                      status={status}
+                      attachments={pendingAttachments}
+                      limits={limits}
+                      onAttachmentsChange={setPendingAttachments}
+                      onSend={handleSend}
+                      onStop={handleStop}
+                    />
+                  </div>
                   {config.branding.disclaimer === "" ? null : (
                     <p className="dsh-qa-footer__disclaimer">
                       <svg viewBox="0 0 16 16" aria-hidden="true">

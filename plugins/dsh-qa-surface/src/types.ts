@@ -21,6 +21,12 @@ export type QaApprovalInteraction = "blocked" | "interactive";
  * refuses the ask outright; `interactive` answers it from the QA view.
  */
 export type QaQuestionInteraction = "unsupported" | "interactive";
+/**
+ * What a deployment may write for the question seam. `enabled` is accepted as
+ * the spelling of `interactive` a feature request asked for; the resolved
+ * config carries one name only.
+ */
+export type QaQuestionInteractionInput = QaQuestionInteraction | "enabled";
 /** The operator's answer to one parked tool call. */
 export type QaApprovalDecision = "allowed-once" | "rejected";
 /** One answered question; `custom` is free text, and may accompany `selected`. */
@@ -631,7 +637,7 @@ export interface QaSurfaceConfig {
   readonly thinkingPhrases?: readonly string[];
   readonly interaction?: {
     readonly approvals?: QaApprovalInteraction;
-    readonly questions?: QaQuestionInteraction;
+    readonly questions?: QaQuestionInteractionInput;
   };
   /**
    * QA tool delivery. Dynamic activation keeps the QA tool schemas out of the
