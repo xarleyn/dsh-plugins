@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useCallback, useEffect, useState } from "react";
 import type {
   IntegrationCapability,
@@ -8,6 +8,7 @@ import type {
   PolicyPatch,
 } from "../types.js";
 import { dateTime, failureCopy } from "./copy.js";
+import type { ProviderCardProps } from "./provider-card.js";
 
 export interface JiraRemote {
   jiraSites(
@@ -51,7 +52,7 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
 };
 
 export function createJiraCard(remote: JiraRemote) {
-  return function JiraCard({ token }: QaUserSettingsSectionProps) {
+  return function JiraCard({ token, help }: ProviderCardProps) {
     const [sites, setSites] = useState<readonly IntegrationInstanceSummary[]>(
       [],
     );
@@ -262,11 +263,10 @@ export function createJiraCard(remote: JiraRemote) {
                 placeholder="ATATT…"
               />
             </label>
+            <CredentialHelpNote help={help} />
             <p className="dsh-qa-integrations__hint">
-              Создайте API-токен в аккаунте Atlassian (id.atlassian.com →
-              Безопасность → API-токены). Токен действует от вашего имени и
-              наследует ваши права в Jira. Токен и e-mail хранятся в
-              зашифрованном виде и после сохранения не отображаются.
+              Токен и e-mail хранятся в зашифрованном виде и после сохранения не
+              отображаются.
             </p>
             <div className="dsh-qa-integrations__actions">
               <button

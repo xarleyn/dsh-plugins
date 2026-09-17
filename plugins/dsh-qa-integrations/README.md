@@ -759,6 +759,32 @@ testit:
 
 В логах и audit сохраняются только provider, operation, result и source session id. Тела CRM/чатов, HTTP-заголовки и секреты не журналируются. Постоянный cache данных провайдера отсутствует.
 
+## Подсказки к credential
+
+Рядом с полем секрета карточка показывает, откуда этот секрет берётся: где его выпускают, какая документация описывает авторизацию, какие права нужны и что именно вставлять в поле. Текст раскрывается по клику в панель, а не занимает карточку целиком; формулировка зависит от механизма — «Создать API-ключ», «Создать токен», «Войти и авторизовать», «Как это настроить» для подключения без страницы выдачи (вебхук Bitrix24).
+
+Подсказка — это метаданные, а не секрет. В ней нет ни значения credential, ни его снимка, ни результата авторизации; браузер получает её тем же RPC `qaIntegrations/providers`, что и список провайдеров, уже после входа в QA-аккаунт. Она не является зависимостью подключения: если метаданных нет, карточка показывает обычное поле секрета, а сломавшаяся ссылка не мешает ни сохранить, ни проверить credential.
+
+Метаданные объявлены рядом с провайдером — `src/providers/<id>/credential-help.ts` — и не хранятся центральным списком, поэтому новая интеграция приносит свою подсказку вместе с собой. Ссылки проверяются по форме, без обращения к сети: допускаются только `https:` и — для локальных, приватных и self-hosted адресов — `http:`; `javascript:`, `data:`, `file:` и адрес с credential внутри отклоняются, а внешние ссылки открываются с `noopener noreferrer`.
+
+Развёртывание может заменить подсказку целиком или по полям: корпоративный GitLab, Jira Data Center, внутренняя вики и прокси-шлюзы попадают в тот же UI, что и облачные сервисы.
+
+```yaml
+credentialHelp:
+  gitlab:
+    obtainUrl: https://gitlab.example.internal/-/user_settings/personal_access_tokens
+    obtainLabel: Выпустить токен
+    docsUrl: https://wiki.example.internal/dsh/gitlab
+    instructions: Откройте внутреннюю страницу токенов.
+    selfHosted: true
+  jira:
+    enabled: false            # спрятать подсказку; поле секрета остаётся
+  weblate:
+    docsLabel: Наша вики
+```
+
+Оверрайд действует на всю инсталляцию и не меняет сам механизм подключения: невалидный адрес скрывает только свою ссылку, а в лог при старте попадает предупреждение `credential-help.override` с именем провайдера и поля. Неизвестный `kind` деградирует до `custom`, а не ломает провайдера. Значения по умолчанию для каждого провайдера и порядок добавления новой подсказки — в [src/providers/README.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-integrations/src/providers/README.md).
+
 ## Подготовка master key
 
 Создайте отдельный 256-битный ключ вне БД и репозитория. Docker secret по умолчанию должен быть доступен Host как:
@@ -802,6 +828,11 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
         - .bitrix24.ru
         - .bitrix24.com
         - .bitrix24.eu
+      credentialHelp:
+        gitlab:
+          obtainUrl: https://gitlab.example.internal/-/user_settings/personal_access_tokens
+          docsUrl: https://wiki.example.internal/dsh/gitlab
+          selfHosted: true
       bitrix24:
         enabled: true
         crmRead: true
@@ -856,7 +887,7 @@ $keyBytes = [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
             baseUrl: https://weblate.example.com
 ```
 
-`dataPath` по умолчанию — `$DSH_HOME/qa-integrations.db` (база SQLite). Прежний файл `qa-integrations.json`, оставшийся от релиза до 0.5.0, переносится при первом запуске и переименовывается в `qa-integrations.json.migrated-<ISO>`. На Unix новый файл создаётся с mode `0600`. Журнал обращений к сервисам хранится `auditRetentionDays` дней (по умолчанию 90; `0` — не ограничивать по возрасту) и в любом случае не длиннее 5000 записей. Разрешён только HTTPS URL вида `https://company.bitrix24.ru/rest/<user>/<secret>` без query, fragment, custom port или credentials в authority. Список доменных суффиксов задаётся оператором, а не пользователем.
+`dataPath` по умолчанию — `$DSH_HOME/qa-integrations.db` (база SQLite). Прежний файл `qa-integrations.json`, оставшийся от релиза до 0.5.0, переносится при первом запуске и переименовывается в `qa-integrations.json.migrated-<ISO>`. На Unix новый файл создаётся с mode `0600`. Журнал обращений к сервисам хранится `auditRetentionDays` дней (по умолчанию 90; `0` — не ограничивать по возрасту) и в любом случае не длиннее 5000 записей. Разрешён только HTTPS URL вида `https://company.bitrix24.ru/rest/<user>/<secret>` без query, fragment, custom port или credentials в authority. Список доменных суффиксов задаётся оператором, а не пользователем. `credentialHelp.<provider>` заменяет подсказки к полю секрета — адреса выдачи, ссылки на документацию, инструкции и список прав; на хранение, шифрование и проверку credential он не влияет.
 
 ## Пользовательский сценарий
 

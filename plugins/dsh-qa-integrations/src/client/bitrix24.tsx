@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import type { IntegrationSummary, PolicyPatch } from "../types.js";
 import { createProviderCard } from "./provider-card.js";
 
@@ -52,7 +53,7 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
       patch: (token, patch) => remote.patchBitrix24Policy(token, patch),
       disconnect: (token) => remote.disconnectBitrix24(token),
     },
-    credentialSection: (state) => (
+    credentialSection: (state, help) => (
       <div className="dsh-qa-integrations__section">
         <label className="dsh-qa-integrations__field">
           URL входящего вебхука Bitrix24
@@ -66,6 +67,7 @@ export function createBitrix24Card(remote: IntegrationsRemote) {
             placeholder="https://company.bitrix24.ru/rest/…"
           />
         </label>
+        <CredentialHelpNote help={help} />
         <p className="dsh-qa-integrations__hint">
           Токен хранится в зашифрованном виде и после сохранения больше не
           отображается.

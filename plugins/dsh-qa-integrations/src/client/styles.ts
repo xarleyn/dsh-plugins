@@ -1,11 +1,15 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
+import {
+  CREDENTIAL_HELP_CSS,
+  PLUGIN_CARD_SHELL_CSS,
+} from "@yadsh/dsh-plugin-kit/client";
 
 /**
- * The canonical settings-card shell comes from the kit (AGENTS.md pins it), and
- * only the tab list and what lives inside the card body are this plugin's own:
- * the provider cards the dialog page and the host tab both mount.
+ * The canonical settings-card shell and the shared credential-help note come
+ * from the kit (AGENTS.md pins the shell), and only the tab list and what lives
+ * inside the card body are this plugin's own: the provider cards the dialog page
+ * and the host tab both mount.
  */
-export const styles = `${PLUGIN_CARD_SHELL_CSS}${String.raw`
+export const styles = `${PLUGIN_CARD_SHELL_CSS}${CREDENTIAL_HELP_CSS}${String.raw`
 .dsh-qa-integrations__host-tab{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
 .dsh-qa-integrations__body{display:flex;flex-direction:column;gap:16px;padding:16px 0 8px}
 .dsh-qa-integrations{display:flex;flex-direction:column;gap:20px;max-width:760px;color:var(--dsw-alias-label-primary)}

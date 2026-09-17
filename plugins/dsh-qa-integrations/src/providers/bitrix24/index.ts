@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import type {
@@ -16,6 +20,7 @@ import {
   type BitrixOperationDefinition,
 } from "./catalog.js";
 import { BITRIX_HANDLERS, BITRIX_PROJECTIONS } from "./operations.js";
+import { BITRIX24_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   BitrixTransport,
   credentialFromPlaintext,
@@ -90,6 +95,10 @@ export class Bitrix24Provider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = BITRIX24_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: BitrixTransport;
 
@@ -99,6 +108,12 @@ export class Bitrix24Provider implements IntegrationProvider {
   ) {
     this.transport = new BitrixTransport(config, fetcher);
     this.capabilities = Object.freeze(enabledCapabilities(config.bitrix24));
+    const help = resolveCredentialHelp(
+      BITRIX24_CREDENTIAL_HELP,
+      config.credentialHelp["bitrix24"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /** Keep only the secret part of an operator-supplied webhook URL. */

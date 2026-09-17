@@ -7,8 +7,9 @@ import {
   type WeblateRemote,
 } from "../src/client/weblate.js";
 // The card renders whatever the host declares, so the fixture reuses the
-// provider's own labels.
+// provider's own labels and the credential help it declares.
 import { WEBLATE_CAPABILITY_INFO } from "../src/providers/weblate/catalog.js";
+import { WEBLATE_CREDENTIAL_HELP } from "../src/providers/weblate/credential-help.js";
 import type { IntegrationSummary } from "../src/types.js";
 
 const HOSTED = {
@@ -174,10 +175,16 @@ describe("Integrations Weblate card", () => {
 
   it("points the user at a project-scoped token without blocking", async () => {
     const Card = createWeblateCard(remote());
-    const { container } = render(<Card token="qa-account-token" />);
+    const { container } = render(
+      <Card token="qa-account-token" help={WEBLATE_CREDENTIAL_HELP} />,
+    );
     const input = await screen.findByLabelText("API-токен Weblate");
-    expect(container.textContent).toContain("токен проекта");
-    expect(container.textContent).toContain("ограничен одним проектом");
+    // The guidance lives in the help the Host declares, not in the card.
+    fireEvent.click(
+      screen.getByRole("button", { name: /Документация Weblate/u }),
+    );
+    expect(container.textContent).toContain("wlp_");
+    expect(container.textContent).toContain("одному проекту");
     // Guidance, not a gate: a personal token is accepted like any other, and
     // the field is open as soon as the instance is chosen.
     fireEvent.change(screen.getByLabelText("Инстанс Weblate"), {
@@ -189,6 +196,16 @@ describe("Integrations Weblate card", () => {
     expect(
       screen.getByRole("button", { name: "Сохранить и проверить" }),
     ).toHaveProperty("disabled", false);
+  });
+
+  it("shows no help at all when the deployment declares none", async () => {
+    const Card = createWeblateCard(remote());
+    render(<Card token="qa-account-token" />);
+    await screen.findByLabelText("API-токен Weblate");
+    expect(
+      screen.queryByRole("button", { name: /Как это настроить/u }),
+    ).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("keeps the capability rows honest and patchable", async () => {

@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import { redactSecrets } from "../../redaction.js";
@@ -27,6 +31,7 @@ import {
   contentBlock,
   type TestitRequest,
 } from "./operations.js";
+import { TESTIT_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   TestitTransport,
   credentialFromPlaintext,
@@ -65,6 +70,10 @@ export class TestitProvider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = TESTIT_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: TestitTransport;
 
@@ -74,6 +83,12 @@ export class TestitProvider implements IntegrationProvider {
   ) {
     this.transport = new TestitTransport(config, config.testit, fetcher);
     this.capabilities = Object.freeze(enabledCapabilities(config.testit));
+    const help = resolveCredentialHelp(
+      TESTIT_CREDENTIAL_HELP,
+      config.credentialHelp["testit"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /**

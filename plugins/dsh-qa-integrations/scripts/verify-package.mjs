@@ -82,6 +82,33 @@ for (const file of [
   assert((await stat(new URL(file, root))).isFile(), `${file} must be built`);
 }
 
+// Every provider's credential help ships with the provider, so the card can be
+// told where a credential comes from instead of being shipped the address.
+for (const provider of [
+  "bitrix24",
+  "confluence",
+  "gitlab",
+  "jira",
+  "teamcity",
+  "testit",
+  "weblate",
+]) {
+  const file = `lib/providers/${provider}/credential-help.js`;
+  assert((await stat(new URL(file, root))).isFile(), `${file} must be built`);
+  const declared = await readFile(new URL(file, root), "utf8");
+  assert.match(declared, /kind:\s*"/u, `${file} must declare a mechanism`);
+  assert.match(
+    declared,
+    /https:\/\//u,
+    `${file} must declare an address a user can open`,
+  );
+}
+
+// The Remote boundary carries the help: a client that has never heard of the
+// provider still receives what to show next to its credential field.
+const boundary = await readFile(new URL("lib/types/types.d.ts", root), "utf8");
+assert.match(boundary, /readonly credentialHelp: CredentialHelp \| null;/u);
+
 const patch = await readFile(new URL("cordis.patch.yml", root), "utf8");
 assert.match(patch, /id:\s*qa-integrations/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-qa-integrations"/u);
@@ -132,12 +159,35 @@ assert.match(client, /Инсталляция Test IT/u);
 assert.match(client, /Оператор не настроил ни одной инсталляции Test IT/u);
 assert.doesNotMatch(client, /testit\.software|PrivateToken/u);
 // The Weblate card follows the instance rule as well: the connect form picks a
-// deployment the operator declared, asks for the API token alone, and points at
-// a project-scoped token as guidance rather than as a gate.
+// deployment the operator declared, asks for the API token alone, and no longer
+// argues about token scopes — that guidance is the provider's credential help,
+// which the Host declares and the browser receives.
 assert.match(client, /API-токен Weblate/u);
 assert.match(client, /Инстанс Weblate/u);
 assert.match(client, /Оператор не настроил ни одного инстанса Weblate/u);
-assert.match(client, /ограничен одним проектом/u);
+assert.doesNotMatch(client, /ограничен одним проектом/u);
+
+// The credential help renders from metadata: the bundle carries the shared note
+// (and its sanitizer), never the addresses themselves, which belong to the
+// deployment and are replaced per provider.
+assert.match(client, /dsh-credential-help__trigger/u);
+assert.match(client, /noopener noreferrer/u);
+assert.match(client, /\.home\.arpa/u);
+for (const address of [
+  "id.atlassian.com",
+  "docs.gitlab.com",
+  "gitlab.com/-/user_settings",
+  "docs.weblate.org",
+  "apidocs.bitrix24.com",
+  "jetbrains.com/help/teamcity",
+  "docs.testit.software",
+]) {
+  assert.equal(
+    client.includes(address),
+    false,
+    `the client bundle must not ship the credential address ${address}`,
+  );
+}
 
 // The feature-owned Plugins tab stays available without the loopback-only Host
 // settings directory. It may reuse the standard card shell inside its own list.
@@ -176,6 +226,33 @@ assert.match(
   /__button--danger\{color:var\(--dsw-alias-state-error-primary\)\}/u,
 );
 assert.doesNotMatch(client, /--dsw-alias-(success|error)-primary/u);
+
+// The credential-help note is the plugin's own control, so its rules use the
+// same vocabulary — and no rule anywhere may name a token outside it.
+const DESIGN_TOKENS = new Set([
+  "bg-layer-2",
+  "bg-layer-3",
+  "bg-module-platform",
+  "border-l2",
+  "brand-primary",
+  "label-dimmed",
+  "label-primary",
+  "label-primary-foreground",
+  "label-secondary",
+  "label-tertiary",
+  "state-error-primary",
+  "state-success-primary",
+]);
+assert.match(
+  client,
+  /dsh-credential-help__trigger\{[^}]*color:var\(--dsw-alias-brand-primary\)/u,
+);
+for (const [, token] of client.matchAll(/var\(--dsw-alias-([a-z0-9-]+)\)/gu)) {
+  assert(
+    DESIGN_TOKENS.has(token),
+    `the bundle declares the unknown design token --dsw-alias-${token}`,
+  );
+}
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of the catalog.

@@ -59,6 +59,7 @@ function providerSummary(
     enabled: true,
     authModes: ["token"],
     capabilities: provider.capabilities,
+    credentialHelp: provider.credentialHelp,
   };
 }
 
@@ -218,6 +219,17 @@ export class QaIntegrations extends TypertRemoteService {
       this.logger.warn("teamcity.address-policy-empty", {
         hint: "set teamcity.network.allowedHosts or network.allowedCidrs",
       });
+    }
+    for (const provider of providers.list()) {
+      for (const problem of provider.credentialHelpProblems ?? []) {
+        // A help address the deployment got wrong hides its own link and is
+        // reported here: the credential field keeps working, which is why this
+        // is a warning and not a load failure.
+        this.logger.warn("credential-help.override", {
+          provider: provider.id,
+          problem,
+        });
+      }
     }
   }
 

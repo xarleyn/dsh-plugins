@@ -1455,6 +1455,54 @@ qaIntegrations:
     serviceAuthSecretFile: /run/secrets/qa_integration_broker_service_token
 ```
 
+### Credential help (`credentialHelp`)
+
+The settings card explains where the credential it asks for comes from: which
+page issues it, which documentation describes the authorization, which
+permissions it needs, and what exactly to paste. That explanation is metadata,
+declared next to the provider that needs it
+(`src/providers/<id>/credential-help.ts`), resolved once per provider at load,
+and shipped to the browser with the provider list on the authenticated
+`qaIntegrations/providers` call.
+
+```yaml
+qaIntegrations:
+  credentialHelp:
+    gitlab:
+      obtainUrl: https://gitlab.example.internal/-/user_settings/personal_access_tokens
+      obtainLabel: Выпустить токен
+      docsUrl: https://wiki.example.internal/dsh/gitlab
+      instructions: Откройте внутреннюю страницу токенов.
+      selfHosted: true
+    jira:
+      enabled: false
+```
+
+Properties this section has to keep:
+
+- the payload carries metadata only — never a credential value, a credential
+  snapshot or an authorization result — and the credential architecture is
+  unchanged: secrets stay write-only, encrypted at rest and unreadable by the
+  browser;
+- the credential mechanism (`kind`) is the provider's statement; a deployment
+  replaces addresses, wording, instructions and permission lists, and can turn
+  the help off (`enabled: false`) without touching the field;
+- only `http(s)` addresses are rendered, `http:` only for loopback, private or
+  self-hosted hosts, never an address carrying a credential, and external links
+  open with `noopener noreferrer`;
+- help is never a runtime dependency: missing metadata renders the plain field,
+  an unusable address hides its own link and is reported as a startup warning
+  (`credential-help.override`), and a vendor page that moved cannot fail a
+  connection;
+- addresses live in the Host, not in the browser bundle, which is also what
+  makes a deployment override possible.
+
+The shared contract (`CredentialHelp`, `resolveCredentialHelp`,
+`sanitizeCredentialHelpUrl`) and the UI note (`CredentialHelpNote`,
+`CREDENTIAL_HELP_CSS`) live in `@yadsh/dsh-plugin-kit` and its `./client`
+subpath, so a third-party plugin can declare and render the same help without
+this plugin.
+
 ---
 
 ## 33. Migration/update strategy

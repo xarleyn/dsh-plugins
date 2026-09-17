@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import type {
@@ -12,6 +16,7 @@ import {
   enabledCapabilities,
   confluenceOperationCapability,
 } from "./catalog.js";
+import { CONFLUENCE_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   credentialFromPlaintext,
   credentialInstance,
@@ -81,6 +86,10 @@ export class ConfluenceProvider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = CONFLUENCE_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: ConfluenceTransport;
 
@@ -94,6 +103,12 @@ export class ConfluenceProvider implements IntegrationProvider {
       fetcher,
     );
     this.capabilities = Object.freeze(enabledCapabilities(config.confluence));
+    const help = resolveCredentialHelp(
+      CONFLUENCE_CREDENTIAL_HELP,
+      config.credentialHelp["confluence"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /**

@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { requiredInteger, requiredText } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
@@ -38,6 +42,7 @@ import {
   type TeamCityProjectionContext,
   type TeamCityRequest,
 } from "./operations.js";
+import { TEAMCITY_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   TeamCityTransport,
   configuredServer,
@@ -75,6 +80,10 @@ export class TeamcityProvider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = TEAMCITY_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: TeamCityTransport;
 
@@ -84,6 +93,12 @@ export class TeamcityProvider implements IntegrationProvider {
   ) {
     this.transport = new TeamCityTransport(config, config.teamcity, fetcher);
     this.capabilities = Object.freeze(enabledCapabilities(config.teamcity));
+    const help = resolveCredentialHelp(
+      TEAMCITY_CREDENTIAL_HELP,
+      config.credentialHelp["teamcity"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /**

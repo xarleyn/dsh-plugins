@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import type { CredentialHelp } from "@yadsh/dsh-plugin-kit";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -8,6 +9,16 @@ import type {
   PolicyPatch,
 } from "../types.js";
 import { dateTime, failureCopy } from "./copy.js";
+
+/**
+ * What every provider card receives: the account token, plus the credential help
+ * this deployment declared for the provider. The help is metadata — a card
+ * renders it or renders nothing, and the credential field behaves the same
+ * either way.
+ */
+export interface ProviderCardProps extends QaUserSettingsSectionProps {
+  readonly help?: CredentialHelp | null;
+}
 
 /**
  * The skeleton the three provider cards share: the failure banner, the status
@@ -72,7 +83,10 @@ export interface ProviderCardSpec<Extra> {
   useExtra(): Extra;
   load(load: ProviderCardLoad<Extra>): Promise<void>;
   readonly calls: ProviderCardCalls<Extra>;
-  credentialSection(state: ProviderCardState<Extra>): ReactNode;
+  credentialSection(
+    state: ProviderCardState<Extra>,
+    help: CredentialHelp | null,
+  ): ReactNode;
   /** Muted note under the head, or null when this provider shows none. */
   readonly notConfiguredHint?: (
     state: ProviderCardState<Extra>,
@@ -80,7 +94,7 @@ export interface ProviderCardSpec<Extra> {
 }
 
 export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
-  return function ProviderCard({ token }: QaUserSettingsSectionProps) {
+  return function ProviderCard({ token, help }: ProviderCardProps) {
     const [summary, setSummary] = useState<IntegrationSummary>();
     const [credential, setCredential] = useState("");
     const [busy, setBusy] = useState(false);
@@ -258,7 +272,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
           </div>
         ) : null}
 
-        {showCredential ? spec.credentialSection(state) : null}
+        {showCredential ? spec.credentialSection(state, help ?? null) : null}
 
         {spec.notConfiguredHint?.(state) ?? null}
 

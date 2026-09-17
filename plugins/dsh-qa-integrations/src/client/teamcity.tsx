@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useState } from "react";
 import type {
   IntegrationInstanceSummary,
@@ -85,7 +86,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
       patch: (token, patch) => remote.patchTeamcityPolicy(token, patch),
       disconnect: (token) => remote.disconnectTeamcity(token),
     },
-    credentialSection: (state) => {
+    credentialSection: (state, help) => {
       const server = state.extra.server;
       const configured = server !== null && server !== undefined;
       if (!configured) return null;
@@ -107,10 +108,10 @@ export function createTeamcityCard(remote: TeamcityRemote) {
               }
             />
           </label>
+          <CredentialHelpNote help={help} />
           <p className="dsh-qa-integrations__hint">
-            Создайте в TeamCity (Profile → Access Tokens) токен с минимальными
-            правами — «Limit per project» и только на чтение. Токен хранится в
-            зашифрованном виде и после сохранения не отображается.
+            Токен хранится в зашифрованном виде и после сохранения не
+            отображается.
           </p>
           <div className="dsh-qa-integrations__actions">
             <button

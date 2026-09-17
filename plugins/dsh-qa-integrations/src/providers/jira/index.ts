@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import type {
@@ -25,6 +29,7 @@ import {
   requestedIncludes,
   wantsFieldNames,
 } from "./operations.js";
+import { JIRA_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   JiraTransport,
   credentialFromPlaintext,
@@ -73,6 +78,10 @@ export class JiraProvider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = JIRA_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: JiraTransport;
 
@@ -82,6 +91,12 @@ export class JiraProvider implements IntegrationProvider {
   ) {
     this.transport = new JiraTransport(config, config.jira, fetcher);
     this.capabilities = Object.freeze(enabledCapabilities(config.jira));
+    const help = resolveCredentialHelp(
+      JIRA_CREDENTIAL_HELP,
+      config.credentialHelp["jira"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /**

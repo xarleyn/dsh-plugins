@@ -1,5 +1,6 @@
 import path from "node:path";
 import z from "@deepseek-ai/schemastery";
+import type { CredentialHelpOverride } from "@yadsh/dsh-plugin-kit";
 import {
   bitrix24ConfigSchema,
   resolveBitrix24Config,
@@ -36,6 +37,7 @@ import {
   weblateConfigSchema,
   type WeblateFlags,
 } from "./providers/weblate/config.js";
+import { credentialHelpOverridesSchema } from "./providers/shared/credential-help.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -55,6 +57,12 @@ export interface QaIntegrationsConfig {
   readonly maxResponseBytes?: number;
   /** Host allowlist for providers that dial an operator-approved domain. */
   readonly allowedPortalSuffixes?: string[];
+  /**
+   * Deployment replacements for the credential help each provider declares:
+   * corporate token pages, self-hosted instances, internal documentation. A
+   * provider without an entry keeps the help it ships.
+   */
+  readonly credentialHelp?: Readonly<Record<string, CredentialHelpOverride>>;
   readonly bitrix24?: Partial<Bitrix24Flags>;
   readonly confluence?: Partial<ConfluenceFlags>;
   readonly gitlab?: Partial<GitlabFlags>;
@@ -73,6 +81,9 @@ export interface ResolvedQaIntegrationsConfig {
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
   readonly allowedPortalSuffixes: readonly string[];
+  readonly credentialHelp: Readonly<
+    Record<string, CredentialHelpOverride | undefined>
+  >;
   readonly bitrix24: Bitrix24Flags;
   readonly confluence: ConfluenceFlags;
   readonly gitlab: GitlabFlags;
@@ -93,6 +104,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   allowedPortalSuffixes: z
     .array(z.string())
     .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"]),
+  credentialHelp: credentialHelpOverridesSchema,
   bitrix24: bitrix24ConfigSchema,
   confluence: confluenceConfigSchema,
   gitlab: gitlabConfigSchema,
@@ -127,6 +139,7 @@ export function resolveConfig(
     timeoutMs: input.timeoutMs ?? 15_000,
     maxResponseBytes: input.maxResponseBytes ?? 2_000_000,
     allowedPortalSuffixes: Object.freeze(suffixes),
+    credentialHelp: Object.freeze({ ...input.credentialHelp }),
     bitrix24: resolveBitrix24Config(input.bitrix24),
     confluence: resolveConfluenceConfig(input.confluence),
     gitlab: resolveGitlabConfig(input.gitlab),

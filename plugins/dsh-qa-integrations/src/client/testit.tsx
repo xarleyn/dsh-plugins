@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useState } from "react";
 import type {
   IntegrationInstanceSummary,
@@ -88,7 +89,7 @@ export function createTestitCard(remote: TestitRemote) {
       patch: (token, patch) => remote.patchTestitPolicy(token, patch),
       disconnect: (token) => remote.disconnectTestit(token),
     },
-    credentialSection: (state) => {
+    credentialSection: (state, help) => {
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
@@ -133,10 +134,10 @@ export function createTestitCard(remote: TestitRemote) {
               placeholder="Токен из профиля Test IT"
             />
           </label>
+          <CredentialHelpNote help={help} />
           <p className="dsh-qa-integrations__hint">
             Токен хранится в зашифрованном виде и после сохранения больше не
-            отображается. Достаточно прав на чтение: проекты, тест-библиотека,
-            тест-планы, прогоны и результаты.
+            отображается.
           </p>
           <div className="dsh-qa-integrations__actions">
             <button

@@ -48,6 +48,13 @@ function fakeProvider(options: {
         { label: capability, hint: `${capability} hint` },
       ]),
     ),
+    credentialHelp: {
+      kind: "api-key",
+      label: "Acme API key",
+      obtain: { url: "https://acme.example.com/keys" },
+      scopes: ["crm.read"],
+    },
+    credentialHelpProblems: [],
     operationCapability: (operation) => OPERATION_CAPABILITY[operation],
     parseCredential: (raw) => ({
       credential: JSON.stringify({ webhookBaseUrl: raw }),
