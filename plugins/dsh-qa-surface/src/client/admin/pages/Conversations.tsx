@@ -253,13 +253,46 @@ export function AdminConversation(props: {
   readonly conversationId: string;
   readonly messageId?: string;
   readonly canReview: boolean;
+  /** Removing the conversation itself belongs to the administrator alone. */
+  readonly canDelete: boolean;
   readonly onBack: () => void;
+  /** Called once the conversation is gone, so the console leaves the page. */
+  readonly onDeleted?: () => void;
 }) {
   const resource = useAdminResource(
     () => props.api.conversation(props.token, props.conversationId),
     [props.api, props.token, props.conversationId],
   );
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string>();
   const detail = resource.data;
+
+  const remove = useCallback(async () => {
+    // Deleting removes the chat itself, its subagent sessions and everything
+    // the QA layer recorded about it — not the row the sidebar's own delete
+    // hides — so the confirmation has to say which one this is.
+    const confirmed = window.confirm(
+      "Удалить разговор со стенда? Он сам, его служебные сессии, оценки и разбор будут удалены без возможности восстановления.",
+    );
+    if (!confirmed) return;
+    setDeleting(true);
+    setDeleteError(undefined);
+    try {
+      const result = await props.api.deleteConversation(
+        props.token,
+        props.conversationId,
+      );
+      if (!result.ok) {
+        setDeleteError(adminErrorMessage(result.error));
+        return;
+      }
+      props.onDeleted?.();
+    } catch (error) {
+      setDeleteError(adminErrorMessage(error));
+    } finally {
+      setDeleting(false);
+    }
+  }, [props.api, props.token, props.conversationId, props.onDeleted]);
 
   if (resource.error !== undefined) {
     return (
@@ -303,6 +336,23 @@ export function AdminConversation(props: {
             {detail.runtime.adminPreview ? " · предпросмотр роли" : ""}
           </p>
         </div>
+        {props.canDelete ? (
+          <div className="dsh-qa-admin__title-actions">
+            <button
+              type="button"
+              className="dsh-qa-admin__danger"
+              disabled={deleting}
+              onClick={() => void remove()}
+            >
+              {deleting ? "Удаляю…" : "Удалить разговор"}
+            </button>
+            {deleteError === undefined ? null : (
+              <p className="dsh-qa-admin__error" role="alert">
+                {deleteError}
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
       <div className="dsh-qa-admin__conversation">
         <div className="dsh-qa-admin__transcript">

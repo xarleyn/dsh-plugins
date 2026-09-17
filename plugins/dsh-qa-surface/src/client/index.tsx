@@ -69,6 +69,7 @@ import type {
   QaAdminUserUpdate,
   QaAuditQuery,
   QaConversationDetail,
+  QaConversationDeletion,
   QaConversationQuery,
   QaConversationReview,
   QaConversationReviewInput,
@@ -133,6 +134,10 @@ interface QaAdminRemote {
     token: string,
     conversationId: string,
   ): Promise<RemoteResult<QaConversationDetail>>;
+  adminDeleteConversation(
+    token: string,
+    conversationId: string,
+  ): Promise<RemoteResult<QaConversationDeletion>>;
   adminFeedback(
     token: string,
     query: QaFeedbackQuery,
@@ -452,6 +457,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.adminConversations(token, query, cursor, limit),
         conversation: (token, conversationId) =>
           policyRemote.adminConversation(token, conversationId),
+        deleteConversation: (token, conversationId) =>
+          policyRemote.adminDeleteConversation(token, conversationId),
         feedback: (token, query, cursor, limit) =>
           policyRemote.adminFeedback(token, query, cursor, limit),
         rateMessage: (token, conversationId, messageId, input) =>

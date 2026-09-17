@@ -145,6 +145,15 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
   return false;
 }
 
+/**
+ * Whether the console offers the conversation-delete control. The Host gates
+ * the call itself on `conversations.delete`, which only the admin role carries;
+ * this decides what to draw, not what is allowed.
+ */
+function canDeleteConversation(role: QaAccountRole | undefined): boolean {
+  return role === undefined || role === "admin";
+}
+
 /** Detail routes keep their parent navigation entry current. */
 function isCurrentEntry(route: QaAdminRoute, page: Page): boolean {
   if (route.page === page) return true;
@@ -1180,7 +1189,9 @@ export function QaAdmin(props: {
                 ? { messageId: route.messageId }
                 : {})}
               canReview={canOpen(props.role, "review")}
+              canDelete={canDeleteConversation(props.role)}
               onBack={() => navigate({ page: "conversations" })}
+              onDeleted={() => navigate({ page: "conversations" })}
             />
           ) : adminApi !== undefined && page === "review" ? (
             <AdminReviewQueue

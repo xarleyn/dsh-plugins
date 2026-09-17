@@ -128,6 +128,7 @@ function reader(
   }[],
 ): QaSessionLogReader {
   return {
+    live: () => false,
     list: async () => ({ headers, complete: true }),
     read: async () => ({ ok: false as const, reason: "storage-unavailable" }),
   };
@@ -393,6 +394,7 @@ describe("QA access service", () => {
   it("reclaims nothing when the durable listing cannot be read", async () => {
     const { service, accounts, user } = harness({
       sessionLog: {
+        live: () => false,
         list: async () => {
           throw new Error("no query engine");
         },
@@ -470,6 +472,7 @@ describe("QA access service: the vanished-chat sweep", () => {
   it("reclaims nothing against a listing that cannot see stored sessions", async () => {
     const { service, accounts, user } = harness({
       sessionLog: {
+        live: () => false,
         list: async () => ({ headers: [], complete: false }),
         read: async () => ({
           ok: false as const,

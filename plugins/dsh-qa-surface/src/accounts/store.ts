@@ -557,6 +557,21 @@ export class QaAccounts {
    * @returns the session ids whose records were dropped.
    */
   pruneDelegatedOwnership(sessionIds: ReadonlySet<string>): readonly string[] {
+    return this.forgetSessions(sessionIds);
+  }
+
+  /**
+   * Drop the ownership records of the named sessions, whatever their lineage.
+   *
+   * This is the record half of a deletion: the caller has already established
+   * that these sessions are gone (or is removing them as part of the same
+   * act), so the auth boundary goes with them. Nothing here decides anything —
+   * the sweeps above own the judgments, and both end in this.
+   *
+   * @param sessionIds - the ids whose records are dropped.
+   * @returns the session ids whose records were actually there.
+   */
+  forgetSessions(sessionIds: ReadonlySet<string>): readonly string[] {
     this.reloadIfChanged();
     const removed = Object.keys(this.file.ownership).filter((sessionId) =>
       sessionIds.has(sessionId),

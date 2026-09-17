@@ -57,6 +57,8 @@ export const QA_ADMIN_CONSOLE_STYLES = String.raw`
 .dsh-qa-admin__queue-owner{color:var(--dsw-alias-label-tertiary);font-size:12px}
 .dsh-qa-admin__queue-issues{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px}
 .dsh-qa-admin__conversation{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);gap:20px;align-items:start}
+.dsh-qa-admin__title-actions{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:none}
+.dsh-qa-admin__title-actions>.dsh-qa-admin__error{margin:0;max-width:280px;text-align:right;font-size:12px}
 .dsh-qa-admin__transcript{display:flex;flex-direction:column;gap:14px;min-width:0}
 .dsh-qa-admin__runtime{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-qa-admin__runtime h2{margin:0;font-size:13px;color:var(--dsw-alias-label-secondary)}

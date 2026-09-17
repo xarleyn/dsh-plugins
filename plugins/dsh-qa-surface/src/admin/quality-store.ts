@@ -94,6 +94,7 @@ const AUDIT_ACTIONS: readonly QaAdminAuditAction[] = [
   "subrole.deleted",
   "common_capabilities.updated",
   "conversation.reviewed",
+  "conversation.deleted",
   "review.updated",
   "review.queued",
   "admin.settings.updated",

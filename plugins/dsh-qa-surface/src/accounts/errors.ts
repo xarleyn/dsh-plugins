@@ -20,7 +20,13 @@ export type QaAccountsErrorReason =
   | "weak-password"
   | "registration-disabled"
   | "rate-limited"
-  | "session-owned-elsewhere";
+  | "session-owned-elsewhere"
+  /** The conversation a deletion names is not one this deployment knows. */
+  | "conversation-unknown"
+  /** The Harness still holds the conversation open, so its log would come back. */
+  | "conversation-live"
+  /** This deployment cannot remove stored conversations at all. */
+  | "conversation-not-removable";
 
 export class QaAccountsError extends Error {
   constructor(
