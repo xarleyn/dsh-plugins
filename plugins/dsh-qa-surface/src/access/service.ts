@@ -215,6 +215,8 @@ export class QaAccessService {
   readonly roles: QaRoleRepository;
   readonly catalog: QaCapabilityCatalog;
   private lastOwnershipSweepAt = 0;
+  /** The sweep in flight, so a burst of readers runs one listing, not ten. */
+  private ownershipSweep: Promise<void> | undefined;
   /**
    * Sessions the Host has listed as delegated children of another session.
    * The live registry answers for a child that is running right now; this
@@ -240,6 +242,14 @@ export class QaAccessService {
        * materialized — the sweep then reclaims nothing rather than guessing.
        */
       readonly sessionLog?: QaSessionLogReader;
+      /**
+       * Called with the ids of chats the Harness no longer knows, once their
+       * ownership records are reclaimed. The record is the auth boundary, not
+       * the whole of what the deployment kept about a chat: ratings, reviews
+       * and queue entries are keyed by conversation, and they outlive their
+       * chat unless the caller drops them here.
+       */
+      readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
     },
   ) {
     this.roles = options.repository ?? new QaRoleRepository();
@@ -300,36 +310,61 @@ export class QaAccessService {
    * Nothing else removes them: the browser's "delete chat" hides a chat in one
    * browser, and a record outlives its session forever, so a year of QA traffic
    * accumulates one row per chat ever created. The sweep is throttled, runs
-   * off the reservation path, and is skipped entirely when the Harness cannot
-   * say what exists — an unanswerable question is never a licence to delete an
-   * auth boundary.
+   * off the reservation path and off the review reads, and is skipped entirely
+   * when the Harness cannot say what exists — an unanswerable question is
+   * never a licence to delete an auth boundary.
+   *
+   * What exists is both halves of the Harness's own knowledge: the sessions
+   * this process has open and the ones its storage still holds. The live store
+   * alone would make a cold chat — one nobody has opened since the last
+   * restart — look deleted, and the sweep would reclaim records of chats that
+   * are merely quiet. A listing that cannot see stored sessions therefore
+   * reclaims nothing.
+   *
+   * @returns the sweep, for callers that want to await it (tests, and the
+   * review reads that must show the console what still exists).
    */
-  private maybePruneOwnership(): void {
+  sweepVanishedOwnership(): Promise<void> {
+    this.ownershipSweep ??= this.runOwnershipSweep().finally(() => {
+      this.ownershipSweep = undefined;
+    });
+    return this.ownershipSweep;
+  }
+
+  private async runOwnershipSweep(): Promise<void> {
     const accounts = this.options.accounts();
-    if (accounts === undefined) return;
+    const reader = this.options.sessionLog;
+    if (accounts === undefined || reader === undefined) return;
     const retention = this.options.config().accounts.retention;
     if (!retention.pruneVanishedSessions) return;
-    const sessions = this.ctx.sessions;
-    if (sessions === undefined) return;
     const interval = retention.sweepIntervalMinutes * 60_000;
     if (interval > 0 && Date.now() - this.lastOwnershipSweepAt < interval) {
       return;
     }
     this.lastOwnershipSweepAt = Date.now();
     try {
-      const live = new Set(
-        sessions.list().map((session) => String(session.id)),
-      );
+      const listing = await reader.list();
+      if (!listing.complete) {
+        // Live-only view of a deployment that keeps sessions on disk: an id
+        // missing from it may be a chat nobody opened today.
+        this.options.logger.debug("accounts.ownership-sweep-skipped", {
+          reason: "incomplete-session-listing",
+        });
+        return;
+      }
+      const known = new Set(listing.headers.map((header) => header.id));
       const removed = accounts.pruneVanishedSessions(
-        (sessionId) => live.has(sessionId),
+        (sessionId) => known.has(sessionId),
         retention.ownershipGraceHours,
       );
-      if (removed.length > 0) {
-        this.options.logger.info("accounts.ownership-pruned", {
-          count: removed.length,
-          sessionIds: removed.slice(0, 20),
-        });
-      }
+      if (removed.length === 0) return;
+      this.options.logger.info("accounts.ownership-pruned", {
+        count: removed.length,
+        sessionIds: removed.slice(0, 20),
+      });
+      // The record is one of several things the deployment kept about a chat;
+      // the rest is the caller's to drop.
+      this.options.onVanishedSessions?.(removed);
     } catch (error) {
       // Housekeeping must never fail the chat that triggered it.
       this.options.logger.error("accounts.ownership-prune-failed", {
@@ -384,7 +419,7 @@ export class QaAccessService {
       return Promise.resolve();
     return (async () => {
       try {
-        const headers = await reader.list();
+        const { headers } = await reader.list();
         const children = new Set(
           headers
             .filter((header) => header.parentSessionId !== undefined)
@@ -506,7 +541,7 @@ export class QaAccessService {
     // Creating a chat is the moment the ownership map grows, so it is also
     // the natural moment to reclaim what deleted chats and delegated
     // sessions left behind.
-    this.maybePruneOwnership();
+    void this.sweepVanishedOwnership();
     this.maybeSweepDelegatedSessions();
     return owner;
   }

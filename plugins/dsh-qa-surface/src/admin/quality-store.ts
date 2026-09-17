@@ -142,6 +142,16 @@ const ROW_CAPS: Readonly<Record<QualityRowKind, number>> = Object.freeze({
   audit: MAX_AUDIT,
 });
 
+/**
+ * The families a conversation owns. The audit trail is deliberately not one
+ * of them: it records what administrators did, and it outlives its subject.
+ */
+const CONVERSATION_KINDS: readonly QualityRowKind[] = Object.freeze([
+  "feedback",
+  "review",
+  "queue",
+]);
+
 const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
@@ -525,6 +535,72 @@ export class QaQualityStore {
   manualQueue(): readonly QaManualQueueEntry[] {
     this.reload();
     return this.file.queue;
+  }
+
+  // -------------------------------------------------------------------------
+  // Conversation lifecycle
+  // -------------------------------------------------------------------------
+
+  /**
+   * Drop every quality record of the named conversations.
+   *
+   * A record is keyed by the conversation it judges, and nothing else removes
+   * it: a chat deleted from the Harness would otherwise leave its ratings,
+   * reviews and queue entries behind, still counted by the metrics and still
+   * pointing at a conversation the console cannot open. The ownership sweep is
+   * the one place that learns a chat is gone, and it calls this with the ids
+   * it reclaimed.
+   *
+   * The audit trail is not touched: it records what administrators did, not
+   * what a conversation held, and a housekeeping drop is not an administrative
+   * act to answer for.
+   *
+   * @param conversationIds - the conversations to forget.
+   * @returns how many rows were removed.
+   */
+  dropConversations(conversationIds: readonly string[]): number {
+    this.reload();
+    const wanted = new Set(conversationIds);
+    if (wanted.size === 0) return 0;
+    let removed = 0;
+    this.storage.transaction(() => {
+      for (const kind of CONVERSATION_KINDS) {
+        for (const row of asRows<{ key: string; json: string }>(
+          this.storage.db
+            .prepare("SELECT key, json FROM quality_rows WHERE kind = ?")
+            .all(kind),
+        )) {
+          let record: unknown;
+          try {
+            record = JSON.parse(row.json);
+          } catch {
+            // A row the store cannot parse is reported by the readers that
+            // surface it; housekeeping is not the place to delete it.
+            continue;
+          }
+          if (
+            !isRecord(record) ||
+            typeof record.conversationId !== "string" ||
+            !wanted.has(record.conversationId)
+          ) {
+            continue;
+          }
+          this.deleteRow(kind, row.key);
+          removed += 1;
+        }
+      }
+    });
+    if (removed === 0) return 0;
+    const keep = <T extends { readonly conversationId: string }>(
+      rows: readonly T[],
+    ): readonly T[] => rows.filter((row) => !wanted.has(row.conversationId));
+    this.file = {
+      ...this.file,
+      feedback: keep(this.file.feedback),
+      reviews: keep(this.file.reviews),
+      queue: keep(this.file.queue),
+    };
+    return removed;
   }
 
   // -------------------------------------------------------------------------

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { QaAccounts, QaAccountsError } from "../src/accounts/store.js";
 import { QaAccessService } from "../src/access/service.js";
 import { QaRoleRepository } from "../src/access/role-repository.js";
@@ -722,7 +722,10 @@ describe("admin conversation reads", () => {
       access: () => access,
       sessionLog: {
         async list() {
-          return [{ id: "session-alice", createdAt: 1 }];
+          return {
+            headers: [{ id: "session-alice", createdAt: 1 }],
+            complete: true,
+          };
         },
         async read() {
           return { ok: false as const, reason: "unreadable" as const };
@@ -733,6 +736,67 @@ describe("admin conversation reads", () => {
     const detail = await service.conversation(admin.token, "session-alice");
     expect(detail.messages).toEqual([]);
     expect(detail.runtime.transcriptUnavailable).toBe("unreadable");
+  });
+
+  it("asks the sweep before listing, so a chat deleted in the Harness leaves the console", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-18T09:00:00Z"));
+      const { accounts, quality, roles, admin, alice, bob } = harness();
+      const ctx = {
+        tools: { schemas: () => [] },
+        get: () => undefined,
+      } as unknown as Context;
+      const logger = {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+        close() {},
+      } as unknown as PluginLogger;
+      // Storage holds alice's chat and not bob's: bob's session was deleted
+      // outside the deployment, and nothing in the console would notice.
+      const listing = staticSessionLogReader({
+        sessions: [{ id: "session-alice", createdAt: 1_700_000_000_000 }],
+      });
+      const access = new QaAccessService(ctx, {
+        accounts: () => accounts,
+        config: () =>
+          resolveConfig({
+            accounts: {
+              retention: { ownershipGraceHours: 1, sweepIntervalMinutes: 1 },
+            },
+          }),
+        logger,
+        repository: roles,
+        sessionLog: listing,
+      });
+      const service = new QaAdminService({
+        accounts: () => accounts,
+        quality: () => quality,
+        roles: () => roles,
+        access: () => access,
+        sessionLog: listing,
+        logger,
+      });
+      vi.setSystemTime(new Date("2026-09-18T11:00:00Z"));
+
+      const page = await service.conversations(
+        admin.token,
+        {},
+        undefined,
+        undefined,
+      );
+
+      expect(page.items.map((row) => row.conversationId)).toEqual([
+        "session-alice",
+      ]);
+      // The read cost one sweep, and the sweep took bob's record with it.
+      expect(accounts.ownedSessionIds(alice.token)).toEqual(["session-alice"]);
+      expect(accounts.ownedSessionIds(bob.token)).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

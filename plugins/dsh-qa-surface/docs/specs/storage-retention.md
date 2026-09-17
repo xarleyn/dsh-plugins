@@ -130,8 +130,22 @@ period:
 - `accounts.retention.ownershipGraceHours` (default 24) — a record younger
   than this is never considered, so a creation race cannot lose a claim.
 - `accounts.retention.sweepIntervalMinutes` (default 60).
-- The sweep drops ownership whose session is absent from `ctx.sessions`, and
-  whose `claimedAt` is older than the grace period.
+- The sweep drops ownership whose session is absent from **what the Harness
+  knows** — the sessions this process has open *and* the stored ones — and
+  whose `claimedAt` is older than the grace period. The live store alone
+  answers only for the first half, so a cold chat would look deleted: the
+  listing carries its own `complete` flag, and an incomplete one (a deployment
+  serving no durable query engine, or a listing that failed) reclaims nothing
+  at all. The review reads run the sweep before they list, so the console
+  reflects what exists when it is opened instead of whenever housekeeping was
+  last triggered.
+
+Dropping a record takes the conversation's **quality rows** with it: feedback,
+reviews and manual queue entries are keyed by conversation and nothing else
+removes them, so a deleted chat would keep counting in the metrics. The sweep
+reports the ids it reclaimed to the deployment, which drops those rows through
+`QaQualityStore.dropConversations`. The audit trail is deliberately not part of
+that — it records what administrators did, not what a conversation held.
 
 A second sweep on the same throttle reclaims records of **delegated children**
 — subagent sessions, which are not chats and never legitimately carry a record.

@@ -36,8 +36,25 @@ export type QaSessionReadResult =
   | { readonly ok: true; readonly events: readonly StoredSessionEvent[] }
   | { readonly ok: false; readonly reason: QaTranscriptUnavailableReason };
 
+/**
+ * One listing of the deployment's sessions together with what the answer
+ * covers. The distinction is load-bearing: on a deployment that serves no
+ * durable query engine the listing is only what this process has open, and a
+ * chat nobody opened since the last restart is absent from it without being
+ * gone.
+ */
+export interface QaSessionListing {
+  readonly headers: readonly QaStoredSessionHeader[];
+  /**
+   * True when the listing answers for every stored session, not only the live
+   * ones. A consumer that must never read "absent" as "deleted" — the
+   * ownership sweep — reclaims nothing against an incomplete listing.
+   */
+  readonly complete: boolean;
+}
+
 export interface QaSessionLogReader {
-  list(): Promise<readonly QaStoredSessionHeader[]>;
+  list(): Promise<QaSessionListing>;
   read(sessionId: string): Promise<QaSessionReadResult>;
 }
 
@@ -154,9 +171,11 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
   };
 
   return {
-    async list(): Promise<readonly QaStoredSessionHeader[]> {
+    async list(): Promise<QaSessionListing> {
       const engine = query();
-      if (engine === undefined) return liveList();
+      if (engine === undefined) {
+        return { headers: liveList(), complete: false };
+      }
       try {
         const records = await engine.listSessions();
         const stored = records
@@ -168,9 +187,14 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
         // A chat that has just been created exists live before its first
         // durable flush; without this merge it would be invisible to the
         // admin console for the length of the turn.
-        return [...stored, ...liveList().filter(({ id }) => !seen.has(id))];
+        return {
+          headers: [...stored, ...liveList().filter(({ id }) => !seen.has(id))],
+          complete: true,
+        };
       } catch {
-        return liveList();
+        // The engine failed this once, so it answers for nothing: the live
+        // list is not a complete view, and the caller must be told that.
+        return { headers: liveList(), complete: false };
       }
     },
 
@@ -202,10 +226,19 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
 export function staticSessionLogReader(input: {
   readonly sessions?: readonly QaStoredSessionHeader[];
   readonly events?: Readonly<Record<string, readonly StoredSessionEvent[]>>;
+  /**
+   * Whether the listed sessions are the fixture's whole world. True by
+   * default — a fixture that names its sessions means them to be all of them;
+   * pass false to stand for a live-only view of a larger deployment.
+   */
+  readonly complete?: boolean;
 }): QaSessionLogReader {
   return {
     async list() {
-      return input.sessions ?? [];
+      return {
+        headers: input.sessions ?? [],
+        complete: input.complete ?? true,
+      };
     },
     async read(sessionId: string) {
       const events = input.events?.[sessionId];

@@ -211,6 +211,12 @@ export class QaSurface extends TypertRemoteService {
       logger: this.logger,
       dynamicToolNames: () => this.tools?.catalogToolNames() ?? [],
       sessionLog,
+      // The record the sweep reclaims is the authorization boundary, not the
+      // whole of what the deployment kept about a chat: the quality rows a
+      // conversation owns outlive it unless they are dropped here.
+      onVanishedSessions: (sessionIds) => {
+        this.dropVanishedChats(sessionIds);
+      },
     });
     this.personalSkills = new QaPersonalSkillsHost({
       ctx,
@@ -403,6 +409,29 @@ export class QaSurface extends TypertRemoteService {
   private quality(): QaQualityStore {
     this.qualityStore ??= new QaQualityStore();
     return this.qualityStore;
+  }
+
+  /**
+   * Drop what the quality layer kept about chats that no longer exist in the
+   * Harness. The ownership sweep calls this with the ids it reclaimed: the
+   * record it removes is one thing the deployment held about a chat, and
+   * ratings, reviews and queue entries are the rest. Failure is logged and
+   * swallowed — housekeeping runs inside a review read, and a store that
+   * cannot be opened must not fail the page that triggered it.
+   */
+  private dropVanishedChats(sessionIds: readonly string[]): void {
+    try {
+      const rows = this.quality().dropConversations(sessionIds);
+      this.logger.info("quality.vanished-conversations-dropped", {
+        conversations: sessionIds.length,
+        rows,
+        sessionIds: sessionIds.slice(0, 20),
+      });
+    } catch (error) {
+      this.logger.error("quality.vanished-conversations-drop-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /** Resolve browser authentication to the caller only; never accepts an id. */

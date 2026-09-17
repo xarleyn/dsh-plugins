@@ -212,14 +212,21 @@ export class QaAdminService {
    * enriched with the stored header when the deployment can list one. A chat
    * that exists but has no readable log still appears — the reviewer must see
    * that it happened.
+   *
+   * Reading the index first asks the access sweep to reclaim what the Harness
+   * no longer knows: a chat deleted outside the deployment would otherwise sit
+   * in this list, in the counters and in the metrics until some later chat
+   * creation happened to trigger housekeeping. The sweep is throttled, so this
+   * costs a listing per interval at most.
    */
   private async index(): Promise<readonly IndexedConversation[]> {
     const accounts = this.requireAccounts();
+    await this.options.access().sweepVanishedOwnership();
     const directory = new Map(
       accounts.directory().map((user) => [user.id, user]),
     );
     const headers = new Map(
-      (await this.options.sessionLog.list()).map((header) => [
+      (await this.options.sessionLog.list()).headers.map((header) => [
         header.id,
         header,
       ]),
