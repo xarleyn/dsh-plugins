@@ -55,11 +55,15 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
     "@yadsh/dsh-config": "workspace:^",
     "eslint": "catalog:tooling",
+    "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"
   },
