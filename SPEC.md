@@ -559,7 +559,7 @@ Recommended direction:
     "versionPlans": true,
 
     "version": {
-      "updateDependents": "always"
+      "updateDependents": "never"
     },
 
     "releaseTag": {
@@ -574,6 +574,8 @@ Recommended direction:
   }
 }
 ```
+
+Dependents are not versioned with their bases: every workspace range is a caret, so a minor or patch release of a base resolves without republishing the plugins that depend on it, and a release wave carries only the packages whose code actually changed. A major release of a base needs explicit version plans for its dependents in the same change.
 
 Exact syntax must be verified against the Nx version selected during implementation.
 
