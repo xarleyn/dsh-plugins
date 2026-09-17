@@ -40,9 +40,25 @@ interface JsonRpcResult {
 }
 
 /** A locally provided tool; only `name` is read by the proxy. */
-interface LocalTool {
+export interface LocalTool {
   readonly name?: unknown;
   readonly [key: string]: unknown;
+}
+
+/** The error payload a {@link RequestGuard} answers a rejected request with. */
+export interface RequestGuardRejection {
+  readonly code: number;
+  readonly message: string;
+  readonly data?: unknown;
+}
+
+/** A harness-supplied check answered before the upstream is consulted. */
+export interface RequestGuard {
+  /**
+   * Inspect one client request before forwarding. Return an error payload to
+   * answer the request with instead, or null to forward it upstream.
+   */
+  guardRequest(message: JsonRpcMessage): RequestGuardRejection | null;
 }
 
 /** A JSON-RPC error response, i.e. what `errorResponse` builds. */
@@ -88,6 +104,12 @@ interface CreateOpenVikingMcpProxyOptions {
   ) => ProxyLogger;
   readonly fetchImpl?: typeof fetch;
   readonly localToolProvider?: LocalToolProvider | null;
+  readonly requestGuard?: RequestGuard | null;
+  /**
+   * Rewrite or drop one upstream tool of a `tools/list` answer. Returning a
+   * tool replaces it; returning null removes it from the advertised list.
+   */
+  readonly adjustUpstreamTool?: (tool: LocalTool) => LocalTool | null;
 }
 
 /** The stdio-facing surface the proxy exposes to an entrypoint. */
@@ -274,6 +296,8 @@ export function createOpenVikingMcpProxy({
   loggerFactory,
   fetchImpl = globalThis.fetch,
   localToolProvider = null,
+  requestGuard = null,
+  adjustUpstreamTool,
 }: CreateOpenVikingMcpProxyOptions = {}): OpenVikingMcpProxy {
   if (typeof fetchImpl !== "function") {
     throw new Error("global fetch is required; use Node.js 18 or newer");
@@ -342,9 +366,20 @@ export function createOpenVikingMcpProxy({
       return outbound;
     }
     const additions = localTools().filter((tool) => tool?.name);
-    if (additions.length === 0) return outbound;
-    const localNames = new Set(additions.map((tool) => tool.name));
-    const upstreamTools = tools.filter((tool) => !localNames.has(tool?.name));
+    if (additions.length === 0 && !adjustUpstreamTool) return outbound;
+    const localNames = new Set(additions.map((tool) => tool?.name));
+    const upstreamTools = tools
+      .filter((tool) => !localNames.has(tool?.name))
+      .map((tool) =>
+        adjustUpstreamTool ? adjustUpstreamTool(tool as LocalTool) : tool,
+      )
+      .filter((tool) => tool !== null);
+    if (additions.length === 0) {
+      return {
+        ...outbound,
+        result: { ...(result as JsonRpcResult), tools: upstreamTools },
+      };
+    }
     return {
       ...outbound,
       result: {
@@ -639,6 +674,20 @@ export function createOpenVikingMcpProxy({
     }
 
     try {
+      const rejection = requestGuard?.guardRequest(request) ?? null;
+      if (rejection) {
+        if (expectsResponse) {
+          await writeMessage(
+            errorResponse(
+              request.id,
+              rejection.code,
+              rejection.message,
+              rejection.data,
+            ),
+          );
+        }
+        return;
+      }
       const localResult = await callLocalTool(request);
       if (localResult !== null) {
         if (expectsResponse) {
