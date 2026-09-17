@@ -2,8 +2,15 @@ import { IntegrationError } from "./errors.js";
 
 const MAX_INT = 2_147_483_647;
 
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
+/**
+ * The message a rejected argument carries. `explain` appends what a correct
+ * value looks like, so a model can repair the call instead of retrying it.
+ */
+function invalid(field: string, explain?: string): never {
+  throw new IntegrationError(
+    "InvalidRequest",
+    explain === undefined ? `${field} is invalid` : `${field} is invalid: ${explain}`,
+  );
 }
 
 /** Model-supplied identifiers are positive integers or the argument is refused. */
@@ -35,9 +42,12 @@ export function requiredText(
   field: string,
   min: number,
   max: number,
+  explain?: string,
 ): string {
   const normalized = typeof value === "string" ? value.trim() : "";
-  if (normalized.length < min || normalized.length > max) invalid(field);
+  if (normalized.length < min || normalized.length > max) {
+    invalid(field, explain);
+  }
   return normalized;
 }
 
@@ -46,8 +56,11 @@ export function optionalText(
   field: string,
   min: number,
   max: number,
+  explain?: string,
 ): string | undefined {
-  return value === undefined ? undefined : requiredText(value, field, min, max);
+  return value === undefined
+    ? undefined
+    : requiredText(value, field, min, max, explain);
 }
 
 export function optionalBoolean(

@@ -4,6 +4,7 @@ import {
   credentialFromPlaintext,
   parseBitrixWebhook,
 } from "../src/providers/bitrix24/index.js";
+import { createBitrix24Tools } from "../src/providers/bitrix24/tools.js";
 
 const CREDENTIAL = JSON.stringify({
   webhookBaseUrl: "https://company.bitrix24.ru/rest/42/abcdefghijk",
@@ -485,5 +486,95 @@ describe("Bitrix24 provider", () => {
     );
     const validation = await provider.validate({ credential: CREDENTIAL });
     expect(validation.capabilities).toEqual(["crm.read"]);
+  });
+
+  it("narrows crm.search with stages, categories, freshness and a pinned order", async () => {
+    const { calls, fetcher } = stub({
+      "crm.item.list": { result: { items: [] }, total: 0 },
+    });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    await provider.execute({ credential: CREDENTIAL }, "crm.search", {
+      entityTypeId: 2,
+      stageId: "C12|WIN",
+      categoryId: 3,
+      openOnly: true,
+      createdSince: "2026-09-01",
+      updatedSince: "2026-09-15",
+      orderBy: "updatedTime",
+      orderDir: "desc",
+    });
+    expect(calls[0]?.method).toBe("crm.item.list");
+    expect(calls[0]?.body).toEqual({
+      entityTypeId: 2,
+      filter: {
+        stageId: "C12|WIN",
+        categoryId: 3,
+        closed: "N",
+        ">=createdTime": "2026-09-01",
+        ">=updatedTime": "2026-09-15",
+      },
+      order: { updatedTime: "DESC" },
+      select: ["id", "title", "createdTime", "updatedTime", "assignedById"],
+      start: 0,
+    });
+  });
+
+  it("pins the search order by default and refuses nonsense ordering", async () => {
+    const { calls, fetcher } = stub({
+      "crm.item.list": { result: { items: [] }, total: 0 },
+    });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    await provider.execute({ credential: CREDENTIAL }, "crm.search", {
+      entityTypeId: 2,
+    });
+    expect(calls[0]?.body).toMatchObject({ order: { id: "ASC" } });
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "crm.search", {
+        entityTypeId: 2,
+        orderBy: "budget",
+      }),
+    ).rejects.toThrow(/orderBy/u);
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "crm.search", {
+        entityTypeId: 2,
+        orderDir: "sideways",
+      }),
+    ).rejects.toThrow(/orderDir/u);
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "crm.search", {
+        entityTypeId: 1,
+        openOnly: true,
+      }),
+    ).rejects.toThrow(/openOnly/u);
+    await expect(
+      provider.execute({ credential: CREDENTIAL }, "crm.search", {
+        entityTypeId: 2,
+        query: "   ",
+      }),
+    ).rejects.toThrow(/query is invalid/u);
+  });
+
+  it("names the repair for an empty search query at the tool boundary", async () => {
+    const search = createBitrix24Tools({
+      broker: {
+        call: async () => ({
+          provider: "bitrix24",
+          operation: "crm.search",
+          data: {},
+        }),
+      } as never,
+      principalForSession: () => ({ userId: "1" }),
+    }).find((tool) => tool.name === "bitrix_search_crm");
+    expect(search).toBeDefined();
+    // The audited loop: an empty query answered with a bare "query is invalid"
+    // was retried verbatim instead of repaired.
+    await expect(
+      search!.execute(
+        { entityTypeId: 2, query: "   " } as never,
+        {
+          agent: { session: { header: { id: "s1" } } },
+        } as never,
+      ),
+    ).rejects.toThrow(/query is invalid: a non-empty title substring/u);
   });
 });

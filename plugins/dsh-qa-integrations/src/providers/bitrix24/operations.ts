@@ -105,6 +105,36 @@ function start(input: Readonly<Record<string, unknown>>, max?: number): number {
   return optionalInteger(input["start"], "start", 0, max) ?? DEFAULT_START;
 }
 
+/** Fields a search may sort by; anything else is refused before the call. */
+const CRM_SEARCH_ORDER_FIELDS: readonly string[] = Object.freeze([
+  "id",
+  "createdTime",
+  "updatedTime",
+]);
+
+function crmSearchOrder(input: Readonly<Record<string, unknown>>): string {
+  const order = optionalText(input["orderBy"], "orderBy", 2, 20) ?? "id";
+  if (!CRM_SEARCH_ORDER_FIELDS.includes(order)) {
+    throw new IntegrationError(
+      "InvalidRequest",
+      `orderBy is invalid: use one of ${CRM_SEARCH_ORDER_FIELDS.join(", ")}`,
+    );
+  }
+  return order;
+}
+
+function crmSearchDirection(input: Readonly<Record<string, unknown>>): string {
+  const direction = optionalText(input["orderDir"], "orderDir", 3, 4) ?? "asc";
+  const normalized = direction.toUpperCase();
+  if (normalized !== "ASC" && normalized !== "DESC") {
+    throw new IntegrationError(
+      "InvalidRequest",
+      "orderDir is invalid: use asc or desc",
+    );
+  }
+  return normalized;
+}
+
 function withFilter(
   filter: Record<string, unknown>,
   extra: Record<string, unknown>,
@@ -123,8 +153,31 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
           externalUserIdFrom(context.externalUserId, "assignedToMe"),
         ];
       }
+      const stageId = optionalText(input["stageId"], "stageId", 1, 64);
+      if (stageId !== undefined) filter["stageId"] = stageId;
+      const categoryId = optionalInteger(input["categoryId"], "categoryId", 0);
+      if (categoryId !== undefined) filter["categoryId"] = categoryId;
+      const entityTypeId = requiredInteger(input["entityTypeId"], "entityTypeId");
+      if (optionalBoolean(input["openOnly"], "openOnly") === true) {
+        if (entityTypeId !== 2) {
+          throw new IntegrationError(
+            "InvalidRequest",
+            "openOnly is invalid: only deals (entityTypeId 2) can exclude closed items",
+          );
+        }
+        filter["closed"] = "N";
+      }
+      const createdSince = optionalDate(input["createdSince"], "createdSince");
+      if (createdSince !== undefined) filter[">=createdTime"] = createdSince;
+      const updatedSince = optionalDate(input["updatedSince"], "updatedSince");
+      if (updatedSince !== undefined) filter[">=updatedTime"] = updatedSince;
       return withFilter(filter, {
-        entityTypeId: requiredInteger(input["entityTypeId"], "entityTypeId"),
+        entityTypeId,
+        // Offset paging over an unspecified order repeats and drops rows, so
+        // every search names a deterministic order; `order` narrows it.
+        order: {
+          [crmSearchOrder(input)]: crmSearchDirection(input),
+        },
         select: [...CRM_SEARCH_SELECT],
         start: start(input),
       });
