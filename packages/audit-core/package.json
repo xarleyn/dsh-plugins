@@ -1,0 +1,70 @@
+{
+  "name": "@yadsh/dsh-audit-core",
+  "version": "0.0.0",
+  "description": "Session audit artifact domain layer for DeepSeek Harness: schema, parsing, validation, summary and atomic publishing",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "packages/audit-core"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-core#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./paths": {
+      "types": "./lib/paths.d.ts",
+      "default": "./lib/paths.js"
+    },
+    "./producer": {
+      "types": "./lib/producer/index.d.ts",
+      "default": "./lib/producer/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "audit",
+    "session-audit",
+    "trajectory-evaluation"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "pnpm run build"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:tooling",
+    "@yadsh/dsh-config": "workspace:^",
+    "eslint": "catalog:tooling",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  }
+}

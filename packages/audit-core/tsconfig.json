@@ -1,0 +1,7 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/node",
+  "compilerOptions": {
+    "outDir": "lib"
+  },
+  "include": ["src", "tests"]
+}
