@@ -291,6 +291,28 @@
       "client": true
     },
     {
+      "name": "dsh-preset-persona-editor",
+      "npm": "@yadsh/dsh-preset-persona-editor",
+      "path": "plugins/dsh-preset-persona-editor",
+      "description": "Edit an agent preset's persona for the DeepSeek Harness from the settings UI: prefix, suffix, complete mode, and the runtime-context toggle, written back into the preset's own agent.cordis.yml",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "agent-preset",
+        "agent-presets",
+        "persona",
+        "system-prompt",
+        "settings-ui",
+        "web-ui"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-preset-persona-editor",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-preset-persona-editor#readme",
+      "client": true
+    },
+    {
       "name": "dsh-prompt-firewall",
       "npm": "@yadsh/dsh-prompt-firewall",
       "path": "plugins/dsh-prompt-firewall",
