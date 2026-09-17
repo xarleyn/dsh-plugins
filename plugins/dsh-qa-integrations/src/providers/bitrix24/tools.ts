@@ -53,7 +53,7 @@ export const BITRIX24_TOOL_NAMES = [
   "bitrix_get_drives",
   "bitrix_get_storage_items",
   "bitrix_get_folder_items",
-] as const;
+  ] as const;
 
 const ENTITY_TYPE_HINT =
   "Bitrix CRM entity type: 1 lead, 2 deal, 3 contact, 4 company, 31 invoice, or a smart-process type id.";
@@ -66,6 +66,9 @@ const DATE_HINT = "Date in YYYY-MM-DD form.";
 const START_HINT =
   "Pagination offset; Bitrix returns at most 50 items per page and the answer carries the next offset.";
 
+const SEARCH_STAGE_HINT =
+  "To see how long items have sat in their stage, use bitrix_get_crm_stage_history (movedTime) instead of paging through the archive.";
+
 export function createBitrix24Tools(options: {
   readonly broker: IntegrationBroker;
   readonly principalForSession: (
@@ -75,11 +78,10 @@ export function createBitrix24Tools(options: {
   const kit = createToolKit({ ...options, provider: "bitrix24" });
   const tool = kit.tool;
 
-  return [
+  const tools: ToolDefinition[] = [
     tool({
       name: "bitrix_search_crm",
-      description:
-        "Search CRM items (leads, deals, contacts, companies, invoices, smart processes) visible to the connected Bitrix24 account. Read-only; returns id, title and assignment, use bitrix_get_crm_item for full fields.",
+      description: `Search CRM items (leads, deals, contacts, companies, invoices, smart processes) visible to the connected Bitrix24 account. Read-only; returns id, title and assignment, use bitrix_get_crm_item for full fields. ${SEARCH_STAGE_HINT}`,
       parameters: {
         entityTypeId: {
           type: "number",
@@ -96,6 +98,37 @@ export function createBitrix24Tools(options: {
           description:
             "Only items assigned to the connected Bitrix24 user. Useful for 'my deals'.",
         },
+        stageId: {
+          type: "string",
+          description:
+            "Only items in this exact stage; use the stage ids of bitrix_get_crm_statuses or bitrix_get_crm_funnels.",
+        },
+        categoryId: {
+          type: "number",
+          description:
+            "Only items in this funnel (category); deals and smart processes.",
+        },
+        openOnly: {
+          type: "boolean",
+          description:
+            "Deals only (entityTypeId 2): exclude closed deals instead of paging into the archive.",
+        },
+        createdSince: {
+          type: "string",
+          description: DATE_HINT + " Only items created on or after this date.",
+        },
+        updatedSince: {
+          type: "string",
+          description: DATE_HINT + " Only items updated on or after this date.",
+        },
+        orderBy: {
+          type: "string",
+          description: "Sort by id (default), createdTime or updatedTime.",
+        },
+        orderDir: {
+          type: "string",
+          description: "Sort direction: asc (default) or desc.",
+        },
         start: { type: "number", description: START_HINT },
       },
       operation: "crm.search",
@@ -103,7 +136,9 @@ export function createBitrix24Tools(options: {
         entityTypeId: requiredInteger(args["entityTypeId"], "entityTypeId"),
         ...(args["query"] === undefined
           ? {}
-          : { query: requiredText(args["query"], "query", 1, 200) }),
+          : {
+              query: requiredText(args["query"], "query", 1, 200, "a non-empty title substring of 1-200 characters, or omit the argument to list unfiltered"),
+            }),
         ...(args["assignedToMe"] === undefined
           ? {}
           : {
@@ -112,6 +147,27 @@ export function createBitrix24Tools(options: {
                 "assignedToMe",
               ),
             }),
+        ...(args["stageId"] === undefined
+          ? {}
+          : { stageId: requiredText(args["stageId"], "stageId", 1, 64) }),
+        ...(args["categoryId"] === undefined
+          ? {}
+          : { categoryId: requiredInteger(args["categoryId"], "categoryId", 0) }),
+        ...(args["openOnly"] === undefined
+          ? {}
+          : { openOnly: optionalBoolean(args["openOnly"], "openOnly") }),
+        ...(args["createdSince"] === undefined
+          ? {}
+          : { createdSince: requiredDate(args["createdSince"], "createdSince") }),
+        ...(args["updatedSince"] === undefined
+          ? {}
+          : { updatedSince: requiredDate(args["updatedSince"], "updatedSince") }),
+        ...(args["orderBy"] === undefined
+          ? {}
+          : { orderBy: requiredText(args["orderBy"], "orderBy", 2, 20) }),
+        ...(args["orderDir"] === undefined
+          ? {}
+          : { orderDir: requiredText(args["orderDir"], "orderDir", 3, 4) }),
         ...(args["start"] === undefined
           ? {}
           : { start: optionalInteger(args["start"], "start", 0) }),
@@ -1183,4 +1239,6 @@ export function createBitrix24Tools(options: {
       }),
     }),
   ];
+
+  return tools;
 }
