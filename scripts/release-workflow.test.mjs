@@ -569,7 +569,7 @@ describe("release workflow fan-out", () => {
       workflow,
       /matrix: \$\{\{ fromJSON\(needs\.prepare\.outputs\.matrix\) \}\}/u,
     );
-    assert.match(workflow, /max-parallel: 6/u);
+    assert.match(workflow, /max-parallel: 20/u);
     assert.match(
       workflow,
       /NX_PROJECT: \$\{\{ matrix\.project \}\}\s+run: pnpm nx run-many -t lint typecheck test build verify --projects="\$NX_PROJECT" --output-style=static/u,

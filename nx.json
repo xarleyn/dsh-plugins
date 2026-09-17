@@ -15,7 +15,7 @@
       "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
     },
     "version": {
-      "updateDependents": "always"
+      "updateDependents": "never"
     },
     "git": {
       "tag": false

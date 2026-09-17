@@ -32,7 +32,7 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
     workflow,
     /concurrency:\s+group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\s+cancel-in-progress: true/u,
   );
-  assert.match(workflow, /max-parallel: 6/u);
+  assert.match(workflow, /max-parallel: 20/u);
   assert.match(
     workflow,
     /matrix: \$\{\{ fromJSON\(needs\.prepare\.outputs\.matrix\) \}\}/u,
