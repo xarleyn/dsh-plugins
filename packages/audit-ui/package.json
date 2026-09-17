@@ -1,0 +1,75 @@
+{
+  "name": "@yadsh/dsh-audit-ui",
+  "version": "0.0.0",
+  "description": "Shared audit presentation components for DeepSeek Harness: sanitized report rendering, findings, scorecard and JSON view",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xarleyn/dsh-plugins.git",
+    "directory": "packages/audit-ui"
+  },
+  "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-ui#readme",
+  "bugs": {
+    "url": "https://github.com/xarleyn/dsh-plugins/issues"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "cordis",
+    "audit",
+    "markdown",
+    "react"
+  ],
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json",
+    "lint": "eslint src tests",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "pnpm run build"
+  },
+  "dependencies": {
+    "@yadsh/dsh-audit-core": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "catalog:tooling",
+    "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "@yadsh/dsh-config": "workspace:^",
+    "eslint": "catalog:tooling",
+    "jsdom": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "typescript": "catalog:tooling",
+    "vitest": "catalog:tooling"
+  }
+}
