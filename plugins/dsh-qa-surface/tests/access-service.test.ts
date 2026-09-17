@@ -8,9 +8,20 @@ import { describe, expect, it } from "vitest";
 import { QaAccounts, QaAccountsError } from "../src/accounts/store.js";
 import { QaAccessService } from "../src/access/service.js";
 import { QaRoleRepository } from "../src/access/role-repository.js";
+import type { QaSessionLogReader } from "../src/admin/session-log.js";
 import { resolveConfig } from "../src/resolve-config.js";
 
-function harness() {
+function harness(
+  options: {
+    /** Live session headers, for the registry half of the lineage answer. */
+    readonly live?: ReadonlyMap<
+      string,
+      { readonly createdAt?: number; readonly parentSession?: string }
+    >;
+    /** Durable listing, for the sweep half. */
+    readonly sessionLog?: QaSessionLogReader;
+  } = {},
+) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));
   const accounts = new QaAccounts(path.join(root, "accounts.json"), {
     sessionTtlDays: 30,
@@ -55,6 +66,17 @@ function harness() {
             }),
           }
         : undefined,
+    ...(options.live === undefined
+      ? {}
+      : {
+          sessions: {
+            get: (id: string) => {
+              const header = options.live?.get(String(id));
+              return header === undefined ? undefined : { header };
+            },
+            list: () => [],
+          },
+        }),
   } as unknown as Context;
   const logger = {
     debug() {},
@@ -69,6 +91,9 @@ function harness() {
       resolveConfig({ lockdown: { toolPolicy: { allow: ["read"] } } }),
     logger,
     repository: new QaRoleRepository(path.join(root, "roles.json")),
+    ...(options.sessionLog === undefined
+      ? {}
+      : { sessionLog: options.sessionLog }),
   });
   return { service, accounts, admin, user, tools, skills };
 }
@@ -77,6 +102,20 @@ function fakeAgent(): Agent {
   return {
     session: { header: {}, id: "session" },
   } as unknown as Agent;
+}
+
+/** A durable listing over fixed headers; only `list` matters to the sweep. */
+function reader(
+  headers: readonly {
+    readonly id: string;
+    readonly createdAt: number;
+    readonly parentSessionId?: string;
+  }[],
+): QaSessionLogReader {
+  return {
+    list: async () => headers,
+    read: async () => ({ ok: false as const, reason: "storage-unavailable" }),
+  };
 }
 
 describe("QA access service", () => {
@@ -295,5 +334,65 @@ describe("QA access service", () => {
     expect(() =>
       service.skillActivations(user.token, "session-skills"),
     ).toThrow(QaAccountsError);
+  });
+
+  it("keeps a delegated child out of the claim batch", () => {
+    // The live registry proves the child; the store must never write the
+    // ownership record that the admission refuses to create.
+    const { service, accounts, user } = harness({
+      live: new Map([
+        ["session-child", { createdAt: Date.now(), parentSession: "s-root" }],
+      ]),
+    });
+
+    expect(
+      service.claimSessions(user.token, [
+        "session-chat",
+        "session-child",
+        "session-chat",
+      ]),
+    ).toEqual({ claimed: 1, conflicts: [] });
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-chat"]);
+  });
+
+  it("reclaims ownership of a child the Host only knows from its log", async () => {
+    // Residue of the releases that had no lineage check: the record exists,
+    // the session is durable (nothing live to ask about it), and the child was
+    // claimed by whoever opened its transcript.
+    const { service, accounts, user } = harness({
+      sessionLog: reader([
+        { id: "session-child", createdAt: 1, parentSessionId: "s-root" },
+        { id: "session-chat", createdAt: 2 },
+      ]),
+    });
+    accounts.claimSessions(user.token, ["session-child", "session-chat"]);
+
+    await service.reclaimDelegatedSessions();
+
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-chat"]);
+    // The listing is remembered, so the answer no longer needs the registry.
+    expect(service.isDelegatedChild("session-child")).toBe(true);
+    expect(service.isDelegatedChild("session-chat")).toBe(false);
+  });
+
+  it("reclaims nothing when the durable listing cannot be read", async () => {
+    const { service, accounts, user } = harness({
+      sessionLog: {
+        list: async () => {
+          throw new Error("no query engine");
+        },
+        read: async () => ({
+          ok: false as const,
+          reason: "storage-unavailable",
+        }),
+      },
+    });
+    accounts.claimSessions(user.token, ["session-child"]);
+
+    await service.reclaimDelegatedSessions();
+
+    // An unanswerable question is not a licence to delete an auth boundary.
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-child"]);
+    expect(service.isDelegatedChild("session-child")).toBe(false);
   });
 });

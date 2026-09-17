@@ -19,6 +19,7 @@ import {
   QaPolicyAttestationError,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
+import { isDelegatedSession } from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
 import { buildQaPromptContent, stageQaFiles } from "./prompt-content.js";
@@ -556,7 +557,15 @@ export class QaSessionController {
         this.timeoutMs,
       );
       if (this.disposed || operation !== this.generation) return;
-      if (!Object.hasOwn(list.byId, sessionId as SessionId)) {
+      // `hasOwn`, not a plain read: the index is browser storage, and a key
+      // like `__proto__` must not resolve to something inherited.
+      const summary = Object.hasOwn(list.byId, sessionId)
+        ? list.byId[sessionId as SessionId]
+        : undefined;
+      // A delegated child is not a chat, even when this browser's index still
+      // names one: the entry is dropped the same way an unknown id is, so a
+      // subagent transcript can never be reopened as chat history.
+      if (summary === undefined || isDelegatedSession(summary)) {
         this.forgetChat(sessionId);
         throw new Error("Этот чат больше недоступен.");
       }
@@ -738,7 +747,19 @@ export class QaSessionController {
         existing = true;
       } else if (this.config.session.policy === "browser-persistent") {
         const stored = this.chats.activeId();
-        if (stored !== null && Object.hasOwn(list.byId, stored)) {
+        const summary =
+          stored !== null && Object.hasOwn(list.byId, stored)
+            ? list.byId[stored as SessionId]
+            : undefined;
+        // A stored id that is not a chat any more — a delegated child this
+        // browser once opened as one, a session the Host no longer lists —
+        // falls through to a fresh chat instead of restoring a transcript
+        // nobody can send into.
+        if (
+          stored !== null &&
+          summary !== undefined &&
+          !isDelegatedSession(summary)
+        ) {
           id = stored;
           restored = true;
           existing = true;

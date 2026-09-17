@@ -1,5 +1,8 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { ConnectionHandle } from "@deepseek-ai/dsh-client-connection/client";
+import type {
+  ConnectionHandle,
+  SessionId,
+} from "@deepseek-ai/dsh-client-connection/client";
 import type { SettingsScopeBinder } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import qaSurfaceRemote from "@yadsh/dsh-qa-surface/remote";
@@ -16,6 +19,7 @@ import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
 import { QaChatIndex } from "./chat-index.js";
+import { isDelegatedSession } from "./lineage.js";
 import type { QaSurfaceFace } from "./QaSurface.js";
 import { QaSurfaceGuard } from "./QaSurfaceGuard.js";
 import { QaWelcomeNoticeStep } from "./components/QaWelcomeNotice.js";
@@ -536,15 +540,26 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         config: () => config.getSnapshot().config,
         legacyChatIds: () => {
           // A standalone index view over the same prefix: reads the chat ids
-          // this browser accumulated before accounts existed.
+          // this browser accumulated before accounts existed. A delegated
+          // child an older release left in that index is not a chat, so it is
+          // never offered as something to claim.
           const snapshot = config.getSnapshot().config;
           const index = new QaChatIndex(
             window.localStorage,
             qaStorageNamespace(snapshot),
           );
-          const ids = [...index.chatIds()];
+          const summaries = (
+            ctx.sessions as unknown as QaSessions | undefined
+          )?.list.getSnapshot().byId;
+          const isChild = (id: string): boolean =>
+            summaries === undefined
+              ? false
+              : isDelegatedSession(summaries[id as SessionId]);
+          const ids = index.chatIds().filter((id) => !isChild(id));
           const active = index.activeId();
-          if (active !== null && !ids.includes(active)) ids.push(active);
+          if (active !== null && !ids.includes(active) && !isChild(active)) {
+            ids.push(active);
+          }
           return ids;
         },
         forgetChat: (sessionId) => {

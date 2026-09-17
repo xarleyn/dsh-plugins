@@ -78,7 +78,25 @@ createdAt, lastLoginAt }], ownership: { [sessionId]: { userId, claimedAt } } }`.
   it for the requesting user (this is how pre-accounts sessions migrate when
   an old browser re-opens its `activeId` without a bulk claim). Bulk claims
   from the client's local index follow the same rule; conflicting ids are
-  reported back and dropped from that browser's index.
+  reported back and dropped from that browser's index. A **delegated child** —
+  a subagent's session — is never claimed through either path: the auto-claim
+  refuses a session the Host reports as `hasParent` (and records nothing when
+  the header is unknown), and `QaAccessService.claimSessions` filters the
+  browser's batch before the store sees it. The lineage answer has two
+  sources, because each alone misses a case: the live session registry knows a
+  child that is running now, and the cached durable listing
+  (`QaSessionLogReader.list()`) knows the one that finished and was
+  dismantled. No chat is ever a child, so a record that exists anyway is
+  residue rather than an assignment, and `pruneDelegatedOwnership` reclaims it
+  without a grace period — while still requiring positive evidence, so a
+  listing that cannot be read reclaims nothing.
+- A refused `createSession` gives its reservation back. The browser learns the
+  id only from this call, so a failure at any stage — the Host creating the
+  session, selecting the model, the admission refusing the composition —
+  leaves no chat behind under that id. Keeping the record used to leave an
+  empty "Новый чат" row in the account's list that nothing could remove: the
+  browser's delete only forgets it locally, and `accountsOwnedSessions` put it
+  back on the next projection.
 - `QaPolicyAdmission.secureSession` gains an optional accounts gate: when
   `accounts.enabled`, an invalid/expired token refuses with
   `auth-required` before any policy work.

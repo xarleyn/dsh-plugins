@@ -650,7 +650,10 @@ still opens in an explicit compatibility read-only mode. Send, stop, approvals
 and questions stay disabled so the historical session cannot bypass the
 current workspace or permission boundary; use New chat to continue under the
 current configuration. A chat the Host no longer lists is pruned from the
-index. Each
+index, and so is a delegated subagent session: the rows, the chat counter in
+the account settings and the first-login claim batch all read the same lineage
+marks the host list carries, so a subagent's transcript can never be reopened,
+counted or migrated as a chat. Each
 row carries a two-click delete control that removes the chat from this
 browser's index; deleting the chat that is currently open continues in a
 fresh attested session. Host-side sessions are not deleted — DSH 0.1.x

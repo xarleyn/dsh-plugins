@@ -239,6 +239,26 @@ describe("QA accounts store", () => {
     expect(accounts.ownedSessionIds(b.token)).toEqual(["s-3"]);
   });
 
+  it("reclaims ownership records of sessions that are not chats", () => {
+    // Residue: releases that claimed a session without knowing its lineage
+    // left the users' chat lists carrying subagent sessions.
+    const accounts = store();
+    const a = accounts.register("a@b.co", "password-1");
+    const b = accounts.register("b@b.co", "password-2");
+    accounts.claimSessions(a.token, ["s-chat", "s-child"]);
+    accounts.claimSessions(b.token, ["s-child-2"]);
+
+    expect(accounts.pruneDelegatedOwnership(new Set(["s-child"]))).toEqual([
+      "s-child",
+    ]);
+    expect(accounts.ownedSessionIds(a.token)).toEqual(["s-chat"]);
+    // Only the named ids go: a record the caller did not identify keeps its
+    // owner, and re-running the sweep is a no-op.
+    expect(accounts.ownedSessionIds(b.token)).toEqual(["s-child-2"]);
+    expect(accounts.pruneDelegatedOwnership(new Set(["s-child"]))).toEqual([]);
+    expect(accounts.ownedSessionIds(b.token)).toEqual(["s-child-2"]);
+  });
+
   it("refuses a role outside the role union on the administrative write", () => {
     const accounts = store();
     const session = accounts.register("a@b.co", "password-1");

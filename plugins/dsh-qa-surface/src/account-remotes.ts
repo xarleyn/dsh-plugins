@@ -9,7 +9,6 @@ import type {
   QaAccountSession,
   QaAccountStartersInput,
   QaAccountUserPublic,
-  QaClaimResult,
   QaOwnershipEntry,
   QaWhoamiResult,
   ResolvedQaSurfaceConfig,
@@ -43,9 +42,13 @@ export interface QaAccountRemotes {
   login(email: string, password: string): QaAccountSession;
   /** Identity probe; safe to call with an empty or expired token. */
   whoami(token: string): QaWhoamiResult;
-  /** Migrate a browser's local chat index into server-side ownership. */
-  claimSessions(token: string, sessionIds: readonly string[]): QaClaimResult;
-  /** The token user's owned session ids; the sidebar list authority. */
+  /**
+   * The token user's owned session ids; the sidebar list authority.
+   *
+   * Migrating a browser's local chat index is NOT here: it has to refuse a
+   * delegated session, which takes session lineage, and that lives in
+   * `QaAccessService.claimSessions` — one entry point, no path around it.
+   */
   ownedSessions(token: string): { readonly ids: readonly string[] };
   /**
    * Every chat-ownership entry with owner display names; the cross-user view
@@ -158,10 +161,6 @@ export function createQaAccountRemotes(options: {
       if (!getConfig().accounts.enabled) return { authenticated: false };
       const store = requireAccounts();
       return run(() => store.whoami(token));
-    },
-    claimSessions: (token, sessionIds) => {
-      const store = requireAccounts();
-      return run(() => store.claimSessions(token, sessionIds));
     },
     ownedSessions: (token) => {
       if (!getConfig().accounts.enabled) return { ids: [] };
