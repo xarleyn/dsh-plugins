@@ -34,6 +34,7 @@ import type {
   QaSessions,
   QaSessionsApi,
   QaSkillApi,
+  QaSlashApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SURFACE_STYLES } from "./styles.js";
@@ -50,6 +51,9 @@ import type {
   QaSkillSummary,
   QaSkillToolDescriptor,
   QaSkillValidation,
+  QaSlashCatalog,
+  QaSlashExecution,
+  QaSlashSubmitAttachment,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaWhoamiResult,
@@ -348,6 +352,16 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     name: string | null,
     input: QaSkillDraftInput,
   ): Promise<RemoteResult<QaSkillValidation>>;
+  slashCatalog(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<QaSlashCatalog>>;
+  slashExecute(
+    token: string,
+    sessionId: string,
+    line: string,
+    attachments: readonly QaSlashSubmitAttachment[],
+  ): Promise<RemoteResult<QaSlashExecution>>;
 }
 
 /** The assembled Client Remote plus this plugin's own qaSurface namespace. */
@@ -531,6 +545,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             requestId,
             decision,
           ) as unknown as ReturnType<QaApprovalApi["answerApproval"]>,
+      };
+      const slashApi: QaSlashApi = {
+        catalog: (token, sessionId) =>
+          policyRemote.slashCatalog(token, sessionId),
+        execute: (token, sessionId, line, attachments) =>
+          policyRemote.slashExecute(token, sessionId, line, attachments),
       };
       // The account gate rides its own remote; a stale token simply answers
       // "not authenticated" and the browser shows the login card.
@@ -731,6 +751,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   skillApi,
                   approvalApi,
                   questionApi,
+                  slashApi,
                   accounts,
                   panels,
                   settingsSections,

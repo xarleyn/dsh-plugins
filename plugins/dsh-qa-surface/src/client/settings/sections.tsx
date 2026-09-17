@@ -20,6 +20,7 @@ export { EmbeddingSection } from "./sections/embedding.js";
 export { InterfaceSection } from "./sections/interface.js";
 export { LockdownSection } from "./sections/lockdown.js";
 export { SessionSection } from "./sections/session.js";
+export { SlashSection } from "./sections/slash.js";
 export { SourcesSection } from "./sections/sources.js";
 export { StatusSection } from "./sections/status.js";
 export type { StatusProps } from "./sections/status.js";

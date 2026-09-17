@@ -11,9 +11,22 @@ import type {
   QaFileDraft,
   QaPendingUserMessage,
   QaSessionState,
+  QaSlashCatalog,
+  QaSlashCatalogEntry,
+  QaSlashCommandSurface,
+  QaSlashView,
   QaSubagentView,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
+import { resolveSlashRoute } from "./slash/slash-router.js";
+import {
+  SLASH_DISABLED_COPY,
+  slashAttachmentsCopy,
+  slashExecuteFailureCopy,
+  slashHostRefusalCopy,
+  slashRefusalCopy,
+  slashWithheldCopy,
+} from "./slash/copy.js";
 import {
   canOpenAsCompatibilityReadOnly,
   QaPolicyAttestationError,
@@ -22,7 +35,11 @@ import { QaChatIndex } from "./chat-index.js";
 import { isDelegatedSession } from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
-import { buildQaPromptContent, stageQaFiles } from "./prompt-content.js";
+import {
+  buildQaPromptContent,
+  buildQaSlashAttachments,
+  stageQaFiles,
+} from "./prompt-content.js";
 import { attestQaPolicy } from "./session-admission.js";
 import { QaHostSourceBridge } from "./session-sources.js";
 import { QaHostApprovalBridge } from "./approvals.js";
@@ -37,6 +54,7 @@ import type {
   QaSessions,
   QaSessionsApi,
   QaQuestionApi,
+  QaSlashApi,
   QaSourceApi,
   StorageLike,
 } from "./types.js";
@@ -85,6 +103,12 @@ export interface QaSessionControllerOptions {
    * does not answer questions: the surface then only renders what it can.
    */
   readonly questionApi?: QaQuestionApi;
+  /**
+   * The slash half of the Host namespace. Absent on a page whose Host build
+   * predates it: the palette then never appears and ordinary prompts keep
+   * working, which is exactly the pre-feature behaviour.
+   */
+  readonly slashApi?: QaSlashApi;
   readonly storage?: StorageLike;
   /**
    * Browser file-upload service, resolved lazily: the page may not serve the
@@ -107,6 +131,14 @@ export interface QaSessionControllerOptions {
 }
 
 const CONFIGURATION_ERROR = "Настройки помощника недоступны.";
+
+/**
+ * How long a catalog answer stays fresh enough to skip a re-read when the
+ * palette opens. Short on purpose: the check is one round-trip and a stale
+ * palette shows a skill that was deleted or hides one that was just added.
+ * No polling loop — the palette opening is the only trigger.
+ */
+const SLASH_CATALOG_STALE_MS = 3_000;
 
 /**
  * Spacing of the parked-request poll. A request is answered by a person, so a
@@ -139,6 +171,8 @@ export class QaSessionController {
   private readonly sourceApi: QaSourceApi;
   private readonly chats: QaChatIndex;
   private readonly accounts: QaAccountsFacade | undefined;
+  /** Slash half of the Host namespace; absent on an older Host build. */
+  private readonly slashApi: QaSlashApi | undefined;
   /** Resolved per send: a page without the upload plugin has no receipts. */
   private readonly fileUpload: () => QaFileUpload | undefined;
   /** Per-chat attachment URL cache; blob URLs die with the chat binding. */
@@ -179,6 +213,23 @@ export class QaSessionController {
   private readonly hostQuestions: QaHostQuestionBridge;
   /** Set while a running turn is polled for parked requests. */
   private pendingTimer: ReturnType<typeof setInterval> | undefined;
+  /**
+   * Slash catalog of the bound chat. Keyed by session: it depends on the
+   * chat's cwd, its agent composition and its role, so it is dropped with the
+   * binding instead of being carried across chats.
+   */
+  private slashSessionId: string | null = null;
+  private slashEntries: readonly QaSlashCatalogEntry[] = [];
+  private slashDenied: readonly string[] = [];
+  private slashSurface: QaSlashCommandSurface = "unavailable";
+  private slashState: QaSlashView["state"] = "idle";
+  private slashError: string | null = null;
+  private slashLoadedAt = 0;
+  private slashLoading: Promise<void> | undefined;
+  /** Last published view; its identity is the render signal. */
+  private slashViewCache: QaSlashView | undefined;
+  /** Bumped to re-open a palette the user dismissed; see `QaSlashView`. */
+  private slashReopen = 0;
 
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
@@ -201,6 +252,7 @@ export class QaSessionController {
       qaStorageNamespace(options.config),
     );
     this.accounts = options.accounts;
+    this.slashApi = options.slashApi;
     this.selectedSubrole = options.initialSubrole ?? null;
     this.adminPreview = options.adminPreview === true;
     this.fileUpload = options.fileUpload ?? (() => undefined);
@@ -248,9 +300,56 @@ export class QaSessionController {
     await this.startDraft(true);
   }
 
+  /**
+   * The attested live session a submission may ride, or `undefined` when the
+   * caller must abort. Materializing a draft chat, attesting policy and
+   * recovering from a stale proof live here, so the prompt path and the
+   * command path cannot drift apart on what "ready to send" means.
+   */
+  private async liveTarget(): Promise<SessionFace | undefined> {
+    if (this.session === undefined) {
+      // A draft chat materializes its session only now: nothing was created
+      // when the user pressed "New chat", so the first submission pays for it.
+      if (!this.drafting || this.materializing !== undefined) return undefined;
+      if (!(await this.materializeDraft()) || this.session === undefined) {
+        return undefined;
+      }
+    }
+    const step = await this.attestPolicy();
+    if (step.kind === "stale") {
+      // The user moved to another chat while the proof was pending; that
+      // binding attests through its own flow and must not receive a submission
+      // meant for the old one.
+      return undefined;
+    }
+    let attestedId = step.kind === "ok" ? step.sessionId : null;
+    if (attestedId === null) {
+      attestedId = await this.recoverForSend();
+      if (attestedId === null) return undefined;
+    }
+    // Nothing can interleave between the last await and here, so matching the
+    // attested id proves the submission rides exactly the session it proved.
+    const target = this.session;
+    if (
+      this.disposed ||
+      target === undefined ||
+      String(target.sessionId) !== attestedId
+    ) {
+      return undefined;
+    }
+    return target;
+  }
+
+  /**
+   * Route one composer draft. Ordinary text and a skill invocation both ride
+   * the native prompt path — a skill is a gesture inside the prompt, not a
+   * call this surface makes — while a human command goes to the Host's command
+   * runtime and never becomes a model message.
+   */
   async send(
     text: string,
     attachments: readonly QaAttachmentDraft[] = [],
+    pick: string | null = null,
   ): Promise<boolean> {
     const prompt = text.trim();
     // Images ride the prompt inline; files must be staged first, because the
@@ -261,8 +360,37 @@ export class QaSessionController {
     if ((prompt === "" && attachments.length === 0) || !this.state.canSend) {
       return false;
     }
-    if (prompt.startsWith("/")) {
-      this.operationError = "Команды со слешем недоступны в режиме помощника.";
+    const route = resolveSlashRoute({
+      text: prompt,
+      enabled: this.config.slashCommands.enabled,
+      catalogReady: this.slashCatalogReady(),
+      entries: this.slashEntries,
+      deniedSkills: this.slashDenied,
+      picked: pick,
+    });
+    if (route.kind === "command") {
+      return this.sendCommand(prompt, attachments, files, route.entry);
+    }
+    if (route.kind === "disabled") {
+      this.operationError = SLASH_DISABLED_COPY;
+      this.publish();
+      return false;
+    }
+    if (route.kind !== "prompt" && route.kind !== "skill") {
+      this.operationError = slashRefusalCopy(route);
+      if (route.kind === "unknown" || route.kind === "ambiguous") {
+        // Re-open the palette the user had to dismiss to reach this line: the
+        // refusal is only useful next to the choices it is talking about.
+        this.slashReopen += 1;
+      }
+      this.publish();
+      return false;
+    }
+    if (route.kind === "prompt" && (route.withheld?.length ?? 0) > 0) {
+      // The gesture is real and user-invocable here, and this deployment
+      // withholds it. Sending it would let the user believe it took effect —
+      // the native consumer refuses the injection, but only after the turn.
+      this.operationError = slashWithheldCopy(route.withheld ?? []);
       this.publish();
       return false;
     }
@@ -275,36 +403,8 @@ export class QaSessionController {
     let accepted = false;
     let target: SessionFace | undefined;
     try {
-      if (this.session === undefined) {
-        // A draft chat materializes its session only now: nothing was created
-        // when the user pressed "New chat", so the first prompt pays for it.
-        if (!this.drafting || this.materializing !== undefined) return false;
-        if (!(await this.materializeDraft()) || this.session === undefined) {
-          return false;
-        }
-      }
-      const step = await this.attestPolicy();
-      if (step.kind === "stale") {
-        // The user moved to another chat while the proof was pending; that
-        // binding attests through its own flow and must not receive a prompt
-        // meant for the old one.
-        return false;
-      }
-      let attestedId = step.kind === "ok" ? step.sessionId : null;
-      if (attestedId === null) {
-        attestedId = await this.recoverForSend();
-        if (attestedId === null) return false;
-      }
-      // Nothing can interleave between the last await and here, so matching the
-      // attested id proves the prompt rides exactly the session it proved.
-      target = this.session;
-      if (
-        this.disposed ||
-        target === undefined ||
-        String(target.sessionId) !== attestedId
-      ) {
-        return false;
-      }
+      target = await this.liveTarget();
+      if (target === undefined) return false;
       if (submission !== undefined && this.pendingSubmission === submission) {
         // Recovery may have replaced the original chat with a fresh session;
         // reconcile against the actual prompt target, not the abandoned one.
@@ -362,6 +462,215 @@ export class QaSessionController {
         this.publish();
       }
     }
+  }
+
+  /**
+   * Run one admitted human command. The Host answers it and writes the
+   * lifecycle into the session log; this method only decides what the composer
+   * does next, which is why nothing here creates a pending user row.
+   *
+   * A refusal keeps the draft and the attachments: the user asked for
+   * something the deployment does not allow, and retyping the line is a worse
+   * answer than leaving it in place to be edited.
+   */
+  private async sendCommand(
+    line: string,
+    attachments: readonly QaAttachmentDraft[],
+    files: readonly QaFileDraft[],
+    entry: QaSlashCatalogEntry,
+  ): Promise<boolean> {
+    if (this.slashApi === undefined) {
+      this.operationError = SLASH_DISABLED_COPY;
+      this.publish();
+      return false;
+    }
+    if (attachments.length > 0 && entry.acceptsAttachments !== true) {
+      // Checked here so nothing is staged and no Host round-trip is paid for a
+      // submission that cannot be admitted; the Host checks it again anyway.
+      this.operationError = slashAttachmentsCopy(entry);
+      this.publish();
+      return false;
+    }
+    let target: SessionFace | undefined;
+    try {
+      target = await this.liveTarget();
+      if (target === undefined) return false;
+      let receipts = new Map<string, string>();
+      if (files.length > 0) {
+        const outcome = await stageQaFiles(this.fileUpload(), target, files);
+        if (outcome.kind !== "ok") {
+          if (this.session === target) {
+            this.operationError =
+              outcome.kind === "unavailable"
+                ? "Вложения недоступны на этом сервере."
+                : "Не удалось приложить файл.";
+            this.publish();
+          }
+          return false;
+        }
+        receipts = outcome.receipts;
+      }
+      const result = await this.slashApi.execute(
+        this.accounts?.token() ?? "",
+        String(target.sessionId),
+        line,
+        buildQaSlashAttachments(attachments, receipts),
+      );
+      if (this.session !== target) return false;
+      if (!result.ok) {
+        this.operationError = slashExecuteFailureCopy(entry);
+        this.publish();
+        return false;
+      }
+      if (result.value.kind === "refused") {
+        this.operationError = slashHostRefusalCopy(result.value);
+        this.publish();
+        return false;
+      }
+      this.operationError = null;
+      this.publish();
+      return true;
+    } catch (error) {
+      console.error("dsh-qa-surface: slash command failed", error);
+      if (this.session === target) {
+        this.operationError = slashExecuteFailureCopy(entry);
+        this.publish();
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Refresh the catalog of the bound chat. Called when a chat binds, and again
+   * when the palette opens on a catalog that has had time to go stale: the
+   * skill registry has no browser-facing change event, so a skill installed
+   * while the page is open is only discovered by asking again.
+   */
+  async refreshSlashCatalog(force = false): Promise<void> {
+    const session = this.session;
+    if (session === undefined || this.disposed) return;
+    if (!this.config.slashCommands.enabled || this.compatibilityReadOnly) {
+      this.applySlashCatalog(String(session.sessionId), null);
+      return;
+    }
+    if (this.slashApi === undefined) {
+      this.applySlashCatalog(String(session.sessionId), undefined);
+      return;
+    }
+    if (this.slashLoading !== undefined) return this.slashLoading;
+    if (!force && this.slashSessionId === String(session.sessionId)) {
+      if (Date.now() - this.slashLoadedAt < SLASH_CATALOG_STALE_MS) return;
+    }
+    const sessionId = String(session.sessionId);
+    this.slashState = "loading";
+    this.publish();
+    const operation = (async () => {
+      try {
+        const result = await this.slashApi?.catalog(
+          this.accounts?.token() ?? "",
+          sessionId,
+        );
+        if (result === undefined) return;
+        if (!result.ok) {
+          this.applySlashCatalog(sessionId, undefined);
+          return;
+        }
+        this.applySlashCatalog(sessionId, result.value);
+      } catch (error) {
+        console.error("dsh-qa-surface: slash catalog failed", error);
+        this.applySlashCatalog(sessionId, undefined);
+      }
+    })().finally(() => {
+      if (this.slashLoading === operation) this.slashLoading = undefined;
+    });
+    this.slashLoading = operation;
+    return operation;
+  }
+
+  /**
+   * Install one catalog answer. `null` means the deployment runs with the
+   * slash interface off; `undefined` means the answer never arrived. The
+   * difference matters: an unreachable catalog must not turn ordinary prompts
+   * into refusals.
+   */
+  private applySlashCatalog(
+    sessionId: string,
+    catalog: QaSlashCatalog | null | undefined,
+  ): void {
+    if (
+      this.session === undefined ||
+      String(this.session.sessionId) !== sessionId
+    ) {
+      return;
+    }
+    this.slashSessionId = sessionId;
+    this.slashLoadedAt = Date.now();
+    if (catalog === null) {
+      this.slashEntries = [];
+      this.slashDenied = [];
+      this.slashSurface = "unavailable";
+      this.slashState = "idle";
+      this.slashError = null;
+      this.publish();
+      return;
+    }
+    if (catalog === undefined) {
+      this.slashEntries = [];
+      this.slashDenied = [];
+      this.slashSurface = "unavailable";
+      this.slashState = "error";
+      this.slashError = "Не удалось загрузить команды";
+      this.publish();
+      return;
+    }
+    this.slashEntries = catalog.entries;
+    this.slashDenied = catalog.deniedSkills;
+    this.slashSurface = catalog.commandSurface;
+    this.slashState = "ready";
+    this.slashError = null;
+    this.publish();
+  }
+
+  /** Whether the catalog of the bound chat was read successfully. */
+  private slashCatalogReady(): boolean {
+    return this.slashState === "ready" || this.slashState === "loading";
+  }
+
+  /** The slash view of the current state; assembled where the state is. */
+  private slashView(): QaSlashView {
+    const enabled =
+      this.config.slashCommands.enabled &&
+      !this.compatibilityReadOnly &&
+      this.slashSessionId !== null &&
+      this.slashApi !== undefined;
+    // Identity is the render signal: this runs on every publish, including
+    // every stream frame of a running turn, and the composer is memoized on
+    // its props. A fresh object here would re-render the composer for each
+    // frame of an answer, which is exactly what its memo exists to prevent.
+    const cached = this.slashViewCache;
+    if (
+      cached !== undefined &&
+      cached.enabled === enabled &&
+      cached.state === this.slashState &&
+      cached.entries === this.slashEntries &&
+      cached.commandSurface === this.slashSurface &&
+      cached.deniedSkills === this.slashDenied &&
+      cached.error === this.slashError &&
+      cached.reopen === this.slashReopen
+    ) {
+      return cached;
+    }
+    const view: QaSlashView = {
+      enabled,
+      state: this.slashState,
+      entries: this.slashEntries,
+      commandSurface: this.slashSurface,
+      deniedSkills: this.slashDenied,
+      error: this.slashError,
+      reopen: this.slashReopen,
+    };
+    this.slashViewCache = view;
+    return view;
   }
 
   /** Publish a browser-only copy before any network or Host admission awaits. */
@@ -970,6 +1279,9 @@ export class QaSessionController {
       this.accounts?.onSessionCreated(String(this.session.sessionId));
     }
     this.publish();
+    // Deliberately not awaited: the palette is a convenience, and a chat must
+    // open at once whether or not the skill and command registries answer.
+    void this.refreshSlashCatalog(true);
   }
 
   private unbind(): void {
@@ -992,6 +1304,16 @@ export class QaSessionController {
     this.admissionPending = false;
     this.policyReady = false;
     this.compatibilityReadOnly = false;
+    // The catalog belongs to the chat that produced it: another chat has a
+    // different cwd, composition and role, so carrying it across would offer
+    // actions this chat may not have.
+    this.slashSessionId = null;
+    this.slashEntries = [];
+    this.slashDenied = [];
+    this.slashSurface = "unavailable";
+    this.slashState = "idle";
+    this.slashError = null;
+    this.slashLoadedAt = 0;
   }
 
   private waitForConnection(): Promise<unknown> {
@@ -1079,6 +1401,7 @@ export class QaSessionController {
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
+      slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
     } as const;

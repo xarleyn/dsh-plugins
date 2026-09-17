@@ -5,6 +5,7 @@ import type {} from "@deepseek-ai/dsh-permission-presets";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-system-prompt";
+import type { Agent } from "@deepseek-ai/dsh-agent";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
@@ -38,6 +39,8 @@ import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import { createQaSlashRemotes } from "./slash/remotes.js";
+import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaTools } from "./qa-tools/index.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -101,6 +104,9 @@ import type {
   QaReviewQueueItem,
   QaReviewQueueRow,
   QaSessionAccess,
+  QaSlashCatalog,
+  QaSlashExecution,
+  QaSlashSubmitAttachment,
   QaSkillActivationRecord,
   QaSkillAssignmentOverride,
   QaSubrole,
@@ -176,6 +182,12 @@ export class QaSurface extends TypertRemoteService {
   private readonly personalSkills: QaPersonalSkillsHost;
   /** Personal-skill remote bodies; the wire signatures stay on this class. */
   private readonly skillRemotes: QaPersonalSkillRemotes;
+  /**
+   * Slash-catalog and command-admission bodies. Admission, not execution:
+   * the native skill and command runtimes stay the only things that know what
+   * a `/name` means.
+   */
+  private readonly slashRemotes: QaSlashRemotes;
   private readonly launchToken: ReturnType<typeof makeLaunchTokenSource>;
   /** Root session principals attested for their owner, never for admin viewing. */
   private readonly integrationPrincipals = new QaIntegrationPrincipalBindings();
@@ -236,6 +248,13 @@ export class QaSurface extends TypertRemoteService {
       logger: this.logger,
       skills: this.personalSkills.service,
       accounts: this.accountRemotes,
+    });
+    this.slashRemotes = createQaSlashRemotes({
+      ctx,
+      getConfig: () => this.getConfig(),
+      logger: this.logger,
+      sessionGrant: (token, sessionId, agent) =>
+        this.slashSessionGrant(token, sessionId, agent),
     });
     this.admission = new QaPolicyAdmission(
       ctx,
@@ -343,6 +362,7 @@ export class QaSurface extends TypertRemoteService {
       "dsh-qa-surface.personal-skills",
     );
     this.warnDocumentsMoved();
+    this.warnLegacySlashDefaults();
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
@@ -373,6 +393,7 @@ export class QaSurface extends TypertRemoteService {
             const config = this.getConfig();
             this.refreshRoute();
             this.warnDocumentsMoved();
+            this.warnLegacySlashDefaults();
             this.logger.info("config.updated", {
               enabled: config.enabled,
               route: config.route.path,
@@ -460,6 +481,43 @@ export class QaSurface extends TypertRemoteService {
 
   getConfig(): ResolvedQaSurfaceConfig {
     return resolveConfig(this.source());
+  }
+
+  /**
+   * Ownership plus the role's user-skill grant for one slash read.
+   *
+   * Ownership comes first and for the same reason the rest of the plugin does
+   * it: a catalog names the skills a chat can reach, and a foreign browser has
+   * no business enumerating that. With accounts off there is no identity to
+   * check and the deployment's lockdown is the boundary, exactly as it is for
+   * every other remote.
+   *
+   * The grant mirrors `installQaSkillPolicy` to the letter — an empty
+   * `userSkills` list means the role keeps no separate user list, not that it
+   * grants nothing — so the palette can never offer a skill the typed gesture
+   * would refuse, nor hide one it would accept.
+   */
+  private async slashSessionGrant(
+    token: string,
+    sessionId: string,
+    agent: unknown,
+  ): Promise<readonly string[] | undefined> {
+    const accounts = this.accountRemotes.resolve(this.getConfig());
+    if (accounts === undefined) return undefined;
+    if (agent === undefined) {
+      // A cold chat has no capability snapshot to read, but it still has an
+      // owner, and that is what the catalog read must respect.
+      this.accountRemotes.run(() => this.access.session(token, sessionId));
+      return undefined;
+    }
+    const resolved = await this.access.policyForSession(
+      token,
+      sessionId,
+      agent as Agent,
+    );
+    if (resolved === undefined) return undefined;
+    const { policy } = resolved;
+    return policy.userSkills.length === 0 ? policy.skills : policy.userSkills;
   }
 
   /**
@@ -1138,6 +1196,41 @@ export class QaSurface extends TypertRemoteService {
     return this.skillRemotes.tools(token);
   }
 
+  /**
+   * The slash entries this browser may offer for one chat: the session's
+   * user-invocable skills and its agent's effective commands, already cut down
+   * by the deployment policy and by the chat's role. The browser filters and
+   * ranks this list; it never widens it.
+   *
+   * Enabled is reported rather than assumed, so a page that loaded before the
+   * operator flipped the master switch learns the truth instead of showing an
+   * empty palette forever.
+   */
+  @Remote("slashCatalog")
+  slashCatalog(token: string, sessionId: string): Promise<QaSlashCatalog> {
+    return this.slashRemotes.catalog(token, sessionId);
+  }
+
+  /**
+   * Run one human command line. The line is the whole request — the browser
+   * sends no name, no kind and no descriptor, so there is nothing for it to
+   * forge; admission re-derives the name and re-checks the policy against the
+   * deployment's own config.
+   *
+   * A command never becomes a model message: the native runtime answers it and
+   * writes `command/run`/`command/done` into the session log, which is where
+   * the transcript row is read from.
+   */
+  @Remote("slashExecute")
+  slashExecute(
+    token: string,
+    sessionId: string,
+    line: string,
+    attachments: readonly QaSlashSubmitAttachment[],
+  ): Promise<QaSlashExecution> {
+    return this.slashRemotes.execute(token, sessionId, line, attachments);
+  }
+
   private refreshRoute(): void {
     const config = this.getConfig();
     const key = config.enabled
@@ -1152,6 +1245,22 @@ export class QaSurface extends TypertRemoteService {
       launchToken: this.launchToken,
     });
     this.routeKey = key;
+  }
+
+  /**
+   * A deployment that set `lockdown.allowSlashCommands: true` before this
+   * section existed keeps the behaviour it asked for — skills at `all`,
+   * commands denied — and is told so once per configuration change, because
+   * "skills appeared after the upgrade" is otherwise indistinguishable from a
+   * defect. Commands are never part of that fallback: an upgrade must not hand
+   * the user a control-plane command nobody named.
+   */
+  private warnLegacySlashDefaults(): void {
+    if (!this.getConfig().slashCommands.legacyDefaults) return;
+    this.logger.warn("slash.legacy-defaults", {
+      message:
+        "lockdown.allowSlashCommands=true without a slashCommands section: every user-invocable skill is admitted and no human command is. Declare slashCommands.commands to enable commands explicitly.",
+    });
   }
 
   /**

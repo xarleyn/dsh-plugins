@@ -1,5 +1,9 @@
 import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
-import type { QaAttachmentDraft, QaFileDraft } from "../types.js";
+import type {
+  QaAttachmentDraft,
+  QaFileDraft,
+  QaSlashSubmitAttachment,
+} from "../types.js";
 import type { QaFileUpload, QaPromptContent } from "./types.js";
 
 /**
@@ -50,6 +54,35 @@ export async function stageQaFiles(
  * staging failed elsewhere) degrades to an empty receipt rather than
  * dropping the attachment.
  */
+/**
+ * The same two shapes for a human command, which admits attachments through
+ * the shared store rather than through the prompt: an image rides encoded, a
+ * file rides the receipt its staging minted. An attachment whose staging
+ * failed is dropped instead of being sent as an empty receipt — the command
+ * would otherwise read a handle that resolves to nothing.
+ */
+export function buildQaSlashAttachments(
+  attachments: readonly QaAttachmentDraft[],
+  receipts: ReadonlyMap<string, string>,
+): readonly QaSlashSubmitAttachment[] {
+  const wire: QaSlashSubmitAttachment[] = [];
+  for (const attachment of attachments) {
+    if (attachment.kind === "image") {
+      wire.push({
+        type: "image",
+        mediaType: attachment.mediaType,
+        data: attachment.data,
+        name: attachment.name,
+      });
+      continue;
+    }
+    const receiptId = receipts.get(attachment.id);
+    if (receiptId === undefined || receiptId === "") continue;
+    wire.push({ type: "file", receiptId });
+  }
+  return wire;
+}
+
 export function buildQaPromptContent(
   prompt: string,
   attachments: readonly QaAttachmentDraft[],

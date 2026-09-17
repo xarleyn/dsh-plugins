@@ -345,7 +345,6 @@ describe("qa surface config", () => {
 
   it.each([
     ["allowPermissionChanges", true],
-    ["allowSlashCommands", true],
     ["allowSettingsMutation", true],
     ["allowSessionRename", true],
     ["allowSessionDelete", true],
@@ -356,6 +355,47 @@ describe("qa surface config", () => {
         lockdown: { [field]: value },
       } as never),
     ).toThrow(new RegExp(field, "u"));
+  });
+
+  /**
+   * The slash master switch is the one capability flag a deployment may set:
+   * a switch that refuses to be turned on is dead configuration. It opens
+   * nothing by itself, which is what the two assertions below pin.
+   */
+  it("accepts the slash master switch and keeps its policy inert", () => {
+    const resolved = resolveConfig({
+      lockdown: { allowSlashCommands: true },
+    } as never);
+    expect(resolved.lockdown.allowSlashCommands).toBe(true);
+    expect(resolved.slashCommands.enabled).toBe(true);
+    // Declared only as the switch: legacy compatibility, skills at `all` and
+    // commands denied, reported so the Host can say so out loud.
+    expect(resolved.slashCommands.skills.mode).toBe("all");
+    expect(resolved.slashCommands.commands.mode).toBe("deny-all");
+    expect(resolved.slashCommands.legacyDefaults).toBe(true);
+    // Nothing about the execution policy moved with it.
+    expect(resolved.lockdown.sandboxMode).toBe("read-only");
+    expect(resolved.lockdown.approvalPolicy).toBe("never");
+    expect(resolved.lockdown.toolPolicy).toEqual({
+      mode: "allow-list",
+      allow: [],
+    });
+    expect(resolved.lockdown.allowPermissionChanges).toBe(false);
+    expect(resolved.lockdown.allowSettingsMutation).toBe(false);
+  });
+
+  it("keeps the slash master switch off unless the deployment turns it on", () => {
+    expect(resolveConfig().lockdown.allowSlashCommands).toBe(false);
+    expect(resolveConfig().slashCommands.enabled).toBe(false);
+    // Declaring a policy without the switch changes nothing at all.
+    const declared = resolveConfig({
+      slashCommands: {
+        skills: { mode: "all", allow: [] },
+        commands: { mode: "all", allow: [] },
+      },
+    } as never);
+    expect(declared.slashCommands.enabled).toBe(false);
+    expect(declared.slashCommands.commands.mode).toBe("all");
   });
 
   it("keeps accounts off and registration open by default", () => {

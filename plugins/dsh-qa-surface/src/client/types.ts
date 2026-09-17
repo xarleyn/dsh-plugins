@@ -56,6 +56,9 @@ import type {
   QaQualityMetrics,
   QaReviewQueueItem,
   QaReviewQueueRow,
+  QaSlashCatalog,
+  QaSlashExecution,
+  QaSlashSubmitAttachment,
   QaUserQuery,
 } from "../types.js";
 
@@ -250,6 +253,25 @@ export interface QaSourceApi {
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+}
+
+/**
+ * The slash half of the Host namespace. The catalog comes back already cut
+ * down by the deployment policy and the chat's role; `execute` takes the raw
+ * line, because admission re-derives the name from it rather than trusting
+ * anything the browser says about which entry it means.
+ */
+export interface QaSlashApi {
+  catalog(
+    token: string,
+    sessionId: string,
+  ): Promise<RemoteResult<QaSlashCatalog>>;
+  execute(
+    token: string,
+    sessionId: string,
+    line: string,
+    attachments: readonly QaSlashSubmitAttachment[],
+  ): Promise<RemoteResult<QaSlashExecution>>;
 }
 
 /** A source API with the account token already bound at the call site. */
@@ -447,4 +469,15 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   viewingSubagent: null,
   approvals: Object.freeze([]),
   questions: Object.freeze([]),
+  // Idle means no chat, so there is nothing for a slash line to act on; the
+  // controller fills this in once a session binds.
+  slash: Object.freeze({
+    enabled: false,
+    state: "idle",
+    entries: Object.freeze([]),
+    commandSurface: "unavailable",
+    deniedSkills: Object.freeze([]),
+    error: null,
+    reopen: 0,
+  }),
 });

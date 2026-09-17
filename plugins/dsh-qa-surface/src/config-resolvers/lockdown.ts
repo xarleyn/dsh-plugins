@@ -42,9 +42,14 @@ export function resolveLockdown(
     input.lockdown?.enabled ?? DEFAULT_QA_SURFACE_CONFIG.lockdown.enabled;
   const rawLockdown = input.lockdown as
     Readonly<Record<string, unknown>> | undefined;
+  // `allowSlashCommands` is deliberately absent from this list: it is the
+  // master switch of the slash interface, and a switch that refuses to be
+  // turned on is dead configuration. It stays off by default and opens nothing
+  // by itself — `slashCommands.skills`/`commands` still admit nothing until
+  // they name what they admit — so enabling it cannot widen the tool
+  // allow-list, the sandbox or the approval policy.
   const forbiddenCapabilityFlags = [
     ["allowPermissionChanges", rawLockdown?.allowPermissionChanges],
-    ["allowSlashCommands", rawLockdown?.allowSlashCommands],
     ["allowSettingsMutation", rawLockdown?.allowSettingsMutation],
     ["allowSessionRename", rawLockdown?.allowSessionRename],
     ["allowSessionDelete", rawLockdown?.allowSessionDelete],
@@ -113,7 +118,9 @@ export function resolveLockdown(
     approvalPolicy: "never",
     permissionPreset,
     allowPermissionChanges: false,
-    allowSlashCommands: false,
+    allowSlashCommands:
+      input.lockdown?.allowSlashCommands ??
+      DEFAULT_QA_SURFACE_CONFIG.lockdown.allowSlashCommands,
     allowSettingsMutation: false,
     allowSessionReset,
     allowSessionRename: false,

@@ -78,6 +78,28 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       }),
       sharedReadOnlyRoots: Object.freeze([]),
     }),
+    // Slash admission is off until the deployment says otherwise: the master
+    // switch above is false, and even with it on, skills admit nothing and
+    // human commands admit nothing. Enabling is two explicit decisions.
+    slashCommands: Object.freeze({
+      enabled: false,
+      skills: Object.freeze({
+        mode: "allow-list" as const,
+        allow: Object.freeze([]),
+      }),
+      commands: Object.freeze({
+        mode: "deny-all" as const,
+        allow: Object.freeze([]),
+      }),
+      palette: Object.freeze({
+        enabled: true,
+        fuzzySearch: true,
+        maxVisible: 12,
+        showDescriptions: true,
+        showKindBadge: true,
+      }),
+      legacyDefaults: false,
+    }),
     embedding: Object.freeze({ frameAncestors: null }),
     accounts: Object.freeze({
       enabled: false,

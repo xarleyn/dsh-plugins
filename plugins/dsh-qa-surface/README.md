@@ -539,6 +539,81 @@ transcript shows and image thumbnails resolved from the session's asset
 repository; each group jumps back to its message. Below 600px the rail goes
 full-bleed. The agents drawer keeps its own header drawer for now.
 
+### Slash commands and skills
+
+Off by default. Typing `/` in the composer normally gets the same refusal it
+always did («Команды со слешем недоступны в режиме помощника»), and nothing
+about that changes for a deployment that upgrades.
+
+Turn it on with the master switch, then say exactly what it admits:
+
+```yaml
+lockdown:
+  allowSlashCommands: true
+
+slashCommands:
+  skills:
+    mode: allow-list      # deny-all | allow-list | all
+    allow:
+      - generate-tkp
+      - generate-tz
+      - gap-analysis
+  commands:
+    mode: deny-all        # deny-all | allow-list | all
+    allow: []
+  palette:
+    enabled: true
+    fuzzySearch: true
+    maxVisible: 12
+    showDescriptions: true
+    showKindBadge: true
+```
+
+The switch and the policy are two separate decisions: turning slashes on opens
+the palette, and the palette offers only what the two lists name. A deployment
+that enables the switch and declares nothing gets the legacy behaviour — every
+user-invocable skill of the chat, no commands at all — and the Host says so once
+in its log (`slash.legacy-defaults`) rather than silently behaving as if it had
+been configured.
+
+The two kinds behave differently, and the difference is the point:
+
+```text
+Skill                                    Human command
+  /generate-tkp Сделай ТКП                 /compact
+  → ordinary model turn                    → the Host runs it
+  → the native skill consumer injects      → the model never sees it
+    the skill's instructions               → command/run + command/done land
+  → QA reads no SKILL.md and injects       in the session log, projected as a
+    nothing itself                           control row, not an answer bubble
+```
+
+A skill with `user-invocable: true` and `disable-model-invocation: true` shows up
+in the palette and runs; the model still cannot see it. A skill with
+`user-invocable: false` never appears. `/name` typed inside an ordinary sentence
+still works the way it does everywhere else in the Harness — QA does not
+rewrite that path — but when the deployment withholds that particular skill, the
+composer says so before the turn runs instead of letting the user believe it
+took effect.
+
+Keyboard and touch: `/` opens the palette above the composer and it closes as
+soon as a space is typed (you are writing arguments by then). `↑`/`↓` move,
+`Tab` and `Enter` insert the invocation **without running it** — the second
+Enter sends — and `Escape` closes. Clicking or tapping a row inserts it and
+leaves the caret in the field. A skill and a command that share a name are two
+separate rows, and a hand-typed `/plan` when both exist asks which one you
+meant rather than guessing.
+
+Admission is the Host's, not the browser's. The catalog arrives already filtered
+by the policy and by the chat's role, and `/compact` typed by hand is re-checked
+against the same policy before the native runtime is allowed near it. The slash
+interface changes nothing about tools, the sandbox, the permission preset or
+approvals: a skill invoked by hand carries exactly the permissions it carries
+when the model loads it.
+
+The settings card carries the same policy under «Слеш-действия», with the
+allow lists as plain name lists — the config stores names, never ids.
+
 ### Panel extensions
 
 QA Surface can host optional feature panels without importing those features.

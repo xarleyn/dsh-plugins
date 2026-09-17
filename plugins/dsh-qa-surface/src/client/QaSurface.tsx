@@ -48,6 +48,7 @@ import type {
   QaSessionsApi,
   QaQuestionApi,
   QaSkillApi,
+  QaSlashApi,
   QaSourceApi,
 } from "./types.js";
 import { QA_SESSION_IDLE_STATE } from "./types.js";
@@ -135,6 +136,12 @@ export interface QaSurfaceFace {
   readonly approvalApi?: QaApprovalApi;
   /** Question half of the plugin's namespace, when the Host answers it. */
   readonly questionApi?: QaQuestionApi;
+  /**
+   * Slash half of the plugin's namespace. Absent on a Host build that predates
+   * it: the composer then never opens a palette and ordinary prompts are
+   * untouched.
+   */
+  readonly slashApi?: QaSlashApi;
   /**
    * Browser file-upload service, when the page serves the upload plugin.
    * Resolved per send so a page that loads it later still gets file support.
@@ -327,6 +334,7 @@ export function QaSurface(props: QaSurfaceProps) {
       ...(props.questionApi === undefined
         ? {}
         : { questionApi: props.questionApi }),
+      ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
       config,
       initialSubrole: selectedSubrole,
       adminPreview: previewing,
@@ -514,10 +522,19 @@ export function QaSurface(props: QaSurfaceProps) {
     [controller],
   );
   const handleSend = useCallback(
-    (text: string, attachments: readonly QaAttachmentDraft[]) =>
-      controller?.send(text, attachments) ?? Promise.resolve(false),
+    (
+      text: string,
+      attachments: readonly QaAttachmentDraft[],
+      pick: string | null,
+    ) => controller?.send(text, attachments, pick) ?? Promise.resolve(false),
     [controller],
   );
+  // Cheap refresh on every palette opening: the skill registry has no browser
+  // change event, and the controller skips the round-trip while its answer is
+  // still fresh.
+  const handleSlashOpen = useCallback(() => {
+    void controller?.refreshSlashCatalog();
+  }, [controller]);
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),
     [controller],
@@ -1236,8 +1253,11 @@ export function QaSurface(props: QaSurfaceProps) {
                     status={status}
                     attachments={pendingAttachments}
                     limits={limits}
+                    slash={state.slash}
+                    slashPolicy={config.slashCommands.palette}
                     onAttachmentsChange={setPendingAttachments}
                     onSend={handleSend}
+                    onSlashOpen={handleSlashOpen}
                     onStop={handleStop}
                   />
                   {config.branding.disclaimer === "" ? null : (

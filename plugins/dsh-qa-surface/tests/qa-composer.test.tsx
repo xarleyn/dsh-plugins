@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../src/client/components/QaComposer.js";
 import type { QaAttachmentDraft } from "../src/types.js";
 import { DEFAULT_ATTACHMENT_LIMITS } from "./helpers/attachments.js";
+import { DISABLED_SLASH_VIEW, DEFAULT_SLASH_POLICY } from "./helpers/slash.js";
 
 /** Mount one composer over a fixed policy, returning its change spy. */
 function mount(overrides: Partial<Parameters<typeof QaComposer>[0]> = {}): {
@@ -22,7 +23,10 @@ function mount(overrides: Partial<Parameters<typeof QaComposer>[0]> = {}): {
       running={false}
       showStop
       status={null}
+      slash={DISABLED_SLASH_VIEW}
+      slashPolicy={DEFAULT_SLASH_POLICY}
       onSend={vi.fn(async () => true)}
+      onSlashOpen={vi.fn()}
       onStop={vi.fn()}
       {...overrides}
     />,
@@ -49,7 +53,7 @@ describe("QA composer", () => {
     fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(send).toHaveBeenCalledWith("hello", []);
+    expect(send).toHaveBeenCalledWith("hello", [], null);
   });
 
   it("shows a real Stop button during generation", () => {
@@ -83,7 +87,7 @@ describe("QA composer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Что ты умеешь?" }));
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith("Что ты умеешь?", []),
+      expect(send).toHaveBeenCalledWith("Что ты умеешь?", [], null),
     );
   });
 
@@ -97,7 +101,11 @@ describe("QA composer", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Мои задачи" }));
     await waitFor(() =>
-      expect(send).toHaveBeenCalledWith("Найди мои открытые задачи в Jira", []),
+      expect(send).toHaveBeenCalledWith(
+        "Найди мои открытые задачи в Jira",
+        [],
+        null,
+      ),
     );
   });
 
@@ -158,6 +166,9 @@ describe("QA composer", () => {
         showStop
         status={null}
         onSend={vi.fn(async () => true)}
+        slash={DISABLED_SLASH_VIEW}
+        slashPolicy={DEFAULT_SLASH_POLICY}
+        onSlashOpen={vi.fn()}
         onStop={vi.fn()}
       />,
     );

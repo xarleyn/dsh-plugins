@@ -18,6 +18,10 @@ import {
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
 } from "./personal-skills/skill-format.js";
+import {
+  QA_SLASH_MAX_VISIBLE_MAX,
+  QA_SLASH_MAX_VISIBLE_MIN,
+} from "./config-resolvers/slash-commands.js";
 import type { QaSurfaceConfig } from "./types.js";
 
 // Every schema default derives from the canonical resolved defaults: the Host
@@ -113,7 +117,7 @@ const configSchema = z.object({
       allowPermissionChanges: z
         .const(false)
         .default(D.lockdown.allowPermissionChanges),
-      allowSlashCommands: z.const(false).default(D.lockdown.allowSlashCommands),
+      allowSlashCommands: z.boolean().default(D.lockdown.allowSlashCommands),
       allowSettingsMutation: z
         .const(false)
         .default(D.lockdown.allowSettingsMutation),
@@ -145,6 +149,62 @@ const configSchema = z.object({
         allow: [...D.lockdown.toolPolicy.allow],
       },
       sharedReadOnlyRoots: [...D.lockdown.sharedReadOnlyRoots],
+    }),
+  slashCommands: z
+    .object({
+      skills: z
+        .object({
+          mode: z
+            .union(["deny-all", "allow-list", "all"] as const)
+            .default(D.slashCommands.skills.mode),
+          allow: z.array(z.string()).default([...D.slashCommands.skills.allow]),
+        })
+        .default({
+          mode: D.slashCommands.skills.mode,
+          allow: [...D.slashCommands.skills.allow],
+        }),
+      commands: z
+        .object({
+          mode: z
+            .union(["deny-all", "allow-list", "all"] as const)
+            .default(D.slashCommands.commands.mode),
+          allow: z
+            .array(z.string())
+            .default([...D.slashCommands.commands.allow]),
+        })
+        .default({
+          mode: D.slashCommands.commands.mode,
+          allow: [...D.slashCommands.commands.allow],
+        }),
+      palette: z
+        .object({
+          enabled: z.boolean().default(D.slashCommands.palette.enabled),
+          fuzzySearch: z.boolean().default(D.slashCommands.palette.fuzzySearch),
+          maxVisible: z
+            .number()
+            .step(1)
+            .min(QA_SLASH_MAX_VISIBLE_MIN)
+            .max(QA_SLASH_MAX_VISIBLE_MAX)
+            .default(D.slashCommands.palette.maxVisible),
+          showDescriptions: z
+            .boolean()
+            .default(D.slashCommands.palette.showDescriptions),
+          showKindBadge: z
+            .boolean()
+            .default(D.slashCommands.palette.showKindBadge),
+        })
+        .default({ ...D.slashCommands.palette }),
+    })
+    .default({
+      skills: {
+        mode: D.slashCommands.skills.mode,
+        allow: [...D.slashCommands.skills.allow],
+      },
+      commands: {
+        mode: D.slashCommands.commands.mode,
+        allow: [...D.slashCommands.commands.allow],
+      },
+      palette: { ...D.slashCommands.palette },
     }),
   embedding: z
     .object({
