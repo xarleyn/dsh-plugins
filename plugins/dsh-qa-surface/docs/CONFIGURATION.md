@@ -77,6 +77,23 @@ all chats in the normal global DSH session list. This mode requires accounts,
 `workspaceId`, fixed-workspace enforcement, lockdown, and `workspace-write`;
 `fixed` session policy and a bare `workspace-write` configuration are rejected.
 
+These chats appear under `Ungrouped` in the host's workspace browser, and that
+is a property of the mode rather than a misconfiguration. DSH grants Workspace
+membership only to a session whose stored cwd IS the Workspace path, compared
+after `realpath`, and the browser builds its groups from that membership alone;
+a per-account child directory can never satisfy the comparison. Nothing moves
+the chats afterwards: the contract has no attach or membership request for an
+existing session, and dragging a session never crosses groups. The one
+mechanism that would group them - registering a Workspace per account directory
+- would put every visitor's scratch root into the global workspace registry, so
+the plugin does not do it.
+
+Chats that a previous configuration left outside every workspace for a
+repairable reason - created through the `cwd` pin, or through a `workspaceId`
+pin whose path was stored with a different spelling - can be adopted offline
+with `qa-attach-sessions` (see the README); per-user chats cannot, because the
+Host drops a cwd below the Workspace path from membership on every read.
+
 The per-user guard canonicalizes paths (including the deepest existing parent
 of a new file), blocks traversal and symlink escape for `read`, `read_image`,
 `glob`, `grep`, `write`, `edit`, and `str_replace_editor`, propagates the root

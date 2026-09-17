@@ -37,6 +37,7 @@ const required = [
   "lib/types/client/settings-extensions/contract.d.ts",
   "lib/types/client/settings-extensions/user-session.d.ts",
   "scripts/repair-session-events.mjs",
+  "scripts/attach-workspace-sessions.mjs",
   "cordis.patch.yml",
   "compatibility.json",
   "capability-policy.json",
@@ -62,6 +63,10 @@ assert.equal(manifest.name, "@yadsh/dsh-qa-surface");
 assert.equal(
   manifest.bin["qa-repair-sessions"],
   "./scripts/repair-session-events.mjs",
+);
+assert.equal(
+  manifest.bin["qa-attach-sessions"],
+  "./scripts/attach-workspace-sessions.mjs",
 );
 assert.equal(manifest.exports["./client"].default, "./lib/client.js");
 assert.equal(
@@ -319,6 +324,18 @@ assert.match(repair, /safety-gate\/warn/u);
 assert.match(repair, /qa\/sources/u);
 assert.match(repair, /ignorable/u);
 assert.match(repair, /pre-plugin-event-repair\.bak/u);
+
+const attach = await readFile(
+  new URL("scripts/attach-workspace-sessions.mjs", root),
+  "utf8",
+);
+assert.match(attach, /storages/u);
+assert.match(attach, /workspace\.json/u);
+assert.match(attach, /pre-workspace-attach\.bak/u);
+assert.match(attach, /realpathSync/u);
+assert.match(attach, /isBelow/u);
+assert.match(attach, /--write/u);
+assert.doesNotMatch(attach, /require\(/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
 const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
