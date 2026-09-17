@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QaAccounts, QaAccountsError } from "../src/accounts/store.js";
 import { QaAccessService } from "../src/access/service.js";
 import { QaRoleRepository } from "../src/access/role-repository.js";
@@ -20,6 +20,13 @@ function harness(
     >;
     /** Durable listing, for the sweep half. */
     readonly sessionLog?: QaSessionLogReader;
+    /** Retention knobs, so a sweep test need not wait out the grace period. */
+    readonly retention?: {
+      readonly ownershipGraceHours?: number;
+      readonly sweepIntervalMinutes?: number;
+    };
+    /** Collects the ids the ownership sweep reclaimed. */
+    readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));
@@ -88,12 +95,20 @@ function harness(
   const service = new QaAccessService(ctx, {
     accounts: () => accounts,
     config: () =>
-      resolveConfig({ lockdown: { toolPolicy: { allow: ["read"] } } }),
+      resolveConfig({
+        lockdown: { toolPolicy: { allow: ["read"] } },
+        ...(options.retention === undefined
+          ? {}
+          : { accounts: { retention: options.retention } }),
+      }),
     logger,
     repository: new QaRoleRepository(path.join(root, "roles.json")),
     ...(options.sessionLog === undefined
       ? {}
       : { sessionLog: options.sessionLog }),
+    ...(options.onVanishedSessions === undefined
+      ? {}
+      : { onVanishedSessions: options.onVanishedSessions }),
   });
   return { service, accounts, admin, user, tools, skills };
 }
@@ -104,7 +119,7 @@ function fakeAgent(): Agent {
   } as unknown as Agent;
 }
 
-/** A durable listing over fixed headers; only `list` matters to the sweep. */
+/** A complete durable listing over fixed headers; `list` drives both sweeps. */
 function reader(
   headers: readonly {
     readonly id: string;
@@ -113,7 +128,7 @@ function reader(
   }[],
 ): QaSessionLogReader {
   return {
-    list: async () => headers,
+    list: async () => ({ headers, complete: true }),
     read: async () => ({ ok: false as const, reason: "storage-unavailable" }),
   };
 }
@@ -394,5 +409,83 @@ describe("QA access service", () => {
     // An unanswerable question is not a licence to delete an auth boundary.
     expect(accounts.ownedSessionIds(user.token)).toEqual(["session-child"]);
     expect(service.isDelegatedChild("session-child")).toBe(false);
+  });
+});
+
+describe("QA access service: the vanished-chat sweep", () => {
+  /** The tightest retention the resolver allows; the clock then passes it. */
+  const retention = { ownershipGraceHours: 1, sweepIntervalMinutes: 1 };
+
+  /** Two hours on: past the grace period and past the throttle window. */
+  const later = (): void => {
+    vi.setSystemTime(new Date("2026-09-18T11:00:00Z"));
+  };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-18T09:00:00Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps the record of a chat only storage still knows", async () => {
+    // Nobody has opened this chat since the restart, so the live store is
+    // silent about it — but storage holds it, and a quiet chat is not a
+    // deleted one. A sweep that asked the live store alone would drop it.
+    const { service, accounts, user } = harness({
+      sessionLog: reader([{ id: "session-cold", createdAt: 1 }]),
+      retention,
+    });
+    accounts.reserveSession(user.token, "session-cold", {
+      subroleId: "general",
+    });
+    later();
+
+    await service.sweepVanishedOwnership();
+
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-cold"]);
+  });
+
+  it("reclaims the record of a chat the whole Harness lost, and reports it", async () => {
+    const vanished: string[][] = [];
+    const { service, accounts, user } = harness({
+      sessionLog: reader([]),
+      retention,
+      onVanishedSessions: (sessionIds) => vanished.push([...sessionIds]),
+    });
+    accounts.reserveSession(user.token, "session-gone", {
+      subroleId: "general",
+    });
+    later();
+
+    await service.sweepVanishedOwnership();
+
+    expect(accounts.ownedSessionIds(user.token)).toEqual([]);
+    // The record is the auth boundary; what else the deployment kept about the
+    // chat is the caller's to drop, and it is told exactly which ids.
+    expect(vanished).toEqual([["session-gone"]]);
+  });
+
+  it("reclaims nothing against a listing that cannot see stored sessions", async () => {
+    const { service, accounts, user } = harness({
+      sessionLog: {
+        list: async () => ({ headers: [], complete: false }),
+        read: async () => ({
+          ok: false as const,
+          reason: "storage-unavailable",
+        }),
+      },
+      retention,
+    });
+    accounts.reserveSession(user.token, "session-quiet", {
+      subroleId: "general",
+    });
+    later();
+
+    await service.sweepVanishedOwnership();
+
+    // An incomplete listing is an unanswerable question, not a deletion.
+    expect(accounts.ownedSessionIds(user.token)).toEqual(["session-quiet"]);
   });
 });

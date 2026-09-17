@@ -209,6 +209,80 @@ describe("quality store", () => {
   });
 });
 
+describe("dropping the records of a deleted conversation", () => {
+  /** One conversation of every kind the sweep is expected to take with it. */
+  function seed(store: QaQualityStore): void {
+    store.rateFeedback(
+      { conversationId: "c-gone", messageId: "4", userId: "u1" },
+      { rating: "negative", reasons: ["incorrect"] },
+    );
+    store.rateFeedback(
+      { conversationId: "c-kept", messageId: "4", userId: "u1" },
+      { rating: "positive" },
+    );
+    store.saveReview("r1", {
+      conversationId: "c-gone",
+      status: "reviewed",
+      issues: [],
+      severity: "minor",
+    });
+    store.saveReview("r1", {
+      conversationId: "c-kept",
+      status: "reviewed",
+      issues: [],
+      severity: "minor",
+    });
+    store.enqueueReview("r1", "c-gone", "4");
+    store.appendAudit({
+      actorId: "admin",
+      action: "conversation.reviewed",
+      targetType: "conversation",
+      targetId: "c-gone",
+    });
+  }
+
+  it("takes feedback, reviews and queue entries, and leaves the rest", () => {
+    const store = openStore(tempFile());
+    seed(store);
+
+    expect(store.dropConversations(["c-gone"])).toBe(3);
+
+    expect(store.allFeedback().map((row) => row.conversationId)).toEqual([
+      "c-kept",
+    ]);
+    expect(store.allReviews().map((row) => row.conversationId)).toEqual([
+      "c-kept",
+    ]);
+    expect(store.manualQueue()).toEqual([]);
+    // The audit trail names conversations but records what people did; it is
+    // not the conversation's to be dropped with.
+    expect(store.auditEvents()).toHaveLength(1);
+  });
+
+  it("survives a reopen — the rows are gone from the database, not a cache", () => {
+    const file = tempFile();
+    const store = openStore(file);
+    seed(store);
+    store.dropConversations(["c-gone", "c-kept"]);
+    store.close();
+
+    const reopened = openStore(file);
+
+    expect(reopened.allFeedback()).toEqual([]);
+    expect(reopened.allReviews()).toEqual([]);
+    expect(reopened.auditEvents()).toHaveLength(1);
+  });
+
+  it("changes nothing when nothing matches", () => {
+    const store = openStore(tempFile());
+    seed(store);
+
+    expect(store.dropConversations([])).toBe(0);
+    expect(store.dropConversations(["c-other"])).toBe(0);
+    expect(store.allFeedback()).toHaveLength(2);
+  });
+});
+
 describe("conversation log projection", () => {
   const events = [
     {
@@ -521,6 +595,16 @@ describe("stored session reader fallback", () => {
       events: {},
     });
     expect(await reader.read("c1")).toEqual({ ok: false, reason: "not-found" });
-    expect(await reader.list()).toHaveLength(1);
+    expect((await reader.list()).headers).toHaveLength(1);
+  });
+
+  it("calls an explicit fixture complete unless it says otherwise", async () => {
+    // A fixture that names its sessions means them to be the whole world; a
+    // live-only view of a larger deployment has to say so, because the
+    // ownership sweep treats an incomplete listing as an answer it cannot use.
+    expect((await staticSessionLogReader({}).list()).complete).toBe(true);
+    expect(
+      (await staticSessionLogReader({ complete: false }).list()).complete,
+    ).toBe(false);
   });
 });
