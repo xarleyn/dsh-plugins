@@ -5,7 +5,10 @@ import type {
   QaUserSessionSnapshot,
 } from "@yadsh/dsh-qa-surface/client/settings";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { createIntegrationsCard } from "../src/client/card.js";
+import {
+  createIntegrationsCard,
+  createIntegrationsHostTab,
+} from "../src/client/card.js";
 import type { IntegrationsClientRemote } from "../src/client/integrations.js";
 import { GITLAB_CAPABILITY_INFO } from "../src/providers/gitlab/catalog.js";
 import type { IntegrationSummary } from "../src/types.js";
@@ -61,6 +64,20 @@ function remote(calls: string[]): IntegrationsClientRemote {
 }
 
 describe("Integrations plugin card", () => {
+  it("keeps the card as a direct child of its host-tab list", () => {
+    const HostTab = createIntegrationsHostTab(
+      remote([]),
+      ["gitlab"],
+      session(ANONYMOUS),
+    );
+    const { container } = render(<HostTab />);
+    expect(
+      container.querySelector(
+        "ul.dsh-qa-integrations__host-tab > li.dsh-plugin-card",
+      ),
+    ).not.toBeNull();
+  });
+
   it("mounts the shared card shell with a closed body", () => {
     // Anonymous on purpose: the shell test must not race the provider cards'
     // own loads.

@@ -1,25 +1,30 @@
 // @vitest-environment jsdom
 
 /**
- * The client entry's wiring: which surfaces this bundle mounts, under which
- * namespace. The card only appears in "Plugin configuration" when the Host
- * serves the namespace the card keys on, so the two halves are pinned here.
+ * The client entry's wiring: the QA page and the feature-owned Host tab mount
+ * independently of the loopback-only settings namespace directory.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
 import { apply } from "../src/client/index.js";
-import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../src/shared/settings.js";
+
+interface SlotRegistration {
+  readonly name: string;
+  readonly id?: string;
+  readonly order?: number;
+  readonly label?: string;
+}
 
 interface Stub {
   readonly ctx: Context;
   readonly sections: { id?: string; title?: string; order?: number }[];
-  readonly slots: { name: string; key?: string }[];
+  readonly slots: SlotRegistration[];
   readonly effects: string[];
 }
 
 function stub(enabled: boolean): Stub {
   const sections: { id?: string; title?: string; order?: number }[] = [];
-  const slots: { name: string; key?: string }[] = [];
+  const slots: SlotRegistration[] = [];
   const effects: string[] = [];
   const remote = {
     $mount: async () => async () => {},
@@ -47,8 +52,13 @@ function stub(enabled: boolean): Stub {
         factory();
         return () => {};
       },
-      register: (options: { name: string; key?: string }) => {
-        slots.push(options);
+      register: (options: {
+        name: string;
+        id?: string;
+        order?: number;
+        label?: () => string;
+      }) => {
+        slots.push({ ...options, label: options.label?.() });
         return () => {};
       },
     },
@@ -76,7 +86,7 @@ function settle(): Promise<void> {
 }
 
 describe("integrations client entry", () => {
-  it("mounts both surfaces under the served namespace", async () => {
+  it("mounts both surfaces without settings namespace discovery", async () => {
     const { ctx, sections, slots } = stub(true);
     await apply(ctx);
     await settle();
@@ -86,12 +96,14 @@ describe("integrations client entry", () => {
       title: "Интеграции",
       order: 40,
     });
-    // The key must be the namespace the Host serves, or the Host's tab never
-    // dispatches the card.
     expect(slots).toEqual([
-      { name: "settings.plugin.item", key: QA_INTEGRATIONS_SETTINGS_NAMESPACE },
+      {
+        name: "settings.plugins.tab",
+        id: "qa-integrations",
+        order: 40,
+        label: "Интеграции",
+      },
     ]);
-    expect(QA_INTEGRATIONS_SETTINGS_NAMESPACE).toBe("qa-integrations");
   });
 
   it("registers nothing while the deployment disabled the plugin", async () => {

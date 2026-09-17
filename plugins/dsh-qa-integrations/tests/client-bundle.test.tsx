@@ -73,7 +73,13 @@ describe("classic browser bundle", () => {
       title?: string;
       component?: ComponentType<{ token: string }>;
     }[] = [];
-    const slots: { name: string; key?: string }[] = [];
+    const slots: {
+      name: string;
+      id?: string;
+      order?: number;
+      label?: string;
+      component?: ComponentType;
+    }[] = [];
     const face = {
       remote: {
         $mount: async () => async () => {},
@@ -115,8 +121,16 @@ describe("classic browser bundle", () => {
           factory();
           return () => {};
         },
-        register: (options: { name: string; key?: string }) => {
-          slots.push(options);
+        register: (
+          options: {
+            name: string;
+            id?: string;
+            order?: number;
+            label?: () => string;
+          },
+          component: ComponentType,
+        ) => {
+          slots.push({ ...options, label: options.label?.(), component });
           return () => {};
         },
       },
@@ -137,9 +151,14 @@ describe("classic browser bundle", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sections.map((section) => section.id)).toEqual(["integrations"]);
-    expect(slots).toEqual([
-      { name: "settings.plugin.item", key: "qa-integrations" },
-    ]);
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({
+      name: "settings.plugins.tab",
+      id: "qa-integrations",
+      order: 40,
+      label: "Интеграции",
+    });
+    expect(slots[0]?.component).toBeDefined();
     // The section the bundle registered mounts the provider the Host named.
     const Page = sections[0]?.component;
     expect(Page).toBeDefined();
