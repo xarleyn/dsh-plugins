@@ -1,3 +1,17 @@
+## 0.7.3 (2026-09-17)
+
+### 🩹 Fixes
+
+- Internal cleanup: the legacy `release:prepare` script from the previous release scheme is removed, and package verification gates run through the shared runner. No runtime changes. ([c8b9d2f](https://github.com/xarleyn/dsh-plugins/commit/c8b9d2f))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.2 (2026-09-15)
 
 ### 🩹 Fixes

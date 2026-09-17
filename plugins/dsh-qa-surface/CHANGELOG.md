@@ -1,3 +1,298 @@
+## 0.8.0 (2026-09-17)
+
+### 🚀 Features
+
+- Bound what the deployment's own stores keep, and stop paying for the whole ([1453d15](https://github.com/xarleyn/dsh-plugins/commit/1453d15))
+  history on every write.
+
+  Durable provenance was one JSON file holding every chat of every user, and
+  every agent turn — including every subagent turn — read, parsed and rewrote the
+  whole of it synchronously. The cost of a turn therefore grew with everything
+  the deployment had ever recorded, and the write blocked the host's event loop
+  for every user on the stand: measured on a live deployment, one turn cost 7 ms
+  over a 121 KB file and 106 ms over a 12 MB one. Provenance is now one file per
+  chat under `$DSH_HOME/qa-sources/`, which is exactly the unit a writer touches,
+  because the read path was already per-chat: at the same volume a turn costs
+  4.2 ms instead of 106 ms, and filling the store is linear rather than
+  quadratic. A pre-0.8.0 `qa-sources.json` is split into per-chat files on first
+  use and renamed to `qa-sources.json.migrated-<ISO>`, so nothing is lost and the
+  old file stays readable.
+
+  Retention bounds what is kept: the newest 200 turns per chat, the 500 most
+  recently written chats, and any chat untouched for 30 days. An old conversation
+  still opens; its sources panel may have been released. Every bound is
+  configurable under `sources.retention`, and zero keeps everything.
+
+  The accounts file was the only store with no bound at all, and it held two kinds
+  of redundant bytes. Every admitted chat froze the capabilities it was admitted
+  with, and on a real deployment those snapshots are almost always the same list:
+  25 of them were byte-identical and made up 45% of the file. They are now stored
+  once per distinct policy with a reference per chat, which took the live file
+  from 84.3 KB to 26.8 KB without losing a byte. Nothing removed ownership records
+  either, so a record outlived its chat forever: a deleted chat stayed in the
+  admin console's conversation list and in its counters for good. The deployment
+  now reclaims records of chats the Harness no longer knows, once they are older
+  than a day, and never touches a chat that exists — a record is a chat's access
+  boundary, so only a vanished chat may lose one. `accounts.retention` controls
+  it, including turning it off.
+
+  A completed turn that collected nothing is stored as its turn number rather
+  than an empty frame, and an incomplete collection is never collapsed into one.
+
+  The same treatment reached the deployment's other stores, which shared the
+  problem: the capability policy and its audit trail, and the feedback, reviewer
+  verdicts, review queue and administrative audit, were each one document
+  rewritten whole on every change — and every audit row carries the full
+  configuration that preceded it, so each change rewrote everything the change
+  before it had recorded. They are tables now, in `qa-capability-policies.db` and
+  `qa-quality.db`, with one row per record; a change writes what it changed.
+  Their previous files are imported once, verified inside the transaction, and
+  renamed beside the database, so an existing deployment upgrades without losing
+  a policy, a verdict or a line of audit. A file left behind never overwrites a
+  record the database already holds.
+
+- Stop a delegated child from being a chat anywhere in the QA surface. ([6471f09](https://github.com/xarleyn/dsh-plugins/commit/6471f09))
+
+  A subagent's session is an implementation detail of one answer: it has no QA
+  owner, the Host refuses to attest it, and its sources reach the parent chat
+  through the provenance inheritance flow. Nothing enforced that on the way into
+  the chat list, though. The browser hands the Host a session id whenever it
+  binds one — including a subagent transcript, which the surface opens read-only
+  — and the id lands in `ensureSessionAccess`, whose first-come claim ran before
+  anything could tell a child from a fresh chat. A child from an earlier Host run
+  is not materialized when a browser first presents it, so its header was
+  unknown, the claim was recorded, and from then on it rendered as an ordinary
+  chat row: the delegated task's title, a transcript that is a subset of the
+  parent's work, and no way to send into it. A deployment that ran an affected
+  release carries one such record per subagent transcript someone opened.
+
+  Three layers close this, each answering a different question:
+
+  The client projection asks the one that matters to a reader — `isDelegatedSession`
+  reads the two marks the host list already carries (`origin`, `parentId`) and the
+  sidebar, the chat counter in the account settings and the claim batch all use
+  it, so a chat row, a chat count and a migrated index cannot disagree about what
+  a chat is. The members list also refuses a stored id that resolved to a child:
+  restoring one, or switching to one through a stale browser index, forgets the
+  entry instead of opening a subagent's transcript as chat history.
+
+  The Host refuses to write the record in the first place: `QaAccessService.claimSessions`
+  filters a browser's legacy chat index before the store sees it, keeping the
+  lineage check on the side that can answer it (`QaAccessService.isDelegatedChild`:
+  the live registry for a running child, the cached durable listing for one that
+  finished).
+
+  And the records already written are reclaimed. `pruneDelegatedOwnership` drops
+  ownership rows for ids the Host positively identified as children — no grace
+  period, because a chat is never a child, but no guessing either: a listing that
+  cannot be read reclaims nothing. The sweep is throttled, runs off the
+  reservation path next to the vanished-session sweep, and remembers the listing
+  so later refusals need no second read.
+
+  One more artifact of the same family goes away: a refused `createSession` used
+  to keep its ownership reservation once the Host session existed, so every
+  refusal (an unmounted tool, a permission preset that no longer resolves) left
+  an empty "Новый чат" row in the account's list that nothing could remove — the
+  browser's delete only forgets it locally, and the record brought it back. The
+  reservation is now released on any failure: the browser never learned the id,
+  so no chat can exist under it.
+
+- Expose the entry cookie bootstrap and the login attempt budget in the ([756c6bb](https://github.com/xarleyn/dsh-plugins/commit/756c6bb))
+  configuration.
+
+  `entry.cookieBootstrap` existed in the defaults and in the config resolvers
+  but not in the settings schema, so an operator could not turn the flag off:
+  the `/qa` route always bootstrapped the host cookie through the one-time
+  `?token=` exchange. The key is now a schema boolean defaulting to `true`
+  (the previous effective value), next to `entry.redirectNonLoopback`, and is
+  documented in the README's configuration reference.
+
+  `accounts.maxAuthAttemptsPerMinute` was hard-coded at 30 inside the accounts
+  store: the browser-facing remotes never passed the option, so a deployment
+  could not tune the store-wide login/registration budget. It is now part of
+  the `accounts` configuration domain (integer from 1 to 600, default 30),
+  included in the accounts-store memoization key so a change rebuilds the
+  store, and documented in the README next to the other accounts keys.
+
+- Harden the Host side of the QA surface against malformed and foreign input ([00141f5](https://github.com/xarleyn/dsh-plugins/commit/00141f5))
+  found in the host audit.
+
+  The administrative role write now re-validates the role union before it
+  stores anything: `adminUpdateUser` accepted an arbitrary string from the
+  wire, and a role outside `user`/`reviewer`/`admin` was persisted as-is,
+  crashing every later permission check for that account with a `TypeError`.
+  The accounts, quality, capability-policy and provenance files are created
+  owner-only (`0o600` on POSIX, where the atomic rename keeps the mode;
+  Windows ignores the mode and keeps its own ACLs), matching the `0o700`
+  directories the plugin already used for per-user workspaces.
+
+  Delegated subagent sessions are no longer attestable from the browser: they
+  have no QA owner and their sources reach the parent chat through the
+  dedicated inheritance flow, so pinning a capability policy onto one only
+  created an unreviewable conversation. The first-come auto-claim of unowned
+  sessions in `ensureSessionAccess` is bounded the same way: a session the
+  Host knows to be a delegated child is refused outright, and one older than
+  the fresh-session bootstrap window (120 s, the same constant the admission
+  boundary uses for adoption) is refused instead of being silently attached
+  to whoever opened it first. Owners re-attaching after a Host restart are
+  unaffected — their claim already exists in the accounts file.
+
+  `qa-sources.json` stopped growing without bound: backstop caps — 256
+  sessions, 500 turns per session, oldest first — bound the file, and the
+  store keeps an mtime+size stamp of it, so a turn no longer re-reads and
+  re-parses the whole JSON it just wrote. Session disposal clears only the
+  in-memory records; the durable file intentionally survives, because
+  `session/disposed` also fires for runtime teardown of chats that still
+  exist and are reopened later — their stored turns are what keep sources
+  visible after a Host restart.
+
+  Two small reliability fixes ride along: the question gate folds a malformed
+  answer payload (a non-array, a non-object entry, a non-string selection)
+  into its existing refusal/skip semantics instead of throwing, and the
+  admin ownership listing re-reads the accounts file when another process
+  changed it, like every other read in the store.
+
+  One claim subtlety is closed as well: a delegated child session from a
+  previous Host run is not materialized when a browser first presents it, so
+  its header is unknown and the ownership claim used to be recorded before
+  the refusal for delegated sessions could fire. The claim is now deferred
+  until the session header is known, so an adopted child never ends up in
+  the accounts file at all.
+
+
+### 🩹 Fixes
+
+- Send the answer ratings a user gives to the Host instead of dropping them in ([e685c90](https://github.com/xarleyn/dsh-plugins/commit/e685c90))
+  the browser.
+
+  The rating control files an answer under its durable log position, and the
+  client projection dropped that position: `emitTurn` rebuilt the assistant
+  message from its collected parts and carried the id, text, timing and turn
+  stats, but never `seq`. The browser therefore had no position to file a rating
+  under, `QaMessage` called back without one, and the surface's own guard
+  returned before making a request — no RPC, no warning, and the 👍/👎 state
+  written to `localStorage` first, so the control kept showing the user's choice
+  while `qa-quality.json` stayed empty. Every rating a user gave since per-message
+  feedback shipped was lost this way, and with it the reviewer's feedback list,
+  the derived review queue's negative signal, the quality metrics, and the
+  positive/negative counters on a user's activity card.
+
+  The projection now carries the log position onto the answer it emits, and an
+  answer that somehow reaches the surface without one reports the loss in the
+  console rather than looking filed.
+
+- Keep «Файлы» next to the tabs it belongs to instead of stranding it mid-row. ([6e541b7](https://github.com/xarleyn/dsh-plugins/commit/6e541b7))
+
+  Two header buttons each claimed the row's free space with `margin-left:auto`:
+  «Новый чат» (or, when a deployment hides it, the files control through its
+  `--end` variant) and «Администрирование». A flex row hands its free space to
+  every auto margin in it, so the space split into two equal gaps and the files
+  control — the sibling tab of «Источники», opening the other page of the same
+  right rail — floated alone between them, in no group at all. Whether it drifted
+  depended on an unrelated switch (`ui.showReset`, a fixed session policy or a
+  lockdown without `allowSessionReset`), so the same button sat with the tabs for
+  one deployment and in the middle of the row for the next.
+
+  The row now carries one right-hand cluster with a single auto margin, and the
+  files control stays with «Агенты» and «Источники» in every configuration.
+
+- Render assistant Markdown with the transcript's own grammar and typography ([5ddf384](https://github.com/xarleyn/dsh-plugins/commit/5ddf384))
+  instead of a hand-rolled subset.
+
+  The renderer recognized `#`-through-`###` only, so a model that wrote a
+  `####` sub-heading — the shape every MR review answer uses for its numbered
+  sections — got its hashes painted as literal text. Below that it had no nested
+  lists, no task checkboxes, no images, no reference links, no autolinks, no
+  strikethrough, no setext headings, and it turned every soft line break into a
+  hard one. A fence rendered as a bare `pre`: no language banner, no syntax
+  color, and long code sat in a box whose styling shared nothing with the chat
+  transcript next to it, while the surface's own theme tokens for Markdown sat
+  unused.
+
+  The block and inline grammars now live in `src/client/markdown/`, and the
+  stylesheet reads the same custom properties DSH's transcript reads:
+  `--dsw-font-markdown-*` for the size ladder (headings, body, tables, inline and
+  block code, all following the user's font-size preference and the 0.875 scale),
+  `--dsw-alias-markdown-*` for code surfaces, and `--shiki-token-*` for the
+  syntax palette — so light, dark, and a re-branded theme all move together with
+  the host. Raw HTML still never reaches the DOM, link and image destinations
+  keep their protocol allowlist, and a path or link the message knows as a source
+  still renders as a source chip.
+
+  A fence now renders as the code card the transcript uses: a sticky-height
+  banner naming the language, a copy button, and a small built-in highlighter
+  (comments, strings, numbers, keywords, keys, markup, diff roles) for the
+  languages answers use. That highlighter is ours rather than shiki's: shiki's
+  grammar set alone is ~1.6 MB, which the self-contained client bundle cannot
+  carry, so the scanner covers the shapes that carry meaning and renders any
+  other language as plain monospace. The whole change costs the bundle ~50 KB.
+
+- Refresh administration and source examples for consistency with the public ([dc105c7](https://github.com/xarleyn/dsh-plugins/commit/dc105c7))
+  fixture conventions. No runtime behavior changes.
+
+- Keep the administrator preview inside the chat it was asked for, and report a ([ddb51a1](https://github.com/xarleyn/dsh-plugins/commit/ddb51a1))
+  profile's effective capabilities the way a session resolves them.
+
+  `Preview as role` wrote a marker into a history entry, but the surface read it
+  once, on mount, and latched the mode in component state. Nothing ever cleared
+  it: the role selector — the one control that names the profile in force — is
+  hidden while previewing, the corner banner carried no way out, and so every
+  later new chat in that tab was created as a preview of the previewed profile
+  instead of the account's default one. A chat could therefore run as `Общий`
+  while its owner's default profile was another, with the preview banner the only
+  sign of it. The mode is now a property of the history entry: a preview
+  navigation enters it, an entry without the marker leaves it, an account that is
+  not an administrator never holds it, and the banner carries a `Выйти из
+  просмотра` control that returns to the account's default profile.
+
+  The same marker was validated against the roles the signed-in administrator
+  holds, although the Host allows previewing any enabled role — so previewing a
+  role the administrator is not assigned to silently fell back to the default
+  profile and told nobody. The marker now carries what it needs and the Host stays
+  the authority on who may preview what.
+
+  `Действующие возможности` on a user page counted the configured lists alone,
+  against the whole registry. It reported `0 инструментов` for a profile whose
+  chats resolve the deployment's entire pinned allow-list, counted the
+  skill-grantable ceiling as if those tools were already visible, and ignored the
+  skills that reach a role by declaring it in their own `SKILL.md`. The counts now
+  follow the same resolution a session uses — pinned set plus Common plus the role
+  for tools, the ceiling separately, declared audiences included for skills.
+
+  A scoped restriction and a scoped guard cover the scope that owns them and its
+  descendants only, and a delegated child is composed from the parent's preset
+  rather than from the parent agent (`applyChildComposition`), so the parent's
+  layers never enter the child's chain: an expert was bounded by its preset
+  `toolFilter` alone and could hold — and call — a tool the subrole never
+  granted the chat. An attested conversation now carries a ceiling of its own,
+  held in the admission and inherited by every child session, and a context-global
+  guard denies every agent of that conversation anything outside it. The ceiling
+  is the subrole's reach: its visible tools plus the ones a skill may grant it, so
+  a delegated assistant can still be handed a tool by a skill and can never exceed
+  what the role could ever grant. The session's own policy list rides along, which
+  keeps the provenance reporter available to delegated runs.
+
+  The deployment's pinned `toolPolicy.allow` reaches every profile, so a pinned
+  tool — the read-only `dsh_git_*` provenance tools, for one — could not be
+  withdrawn by unchecking it in a role: the operator had to edit the profile and
+  restart the Host. `tools.deny` is the third tool class and the way out. A denial
+  beats every grant, the pinned set and the Common layer included, and it narrows
+  the skill-grantable ceiling, so a skill cannot hand back what the profile
+  withdraws. A denial in a role applies to that role, one in Common to every
+  profile, and both shrink the conversation ceiling, which is what takes the tool
+  away from that role's experts as well. Both editors and the effective-access
+  view report it, and a user page subtracts it from the counts it shows.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+- Updated @yadsh/dsh-plugin-kit to 0.2.0
+
+### ❤️ Thank You
+
+- Codex incident cleanup @noreply
+- xarleyn @xarleyn
+
 ## 0.7.4 (2026-09-16)
 
 ### 🩹 Fixes

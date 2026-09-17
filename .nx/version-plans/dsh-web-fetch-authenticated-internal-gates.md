@@ -1,5 +1,0 @@
----
-"@yadsh/dsh-web-fetch-authenticated": patch
----
-
-Internal cleanup: package verification gates now run through the shared `@yadsh/dsh-plugin-scripts` runner (added as a devDependency). No runtime behavior changed.

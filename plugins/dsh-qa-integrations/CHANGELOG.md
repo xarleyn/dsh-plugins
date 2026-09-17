@@ -1,3 +1,227 @@
+## 0.5.0 (2026-09-17)
+
+### 🚀 Features
+
+- Keep connections and their audit trail in a database instead of one JSON ([e9a1e66](https://github.com/xarleyn/dsh-plugins/commit/e9a1e66))
+  document.
+
+  The store was read, parsed and rewritten whole on every operation, and it held
+  the audit trail — the part that grows with usage — inside the same document as
+  the connections: every lookup parsed every audit row ever written, and the
+  broker appends a row per tool call. A store with a working audit trail made
+  each call more expensive than the last. Connections, encrypted credentials,
+  per-operation policies and the audit trail are tables now, so a lookup reads the
+  row it asks for and a call appends the row it produces.
+
+  Two bounds keep the audit trail finite: `auditRetentionDays` (90 by default,
+  0 to keep by age only) and a hard cap of the newest 5000 rows whatever the age
+  bound says. Both are applied as rows are written.
+
+  The pre-0.8.0 `qa-integrations.json` is imported on first use — connections,
+  credentials, policies and audit — verified inside the transaction, and renamed
+  to `qa-integrations.json.migrated-<ISO>`. A leftover file never overwrites a
+  live connection: the operator's working credential wins, and the file is left
+  where it is.
+
+- Add a sixth provider to the integrations plugin: Test IT, read as the connected ([6ef77da](https://github.com/xarleyn/dsh-plugins/commit/6ef77da))
+  QA user through their own API token. It ships twenty-two read-only tools — the
+  projects and sections of the test library, test cases, checklists and shared
+  steps with their steps, attributes and tags, the change log and comments of a
+  case, test plans with their per-plan summary, runs with the test points and
+  results inside them, single results with their messages and traces, attachment
+  metadata, a bounded text read of a small attachment, autotests and the
+  configurations a result is recorded against.
+
+  A Test IT installation is operator configuration: `testit.instances` lists the
+  Cloud tenants and on-premise TMS servers this deployment allows, the connect form
+  only picks from that list, and the address is re-resolved from config on every
+  call, so removing or repointing an instance closes existing connections too. The
+  token travels as the `PrivateToken` authorization header and nowhere else.
+
+  The catalog holds GET endpoints only, which is what this package's read-only
+  guarantee is written as: Test IT's search and statistics endpoints are all POSTs,
+  so the provider reaches the same ground through the GET surface — a run's test
+  points instead of its statistics, a plan's summary instead of a filtered
+  aggregate — and the tools it cannot back that way are listed as missing in the
+  README rather than smuggled in. Three of the reads it does use are the endpoints
+  Test IT marks deprecated; they are the only GET reads of those collections, and a
+  version that drops them answers an honest "not available here".
+
+  Test IT text is untrusted content: descriptions, steps, comments, messages and
+  traces reach the model as bounded blocks under `untrustedContent`, and an
+  attachment is described by Test IT itself before a byte is requested, so archives,
+  images and oversized files are refused by the server's own account of the file.
+
+- Add a sixth provider to the integrations plugin: Weblate, the localization ([8a92740](https://github.com/xarleyn/dsh-plugins/commit/8a92740))
+  platform, read as the connected QA user. It ships nineteen read-only tools —
+  the connection itself, projects, components, languages of a component, string
+  search, a single string with every plural form and its state, the comments and
+  suggestions left on it, checks that fail, statistics and change history — and
+  the catalog carries no operation that could change Weblate state, so
+  suggestions, comments, edits, approvals, translation files and the repository
+  stay out until the confirmation framework exists.
+
+  A connection is one of the operator's configured instances plus a Weblate API
+  token, kept in one encrypted credential; the connect form picks the instance
+  and never types a host, and the address is re-resolved from deployment config
+  on every call, so an instance the operator removes fails closed instead of
+  moving a token somewhere else. Token prefixes (`wlu_`, `wlp_`) reach the user
+  as a label — personal or project-scoped — and are never treated as a permission
+  check.
+
+  Weblate's search grammar is composed by the provider from validated filters
+  rather than accepted from the model: values are quoted and escaped, states come
+  from Weblate's own `is:` vocabulary, and a follow-up request is reconstructed
+  from the page number of the upstream `next` link, only when that link points at
+  the configured instance. Every answer that carries upstream-authored text — a
+  source string, a translation, a comment, a change — is marked as untrusted
+  external content, and localization strings handed to the model are bounded and
+  say when they were cut.
+
+- Add a fourth provider to the integrations plugin: Confluence Cloud, read as the ([1abee9d](https://github.com/xarleyn/dsh-plugins/commit/1abee9d))
+  connected QA user. It ships eight read-only tools — the connected account and
+  site, typed CQL search, a page with its body rendered from Atlassian Document
+  Format, page comments with replies, attachment metadata, page versions and
+  spaces — and the catalog carries no operation that could change Confluence
+  state.
+
+  A connection is an operator-configured site plus an Atlassian API token and the
+  account e-mail, kept together in one encrypted credential, and a model tool can
+  never name a site, an account or a credential. The site address is re-resolved
+  from deployment config on every call, the space allowlist
+  (`confluence.allowedSpaces`) is enforced on search and on direct reads alike,
+  and every page or comment body reaches the model as untrusted content under its
+  own key.
+
+  A search accepts its modification window either as an absolute day or as a span
+  counted back from today (`-7d`, `-2w`, `-1m`, `-1y`), resolved against the
+  provider's own clock, so an agent whose prompt carries no clock can still ask
+  what changed this week.
+
+- Stop retrying GitLab calls the deployment itself timed out, and name a TLS refusal as such. ([3030464](https://github.com/xarleyn/dsh-plugins/commit/3030464))
+
+  The GitLab transport folded every failed fetch — including the abort of its own
+  per-request deadline — into a single `ProviderUnavailable` error and spent a
+  retry on it. A slow GitLab therefore waited for `timeout × (retries + 1)`
+  before the user saw anything, and an untrusted certificate surfaced under the
+  same "provider is unavailable" reason as a network outage, sending the operator
+  to check reachability instead of the trust store.
+
+  The transport now shares the TeamCity transport's failure classification: an
+  aborted deadline is reported as `UpstreamTimeout` and is never re-sent, a
+  failed TLS handshake is reported as `TlsFailure`, and only genuinely transient
+  network faults are retried. The GitLab settings card carries the same
+  human-readable explanations for the two new reasons that the TeamCity card
+  already showed. The TeamCity provider's behavior is unchanged.
+
+- Add a fourth integration provider, `jira`. A QA user connects their own ([4183b83](https://github.com/xarleyn/dsh-plugins/commit/4183b83))
+  Atlassian account with an API token and gets a read-only catalog of eight tools:
+  the connected identity and site; issue search over projects, statuses,
+  assignee/reporter, labels and dates; one issue with its description, relations,
+  attachment metadata, a comment count and its custom fields; the comments of an
+  issue with their visibility; attachment metadata; the transitions available to
+  the connected user; one project; and the site's field catalog.
+
+  Sites are operator configuration, never user input: the connect form picks from
+  the configured list and sends the e-mail and the token alone, so an arbitrary
+  hostname can never reach the broker. A site address is validated at config load
+  (HTTPS unless a deployment opts into plain HTTP for a lab, no credentials or
+  query in the URL, stable id) and is not stored in the credential — it is
+  re-resolved on every call, so removing or repointing a site closes the
+  connections made against it instead of silently redirecting a token. The token
+  travels as HTTP Basic over `email:token` in the `Authorization` header of a GET
+  that never follows a redirect, and the credential is refused outright when it is
+  not an Atlassian API token — a pasted URL, a `email:token` pair or a YAML snippet
+  never leaves the process.
+
+  The model gets no JQL. Every tool carries typed filters, and the provider builds
+  one query from them: values are quoted as JQL string literals with the quote and
+  the backslash escaped, control characters are refused, project and issue keys are
+  shape-checked, a name where Jira needs an account id is refused (Jira would
+  answer an empty page instead), labels are ANDed, and a search without a single
+  filter is refused rather than turned into "every issue of the site". Search reads
+  the enhanced endpoint Jira Cloud serves today (`/rest/api/3/search/jql`) with
+  Jira's own continuation token as the cursor, keeps the page inside the
+  deployment's ceiling and Jira's own 100 rows, and never walks pages by itself.
+  Issue bodies arrive as Atlassian Document Format and are rendered to bounded
+  markdown-like text (headings, lists, code, links, mentions, tables, media
+  markers) — a JSON tree and an embedded card are never handed to the model, and
+  nothing a node points at is fetched. Custom fields are named from the site's
+  field schema, read after the issue answered and never cached, because the same
+  site answers a different field list to two users with different permissions.
+
+  The filter vocabulary is the one a corporate Jira is actually asked about, so a
+  search can move off a query-string engine without losing questions: project, issue
+  type, status and its category (`Done` covers every terminal status, whatever the
+  workflow calls it), priority, resolution, components, labels (all of them, not
+  any), fix and affected versions including "none set" and "set", assignee and
+  reporter, created/updated bounds in both directions, and custom fields either by
+  the id the field catalog reported or by an alias the deployment declared. Dates
+  take absolute values and Jira's own relative
+  tokens (`-3w`, `-2d`), a free-text query is either every word or the exact phrase
+  (with each term its own escaped clause, so an `OR` inside a phrase stays a word),
+  and the history of one issue is readable through `include: ["changelog_summary"]`
+  — bounded to twenty field changes and honest about which of the two cuts
+  happened. A person is accepted as `me`, as an account id, or as a name: the name
+  is resolved through the site's own user directory, and a name nobody matches or
+  several people share is refused with what to do next instead of being spent on a
+  query that quietly answers "no such issues".
+
+  `jira.fieldAliases` is where an instance's custom fields get their names: which
+  of a site's fields carries "the product" is knowledge about that site, so this
+  package carries no field id at all, the mapping is validated when the config is
+  resolved (a typo fails the load rather than answering nothing), an unknown name
+  is refused together with the aliases that do exist, and `jira_get_fields` hands
+  the model the aliases it may use.
+
+  The catalog is an explicit allow-list of Jira Cloud read endpoints, asserted by
+  the package gate along with the `GET` method of every entry, the absence of the
+  legacy `/search` endpoint Atlassian removed, and the absence of any JQL argument
+  in a tool schema. The reads the provider makes beside an operation — the
+  deployment type at connect and the people directory behind a name filter — are
+  declared in the same allow-list. A deployment type check refuses a Data Center
+  instance at connect instead of pretending the Cloud API is compatible.
+  Capabilities are bounded by the deployment switches alone (`identity.read`,
+  `issues.read`, `comments.read`, `attachments.read`, `transitions.read`,
+  `projects.read`, `fields.read`): Jira reports no granted scopes for an API token
+  and probing with a write is not an option, so the site's own permissions decide
+  upstream and a refusal stays a refusal.
+
+  OAuth 2.0 3LO with rotating refresh tokens, the shared Atlassian
+  account/resource layer the specification describes, the workspace-to-project
+  binding, the pending-action confirmation flow every write needs, attachment
+  content download, a typed filter over the change history (`WAS`/`CHANGED`), the
+  caching and per-principal rate limiting stay out of this release; the provider's
+  README states each deferred item and what stands in for it today.
+
+
+### 🩹 Fixes
+
+- Align provider examples and fixtures with the documented public placeholder ([dc105c7](https://github.com/xarleyn/dsh-plugins/commit/dc105c7))
+  conventions. No runtime behavior changes.
+
+- Expose account integrations as a feature-owned Plugins tab so the original DSH ([9bc334e](https://github.com/xarleyn/dsh-plugins/commit/9bc334e))
+  settings UI can open them from authenticated LAN browsers without depending on
+  loopback-only settings discovery.
+
+- Write the operator-configured TeamCity address down where the deployment's ([66a4430](https://github.com/xarleyn/dsh-plugins/commit/66a4430))
+  configuration is documented. The "how TeamCity connects" section, the TeamCity
+  config example and the end-to-end deployment example all show
+  `teamcity.serverUrl` now, and the walkthrough no longer tells users to type the
+  server into the connect form — the address is one per stand and comes from the
+  deployment, while the form asks for the token alone.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.8.0
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+- Updated @yadsh/dsh-plugin-kit to 0.2.0
+
+### ❤️ Thank You
+
+- Codex incident cleanup @noreply
+- xarleyn @xarleyn
+
 ## 0.4.0 (2026-09-16)
 
 ### 🚀 Features
