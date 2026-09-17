@@ -744,6 +744,23 @@ creation, canonical read/write path checks, subagent root propagation, and
 fixed storage quotas. Child account directories are not registered as DSH
 Workspaces.
 
+The grouping consequence is accepted, not worked around. DSH grants Workspace
+membership only to a session whose stored cwd IS the Workspace path
+(`Workspace.attachSession` compares the two after `realpath`, and the browser
+derives its groups from `workspace.sessionIds` alone), so a per-account child
+directory can never be a member: the chats appear under `Ungrouped` in the
+host's workspace browser. Nothing can move them afterwards either - the
+contract has no attach or membership RPC for an existing session,
+`insertSessionBefore` reorders only sessions a Workspace already accounts, and
+a session drag never crosses groups. Registering one Workspace per account
+directory is the one mechanism that would group them, and this design rejects
+it: every visitor's scratch root would enter the operator's global workspace
+registry. `scripts/attach-workspace-sessions.mjs` repairs the sessions that are
+legitimately adoptable - those whose cwd is the Workspace path itself, left
+over from a `cwd` pin, or from a `workspaceId` pin whose caller spelled the
+path differently - and refuses anything below the Workspace path, because the
+Host re-applies the same comparison on every read.
+
 Important: DSH's shipped permission preset table normally contains `workspace-write` and `danger-full-access`; `qa-read-only` is an explicit custom table entry for this deployment. The underlying knobs are the authoritative enforcement facts.
 
 `approval=never` is required because it deterministically rejects operations that request approval instead of presenting the harness approval UI. The QA surface must never implement an auto-approve path.

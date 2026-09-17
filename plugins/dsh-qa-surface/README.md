@@ -351,6 +351,32 @@ passes the child as session `cwd` but deliberately does not register or attach
 it as another DSH Workspace. Chats therefore remain ordinary entries in the
 global DSH session list rather than creating one Workspace row per account.
 
+That choice has one visible consequence: in the host's workspace browser these
+chats sit under `Ungrouped`. DSH grants Workspace membership only to a session
+whose stored cwd IS the Workspace path - `Workspace.attachSession` compares the
+two after `realpath`, and the browser derives its groups from
+`workspace.sessionIds` alone - so a per-account child directory can never be a
+member, and no later action can make it one: the contract has no attach or
+membership request for an existing session, and dragging a session never
+crosses groups. Registering a Workspace per account directory would group them,
+at the cost of putting every visitor's scratch root into the operator's global
+workspace registry; this plugin does not do that.
+
+Chats left outside every workspace for a repairable reason - created while the
+deployment pinned `session.cwd`, or through `workspaceId` with the same
+directory spelled differently (`E:/base` against `E:\base`) - can be adopted
+while DSH is stopped:
+
+```bash
+qa-attach-sessions                    # dry run against $DSH_HOME
+qa-attach-sessions --write            # adopt; registry backed up first
+```
+
+The command adopts only sessions whose canonical cwd IS a registered Workspace
+path, prepends them newest first, and refuses anything below a Workspace path,
+because the Host drops those from membership again on the next read. Per-user
+chats are therefore never touched.
+
 The boundary combines DSH `workspace-write` with a Host tool guard for both
 read and write paths, canonicalizes existing ancestors to reject symlink
 escapes, propagates the root to subagent sessions, rejects shell/process/LSP
