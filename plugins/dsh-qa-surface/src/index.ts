@@ -201,11 +201,16 @@ export class QaSurface extends TypertRemoteService {
       getConfig: () => this.getConfig(),
       logger: this.logger,
     });
+    // One durable-session reader for the whole plugin: the console lists the
+    // deployment's conversations with it, and the access service tells a chat
+    // from a delegated child with it.
+    const sessionLog = createSessionLogReader(ctx);
     this.access = new QaAccessService(ctx, {
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
       config: () => this.getConfig(),
       logger: this.logger,
       dynamicToolNames: () => this.tools?.catalogToolNames() ?? [],
+      sessionLog,
     });
     this.personalSkills = new QaPersonalSkillsHost({
       ctx,
@@ -217,7 +222,7 @@ export class QaSurface extends TypertRemoteService {
       quality: () => this.quality(),
       roles: () => this.access.roles,
       access: () => this.access,
-      sessionLog: createSessionLogReader(ctx),
+      sessionLog,
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -449,13 +454,19 @@ export class QaSurface extends TypertRemoteService {
     return this.accountRemotes.whoami(token);
   }
 
-  /** Migrate a browser's local chat index into server-side ownership. */
+  /**
+   * Migrate a browser's local chat index into server-side ownership. The
+   * access service owns the filter: a delegated session in that index is not a
+   * chat and is never claimed.
+   */
   @Remote("accountsClaimSessions")
   accountsClaimSessions(
     token: string,
     sessionIds: readonly string[],
   ): QaClaimResult {
-    return this.accountRemotes.claimSessions(token, sessionIds);
+    return this.accountRemotes.run(() =>
+      this.access.claimSessions(token, sessionIds),
+    );
   }
 
   /** The token user's owned session ids; the sidebar list authority. */
@@ -543,7 +554,6 @@ export class QaSurface extends TypertRemoteService {
               adminPreview,
             ),
           );
-    let hostCreated = false;
     try {
       // Check deployment-only pins before creating a durable Host session.
       // Full admission below still verifies the composed agent and tool view.
@@ -580,7 +590,6 @@ export class QaSurface extends TypertRemoteService {
           ? {}
           : { agentPreset: config.session.agentPreset }),
       });
-      hostCreated = true;
       if (config.session.provider !== null && config.session.model !== null) {
         await this.ctx.sessionController.selectModel({
           sessionId: created.sessionId,
@@ -600,7 +609,12 @@ export class QaSurface extends TypertRemoteService {
       );
       return sessionId;
     } catch (error) {
-      if (!hostCreated && owner !== undefined) {
+      // This call is the only way the browser could have learned the id, so a
+      // failure at any stage — the Host creating the session, selecting the
+      // model, the admission refusing the composition — leaves no chat behind
+      // and the reservation goes with it. A kept record would put an empty
+      // chat in the account's list, and nothing else would ever remove it.
+      if (owner !== undefined) {
         accounts?.releaseSessionReservation(owner.id, String(id));
       }
       this.logger.error("session.create-rejected", {

@@ -14,6 +14,7 @@ import type {
   QaCapabilityConfig,
   QaCapabilityDescriptor,
   QaCapabilitySelection,
+  QaClaimResult,
   QaCurrentAccess,
   QaEffectiveCapabilityPolicy,
   QaSessionAccess,
@@ -25,6 +26,7 @@ import type {
   QaUserAccess,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
+import type { QaSessionLogReader } from "../admin/session-log.js";
 import {
   enabledSubroles,
   normalizeCapabilityConfig,
@@ -213,6 +215,15 @@ export class QaAccessService {
   readonly roles: QaRoleRepository;
   readonly catalog: QaCapabilityCatalog;
   private lastOwnershipSweepAt = 0;
+  /**
+   * Sessions the Host has listed as delegated children of another session.
+   * The live registry answers for a child that is running right now; this
+   * cache answers for the ones that finished and were dismantled, which is the
+   * state a browser meets when it opens an old subagent transcript.
+   */
+  private readonly delegatedSessions = new Set<string>();
+  private lastDelegatedSweepAt = 0;
+  private delegatedSweep: Promise<void> | undefined;
 
   constructor(
     private readonly ctx: Context,
@@ -222,6 +233,13 @@ export class QaAccessService {
       readonly logger: PluginLogger;
       readonly repository?: QaRoleRepository;
       readonly dynamicToolNames?: () => readonly string[];
+      /**
+       * Durable session listing, used to tell a chat from a delegated child
+       * across Host runs. Without it the lineage answer degrades to the live
+       * registry, which knows nothing about a session this process has not
+       * materialized — the sweep then reclaims nothing rather than guessing.
+       */
+      readonly sessionLog?: QaSessionLogReader;
     },
   ) {
     this.roles = options.repository ?? new QaRoleRepository();
@@ -229,6 +247,18 @@ export class QaAccessService {
       ctx,
       options.dynamicToolNames ?? (() => []),
       () => this.roles.snapshot().subroles.map(({ id }) => id),
+    );
+  }
+
+  /**
+   * Whether the Host can prove this session is a delegated child: a subagent's
+   * session, which is an implementation detail of one answer and never a chat.
+   * Used to refuse one wherever conversations are listed or claimed.
+   */
+  isDelegatedChild(sessionId: string): boolean {
+    return (
+      this.sessionFacts(sessionId).hasParent === true ||
+      this.delegatedSessions.has(sessionId)
     );
   }
 
@@ -306,6 +336,93 @@ export class QaAccessService {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Migrate a browser's local chat index into server-side ownership.
+   *
+   * A delegated session is not a chat: claiming one would write exactly the
+   * ownership record the admission refuses to create and put a subagent's
+   * transcript in the account's chat list. Its ids are left out of the batch
+   * and reported, so a stale browser index cannot reintroduce the record.
+   */
+  claimSessions(token: string, sessionIds: readonly string[]): QaClaimResult {
+    const accounts = this.requireAccounts("chat migration");
+    this.maybeSweepDelegatedSessions();
+    const refused = new Set(
+      sessionIds.filter((sessionId) => this.isDelegatedChild(sessionId)),
+    );
+    const result = accounts.claimSessions(
+      token,
+      sessionIds.filter((sessionId) => !refused.has(sessionId)),
+    );
+    if (refused.size > 0) {
+      this.options.logger.info("accounts.claim-refused-delegated", {
+        count: refused.size,
+        sessionIds: [...refused].slice(0, 20),
+      });
+    }
+    return result;
+  }
+
+  /**
+   * Reclaim ownership records that point at delegated sessions, and remember
+   * which sessions are children while doing it.
+   *
+   * Records like this are residue of the paths that used to claim a session
+   * without knowing its lineage: each one keeps a subagent's transcript in the
+   * chat list of whoever opened it. Only positively identified children lose
+   * their record, so a listing that cannot be read reclaims nothing, and every
+   * other record stays the auth boundary it is.
+   *
+   * @returns the sweep, for callers that want to await it (tests).
+   */
+  reclaimDelegatedSessions(): Promise<void> {
+    const accounts = this.options.accounts();
+    const reader = this.options.sessionLog;
+    if (accounts === undefined || reader === undefined)
+      return Promise.resolve();
+    return (async () => {
+      try {
+        const headers = await reader.list();
+        const children = new Set(
+          headers
+            .filter((header) => header.parentSessionId !== undefined)
+            .map((header) => header.id),
+        );
+        for (const sessionId of children) {
+          this.delegatedSessions.add(sessionId);
+        }
+        const removed = accounts.pruneDelegatedOwnership(children);
+        if (removed.length > 0) {
+          this.options.logger.info("accounts.delegated-ownership-reclaimed", {
+            count: removed.length,
+            sessionIds: removed.slice(0, 20),
+          });
+        }
+      } catch (error) {
+        // Housekeeping must never fail the chat that triggered it.
+        this.options.logger.error("accounts.delegated-ownership-sweep-failed", {
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    })();
+  }
+
+  /** Throttled, off the critical path, and never awaited by a request. */
+  private maybeSweepDelegatedSessions(): void {
+    if (this.options.accounts() === undefined) return;
+    if (this.options.sessionLog === undefined) return;
+    if (this.delegatedSweep !== undefined) return;
+    const interval =
+      this.options.config().accounts.retention.sweepIntervalMinutes * 60_000;
+    if (interval > 0 && Date.now() - this.lastDelegatedSweepAt < interval) {
+      return;
+    }
+    this.lastDelegatedSweepAt = Date.now();
+    this.delegatedSweep = this.reclaimDelegatedSessions().finally(() => {
+      this.delegatedSweep = undefined;
+    });
   }
 
   current(token: string): QaCurrentAccess {
@@ -387,8 +504,10 @@ export class QaAccessService {
       ...(adminPreview ? { adminPreview: true } : {}),
     });
     // Creating a chat is the moment the ownership map grows, so it is also
-    // the natural moment to reclaim what deleted chats left behind.
+    // the natural moment to reclaim what deleted chats and delegated
+    // sessions left behind.
     this.maybePruneOwnership();
+    this.maybeSweepDelegatedSessions();
     return owner;
   }
 
@@ -607,10 +726,11 @@ export class QaAccessService {
     return access;
   }
 
-  private requireAccounts(): QaAccounts {
+  /** The accounts store, or the refusal this operation names. */
+  private requireAccounts(operation = "subrole management"): QaAccounts {
     const accounts = this.options.accounts();
     if (accounts === undefined) {
-      throw new Error("QA accounts are required for subrole management");
+      throw new Error(`QA accounts are required for ${operation}`);
     }
     return accounts;
   }

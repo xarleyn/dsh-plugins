@@ -82,16 +82,30 @@ export interface QaSessionTestWorld {
   secureSession: Mock;
 }
 
-export function harness(existing: string[] = []): QaSessionTestWorld {
-  const faces = new Map(existing.map((id) => [id, sessionFace(id)]));
-  const bindings = new Map(existing.map((id) => [id, conversationBinding(id)]));
+export function harness(
+  existing: string[] = [],
+  options: { readonly subagents?: readonly string[] } = {},
+): QaSessionTestWorld {
+  const subagents = new Set(options.subagents ?? []);
+  const listed = [...existing, ...subagents];
+  const summaryOf = (id: string) =>
+    subagents.has(id)
+      ? {
+          id,
+          displayTitle: id,
+          running: false,
+          blank: false,
+          updatedAt: 1,
+          parentId: "session-root",
+          origin: "subagent",
+        }
+      : { id, displayTitle: id, running: false, blank: true, updatedAt: 1 };
+  const faces = new Map(listed.map((id) => [id, sessionFace(id)]));
+  const bindings = new Map(listed.map((id) => [id, conversationBinding(id)]));
   const list = new Source<SessionListState>({
-    ids: existing as never[],
+    ids: listed as never[],
     byId: Object.fromEntries(
-      existing.map((id) => [
-        id,
-        { id, displayTitle: id, running: false, blank: true, updatedAt: 1 },
-      ]),
+      listed.map((id) => [id, summaryOf(id)]),
     ) as SessionListState["byId"],
     current: undefined,
     phase: "ready",
@@ -110,7 +124,7 @@ export function harness(existing: string[] = []): QaSessionTestWorld {
         : { sessionId: id, session: faces.get(String(id))?.face, ctx: {} };
     },
   } as unknown as QaSessionControllerOptions["sessions"];
-  let sequence = existing.length;
+  let sequence = listed.length;
   const create = vi.fn(async () => {
     const id = `created-${++sequence}`;
     faces.set(id, sessionFace(id));
@@ -121,13 +135,7 @@ export function harness(existing: string[] = []): QaSessionTestWorld {
       ids: [id, ...before.ids],
       byId: {
         ...before.byId,
-        [id]: {
-          id,
-          displayTitle: id,
-          running: false,
-          blank: true,
-          updatedAt: 2,
-        },
+        [id]: { ...summaryOf(id), updatedAt: 2 },
       } as SessionListState["byId"],
     } as SessionListState);
     return id as never;

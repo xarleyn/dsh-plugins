@@ -1,5 +1,6 @@
 import { memo, useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
+import { isDelegatedSession } from "../lineage.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { relativeTime } from "./format.js";
 
@@ -19,7 +20,9 @@ export interface QaChatRow {
  * Project this browser's indexed chat ids onto the host session list, most
  * recently updated first. Opening a chat is not an update: only the host's
  * `updatedAt` (fresh messages) orders the list. Ids the host no longer lists
- * are skipped (the controller prunes them on switch).
+ * are skipped (the controller prunes them on switch), and so is a delegated
+ * child: a subagent's session is not a chat, even when an ownership record
+ * from an older release still names it.
  */
 export function buildChatRows(
   chatIds: readonly string[],
@@ -31,7 +34,7 @@ export function buildChatRows(
   const rows: QaChatRow[] = [];
   for (const id of chatIds) {
     const summary = byId[id];
-    if (summary === undefined) continue;
+    if (summary === undefined || isDelegatedSession(summary)) continue;
     const ownerName = ownerNameOf?.(id);
     rows.push({
       id,

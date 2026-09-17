@@ -543,6 +543,33 @@ export class QaAccounts {
   }
 
   /**
+   * Drop ownership records of sessions that are not chats at all.
+   *
+   * A delegated subagent session is an implementation detail of one answer:
+   * nothing legitimately owns one, so no grace period applies and every named
+   * id loses its record. Only ids the caller positively identified are
+   * touched — a record is an auth boundary, and an id that merely looks odd
+   * keeps its owner. What this reclaims is residue: records written before the
+   * claim and attestation paths learned to refuse a delegated child, each one
+   * keeping a subagent's session in some account's chat list.
+   *
+   * @param sessionIds - the ids the caller identified as delegated children.
+   * @returns the session ids whose records were dropped.
+   */
+  pruneDelegatedOwnership(sessionIds: ReadonlySet<string>): readonly string[] {
+    this.reloadIfChanged();
+    const removed = Object.keys(this.file.ownership).filter((sessionId) =>
+      sessionIds.has(sessionId),
+    );
+    if (removed.length === 0) return removed;
+    this.database.deleteOwnership(removed);
+    const ownership = { ...this.file.ownership };
+    for (const sessionId of removed) delete ownership[sessionId];
+    this.file = { ...this.file, ownership };
+    return removed;
+  }
+
+  /**
    * Drop ownership records for chats the Harness no longer knows.
    *
    * An ownership record is a chat's auth boundary — `ensureSessionAccess`

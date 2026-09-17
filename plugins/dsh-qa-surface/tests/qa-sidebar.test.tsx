@@ -60,6 +60,41 @@ describe("QA sidebar", () => {
     ]);
   });
 
+  it("never shows a delegated child, even when the index still names one", () => {
+    // A record from a release that could claim a subagent's session keeps such
+    // an id in the browser index; a subagent's session is not a chat, and the
+    // host list marks it as one (`origin`) or as somebody's child (`parentId`).
+    const withChild = {
+      ...byId,
+      "sub-origin": {
+        id: "sub-origin",
+        displayTitle: "Собери глоссарий",
+        origin: "subagent",
+        running: false,
+        blank: false,
+        updatedAt: 3_000,
+      },
+      "sub-parent": {
+        id: "sub-parent",
+        displayTitle: "Собери глоссарий",
+        parentId: "s-1",
+        running: false,
+        blank: false,
+        updatedAt: 4_000,
+      },
+    } as unknown as Record<string, SessionSummary>;
+
+    const rows = buildChatRows(
+      ["sub-parent", "sub-origin", "s-1"],
+      withChild,
+      null,
+      undefined,
+      90_000,
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["s-1"]);
+  });
+
   it("renders rows with the active mark and a new-chat control", () => {
     const onSwitch = vi.fn();
     const rows = buildChatRows(["s-2", "s-1"], byId, "s-2", undefined, 90_000);

@@ -716,24 +716,17 @@ export function QaSurface(props: QaSurfaceProps) {
   }, [accounts, accountsSnapshot, config, boundSkillApi]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
+  // Projected even while the sidebar is hidden: the account settings report
+  // the same chat count, and one projection cannot disagree with itself.
   const chatRows = useMemo(
     () =>
-      showSidebar
-        ? buildChatRows(
-            controller?.chatIds() ?? [],
-            listState.byId,
-            activeSessionId,
-            (id) => ownerNames?.get(id),
-          )
-        : [],
-    [
-      showSidebar,
-      controller,
-      listState,
-      activeSessionId,
-      ownerNames,
-      state.chatsRevision,
-    ],
+      buildChatRows(
+        controller?.chatIds() ?? [],
+        listState.byId,
+        activeSessionId,
+        (id) => ownerNames?.get(id),
+      ),
+    [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
   );
   // Message ids repeat across chats (`assistant:<seq>`), so the persisted
   // ratings key is chat-scoped; the sidebar keeps the deployment-wide key.
@@ -945,7 +938,7 @@ export function QaSurface(props: QaSurfaceProps) {
               ? accountsSnapshot.user.role
               : ""
           }
-          chatCount={controller?.chatIds().length ?? 0}
+          chatCount={chatRows.length}
           onClose={() => setSettingsOpen(false)}
           extensions={props.settingsSections}
           token={accounts?.token() ?? ""}
