@@ -256,25 +256,30 @@ for (const forbidden of [
   assert.doesNotMatch(tools, new RegExp(forbidden, "u"));
 }
 
-// The capability table is the permission surface: nothing writable may reach it.
+// The capability table is the permission surface: nothing writable may reach it
+// except the timeline comment, and that one must stay pinned to the write
+// capability a deployment has to switch on explicitly.
 const catalog = await readFile(
   new URL("src/providers/bitrix24/catalog.ts", root),
   "utf8",
 );
-const methods = [...catalog.matchAll(/method: "([^"]+)"/gu)].map(
-  (match) => match[1],
-);
+const operations = [
+  ...catalog.matchAll(/capability: "([^"]+)",\s*method: "([^"]+)"/gu),
+].map((match) => ({ capability: match[1], method: match[2] }));
 const toolCount = [...tools.matchAll(/operation: "[^"]+"/gu)].length;
 assert.equal(
-  methods.length,
+  operations.length,
   toolCount,
   "every tool must name exactly one catalog operation",
 );
-for (const method of methods) {
-  assert.doesNotMatch(
-    method,
-    /\.(add|update|delete|set|unset|bind|unbind|move|import|start|complete|renew|send|create|register)$/u,
-    `${method} is not a read-only method`,
+const WRITE_METHOD =
+  /\.(add|update|delete|set|unset|bind|unbind|move|import|start|complete|renew|send|create|register)$/u;
+for (const { capability, method } of operations) {
+  if (!WRITE_METHOD.test(method)) continue;
+  assert.equal(
+    capability,
+    "crm.comment.write",
+    `${method} must ride the crm.comment.write capability`,
   );
 }
 for (const scope of [

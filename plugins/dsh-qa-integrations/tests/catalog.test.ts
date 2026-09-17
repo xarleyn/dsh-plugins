@@ -9,10 +9,14 @@ import {
   BITRIX_HANDLERS,
   BITRIX_PROJECTIONS,
 } from "../src/providers/bitrix24/operations.js";
-import { BITRIX24_TOOL_NAMES } from "../src/providers/bitrix24/tools.js";
+import {
+  BITRIX24_COMMENT_TOOL_NAME,
+  BITRIX24_TOOL_NAMES,
+} from "../src/providers/bitrix24/tools.js";
 import {
   createIntegrationTools,
   INTEGRATION_TOOL_NAMES,
+  integrationToolNames,
 } from "../src/tools.js";
 
 /** Verbs that would turn this read-only surface into a writing one. */
@@ -31,6 +35,14 @@ function tools() {
   });
 }
 
+function toolsWithCommentWrite() {
+  return createIntegrationTools({
+    broker: { call: async () => undefined } as never,
+    principalForSession: () => undefined,
+    bitrix24CrmCommentWrite: true,
+  });
+}
+
 describe("Bitrix24 capability catalog", () => {
   it("describes every operation and leaves no handler orphaned", () => {
     expect(Object.keys(BITRIX_HANDLERS).sort()).toEqual(
@@ -43,10 +55,11 @@ describe("Bitrix24 capability catalog", () => {
 
   it("reaches read-only methods only", () => {
     for (const [operation, definition] of Object.entries(BITRIX_OPERATIONS)) {
-      expect(
-        WRITE_METHOD.test(definition.method),
-        `${operation} calls ${definition.method}`,
-      ).toBe(false);
+      if (!WRITE_METHOD.test(definition.method)) continue;
+      // The one writing method is the timeline comment, and it must stay
+      // pinned to the write capability: a write operation under a read
+      // capability would turn every read-only deployment into a writing one.
+      expect(definition.capability, operation).toBe("crm.comment.write");
     }
     for (const forbidden of ["raw_rest", "raw_mcp", "batch", "method.get"]) {
       expect(Object.keys(BITRIX_OPERATIONS)).not.toContain(forbidden);
@@ -72,6 +85,15 @@ describe("Bitrix24 capability catalog", () => {
       // user_brief, user_basic and user are three grants of one capability.
       if (item.capability === "user.read") continue;
       for (const scope of item.scopes) {
+        // The write capability rides the same `crm` scope as the read one:
+        // Bitrix24 has no read-only webhook scope, which is exactly why the
+        // capability exists — its deployment switch is the real gate.
+        if (
+          item.capability === "crm.comment.write" &&
+          (scope === "crm" || seenScopes.has(scope))
+        ) {
+          continue;
+        }
         expect(seenScopes.has(scope), scope).toBe(false);
         seenScopes.add(scope);
       }
@@ -81,6 +103,24 @@ describe("Bitrix24 capability catalog", () => {
   it("derives the enabled capabilities from the deployment switches", () => {
     expect(enabledCapabilities(resolveConfig().bitrix24)).toEqual([
       "crm.read",
+      "chat.read",
+      "openlines.read",
+      "user.read",
+      "department.read",
+      "tasks.read",
+      "calendar.read",
+      "disk.read",
+    ]);
+    expect(
+      enabledCapabilities(resolveConfig().bitrix24),
+    ).not.toContain("crm.comment.write");
+    expect(
+      enabledCapabilities(
+        resolveConfig({ bitrix24: { crmCommentWrite: true } }).bitrix24,
+      ),
+    ).toEqual([
+      "crm.read",
+      "crm.comment.write",
       "chat.read",
       "openlines.read",
       "user.read",
@@ -108,7 +148,10 @@ describe("Bitrix24 capability catalog", () => {
     const declared = [...TOOLS_SOURCE.matchAll(/operation: "([^"]+)"/gu)].map(
       (match) => match[1],
     );
-    expect(declared).toHaveLength(BITRIX24_TOOL_NAMES.length);
+    // One declaration per tool: the read catalog plus the timeline comment,
+    // which is declared in the source but mounted only behind its flag.
+    expect(declared).toHaveLength(BITRIX24_TOOL_NAMES.length + 1);
+    expect(new Set(declared).size).toBe(declared.length);
     for (const operation of declared) {
       expect(BITRIX_OPERATIONS[operation as string], operation).toBeDefined();
     }
@@ -120,6 +163,47 @@ describe("Bitrix24 tool surface", () => {
     expect(tools().map((tool) => tool.name)).toEqual([
       ...INTEGRATION_TOOL_NAMES,
     ]);
+  });
+
+  it("mounts the timeline comment only behind its switch, with the admission list", async () => {
+    const names = tools().map((tool) => tool.name);
+    expect(names).not.toContain(BITRIX24_COMMENT_TOOL_NAME);
+
+    const withWrite = toolsWithCommentWrite().map((tool) => tool.name);
+    expect(withWrite).toEqual([
+      ...integrationToolNames({ bitrix24CrmCommentWrite: true }),
+    ]);
+    expect(
+      withWrite.filter((name) => name !== BITRIX24_COMMENT_TOOL_NAME),
+    ).toEqual(names);
+    // The comment tool mounts at the end of the Bitrix24 block, where the
+    // provider module composes it.
+    expect(withWrite.indexOf(BITRIX24_COMMENT_TOOL_NAME)).toBe(
+      BITRIX24_TOOL_NAMES.length,
+    );
+
+    // The mounted write tool routes to the write operation like every read
+    // tool routes to its own, so the broker's capability gate stays in charge.
+    const operations: string[] = [];
+    const routed = createIntegrationTools({
+      broker: {
+        call: async (_principal, request) => {
+          operations.push(request.operation);
+          return { provider: "bitrix24", operation: request.operation, data: {} };
+        },
+      } as never,
+      principalForSession: () => ({ userId: "alice" }),
+      bitrix24CrmCommentWrite: true,
+    });
+    const comment = routed.find(
+      (tool) => tool.name === BITRIX24_COMMENT_TOOL_NAME,
+    );
+    expect(comment).toBeDefined();
+    await comment!.execute(
+      { entityTypeId: 2, entityId: 10, comment: "Проверка" } as never,
+      { agent: { session: { header: { id: "owned" } } } } as never,
+    );
+    expect(operations).toEqual(["crm.timelineCommentAdd"]);
   });
 
   it("keeps principal and secret selectors out of every schema", () => {
@@ -134,6 +218,10 @@ describe("Bitrix24 tool surface", () => {
       "integrationId",
     ]) {
       expect(schema).not.toContain(forbidden);
+    }
+    // The write tool widens the surface; its schema stays equally clean.
+    for (const forbidden of ["credentialId", "secretId", "accessToken"]) {
+      expect(JSON.stringify(toolsWithCommentWrite())).not.toContain(forbidden);
     }
   });
 });

@@ -26,7 +26,10 @@ import WeblateProvider from "./providers/weblate/index.js";
 import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
-import { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
+import {
+  createIntegrationTools,
+  integrationToolNames,
+} from "./tools.js";
 import type {
   CredentialInput,
   IntegrationInstanceSummary,
@@ -186,13 +189,18 @@ export class QaIntegrations extends TypertRemoteService {
     );
 
     if (config.enabled) {
+      const toolOptions = {
+        bitrix24CrmCommentWrite: config.bitrix24.crmCommentWrite,
+      };
+      const toolNames = integrationToolNames(toolOptions);
       const removeAdmission = ctx.qaSurface.registerPrincipalScopedTools(
-        INTEGRATION_TOOL_NAMES,
+        toolNames,
       );
       const removers = createIntegrationTools({
         broker: this.broker,
         principalForSession: (sessionId) =>
           ctx.qaSurface.principalForSession(sessionId),
+        ...toolOptions,
       }).map((definition) => ctx.tools.register(definition));
       ctx.effect(
         () => () => {
@@ -201,14 +209,14 @@ export class QaIntegrations extends TypertRemoteService {
         },
         "dsh-qa-integrations.tools",
       );
+      this.logger.info("plugin.ready", { tools: [...toolNames] });
+    } else {
+      this.logger.info("plugin.disabled", { tools: [] });
     }
     ctx.effect(
       () => async () => this.logger.close(),
       "dsh-qa-integrations.logger",
     );
-    this.logger.info(config.enabled ? "plugin.ready" : "plugin.disabled", {
-      tools: config.enabled ? [...INTEGRATION_TOOL_NAMES] : [],
-    });
     if (
       config.teamcity.enabled &&
       networkAllowsNothing(config.teamcity.network)
@@ -1037,7 +1045,7 @@ export {
 } from "./secrets/key-provider.js";
 export { SecretStore } from "./secrets/secret-store.js";
 export { createToolKit, type ToolKitOptions } from "./tool-kit.js";
-export { createIntegrationTools, INTEGRATION_TOOL_NAMES } from "./tools.js";
+export { createIntegrationTools, INTEGRATION_TOOL_NAMES, integrationToolNames } from "./tools.js";
 export type * from "./types.js";
 export {
   BitrixTransport,
