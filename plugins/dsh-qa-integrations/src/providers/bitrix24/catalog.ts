@@ -15,6 +15,7 @@ import type { Bitrix24Flags } from "./config.js";
  */
 export type Bitrix24Capability =
   | "crm.read"
+  | "crm.comment.write"
   | "chat.read"
   | "openlines.read"
   | "user.read"
@@ -39,6 +40,16 @@ export const BITRIX_CAPABILITIES: readonly Bitrix24CapabilityDefinition[] =
       scopes: ["crm"],
       label: "Читать CRM",
       hint: "Лиды, сделки, контакты, компании, дела, таймлайн, товарные строки",
+    },
+    {
+      capability: "crm.comment.write",
+      flag: "crmCommentWrite",
+      scopes: ["crm"],
+      label: "Комментировать CRM",
+      hint:
+        "Комментарий в таймлайн лида, сделки, контакта или компании " +
+        "(единственная операция записи). Вебхук со скоупом crm умеет писать " +
+        "и сам — гейт здесь только конфиг-флаг и политика доступа.",
     },
     {
       capability: "chat.read",
@@ -120,6 +131,10 @@ export const BITRIX_OPERATIONS: Readonly<
     capability: "crm.read",
     method: "crm.item.list",
     list: "items",
+  },
+  "crm.timelineCommentAdd": {
+    capability: "crm.comment.write",
+    method: "crm.timeline.comment.add",
   },
   "crm.get": { capability: "crm.read", method: "crm.item.get" },
   "crm.fields": { capability: "crm.read", method: "crm.item.fields" },

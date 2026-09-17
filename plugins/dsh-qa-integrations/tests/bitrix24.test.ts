@@ -488,6 +488,23 @@ describe("Bitrix24 provider", () => {
     expect(validation.capabilities).toEqual(["crm.read"]);
   });
 
+  it("offers the write capability only when the deployment switch is on", async () => {
+    const { fetcher } = stub({
+      profile: PROFILE,
+      scope: { result: ["crm"] },
+    });
+    const off = await new Bitrix24Provider(resolveConfig(), fetcher).validate({
+      credential: CREDENTIAL,
+    });
+    expect(off.capabilities).toEqual(["crm.read"]);
+
+    const on = await new Bitrix24Provider(
+      resolveConfig({ bitrix24: { crmCommentWrite: true } }),
+      fetcher,
+    ).validate({ credential: CREDENTIAL });
+    expect(on.capabilities).toEqual(["crm.read", "crm.comment.write"]);
+  });
+
   it("narrows crm.search with stages, categories, freshness and a pinned order", async () => {
     const { calls, fetcher } = stub({
       "crm.item.list": { result: { items: [] }, total: 0 },
@@ -576,5 +593,39 @@ describe("Bitrix24 provider", () => {
         } as never,
       ),
     ).rejects.toThrow(/query is invalid: a non-empty title substring/u);
+  });
+
+  it("sends the documented field shape for the timeline comment", async () => {
+    const { calls, fetcher } = stub({
+      "crm.timeline.comment.add": { result: { id: 9001 } },
+    });
+    const provider = new Bitrix24Provider(resolveConfig(), fetcher);
+    const result = await provider.execute(
+      { credential: CREDENTIAL },
+      "crm.timelineCommentAdd",
+      { entityTypeId: 2, entityId: 10, comment: "Передали дистрибьютору" },
+    );
+    expect(result).toEqual({ id: 9001 });
+    expect(calls[0]?.method).toBe("crm.timeline.comment.add");
+    expect(calls[0]?.body).toEqual({
+      fields: {
+        ENTITY_TYPE: "deal",
+        ENTITY_ID: 10,
+        COMMENT: "Передали дистрибьютору",
+      },
+    });
+    for (const invalid of [
+      { entityTypeId: 9, entityId: 10, comment: "smart processes stay out" },
+      { entityTypeId: 2, entityId: 10, comment: "" },
+      { entityTypeId: 2, entityId: 10 },
+    ]) {
+      await expect(
+        provider.execute(
+          { credential: CREDENTIAL },
+          "crm.timelineCommentAdd",
+          invalid,
+        ),
+      ).rejects.toBeDefined();
+    }
   });
 });

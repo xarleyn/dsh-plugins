@@ -53,7 +53,10 @@ export const BITRIX24_TOOL_NAMES = [
   "bitrix_get_drives",
   "bitrix_get_storage_items",
   "bitrix_get_folder_items",
-  ] as const;
+] as const;
+
+/** The provider's single write tool; mounted only when the operator opts in. */
+export const BITRIX24_COMMENT_TOOL_NAME = "bitrix_add_crm_timeline_comment" as const;
 
 const ENTITY_TYPE_HINT =
   "Bitrix CRM entity type: 1 lead, 2 deal, 3 contact, 4 company, 31 invoice, or a smart-process type id.";
@@ -74,6 +77,8 @@ export function createBitrix24Tools(options: {
   readonly principalForSession: (
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
+  /** Mount the timeline-comment write tool; default stays read-only. */
+  readonly crmCommentWrite?: boolean;
 }): readonly ToolDefinition[] {
   const kit = createToolKit({ ...options, provider: "bitrix24" });
   const tool = kit.tool;
@@ -1240,5 +1245,38 @@ export function createBitrix24Tools(options: {
     }),
   ];
 
-  return tools;
+  if (options.crmCommentWrite !== true) return tools;
+
+  return [
+    ...tools,
+    tool({
+      name: BITRIX24_COMMENT_TOOL_NAME,
+      description:
+        "Add one comment to the timeline of a CRM entity. The only write operation this provider offers; every other tool stays read-only.",
+      parameters: {
+        entityTypeId: {
+          type: "number",
+          required: true,
+          description:
+            "Entity to comment on: 1 lead, 2 deal, 3 contact or 4 company.",
+        },
+        entityId: {
+          type: "number",
+          required: true,
+          description: "Id of the entity the comment belongs to.",
+        },
+        comment: {
+          type: "string",
+          required: true,
+          description: "Comment text, 1-5000 characters.",
+        },
+      },
+      operation: "crm.timelineCommentAdd",
+      input: (args) => ({
+        entityTypeId: requiredInteger(args["entityTypeId"], "entityTypeId"),
+        entityId: requiredInteger(args["entityId"], "entityId"),
+        comment: requiredText(args["comment"], "comment", 1, 5000),
+      }),
+    }),
+  ];
 }

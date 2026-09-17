@@ -183,6 +183,26 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
       });
     },
 
+    "crm.timelineCommentAdd": (input) => {
+      const entityTypeId = requiredInteger(
+        input["entityTypeId"],
+        "entityTypeId",
+        1,
+        4,
+      );
+      const entityType = TIMELINE_ENTITY_TYPES[entityTypeId];
+      if (entityType === undefined) {
+        throw new IntegrationError("InvalidRequest", "entityTypeId is invalid");
+      }
+      return {
+        fields: {
+          ENTITY_TYPE: entityType,
+          ENTITY_ID: requiredInteger(input["entityId"], "entityId"),
+          COMMENT: requiredText(input["comment"], "comment", 1, 5000),
+        },
+      };
+    },
+
     "crm.get": (input) => ({
       entityTypeId: requiredInteger(input["entityTypeId"], "entityTypeId"),
       id: requiredInteger(input["id"], "id"),
