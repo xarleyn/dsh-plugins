@@ -54,6 +54,14 @@ manual-only OpenViking operation:
   true }`. The fork uses this repository's canonical single-row bundle patch
   instead; the service is provided by a Cordis `Service` subclass, which keeps
   the same isolation guarantee for a single instance.
+- The vendored proxy core gained two harness-supplied seams this fork uses in
+  `src/servers/mcp-proxy.ts`: a `requestGuard` that answers a `tools/call`
+  whose `grep.pattern` / `search.query` / `find.query` carries no
+  non-whitespace character with a JSON-RPC invalid-params error instead of
+  forwarding it (the upstream server answers an empty pattern with "no
+  matches", which a model reads as a real result and repeats), and an
+  `adjustUpstreamTool` hook that rewrites those tools' `tools/list` schemas to
+  advertise the parameter as required.
 
 This document is the record of *what* changed; `docs/upstream-sync.md` describes
 how to bring later upstream revisions in.
