@@ -10,10 +10,8 @@ import type {
   QaUserSession,
   QaUserSettingsSections,
 } from "@yadsh/dsh-qa-surface/client/settings";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
-import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import type { IntegrationSummary, PolicyPatch } from "../types.js";
-import { createIntegrationsCard } from "./card.js";
+import { createIntegrationsHostTab } from "./card.js";
 import {
   createIntegrationsPage,
   type IntegrationsClientRemote,
@@ -50,8 +48,9 @@ export const inject = [
 /**
  * Both mounts of the provider cards come from this one bundle: the page of the
  * signed-in user's QA settings dialog, where the account gate lives, and the
- * card of the host's "Plugin configuration" tab, which reaches the same account
- * through the `qaUserSession` service.
+ * feature-owned tab in the host's Plugins settings, which reaches the same
+ * account through the `qaUserSession` service without depending on the Host
+ * settings directory.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposeRemote = await (ctx as ClientFace).remote.$mount(
@@ -69,7 +68,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const face = injected as ClientFace;
         let cancelled = false;
         let removeSection: (() => void) | undefined;
-        let removeCard: (() => void) | undefined;
+        let removeHostTab: (() => void) | undefined;
         face.effect(() => {
           const style = document.createElement("style");
           style.dataset.dshQaIntegrations = "styles";
@@ -92,19 +91,27 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               providers,
             ),
           });
-          removeCard = registerSettingsCard(face, {
-            key: QA_INTEGRATIONS_SETTINGS_NAMESPACE,
-            component: createIntegrationsCard(
-              face.remote.qaIntegrations,
-              providers,
-              face.qaUserSession,
+          const HostTab = createIntegrationsHostTab(
+            face.remote.qaIntegrations,
+            providers,
+            face.qaUserSession,
+          );
+          removeHostTab = face.slots.inject("settings.plugins.tab", () =>
+            face.slots.register(
+              {
+                name: "settings.plugins.tab",
+                id: "qa-integrations",
+                order: 40,
+                label: () => "Интеграции",
+              },
+              HostTab,
             ),
-          });
+          );
         })().catch(() => undefined);
         return () => {
           cancelled = true;
           removeSection?.();
-          removeCard?.();
+          removeHostTab?.();
         };
       },
     );

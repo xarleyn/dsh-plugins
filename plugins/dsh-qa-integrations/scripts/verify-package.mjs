@@ -110,12 +110,13 @@ assert.match(client, /Сайт Jira/u);
 assert.match(client, /Оператор не настроил ни одного сайта Jira/u);
 assert.doesNotMatch(client, /atlassian\.net/u);
 
-// The card of "Plugin configuration": one bundle mounts both surfaces, and the
-// key it claims has to be the namespace the Host serves, or the Host's tab
-// never dispatches it.
+// The feature-owned Plugins tab stays available without the loopback-only Host
+// settings directory. It may reuse the standard card shell inside its own list.
 verifyPluginCardContract(client);
-assert.match(client, /"settings\.plugin\.item"/u);
+assert.match(client, /"settings\.plugins\.tab"/u);
 assert.match(client, /"qa-integrations"/u);
+assert.doesNotMatch(client, /"settings\.plugin\.item"/u);
+assert.match(client, /dsh-qa-integrations__host-tab/u);
 assert.match(client, /Развернуть настройки интеграций/u);
 assert.match(client, /Свернуть настройки интеграций/u);
 // The browser has no module table for Node builtins: one `require("node:…")`

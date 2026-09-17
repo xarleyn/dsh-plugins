@@ -32,6 +32,17 @@
 
 ## Plugin configuration card UI
 
+### Choosing the settings extension point
+
+- Use `settings.plugin.item` only for a card that edits a real Host settings
+  namespace. The Host discovers these cards from the settings directory, which
+  is intentionally unavailable to non-loopback browsers; do not create an
+  empty namespace merely to make a feature-owned page appear there.
+- Use `settings.plugins.tab` for feature-owned pages backed by custom Remote
+  services, account/session state, or any UI that must remain available from a
+  non-loopback browser. Such a tab may reuse the standard card shell, but its
+  `<li>` root must still be rendered inside a plugin-owned `<ul>`.
+
 - Cards registered in `settings.plugin.item` must use the same outer shell as
   the first-party DSH plugin cards. The root is a direct `<li>` child of the
   host list, not an `<article>` or a permanently expanded custom panel.

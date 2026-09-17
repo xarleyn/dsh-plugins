@@ -4,7 +4,7 @@
     "range": ">=0.1.5-rc.2 <0.2.0",
     "testedReleases": ["0.1.5-rc.2"],
     "requiredHostFeatures": ["tools", "qaSurface"],
-    "requiredClientFeatures": ["qaUserSettingsSections"]
+    "requiredClientFeatures": ["qaUserSettingsSections", "settings.plugins.tab"]
   },
   "node": ">=22"
 }
