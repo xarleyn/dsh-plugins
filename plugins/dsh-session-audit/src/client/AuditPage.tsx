@@ -116,13 +116,6 @@ export function AuditPage(props: AuditPageProps): ReactNode {
         <aside className="dsh-audit-page__side" aria-label="Audit at a glance">
           <AuditSidebar
             analysis={analysis}
-            counts={{
-              critical: value.critical,
-              major: value.major,
-              minor: value.minor,
-              observation: value.observation,
-              other: value.other,
-            }}
             schemaVersion={value.schemaVersion}
           />
         </aside>
@@ -200,13 +193,6 @@ function JsonPane(props: { readonly raw: unknown }): ReactNode {
 /** The at-a-glance column: the structured facts, beside whichever tab is open. */
 function AuditSidebar(props: {
   readonly analysis: ReturnType<typeof knownAnalysis>;
-  readonly counts: {
-    readonly critical: number;
-    readonly major: number;
-    readonly minor: number;
-    readonly observation: number;
-    readonly other: number;
-  };
   readonly schemaVersion: number;
 }): ReactNode {
   const { analysis } = props;

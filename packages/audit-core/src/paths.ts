@@ -10,7 +10,7 @@
  * arguments, which is what makes containment cheap enough to re-check at every
  * boundary rather than once at startup.
  */
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 /**
  * `true` when `candidate` resolves to `root` itself or something under it.
@@ -79,10 +79,3 @@ export const AUDIT_INCOMING_DIRECTORY = ".incoming";
 /** The two files that make up an audit. */
 export const AUDIT_ANALYSIS_FILENAME = "analysis.json";
 export const AUDIT_REPORT_FILENAME = "REPORT.md";
-
-/** Platform-aware comparison of two paths that should denote the same file. */
-export function isSamePath(left: string, right: string): boolean {
-  const normalize = (value: string) =>
-    resolve(value).replaceAll(sep, "/").replace(/\/+$/u, "");
-  return normalize(left) === normalize(right);
-}

@@ -40,11 +40,7 @@ export const inject: readonly string[] = [];
 
 export type { SessionAuditConfig } from "./config.js";
 export { Config, resolveAuditRoot, resolveConfig } from "./config.js";
-export type {
-  AuditSummaryValue,
-  SessionAuditValue,
-  AuditRefValue,
-} from "./types.js";
+export type { AuditSummaryValue, SessionAuditValue } from "./types.js";
 export { emptyAuditValue, emptySummaryValue } from "./types.js";
 
 declare module "@deepseek-ai/cordis" {

@@ -61,12 +61,6 @@ export interface SessionAuditValue {
   report: string;
 }
 
-/** One audit's identity, for a two-step load. */
-export interface AuditRefValue {
-  auditId: string;
-  sessionId: string;
-}
-
 /** An empty summary, for a session with no audit. */
 export function emptySummaryValue(sessionId: string): AuditSummaryValue {
   return {
