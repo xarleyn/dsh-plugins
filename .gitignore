@@ -79,6 +79,13 @@ Desktop.ini
 # ---------------------------------------------------------------------------
 AGENTS.local.md
 
+# Leak-scan local state. The marker dictionary lists real internal values, so
+# it must never be committed; the canonical copy lives outside the repository
+# entirely (~/.dsh-leak-markers.txt). The allowlist extension is machine-local.
+# ---------------------------------------------------------------------------
+.dsh-leak-markers.txt
+.dsh-leak-allow.txt
+
 # ---------------------------------------------------------------------------
 # Plugin store files
 # A store resolves to the working directory when $DSH_HOME is unset, so running

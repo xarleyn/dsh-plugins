@@ -1,0 +1,160 @@
+# Allowlist for leak-scan — values this repository deliberately uses.
+#
+# The file is public and must stay free of anything real, which is why it holds
+# only synthetic families and public hosts. Real internal values never belong
+# here: put them in the marker dictionary (~/.dsh-leak-markers.txt), which is
+# checked first and always reports a leak regardless of what this file allows.
+#
+# Format, one entry per line:
+#   value        exact match
+#   *.suffix     the value ends with this suffix
+#   re:pattern   regular expression, tested against the matched value
+#
+# Comments explain why an entry is allowed; keep that habit when extending it.
+
+# ---------------------------------------------------------------------------
+# Synthetic families — the placeholders this repository writes on purpose
+# ---------------------------------------------------------------------------
+example.com
+example.org
+example.net
+*.example.com
+*.example.org
+*.example.net
+*.example.corp
+*.example.test
+*.example.internal
+*.example.ru
+*.example
+# Non-registrable TLDs used for placeholders. If your internal DNS really uses
+# one of them, the placeholder family hides it — list the real hostnames in the
+# marker dictionary instead.
+*.corp
+*.test
+*.invalid
+*.internal
+*.local
+localhost
+127.0.0.1
+
+# ---------------------------------------------------------------------------
+# Public services and documentation hosts
+# ---------------------------------------------------------------------------
+github.com
+api.github.com
+docs.github.com
+registry.npmjs.org
+www.npmjs.com
+npmjs.com
+img.shields.io
+gitlab.com
+docs.gitlab.com
+api.atlassian.com
+developer.atlassian.com
+id.atlassian.com
+confluence.atlassian.com
+www.jetbrains.com
+schemas.openxmlformats.org
+json-schema.org
+www.w3.org
+nodejs.org
+docs.npmjs.com
+prettier.io
+pnpm.io
+nx.dev
+playwright.dev
+www.typescriptlang.org
+developer.mozilla.org
+openviking
+docs.openviking.ai
+deepseek-harness.github.io
+getpino.io
+sleev.ai
+semver.org
+purl.org
+www.apache.org
+www.conventionalcommits.org
+bitrix24.ru
+# Provenance comments that vendored libraries keep inside the bundled source
+# maps; they show up in almost every `lib/client.js.map`.
+stackoverflow.com
+blog.stevenlevithan.com
+thekevinscott.com
+# Deployment placeholders of the integration providers.
+company.atlassian.net
+sandbox.atlassian.net
+acme.atlassian.net
+corp.atlassian.net
+company.bitrix24.ru
+# Public third-party API, not internal infrastructure.
+api.neuraldeep.ru
+
+# ---------------------------------------------------------------------------
+# Hosts the URL-validation and redaction tests attack with on purpose
+# ---------------------------------------------------------------------------
+attacker.com
+*.attacker.com
+evil.net
+*.evil.net
+# Fake mail domains of the unit tests (`a@b.co` is the canonical one).
+b.co
+d.co
+x.com
+# `.lan` is used the same way as `.corp`: a placeholder an internal hostname
+# could hide behind, so keep real hostnames in the marker dictionary.
+*.lan
+
+# ---------------------------------------------------------------------------
+# Issue-key shapes used as labels in documentation and tests
+# ---------------------------------------------------------------------------
+re:^(AGENT|DOC|EX|GATE|NOTE|STEP|TASK|TEST|SAMPLE|DEMO)-\d+$
+# Literal example of the issue-key pattern inside a JSDoc comment.
+ABC1-4
+
+# ---------------------------------------------------------------------------
+# Fixture values that exist to exercise redaction, URL validation and SSRF
+# classification
+# ---------------------------------------------------------------------------
+re:^https?://(u|user):(p|pw|pass|password|secret)@$
+glpat-abcdefghij0123456789
+re:^sk-ant-(very-secret-value|api03-X+-A+)$
+re:^-----BEGIN [A-Z ]*PRIVATE KEY-----$
+# Apache and SPDX identifiers, not tracker keys.
+re:^LICENSE-\d+$
+# Addresses the SSRF tests classify; the documentation ranges (192.0.2.x,
+# 198.51.100.x, 203.0.113.x) and loopback need no entry — they pass by rule.
+10.0.0.1
+10.0.0.5
+10.0.0.7
+10.1.2.3
+10.16.5.5
+10.20.1.5
+10.20.14.18
+10.20.100.7
+10.21.1.5
+10.64.0.10
+100.64.0.10
+172.16.5.5
+192.168.0.10
+192.168.1.1
+192.168.1.5
+192.168.1.42
+re:^\\\\(missing|other|portable|portable-git|tools|Apps|Programs|Git|scoop)\\
+
+# ---------------------------------------------------------------------------
+# Invented names and Russian UI strings that have the two-word shape of a name
+# ---------------------------------------------------------------------------
+Иван Иванов
+Иван Примеров
+Пётр Петров
+Пётр Ревьюеров
+Дотошный Барсук
+Файлы Диска
+Новый Навык
+Убрать Вставленный
+
+# ---------------------------------------------------------------------------
+# Local checkout paths the documentation quotes
+# ---------------------------------------------------------------------------
+re:^[A-Za-z]:[\\/]repos[\\/]dsh[\\/](dsh-plugins|deepseek-harness-source)
+re:^[A-Za-z]:[\\/]repos[\\/](other|proj)[\\/]

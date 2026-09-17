@@ -87,3 +87,20 @@
   classes, font chevrons, and non-standard shell tokens. When a local DSH web
   app is available, visually compare closed, hovered, focused, and open states
   with a first-party card before completion.
+
+## No internal identifiers in public content
+
+- The repository is public and every package publishes to npm. Examples,
+  fixtures, specs, tool descriptions, error messages and READMEs must use only
+  synthetic placeholders: `PROJ-123`/`PROJ-456`, `jira.example.corp`,
+  «Демо-продукт». Never real task numbers under a renamed prefix, internal
+  hosts, LAN addresses, project keys, product names, or people's names.
+- Test fixtures ship in public git history even when they do not ship in
+  tarballs; `lib/*.js` strings and anything in the package `files` list ship
+  to npm.
+- Release notes must not reveal that a leak existed ("no longer names an
+  internal Jira project" is itself a disclosure).
+- Before committing anything naming a project, host, task or person, grep for
+  marker classes: ticket keys `[A-Z]{3,10}-[0-9]+`, corporate hosts,
+  RFC1918 addresses with real ports, person names and logins.
+- Exempt: `qa-deploy/`, `qa-deploy-docker/`, `.portable/` kits.
