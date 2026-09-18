@@ -66,9 +66,10 @@ describe("publishAudit", () => {
       report: "report",
     });
 
-    expect(await readdir(result.directory)).toEqual([
-      "analysis.json",
+    // `readdir` reports in filesystem order, not sorted: compare the set.
+    expect((await readdir(result.directory)).sort()).toEqual([
       "REPORT.md",
+      "analysis.json",
     ]);
   });
 
