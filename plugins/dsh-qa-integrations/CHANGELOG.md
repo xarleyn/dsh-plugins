@@ -219,7 +219,6 @@
 
 ### ❤️ Thank You
 
-- Codex incident cleanup @noreply
 - xarleyn @xarleyn
 
 ## 0.4.0 (2026-09-16)
