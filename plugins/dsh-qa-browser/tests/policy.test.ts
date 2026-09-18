@@ -65,6 +65,37 @@ describe("BrowserNetworkPolicy", () => {
     ).resolves.toBe("BROWSER_HOST_BLOCKED");
   });
 
+  it("names the host, the address class and the setting that lifts the block", async () => {
+    // A hostname that resolves privately is the corporate case, and the
+    // refusal is the only place an operator learns why nothing opens.
+    await expect(
+      policy().assertAllowed("https://private.example"),
+    ).rejects.toThrow(/private\.example/u);
+    await expect(
+      policy().assertAllowed("https://private.example"),
+    ).rejects.toThrow(/RFC1918/u);
+    await expect(
+      policy().assertAllowed("https://private.example"),
+    ).rejects.toThrow(/security\.network\.allowHosts/u);
+  });
+
+  it("names carrier-grade NAT and IPv6 unique-local ranges too", async () => {
+    const cgnat = new BrowserNetworkPolicy(
+      resolveQaBrowserConfig({ security: { network: {} } }).security.network,
+      { lookup: resolver({ "cgnat.example": ["100.64.5.9"] }) },
+    );
+    await expect(cgnat.assertAllowed("https://cgnat.example")).rejects.toThrow(
+      /carrier-grade NAT/u,
+    );
+    const ula = new BrowserNetworkPolicy(
+      resolveQaBrowserConfig({ security: { network: {} } }).security.network,
+      { lookup: resolver({ "ula.example": ["fd12:3456::1"] }) },
+    );
+    await expect(ula.assertAllowed("https://ula.example")).rejects.toThrow(
+      /unique-local/u,
+    );
+  });
+
   it("uses explicit hosts as private-network exceptions but never metadata exceptions", async () => {
     await expect(
       policy({ allowHosts: ["private.example"] }).assertAllowed(

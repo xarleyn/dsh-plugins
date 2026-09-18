@@ -99,6 +99,9 @@ evil.net
 # The credential-help URL test needs a private-range host the sanitizer keeps;
 # 192.168.24.10 is synthetic (the real stand address lives in the dictionary).
 192.168.24.10
+# Carrier-grade NAT fixture of the browser policy test: 100.64.5.9 is synthetic,
+# named so the refusal message can be asserted for that range.
+100.64.5.9
 # Fake mail domains of the unit tests (`a@b.co` is the canonical one).
 b.co
 d.co

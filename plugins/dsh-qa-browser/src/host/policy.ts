@@ -72,6 +72,34 @@ function isMetadataAddress(address: string): boolean {
   return ipv4 === "169.254.169.254" || ipv4 === "100.100.100.200";
 }
 
+/**
+ * Name the range a refused address belongs to, so an operator reading the
+ * refusal knows whether a name resolves into the corporate network, a
+ * carrier-grade NAT pool, or an IPv6 unique-local prefix. The address itself
+ * stays out of the message: the class is what the fix depends on.
+ */
+function privateRangeOf(address: string): string {
+  const ipv4 = ipv4Parts(address);
+  if (ipv4 === null) return "IPv6 unique-local (fc00::/7)";
+  return ipv4[0] === 100
+    ? "carrier-grade NAT (100.64.0.0/10)"
+    : "RFC1918 (10/8, 172.16/12, 192.168/16)";
+}
+
+/**
+ * The refusal an operator can act on: it names the host, the class of address
+ * it resolved to, and the setting that lifts the block. A hostname that
+ * resolves privately is exactly the corporate case, so the message says what
+ * to change instead of only that something was blocked.
+ */
+function privateNetworkRefusal(hostname: string, address: string): string {
+  return (
+    `Private-network destinations are blocked by Browser policy: "${hostname}" resolves to a ` +
+    `${privateRangeOf(address)} address. Allow the host in security.network.allowHosts ` +
+    `(or set security.network.allowPrivateNetworks) to reach it.`
+  );
+}
+
 /** Server-side URL and DNS policy. Model arguments can never modify it. */
 export class BrowserNetworkPolicy {
   private readonly resolveHost: typeof lookup;
@@ -172,19 +200,22 @@ export class BrowserNetworkPolicy {
         if (this.config.allowLoopback) continue;
         throw new QaBrowserError(
           "BROWSER_HOST_BLOCKED",
-          "Loopback destinations are blocked by Browser policy.",
+          `Loopback destinations are blocked by Browser policy: "${hostname}" resolves to a ` +
+            `loopback address. Allow the host in security.network.allowHosts (or set ` +
+            `security.network.allowLoopback) to reach it.`,
         );
       }
       if (isLinkLocalAddress(address)) {
         throw new QaBrowserError(
           "BROWSER_HOST_BLOCKED",
-          "Link-local destinations are blocked by Browser policy.",
+          `Link-local destinations are blocked by Browser policy: "${hostname}" resolves to a ` +
+            `link-local address (169.254/16, fe80::/10), which is never reachable by design.`,
         );
       }
       if (isPrivateAddress(address) && !this.config.allowPrivateNetworks) {
         throw new QaBrowserError(
           "BROWSER_HOST_BLOCKED",
-          "Private-network destinations are blocked by Browser policy.",
+          privateNetworkRefusal(hostname, address),
         );
       }
     }
