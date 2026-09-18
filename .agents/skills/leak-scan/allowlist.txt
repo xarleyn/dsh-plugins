@@ -96,6 +96,9 @@ attacker.com
 *.attacker.com
 evil.net
 *.evil.net
+# The credential-help URL test needs a private-range host the sanitizer keeps;
+# 192.168.24.10 is synthetic (the real stand address lives in the dictionary).
+192.168.24.10
 # Fake mail domains of the unit tests (`a@b.co` is the canonical one).
 b.co
 d.co
