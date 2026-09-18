@@ -35,15 +35,105 @@ export {
 } from "./runtime.js";
 export {
   createDocumentTools,
+  documentToolNames,
   registerDocumentTools,
+  DOCUMENT_COMPARISON_TOOL_NAMES,
   DOCUMENT_TOOL_NAMES,
+  DOCUMENT_COMPARE_TOOL,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_CREATE_TOOL,
+  DOCUMENT_DIFF_READ_TOOL,
   DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_INSPECT_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
   type DocumentToolRegistry,
 } from "./tools/index.js";
+export {
+  CHANGE_KINDS,
+  CHANGE_SIGNALS,
+  SIGNAL_ALIASES,
+  type ChangeKind,
+  type ChangeLocation,
+  type ChangeSignal,
+  type ComparedSide,
+  type ComparisonMode,
+  type ComparisonOptions,
+  type ComparisonPreviewEntry,
+  type ComparisonQuality,
+  type ComparisonScope,
+  type ComparisonSummary,
+  type DiffSpan,
+  type DocumentChange,
+  type DocumentCompareInput,
+  type DocumentCompareResult,
+  type DocumentDiffReadInput,
+  type DocumentDiffReadResult,
+  type DocumentReference,
+} from "./comparison/types.js";
+export {
+  assessQuality,
+  compareDocuments,
+  filterDocument,
+  resolveComparisonOptions,
+  selectedParts,
+  summarize,
+} from "./comparison/compare.js";
+export {
+  DIFF_ENGINE,
+  serializeChange,
+  writeComparisonArtifact,
+} from "./comparison/artifact/writer.js";
+export {
+  parseChange,
+  readComparisonChanges,
+} from "./comparison/artifact/reader.js";
+export {
+  buildComparisonPreview,
+  locationLabel,
+  renderComparisonReport,
+} from "./comparison/report.js";
+export {
+  buildCanonicalDocument,
+  comparisonKeyOf,
+  DOCUMENT_PART_ORDER,
+  EXTRACTION_LEVEL_OF,
+  nodesOfPart,
+  serializeCanonicalDocument,
+  type CanonicalDocument,
+  type CanonicalExtractionKind,
+  type CanonicalNode,
+  type CanonicalTableCell,
+  type CanonicalTableRow,
+  type DocumentNodeType,
+  type DocumentPart,
+  type NodeRevision,
+  type NodeSource,
+} from "./comparison/canonical/document-ir.js";
+export { tokenize, type TextToken } from "./comparison/canonical/tokenizer.js";
+export {
+  collapseWhitespace,
+  normalizeForComparison,
+} from "./comparison/canonical/normalize.js";
+export { alignSequences } from "./comparison/alignment/block-align.js";
+export { diffText, diffTokens } from "./comparison/diff/token-diff.js";
+export { detectMoves } from "./comparison/diff/move-detection.js";
+export { diffDocuments } from "./comparison/diff/block-diff.js";
+export { detectSignals } from "./comparison/signals/index.js";
+export { DocxStructuredExtractor } from "./comparison/extractors/docx.js";
+export {
+  MarkdownStructuredExtractor,
+  PlainTextStructuredExtractor,
+} from "./comparison/extractors/markdown.js";
+export {
+  PdfStructuredExtractor,
+  type PdfTextSource,
+} from "./comparison/extractors/pdf.js";
+export { parseXml, XmlParseError } from "./comparison/ooxml/xml.js";
+export {
+  createComparisonId,
+  isComparisonId,
+  isDocumentArtifactId,
+} from "./artifacts/ids.js";
 export {
   createProviders,
   type ProviderSeams,
@@ -124,6 +214,7 @@ import type { DocumentFetchSource } from "./orchestrator/runtime-deps.js";
 import type { ProviderSeams } from "./providers/registry.js";
 import { DocumentRuntime } from "./runtime.js";
 import {
+  documentToolNames,
   registerDocumentTools,
   DOCUMENT_TOOL_NAMES,
   type DocumentToolRegistry,
@@ -203,7 +294,7 @@ export function installDocumentSubsystem(
 
   return {
     runtime,
-    toolNames: DOCUMENT_TOOL_NAMES,
+    toolNames: documentToolNames(config),
     dispose: () => {
       disposeTools();
     },

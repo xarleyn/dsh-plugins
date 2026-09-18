@@ -32,7 +32,10 @@ import {
 
 import type { DocumentsConfig } from "../documents/config.js";
 import { DEFAULT_DOCUMENTS_CONFIG } from "../documents/defaults.js";
-import { DOCUMENT_TOOL_NAMES } from "../shared/settings.js";
+import {
+  DOCUMENT_COMPARISON_TOOL_NAMES,
+  DOCUMENT_TOOL_NAMES,
+} from "../shared/settings.js";
 import {
   Facts,
   Grid,
@@ -43,6 +46,14 @@ import {
   TextField,
   Toggle,
 } from "./fields.js";
+
+const COMPARISON_MODES: readonly {
+  readonly value: "contract" | "default";
+  readonly label: string;
+}[] = [
+  { value: "contract", label: "Контрактный" },
+  { value: "default", label: "Обычный" },
+];
 
 const PDF_MODES = [
   { value: "auto", label: "Автоматически" },
@@ -498,10 +509,182 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         </Grid>
       </Section>
 
+      <Section
+        title="Сравнение редакций"
+        reset={reset([
+          ["comparison", "enabled"],
+          ["comparison", "defaultMode"],
+          ["comparison", "detectMoves"],
+          ["comparison", "includeHeaders"],
+          ["comparison", "includeFooters"],
+          ["comparison", "includeFootnotes"],
+          ["comparison", "includeComments"],
+          ["comparison", "ignoreWhitespace"],
+          ["comparison", "ignoreFormatting"],
+          ["comparison", "maxNodes"],
+          ["comparison", "maxChanges"],
+          ["comparison", "timeoutMs"],
+          ["comparison", "inlineChanges"],
+          ["comparison", "pageSize"],
+        ])}
+      >
+        <Toggle
+          label="Детерминированное сравнение документов"
+          hint="Два инструмента: сравнение двух документов и постраничное чтение изменений. Пока выключено, они не регистрируются, а вызов отвечает отказом."
+          checked={
+            config?.comparison?.enabled ??
+            DEFAULT_DOCUMENTS_CONFIG.comparison.enabled
+          }
+          disabled={disabled}
+          onChange={(value) => {
+            write(["comparison", "enabled"], value);
+          }}
+        />
+        <Grid>
+          <SelectField
+            label="Режим по умолчанию"
+            value={
+              config?.comparison?.defaultMode ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.defaultMode
+            }
+            disabled={fieldDisabled}
+            options={COMPARISON_MODES}
+            hint="«Контрактный» включает верхние и нижние колонтитулы, сноски и комментарии и сворачивает только пробелы и оформление."
+            onCommit={(value) => {
+              write(["comparison", "defaultMode"], value);
+            }}
+          />
+          <NumberField
+            label="Изменений в ответе"
+            value={
+              config?.comparison?.inlineChanges ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.inlineChanges
+            }
+            min={0}
+            max={1_000}
+            disabled={fieldDisabled}
+            onCommit={(value) => {
+              write(["comparison", "inlineChanges"], value);
+            }}
+          />
+          <NumberField
+            label="Строк на страницу"
+            value={
+              config?.comparison?.pageSize ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.defaultLimit
+            }
+            min={1}
+            max={1_000}
+            disabled={fieldDisabled}
+            onCommit={(value) => {
+              write(["comparison", "pageSize"], value);
+            }}
+          />
+          <NumberField
+            label="Предел времени, мс"
+            value={
+              config?.comparison?.timeoutMs ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.timeoutMs
+            }
+            min={1_000}
+            max={3_600_000}
+            disabled={fieldDisabled}
+            onCommit={(value) => {
+              write(["comparison", "timeoutMs"], value);
+            }}
+          />
+          <NumberField
+            label="Максимум блоков"
+            value={
+              config?.comparison?.maxNodes ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.maxNodes
+            }
+            min={1}
+            max={5_000_000}
+            disabled={fieldDisabled}
+            onCommit={(value) => {
+              write(["comparison", "maxNodes"], value);
+            }}
+          />
+          <NumberField
+            label="Максимум изменений"
+            value={
+              config?.comparison?.maxChanges ??
+              DEFAULT_DOCUMENTS_CONFIG.comparison.maxChanges
+            }
+            min={1}
+            max={1_000_000}
+            disabled={fieldDisabled}
+            onCommit={(value) => {
+              write(["comparison", "maxChanges"], value);
+            }}
+          />
+        </Grid>
+        <Toggle
+          label="Отслеживать перемещения"
+          hint="Пункт, перенесённый в другой раздел без правок, показывается как перемещение, а не как удаление с добавлением."
+          checked={
+            config?.comparison?.detectMoves ??
+            DEFAULT_DOCUMENTS_CONFIG.comparison.detectMoves
+          }
+          disabled={fieldDisabled}
+          onChange={(value) => {
+            write(["comparison", "detectMoves"], value);
+          }}
+        />
+        <Toggle
+          label="Верхние и нижние колонтитулы"
+          hint="Сравнивать колонтитулы при области «весь документ»."
+          checked={
+            config?.comparison?.includeHeaders ??
+            DEFAULT_DOCUMENTS_CONFIG.comparison.includeHeaders
+          }
+          disabled={fieldDisabled}
+          onChange={(value) => {
+            write(["comparison", "includeHeaders"], value);
+            write(["comparison", "includeFooters"], value);
+          }}
+        />
+        <Toggle
+          label="Сноски и комментарии"
+          hint="Сноски и примечания становятся отдельными блоками сравнения."
+          checked={
+            config?.comparison?.includeFootnotes ??
+            DEFAULT_DOCUMENTS_CONFIG.comparison.includeFootnotes
+          }
+          disabled={fieldDisabled}
+          onChange={(value) => {
+            write(["comparison", "includeFootnotes"], value);
+            write(["comparison", "includeComments"], value);
+          }}
+        />
+        <Toggle
+          label="Сравнивать оформление"
+          hint="Выключено: различия в начертании не считаются изменением текста."
+          checked={
+            config?.comparison?.ignoreFormatting ??
+            DEFAULT_DOCUMENTS_CONFIG.comparison.ignoreFormatting
+          }
+          disabled={fieldDisabled}
+          onChange={(value) => {
+            write(["comparison", "ignoreFormatting"], value);
+          }}
+        />
+        <Notice>
+          Числа, проценты, валюты, даты и отрицания не нормализуются никогда.
+          Различия находит код, а модель объясняет уже найденное — по
+          идентификаторам изменений.
+        </Notice>
+      </Section>
+
       <Section title="Инструменты">
         <Facts
           rows={[
             ["Регистрирует", DOCUMENT_TOOL_NAMES.join(", ")],
+            [
+              "Сравнение",
+              `${DOCUMENT_COMPARISON_TOOL_NAMES.join(", ")} — только пока сравнение включено`,
+            ],
             [
               "Видимость",
               "инструменты становятся доступны чату только через allow-list развёртывания",

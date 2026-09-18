@@ -42,9 +42,29 @@ export function createArtifactId(now: number = Date.now()): string {
   return `doc_${createUlid(now)}`;
 }
 
-const ARTIFACT_ID_PATTERN = /^doc_[0-9A-HJKMNP-TV-Z]{26}$/u;
+/**
+ * A fresh comparison id: `cmp_<ULID>`. A comparison is an artifact like any
+ * other — same store, same root, same retention — and only its prefix says that
+ * its subject is a pair of documents rather than one.
+ */
+export function createComparisonId(now: number = Date.now()): string {
+  return `cmp_${createUlid(now)}`;
+}
 
-/** Whether a string is an artifact id this pipeline could have issued. */
+const DOCUMENT_ID_PATTERN = /^doc_[0-9A-HJKMNP-TV-Z]{26}$/u;
+const COMPARISON_ID_PATTERN = /^cmp_[0-9A-HJKMNP-TV-Z]{26}$/u;
+
+/** Whether a string is a document artifact id this pipeline could have issued. */
+export function isDocumentArtifactId(value: string): boolean {
+  return DOCUMENT_ID_PATTERN.test(value);
+}
+
+/** Whether a string is a comparison id this pipeline could have issued. */
+export function isComparisonId(value: string): boolean {
+  return COMPARISON_ID_PATTERN.test(value);
+}
+
+/** Whether a string is any artifact id this pipeline could have issued. */
 export function isArtifactId(value: string): boolean {
-  return ARTIFACT_ID_PATTERN.test(value);
+  return isDocumentArtifactId(value) || isComparisonId(value);
 }

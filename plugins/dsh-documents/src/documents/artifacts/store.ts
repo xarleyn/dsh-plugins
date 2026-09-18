@@ -35,7 +35,7 @@ import path from "node:path";
 
 import { DocumentError, asDocumentError } from "../errors.js";
 import { assertInsideRoot } from "../security/paths.js";
-import { createArtifactId, isArtifactId } from "./ids.js";
+import { createArtifactId, createComparisonId, isArtifactId } from "./ids.js";
 
 export interface FileFingerprint {
   readonly path: string;
@@ -82,12 +82,17 @@ export class ArtifactStore {
     return this.path(artifactId);
   }
 
-  /** Prepare a fresh bundle directory and return its id. */
+  /**
+   * Prepare a fresh bundle directory and return its id. `kind` selects the id
+   * prefix: a document artifact or a comparison, which share this root (§22).
+   */
   async create(
     now: number = Date.now(),
+    kind: "document" | "comparison" = "document",
   ): Promise<{ artifactId: string; dir: string }> {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const artifactId = createArtifactId(now);
+      const artifactId =
+        kind === "comparison" ? createComparisonId(now) : createArtifactId(now);
       const dir = this.artifactDir(artifactId);
       try {
         await mkdir(dir, { recursive: false });

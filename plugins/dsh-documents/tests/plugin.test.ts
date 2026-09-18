@@ -12,20 +12,27 @@ import DocumentsPlugin, {
 } from "../src/index.js";
 import { ConfigSchema } from "../src/schema.js";
 import { DOCUMENT_TOOL_NAMES } from "../src/shared/settings.js";
-import { DOCUMENT_TOOL_NAMES as REGISTERED_TOOL_NAMES } from "../src/documents/tools/index.js";
+import {
+  DOCUMENT_TOOL_NAMES as REGISTERED_TOOL_NAMES,
+  DOCUMENT_COMPARISON_TOOL_NAMES,
+} from "../src/documents/tools/index.js";
 import {
   DEFAULT_DOCUMENTS_CONFIG,
   applyDocumentsEnvOverrides,
 } from "../src/documents/config.js";
 import type { DocumentsConfig } from "../src/documents/config.js";
+import { DOCUMENT_COMPARISON_TOOL_NAMES as CARD_COMPARISON_TOOL_NAMES } from "../src/shared/settings.js";
 
 interface Stub {
   readonly ctx: Context;
   readonly registered: string[];
+  /** Plugin mounts the entry performed, by the config each was given. */
+  readonly mounted: { readonly providerName?: string }[];
 }
 
 function stubContext(): Stub {
   const registered: string[] = [];
+  const mounted: { readonly providerName?: string }[] = [];
   const ctx = {
     logger: {
       trace: () => {},
@@ -45,16 +52,20 @@ function stubContext(): Stub {
     effect: () => {},
     inject: () => {},
     get: () => undefined,
+    plugin: (_plugin: unknown, config: unknown) => {
+      mounted.push((config ?? {}) as { readonly providerName?: string });
+    },
   } as unknown as Context;
-  return { ctx, registered };
+  return { ctx, registered, mounted };
 }
 
 function plugin(config: DocumentsConfig = {}): {
   registered: string[];
+  mounted: { readonly providerName?: string }[];
   instance: DocumentsPlugin;
 } {
-  const { ctx, registered } = stubContext();
-  return { registered, instance: new DocumentsPlugin(ctx, config) };
+  const { ctx, registered, mounted } = stubContext();
+  return { registered, mounted, instance: new DocumentsPlugin(ctx, config) };
 }
 
 describe("documents plugin", () => {
@@ -65,27 +76,48 @@ describe("documents plugin", () => {
     expect(DocumentsPlugin.Config).toBe(ConfigSchema);
   });
 
-  test("registers exactly the five document tools", () => {
+  test("registers the five document tools and the comparison pair", () => {
     const { registered } = plugin();
-    expect(registered).toEqual([...REGISTERED_TOOL_NAMES]);
+    expect(registered).toEqual([
+      ...REGISTERED_TOOL_NAMES,
+      ...DOCUMENT_COMPARISON_TOOL_NAMES,
+    ]);
     expect(registered).toEqual([
       "document_create",
       "document_to_markdown",
       "document_from_url",
       "document_convert",
       "document_inspect",
+      "document_compare",
+      "document_diff_read",
     ]);
+    // The comparison tools exist only while the feature is on (§31).
+    const off = plugin({ comparison: { enabled: false } });
+    expect(off.registered).toEqual([...REGISTERED_TOOL_NAMES]);
   });
 
   test("the card's inventory cannot drift from the registered tools", () => {
     // The card renders its own copy of these names (it must not import the
     // tools module), so a mismatch would misdescribe the plugin in the UI.
     expect([...DOCUMENT_TOOL_NAMES]).toEqual([...REGISTERED_TOOL_NAMES]);
+    expect([...CARD_COMPARISON_TOOL_NAMES]).toEqual([
+      ...DOCUMENT_COMPARISON_TOOL_NAMES,
+    ]);
   });
 
   test("registers nothing at all while the pipeline is disabled", () => {
-    const { registered } = plugin({ enabled: false });
+    const { registered, mounted } = plugin({ enabled: false });
     expect(registered).toEqual([]);
+    expect(mounted).toEqual([]);
+  });
+
+  test("mounts the contract-review skill with the comparison it teaches", () => {
+    const on = plugin();
+    expect(on.mounted.map((config) => config.providerName)).toEqual([
+      "documents",
+    ]);
+    const off = plugin({ comparison: { enabled: false } });
+    expect(off.mounted).toEqual([]);
   });
 
   test("the config it resolves starts from the canonical defaults", () => {

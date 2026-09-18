@@ -8,6 +8,7 @@
  * which imports these values.
  */
 
+import type { ComparisonMode } from "./comparison/types.js";
 import { DEFAULT_ASSET_MIME_TYPES } from "./security/mime.js";
 import type {
   CreateFormat,
@@ -84,8 +85,38 @@ export interface QaDocumentsLimitsConfig {
   readonly allowedAssetMimeTypes?: readonly string[];
 }
 
+/**
+ * Deterministic comparison (comparison §5.1, §30).
+ *
+ * Nothing here names a threshold of the diff algorithm: those are constants in
+ * the code they belong to, and an operator tunes budgets and defaults, not the
+ * meaning of a change.
+ */
+export interface QaDocumentsComparisonConfig {
+  readonly enabled?: boolean;
+  readonly defaultMode?: ComparisonMode;
+  readonly detectMoves?: boolean;
+  readonly includeHeaders?: boolean;
+  readonly includeFooters?: boolean;
+  readonly includeFootnotes?: boolean;
+  readonly includeComments?: boolean;
+  readonly ignoreWhitespace?: boolean;
+  readonly ignoreFormatting?: boolean;
+  readonly maxInputBytes?: number;
+  readonly maxNodes?: number;
+  readonly maxChanges?: number;
+  readonly maxUncompressedBytes?: number;
+  readonly timeoutMs?: number;
+  readonly inlineChanges?: number;
+  readonly inlineTextCharsPerChange?: number;
+  readonly pageSize?: number;
+  readonly maxPageSize?: number;
+  readonly retainNormalizedDocuments?: boolean;
+}
+
 export interface DocumentsConfig {
   readonly enabled?: boolean;
+  readonly comparison?: QaDocumentsComparisonConfig;
   readonly storage?: QaDocumentsStorageConfig;
   readonly templates?: QaDocumentsTemplatesConfig;
   readonly create?: QaDocumentsCreateConfig;
@@ -102,8 +133,31 @@ export interface DocumentsConfig {
   readonly limits?: QaDocumentsLimitsConfig;
 }
 
+export interface ResolvedComparisonConfig {
+  readonly enabled: boolean;
+  readonly defaultMode: ComparisonMode;
+  readonly detectMoves: boolean;
+  readonly includeHeaders: boolean;
+  readonly includeFooters: boolean;
+  readonly includeFootnotes: boolean;
+  readonly includeComments: boolean;
+  readonly ignoreWhitespace: boolean;
+  readonly ignoreFormatting: boolean;
+  readonly maxInputBytes: number;
+  readonly maxNodes: number;
+  readonly maxChanges: number;
+  readonly maxUncompressedBytes: number;
+  readonly timeoutMs: number;
+  readonly inlineChanges: number;
+  readonly inlineTextCharsPerChange: number;
+  readonly defaultLimit: number;
+  readonly maxLimit: number;
+  readonly retainNormalizedDocuments: boolean;
+}
+
 export interface ResolvedDocumentsConfig {
   readonly enabled: boolean;
+  readonly comparison: ResolvedComparisonConfig;
   readonly storage: {
     readonly root: string | null;
     readonly retainSource: boolean;
@@ -175,6 +229,27 @@ export interface ResolvedDocumentsConfig {
 /** The canonical resolved configuration; the schema and resolver both use it. */
 export const DEFAULT_DOCUMENTS_CONFIG: ResolvedDocumentsConfig = Object.freeze({
   enabled: true,
+  comparison: Object.freeze({
+    enabled: true,
+    defaultMode: "contract",
+    detectMoves: true,
+    includeHeaders: true,
+    includeFooters: true,
+    includeFootnotes: true,
+    includeComments: false,
+    ignoreWhitespace: true,
+    ignoreFormatting: true,
+    maxInputBytes: 52_428_800,
+    maxNodes: 100_000,
+    maxChanges: 50_000,
+    maxUncompressedBytes: 268_435_456,
+    timeoutMs: 120_000,
+    inlineChanges: 20,
+    inlineTextCharsPerChange: 4_000,
+    defaultLimit: 20,
+    maxLimit: 200,
+    retainNormalizedDocuments: true,
+  }),
   storage: Object.freeze({
     root: null,
     retainSource: true,
