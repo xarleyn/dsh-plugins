@@ -22,6 +22,7 @@ src/
       transport.ts     HTTP-граница: разбор credential, таймаут, лимит размера
       config.ts        срез конфига и дефолты включённости
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     confluence/
       index.ts         ConfluenceProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
@@ -31,6 +32,7 @@ src/
       transport.ts     HTTP-граница: сайт из конфига, Basic-пара, повторы, лимит размера
       config.ts        список сайтов (SSRF-граница), политика пространств, бюджеты ответов
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     gitlab/
       index.ts         GitlabProvider: validate / execute / parseCredential
       catalog.ts       возможности (capability ↔ scope) и операции (operation ↔ POST-путь)
@@ -38,6 +40,7 @@ src/
       transport.ts     HTTP-граница: инстанс из конфига, PRIVATE-TOKEN, повторы, лимит размера
       config.ts        список инстансов (SSRF-граница) и операции
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     teamcity/
       index.ts         TeamcityProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
@@ -49,6 +52,7 @@ src/
       transport.ts     HTTP-граница: Bearer-токен, повторы, лимит размера, коды ошибок
       config.ts        срез конфига вместе с политикой адресов
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     testit/
       index.ts         TestitProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
@@ -57,6 +61,7 @@ src/
       transport.ts     HTTP-граница: PrivateToken, страницы (Pagination-*), лимит размера
       config.ts        список инсталляций (SSRF-граница), флаги, бюджеты
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     jira/
       index.ts         JiraProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь) + allow-list читающих путей
@@ -66,6 +71,7 @@ src/
       transport.ts     HTTP-граница: сайты из конфига, Basic email:token, повторы, лимит размера
       config.ts        список сайтов (SSRF-граница) и операции
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
     weblate/
       index.ts         WeblateProvider: validate / execute / parseCredential
       catalog.ts       возможности и операции (operation ↔ GET-путь), без единой записи
@@ -74,6 +80,7 @@ src/
       transport.ts     HTTP-граница: инстанс из конфига, `Authorization: Token`, пагинация из тела
       config.ts        список инстансов (SSRF-граница) и выключатели чтения
       tools.ts         model-visible тулы провайдера
+      credential-help.ts — что карточка говорит рядом с полем секрета
 ```
 
 ## Что должен реализовать новый провайдер (bitrix24, confluence, gitlab, jira, teamcity, testit, weblate, …)
@@ -122,7 +129,18 @@ src/
    токен), выбор инстанса едет тем же `options.instanceId`, а адрес заново
    резолвится из конфига оператора на каждом вызове: снятый из конфига инстанс
    отказывает (`CredentialRevoked`), а не переезжает на другой.
-5. Композиция — три строки: срез в `src/config.ts`, `providers.register(...)`
+5. `providers/<id>/credential-help.ts` — что карточка показывает рядом с полем
+   секрета: `kind` (механизм: `api-key`, `personal-access-token`, `oauth`,
+   `service-account`, `app-password`, `custom`), где секрет выпускают
+   (`obtain`), где описана авторизация (`docs`), шаги, список прав и
+   примечания. Это метаданные: ни значения credential, ни его снимка, ни
+   результата авторизации в них нет, адреса допускаются только `http(s)`, а
+   `http:` — лишь для локальных, приватных и self-hosted адресов
+   (`selfHosted: true`). Инструкции лучше держать короткими строками: UI сам
+   превращает многострочный текст в нумерованные шаги. Развёртывание заменяет
+   любое поле через `credentialHelp.<id>` в конфиге, а невалидный адрес
+   скрывает только свою ссылку и печатает предупреждение при старте.
+6. Композиция — три строки: срез в `src/config.ts`, `providers.register(...)`
    в `src/index.ts`, `create<Id>Tools(...)` в `src/tools.ts`.
 
 ## Правила, которые проверяет гейт пакета
@@ -132,6 +150,11 @@ src/
   не должно быть упоминаний конкретной интеграции: `pnpm verify:package`
   падает на `/bitrix|confluence|gitlab|jira|teamcity|testit|weblate/iu` вне каталога
   самого провайдера.
+- Каждый провайдер объявляет `credential-help.ts`: известный `kind`, хотя бы
+  один `https`-адрес и непустые строки без хвостовых пробелов. Адрес из этих
+  метаданных не попадает в клиентский бандл — браузер получает подсказку от
+  Host, — а сама карточка обязана показывать обычное поле секрета, когда
+  подсказки нет.
 - Каждая операция каталога обязана иметь обработчик, и наоборот.
 - Методы внешнего API в каталоге — только читающие.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.

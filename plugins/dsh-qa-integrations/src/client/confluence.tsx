@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useCallback, useEffect, useState } from "react";
 import type {
   IntegrationCapability,
@@ -8,6 +8,7 @@ import type {
   PolicyPatch,
 } from "../types.js";
 import { dateTime, failureCopy } from "./copy.js";
+import type { ProviderCardProps } from "./provider-card.js";
 
 export interface ConfluenceRemote {
   confluenceSites(
@@ -48,7 +49,7 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
 };
 
 export function createConfluenceCard(remote: ConfluenceRemote) {
-  return function ConfluenceCard({ token }: QaUserSettingsSectionProps) {
+  return function ConfluenceCard({ token, help }: ProviderCardProps) {
     const [sites, setSites] = useState<readonly IntegrationInstanceSummary[]>(
       [],
     );
@@ -261,10 +262,10 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
                 placeholder="ATATT…"
               />
             </label>
+            <CredentialHelpNote help={help} />
             <p className="dsh-qa-integrations__hint">
               Почта и токен хранятся в зашифрованном виде и после сохранения
-              больше не отображаются. Возьмите API token аккаунта, от имени
-              которого агент будет читать, и выпустите его в профиле Atlassian.
+              больше не отображаются.
             </p>
             <div className="dsh-qa-integrations__actions">
               <button

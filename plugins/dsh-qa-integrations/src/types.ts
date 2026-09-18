@@ -1,3 +1,5 @@
+import type { CredentialHelp } from "@yadsh/dsh-plugin-kit";
+
 export type IntegrationProviderId = string;
 export type IntegrationAuthKind = "token" | "oauth" | "mcp_token";
 export type IntegrationStatus = "pending" | "connected" | "error" | "revoked";
@@ -59,6 +61,12 @@ export interface IntegrationProviderSummary {
   readonly enabled: boolean;
   readonly authModes: readonly IntegrationAuthKind[];
   readonly capabilities: readonly IntegrationCapability[];
+  /**
+   * Where the credential for this provider comes from, as the provider declares
+   * it and the deployment may have overridden it. Metadata only: it never
+   * carries a credential value, and `null` means the card shows the plain field.
+   */
+  readonly credentialHelp: CredentialHelp | null;
 }
 
 /**

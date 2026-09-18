@@ -278,21 +278,33 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: catalog:tooling
         version: 26.4.0
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@types/react-dom':
+        specifier: catalog:frontend-dev
+        version: 18.3.7(@types/react@18.3.28)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
+      jsdom:
+        specifier: catalog:tooling
+        version: 26.1.0
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
+      react-dom:
+        specifier: catalog:frontend-dev
+        version: 18.3.1(react@18.3.1)
       typescript:
         specifier: catalog:tooling
         version: 5.9.3

@@ -3,6 +3,7 @@
  *
  * This private package provides small, focused development utilities:
  * - configuration validation
+ * - the `CredentialHelp` contract for credential help metadata
  * - `./client` scaffolding for browser bundles
  *
  * SQLite plumbing for stores that outgrow a JSON document lives behind the
@@ -10,6 +11,18 @@
  * entry point is imported by test helpers that run in browser-like
  * environments, where an eager Node import is a runtime error.
  */
+
+export {
+  CREDENTIAL_HELP_KINDS,
+  isCredentialHelpKind,
+  resolveCredentialHelp,
+  sanitizeCredentialHelpUrl,
+  type CredentialHelp,
+  type CredentialHelpKind,
+  type CredentialHelpLink,
+  type CredentialHelpOverride,
+  type ResolvedCredentialHelp,
+} from "./credential-help.js";
 
 /**
  * Validate a configuration object against a simple schema.

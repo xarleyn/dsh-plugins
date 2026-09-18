@@ -1,3 +1,7 @@
+import {
+  resolveCredentialHelp,
+  type CredentialHelp,
+} from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import type {
@@ -24,6 +28,7 @@ import {
   type WeblateProjectionContext,
   type WeblateRequest,
 } from "./operations.js";
+import { WEBLATE_CREDENTIAL_HELP } from "./credential-help.js";
 import {
   WeblateTransport,
   credentialFromPlaintext,
@@ -109,6 +114,10 @@ export class WeblateProvider implements IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   > = WEBLATE_CAPABILITY_INFO;
+  /** Where the settings card says this provider's credential comes from. */
+  readonly credentialHelp: CredentialHelp | null;
+  /** Overrides the deployment got wrong; reported once at startup, never fatal. */
+  readonly credentialHelpProblems: readonly string[];
 
   private readonly transport: WeblateTransport;
 
@@ -118,6 +127,12 @@ export class WeblateProvider implements IntegrationProvider {
   ) {
     this.transport = new WeblateTransport(config, config.weblate, fetcher);
     this.capabilities = Object.freeze(enabledCapabilities(config.weblate));
+    const help = resolveCredentialHelp(
+      WEBLATE_CREDENTIAL_HELP,
+      config.credentialHelp["weblate"],
+    );
+    this.credentialHelp = help.help;
+    this.credentialHelpProblems = help.problems;
   }
 
   /**

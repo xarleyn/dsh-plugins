@@ -30,6 +30,7 @@ export class IntegrationBroker {
       enabled: true,
       authModes: ["token"],
       capabilities: provider.capabilities,
+      credentialHelp: provider.credentialHelp,
     }));
   }
 

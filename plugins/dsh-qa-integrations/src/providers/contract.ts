@@ -1,3 +1,4 @@
+import type { CredentialHelp } from "@yadsh/dsh-plugin-kit";
 import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
@@ -22,6 +23,17 @@ export interface IntegrationProvider {
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
   >;
+  /**
+   * Where this provider's credential comes from, as it declares it and the
+   * deployment may have overridden it; `null` when the deployment hid the help.
+   * Metadata only — a credential value never travels in this shape.
+   */
+  readonly credentialHelp: CredentialHelp | null;
+  /**
+   * What the deployment got wrong while overriding the help. Non-fatal by
+   * design: a broken help address hides a link, it never disables a provider.
+   */
+  readonly credentialHelpProblems?: readonly string[];
   /** Capability a provider operation needs, or undefined when it is unknown. */
   operationCapability(operation: string): IntegrationCapability | undefined;
   /**

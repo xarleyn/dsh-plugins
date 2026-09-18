@@ -5,7 +5,15 @@
  * self-contained after each plugin's tsdown build inlines it.
  */
 export { PLUGIN_CARD_SHELL_CSS } from "./plugin-card-css.js";
+export { CREDENTIAL_HELP_CSS } from "./credential-help-css.js";
 export { ChevronDown } from "./chevron.js";
+export {
+  CREDENTIAL_HELP_ACTIONS,
+  CredentialHelpNote,
+  credentialHelpView,
+  type CredentialHelpNoteProps,
+  type CredentialHelpView,
+} from "./credential-help.js";
 export { CardShell, type CardShellProps } from "./card-shell.js";
 export {
   SETTINGS_PLUGIN_ITEM_SLOT,

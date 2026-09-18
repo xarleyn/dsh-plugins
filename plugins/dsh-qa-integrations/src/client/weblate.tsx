@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useState } from "react";
 import type {
   IntegrationInstanceSummary,
@@ -92,7 +93,7 @@ export function createWeblateCard(remote: WeblateRemote) {
       patch: (token, patch) => remote.patchWeblatePolicy(token, patch),
       disconnect: (token) => remote.disconnectWeblate(token),
     },
-    credentialSection: (state) => {
+    credentialSection: (state, help) => {
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
@@ -137,11 +138,10 @@ export function createWeblateCard(remote: WeblateRemote) {
               placeholder="wlu_…"
             />
           </label>
+          <CredentialHelpNote help={help} />
           <p className="dsh-qa-integrations__hint">
             Токен хранится в зашифрованном виде и после сохранения больше не
-            отображается. Для минимума прав возьмите токен проекта (
-            <code>wlp_…</code>): он ограничен одним проектом. Права чтения и
-            записи всё равно определяет сам Weblate.
+            отображается.
           </p>
           <div className="dsh-qa-integrations__actions">
             <button

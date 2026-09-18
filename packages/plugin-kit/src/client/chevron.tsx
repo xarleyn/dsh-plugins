@@ -5,11 +5,18 @@ import type { ReactElement } from "react";
  * 14x14 inline SVG stroked with `currentColor` (round caps and joins).
  * Font glyphs must not be used for this shape — their appearance and
  * baseline vary by font and encoding.
+ *
+ * The shell class is the default; a control outside the card body passes its
+ * own class and keeps this path, so the shape stays one shape across the UI.
  */
-export function ChevronDown(): ReactElement {
+export function ChevronDown({
+  className = "dsh-plugin-card__chevron",
+}: {
+  readonly className?: string;
+} = {}): ReactElement {
   return (
     <svg
-      className="dsh-plugin-card__chevron"
+      className={className}
       viewBox="0 0 14 14"
       fill="none"
       aria-hidden="true"

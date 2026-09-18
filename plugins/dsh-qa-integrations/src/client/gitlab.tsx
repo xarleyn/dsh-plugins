@@ -1,4 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
+import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useState } from "react";
 import type {
   IntegrationInstanceSummary,
@@ -85,7 +86,7 @@ export function createGitlabCard(remote: GitlabRemote) {
       patch: (token, patch) => remote.patchGitlabPolicy(token, patch),
       disconnect: (token) => remote.disconnectGitlab(token),
     },
-    credentialSection: (state) => {
+    credentialSection: (state, help) => {
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
@@ -130,11 +131,10 @@ export function createGitlabCard(remote: GitlabRemote) {
               placeholder="glpat-…"
             />
           </label>
+          <CredentialHelpNote help={help} />
           <p className="dsh-qa-integrations__hint">
             Токен хранится в зашифрованном виде и после сохранения больше не
-            отображается. Хватит read-scope: <code>read_api</code> (или{" "}
-            <code>read_user</code> для профиля и <code>read_repository</code>{" "}
-            для кода).
+            отображается.
           </p>
           <div className="dsh-qa-integrations__actions">
             <button

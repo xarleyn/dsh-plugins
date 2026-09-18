@@ -9,6 +9,18 @@ bundle, which keeps published browser bundles self-contained.
 ## Features
 
 - Configuration validation (`validateConfig`)
+- Credential help metadata: the `CredentialHelp` contract a provider declares
+  for the field that asks for a token or key — the credential mechanism
+  (`kind`), where the credential is obtained, which documentation describes the
+  authorization, the required permissions and the steps to follow. The contract
+  itself (`resolveCredentialHelp`, `sanitizeCredentialHelpUrl`,
+  `CredentialHelpOverride`) is metadata only: it never carries a credential
+  value, a snapshot or an authorization result, and it carries no imports, so
+  the same module is used by host code and by a browser bundle. Two rules come
+  with it: only `http(s)` addresses survive sanitizing (`http:` only for
+  loopback, private and self-hosted hosts, and never with a credential or
+  `javascript:`/`data:`/`file:` inside), and a deployment overrides any field
+  per provider without touching the stored credential.
 - `SqliteDatabase`: SQLite plumbing for stores that outgrow a JSON document —
   records plus append-only audit logs that would otherwise be read, parsed and
   rewritten whole on every mutation. The helper owns WAL (so a plugin's CLI can
@@ -21,7 +33,12 @@ bundle, which keeps published browser bundles self-contained.
   bundles — canonical `dsh-plugin-card` shell CSS (`PLUGIN_CARD_SHELL_CSS`),
   `ChevronDown`, `CardShell`, `registerSettingsCard` /
   `registerSettingsSlot` / `injectCardStyles`,
-  `bindSettingsExternalStore`, and `startVisibilityAwarePolling`.
+  `bindSettingsExternalStore`, and `startVisibilityAwarePolling`. It also ships
+  the credential-help note itself: `CredentialHelpNote` renders the trigger and
+  its disclosure panel (`credentialHelpView` turns metadata into the view, and
+  `CREDENTIAL_HELP_CSS` carries its rules). The note renders inside any settings
+  card — `settings.plugin.item`, a feature-owned tab, the Models page's
+  provider cards — and renders nothing at all when there is no metadata.
 
 ## Workspace usage
 
