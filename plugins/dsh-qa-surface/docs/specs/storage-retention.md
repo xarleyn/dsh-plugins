@@ -156,6 +156,15 @@ and it drops a record only for an id it positively identified as a child: here
 the grace period is unnecessary — a chat is never a child — while the evidence
 is not.
 
+A second sweep on the same throttle reclaims records of **delegated children**
+— subagent sessions, which are not chats and never legitimately carry a record.
+It reads its lineage from the durable listing rather than `ctx.sessions`,
+because those sessions have usually finished and been dismantled by the time
+the record exists at all (that is how they were claimed in the first place),
+and it drops a record only for an id it positively identified as a child: here
+the grace period is unnecessary — a chat is never a child — while the evidence
+is not.
+
 The frozen `capabilitySnapshot` is not dropped but **deduplicated**: it is a
 function of the installed policy, and on the stand 25 snapshots held the same
 content. Snapshots move to their own table keyed by the SHA-256 of their

@@ -27,6 +27,8 @@ const disconnected: IntegrationSummary = {
   externalAccountName: null,
   credentialConfigured: false,
   credentialUpdatedAt: null,
+  credentialSource: "personal",
+  service: null,
   capabilities: ["identity.read"],
   capabilityInfo: GITLAB_CAPABILITY_INFO,
   policy: [],

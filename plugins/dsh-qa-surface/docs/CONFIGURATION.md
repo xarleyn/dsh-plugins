@@ -444,14 +444,26 @@ session is created.
 Neither mode approves anything on its own — a person answers, or the call is
 refused. The sibling `interaction.questions` knob works the same way for
 `ask_user_question`: `unsupported` refuses the request with a reason the model
-can act on, `interactive` parks it as a form the operator fills in (options,
-free text, explicit skip and cancel); a skipped question is reported as skipped,
-never guessed. The QA listener is owned by the plugin context, so it wraps every
-composed gate for attested chats (delegated children included) and leaves every
-other session's approval flow untouched. The required `approvalPolicy: never`
-remains an independent fail-closed backstop for asks that reach the approval
-service directly, and the tool allow-list, workspace fence and read-only sandbox
-still run on the resolved call.
+can act on, `interactive` (its synonym `enabled` is accepted too) parks it as a
+form the operator fills in (options, free text, explicit skip and cancel); a
+skipped question is reported as skipped, never guessed. While the form is up it
+takes the composer's place — the operator is answering a tool call that is
+already open — and the run's Stop moves into the form's header, so the turn can
+still be ended. A parked request is live only while the agent that asked is
+running: the tool's own abort signal settles it, the asking agent going idle
+settles it, and a settled request leaves the screen because the page keeps
+reading the Host's list while a form is visible. Enabling the mode needs the tool
+as well as the toggle: the agent preset must mount
+`@deepseek-ai/dsh-tool-ask-user` and `lockdown.toolPolicy.allow` must name
+`ask_user_question`. A deployment that satisfies only one of the two gets a
+`question.config-incomplete` warning per attested session on the operator's log,
+naming which half is missing; the chat still opens, and an ask the gate refuses
+reaches the model as that actionable reason. The QA listener is owned by the
+plugin context, so it wraps every composed gate for attested chats (delegated
+children included) and leaves every other session's approval flow untouched. The
+required `approvalPolicy: never` remains an independent fail-closed backstop for
+asks that reach the approval service directly, and the tool allow-list, workspace
+fence and read-only sandbox still run on the resolved call.
 
 ## Documents (moved to its own plugin)
 

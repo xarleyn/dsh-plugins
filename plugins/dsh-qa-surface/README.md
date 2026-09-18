@@ -27,7 +27,8 @@ Session and Agent Loop.
 - blocks unsupported approvals/questions instead of auto-approving them, and can
   park them for the operator to answer (`interaction.approvals: interactive`,
   `interaction.questions: interactive`) instead of refusing or stalling on a
-  card the QA view cannot show;
+  card the QA view cannot show; a parked question takes the composer's place
+  until it is answered or its turn ends;
 - pins locked sessions to the configured `read-only` or isolated
   `workspace-write` policy plus `approval=never` before Send is enabled;
 - applies a Host-side tool allow-list plus a monotonic execution guard;
@@ -189,7 +190,9 @@ config:
     # interactive: park it over the composer for the operator to answer.
     approvals: blocked
     # unsupported: refuse ask_user_question with an actionable reason.
-    # interactive: park the request over the composer as an answerable form.
+    # interactive (or enabled): park the request over the composer as an
+    # answerable form, which owns the composer until it is answered or the
+    # turn ends.
     questions: unsupported
   # Root-page entry behavior (optional; see "Serving the QA rig over the LAN").
   entry:

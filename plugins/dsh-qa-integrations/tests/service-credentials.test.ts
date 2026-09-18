@@ -112,6 +112,7 @@ function fakeProvider(options: {
         { label: capability, hint: `${capability} hint` },
       ]),
     ),
+    credentialHelp: null,
     operationCapability: (operation) => OPERATIONS[operation]?.capability,
     operationMetadata: (operation) =>
       operation === "records.unclassified"

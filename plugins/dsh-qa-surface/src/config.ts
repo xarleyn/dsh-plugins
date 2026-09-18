@@ -93,7 +93,9 @@ const configSchema = z.object({
         .union(["blocked", "interactive"] as const)
         .default(D.interaction.approvals),
       questions: z
-        .union(["unsupported", "interactive"] as const)
+        // `enabled` is the synonym of `interactive` a feature request asked
+        // for; the resolver folds it into the one name the config carries.
+        .union(["unsupported", "interactive", "enabled"] as const)
         .default(D.interaction.questions),
     })
     .default({ ...D.interaction }),

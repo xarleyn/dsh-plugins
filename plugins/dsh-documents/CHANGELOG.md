@@ -1,3 +1,33 @@
+## 0.2.0 (2026-09-17)
+
+### 🚀 Features
+
+- Name the document retention effect after the plugin that owns it. ([7d008a1](https://github.com/xarleyn/dsh-plugins/commit/7d008a1))
+
+  The document pipeline began life inside QA Surface, and one leftover from that
+  move survived in the logs: the retention sweep's Cordis effect was registered
+  as `dsh-qa-surface.documents-retention`, so a Host operator reading the log
+  saw the document retention teardown attributed to a plugin that no longer owns
+  it. The effect id is now `dsh-documents.documents-retention`, matching the
+  plugin's other effect ids and its settings namespace. Nothing changes at
+  runtime — the id is a log/teardown label, and the sweep itself is untouched.
+
+
+### 🩹 Fixes
+
+- Refresh document-pipeline examples to follow the repository's public ([dc105c7](https://github.com/xarleyn/dsh-plugins/commit/dc105c7))
+  documentation conventions. No runtime behavior changes.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+- Updated @yadsh/dsh-plugin-kit to 0.2.0
+
+### ❤️ Thank You
+
+- Codex incident cleanup @noreply
+- xarleyn @xarleyn
+
 ## 0.1.0 (2026-09-16)
 
 ### 🚀 Features

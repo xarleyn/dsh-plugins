@@ -317,7 +317,7 @@ describe("QA accounts store", () => {
 
   it("creates the accounts file readable by its owner only", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-mode-"));
-    const filePath = path.join(dir, "qa-accounts.json");
+    const filePath = path.join(dir, "qa-accounts.db");
     new QaAccounts(filePath, {
       sessionTtlDays: 30,
       allowRegistration: true,

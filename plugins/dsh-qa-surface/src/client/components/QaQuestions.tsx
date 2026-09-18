@@ -12,6 +12,13 @@ export interface QaQuestionsProps {
     answers: readonly QaQuestionAnswerItem[],
   ) => Promise<void>;
   readonly onCancel: (requestId: string) => Promise<void>;
+  /**
+   * Stop the turn the questions belong to. The form takes the composer's
+   * place, so the run's own stop action moves here: an operator who does not
+   * want to answer must still be able to end the turn instead.
+   */
+  readonly onStop?: () => Promise<void>;
+  readonly canStop?: boolean;
 }
 
 /** What the operator has entered for one question so far. */
@@ -241,6 +248,24 @@ export const QaQuestions = memo(function QaQuestions(props: QaQuestionsProps) {
   if (props.questions.length === 0) return null;
   return (
     <div className="dsh-qa-questions" aria-label="Вопросы помощника">
+      {props.onStop === undefined ? null : (
+        <div className="dsh-qa-questions__bar">
+          <span className="dsh-qa-questions__note">
+            Ход ждёт ответа на вопрос
+          </span>
+          <button
+            type="button"
+            className="dsh-qa-question__button dsh-qa-question__button--stop"
+            disabled={props.canStop !== true}
+            onClick={() => void props.onStop?.()}
+          >
+            <svg viewBox="0 0 18 18" aria-hidden="true">
+              <rect x="5.25" y="5.25" width="7.5" height="7.5" rx="1.5" />
+            </svg>
+            Остановить
+          </button>
+        </div>
+      )}
       {props.questions.map((request) => (
         <QaQuestionForm
           key={request.id}

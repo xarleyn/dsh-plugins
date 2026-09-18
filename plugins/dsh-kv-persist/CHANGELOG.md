@@ -1,3 +1,17 @@
+## 0.2.6 (2026-09-17)
+
+### 🩹 Fixes
+
+- Internal cleanup: package verification gates now run through the shared `@yadsh/dsh-plugin-scripts` runner (added as a devDependency). No runtime behavior changed. ([c8b9d2f](https://github.com/xarleyn/dsh-plugins/commit/c8b9d2f))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.5 (2026-09-15)
 
 ### 🩹 Fixes

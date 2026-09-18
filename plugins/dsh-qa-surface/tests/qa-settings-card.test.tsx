@@ -267,6 +267,76 @@ describe("QA Surface card", () => {
     expect(screen.getByText("нет связи")).toBeTruthy();
   });
 
+  it("shows the question seam and warns when its tool is not allowed", async () => {
+    await renderCard({
+      describe: async () => ({
+        ok: true as const,
+        value: resolveConfig({
+          route: { path: "/assistant" },
+          lockdown: { toolPolicy: { allow: ["read"] } },
+          interaction: { questions: "interactive" },
+        }),
+      }),
+    });
+    openCard();
+    await waitFor(() => {
+      expect(
+        within(section("Состояние")).getByText("формой в чате"),
+      ).toBeTruthy();
+    });
+    // The seam is on, and nothing can ever ask: the status view names the half
+    // that is missing instead of leaving a toggle that does nothing.
+    expect(
+      within(section("Состояние")).getByText(
+        /не входит в список\s+разрешённых/u,
+      ),
+    ).toBeTruthy();
+  });
+
+  it("warns when the question tool is allowed but questions are refused", async () => {
+    await renderCard({
+      describe: async () => ({
+        ok: true as const,
+        value: resolveConfig({
+          route: { path: "/assistant" },
+          lockdown: { toolPolicy: { allow: ["read", "ask_user_question"] } },
+          interaction: { questions: "unsupported" },
+        }),
+      }),
+    });
+    openCard();
+    await waitFor(() => {
+      expect(
+        within(section("Состояние")).getByText("отклоняются"),
+      ).toBeTruthy();
+    });
+    expect(
+      within(section("Состояние")).getByText(/каждый\s+запрос модели/u),
+    ).toBeTruthy();
+  });
+
+  it("stays quiet while the question seam and the tool policy agree", async () => {
+    await renderCard({
+      describe: async () => ({
+        ok: true as const,
+        value: resolveConfig({
+          route: { path: "/assistant" },
+          lockdown: { toolPolicy: { allow: ["read", "ask_user_question"] } },
+          interaction: { questions: "interactive" },
+        }),
+      }),
+    });
+    openCard();
+    await waitFor(() => {
+      expect(
+        within(section("Состояние")).getByText("формой в чате"),
+      ).toBeTruthy();
+    });
+    expect(
+      within(section("Состояние")).queryByText(/ask_user_question/u),
+    ).toBeNull();
+  });
+
   it("writes a path-addressed mutation when a control changes", async () => {
     const { mutate } = await renderCard();
     openCard();

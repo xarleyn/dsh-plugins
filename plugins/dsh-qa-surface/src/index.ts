@@ -431,6 +431,11 @@ export class QaSurface extends TypertRemoteService {
       enabled: resolvedEntry.enabled,
       route: resolvedEntry.route.path,
       sessionPolicy: resolvedEntry.session.policy,
+      // What the two parked-interaction seams resolve to on this deployment:
+      // the attestation path warns per session when the question seam and the
+      // tool policy disagree, and this is the config they are read against.
+      approvals: resolvedEntry.interaction.approvals,
+      questions: resolvedEntry.interaction.questions,
     });
   }
 

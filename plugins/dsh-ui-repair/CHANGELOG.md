@@ -1,3 +1,18 @@
+## 0.2.3 (2026-09-17)
+
+### 🩹 Fixes
+
+- Internal cleanup: package verification gates (including the client-bundle card contract) now import the canonical module from `@yadsh/dsh-plugin-scripts`. No runtime behavior changed. ([c8b9d2f](https://github.com/xarleyn/dsh-plugins/commit/c8b9d2f))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+- Updated @yadsh/dsh-plugin-kit to 0.2.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.2 (2026-09-15)
 
 ### 🩹 Fixes

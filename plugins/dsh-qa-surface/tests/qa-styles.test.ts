@@ -73,4 +73,14 @@ describe("QA surface stylesheet", () => {
       ".dsh-qa-header__actions{display:flex;align-items:center;flex:none;gap:10px;margin-left:auto}",
     ]);
   });
+
+  it("hides the composer slot a parked question takes over", () => {
+    // The takeover marks the composer's slot with the `hidden` attribute and
+    // keeps the component mounted behind it, so the sheet has to make that
+    // attribute mean display:none — otherwise the composer would still take
+    // the flow under the form, and the operator could type into it.
+    expect(QA_SURFACE_STYLES).toContain(
+      ".dsh-qa-composer-slot[hidden]{display:none}",
+    );
+  });
 });

@@ -895,10 +895,11 @@ describe("QA session controller", () => {
       createdAt: 1,
       delegated: false,
     };
-    const pendingApprovals = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true as const, value: [request] })
-      .mockResolvedValue({ ok: true as const, value: [] });
+    let parked: readonly (typeof request)[] = [];
+    const pendingApprovals = vi.fn(async () => ({
+      ok: true as const,
+      value: parked,
+    }));
     const answerApproval = vi.fn(async () => ({
       ok: true as const,
       value: true,
@@ -909,15 +910,20 @@ describe("QA session controller", () => {
       approvalApi: { pendingApprovals, answerApproval },
     });
     await controller.ensureSession();
-    // Nothing is parked until a turn runs, so the poll follows the turn.
-    expect(pendingApprovals).not.toHaveBeenCalled();
+    // Binding reads what the Host parks even before a turn reports itself:
+    // that is how a request survives a reload. This chat has none yet.
+    await vi.waitFor(() => {
+      expect(pendingApprovals).toHaveBeenCalledWith("", "created-1");
+    });
+    expect(controller.getSnapshot().approvals).toEqual([]);
+    parked = [request];
     const face = world.faces.get("created-1");
     face?.source.set({ ...face.source.getSnapshot(), running: true });
     await vi.waitFor(() => {
       expect(controller.getSnapshot().approvals).toEqual([request]);
     });
-    expect(pendingApprovals).toHaveBeenCalledWith("", "created-1");
 
+    parked = [];
     await controller.answerApproval("request-1", "allowed-once");
     expect(answerApproval).toHaveBeenCalledWith(
       "",
@@ -946,10 +952,11 @@ describe("QA session controller", () => {
         },
       ],
     };
-    const pendingQuestions = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true as const, value: [request] })
-      .mockResolvedValue({ ok: true as const, value: [] });
+    let parked: readonly (typeof request)[] = [];
+    const pendingQuestions = vi.fn(async () => ({
+      ok: true as const,
+      value: parked,
+    }));
     const answerQuestion = vi.fn(async () => ({
       ok: true as const,
       value: true,
@@ -964,14 +971,17 @@ describe("QA session controller", () => {
       questionApi: { pendingQuestions, answerQuestion, cancelQuestion },
     });
     await controller.ensureSession();
-    expect(pendingQuestions).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(pendingQuestions).toHaveBeenCalledWith("", "created-1");
+    });
+    parked = [request];
     const face = world.faces.get("created-1");
     face?.source.set({ ...face.source.getSnapshot(), running: true });
     await vi.waitFor(() => {
       expect(controller.getSnapshot().questions).toEqual([request]);
     });
-    expect(pendingQuestions).toHaveBeenCalledWith("", "created-1");
 
+    parked = [];
     await controller.answerQuestion("question-1", [
       { id: "target", selected: ["В чат"] },
     ]);
@@ -982,6 +992,104 @@ describe("QA session controller", () => {
 
     await controller.cancelQuestion("question-1");
     expect(cancelQuestion).toHaveBeenCalledWith("", "created-1", "question-1");
+    controller.dispose();
+  });
+
+  it("recovers a question parked before the page was reloaded", async () => {
+    // A reload re-binds the chat before any turn reports itself over the fresh
+    // stream. The question the model is still waiting on is Host state, so the
+    // page has to ask for it on binding: an empty composer with the agent
+    // waiting behind it is exactly the state this must never leave behind.
+    const world = harness();
+    const request = {
+      id: "question-1",
+      sessionId: "created-1",
+      createdAt: 1,
+      questions: [
+        {
+          id: "target",
+          question: "Куда писать отчёт?",
+          header: null,
+          detail: null,
+          multiSelect: false,
+          options: [{ label: "В чат", description: null }],
+        },
+      ],
+    };
+    const pendingQuestions = vi.fn(async () => ({
+      ok: true as const,
+      value: [request],
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { questions: "interactive" } }),
+      questionApi: {
+        pendingQuestions,
+        answerQuestion: vi.fn(async () => ({ ok: true as const, value: true })),
+        cancelQuestion: vi.fn(async () => ({ ok: true as const, value: true })),
+      },
+    });
+    await controller.ensureSession();
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().questions).toEqual([request]);
+    });
+    // Nothing is running, and the composer still belongs to the question.
+    expect(controller.getSnapshot().phase).toBe("ready");
+    expect(controller.getSnapshot().canSend).toBe(false);
+    expect(await controller.send("не туда")).toBe(false);
+    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("takes a settled question off the screen once its turn is over", async () => {
+    const world = harness();
+    const request = {
+      id: "question-1",
+      sessionId: "created-1",
+      createdAt: 1,
+      questions: [
+        {
+          id: "target",
+          question: "Куда писать отчёт?",
+          header: null,
+          detail: null,
+          multiSelect: false,
+          options: [{ label: "В чат", description: null }],
+        },
+      ],
+    };
+    let parked: readonly (typeof request)[] = [request];
+    const pendingQuestions = vi.fn(async () => ({
+      ok: true as const,
+      value: parked,
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ interaction: { questions: "interactive" } }),
+      questionApi: {
+        pendingQuestions,
+        answerQuestion: vi.fn(async () => ({ ok: true as const, value: true })),
+        cancelQuestion: vi.fn(async () => ({ ok: true as const, value: true })),
+      },
+    });
+    await controller.ensureSession();
+    const face = world.faces.get("created-1");
+    face?.source.set({ ...face.source.getSnapshot(), running: true });
+    await vi.waitFor(() => {
+      expect(controller.getSnapshot().questions).toEqual([request]);
+    });
+    // The turn is stopped and the Host settles what it can no longer answer:
+    // the form has to leave the screen instead of staying as a live-looking
+    // control nothing reads.
+    parked = [];
+    face?.source.set({ ...face.source.getSnapshot(), running: false });
+    await vi.waitFor(
+      () => {
+        expect(controller.getSnapshot().questions).toEqual([]);
+      },
+      { timeout: 4000 },
+    );
+    expect(controller.getSnapshot().canSend).toBe(true);
     controller.dispose();
   });
 

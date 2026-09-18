@@ -21,6 +21,9 @@ function world(
     unmounted?: readonly string[];
     /** Turn the sources feature on, including the reporter fallback. */
     sources?: boolean;
+    /** How the question seam is configured, and what the policy may call. */
+    questions?: "unsupported" | "interactive";
+    allow?: readonly string[];
   } = {},
 ) {
   const workspace = mkdtempSync(path.join(tmpdir(), "qa-resume-"));
@@ -78,7 +81,7 @@ function world(
     () =>
       resolveConfig({
         session: { workspaceId: "workspace-1" },
-        lockdown: { toolPolicy: { allow: ["read"] } },
+        lockdown: { toolPolicy: { allow: [...(options.allow ?? ["read"])] } },
         sources:
           options.sources === true
             ? {
@@ -91,6 +94,9 @@ function world(
                 },
               }
             : { enabled: false },
+        ...(options.questions === undefined
+          ? {}
+          : { interaction: { questions: options.questions } }),
       }),
     {
       debug() {},
@@ -187,6 +193,58 @@ describe("agent materialization in policy admission", () => {
     expect(proof.toolAllowList).toEqual(["read"]);
     expect(restricted).toEqual([["read", "qa_report_sources"]]);
     admission.dispose();
+  });
+
+  it("warns when questions are answered but the tool is not allowed", async () => {
+    // Interactive questions without the tool in the policy: the model has no
+    // way to ask at all, so the operator would wait for a form that can never
+    // appear. The chat still opens — this is a configuration warning.
+    const { admission, logged } = world({
+      live: true,
+      questions: "interactive",
+      allow: ["read"],
+    });
+    const proof = await admission.secureSession("token", "session-cold");
+    expect(proof.sessionId).toBe("session-cold");
+    expect(logged.join("\n")).toContain("question.config-incomplete");
+    expect(logged.join("\n")).toContain("ask_user_question");
+    expect(logged.join("\n")).toContain("not-allowed");
+    admission.dispose();
+  });
+
+  it("warns when the tool is allowed but questions are refused", async () => {
+    // The reverse mismatch: the model may ask, and every ask is refused. The
+    // refusal is actionable, so nothing hangs, but the deployment should know
+    // it is paying for a tool the surface will not answer.
+    const { admission, logged } = world({
+      live: true,
+      questions: "unsupported",
+      allow: ["read", "ask_user_question"],
+    });
+    await admission.secureSession("token", "session-cold");
+    expect(logged.join("\n")).toContain("question.config-incomplete");
+    expect(logged.join("\n")).toContain("unsupported");
+    admission.dispose();
+  });
+
+  it("stays quiet when the question seam and the tool policy agree", async () => {
+    const interactive = world({
+      live: true,
+      questions: "interactive",
+      allow: ["read", "ask_user_question"],
+    });
+    await interactive.admission.secureSession("token", "session-cold");
+    expect(interactive.logged.join("\n")).not.toContain(
+      "question.config-incomplete",
+    );
+    interactive.admission.dispose();
+
+    const refused = world({ live: true, questions: "unsupported" });
+    await refused.admission.secureSession("token", "session-cold");
+    expect(refused.logged.join("\n")).not.toContain(
+      "question.config-incomplete",
+    );
+    refused.admission.dispose();
   });
 
   it("pins host-trusted principal-scoped tools without exposing them as config", async () => {

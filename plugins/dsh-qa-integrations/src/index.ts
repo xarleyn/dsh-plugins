@@ -32,11 +32,7 @@ import { IntegrationRepository } from "./repository.js";
 import { DockerSecretKeyProvider } from "./secrets/key-provider.js";
 import { SecretStore } from "./secrets/secret-store.js";
 import { ServiceCredentialRegistry } from "./service-credentials/registry.js";
-import {
-  createIntegrationTools,
-  INTEGRATION_TOOL_NAMES,
-  integrationToolNames,
-} from "./tools.js";
+import { createIntegrationTools, integrationToolNames } from "./tools.js";
 import type {
   CredentialInput,
   CredentialSource,

@@ -1,3 +1,22 @@
+## 0.4.0 (2026-09-17)
+
+### 🚀 Features
+
+- Export the shared structural logging contract `PluginLoggerLike` and the ([146c89a](https://github.com/xarleyn/dsh-plugins/commit/146c89a))
+  `silentPluginLogger()` stub from the package instead of per-plugin copies.
+
+  Server plugins keep their services and tool factories on a narrow
+  `debug`/`info`/`warn`/`error` surface so tests can inject a stub while the
+  entrypoint binds the real logger; until now every plugin declared that
+  contract (and its silent stand-in) in its own `src/logging.ts`. The contract
+  now lives next to `PluginLogger`, which satisfies it structurally, so
+  `dsh-cas-results`, `dsh-git-readonly` and `dsh-tool-offload` re-export the
+  identical surface from this package.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.1 (2026-09-15)
 
 ### 🩹 Fixes

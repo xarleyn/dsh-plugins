@@ -337,6 +337,18 @@ describe("qa surface config", () => {
     ).toEqual({ approvals: "blocked", questions: "interactive" });
   });
 
+  it("reads the documented `enabled` spelling of the question seam", () => {
+    // A deployment may write either name; the resolved config carries one, so
+    // every reader below compares against a single value.
+    expect(resolveConfig({ interaction: { questions: "enabled" } })).toEqual(
+      resolveConfig({ interaction: { questions: "interactive" } }),
+    );
+    expect(
+      resolveConfig(schemaParse({ interaction: { questions: "enabled" } }))
+        .interaction.questions,
+    ).toBe("interactive");
+  });
+
   it("requires explicit reset authorization when the reset control is shown", () => {
     expect(() => resolveConfig({ ui: { showReset: true } })).toThrow(
       /allowSessionReset/u,

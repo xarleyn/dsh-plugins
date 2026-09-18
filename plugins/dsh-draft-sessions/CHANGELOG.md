@@ -1,3 +1,17 @@
+## 0.3.3 (2026-09-17)
+
+### 🩹 Fixes
+
+- Internal cleanup: the client-bundle gate now asserts the ModuleLoader registration (window.__ModuleLoader__.load) explicitly next to the factory id. No runtime changes. ([73113f3](https://github.com/xarleyn/dsh-plugins/commit/73113f3))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.3.2 (2026-09-15)
 
 ### 🩹 Fixes

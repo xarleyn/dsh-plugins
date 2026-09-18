@@ -1,6 +1,23 @@
-import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
+import type {
+  QaQuestionInteraction,
+  QaQuestionInteractionInput,
+  QaSurfaceConfig,
+  ResolvedQaSurfaceConfig,
+} from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { optionalText } from "./shared.js";
+
+/**
+ * One name in the resolved config: the `enabled` spelling a deployment may
+ * write for the question seam resolves to `interactive`, which is what every
+ * reader below compares against.
+ */
+function resolveQuestionInteraction(
+  value: QaQuestionInteractionInput | undefined,
+): QaQuestionInteraction {
+  if (value === "enabled") return "interactive";
+  return value ?? DEFAULT_QA_SURFACE_CONFIG.interaction.questions;
+}
 
 export function normalizeRoutePath(value: string): string {
   const trimmed = value.trim();
@@ -74,9 +91,7 @@ export function resolveBasics(input: QaSurfaceConfig): BasicsSlice {
       approvals:
         input.interaction?.approvals ??
         DEFAULT_QA_SURFACE_CONFIG.interaction.approvals,
-      questions:
-        input.interaction?.questions ??
-        DEFAULT_QA_SURFACE_CONFIG.interaction.questions,
+      questions: resolveQuestionInteraction(input.interaction?.questions),
     }),
   };
 }
