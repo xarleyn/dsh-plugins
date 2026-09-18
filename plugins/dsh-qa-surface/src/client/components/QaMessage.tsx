@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
+  QaCommandActivity,
   QaFileView,
   QaMessage as QaMessageModel,
   QaImageView,
@@ -9,6 +10,14 @@ import type {
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
+
+/** The outcome line of a command row; the row already carries the name. */
+function commandStateCopy(activity: QaCommandActivity): string {
+  if (activity.state === "running") return "Выполняется…";
+  const text = activity.resultText?.trim() ?? "";
+  if (text !== "") return text;
+  return activity.state === "success" ? "Готово" : "Не удалось выполнить";
+}
 
 function QaAttachedImage({
   image,
@@ -364,6 +373,40 @@ export const QaMessage = memo(
       },
       [],
     );
+    if (message.role === "system" && message.command !== undefined) {
+      // A human command never enters the model conversation, so this row is
+      // the only place its life cycle is visible. It is a control line, not a
+      // message: no avatar, no bubble, no markdown.
+      const activity = message.command;
+      return (
+        <article
+          className="dsh-qa-command"
+          data-state={activity.state}
+          aria-label="Команда"
+        >
+          <span className="dsh-qa-command__line">
+            <span className="dsh-qa-command__name">{`/${activity.name}`}</span>
+            {(activity.args ?? "") === "" ? null : (
+              <span className="dsh-qa-command__args">{activity.args}</span>
+            )}
+          </span>
+          <span className="dsh-qa-command__state">
+            {activity.state === "running" ? (
+              <span className="dsh-qa-command__spinner" aria-hidden="true" />
+            ) : (
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                {activity.state === "success" ? (
+                  <path d="m3.5 8.25 3 3 6-6.5" />
+                ) : (
+                  <path d="m4.5 4.5 7 7m0-7-7 7" />
+                )}
+              </svg>
+            )}
+            <span>{commandStateCopy(activity)}</span>
+          </span>
+        </article>
+      );
+    }
     if (message.role === "system" && message.notice !== undefined) {
       return (
         <details className="dsh-qa-notice">

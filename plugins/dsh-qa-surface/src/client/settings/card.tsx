@@ -50,6 +50,7 @@ import {
   InterfaceSection,
   LockdownSection,
   SessionSection,
+  SlashSection,
   SourcesSection,
   StatusSection,
   type ConfigProps,
@@ -272,6 +273,7 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
           <SessionSection {...sectionProps} />
           <InterfaceSection {...sectionProps} />
           <LockdownSection {...sectionProps} />
+          <SlashSection {...sectionProps} />
           <AccountsSection {...sectionProps} />
           <SourcesSection {...sectionProps} />
           <AttachmentsSection {...sectionProps} />

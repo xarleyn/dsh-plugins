@@ -158,11 +158,6 @@ export function LockdownSection(props: ConfigProps) {
                 note: "allowPermissionChanges",
               },
               {
-                label: "Слеш-команды",
-                value: "запрещены",
-                note: "allowSlashCommands",
-              },
-              {
                 label: "Правка настроек",
                 value: "запрещена",
                 note: "allowSettingsMutation",
@@ -182,6 +177,8 @@ export function LockdownSection(props: ConfigProps) {
           <p className="qa-card-muted">
             Эти значения не настраиваются: конфигурация с любым из включённых
             флагов отвергается хостом, поэтому карточка их не предлагает.
+            Слеш-действия — исключение: их мастер-выключатель и политика живут в
+            отдельной секции ниже.
           </p>
         </div>
       </details>

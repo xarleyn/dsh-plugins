@@ -4,6 +4,7 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaSessionState,
+  QaSlashView,
   QaSubagentView,
   QaTurnSources,
   ResolvedQaSurfaceConfig,
@@ -32,6 +33,8 @@ export interface QaBoundProjectionInput {
   readonly admissionPending: boolean;
   readonly chatsRevision: number;
   readonly viewingSubagent: QaSubagentView | null;
+  /** Slash catalog state of this chat; the controller owns its lifetime. */
+  readonly slash: QaSlashView;
   readonly config: ResolvedQaSurfaceConfig;
   /**
    * The chat's subagent display names keyed by session id, read from the
@@ -137,5 +140,11 @@ export function projectBoundSessionState(
     viewingSubagent: input.viewingSubagent,
     approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
     questions: input.compatibilityReadOnly === true ? [] : input.questions,
+    // A read-only binding issues no Host operation at all, and running a
+    // command is one — the policy gate closes the palette with everything else.
+    slash:
+      input.compatibilityReadOnly === true
+        ? { ...input.slash, enabled: false, entries: [] }
+        : input.slash,
   };
 }

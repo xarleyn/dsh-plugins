@@ -499,6 +499,42 @@ export function projectTranscript(
           ...(view === undefined ? {} : { notice: view }),
         },
       });
+    } else if (node.kind === "command") {
+      // Human commands are durable events, not messages: the Host writes
+      // `command/run` and `command/done` into the session log and the model
+      // never sees either. Projecting them here is what makes the row land in
+      // the right place in the transcript and survive a reload.
+      const name = node.name;
+      if (name !== null) {
+        const args = (node.args ?? "").replace(/^[\t\n\r ]+/u, "");
+        output.push({
+          order: node.seq,
+          message: {
+            id: `command:${node.seq}`,
+            role: "system",
+            text: `/${name}`,
+            status: node.outcome?.kind === "error" ? "error" : "info",
+            timestamp: node.time,
+            command: {
+              commandId: String(node.commandId),
+              name,
+              ...(args === "" ? {} : { args }),
+              state:
+                node.outcome === null
+                  ? "running"
+                  : node.outcome.kind === "success"
+                    ? "success"
+                    : "error",
+              ...(node.outcome?.text === undefined
+                ? {}
+                : { resultText: node.outcome.text }),
+              ...(node.outcome?.sourceEventSeq === undefined
+                ? {}
+                : { sourceEventSeq: node.outcome.sourceEventSeq }),
+            },
+          },
+        });
+      }
     } else if (node.kind === "turn-error") {
       erroredTurns.set(node.turn, node.code);
       output.push({

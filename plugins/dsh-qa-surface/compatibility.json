@@ -27,6 +27,11 @@
       "workspaceRegistry.get",
       "skills.registerProvider",
       "skills.change"
+    ],
+    "optionalFeatures": [
+      "sessionSkillCatalog.list (the session's user-invocable skill catalog; without it the palette offers no skills)",
+      "commands.list (the session agent's effective commands; without it the palette offers no commands)",
+      "commands.execute (the native command runtime the slashExecute remote calls)"
     ]
   },
   "qaSurfacePanelExtensions": {

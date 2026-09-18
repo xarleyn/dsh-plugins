@@ -6,6 +6,7 @@ import { QaComposer } from "../src/client/components/QaComposer.js";
 import type { QaAttachmentDraft, QaSource } from "../src/types.js";
 import { QaMessage } from "../src/client/components/QaMessage.js";
 import { DEFAULT_ATTACHMENT_LIMITS } from "./helpers/attachments.js";
+import { DISABLED_SLASH_VIEW, DEFAULT_SLASH_POLICY } from "./helpers/slash.js";
 
 const LIMITS = DEFAULT_ATTACHMENT_LIMITS;
 
@@ -247,7 +248,10 @@ describe("QA message", () => {
         running={false}
         showStop
         status={null}
+        slash={DISABLED_SLASH_VIEW}
+        slashPolicy={DEFAULT_SLASH_POLICY}
         onSend={vi.fn(async () => true)}
+        onSlashOpen={vi.fn()}
         onStop={vi.fn()}
       />,
     );
@@ -278,13 +282,18 @@ describe("QA message", () => {
         showStop
         status={null}
         onSend={onSend}
+        slash={DISABLED_SLASH_VIEW}
+        slashPolicy={DEFAULT_SLASH_POLICY}
+        onSlashOpen={vi.fn()}
         onStop={vi.fn()}
       />,
     );
     const input2 = screen.getByLabelText("Задать вопрос");
     fireEvent.change(input2, { target: { value: "Смотри" } });
     fireEvent.keyDown(input2, { key: "Enter" });
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith("Смотри", drafts));
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith("Смотри", drafts, null),
+    );
     expect(onAttachmentsChange).toHaveBeenCalledWith([]);
   });
 
@@ -301,7 +310,10 @@ describe("QA message", () => {
         running={false}
         showStop
         status={null}
+        slash={DISABLED_SLASH_VIEW}
+        slashPolicy={DEFAULT_SLASH_POLICY}
         onSend={vi.fn(async () => true)}
+        onSlashOpen={vi.fn()}
         onStop={vi.fn()}
       />,
     );

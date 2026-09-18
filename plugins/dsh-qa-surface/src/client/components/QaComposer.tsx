@@ -1,5 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { QaAttachmentDraft } from "../../types.js";
+import type {
+  QaAttachmentDraft,
+  QaSlashView,
+  ResolvedQaSlashCommands,
+} from "../../types.js";
 import {
   attachmentAccept,
   draftFromFile,
@@ -7,6 +11,8 @@ import {
   type QaAttachmentLimits,
 } from "../attachments.js";
 import type { QaQuickQuestion } from "../types.js";
+import { QaSlashPalette } from "../slash/SlashPalette.js";
+import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 
 export interface QaComposerProps {
@@ -21,15 +27,29 @@ export interface QaComposerProps {
   readonly attachments: readonly QaAttachmentDraft[];
   /** Deployment policy: accepted kinds, ceilings and the paste threshold. */
   readonly limits: QaAttachmentLimits;
+  /** Slash catalog of this chat; inert while the master switch is off. */
+  readonly slash: QaSlashView;
+  readonly slashPolicy: ResolvedQaSlashCommands["palette"];
   readonly onAttachmentsChange: (
     attachments: readonly QaAttachmentDraft[],
   ) => void;
+  /**
+   * `pick` names the entry the user chose in the palette, while the draft
+   * still reads as its invocation. It is what disambiguates a skill and a
+   * command that share a name; `null` means the draft alone decides.
+   */
   readonly onSend: (
     text: string,
     attachments: readonly QaAttachmentDraft[],
+    pick: string | null,
   ) => Promise<boolean>;
+  /** Called when the palette opens, so the caller can revalidate the catalog. */
+  readonly onSlashOpen: () => void;
   readonly onStop: () => Promise<void>;
 }
+
+/** Stable id stem so `aria-activedescendant` can point at a palette row. */
+const SLASH_LIST_ID = "dsh-qa-slash";
 
 function AttachIcon() {
   return (
@@ -56,6 +76,25 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const limits = props.limits;
   const images = attachments.filter((item) => item.kind === "image");
   const files = attachments.filter((item) => item.kind === "file");
+  const setDraftAtEnd = (text: string) => {
+    setDraft(text);
+    // The caret must land after the inserted invocation, not at the position
+    // the value it replaced happened to have.
+    queueMicrotask(() => {
+      const element = textarea.current;
+      if (element === null) return;
+      element.focus();
+      element.setSelectionRange(text.length, text.length);
+    });
+  };
+  const navigation = useSlashNavigation({
+    draft,
+    slash: props.slash,
+    maxVisible: props.slashPolicy.maxVisible,
+    fuzzySearch: props.slashPolicy.fuzzySearch,
+    reopen: props.slash.reopen,
+    setDraft: setDraftAtEnd,
+  });
   const remove = (id: string) => {
     props.onAttachmentsChange(
       attachments.filter((candidate) => candidate.id !== id),
@@ -65,9 +104,13 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     const text = textOverride ?? draft;
     if (submitting || !props.canSend) return;
     if (text.trim() === "" && attachments.length === 0) return;
+    // An explicit text (a quick question) is an ordinary prompt by
+    // construction: it never carries a palette pick, even while one is
+    // pending in the draft it is replacing.
+    const pick = textOverride === undefined ? navigation.picked : undefined;
     setSubmitting(true);
     try {
-      if (await props.onSend(text, attachments)) {
+      if (await props.onSend(text, attachments, pick?.id ?? null)) {
         setDraft("");
         props.onAttachmentsChange([]);
       }
@@ -105,6 +148,10 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   useEffect(() => {
     if (!props.running) textarea.current?.focus();
   }, [props.running]);
+
+  useEffect(() => {
+    if (navigation.open) props.onSlashOpen();
+  }, [navigation.open, props.onSlashOpen]);
 
   useLayoutEffect(() => {
     const element = textarea.current;
@@ -149,6 +196,20 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
             </button>
           ))}
         </div>
+      ) : null}
+      {navigation.open ? (
+        <QaSlashPalette
+          idPrefix={SLASH_LIST_ID}
+          rows={navigation.rows}
+          activeId={navigation.activeId}
+          state={props.slash.state}
+          error={props.slash.error}
+          commandSurface={props.slash.commandSurface}
+          showDescriptions={props.slashPolicy.showDescriptions}
+          showKindBadge={props.slashPolicy.showKindBadge}
+          onHover={navigation.hover}
+          onPick={navigation.pick}
+        />
       ) : null}
       <div className="dsh-qa-composer">
         {files.length === 0 ? null : (
@@ -233,7 +294,43 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
             setAttachmentError(null);
             props.onAttachmentsChange([...attachments, attachment]);
           }}
+          role="combobox"
+          aria-expanded={navigation.open}
+          aria-controls={navigation.open ? `${SLASH_LIST_ID}-list` : undefined}
+          aria-activedescendant={
+            navigation.activeId === null
+              ? undefined
+              : `${SLASH_LIST_ID}-option-${String(navigation.active)}`
+          }
           onKeyDown={(event) => {
+            if (navigation.open) {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                navigation.move(event.key === "ArrowDown" ? 1 : -1);
+                return;
+              }
+              if (event.key === "Tab") {
+                // Tab inserts, it does not complete-and-run: the user still
+                // has to write the argument and press Enter again.
+                event.preventDefault();
+                navigation.pickActive();
+                return;
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                navigation.dismiss();
+                return;
+              }
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                navigation.pickActive();
+                return;
+              }
+            }
             if (
               event.key === "Enter" &&
               !event.shiftKey &&

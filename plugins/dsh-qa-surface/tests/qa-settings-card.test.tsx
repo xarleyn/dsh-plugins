@@ -231,6 +231,7 @@ describe("QA Surface card", () => {
       "Сессия",
       "Интерфейс",
       "Блокировка",
+      "Слеш-действия",
       "Аккаунты",
       "Источники",
       "Вложения",
@@ -396,6 +397,57 @@ describe("QA Surface card", () => {
     });
     openCard();
     expect(screen.getByText(/Блокировка выключена/u)).toBeTruthy();
+  });
+
+  describe("slash section", () => {
+    it("states that nothing below has an effect while the switch is off", async () => {
+      await renderCard();
+      openCard();
+      expect(screen.getByText(/Слэш-действия выключены/u)).toBeTruthy();
+    });
+
+    it("writes the master switch through the lockdown path", async () => {
+      const { mutate } = await renderCard();
+      openCard();
+      const slash = section("Слеш-действия");
+      fireEvent.click(
+        within(slash).getByRole("checkbox", {
+          name: /Разрешить слэш-действия/u,
+        }),
+      );
+      await settle();
+      expect(mutate).toHaveBeenCalledWith([
+        { op: "set", path: ["lockdown", "allowSlashCommands"], value: true },
+      ]);
+    });
+
+    it("keeps the allow list inert until its mode asks for one", async () => {
+      await renderCard();
+      openCard();
+      const slash = section("Слеш-действия");
+      // The default skills mode is allow-list, so its field is live; commands
+      // default to deny-all and theirs is not.
+      const fields = within(slash).getAllByRole("textbox");
+      expect((fields[0] as HTMLTextAreaElement).disabled).toBe(false);
+      expect((fields[1] as HTMLTextAreaElement).disabled).toBe(true);
+    });
+
+    it("warns about the legacy compatibility mode", async () => {
+      await renderCard({
+        describe: async () => ({
+          ok: true as const,
+          value: resolveConfig({
+            lockdown: { allowSlashCommands: true },
+          } as never),
+        }),
+      });
+      openCard();
+      await waitFor(() => {
+        expect(
+          screen.getByText(/устаревший режим совместимости/u),
+        ).toBeTruthy();
+      });
+    });
   });
 
   it("warns when the data-usage notice is hidden", async () => {

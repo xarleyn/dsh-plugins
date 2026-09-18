@@ -7,6 +7,7 @@ import {
 import { DEFAULT_QA_SURFACE_CONFIG } from "./config-resolvers/defaults.js";
 import { resolveLockdown } from "./config-resolvers/lockdown.js";
 import { resolveSession } from "./config-resolvers/session.js";
+import { resolveSlashCommands } from "./config-resolvers/slash-commands.js";
 import { resolveSources } from "./config-resolvers/sources.js";
 import { uniquePhrases, uniqueQuestions } from "./config-resolvers/shared.js";
 import { resolveTools } from "./config-resolvers/tools.js";
@@ -27,6 +28,12 @@ export function resolveConfig(
   const session = resolveSession(input);
   const ui = resolveUi(input);
   const lockdown = resolveLockdown(input, ui);
+  // The master switch belongs to lockdown; the slash resolver receives its
+  // resolved value rather than reading the raw flag a second time.
+  const slashCommands = resolveSlashCommands(
+    input,
+    lockdown.allowSlashCommands,
+  );
   const sources = resolveSources(input);
   const attachments = resolveAttachments(input);
   const tools = resolveTools(input);
@@ -45,6 +52,7 @@ export function resolveConfig(
     ),
     interaction: basics.interaction,
     lockdown,
+    slashCommands,
     embedding: basics.embedding,
     accounts,
     entry: basics.entry,

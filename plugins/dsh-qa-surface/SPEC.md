@@ -674,14 +674,17 @@ QA user can:
   - submit text questions;
   - receive assistant answers;
   - stop the current turn;
-  - optionally start a fresh QA session.
+  - optionally start a fresh QA session;
+  - invoke the skills and commands the deployment admits, when
+    `lockdown.allowSlashCommands` is on (§17.1) — with nothing added to any
+    other line of this list by doing so.
 
 QA user cannot:
   - change the agent preset;
   - change workspace/cwd;
   - change model/provider/reasoning mode;
   - change permissions/sandbox/approval policy;
-  - invoke DSH slash commands;
+  - invoke a DSH slash command the deployment did not admit by name;
   - mutate settings;
   - open arbitrary existing sessions;
   - rename/delete sessions;
@@ -1304,16 +1307,35 @@ QaTranscript
 
 MVP QA input must treat normal text as text.
 
-Do not expose the DSH slash-command menu.
+The slash interface is opt-in and off by default. Without
+`lockdown.allowSlashCommands: true` a `/`-leading line is refused with a
+message and never reaches the model, which is the behaviour every existing
+deployment keeps.
 
-If the public `Session.prompt()` path bypasses slash-command adjudication, that is desirable for the QA surface.
+When it is on, QA is a presentation and admission layer over the native DSH
+mechanisms and nothing more:
 
-If the selected DSH API automatically interprets slash commands, document it and either:
+- a **skill** is invoked by the ordinary `Session.prompt()` path carrying the
+  `/name` gesture; the native skill consumer injects the instructions, so QA
+  never reads a `SKILL.md` and never injects one itself;
+- a **human command** is answered by the native command runtime through
+  `slashExecute`; it never becomes a model message, and its life cycle
+  (`command/run` / `command/done`) is projected from the session log as a
+  control row rather than a bubble.
 
-- escape/disable them for QA;
-- or explicitly allow them through config.
+Admission belongs to the Host, twice over: the catalog it hands the browser is
+already cut down by `slashCommands.skills` / `slashCommands.commands` and by the
+chat's role, and `slashExecute` re-derives the command name from the line it is
+given and re-checks the policy against the deployment's own config. Client-side
+filtering is never authorization.
 
-Default must favor predictable QA text behavior.
+Skills are admitted at `all` only in the legacy compatibility case (the switch
+on, no `slashCommands` section); commands are never part of that fallback, so
+an upgrade cannot hand a user a control-plane command nobody named.
+
+The slash interface widens nothing: sandbox mode, tool allow-list, permission
+preset and approval policy are untouched by it, and a skill invoked by hand
+carries exactly the permissions the same skill has when the model loads it.
 
 ---
 
