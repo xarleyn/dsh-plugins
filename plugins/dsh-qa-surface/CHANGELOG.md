@@ -290,7 +290,6 @@
 
 ### ❤️ Thank You
 
-- Codex incident cleanup @noreply
 - xarleyn @xarleyn
 
 ## 0.7.4 (2026-09-16)
