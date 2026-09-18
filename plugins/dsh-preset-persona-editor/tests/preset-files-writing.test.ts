@@ -8,216 +8,24 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { readFile, stat, writeFile } from "node:fs/promises";
+import { describe, expect, it } from "vitest";
 
 import {
-  readCatalog,
   readDocument,
   type PresetRosterFace,
 } from "../src/host/preset-reader.js";
-import {
-  resetPersona,
-  savePersona as writePreset,
-  type WriteContext,
-} from "../src/host/preset-writer.js";
+import { resetPersona } from "../src/host/preset-writer.js";
 import { DEFAULT_LIMITS, type PersonaLimits } from "../src/host/validation.js";
-import type { PersonaDraft, PresetDraft } from "../src/types.js";
-
-/**
- * The persona-only form of a save: these tests all start from a preset with no
- * prompt sections, so the sections half is empty.
- */
-function savePersona(
-  context: WriteContext,
-  id: string,
-  persona: Partial<PersonaDraft> | undefined,
-  expectedRevision: string,
-): ReturnType<typeof writePreset> {
-  const draft: Partial<PresetDraft> = {
-    persona: persona as PersonaDraft,
-    sections: [],
-  };
-  return writePreset(context, id, draft, expectedRevision);
-}
-
-/** A composition with a persona row and one row this editor must not touch. */
-const OWNED_PRESET = [
-  "- id: persona",
-  "  name: '@deepseek-ai/dsh-persona'",
-  "  config:",
-  "    prefix: You are the shipped demo persona.",
-  "",
-  "- id: tool-shell",
-  "  name: '@deepseek-ai/dsh-tool-bash'",
-  "",
-].join("\n");
-
-/** A composition that inherits the deployment's persona. */
-const INHERITED_PRESET = [
-  "- id: tool-shell",
-  "  name: '@deepseek-ai/dsh-tool-bash'",
-  "",
-].join("\n");
-
-const DRAFT: PersonaDraft = {
-  prefix: "You are a careful reviewer.\nPrefer small, reviewable changes.",
-  suffix: "Answer in the user's language.",
-  complete: false,
-  includeRuntimeContext: false,
-};
-
-let root = "";
-let writes = 0;
-
-/** Write one composition into the temporary root. */
-async function preset(text: string, id = `preset-${writes}`): Promise<string> {
-  writes += 1;
-  const directory = join(root, id);
-  await rm(directory, { recursive: true, force: true });
-  const { mkdir } = await import("node:fs/promises");
-  await mkdir(directory, { recursive: true });
-  const path = join(directory, "agent.cordis.yml");
-  await writeFile(path, text, "utf8");
-  return path;
-}
-
-/** A roster over the presets a test registered, keyed by id. */
-function rosterOf(
-  entries: Record<string, { path: string; trust: "system" | "user" }>,
-  defaultId = "",
-): PresetRosterFace {
-  const resolve = async (id?: string) => {
-    const entry = entries[id ?? ""];
-    if (entry === undefined) throw new Error("agent-preset/not-found");
-    return {
-      id: id ?? "",
-      trust: entry.trust,
-      path: entry.path,
-      name: `preset ${id ?? ""}`,
-    };
-  };
-  return {
-    list: async () =>
-      await Promise.all(
-        Object.keys(entries).map(async (id) => await resolve(id)),
-      ),
-    resolve,
-    authorable: Object.values(entries).some((entry) => entry.trust === "user"),
-    defaultId,
-    copy: async () => undefined,
-  };
-}
-
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "preset-persona-"));
-});
-
-afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
-});
-
-describe("reading presets", () => {
-  it("reports a local persona with its four values", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
-    const document = await readDocument(roster, undefined, "demo");
-    expect(document.persona).toEqual({
-      prefix: "You are the shipped demo persona.",
-      suffix: "",
-      complete: false,
-      includeRuntimeContext: true,
-    });
-    expect(document.hasRow).toBe(true);
-    expect(document.editable).toBe(true);
-    expect(document.rowCount).toBe(2);
-    expect(document.revision).toMatch(/^[0-9a-f]{64}$/u);
-  });
-
-  it("reports the inherited state when the preset has no persona row", async () => {
-    const path = await preset(INHERITED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
-    const document = await readDocument(roster, undefined, "demo");
-    expect(document.hasRow).toBe(false);
-    expect(document.persona.prefix).toBe("");
-    expect(document.persona.includeRuntimeContext).toBe(true);
-  });
-
-  it("marks a shipped preset as not editable, and unreadable files as such", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({
-      shipped: { path, trust: "system" },
-      missing: {
-        path: join(root, "nowhere", "agent.cordis.yml"),
-        trust: "user",
-      },
-    });
-    const catalog = await readCatalog(roster);
-    expect(catalog.authorable).toBe(true);
-    const shipped = catalog.presets.find((row) => row.id === "shipped");
-    expect(shipped?.editable).toBe(false);
-    expect(shipped?.trust).toBe("system");
-    const missing = catalog.presets.find((row) => row.id === "missing");
-    expect(missing?.persona).toBe("unreadable");
-    expect(missing?.editable).toBe(false);
-    expect(missing?.revision).toBe("");
-  });
-
-  it("reports an ambiguous preset instead of guessing", async () => {
-    const path = await preset(
-      [
-        "- id: persona",
-        "  name: '@deepseek-ai/dsh-persona'",
-        "  config:",
-        "    prefix: first",
-        "",
-        "- id: persona-two",
-        "  name: '@deepseek-ai/dsh-persona'",
-        "  config:",
-        "    prefix: second",
-        "",
-      ].join("\n"),
-    );
-    const roster = rosterOf({ demo: { path, trust: "user" } });
-    const document = await readDocument(roster, undefined, "demo");
-    expect(document.hasRow).toBe(false);
-    expect(document.extraRows).toBe(1);
-  });
-
-  it("reports the failure of a composition that is not a list", async () => {
-    const path = await preset("id: persona\n");
-    const roster = rosterOf({ demo: { path, trust: "user" } });
-    const document = await readDocument(roster, undefined, "demo");
-    expect(document.editable).toBe(false);
-    expect(document.readError).toMatch(/not a YAML list/u);
-  });
-
-  it("uses the deployment's own section orders", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
-    const document = await readDocument(
-      roster,
-      {
-        getSectionOrder: (name) =>
-          name === "DEPLOYMENT_PERSONA_PREFIX" ? -1000 : 9900,
-      },
-      "demo",
-    );
-    expect(document.prefixOrder).toBe(-1000);
-    expect(document.suffixOrder).toBe(9900);
-  });
-
-  it("answers the editor's not-found code for an unknown preset", async () => {
-    const roster = rosterOf({});
-    await expect(
-      readDocument(roster, undefined, "ghost"),
-    ).rejects.toMatchObject({
-      code: "preset-persona/not-found",
-    });
-  });
-});
+import type { PersonaDraft } from "../src/types.js";
+import {
+  DRAFT,
+  INHERITED_PRESET,
+  OWNED_PRESET,
+  preset,
+  rosterOf,
+  savePersona,
+} from "./preset-files.helpers.js";
 
 describe("writing presets", () => {
   const context = (
