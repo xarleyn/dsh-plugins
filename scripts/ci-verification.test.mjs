@@ -56,7 +56,12 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   );
   assert.match(
     workflow,
-    /- name: Check version plans\s+if: github\.event_name == 'pull_request'\s+run: pnpm release:check --base="\$NX_BASE" --head="\$NX_HEAD"/u,
+    /- name: Check version plans\s+run: pnpm release:check --base="\$NX_BASE" --head="\$NX_HEAD"/u,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /- name: Check version plans\s+if:/u,
+    "a pushed commit needs the plan gate as much as a pull request does",
   );
   assert.ok(
     workflow.indexOf("- name: Check version plans") <

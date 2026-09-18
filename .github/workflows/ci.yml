@@ -61,8 +61,12 @@ jobs:
       - name: Test repository tooling
         run: pnpm test:release
 
+      # Both events: a commit reaches main without a pull request, and a change
+      # to a publishable package that arrives without a version plan is one the
+      # release can neither version nor document. The gate resolves the wave
+      # tag itself, so it answers the same question for a push and a pull
+      # request.
       - name: Check version plans
-        if: github.event_name == 'pull_request'
         run: pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
       - name: Select affected projects

@@ -45,9 +45,12 @@ through OIDC.
 2. Run `pnpm release:plan` and select the affected public packages.
 3. Commit the generated Markdown plan with the implementation.
 4. Run `pnpm check`, `pnpm deps:check`, and `pnpm tarball:verify`.
-5. Open a PR. CI checks that every publishable package whose commits no release
-   tag covers yet is named by a plan. A pull request into a `dsh-v*` release
-   branch runs the same checks as one into `main`.
+5. Open a PR — or push, since the gate runs on both. CI checks that every
+   publishable package whose commits no release tag covers yet is named by a
+   plan. A pull request into a `dsh-v*` release branch runs the same checks as
+   one into `main`, and a commit pushed straight to `main` is checked by the
+   same gate: a plan that only a PR would have required is one the release
+   needs just as much when the commit arrives without one.
 
 A plan file must open with its `---` front-matter fence. Nx silently ignores a
 plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
@@ -83,16 +86,21 @@ without publishing or tagging. Nx commits the versions and changelogs but
 removes the consumed version plans outside that commit, so the workflow stages
 the workspace and folds the removal into the release commit before that commit
 leaves the prepare job. It then selects the released packages, checks that every
-one of them already exists on npm, and fans the validation out: one runner per
+one of them already exists on npm — reporting any version npm has ahead of the
+repository, which the wave adopts rather than republishes — and that every
+dependency range the wave would publish resolves to a version this wave
+publishes or npm already has, and fans the validation out: one runner per
 released package verifies it, packs its tarball and installs that tarball into a
 clean npm environment, while a second job runs the repository-wide gates and an
 Nx sweep over every project the release does not publish. Between them the two
 jobs verify the whole workspace exactly once. Only once every job has passed
-does one runner publish the versioned projects through npm OIDC, and only once
-npm has every version does it tag the release wave with one `release/<date>`
-tag, push the release commit and the tag, and create one GitHub Release for the
-whole wave, with every `.tgz` attached and each package's changelog entry in the
-notes.
+does one runner publish the versioned projects through npm OIDC in dependency
+order — a package whose dependency did not publish is held back instead of
+published broken — and only once npm has every version, and each of them
+installs from the registry, does it tag the release wave with one
+`release/<date>` tag, push the release commit and the tag, and create one
+GitHub Release for the whole wave, with every `.tgz` attached and each package's
+changelog entry in the notes.
 
 The release commit exists only on the prepare runner, so the jobs below it work
 on a fresh checkout of the released ref plus a patch of that commit — every
@@ -104,7 +112,9 @@ The order is the point: the branch never advances to a state the registry does
 not already reflect. A release that fails at any step before the push leaves
 the branch exactly as it was, version plans included, so it is fixed by
 rerunning the workflow rather than by hand-publishing versions and repairing
-tags afterwards.
+tags afterwards. A publish that stops partway is finished by the same rerun:
+versions npm already has are adopted, and nothing is published that installs
+from a package npm is missing.
 
 ## Test releases from a branch
 
@@ -133,10 +143,19 @@ runner yet:
   failed jobs retries only the packages that failed instead of the whole
   workspace.
 - If the **Publish to npm with OIDC** step fails, it reports every package npm
-  rejected, and nothing was pushed. A package the registry does not know yet
-  means it has no first publish: follow *A new package needs one manual first
-  publish* above. Then rerun the workflow — it resolves the same versions,
-  skips what npm already has, and publishes the rest.
+  rejected plus every package it held back because one of their dependencies
+  did not publish, and nothing was pushed. A package the registry does not know
+  yet means it has no first publish: follow *A new package needs one manual
+  first publish* above. A `404` for a package that exists means the workflow is
+  not one of its publishers: register this repository and workflow as that
+  package's Trusted Publisher, or publish that tarball once by hand with a
+  token that covers the name. Then rerun the workflow — it resolves the same
+  versions, adopts what npm already has, and publishes the rest.
+- If **Verify the published versions install** fails, the wave reached npm but
+  a consumer cannot resolve it: the message names the range npm could not
+  satisfy. Those versions stay published, so fix the manifest and release
+  again — the rerun adopts the versions npm has and publishes the fix as the
+  next version.
 
 Publication succeeded but the branch did not move, which is the one state that
 needs an explicit decision:

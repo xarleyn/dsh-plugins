@@ -194,6 +194,15 @@ jobs:
         if: inputs.dry_run == false || inputs.publish_only
         run: node scripts/verify-package-publication.mjs --tsv="$RUNNER_TEMP/release-packages.tsv"
 
+      # What each package would publish is a set of ranges npm has to resolve,
+      # and the tarball of a package whose dependency is missing is installable
+      # by nobody. The wave is checked here, where refusing costs seconds,
+      # instead of inside the publish loop, where a failure has already put the
+      # packages ahead of it on the registry.
+      - name: Check the release resolves
+        if: inputs.dry_run == false || inputs.publish_only
+        run: node scripts/publish-release.mjs --check --tsv="$RUNNER_TEMP/release-packages.tsv"
+
   # Everything repository-wide, plus the projects the release does not publish.
   # This job and the package matrix run beside each other and cover the
   # workspace between them: every project is verified exactly once.
@@ -425,41 +434,27 @@ jobs:
       - name: Upgrade npm for trusted publishing
         run: npm install --global npm@^11.15.0
 
+      # The publish job owns the order, the adoption of versions npm already
+      # has and the refusal to publish a package whose dependency is missing;
+      # scripts/publish-release.mjs is where all three are tested. It publishes
+      # in dependency order, so a failure leaves an installable registry behind
+      # instead of a wave that no consumer can resolve.
       - name: Publish to npm with OIDC
         if: inputs.dry_run == false || inputs.publish_only
         shell: bash
         run: |
-          failed=()
-          while IFS=$'\t' read -r name version _directory tarball; do
-            if npm view "${name}@${version}" version --json > /dev/null 2>&1; then
-              echo "Skipping ${name}@${version}: already published"
-              continue
-            fi
-
-            tarball_path="$GITHUB_WORKSPACE/tarballs/$tarball"
-            if [[ ! -f "$tarball_path" ]]; then
-              echo "Missing packed tarball: $tarball_path" >&2
-              exit 1
-            fi
-
-            args=("$tarball_path" --access public)
-            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
-              args+=(--dry-run)
-            fi
-
-            # A rejected package must not hide the ones behind it: collect the
-            # failures, then report them together.
-            if ! npm publish "${args[@]}"; then
-              failed+=("${name}@${version}")
-            fi
-          done < "$RUNNER_TEMP/release-packages.tsv"
-
-          if (( ${#failed[@]} > 0 )); then
-            printf 'Failed to publish %d package(s):\n' "${#failed[@]}" >&2
-            printf '  %s\n' "${failed[@]}" >&2
-            echo "Nothing was pushed; fix the failures and rerun the release." >&2
-            exit 1
+          args=(--publish --tsv="$RUNNER_TEMP/release-packages.tsv" --tarballs="$GITHUB_WORKSPACE/tarballs")
+          if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+            args+=(--dry-run)
           fi
+          node scripts/publish-release.mjs "${args[@]}"
+
+      # Publishing is the only claim the release makes about npm; the claim is
+      # worth checking with the tool a consumer uses. Every version this wave
+      # resolved has to install, peers aside, before the commit is pushed.
+      - name: Verify the published versions install
+        if: inputs.dry_run == false
+        run: node scripts/publish-release.mjs --verify-install --tsv="$RUNNER_TEMP/release-packages.tsv"
 
       # One tag per release run replaces one tag per released package: the
       # wave tag names a commit whose every version npm already has, so the

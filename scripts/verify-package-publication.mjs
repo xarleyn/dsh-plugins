@@ -55,7 +55,52 @@ export async function findUnpublishedPackages(
   for (const item of packages) {
     if (!(await lookup(item.name))) unpublished.push(item);
   }
+
   return unpublished;
+}
+
+/** Whether the exact version is on the registry already. */
+export async function isVersionPublished(
+  name,
+  version,
+  { fetchImpl = fetch } = {},
+) {
+  return packageExists(
+    name,
+    `/${version}`,
+    { accept: "application/json" },
+    fetchImpl,
+  );
+}
+
+/**
+ * Release rows whose exact version npm already has. The publish loop adopts
+ * these, so the wave ships the registry's tarball rather than the one this run
+ * packed - which is how a version published outside the release flow (by hand,
+ * from another machine) enters the repository. Reporting them here is what
+ * turns that into a fact the operator reads instead of a version nobody can
+ * account for.
+ */
+export async function findAdoptedVersions(
+  packages,
+  { lookup = isVersionPublished } = {},
+) {
+  const adopted = [];
+  for (const item of packages) {
+    if (item.version === "") continue;
+    if (await lookup(item.name, item.version)) adopted.push(item);
+  }
+
+  return adopted;
+}
+
+export function adoptedVersionsMessage(packages) {
+  return [
+    "These versions are already on npm before this release, so the wave adopts them and their tarball is not the one this run packed:",
+    ...packages.map((item) => `  ${item.name}@${item.version}`),
+    "",
+    "A version that exists ahead of the repository was published outside the release flow. The release still records it, and the registry keeps what it already has.",
+  ].join("\n");
 }
 
 /** Release rows as written by `workspace-packages.mjs --format=tsv`. */
@@ -139,4 +184,12 @@ if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
   process.stdout.write(
     `publication check: ${packages.length} package(s) already exist on npm\n`,
   );
+
+  // Names existing is the prerequisite; versions existing is history. A waved
+  // version npm already has is adopted rather than published, and the operator
+  // gets told which ones, because that version was written by someone else.
+  const adopted = await findAdoptedVersions(packages);
+  if (adopted.length > 0) {
+    process.stdout.write(`${adoptedVersionsMessage(adopted)}\n`);
+  }
 }

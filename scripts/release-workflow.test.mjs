@@ -15,6 +15,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
 import {
+  adoptedVersionsMessage,
+  findAdoptedVersions,
   findUnpublishedPackages,
   isPackagePublished,
   parsePackageSpec,
@@ -441,20 +443,19 @@ describe("Nx release commands", () => {
     );
     assert.match(workflow, /publish_only:/u);
     assert.match(workflow, /npm install --global npm@\^11\.15\.0/u);
-    assert.match(workflow, /npm publish "\$\{args\[@\]\}"/u);
+    // The publish loop lives in scripts/publish-release.mjs, where the order,
+    // the adoption of versions npm already has and the install check are
+    // tested; the workflow hands it the rows and the packed tarballs.
     assert.match(
       workflow,
-      /if npm view "\$\{name\}@\$\{version\}" version --json > \/dev\/null 2>&1; then/u,
+      /args=\(--publish --tsv="\$RUNNER_TEMP\/release-packages\.tsv" --tarballs="\$GITHUB_WORKSPACE\/tarballs"\)/u,
     );
-    assert.doesNotMatch(
-      workflow,
-      /if \[\[ "\$\{\{ inputs\.dry_run \}\}" == "false" \]\] && npm view/u,
-    );
+    assert.match(workflow, /args\+=\(--dry-run\)/u);
     assert.match(
       workflow,
-      /tarball_path="\$GITHUB_WORKSPACE\/tarballs\/\$tarball"/u,
+      /node scripts\/publish-release\.mjs "\$\{args\[@\]\}"/u,
     );
-    assert.match(workflow, /\[\[ ! -f "\$tarball_path" \]\]/u);
+    assert.doesNotMatch(workflow, /if ! npm publish "\$\{args\[@\]\}"; then/u);
     assert.doesNotMatch(workflow, /args=\("tarballs\/\$\{tarball\}"/u);
     assert.doesNotMatch(workflow, /pnpm nx release publish/u);
     assert.match(
@@ -518,23 +519,33 @@ describe("Nx release commands", () => {
     };
 
     const preflight = step("Verify packages exist on npm");
+    const resolves = step("Check the release resolves");
     const artifacts = step("Upload release artifacts");
     const publish = step("Publish to npm with OIDC");
+    const installs = step("Verify the published versions install");
     const waveTag = step("Tag the release wave");
     const push = step("Push release commit and tags");
     const githubReleases = step("Create the release-wave GitHub Release");
 
     assert.ok(
-      preflight < publish,
-      "the registry check must run before the publish loop",
+      preflight < resolves,
+      "the name check is the cheaper prerequisite of the two",
+    );
+    assert.ok(
+      resolves < publish,
+      "a wave that cannot install is refused before a runner packs it",
     );
     assert.ok(
       artifacts < publish,
       "the tarballs must be uploaded even when publishing fails",
     );
     assert.ok(
-      publish < waveTag,
-      "the wave tag is only created for versions npm already has",
+      publish < installs,
+      "the install check reads what the publish step put on npm",
+    );
+    assert.ok(
+      installs < waveTag,
+      "the wave tag is only created for versions a consumer can install",
     );
     assert.ok(
       waveTag < push,
@@ -544,8 +555,7 @@ describe("Nx release commands", () => {
       push < githubReleases,
       "the GitHub Release is built from the pushed wave tag",
     );
-    assert.match(workflow, /if ! npm publish "\$\{args\[@\]\}"; then/u);
-    assert.match(workflow, /Failed to publish %d package\(s\)/u);
+    assert.doesNotMatch(workflow, /if ! npm publish/u);
   });
 });
 
@@ -810,6 +820,41 @@ describe("package publication gate", () => {
     assert.equal(
       await isPackagePublished("@yadsh/dsh-new", { fetchImpl: allGone }),
       false,
+    );
+  });
+
+  test("a version npm already has is reported as adopted", async () => {
+    const packages = [
+      {
+        name: "@yadsh/dsh-a",
+        version: "1.1.0",
+        directory: "plugins/dsh-a",
+        tarball: "yadsh-dsh-a-1.1.0.tgz",
+      },
+      {
+        name: "@yadsh/dsh-b",
+        version: "0.2.0",
+        directory: "plugins/dsh-b",
+        tarball: "yadsh-dsh-b-0.2.0.tgz",
+      },
+    ];
+    const seen = [];
+    const adopted = await findAdoptedVersions(packages, {
+      lookup: async (name, version) => {
+        seen.push(`${name}@${version}`);
+        return name === "@yadsh/dsh-a";
+      },
+    });
+
+    assert.deepEqual(
+      adopted.map((item) => item.name),
+      ["@yadsh/dsh-a"],
+    );
+    assert.deepEqual(seen, ["@yadsh/dsh-a@1.1.0", "@yadsh/dsh-b@0.2.0"]);
+    assert.match(adoptedVersionsMessage(adopted), /@yadsh\/dsh-a@1\.1\.0/u);
+    assert.match(
+      adoptedVersionsMessage(adopted),
+      /published outside the release flow/u,
     );
   });
 
