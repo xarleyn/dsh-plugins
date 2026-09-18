@@ -119,7 +119,7 @@ function harnessOf(
   const warnings: string[] = [];
 
   const dependencies: ToolDependencies = {
-    list: (): readonly DomainListing[] =>
+    list: async (): Promise<readonly DomainListing[]> =>
       domains
         .list()
         .filter((definition) => definition.enabled)
@@ -128,7 +128,7 @@ function harnessOf(
           name: definition.name,
           description: definition.description,
         })),
-    requireDefinition: (id) => domains.requireEnabled(id),
+    requireDefinition: async (id) => domains.requireEnabled(id),
     run: (input) => {
       if (options.failWith !== undefined)
         return Promise.reject(options.failWith);
@@ -594,10 +594,10 @@ describe("tools: definition shape", () => {
     );
   });
 
-  it("raises a typed domain error for a bad definition before any run", () => {
+  it("raises a typed domain error for a bad definition before any run", async () => {
     const harness = harnessOf();
-    expect(() => harness.dependencies.requireDefinition("ghost")).toThrowError(
-      DomainExpertsError,
-    );
+    await expect(
+      harness.dependencies.requireDefinition("ghost"),
+    ).rejects.toThrowError(DomainExpertsError);
   });
 });

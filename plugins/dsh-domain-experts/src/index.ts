@@ -330,7 +330,7 @@ export class DomainExpertsService extends TypertRemoteService {
   private toolDependencies(): ToolDependencies {
     return {
       list: () => this.listings(),
-      requireDefinition: (id) => this.requireDefinitionSync(id),
+      requireDefinition: (id) => this.requireDefinition(id),
       run: (input) => this.runExpertSafely(input),
       activeRun: (sessionId) => this.tracker.find(sessionId),
       delegationVerdict: (callerDomainId, targetDomainId) =>
@@ -360,20 +360,23 @@ export class DomainExpertsService extends TypertRemoteService {
     };
   }
 
-  private requireDefinitionSync(id: string): DomainDefinition {
-    const handles = this.storageHandles;
-    if (handles === undefined) {
-      throw new DomainExpertsError(
-        "STORAGE_UNAVAILABLE",
-        "Domain storage is not open yet; retry once the plugin has finished starting.",
-      );
-    }
+  /**
+   * The persisted definition, waiting for the one-time storage open.
+   *
+   * The open is lazy and memoized, so the first tool call after a start races
+   * it: a synchronous handle check refuses "not open yet" for exactly that
+   * call, and every later call of a failed open repeats the refusal forever
+   * without naming the cause. Awaiting the open keeps the racing call correct
+   * and lets a failed open surface its underlying `STORAGE_UNAVAILABLE`
+   * message.
+   */
+  private async requireDefinition(id: string): Promise<DomainDefinition> {
+    const handles = await this.storage();
     return handles.domains.requireEnabled(id.trim());
   }
 
-  private listings(): readonly DomainListing[] {
-    const handles = this.storageHandles;
-    if (handles === undefined) return [];
+  private async listings(): Promise<readonly DomainListing[]> {
+    const handles = await this.storage();
     return handles.domains
       .list()
       .filter((definition) => definition.enabled)

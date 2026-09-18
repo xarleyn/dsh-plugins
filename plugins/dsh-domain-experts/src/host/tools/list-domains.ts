@@ -67,13 +67,13 @@ export function createListDomainsTool(dependencies: ToolDependencies) {
         },
       ],
     },
-    execute() {
+    async execute() {
       try {
-        const domains = dependencies.list();
-        return Promise.resolve({
+        const domains = await dependencies.list();
+        return {
           count: domains.length,
           domains: [...domains],
-        });
+        };
       } catch (error) {
         throw toToolError(error);
       }

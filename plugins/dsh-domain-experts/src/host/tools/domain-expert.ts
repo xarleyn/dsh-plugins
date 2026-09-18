@@ -197,7 +197,7 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
       const callerDomain = caller?.domainId ?? null;
 
       try {
-        const definition = dependencies.requireDefinition(args.domain);
+        const definition = await dependencies.requireDefinition(args.domain);
         if (callerDomain !== null) {
           if (callerDomain === definition.id) {
             throw new DomainExpertsError(

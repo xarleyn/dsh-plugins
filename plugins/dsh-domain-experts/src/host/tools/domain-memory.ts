@@ -146,7 +146,9 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
             "domain_memory is only available inside a domain expert. Call domain_expert first, then use its memory from within that run.",
           );
         }
-        const definition = dependencies.requireDefinition(active.domainId);
+        const definition = await dependencies.requireDefinition(
+          active.domainId,
+        );
         const entries = memoryEntries(definition);
         const namespaces = entries.map(
           (entry) =>

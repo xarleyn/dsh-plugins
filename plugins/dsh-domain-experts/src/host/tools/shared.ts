@@ -30,9 +30,15 @@ export interface ParallelBudget {
 /** Everything the agent-visible tools need, assembled by the host entry. */
 export interface ToolDependencies {
   /** Lightweight metadata only; never scope or policy configuration. */
-  list(): readonly DomainListing[];
-  /** The persisted definition, or a loud DOMAIN_NOT_FOUND/DOMAIN_DISABLED. */
-  requireDefinition(id: string): DomainDefinition;
+  list(): Promise<readonly DomainListing[]>;
+  /**
+   * The persisted definition, or a loud DOMAIN_NOT_FOUND/DOMAIN_DISABLED.
+   *
+   * Waiting for the one-time storage open is part of the contract: the open is
+   * lazy, so the first tool call after a start races it, and a call that does
+   * not wait would refuse "not open yet" for exactly that call.
+   */
+  requireDefinition(id: string): Promise<DomainDefinition>;
   run(input: ExpertRunInput): Promise<DomainExpertResult>;
   /** The expert run a session belongs to, or `undefined` for a plain caller. */
   activeRun(sessionId: string): ActiveRun | undefined;

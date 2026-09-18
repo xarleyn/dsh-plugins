@@ -26,6 +26,20 @@ function fakeStorage(): DomainExpertsStorage {
   } as unknown as DomainExpertsStorage;
 }
 
+function storageWith(
+  ...definitions: readonly DomainDefinition[]
+): DomainExpertsStorage {
+  const tables: Record<string, unknown> = {
+    domains: domainTableOf(definitions.map((entry) => [entry.id, entry])),
+    memory: memoryRecordTableOf(),
+  };
+  return {
+    name: "domain_experts",
+    table: (name: string) => tables[name],
+    close: () => Promise.resolve(),
+  } as unknown as DomainExpertsStorage;
+}
+
 interface Harness {
   readonly ctx: Context;
   readonly service: DomainExpertsService;
@@ -284,10 +298,11 @@ describe("wiring: degraded storage", () => {
     expect(resolved.code).toBe("STORAGE_UNAVAILABLE");
     expect(resolved.profile).toBeNull();
 
-    // A synchronous tool path degrades the same way.
-    expect(() =>
-      harness.service["requireDefinitionSync"]("payments"),
-    ).toThrowError(/Domain storage is not open/u);
+    // The tool dependency awaits the open, so it reports the underlying cause
+    // instead of an endless "not open yet".
+    await expect(
+      harness.service["requireDefinition"]("payments"),
+    ).rejects.toThrowError(/Domain storage could not be opened/u);
 
     // Memory answers with the same code, because its backing table is deferred
     // rather than absent: the provider is registered for the plugin's lifetime.
@@ -296,5 +311,33 @@ describe("wiring: degraded storage", () => {
     expect(
       harness.service.catalog().memoryProviders.map((provider) => provider.id),
     ).toEqual(["builtin"]);
+  });
+
+  it("lets the first tool call after a start wait for the lazy storage open", async () => {
+    // The open is lazy: before this fix, the first tool call raced it and was
+    // refused "not open yet" even though storage was about to open fine.
+    let release!: () => void;
+    const harness = harnessOf({
+      storage: () =>
+        new Promise<DomainExpertsStorage>((resolve) => {
+          release = () => resolve(storageWith(DEFINITION));
+        }),
+    });
+
+    const pending = harness.service["requireDefinition"]("payments");
+    let settled = false;
+    void pending.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    release();
+    await expect(pending).resolves.toMatchObject({ id: "payments" });
   });
 });
