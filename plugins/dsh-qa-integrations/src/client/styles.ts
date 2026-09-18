@@ -36,5 +36,6 @@ export const styles = `${PLUGIN_CARD_SHELL_CSS}${CREDENTIAL_HELP_CSS}${String.ra
 .dsh-qa-integrations__muted{color:var(--dsw-alias-label-tertiary);font-size:12px}
 .dsh-qa-integrations__error{border:1px solid var(--dsw-alias-state-error-primary);border-radius:8px;padding:9px 11px;color:var(--dsw-alias-state-error-primary);font-size:13px}
 .dsh-qa-integrations__notice{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:10px;padding:12px;font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary)}
+.dsh-qa-integrations__check{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
 .dsh-qa-integrations__hint code{background:var(--dsw-alias-bg-layer-2);border-radius:4px;padding:0 4px;font-size:12px}
 `}`;

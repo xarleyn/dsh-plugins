@@ -6,7 +6,15 @@ import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { requiredInteger, requiredText } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
 import { redactSecrets } from "../../redaction.js";
+import { boundaryHas } from "../../service-credentials/policy.js";
+import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type {
+  OperationSecurityMetadata,
+  ServiceCredentialHealth,
+  ServiceResourceBoundary,
+} from "../../service-credentials/types.js";
+import type {
+  CapabilityServiceState,
   IntegrationCapability,
   IntegrationCapabilityInfo,
   ProviderValidation,
@@ -14,15 +22,23 @@ import type {
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
 import { accountName, objectOf } from "../shared/account.js";
 import {
+  assertServiceOperationAllowed,
+  serviceBoundaryOf,
+  serviceResourceDenied,
+} from "../shared/service-boundary.js";
+import {
   artifactBinaryProblem,
   artifactByteLimit,
   textArtifact,
 } from "./artifacts.js";
 import {
   TEAMCITY_CAPABILITY_INFO,
+  TEAMCITY_INSTANCE_ID,
   TEAMCITY_OPERATIONS,
+  TEAMCITY_RESOURCE_KIND,
   enabledCapabilities,
   teamcityOperationCapability,
+  teamcityOperationMetadata,
 } from "./catalog.js";
 import type { TeamCityFlags } from "./config.js";
 import {
@@ -64,9 +80,66 @@ export {
 const TOKEN_SHAPE = /^\S{16,4096}$/u;
 const URL_LIKE = /^https?:\/\//iu;
 
+/** Operations addressed by a build id, which has to be resolved to a project. */
+const BUILD_ADDRESSED: readonly string[] = Object.freeze([
+  "builds.get",
+  "builds.changes",
+  "failures.get",
+  "artifacts.list",
+]);
+
+/** Operations whose locator names a project or a build configuration. */
+const PROJECT_LOCATED: readonly string[] = Object.freeze([
+  "buildConfigs.list",
+  "builds.list",
+  "queue.list",
+  "investigations.list",
+]);
+
+/** How many fields a bounded project listing asks TeamCity for. */
+const PROJECT_FIELDS = "id,name,parentProjectId,description,archived,webUrl";
+
+/**
+ * Whether one caller-named TeamCity project stays inside the boundary. A listed
+ * project covers its own subprojects, because that is what the identifier means
+ * upstream; an ancestor of a listed project is not covered, because asking for
+ * it would return the siblings nobody listed.
+ */
+export function projectAllowed(
+  boundary: ServiceResourceBoundary,
+  ref: string,
+): boolean {
+  if (boundaryHas(boundary, TEAMCITY_RESOURCE_KIND, ref)) return true;
+  return (boundary[TEAMCITY_RESOURCE_KIND] ?? []).some(
+    (entry) => entry !== "" && ref.startsWith(`${entry}.`),
+  );
+}
+
+/**
+ * Whether one build configuration stays inside the boundary: it is either
+ * listed itself, or it hangs off a listed project. TeamCity names a build
+ * configuration `<projectId>_<configId>`, which is the prefix a listed project
+ * matches on; the authoritative `projectId` from the API is preferred wherever
+ * the call already fetches it.
+ */
+export function buildTypeAllowed(
+  boundary: ServiceResourceBoundary,
+  ref: string,
+  projectId?: string | undefined,
+): boolean {
+  if (boundaryHas(boundary, TEAMCITY_RESOURCE_KIND, ref)) return true;
+  if (projectId !== undefined && projectAllowed(boundary, projectId)) {
+    return true;
+  }
+  return (boundary[TEAMCITY_RESOURCE_KIND] ?? []).some(
+    (entry) => entry !== "" && ref.startsWith(`${entry}_`),
+  );
+}
+
 /**
  * TeamCity provider: one TeamCity server per QA user, connected with that user's
- * own personal access token.
+ * own personal access token, or with the deployment's managed read-only
+ * credential when the user's binding asks for it.
  *
  * The server address is user input, so it is checked against the deployment's
  * address policy when the connection is stored and again on every call, and the
@@ -137,6 +210,38 @@ export class TeamcityProvider implements IntegrationProvider {
     return teamcityOperationCapability(operation);
   }
 
+  operationMetadata(operation: string): OperationSecurityMetadata | undefined {
+    return teamcityOperationMetadata(operation);
+  }
+
+  resourceBoundaryKind(operation: string): string | undefined {
+    return TEAMCITY_OPERATIONS[operation]?.security.requiresResourceBoundary ===
+      true
+      ? TEAMCITY_RESOURCE_KIND
+      : undefined;
+  }
+
+  capabilityServiceState(
+    capability: IntegrationCapability,
+  ): CapabilityServiceState | undefined {
+    return operationCapabilityServiceState(TEAMCITY_OPERATIONS, capability);
+  }
+
+  /** An empty id means this deployment's single server, as in `parseCredential`. */
+  instancePortal(instanceId: string): string | undefined {
+    const requested = instanceId.trim();
+    if (requested !== "" && requested !== TEAMCITY_INSTANCE_ID)
+      return undefined;
+    if (this.config.teamcity.serverUrl === "") return undefined;
+    try {
+      return configuredServer(this.config.teamcity);
+    } catch {
+      // An address the policy refuses cannot be the portal of a credential:
+      // nothing could be dialled there anyway.
+      return undefined;
+    }
+  }
+
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
     const baseUrl = configuredServer(this.config.teamcity);
@@ -177,6 +282,46 @@ export class TeamcityProvider implements IntegrationProvider {
     };
   }
 
+  /**
+   * Health of the deployment's managed token. TeamCity exposes no way to read a
+   * token's roles, so the probe answers what it can — whether the token is
+   * accepted and which identity it carries — and says so instead of implying a
+   * permission audit it did not perform.
+   */
+  async validateServiceCredential(
+    context: ProviderContext,
+  ): Promise<ServiceCredentialHealth> {
+    const credential = credentialFromPlaintext(context.credential);
+    let baseUrl: string;
+    try {
+      baseUrl = configuredServer(this.config.teamcity);
+    } catch {
+      return { status: "unreachable" };
+    }
+    try {
+      const user = await this.transport.getJson<Record<string, unknown>>(
+        baseUrl,
+        credential.token,
+        currentUserRequest().path,
+        currentUserRequest().query,
+      );
+      const id = user["id"];
+      const identity =
+        typeof id === "number"
+          ? { id: String(id), label: accountName(user, "TeamCity") }
+          : undefined;
+      return {
+        status: "healthy",
+        ...(identity === undefined ? {} : { upstreamIdentity: identity }),
+        warnings: [
+          "TeamCity does not report the roles of an access token; only the read-only service ceiling bounds what this credential can do here",
+        ],
+      };
+    } catch (error) {
+      return healthFromFailure(error);
+    }
+  }
+
   async execute(
     context: ProviderContext,
     operation: string,
@@ -193,6 +338,27 @@ export class TeamcityProvider implements IntegrationProvider {
       );
     }
     const flags = this.config.teamcity;
+    // Ceiling first, then the boundary: what the operation is decides before
+    // where it may read.
+    if (context.credentialSource === "service") {
+      assertServiceOperationAllowed(
+        definition.security,
+        "This TeamCity operation is not available through the service credential",
+      );
+    }
+    const boundary = serviceBoundaryOf(context);
+    if (boundary !== undefined) {
+      await this.assertInsideBoundary(
+        operation,
+        input,
+        boundary,
+        baseUrl,
+        credential,
+      );
+      if (operation === "projects.list") {
+        return this.listBoundedProjects(baseUrl, credential, boundary, input);
+      }
+    }
     const operationContext = {
       externalUserId: context.externalUserId,
       flags,
@@ -218,6 +384,154 @@ export class TeamcityProvider implements IntegrationProvider {
       request.root ?? "rest",
     );
     return this.project(operation, data, input, request, baseUrl);
+  }
+
+  /**
+   * Hold one call inside the deployment's boundary. Every service-safe TeamCity
+   * operation either names a project, a build configuration or a build — and a
+   * build is resolved to its project upstream, so a direct read by build id
+   * passes the same policy a listing does.
+   */
+  private async assertInsideBoundary(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    boundary: ServiceResourceBoundary,
+    baseUrl: string,
+    credential: TeamCityCredential,
+  ): Promise<void> {
+    if (operation === "connection.get" || operation === "agents.list") {
+      return;
+    }
+    if (operation === "investigations.list" && input["assignee"] === "me") {
+      // `assignee=me` resolves to the connected user, and the connected user is
+      // the service account, which has no investigations of its own.
+      throw new IntegrationError(
+        "InvalidRequest",
+        "assignee=me is not available through the service credential",
+      );
+    }
+    if (operation === "projects.list") {
+      const parent = input["parentProjectId"];
+      if (parent !== undefined && !projectAllowed(boundary, String(parent))) {
+        throw serviceResourceDenied();
+      }
+      return;
+    }
+    if (BUILD_ADDRESSED.includes(operation)) {
+      const buildId = requiredInteger(input["buildId"], "buildId");
+      await this.assertBuildInBoundary(buildId, boundary, baseUrl, credential);
+      return;
+    }
+    if (PROJECT_LOCATED.includes(operation)) {
+      // The build-configuration listing takes a project locator only: a build
+      // type it cannot narrow by must not stand in for one.
+      if (operation !== "buildConfigs.list") {
+        const buildType = input["buildTypeId"];
+        if (buildType !== undefined) {
+          if (!buildTypeAllowed(boundary, String(buildType))) {
+            throw serviceResourceDenied();
+          }
+          return;
+        }
+      }
+      const project = input["projectId"];
+      if (project !== undefined && projectAllowed(boundary, String(project))) {
+        return;
+      }
+      // An unscoped listing would answer with the shared account's whole view,
+      // which is exactly what the boundary exists to prevent.
+      throw serviceResourceDenied();
+    }
+    throw serviceResourceDenied();
+  }
+
+  /** Resolve a build id to the project it belongs to, then check the boundary. */
+  private async assertBuildInBoundary(
+    buildId: number,
+    boundary: ServiceResourceBoundary,
+    baseUrl: string,
+    credential: TeamCityCredential,
+  ): Promise<void> {
+    const data = await this.transport.getJson<Record<string, unknown>>(
+      baseUrl,
+      credential.token,
+      `/builds/id:${buildId}`,
+      { fields: "buildType(id,projectId)" },
+    );
+    const buildType = objectOf(data["buildType"]);
+    const ref = String(buildType["id"] ?? data["buildTypeId"] ?? "");
+    const projectId =
+      typeof buildType["projectId"] === "string"
+        ? buildType["projectId"]
+        : undefined;
+    if (ref === "" || !buildTypeAllowed(boundary, ref, projectId)) {
+      throw serviceResourceDenied();
+    }
+  }
+
+  /**
+   * The bounded project listing: a service profile names the projects it covers,
+   * so the answer is fetched from that list rather than from whatever the shared
+   * account can reach. A project the service token cannot see is reported as
+   * unavailable, which is what tells the operator their boundary and their token
+   * disagree.
+   */
+  private async listBoundedProjects(
+    baseUrl: string,
+    credential: TeamCityCredential,
+    boundary: ServiceResourceBoundary,
+    input: Readonly<Record<string, unknown>>,
+  ): Promise<Record<string, unknown>> {
+    const entries = boundary[TEAMCITY_RESOURCE_KIND] ?? [];
+    const parent = input["parentProjectId"];
+    const collected: unknown[] = [];
+    const unavailable: string[] = [];
+    for (const entry of entries) {
+      try {
+        const data = await this.transport.getJson<unknown>(
+          baseUrl,
+          credential.token,
+          `/projects/id:${encodeURIComponent(entry)}`,
+          { fields: PROJECT_FIELDS },
+        );
+        collected.push(data);
+      } catch (error) {
+        if (!recoverableResource(error)) throw error;
+        unavailable.push(entry);
+      }
+    }
+    const request: TeamCityRequest = {
+      path: "/projects",
+      query: { fields: PROJECT_FIELDS },
+    };
+    const projected = objectOf(
+      this.project(
+        "projects.list",
+        { project: collected },
+        input,
+        request,
+        baseUrl,
+      ),
+    );
+    const items = Array.isArray(projected["items"]) ? projected["items"] : [];
+    const visible =
+      parent === undefined
+        ? items
+        : items.filter(
+            (item) =>
+              String(
+                (item as Record<string, unknown> | null)?.["parentProjectId"] ??
+                  "",
+              ) === String(parent),
+          );
+    return {
+      ...projected,
+      items: visible,
+      serviceScoped: true,
+      ...(unavailable.length === 0
+        ? {}
+        : { unavailableResources: unavailable }),
+    };
   }
 
   /** Server identity: one answer out of the two documented discovery calls. */
@@ -403,6 +717,31 @@ export class TeamcityProvider implements IntegrationProvider {
     return objectOf(
       projection === undefined ? data : projection(data, context),
     );
+  }
+}
+
+/** A missing or forbidden project inside a boundary is reported, not fatal. */
+function recoverableResource(error: unknown): boolean {
+  return (
+    error instanceof IntegrationError &&
+    (error.code === "ResourceNotFound" ||
+      error.code === "ProviderPermissionDenied")
+  );
+}
+
+/** Map an upstream failure of the probe onto a health status. */
+function healthFromFailure(error: unknown): ServiceCredentialHealth {
+  if (!(error instanceof IntegrationError)) {
+    return { status: "unreachable" };
+  }
+  switch (error.code) {
+    case "CredentialExpired":
+      return { status: "expired" };
+    case "CredentialRevoked":
+    case "ProviderPermissionDenied":
+      return { status: "revoked" };
+    default:
+      return { status: "unreachable" };
   }
 }
 

@@ -37,6 +37,8 @@ const disconnected: IntegrationSummary = {
   policy: [],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 function remote(calls: string[]): IntegrationsClientRemote {
@@ -50,6 +52,7 @@ function remote(calls: string[]): IntegrationsClientRemote {
             id: "gitlab-com",
             label: "GitLab.com",
             baseUrl: "https://gitlab.com",
+            service: null,
           },
         ],
       };
@@ -58,6 +61,10 @@ function remote(calls: string[]): IntegrationsClientRemote {
       calls.push("summary");
       return { ok: true, value: disconnected };
     },
+    managedServiceCredentials: async () => ({
+      ok: true,
+      value: { enabled: false, defaultForNewConnections: false },
+    }),
     getBitrix24: async () => ({ ok: true, value: disconnected }),
     getTeamcity: async () => ({ ok: true, value: disconnected }),
   } as unknown as IntegrationsClientRemote;

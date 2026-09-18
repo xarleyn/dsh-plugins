@@ -11,9 +11,15 @@ const CORP = {
   id: "corp",
   label: "Corporate GitLab",
   baseUrl: "https://gitlab.example.internal",
+  service: null,
 };
 const INSTANCES = [
-  { id: "gitlab-com", label: "GitLab.com", baseUrl: "https://gitlab.com" },
+  {
+    id: "gitlab-com",
+    label: "GitLab.com",
+    baseUrl: "https://gitlab.com",
+    service: null,
+  },
   CORP,
 ];
 
@@ -33,6 +39,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {
@@ -53,13 +61,23 @@ function remote(overrides: Partial<GitlabRemote> = {}): GitlabRemote {
     testGitlab: async () => ({ ok: true, value: connected }),
     patchGitlabPolicy: async () => ({ ok: true, value: connected }),
     disconnectGitlab: async () => ({ ok: true, value: true }),
+    managedServiceCredentials: async () => ({
+      ok: true,
+      value: { enabled: false, defaultForNewConnections: false },
+    }),
+    credentialSource: async () => ({ ok: true, value: connected }),
+    serviceBoundary: async () => ({ ok: true, value: connected }),
     ...overrides,
   };
 }
 
 describe("Integrations GitLab card", () => {
   it("keeps the personal access token write-only", async () => {
-    const writes: { instanceId: string; token: string }[] = [];
+    const writes: {
+      instanceId: string;
+      token: string;
+      useServiceCredential?: boolean;
+    }[] = [];
     const Card = createGitlabCard(
       remote({
         putGitlabCredential: async (_token, input) => {
@@ -83,7 +101,9 @@ describe("Integrations GitLab card", () => {
     fireEvent.change(input, { target: { value: secret } });
     fireEvent.click(connect);
     await screen.findByText("Alice Example (@alice)");
-    expect(writes).toEqual([{ instanceId: "corp", token: secret }]);
+    expect(writes).toEqual([
+      { instanceId: "corp", token: secret, useServiceCredential: false },
+    ]);
     await waitFor(() =>
       expect(
         screen.queryByLabelText("Personal access token GitLab"),
@@ -124,10 +144,10 @@ describe("Integrations GitLab card", () => {
           ok: true,
           value: {
             ...connected,
-            capabilities: ["projects.read", "ci.read"],
+            capabilities: ["projects.read", "ci.metadata.read"],
             policy: [
               { capability: "projects.read", mode: "allow" },
-              { capability: "ci.read", mode: "deny" },
+              { capability: "ci.metadata.read", mode: "deny" },
             ],
           },
         }),
@@ -149,7 +169,7 @@ describe("Integrations GitLab card", () => {
     expect(container.textContent).toContain("Нет в правах токена");
 
     fireEvent.click(ci);
-    await waitFor(() => expect(patched).toEqual(["ci.read:allow"]));
+    await waitFor(() => expect(patched).toEqual(["ci.metadata.read:allow"]));
   });
 
   it("tells the user when the operator configured no instance", async () => {

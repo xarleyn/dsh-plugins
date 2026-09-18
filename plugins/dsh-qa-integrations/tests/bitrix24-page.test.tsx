@@ -26,6 +26,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {

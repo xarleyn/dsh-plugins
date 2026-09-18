@@ -38,6 +38,12 @@ import {
   type WeblateFlags,
 } from "./providers/weblate/config.js";
 import { credentialHelpOverridesSchema } from "./providers/shared/credential-help.js";
+import {
+  managedServiceCredentialsSchema,
+  resolveManagedServiceCredentials,
+  type ManagedServiceCredentialsConfig,
+  type ManagedServiceCredentialsInput,
+} from "./service-credentials/config.js";
 
 /**
  * Composition root of the plugin config: the shared knobs plus one slice per
@@ -70,6 +76,11 @@ export interface QaIntegrationsConfig {
   readonly jira?: Partial<JiraFlags>;
   readonly testit?: Partial<TestitFlags>;
   readonly weblate?: Partial<WeblateFlags>;
+  /**
+   * Deployment-managed service credentials. Absent by default: a deployment
+   * opts in, and nothing about the feature exists until it does.
+   */
+  readonly managedServiceCredentials?: ManagedServiceCredentialsInput;
 }
 
 export interface ResolvedQaIntegrationsConfig {
@@ -91,6 +102,7 @@ export interface ResolvedQaIntegrationsConfig {
   readonly jira: JiraFlags;
   readonly testit: TestitFlags;
   readonly weblate: WeblateFlags;
+  readonly managedServiceCredentials: ManagedServiceCredentialsConfig;
 }
 
 export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
@@ -112,6 +124,7 @@ export const ConfigSchema: z<QaIntegrationsConfig> = z.object({
   jira: jiraConfigSchema,
   testit: testitConfigSchema,
   weblate: weblateConfigSchema,
+  managedServiceCredentials: managedServiceCredentialsSchema,
 });
 
 export function resolveConfig(
@@ -147,5 +160,8 @@ export function resolveConfig(
     jira: resolveJiraConfig(input.jira),
     testit: resolveTestitConfig(input.testit),
     weblate: resolveWeblateConfig(input.weblate),
+    managedServiceCredentials: resolveManagedServiceCredentials(
+      input.managedServiceCredentials,
+    ),
   });
 }

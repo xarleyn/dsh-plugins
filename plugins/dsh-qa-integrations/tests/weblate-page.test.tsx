@@ -16,11 +16,13 @@ const HOSTED = {
   id: "hosted",
   label: "Hosted Weblate",
   baseUrl: "https://hosted.weblate.org",
+  service: null,
 };
 const CORP = {
   id: "corp",
   label: "Corporate Weblate",
   baseUrl: "https://weblate.example.internal",
+  service: null,
 };
 const INSTANCES = [HOSTED, CORP];
 
@@ -46,6 +48,8 @@ const disconnected: IntegrationSummary = {
   ],
   lastValidatedAt: null,
   errorCode: null,
+  credentialSource: "personal",
+  service: null,
 };
 
 const connected: IntegrationSummary = {

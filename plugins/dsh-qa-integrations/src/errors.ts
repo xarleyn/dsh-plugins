@@ -27,7 +27,22 @@ export type IntegrationErrorCode =
    * certificate. The user cannot fix this from the connect form, so it is kept
    * apart from a plain unreachable host.
    */
-  | "TlsFailure";
+  | "TlsFailure"
+  /**
+   * Managed service credentials. The first group describes the deployment's own
+   * credential; the second describes what one user's binding may do with it.
+   * The names follow the specification's `SERVICE_CREDENTIAL_*` /
+   * `OPERATION_NOT_ALLOWED_*` codes in this package's casing convention, and
+   * `publicIntegrationError` is what turns them into a client-visible reason.
+   */
+  | "ServiceCredentialUnavailable"
+  | "ServiceCredentialDisabled"
+  | "ServiceCredentialInvalid"
+  | "ServiceCredentialUnsafeScope"
+  | "ServiceResourceNotAllowed"
+  | "OperationNotAllowedWithServiceCredential"
+  | "SensitiveReadRequiresPersonalCredential"
+  | "PersonalCredentialRequired";
 
 /** Safe domain error: message and code never include upstream bodies or secrets. */
 export class IntegrationError extends Error {

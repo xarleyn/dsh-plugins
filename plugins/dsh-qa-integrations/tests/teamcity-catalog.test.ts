@@ -62,6 +62,36 @@ describe("TeamCity capability catalog", () => {
     }
   });
 
+  it("classifies every operation, and only lets a plain read be service-safe", () => {
+    for (const [operation, definition] of Object.entries(TEAMCITY_OPERATIONS)) {
+      const security = definition.security;
+      expect(security, operation).toBeDefined();
+      expect(["read", "write", "admin"], operation).toContain(security.effect);
+      expect(["normal", "sensitive", "secret"], operation).toContain(
+        security.sensitivity,
+      );
+      expect(["allow", "deny"], operation).toContain(
+        security.serviceCredential,
+      );
+      // The two halves of the ceiling have to agree: an operation the managed
+      // credential may reach must be an ordinary read, and anything else must
+      // say deny. A contradiction here is dead classification — the provider's
+      // own guard would refuse it anyway.
+      const serviceSafe =
+        security.effect === "read" &&
+        security.sensitivity === "normal" &&
+        security.serviceCredential === "allow";
+      expect(security.serviceCredential === "allow", operation).toBe(
+        serviceSafe,
+      );
+      // A bounded operation has to declare it, or the broker has no way to hold
+      // the call inside the profile's boundary.
+      if (security.requiresResourceBoundary === true) {
+        expect(security.effect, operation).toBe("read");
+      }
+    }
+  });
+
   it("reaches read-only endpoints only", () => {
     for (const [operation, definition] of Object.entries(TEAMCITY_OPERATIONS)) {
       expect(definition.method, operation).toBe("GET");

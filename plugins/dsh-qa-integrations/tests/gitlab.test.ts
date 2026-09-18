@@ -195,7 +195,8 @@ describe("gitlab connection validation", () => {
         "search.read",
         "issues.read",
         "merge_requests.read",
-        "ci.read",
+        "ci.metadata.read",
+        "ci.logs.read",
       ],
     });
   });
@@ -222,11 +223,15 @@ describe("gitlab connection validation", () => {
         ? { json: USER }
         : { status: 403, json: { message: "403 Forbidden" } },
     );
-    const provider = new GitlabProvider(config({ ciRead: false }), fetcher);
+    const provider = new GitlabProvider(
+      config({ ciMetadataRead: false, ciLogsRead: false }),
+      fetcher,
+    );
     const validation = await provider.validate({
       credential: credentialFor("gitlab-com", fetcher),
     });
-    expect(validation.capabilities).not.toContain("ci.read");
+    expect(validation.capabilities).not.toContain("ci.metadata.read");
+    expect(validation.capabilities).not.toContain("ci.logs.read");
     expect(validation.capabilities).toContain("projects.read");
   });
 

@@ -29,7 +29,10 @@ export interface GitlabFlags {
   readonly searchRead: boolean;
   readonly issuesRead: boolean;
   readonly mergeRequestsRead: boolean;
-  readonly ciRead: boolean;
+  /** Pipeline and job metadata; service-safe, unlike the job log below. */
+  readonly ciMetadataRead: boolean;
+  /** Job log contents: may carry secrets, never reachable by a service token. */
+  readonly ciLogsRead: boolean;
   /** Largest file body handed to the model, in bytes. */
   readonly maxFileBytes: number;
   /** Largest CI job log handed to the model, in bytes. */
@@ -50,12 +53,22 @@ export const GITLAB_DEFAULTS: GitlabFlags = Object.freeze({
   searchRead: true,
   issuesRead: true,
   mergeRequestsRead: true,
-  ciRead: true,
+  ciMetadataRead: true,
+  ciLogsRead: true,
   maxFileBytes: 131_072,
   maxJobLogBytes: 262_144,
   maxSearchResults: 50,
   retries: 2,
 });
+
+/**
+ * Operator input of this slice. `ciRead` is the single CI switch of earlier
+ * releases: deployments that set it are read as both halves of the split, so a
+ * deployment that had turned CI off does not silently get it back.
+ */
+export type GitlabConfigInput = Partial<GitlabFlags> & {
+  readonly ciRead?: boolean;
+};
 
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const MAX_INSTANCES = 16;
@@ -159,7 +172,9 @@ export const gitlabConfigSchema = z.object({
   searchRead: z.boolean().default(GITLAB_DEFAULTS.searchRead),
   issuesRead: z.boolean().default(GITLAB_DEFAULTS.issuesRead),
   mergeRequestsRead: z.boolean().default(GITLAB_DEFAULTS.mergeRequestsRead),
-  ciRead: z.boolean().default(GITLAB_DEFAULTS.ciRead),
+  ciMetadataRead: z.boolean().default(GITLAB_DEFAULTS.ciMetadataRead),
+  ciLogsRead: z.boolean().default(GITLAB_DEFAULTS.ciLogsRead),
+  ciRead: z.boolean().required(false),
   maxFileBytes: z
     .number()
     .step(1)
@@ -177,13 +192,19 @@ export const gitlabConfigSchema = z.object({
     .max(100)
     .default(GITLAB_DEFAULTS.maxSearchResults),
   retries: z.number().step(1).min(0).max(5).default(GITLAB_DEFAULTS.retries),
-}) as unknown as z<Partial<GitlabFlags>>;
+}) as unknown as z<GitlabConfigInput>;
 
 export function resolveGitlabConfig(
-  input: Partial<GitlabFlags> = {},
+  input: GitlabConfigInput = {},
 ): GitlabFlags {
   const allowInsecureHttp =
     input.allowInsecureHttp ?? GITLAB_DEFAULTS.allowInsecureHttp;
+  // The pre-split single switch still governs both halves when it is the only
+  // one set, which keeps an operator's earlier "CI off" decision intact.
+  const ciMetadataRead =
+    input.ciMetadataRead ?? input.ciRead ?? GITLAB_DEFAULTS.ciMetadataRead;
+  const ciLogsRead =
+    input.ciLogsRead ?? input.ciRead ?? GITLAB_DEFAULTS.ciLogsRead;
   return Object.freeze({
     enabled: input.enabled ?? GITLAB_DEFAULTS.enabled,
     allowInsecureHttp,
@@ -195,7 +216,8 @@ export function resolveGitlabConfig(
     issuesRead: input.issuesRead ?? GITLAB_DEFAULTS.issuesRead,
     mergeRequestsRead:
       input.mergeRequestsRead ?? GITLAB_DEFAULTS.mergeRequestsRead,
-    ciRead: input.ciRead ?? GITLAB_DEFAULTS.ciRead,
+    ciMetadataRead,
+    ciLogsRead,
     maxFileBytes: input.maxFileBytes ?? GITLAB_DEFAULTS.maxFileBytes,
     maxJobLogBytes: input.maxJobLogBytes ?? GITLAB_DEFAULTS.maxJobLogBytes,
     maxSearchResults:
