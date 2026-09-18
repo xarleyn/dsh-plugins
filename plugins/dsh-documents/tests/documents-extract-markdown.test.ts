@@ -3,23 +3,14 @@
  * materialization, OCR policy, refusal codes and Markdown normalization.
  */
 
-import {
-  mkdir,
-  readFile,
-  readdir,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import { resolveDocumentsConfig } from "../src/documents/config.js";
 import { DocumentError } from "../src/documents/errors.js";
 import { createProviders } from "../src/documents/providers/registry.js";
 import { DocumentRuntime } from "../src/documents/runtime.js";
-import { normalizeExtractedMarkdown } from "../src/documents/markdown/normalize.js";
 import {
   docxBytes,
   pdfBytes,
@@ -27,90 +18,13 @@ import {
 } from "./helpers/document-fixtures.js";
 import { stubProviderSet } from "./helpers/document-providers.js";
 
-let workspace: string;
-const FIXED_NOW = new Date("2026-09-14T10:00:00Z");
-
-beforeEach(async () => {
-  workspace = path.join(
-    tmpdir(),
-    `qa-docs-extract-${process.pid}-${Date.now()}`,
-  );
-  await mkdir(workspace, { recursive: true });
-});
-
-afterEach(async () => {
-  await rm(workspace, { recursive: true, force: true });
-});
-
-interface FetchCall {
-  readonly url: string;
-  readonly method: string | undefined;
-  readonly body: FormData | undefined;
-}
-
-/** A docling-serve stand-in: one JSON answer, recorded request. */
-function fakeDocling(options: {
-  readonly payload?: unknown;
-  readonly status?: number;
-  readonly fail?: boolean;
-  readonly health?: "ok" | "down";
-}): { fetchImpl: typeof fetch; calls: FetchCall[] } {
-  const calls: FetchCall[] = [];
-  const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = String(input);
-    calls.push({
-      url,
-      method: init?.method,
-      body: init?.body instanceof FormData ? init.body : undefined,
-    });
-    if (url.endsWith("/health") || url.endsWith("/v1/health")) {
-      return new Response("{}", {
-        status: options.health === "down" ? 503 : 200,
-      });
-    }
-    if (options.fail === true)
-      throw new Error("connect ECONNREFUSED 10.0.0.5:5001");
-    return new Response(
-      options.payload === undefined ? "{}" : JSON.stringify(options.payload),
-      {
-        status: options.status ?? 200,
-        headers: { "content-type": "application/json" },
-      },
-    );
-  }) as unknown as typeof fetch;
-  return { fetchImpl, calls };
-}
-
-function runtimeWithDocling(options: {
-  readonly payload?: unknown;
-  readonly status?: number;
-  readonly fail?: boolean;
-  readonly config?: Parameters<typeof resolveDocumentsConfig>[0];
-  readonly health?: "ok" | "down";
-}): { runtime: DocumentRuntime; calls: FetchCall[] } {
-  const config = resolveDocumentsConfig({
-    docling: { baseUrl: "http://docling.test" },
-    ...options.config,
-  });
-  const fake = fakeDocling(options);
-  const runtime = new DocumentRuntime({
-    config,
-    providers: createProviders(config, { fetchImpl: fake.fetchImpl }),
-    now: () => FIXED_NOW,
-  });
-  return { runtime, calls: fake.calls };
-}
-
-const scope = (): { workspaceRoot: string; sessionId: string } => ({
-  workspaceRoot: workspace,
-  sessionId: "session-1",
-});
-
-async function writeInput(name: string, bytes: Buffer): Promise<string> {
-  const target = path.join(workspace, name);
-  await writeFile(target, bytes);
-  return target;
-}
+import {
+  fakeDocling,
+  FIXED_NOW,
+  runtimeWithDocling,
+  scope,
+  writeInput,
+} from "./documents-extract.helpers.js";
 
 describe("document_to_markdown", () => {
   test("extracts Markdown, keeps the input and reports the backend", async () => {
@@ -428,38 +342,5 @@ describe("document_to_markdown", () => {
     await expect(
       stat(path.join(path.dirname(second.manifestPath), "input")),
     ).rejects.toThrow();
-  });
-});
-
-describe("markdown normalization", () => {
-  test("drops running heads repeated across pages", () => {
-    const source = [
-      "Отчёт о тестировании",
-      "",
-      "Первый абзац.",
-      "",
-      "Отчёт о тестировании",
-      "",
-      "Второй абзац.",
-      "",
-      "Отчёт о тестировании",
-      "",
-      "Третий абзац.",
-      "",
-    ].join("\n");
-    const result = normalizeExtractedMarkdown(source);
-    expect(result.markdown).not.toContain("Отчёт о тестировании");
-    expect(result.markdown).toContain("Третий абзац.");
-    expect(result.warnings.map((warning) => warning.code)).toContain(
-      "TABLE_EXTRACTION_DEGRADED",
-    );
-  });
-
-  test("keeps headings and tables intact and normalizes platform artifacts", () => {
-    const source = "| a | b |\r\n| --- | --- |\r\n| 1 | 2 |\r\n\r\n## Итог\r\n";
-    const result = normalizeExtractedMarkdown(source);
-    expect(result.markdown).toContain("| --- | --- |");
-    expect(result.markdown).toContain("## Итог");
-    expect(result.markdown).not.toContain("\r");
   });
 });

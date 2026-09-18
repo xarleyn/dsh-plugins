@@ -8,87 +8,21 @@
  * and every refusal is a code rather than a degraded answer.
  */
 
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { resolveDocumentsConfig } from "../src/documents/config.js";
-import { DocumentError } from "../src/documents/errors.js";
-import { DocumentRuntime } from "../src/documents/runtime.js";
-import { createDocumentTools } from "../src/documents/tools/index.js";
 import { buildZip, pdfBytes } from "./helpers/document-fixtures.js";
+import { docxWithBody, paragraph } from "./helpers/comparison-fixtures.js";
+
 import {
-  docxWithBody,
-  externalRelationshipPart,
-  paragraph,
-} from "./helpers/comparison-fixtures.js";
-import { stubProviderSet } from "./helpers/document-providers.js";
-
-let workspace: string;
-
-beforeEach(async () => {
-  workspace = path.join(
-    tmpdir(),
-    `qa-docs-compare-sec-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-  );
-  await mkdir(workspace, { recursive: true });
-});
-
-afterEach(async () => {
-  await rm(workspace, { recursive: true, force: true });
-});
-
-function runtime(
-  config: Parameters<typeof resolveDocumentsConfig>[0] = {},
-  options: { readonly clock?: () => Date } = {},
-): DocumentRuntime {
-  return new DocumentRuntime({
-    config: resolveDocumentsConfig(config),
-    providers: stubProviderSet().providers,
-    now: options.clock ?? (() => new Date("2026-09-14T10:00:00Z")),
-  });
-}
-
-function exec(): ToolRunContext {
-  return {
-    signal: new AbortController().signal,
-    agent: { session: { header: { cwd: workspace, id: "session-1" } } },
-  } as unknown as ToolRunContext;
-}
-
-async function compare(
-  instance: DocumentRuntime,
-  left: Record<string, unknown>,
-  right: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  const definition = createDocumentTools({ runtime: instance }).find(
-    (entry) => entry.name === "document_compare",
-  );
-  if (definition === undefined) throw new Error("document_compare is missing");
-  return (await definition.execute({ left, right }, exec())) as Record<
-    string,
-    unknown
-  >;
-}
-
-async function errorOf(body: () => Promise<unknown>): Promise<string> {
-  try {
-    await body();
-  } catch (error) {
-    if (error instanceof DocumentError) return error.code;
-    throw error;
-  }
-  throw new Error("the call did not fail");
-}
-
-async function write(name: string, content: string | Buffer): Promise<string> {
-  const target = path.join(workspace, name);
-  await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, content);
-  return name;
-}
+  compare,
+  errorOf,
+  runtime,
+  workspace,
+  write,
+} from "./documents-comparison-security.helpers.js";
 
 describe("path containment (§26.2)", () => {
   test("a traversal path never leaves the workspace", async () => {
@@ -311,103 +245,5 @@ describe("input refusals (§26.3, §26.6, §29)", () => {
         compare(instance, { path: "broken.docx" }, { path: "plain.md" }),
       ),
     ).toBe("COMPARE_PARSE_FAILED");
-  });
-});
-
-describe("hostile containers (§42)", () => {
-  test("a ZIP bomb is refused instead of inflated", async () => {
-    // Declared sizes are the archive's claim; the entry cap is what stops an
-    // archive whose real expansion is orders of magnitude larger.
-    const bomb = docxWithBody({
-      body: paragraph("А".repeat(40 * 1024 * 1024)),
-    });
-    await write("bomb.docx", bomb);
-    await write("plain.md", "Текст.");
-    const instance = runtime({
-      comparison: {
-        maxUncompressedBytes: 1_048_576,
-        maxInputBytes: 200_000_000,
-      },
-    });
-    expect(
-      await errorOf(() =>
-        compare(instance, { path: "bomb.docx" }, { path: "plain.md" }),
-      ),
-    ).toBe("COMPARE_PARSE_FAILED");
-  }, 60_000);
-
-  test("a document with a huge number of nodes is refused", async () => {
-    const body = Array.from({ length: 5_000 }, (_value, index) =>
-      paragraph(`Пункт ${index}.`),
-    ).join("");
-    await write("huge.docx", docxWithBody({ body }));
-    await write("plain.md", "Текст.");
-    const instance = runtime({ comparison: { maxNodes: 100 } });
-    expect(
-      await errorOf(() =>
-        compare(instance, { path: "huge.docx" }, { path: "plain.md" }),
-      ),
-    ).toBe("COMPARE_TOO_MANY_NODES");
-  }, 60_000);
-
-  test("no comparison opens a socket, even for an external relationship", async () => {
-    const fetchSpy = vi.fn(() => {
-      throw new Error("the comparison must not perform network I/O");
-    });
-    const original = globalThis.fetch;
-    globalThis.fetch = fetchSpy as unknown as typeof fetch;
-    try {
-      await write(
-        "rel.docx",
-        docxWithBody({
-          body: paragraph("Текст со ссылкой."),
-          extra: {
-            "word/_rels/document.xml.rels": externalRelationshipPart(
-              "http://example.invalid/leak",
-            ),
-          },
-        }),
-      );
-      await write(
-        "rel2.docx",
-        docxWithBody({ body: paragraph("Другой текст.") }),
-      );
-      const instance = runtime();
-      const result = await compare(
-        instance,
-        { path: "rel.docx" },
-        { path: "rel2.docx" },
-      );
-      expect(result.status).toBe("completed");
-      expect(fetchSpy).not.toHaveBeenCalled();
-    } finally {
-      globalThis.fetch = original;
-    }
-  });
-
-  test("a comparison of native formats never reaches for a backend", async () => {
-    // DOCX and Markdown are read in-process, so no renderer, extractor or
-    // converter may be touched — which is also what keeps the comparison free
-    // of any process the plugin might otherwise spawn. The build-time half of
-    // this claim (no `child_process` reachable from the comparison modules) is
-    // pinned by the package verification script.
-    const stub = stubProviderSet();
-    const instance = new DocumentRuntime({
-      config: resolveDocumentsConfig({}),
-      providers: stub.providers,
-      now: () => new Date("2026-09-14T10:00:00Z"),
-    });
-    await write("a.docx", docxWithBody({ body: paragraph("Раз.") }));
-    await write("b.docx", docxWithBody({ body: paragraph("Два.") }));
-    const result = await compare(
-      instance,
-      { path: "a.docx" },
-      { path: "b.docx" },
-    );
-    expect(result.status).toBe("completed");
-    expect(stub.calls.docx).toHaveLength(0);
-    expect(stub.calls.pdf).toHaveLength(0);
-    expect(stub.calls.convert).toHaveLength(0);
-    expect(stub.calls.extract).toHaveLength(0);
   });
 });

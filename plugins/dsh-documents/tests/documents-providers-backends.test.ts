@@ -8,124 +8,24 @@
  * it.
  */
 
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  stat,
-  writeFile,
-} from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { DocumentError } from "../src/documents/errors.js";
 import { LibreOfficePdfConverter } from "../src/documents/providers/libreoffice.js";
 import {
   PandocDocxRenderer,
   PandocTypstPdfRenderer,
 } from "../src/documents/providers/pandoc.js";
+import { docxBytes } from "./helpers/document-fixtures.js";
+
 import {
-  buildProcessEnv,
-  runProcess,
-} from "../src/documents/providers/process.js";
-import { docxBytes, pdfBytes } from "./helpers/document-fixtures.js";
-
-let dir: string;
-let docxSrc: string;
-let pdfSrc: string;
-let logPath: string;
-let stubPandoc: string;
-let stubSoffice: string;
-
-/** Stub backend: records its argv, then copies the fixture it was told to. */
-const STUB_SOURCE = `
-import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from "node:fs";
-import path from "node:path";
-
-const [docxSrc, pdfSrc, logPath, mode = "ok", ...argv] = process.argv.slice(2);
-const record = () => {
-  if (!logPath) return;
-  appendFileSync(logPath, JSON.stringify({ argv, env: Object.keys(process.env), cwd: process.cwd() }) + "\\n");
-};
-record();
-
-if (argv.includes("--version")) {
-  process.stdout.write(process.env.STUB_VERSION_TEXT || "stub-backend 9.9.9\\n");
-  process.exit(0);
-}
-if (mode === "fail") {
-  process.stderr.write("\\u001b[31mbackend failed\\u001b[0m while reading /tmp/qa-documents/job-1/secret.md\\n");
-  process.exit(3);
-}
-if (mode.startsWith("sleep:")) {
-  await new Promise((resolve) => setTimeout(resolve, Number(mode.slice(6))));
-}
-if (mode === "spam") {
-  process.stdout.write("x".repeat(200000));
-  process.exit(0);
-}
-const out = argv.find((arg) => arg.startsWith("--output="))?.slice("--output=".length)
-  ?? argv.filter((arg) => !arg.startsWith("-")).at(-1);
-const to = argv.find((arg) => arg.startsWith("--to="))?.slice("--to=".length);
-const outdirIndex = argv.indexOf("--outdir");
-const outdir = outdirIndex >= 0 ? argv[outdirIndex + 1] : undefined;
-if (mode === "no-output") process.exit(0);
-const source = to === "pdf" ? pdfSrc : docxSrc;
-const target = outdir
-  ? path.join(outdir, path.basename(argv.at(-1) ?? "out").replace(/\\.[^.]+$/, "") + ".pdf")
-  : out;
-mkdirSync(path.dirname(target), { recursive: true });
-writeFileSync(target, readFileSync(source));
-process.stdout.write("converted\\n");
-`;
-
-beforeEach(async () => {
-  dir = await mkdtemp(path.join(tmpdir(), "qa-docs-providers-"));
-  docxSrc = path.join(dir, "fixture.docx");
-  pdfSrc = path.join(dir, "fixture.pdf");
-  logPath = path.join(dir, "argv.log");
-  stubPandoc = path.join(dir, "stub-pandoc.mjs");
-  stubSoffice = path.join(dir, "stub-soffice.mjs");
-  await writeFile(docxSrc, docxBytes({ headings: ["H"] }));
-  await writeFile(pdfSrc, pdfBytes({ pages: 2 }));
-  await writeFile(stubPandoc, STUB_SOURCE, "utf8");
-  await writeFile(stubSoffice, STUB_SOURCE, "utf8");
-});
-
-afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
-});
-
-function pandocOptions(mode = "ok") {
-  return {
-    executable: process.execPath,
-    timeoutMs: 20_000,
-    programPrefixArgs: [stubPandoc, docxSrc, pdfSrc, logPath, mode],
-  };
-}
-
-function sofficeOptions(mode = "ok") {
-  return {
-    executable: process.execPath,
-    timeoutMs: 20_000,
-    programPrefixArgs: [stubSoffice, docxSrc, pdfSrc, logPath, mode],
-  };
-}
-
-async function argvLog(): Promise<
-  { argv: string[]; env: string[]; cwd: string }[]
-> {
-  const raw = await readFile(logPath, "utf8");
-  return raw
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map(
-      (line) =>
-        JSON.parse(line) as { argv: string[]; env: string[]; cwd: string },
-    );
-}
+  argvLog,
+  dir,
+  docxSrc,
+  pandocOptions,
+  sofficeOptions,
+} from "./documents-providers.helpers.js";
 
 describe("pandoc provider", () => {
   test("renders DOCX with a fixed, orchestrator-owned command line", async () => {
@@ -328,78 +228,5 @@ describe("libreoffice provider", () => {
         workDir: dir,
       }),
     ).rejects.toMatchObject({ code: "CONVERSION_FAILED" });
-  });
-});
-
-describe("process runner", () => {
-  test("withholds ambient environment variables from the backend", async () => {
-    const planted = "DSH_DOCUMENTS_TEST_SECRET";
-    const previous = process.env[planted];
-    process.env[planted] = "should-not-leak";
-    try {
-      const result = await runProcess(
-        process.execPath,
-        [
-          stubPandoc,
-          docxSrc,
-          pdfSrc,
-          logPath,
-          "ok",
-          `--output=${path.join(dir, "env.docx")}`,
-          "--to=docx",
-        ],
-        {
-          timeoutMs: 20_000,
-          maxStdoutBytes: 1024,
-          backend: "stub",
-          context: "testing",
-          programPrefixArgs: [],
-        },
-      );
-      expect(result.exitCode).toBe(0);
-      const call = (await argvLog())[0];
-      expect(call?.env).toContain("PATH");
-      expect(call?.env).not.toContain(planted);
-    } finally {
-      if (previous === undefined) delete process.env[planted];
-      else process.env[planted] = previous;
-    }
-  });
-
-  test("buildProcessEnv keeps only the allow-listed variables", () => {
-    const env = buildProcessEnv(undefined, {
-      PATH: "/usr/bin",
-      HOME: "/home/qa",
-      SystemRoot: "C:\\Windows",
-      AWS_SECRET_ACCESS_KEY: "nope",
-      HTTP_PROXY: "http://proxy",
-    });
-    expect(Object.keys(env).sort()).toEqual(["HOME", "PATH", "SystemRoot"]);
-  });
-
-  test("kills a backend that floods stdout", async () => {
-    const result = await runProcess(
-      process.execPath,
-      [stubPandoc, docxSrc, pdfSrc, logPath, "spam"],
-      {
-        timeoutMs: 20_000,
-        maxStdoutBytes: 4_096,
-        backend: "stub",
-        context: "testing",
-      },
-    );
-    expect(result.truncated).toBe(true);
-    expect(result.stdout.length).toBeLessThanOrEqual(4_096);
-  });
-
-  test("reports a missing executable as BACKEND_UNAVAILABLE", async () => {
-    await expect(
-      runProcess(path.join(dir, "nope"), [], {
-        timeoutMs: 1_000,
-        maxStdoutBytes: 100,
-        backend: "stub",
-        context: "testing",
-      }),
-    ).rejects.toBeInstanceOf(DocumentError);
   });
 });
