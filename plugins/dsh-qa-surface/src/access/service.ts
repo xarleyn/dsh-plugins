@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 // The `types` subpath keeps the client ISessions Context merge authoritative,
 // mirroring the admission boundary's import.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -236,6 +237,13 @@ export class QaAccessService {
       readonly repository?: QaRoleRepository;
       readonly dynamicToolNames?: () => readonly string[];
       /**
+       * The viewing scope an administrator's catalog is read with. Skills and
+       * tools a deployment mounts through an agent preset live in that
+       * preset's scope, so a global-only catalog left the operator unable to
+       * see — or grant — what every QA chat actually mounts.
+       */
+      readonly presetScope?: () => Promise<ScopeKey | undefined>;
+      /**
        * Durable session listing, used to tell a chat from a delegated child
        * across Host runs. Without it the lineage answer degrades to the live
        * registry, which knows nothing about a session this process has not
@@ -257,6 +265,7 @@ export class QaAccessService {
       ctx,
       options.dynamicToolNames ?? (() => []),
       () => this.roles.snapshot().subroles.map(({ id }) => id),
+      options.presetScope ?? (() => Promise.resolve(undefined)),
     );
   }
 

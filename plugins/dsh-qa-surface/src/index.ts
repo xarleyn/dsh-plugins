@@ -6,6 +6,7 @@ import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import type {} from "@deepseek-ai/dsh-system-prompt";
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { WorkspaceId } from "@deepseek-ai/dsh-workspace";
@@ -226,6 +227,7 @@ export class QaSurface extends TypertRemoteService {
       config: () => this.getConfig(),
       logger: this.logger,
       dynamicToolNames: () => this.tools?.catalogToolNames() ?? [],
+      presetScope: () => this.qaPresetScope(),
       sessionLog,
       // The record the sweep reclaims is the authorization boundary, not the
       // whole of what the deployment kept about a chat: the quality rows a
@@ -443,6 +445,21 @@ export class QaSurface extends TypertRemoteService {
   private quality(): QaQualityStore {
     this.qualityStore ??= new QaQualityStore();
     return this.qualityStore;
+  }
+
+  /**
+   * The standing scope of the preset QA chats run under, so an administrator's
+   * capability catalog is read the way a chat reads it. Everything a preset
+   * mounts — its skill catalog, its tool family — is registered in that scope,
+   * and a global-only read showed the operator an almost empty page. Resolving
+   * the preset composes it but starts no agent, no session and no turn;
+   * without a pinned preset there is nothing to borrow, and the read stays
+   * global.
+   */
+  private async qaPresetScope(): Promise<ScopeKey | undefined> {
+    const preset = this.getConfig().session.agentPreset;
+    if (preset === null || preset === undefined) return undefined;
+    return await this.ctx.agentPresets.standingKeyFor(preset);
   }
 
   /**

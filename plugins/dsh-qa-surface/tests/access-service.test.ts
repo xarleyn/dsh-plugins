@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QaAccounts, QaAccountsError } from "../src/accounts/store.js";
@@ -27,6 +28,8 @@ function harness(
     };
     /** Collects the ids the ownership sweep reclaimed. */
     readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
+    /** The standing scope of the QA preset, faked by the harness. */
+    readonly presetScope?: () => Promise<ScopeKey | undefined>;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));
@@ -61,18 +64,50 @@ function harness(
   ] as const);
   const ctx = {
     tools: {
-      schemas: () =>
-        [...tools].map((name) => ({ name, description: name, parameters: {} })),
+      schemas: (scope?: unknown) => [
+        ...[...tools].map((name) => ({
+          name,
+          description: name,
+          parameters: {},
+        })),
+        // A tool the preset mounts lives in the preset's scope only.
+        ...(scope === undefined
+          ? []
+          : [{ name: "preset_tool", description: "preset", parameters: {} }]),
+      ],
     },
     get: (name: string) =>
       name === "skills"
         ? {
-            snapshot: async () => ({
-              skills: [...skills.values()],
+            snapshot: async (options?: { readonly scope?: unknown }) => ({
+              skills: [
+                ...skills.values(),
+                // Likewise a skill the kit's catalog contributes.
+                ...(options?.scope === undefined
+                  ? []
+                  : [
+                      {
+                        name: "preset-search",
+                        description: "Preset skill",
+                        invocation: {
+                          modelInvocable: true,
+                          userInvocable: true,
+                        },
+                        source: "custom",
+                        provider: "filesystem",
+                      },
+                    ]),
+              ],
               complete: true,
             }),
           }
         : undefined,
+    logger: {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    },
     ...(options.live === undefined
       ? {}
       : {
@@ -103,6 +138,9 @@ function harness(
       }),
     logger,
     repository: new QaRoleRepository(path.join(root, "roles.json")),
+    ...(options.presetScope === undefined
+      ? {}
+      : { presetScope: options.presetScope }),
     ...(options.sessionLog === undefined
       ? {}
       : { sessionLog: options.sessionLog }),
@@ -490,5 +528,52 @@ describe("QA access service: the vanished-chat sweep", () => {
 
     // An incomplete listing is an unanswerable question, not a deletion.
     expect(accounts.ownedSessionIds(user.token)).toEqual(["session-quiet"]);
+  });
+});
+
+describe("the admin catalog's viewing scope", () => {
+  it("reads skills and tools in the QA preset's scope", async () => {
+    // A kit's skill catalog and the preset's tool family are mounted in the
+    // preset's scope; a global-only read showed an administrator almost
+    // nothing to grant.
+    const presetScope = async (): Promise<ScopeKey | undefined> => ({
+      agentPreset: "qa-research",
+    });
+    const { service, admin } = harness({ presetScope });
+
+    const snapshot = await service.adminSnapshot(admin.token);
+
+    const skillIds = snapshot.catalog
+      .filter(({ type }) => type === "skill")
+      .map(({ id }) => id);
+    expect(skillIds).toContain("preset-search");
+    const toolIds = snapshot.catalog
+      .filter(({ type }) => type === "tool")
+      .map(({ id }) => id);
+    expect(toolIds).toContain("preset_tool");
+  });
+
+  it("stays global when no preset scope is resolved", async () => {
+    const { service, admin } = harness();
+
+    const snapshot = await service.adminSnapshot(admin.token);
+
+    const ids = snapshot.catalog.map(({ id }) => id);
+    expect(ids).not.toContain("preset-search");
+    expect(ids).not.toContain("preset_tool");
+  });
+
+  it("degrades to the global view when the preset cannot be composed", async () => {
+    const { service, admin } = harness({
+      presetScope: async () => {
+        throw new Error("preset composition is unreadable");
+      },
+    });
+
+    const snapshot = await service.adminSnapshot(admin.token);
+
+    const ids = snapshot.catalog.map(({ id }) => id);
+    expect(ids).not.toContain("preset-search");
+    expect(ids).toContain("company");
   });
 });

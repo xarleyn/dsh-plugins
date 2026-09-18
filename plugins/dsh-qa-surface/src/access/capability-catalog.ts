@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 import type {
   QaCapabilityDescriptor,
@@ -51,11 +52,24 @@ export class QaCapabilityCatalog {
     private readonly additionalToolNames: () => readonly string[] = () => [],
     /** Role ids used to report unknown subrole ids in skill metadata. */
     private readonly knownSubroles: () => readonly string[] = () => [],
+    /**
+     * The viewing scope an administrator's catalog is read with, for callers
+     * that have no agent of their own. Skills and tools an agent preset mounts
+     * (a kit's skill catalog, the preset's tool family) live in that preset's
+     * scope, so a global-only read reported an almost empty catalog: the
+     * administrator could neither see nor grant what every chat mounts.
+     * Resolving the scope may compose the preset; a failure degrades to the
+     * global view instead of failing the page.
+     */
+    private readonly presetScope: () => Promise<ScopeKey | undefined> = () =>
+      Promise.resolve(undefined),
   ) {}
 
   async snapshot(agent?: Agent): Promise<CapabilityCatalogSnapshot> {
+    const scope: ScopeKey | undefined =
+      agent ?? (await this.resolvePresetScope());
     const toolDescriptors: QaCapabilityDescriptor[] = this.ctx.tools
-      .schemas(agent)
+      .schemas(scope)
       .map((schema) => ({
         type: "tool" as const,
         id: schema.name,
@@ -80,8 +94,8 @@ export class QaCapabilityCatalog {
     }
 
     const registry = this.ctx.get("skills") as Context["skills"] | undefined;
-    const lookup = {
-      ...(agent === undefined ? {} : { scope: agent }),
+    const lookup: { scope?: ScopeKey; cwd?: string } = {
+      ...(scope === undefined ? {} : { scope }),
       ...(agent?.session.header.cwd === undefined
         ? {}
         : { cwd: agent.session.header.cwd }),
@@ -127,6 +141,26 @@ export class QaCapabilityCatalog {
   }
 
   /**
+   * The scope an administrator's catalog is read with. A deployment that pins
+   * QA chats to an agent preset gets that preset's standing scope; without a
+   * pinned preset there is no scope to borrow, and the read stays global.
+   */
+  private async resolvePresetScope(): Promise<ScopeKey | undefined> {
+    try {
+      return await this.presetScope();
+    } catch (error: unknown) {
+      // A preset the deployment cannot compose is an operator problem this
+      // page is not the place to surface: the global view is still readable.
+      this.ctx.logger.warn(
+        `qa-surface: could not resolve the QA preset scope for the capability catalog: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * Read `metadata.qa-surface` of every discovered skill.
    *
    * The registry exposes metadata on loaded definitions only, so discovery has
@@ -137,7 +171,7 @@ export class QaCapabilityCatalog {
   private async readSkillMetadata(
     registry: Context["skills"],
     skillList: readonly SkillSummary[],
-    lookup: { readonly scope?: Agent; readonly cwd?: string },
+    lookup: { readonly scope?: ScopeKey; readonly cwd?: string },
   ): Promise<ReadonlyMap<string, QaSkillDescriptor>> {
     const known = new Set(this.knownSubroles());
     const metadata = new Map<string, QaSkillDescriptor>();
