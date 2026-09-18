@@ -37,7 +37,9 @@ import type {
   QaSlashApi,
   QaSourceApi,
 } from "./types.js";
-import { QA_SURFACE_STYLES } from "./styles.js";
+import { QA_OVERLAY_STYLES } from "./styles.js";
+import { QaAuditController } from "./audit/controller.js";
+import { createQaAuditApi, type QaAuditRemote } from "./audit/types.js";
 import type {
   QaAccountSession,
   QaApprovalDecision,
@@ -395,6 +397,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // the signed-in account through this service; the overlay's own controllers
   // stay the authority and attach to it below.
   const userSession = new QaUserSessionMirror();
+
+  // The audit provider is an optional peer: its namespace is attached when the
+  // audit plugin's client bundle is present and detached when it goes away.
+  const audit = new QaAuditController();
+  ctx.effect(() => () => audit.dispose(), "dsh-qa-surface: audit controller");
   ctx.effect(() => {
     const removeService = ctx.provide("qaSurfacePanels", panels);
     return () => {
@@ -425,6 +432,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     ["remote.qaSurface", "remote.session", "remote.agentPresets"],
     (remoteContext) => {
       const injectedRemote = remoteContext.remote as QaClientRemote;
+
+      // Absent audit plugin => this callback never runs => no badge, no
+      // dialog, and nothing else about the surface changes (SPEC §48).
+      remoteContext.inject(["remote.sessionAudit"], (auditContext) => {
+        const mounted = auditContext.remote as unknown as {
+          sessionAudit: QaAuditRemote;
+        };
+        audit.attach(createQaAuditApi(mounted.sessionAudit));
+        return () => audit.detach();
+      });
       // Keep source checks independent of a previously generated lib/ Remote
       // declaration. The handwritten face is the same contract the generator
       // validates during build.
@@ -710,7 +727,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       ctx.effect(() => {
         const style = document.createElement("style");
         style.dataset.dshQaSurface = "styles";
-        style.textContent = QA_SURFACE_STYLES;
+        style.textContent = QA_OVERLAY_STYLES;
         document.head.append(style);
         return () => style.remove();
       }, "dsh-qa-surface: styles");
@@ -762,6 +779,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   accounts,
                   panels,
                   settingsSections,
+                  audit,
                   // The upload service is optional on the page: a deployment that
                   // does not serve it keeps images, and a staged file refuses the
                   // send with a message instead of losing the draft. Read through

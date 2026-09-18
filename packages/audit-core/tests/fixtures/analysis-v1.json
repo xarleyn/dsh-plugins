@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "trajectory": {
+    "source": "deepseek-harness",
+    "sessionId": "session-41b4e63f-9e35-4406-927b-25a60b7be2c2",
+    "format": "session.v3.jsonl",
+    "model": "demo-model-v1",
+    "agentPreset": "demo-research",
+    "cwd": "/workspace/demo-project",
+    "subagentLog": "subagent-demo-1"
+  },
+  "capabilitySnapshot": {
+    "toolsAdvertised": 12,
+    "toolGroups": ["file ops", "web search"],
+    "interpretation": "The agent had the tools it needed for the second half of the task."
+  },
+  "evidenceSufficiency": {
+    "level": "rich",
+    "present": ["user_task", "tool_calls", "tool_results", "turn_lifecycle"],
+    "missing": ["user_corrections", "feedback_labels"]
+  },
+  "verdict": "mixed",
+  "taskOutcome": {
+    "status": "completed_with_gaps",
+    "summary": "The change landed, but the second half was never checked against the ticket."
+  },
+  "scores": {
+    "task_success": {
+      "score": 3,
+      "confidence": "high",
+      "summary": "The requested change is present and builds.",
+      "evidence": ["seq:12", "seq:64"]
+    },
+    "grounding": {
+      "score": 1,
+      "confidence": "medium",
+      "summary": "Two claims about PROJ-456 were asserted without a lookup.",
+      "evidence": ["seq:24", "seq:31"]
+    },
+    "stopping": {
+      "score": "N/A",
+      "confidence": "low",
+      "summary": "A single turn, so stopping behaviour is unobservable.",
+      "evidence": []
+    }
+  },
+  "findings": [
+    {
+      "id": "F1",
+      "severity": "critical",
+      "category": "grounding",
+      "title": "A ticket state was asserted without a lookup",
+      "status": "observed",
+      "rootCause": "AGENT",
+      "description": "The answer states that PROJ-123 is closed. No jira tool call precedes it.",
+      "evidence": ["seq:24", "seq:52"],
+      "recommendationTarget": "agent_instruction"
+    },
+    {
+      "id": "F2",
+      "severity": "major",
+      "category": "tool_execution",
+      "title": "A failed search was retried unchanged",
+      "status": "observed",
+      "rootCause": "AGENT",
+      "description": "The same query was issued three times with the same empty result.",
+      "evidence": ["seq:88"],
+      "recommendationTarget": "agent_instruction"
+    },
+    {
+      "id": "F3",
+      "severity": "minor",
+      "category": "efficiency",
+      "title": "A whole directory was read to find one file",
+      "status": "likely",
+      "rootCause": "ENVIRONMENT",
+      "description": "The workspace listing was dumped three times.",
+      "evidence": ["seq:7"],
+      "recommendationTarget": "tool"
+    },
+    {
+      "id": "F4",
+      "severity": "observation",
+      "category": "final_answer",
+      "title": "The summary omitted the known limitation",
+      "status": "possible",
+      "rootCause": "MODEL_LIMITATION",
+      "description": "The limitation was discovered mid-run and dropped from the answer.",
+      "evidence": ["seq:96"],
+      "recommendationTarget": "none"
+    },
+    {
+      "id": "F5",
+      "severity": "catastrophic",
+      "category": "future_vocabulary",
+      "title": "A severity this build does not know",
+      "status": "observed",
+      "rootCause": "INSUFFICIENT_EVIDENCE",
+      "description": "Present so the counters prove they do not drop an unknown bucket.",
+      "evidence": [],
+      "recommendationTarget": "none"
+    }
+  ],
+  "missedOpportunities": [
+    {
+      "capability": "knowledge-base search (skill)",
+      "confidence": "high",
+      "why": "A knowledge base was mounted and never queried, and the answer turns on exactly that.",
+      "evidence": ["seq:10", "seq:13"]
+    }
+  ],
+  "userCorrections": [
+    {
+      "seq": 67,
+      "sourceKind": "user",
+      "text": "That is the wrong tracker for this change.",
+      "corrects": "The agent reported the change under the wrong project.",
+      "recovered": true,
+      "recoveryEvidence": ["seq:70", "seq:91"],
+      "skillCandidate": "Confirm the target tracker before reporting a change."
+    }
+  ],
+  "betterTrajectory": [
+    "Read the module documentation before editing it.",
+    "Delegate the tracker lookup instead of asserting its state."
+  ],
+  "recommendations": [
+    {
+      "target": "agent_instruction",
+      "priority": "high",
+      "action": "Require a lookup before stating the state of a tracker item.",
+      "evidence": ["F1", "F2"]
+    },
+    {
+      "target": "skill",
+      "priority": "medium",
+      "action": "Add a skill that names the tracker for this workspace.",
+      "evidence": ["F1"]
+    }
+  ],
+  "limitations": [
+    "A negative claim cannot be re-checked from this export.",
+    "The subagent transcript is summarised, not complete."
+  ]
+}

@@ -9,7 +9,13 @@
     ]
   },
   "release": {
-    "projects": ["plugins/*", "packages/plugin-log", "packages/plugin-kit"],
+    "projects": [
+      "plugins/*",
+      "packages/plugin-log",
+      "packages/plugin-kit",
+      "packages/audit-core",
+      "packages/audit-ui"
+    ],
     "projectsRelationship": "independent",
     "versionPlans": {
       "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]

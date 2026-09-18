@@ -1,5 +1,6 @@
 import { QA_BLEED_MAX_WIDTH } from "./components/QaWidthHandle.js";
 import { QA_ADMIN_CONSOLE_STYLES } from "./admin/styles.js";
+import { AUDIT_UI_STYLES } from "@yadsh/dsh-audit-ui";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -119,6 +120,15 @@ body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-she
 .dsh-qa-sidebar__item-delete{appearance:none;position:absolute;top:50%;right:4px;display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:0;background:var(--dsw-alias-bg-layer-2);cursor:pointer;color:var(--dsw-alias-label-tertiary);padding:5px;border-radius:6px;opacity:0;transform:translateY(-50%);transition:opacity .12s}
 .dsh-qa-sidebar__item:hover .dsh-qa-sidebar__item-delete,.dsh-qa-sidebar__item-delete:focus-visible,.dsh-qa-sidebar__item-delete--confirm{opacity:1}
 .dsh-qa-sidebar__item-delete:hover{color:var(--dsw-alias-label-primary)}
+.dsh-qa-sidebar__item-audit{appearance:none;flex:none;display:inline-flex;align-items:center;gap:4px;height:22px;margin-right:4px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:16px;cursor:pointer;transition:border-color .12s,color .12s}
+.dsh-qa-sidebar__item-audit--with-delete{margin-right:28px}
+.dsh-qa-sidebar__item-audit:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-primary)}
+.dsh-qa-sidebar__item-audit:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
+.dsh-qa-sidebar__item-audit-check{width:11px;height:11px;flex:none;color:var(--dsw-alias-state-success-primary)}
+.dsh-qa-sidebar__item-audit-verdict{font-weight:600}
+.dsh-qa-sidebar__item-audit-verdict--good{color:var(--dsw-alias-state-success-primary)}
+.dsh-qa-sidebar__item-audit-verdict--warn{color:var(--dsw-alias-state-warn-primary)}
+.dsh-qa-sidebar__item-audit-verdict--bad{color:var(--dsw-alias-state-error-primary)}
 .dsh-qa-sidebar__item-delete:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
 .dsh-qa-sidebar__item-delete--confirm{color:var(--dsh-qa-error-hover)}
 .dsh-qa-sidebar__item-delete svg{width:14px;height:14px;display:block;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
@@ -176,6 +186,9 @@ body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-she
 .dsh-qa-modal__close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-modal__close:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:-2px}
 .dsh-qa-modal__close svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-audit-dialog{display:flex;flex-direction:column;min-height:0;height:100%}
+.dsh-qa-audit-dialog__body{flex:1;min-height:0;overflow:auto;padding:16px 18px}
+.dsh-qa-audit-dialog__body .dsh-audit-json{height:100%;min-height:320px}
 .dsh-qa-modal__body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 18px 18px}
 .dsh-qa-modal__footer{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:none;padding:12px 18px;border-top:1px solid var(--dsw-alias-border-l2)}
 .dsh-qa-changelog__entry{padding-top:10px}
@@ -812,3 +825,14 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 @media (prefers-reduced-motion:reduce){.dsh-qa-message__cursor,.dsh-qa-message__pending-spinner,.dsh-qa-work__spinner,.dsh-qa-work-item__spinner,.dsh-qa-command__spinner{animation:none}.dsh-qa-work__chevron{transition:none}.dsh-qa-rail__frame,.dsh-qa-rail__pos,.dsh-qa-rail__mark::before,.dsh-qa-rail__mark--busy::before,.dsh-qa-rail__preview{transition:none;animation:none}}
 ${QA_ADMIN_CONSOLE_STYLES}
 `;
+
+/**
+ * Everything the QA overlay paints, as one sheet for one `<style>` tag.
+ *
+ * The shared audit components keep their own stylesheet in
+ * `@yadsh/dsh-audit-ui`; it is folded in here so the overlay is self-contained
+ * — the audit dialog must look right whether or not the audit plugin's own
+ * client bundle happens to have injected the same rules into the document.
+ */
+export const QA_OVERLAY_STYLES = `${QA_SURFACE_STYLES}
+${AUDIT_UI_STYLES}`;

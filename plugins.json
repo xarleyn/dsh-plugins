@@ -5,6 +5,44 @@
   "githubTopic": "dsh-plugin",
   "plugins": [
     {
+      "name": "audit-core",
+      "npm": "@yadsh/dsh-audit-core",
+      "path": "packages/audit-core",
+      "description": "Session audit artifact domain layer for DeepSeek Harness: schema, parsing, validation, summary and atomic publishing",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "audit",
+        "session-audit",
+        "trajectory-evaluation"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-audit-core",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-core#readme",
+      "client": false
+    },
+    {
+      "name": "audit-ui",
+      "npm": "@yadsh/dsh-audit-ui",
+      "path": "packages/audit-ui",
+      "description": "Shared audit presentation components for DeepSeek Harness: sanitized report rendering, findings, scorecard and JSON view",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "audit",
+        "markdown",
+        "react"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-audit-ui",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-ui#readme",
+      "client": false
+    },
+    {
       "name": "plugin-kit",
       "npm": "@yadsh/dsh-plugin-kit",
       "path": "packages/plugin-kit",
@@ -398,6 +436,26 @@
       ],
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-surface",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-surface#readme",
+      "client": true
+    },
+    {
+      "name": "dsh-session-audit",
+      "npm": "@yadsh/dsh-session-audit",
+      "path": "plugins/dsh-session-audit",
+      "description": "Session audit registry and viewer for DeepSeek Harness: an Audit tab in every session, driven by audit artifacts on disk",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "audit",
+        "session-audit",
+        "trajectory-review",
+        "web-ui"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-session-audit",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-session-audit#readme",
       "client": true
     },
     {

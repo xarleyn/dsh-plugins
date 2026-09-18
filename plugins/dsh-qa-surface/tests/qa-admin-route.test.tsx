@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { QaRouteController } from "../src/client/QaRouteController.js";
 import { QaSurface, type QaSurfaceProps } from "../src/client/QaSurface.js";
 import { QaSurfacePanelRegistry } from "../src/client/panels/registry.js";
+import { QaAuditController } from "../src/client/audit/controller.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import type { QaAccessApi, QaAdminApi } from "../src/client/types.js";
 import type { QaAccountsController } from "../src/client/QaAccountsController.js";
@@ -213,6 +214,7 @@ function surfaceAt(pathname: string): QaSurfaceProps {
       })),
     },
     panels: new QaSurfacePanelRegistry(),
+    audit: new QaAuditController(),
     settingsSections: {
       subscribe: () => () => undefined,
       getSnapshot: () => sectionsSnapshot,
