@@ -23,6 +23,8 @@ export const AUTH_FETCH_ERROR_CODES = {
   redirectDenied: "AUTH_FETCH_REDIRECT_DENIED",
   responseTooLarge: "AUTH_FETCH_RESPONSE_TOO_LARGE",
   unsupportedContent: "AUTH_FETCH_UNSUPPORTED_CONTENT",
+  notAnImage: "AUTH_FETCH_NOT_AN_IMAGE",
+  imageTooLarge: "AUTH_FETCH_IMAGE_TOO_LARGE",
   documentTooLarge: "AUTH_FETCH_DOCUMENT_TOO_LARGE",
   documentUnreadable: "AUTH_FETCH_DOCUMENT_UNREADABLE",
   timeout: "AUTH_FETCH_TIMEOUT",
@@ -118,6 +120,34 @@ export function unsupportedCharset(charset: string): WebError {
   return new WebError(
     `unsupported charset "${charset}"`,
     AUTH_FETCH_ERROR_CODES.unsupportedContent,
+  );
+}
+
+/**
+ * Bytes a download tool was asked for that are not a raster image it can
+ * store. The web pages a person would reach with `web_fetch` land here when a
+ * model points the image tool at one, and so does a non-2xx response, whose
+ * body is an error page rather than the file.
+ */
+export function notAnImage(
+  contentType: string | null,
+  statusCode?: number,
+): WebError {
+  const facts = [
+    statusCode === undefined ? undefined : `HTTP ${statusCode}`,
+    contentType === null ? "no content type" : `content type "${contentType}"`,
+  ].filter((fact): fact is string => fact !== undefined);
+  return new WebError(
+    `the response is not a raster image (${facts.join(", ")}); this tool stores PNG, JPEG, WebP and GIF images only`,
+    AUTH_FETCH_ERROR_CODES.notAnImage,
+  );
+}
+
+/** An image larger than the deployment's stored-image budget. */
+export function imageTooLarge(maxBytes: number): WebError {
+  return new WebError(
+    `the image exceeds the maximum of ${maxBytes} bytes`,
+    AUTH_FETCH_ERROR_CODES.imageTooLarge,
   );
 }
 

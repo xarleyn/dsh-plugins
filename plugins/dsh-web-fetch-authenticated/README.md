@@ -224,6 +224,33 @@ inside the provider and returns it as `text`:
 - **Not a document**: everything else keeps the plain
   `AUTH_FETCH_UNSUPPORTED_CONTENT` behavior.
 
+### Images: `web_fetch_image`
+
+An image is the one download the text seam cannot carry at all, so the plugin
+registers a second model-facing tool beside `web_fetch` (SPEC §15.4):
+
+```text
+web_fetch_image(url)
+  -> the same rule match, network policy and credentials as web_fetch
+  -> bounded byte read (deployment image limits)
+  -> format verified from the file signature, not the server header
+  -> ctx.attachments.saveImage (durable raster attachment)
+  -> tool result: text summary + the image block the model can look at
+```
+
+- Use it for image attachments, screenshots and charts whose URL `web_fetch`
+  refuses as binary content. `web_fetch` itself stays text-only: the harness
+  body union (`html | text`) belongs to `@deepseek-ai/dsh-web` and has no
+  binary arm a provider could fill.
+- Stored formats are the attachment store's raster set: PNG, JPEG, WebP, GIF.
+  A response that is not one of them — an HTML error page, a PDF, a 404 —
+  fails with `AUTH_FETCH_NOT_AN_IMAGE` naming what arrived instead, and one
+  above the byte budget fails with `AUTH_FETCH_IMAGE_TOO_LARGE`.
+- The tool registers only while a durable attachment store is mounted: without
+  one there is nowhere to keep the image and nothing that could render it
+  back to the model. A route whose model declares no image input is refused
+  before any download starts.
+
 Caps are per rule and exist because the model's context is finite:
 
 ```yaml
@@ -255,6 +282,7 @@ page served by a rule whose adapter is `jira` falls through to raw HTML.
 `AUTH_FETCH_DNS_POLICY_DENIED`, `AUTH_FETCH_REDIRECT_DENIED`,
 `AUTH_FETCH_RESPONSE_TOO_LARGE`, `AUTH_FETCH_UNSUPPORTED_CONTENT`,
 `AUTH_FETCH_DOCUMENT_TOO_LARGE`, `AUTH_FETCH_DOCUMENT_UNREADABLE`,
+`AUTH_FETCH_NOT_AN_IMAGE`, `AUTH_FETCH_IMAGE_TOO_LARGE`,
 `AUTH_FETCH_TIMEOUT`, `AUTH_FETCH_INVALID_URL`, `AUTH_FETCH_PROVIDER_ERROR`,
 `AUTH_FETCH_ADAPTER_FAILED` —
 surfaced as `WebError` codes through the existing `web_fetch` error metadata.

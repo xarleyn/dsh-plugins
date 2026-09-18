@@ -836,6 +836,21 @@ Downloading an attachment is where the seam, not the adapter, decides: `WebFetch
 
 ---
 
+## 15.4 Image downloads (`web_fetch_image`)
+
+Text extraction covers documents, but an image has no text to extract and no binary arm to travel in, so an image attachment was unreachable: `web_fetch` refused it as unsupported content, and the browser refused the same URL under its own network policy. Since the harness body union cannot grow an arm from a plugin, the plugin adds a second model-facing tool instead — the download seam:
+
+- the tool takes one `url` and travels the SAME pipeline as `web_fetch`: rule matching, per-address network policy, per-request credentials, DNS pinning, redirect re-validation. There is no second policy to configure and no way to reach an address a rule would not serve;
+- the transport reads a bounded byte body under `min(rule.limits.maxResponseBytes, attachments.imageLimits.maxImageBytes)`; going over is `AUTH_FETCH_IMAGE_TOO_LARGE` whichever way the server reported the size;
+- the format is decided by the file signature (PNG, JPEG, WebP, GIF), not the `Content-Type` header, because Jira serves attachments as `application/octet-stream`; a body that is not one of those formats — an HTML login page, a PDF, a non-2xx response that carries an error body — is `AUTH_FETCH_NOT_AN_IMAGE`, and the message names the HTTP status and the content type that arrived;
+- the bytes are committed through `ctx.attachments.saveImage`, and the tool result carries the durable reference as an image block beside a short text summary. The model looks at the image the same way `read_image` shows it a local file;
+- the tool is registered only while a durable attachment store is mounted, and a route whose exact model does not declare image input is refused before any download starts, so a text-only route never gains an image block it cannot read;
+- storage refusals are translated into recoverable tool errors naming the limit that refused (side, decoded pixels, byte budget, accepted formats).
+
+`web_fetch` itself keeps its contract with `@deepseek-ai/dsh-web`: text and HTML only, no binary arm, no per-request options. A future upstream `file` arm would let the fetch result carry the attachment reference directly, and this tool would then become a thin alias.
+
+---
+
 ## 16. Rule routing vs provider routing
 
 The plugin should be a single `ctx.web` fetch provider capable of selecting authentication rules internally.

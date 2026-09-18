@@ -99,6 +99,23 @@ function isRedirectStatus(status: number): boolean {
 const keepAlivelessHttpAgent = new http.Agent({ keepAlive: false });
 const keepAlivelessHttpsAgent = new https.Agent({ keepAlive: false });
 
+/** The `Accept` a text fetch advertises: what the seam's body union can carry. */
+const TEXT_ACCEPT =
+  "text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8";
+
+/**
+ * What the caller does with the final response body. The pipeline owns policy,
+ * credentials and redirects; the reader owns the body, and receives the rule
+ * that was in effect when the response arrived (a redirect may have switched
+ * it, and the limits travel with the rule).
+ */
+type FinalBodyReader<T> = (context: {
+  readonly response: IncomingMessage;
+  readonly finalUrl: URL;
+  readonly rule: ResolvedRule;
+  readonly signal: AbortSignal;
+}) => Promise<T>;
+
 /**
  * Run the authenticated fetch pipeline to completion. Throws only `WebError`s.
  * The returned result follows the seam contract: a fetched non-2xx response is
@@ -107,6 +124,77 @@ const keepAlivelessHttpsAgent = new https.Agent({ keepAlive: false });
 export async function authenticatedFetch(
   options: AuthenticatedFetchOptions,
 ): Promise<WebFetchResult> {
+  return await runAuthenticatedFetch(options, TEXT_ACCEPT, async (final) => {
+    return await readBody(
+      final.response,
+      final.finalUrl,
+      final.rule.limits.maxResponseBytes,
+      final.rule.limits.maxBodyChars,
+      final.signal,
+      options.onMetrics,
+      options.documents,
+    );
+  });
+}
+
+/** A fetched non-text response, read into memory under the caller's cap. */
+export interface FetchedBinary {
+  readonly url: string;
+  readonly statusCode: number;
+  readonly contentType: string | null;
+  readonly bytes: Uint8Array;
+  readonly truncated: boolean;
+}
+
+/**
+ * Fetch one binary resource over the same authenticated pipeline (policy, DNS
+ * pinning, credentials, redirects) and hand back its bytes. The harness body
+ * union has no binary arm, so this is the transport behind the tools that
+ * commit a downloaded file into durable attachment storage.
+ */
+export async function authenticatedFetchBinary(
+  options: AuthenticatedFetchOptions,
+  binary: {
+    /** `Accept` to advertise; the caller names the formats it can store. */
+    readonly accept: string;
+    /** Cap for this read; the rule's own response cap still applies. */
+    readonly maxBytes: number;
+  },
+): Promise<FetchedBinary> {
+  return await runAuthenticatedFetch(options, binary.accept, async (final) => {
+    const maxBytes = Math.min(
+      binary.maxBytes,
+      final.rule.limits.maxResponseBytes,
+    );
+    const { bytes, truncatedByBytes } = await readCapped(
+      final.response,
+      maxBytes,
+      final.signal,
+    );
+    const contentType = final.response.headers["content-type"] ?? null;
+    options.onMetrics?.({
+      responseBytes: bytes.byteLength,
+      ...(contentType === null ? {} : { contentType }),
+      ...(final.response.statusCode === undefined
+        ? {}
+        : { statusCode: final.response.statusCode }),
+      finalUrl: final.finalUrl.toString(),
+    });
+    return {
+      url: final.finalUrl.toString(),
+      statusCode: final.response.statusCode ?? 0,
+      contentType,
+      bytes,
+      truncated: truncatedByBytes,
+    };
+  });
+}
+
+async function runAuthenticatedFetch<T>(
+  options: AuthenticatedFetchOptions,
+  accept: string,
+  read: FinalBodyReader<T>,
+): Promise<T> {
   if (options.signal?.aborted) return Promise.reject(errors.aborted());
 
   // Fuse caller cancellation with the rule's timeout. AbortSignal.timeout
@@ -165,8 +253,7 @@ export async function authenticatedFetch(
       currentUrl,
       {
         "user-agent": options.globals.userAgent,
-        accept:
-          "text/html,application/xhtml+xml,text/*;q=0.9,application/json;q=0.8",
+        accept,
         ...authHeaders,
       },
       approved,
@@ -228,15 +315,12 @@ export async function authenticatedFetch(
     }
 
     options.onMetrics?.({ redirectCount: redirectsFollowed });
-    return await readBody(
+    return await read({
       response,
-      currentUrl,
-      currentRule.limits.maxResponseBytes,
-      currentRule.limits.maxBodyChars,
+      finalUrl: currentUrl,
+      rule: currentRule,
       signal,
-      options.onMetrics,
-      options.documents,
-    );
+    });
   }
 }
 

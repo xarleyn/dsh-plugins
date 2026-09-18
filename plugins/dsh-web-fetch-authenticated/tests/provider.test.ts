@@ -508,3 +508,118 @@ describe("tester and diagnostics (UI API sanitization)", () => {
     expect(report.networkAllowed).toBe(false);
   });
 });
+
+describe("image downloads (the web_fetch_image transport)", () => {
+  const PNG_BYTES = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02,
+  ]);
+
+  test("serves the bytes of a raster image over the rule's transport", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/screen.png": {
+          bodyBytes: PNG_BYTES,
+          headers: { "content-type": "image/png" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const image = await provider.fetchImage(
+      { url: `${server.origin}/secure/screen.png` },
+      { maxBytes: 1024 },
+    );
+    expect(image.statusCode).toBe(200);
+    expect(image.mediaType).toBe("image/png");
+    expect([...image.bytes]).toEqual([...PNG_BYTES]);
+    expect(image.name).toBe("screen.png");
+    expect(server.requests[0]?.headers.authorization).toBe(`Bearer ${SECRET}`);
+  });
+
+  test("identifies the format from the bytes when the server mislabels it", async () => {
+    // Jira serves attachments as a generic octet stream; the signature decides.
+    const server = await track(
+      await startFixture({
+        "/secure/board.png": {
+          bodyBytes: PNG_BYTES,
+          headers: { "content-type": "application/octet-stream" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const image = await provider.fetchImage(
+      { url: `${server.origin}/secure/board.png` },
+      { maxBytes: 1024 },
+    );
+    expect(image.mediaType).toBe("image/png");
+  });
+
+  test("refuses a page that is not an image", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/page": {
+          body: "<html><body>login</body></html>",
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const message = await expectCode("AUTH_FETCH_NOT_AN_IMAGE", () =>
+      provider.fetchImage(
+        { url: `${server.origin}/secure/page` },
+        { maxBytes: 1024 },
+      ),
+    );
+    expect(message).toContain("text/html");
+  });
+
+  test("names the HTTP status of a failed download", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/missing.png": {
+          status: 404,
+          body: "not found",
+          headers: { "content-type": "text/plain" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const message = await expectCode("AUTH_FETCH_NOT_AN_IMAGE", () =>
+      provider.fetchImage(
+        { url: `${server.origin}/secure/missing.png` },
+        { maxBytes: 1024 },
+      ),
+    );
+    expect(message).toContain("HTTP 404");
+  });
+
+  test("refuses an image above the caller's byte budget", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/huge.png": {
+          bodyBytes: new Uint8Array(4096).fill(1),
+          headers: { "content-type": "image/png" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const message = await expectCode("AUTH_FETCH_IMAGE_TOO_LARGE", () =>
+      provider.fetchImage(
+        { url: `${server.origin}/secure/huge.png` },
+        { maxBytes: 512 },
+      ),
+    );
+    expect(message).toContain("512");
+  });
+
+  test("keeps the rule matcher in front of the download", async () => {
+    const server = await track(await startFixture({}));
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    await expectCode("AUTH_FETCH_NO_MATCHING_RULE", () =>
+      provider.fetchImage(
+        { url: "https://example.test/other.png" },
+        { maxBytes: 1024 },
+      ),
+    );
+    expect(server.requests).toHaveLength(0);
+  });
+});

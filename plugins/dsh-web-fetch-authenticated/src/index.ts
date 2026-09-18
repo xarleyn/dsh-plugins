@@ -22,6 +22,7 @@ import { createCredentialResolver } from "./credentials/resolver.js";
 import type { CredentialResolver } from "./credentials/resolver.js";
 import { resolveConfig, ConfigSchema } from "./config.js";
 import { AuthenticatedFetchProvider } from "./provider.js";
+import { createFetchImageTool } from "./tools/fetch-image.js";
 import { diagnose as runDiagnose, testRule as runTest } from "./testing.js";
 import { validateConfig } from "./rule-validation.js";
 import { observedFetchProviderId } from "./dsh-compat/web-status.js";
@@ -37,6 +38,20 @@ import type {
 
 export { AUTHENTICATED_FETCH_PROVIDER_ID } from "./provider.js";
 export { AuthenticatedFetchProvider } from "./provider.js";
+export type { FetchedImage } from "./provider.js";
+export {
+  createFetchImageTool,
+  FETCH_IMAGE_TOOL_NAME,
+  type FetchImageToolOptions,
+  type ImageDownloader,
+} from "./tools/fetch-image.js";
+export {
+  IMAGE_MEDIA_TYPES,
+  imageAcceptHeader,
+  imageNameFromUrl,
+  sniffImageMediaType,
+  type ImageMediaType,
+} from "./images.js";
 export {
   ConfigSchema,
   resolveConfig,
@@ -129,6 +144,24 @@ export class WebFetchAuthenticated
     });
 
     ctx.web.registerFetchProvider(provider);
+
+    // The download tool exists only where its result can land: a deployment
+    // without a durable attachment store has nowhere to keep the image and
+    // nothing that could render it back to the model.
+    ctx.inject(["tools", "attachments"], (toolCtx) => {
+      const remove = toolCtx.tools.register(
+        createFetchImageTool({
+          ctx,
+          downloader: provider,
+          attachments: toolCtx.attachments,
+        }),
+      );
+      ctx.effect(
+        () => () => remove(),
+        "dsh-web-fetch-authenticated.fetch-image-tool",
+      );
+    });
+
     const ready = this.resolved();
     this.logger.info("plugin.ready", {
       enabled: ready.enabled,
