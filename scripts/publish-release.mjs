@@ -537,15 +537,53 @@ function runInstall(row) {
   }
 }
 
+function sleep(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+/**
+ * Whether npm's refusal is the registry not having caught up with a publish
+ * instead of a version nobody made. npm names the spec it could not resolve,
+ * and the two cases look identical apart from which spec that is.
+ */
+export function replicationLag(row, output) {
+  return output.includes(
+    `No matching version found for ${row.name}@${row.version}`,
+  );
+}
+
 /** The published rows a consumer cannot install, with npm's own answer. */
 export async function verifyInstalls(
   rows,
-  { install = runInstall, onEvent = write } = {},
+  {
+    install = runInstall,
+    onEvent = write,
+    wait = sleep,
+    attempts = 5,
+    retryDelayMs = 15_000,
+  } = {},
 ) {
   const failures = [];
 
   for (const row of rows) {
-    const result = await install(row);
+    let result;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      result = await install(row);
+      if (result.ok) break;
+      // The registry serves a version published seconds ago from a cache that
+      // has not caught up yet, and npm answers that with the same "no matching
+      // version" it gives a version nobody ever published. Only the version
+      // this run asked for is retried: a dependency range that cannot resolve
+      // is a different failure, and waiting would not change it.
+      if (attempt === attempts || !replicationLag(row, result.output)) break;
+      onEvent(
+        `Waiting for ${row.name}@${row.version}: npm has not caught up with the publish yet`,
+      );
+      await wait(retryDelayMs);
+    }
+
     if (result.ok) {
       onEvent(`Installs ${row.name}@${row.version}`);
       continue;

@@ -533,6 +533,56 @@ describe("the install check", () => {
     );
     assert.match(events.join("\n"), /Installs @yadsh\/dsh-kit@0\.3\.0/u);
   });
+
+  test("a version the registry has not caught up with is waited for", async () => {
+    const row = releaseRow("@yadsh/dsh-surface", "0.9.0");
+    const events = [];
+    const waits = [];
+    let attempts = 0;
+
+    const failures = await verifyInstalls([row], {
+      install: async () => {
+        attempts += 1;
+        return attempts < 3
+          ? {
+              ok: false,
+              output: `npm error notarget No matching version found for ${row.name}@${row.version}.`,
+            }
+          : { ok: true, output: "" };
+      },
+      wait: async (milliseconds) => waits.push(milliseconds),
+      retryDelayMs: 5,
+      onEvent: (line) => events.push(line),
+    });
+
+    assert.deepEqual(failures, []);
+    assert.equal(attempts, 3);
+    assert.deepEqual(waits, [5, 5]);
+    assert.match(events.join("\n"), /npm has not caught up with the publish/u);
+  });
+
+  test("a dependency that cannot resolve is failed at once, not retried", async () => {
+    const row = releaseRow("@yadsh/dsh-surface", "0.9.0");
+    let attempts = 0;
+
+    const failures = await verifyInstalls([row], {
+      install: async () => {
+        attempts += 1;
+        return {
+          ok: false,
+          output:
+            "npm error notarget No matching version found for @yadsh/dsh-kit@^0.3.0.",
+        };
+      },
+      wait: async () => {
+        throw new Error("a missing dependency must not be waited for");
+      },
+      onEvent: () => {},
+    });
+
+    assert.equal(attempts, 1);
+    assert.equal(failures.length, 1);
+  });
 });
 
 describe("the release registry probe", () => {
