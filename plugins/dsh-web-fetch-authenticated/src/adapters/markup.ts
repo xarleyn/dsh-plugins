@@ -262,3 +262,14 @@ export function findElement(
   }
   return undefined;
 }
+
+/**
+ * Human-scale byte size for an attachment line (`227.5 KiB`, `2.1 MiB`).
+ * Adapters render attachment metadata, not exact byte counts, so the value
+ * stays approximate on purpose.
+ */
+export function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}

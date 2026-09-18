@@ -13,6 +13,7 @@ import type { ResolvedAdapter, ResolvedRule } from "../types.js";
 import * as errors from "../errors.js";
 import type { ResolvedAuthSecrets } from "../auth/index.js";
 import type { TransportGlobals } from "../transport/fetch.js";
+import { formatByteSize } from "./markup.js";
 
 /** REST JSON payload the adapter consumes. */
 export type FetchJson = (
@@ -52,6 +53,7 @@ export function extractIssueKey(pathname: string): string | undefined {
 function fieldList(adapter: ResolvedAdapter): string {
   const fields = [
     "summary",
+    "description",
     "status",
     "assignee",
     "reporter",
@@ -60,6 +62,9 @@ function fieldList(adapter: ResolvedAdapter): string {
     "components",
     "created",
     "updated",
+    // Attachments ride the issue card: the body mentions a file by name, and
+    // the download URL is what makes it reachable at all.
+    "attachment",
   ];
   if (adapter.includeLinks) fields.push("issuelinks");
   if (adapter.includeComments) fields.push("comment");
@@ -106,6 +111,7 @@ interface JiraIssueFields {
   readonly components?: unknown;
   readonly created?: unknown;
   readonly updated?: unknown;
+  readonly attachment?: unknown;
   readonly issuelinks?: unknown;
   readonly comment?: unknown;
 }
@@ -232,6 +238,12 @@ function renderIssue(
     lines.push(description);
     lines.push("");
   }
+  const attachments = renderAttachments(fields.attachment);
+  if (attachments.length > 0) {
+    lines.push("## Attachments");
+    lines.push(...attachments);
+    lines.push("");
+  }
   if (adapter.includeComments) {
     const comments = renderComments(fields.comment);
     if (comments.length > 0) {
@@ -273,6 +285,43 @@ export function renderDescription(body: unknown): string {
   if (body === null || body === undefined) return "";
   if (typeof body === "object") return adfToMarkdown(body);
   return "";
+}
+
+/**
+ * The issue's attachments, in the one form the model can act on: a name, what
+ * it is, how big it is, and the URL that downloads it. A description mentions
+ * a file by name, and the download URL is what makes it reachable at all.
+ */
+function renderAttachments(attachments: unknown): string[] {
+  if (!Array.isArray(attachments)) return [];
+  const out: string[] = [];
+  for (const entry of attachments) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const record = entry as {
+      filename?: unknown;
+      mimeType?: unknown;
+      size?: unknown;
+      content?: unknown;
+    };
+    const filename =
+      typeof record.filename === "string" ? record.filename.trim() : "";
+    if (filename.length === 0) continue;
+    const url = typeof record.content === "string" ? record.content : "";
+    const size =
+      typeof record.size === "number" && Number.isFinite(record.size)
+        ? formatByteSize(record.size)
+        : undefined;
+    const mediaType =
+      typeof record.mimeType === "string" && record.mimeType.length > 0
+        ? record.mimeType
+        : undefined;
+    const facts = [size, mediaType].filter(
+      (fact): fact is string => fact !== undefined,
+    );
+    const suffix = facts.length > 0 ? ` — ${facts.join(", ")}` : "";
+    out.push(`- [${filename}](${url})${suffix}`);
+  }
+  return out;
 }
 
 interface JiraComment {

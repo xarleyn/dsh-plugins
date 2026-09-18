@@ -29,6 +29,7 @@
 import type { CleanupLevel, ResolvedAdapter } from "../types.js";
 import * as errors from "../errors.js";
 import {
+  formatByteSize,
   isElement,
   isText,
   parseMarkup,
@@ -452,9 +453,7 @@ function renderAttachments(lookup: AttachmentLookup): string {
   const lines = ["## Attachments", ""];
   for (const entry of lookup.entries) {
     const facts = [
-      entry.bytes === undefined
-        ? undefined
-        : formatAttachmentBytes(entry.bytes),
+      entry.bytes === undefined ? undefined : formatByteSize(entry.bytes),
       entry.mediaType,
     ].filter((fact): fact is string => fact !== undefined && fact.length > 0);
     const suffix = facts.length > 0 ? ` — ${facts.join(", ")}` : "";
@@ -463,12 +462,6 @@ function renderAttachments(lookup: AttachmentLookup): string {
   if (lookup.truncated)
     lines.push("", `_[list capped at ${lookup.entries.length} attachments]_`);
   return lines.join("\n");
-}
-
-function formatAttachmentBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 // ---- Confluence storage-format XHTML → Markdown ----

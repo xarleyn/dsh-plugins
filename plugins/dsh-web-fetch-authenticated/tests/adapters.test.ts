@@ -94,9 +94,24 @@ describe("jira URL and REST URL construction", () => {
 
   test("builds REST v2 URLs for server flavor with the field list", () => {
     const url = issueApiUrl("https://jira.corp", "PROJ-123", adapterSettings());
-    expect(url.toString()).toBe(
-      "https://jira.corp/rest/api/2/issue/PROJ-123?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated",
-    );
+    expect(url.pathname).toBe("/rest/api/2/issue/PROJ-123");
+    const fields = url.searchParams.get("fields")?.split(",") ?? [];
+    // The description is the body of the issue: a card without it renders a
+    // task as a title and a status. Attachments ride the same card, so a file
+    // the description names is reachable at all.
+    expect(fields).toEqual([
+      "summary",
+      "description",
+      "status",
+      "assignee",
+      "reporter",
+      "priority",
+      "labels",
+      "components",
+      "created",
+      "updated",
+      "attachment",
+    ]);
   });
 
   test("adds comment and link fields when enabled", () => {
@@ -295,6 +310,50 @@ describe("jira issue normalization", () => {
     );
     expect(disabled.markdown).not.toContain("## Comments");
     expect(disabled.markdown).not.toContain("PROJ-9");
+  });
+
+  test("attachments render as name, size, type and download URL", async () => {
+    const payload = {
+      ...issuePayload,
+      fields: {
+        ...issuePayload.fields,
+        attachment: [
+          {
+            filename: "screen.png",
+            mimeType: "image/png",
+            size: 249_856,
+            content: "https://jira.corp/secure/attachment/42/screen.png",
+          },
+          {
+            filename: "log.txt",
+            mimeType: "text/plain",
+            size: 512,
+            content: "https://jira.corp/secure/attachment/43/log.txt",
+          },
+        ],
+      },
+    };
+    const { markdown } = await fetchIssueMarkdown(
+      new URL("https://jira.corp/browse/PROJ-123"),
+      adapterSettings(),
+      async () => ({ statusCode: 200, data: payload }),
+    );
+    expect(markdown).toContain("## Attachments");
+    expect(markdown).toContain(
+      "- [screen.png](https://jira.corp/secure/attachment/42/screen.png) — 244.0 KiB, image/png",
+    );
+    expect(markdown).toContain(
+      "- [log.txt](https://jira.corp/secure/attachment/43/log.txt) — 512 B, text/plain",
+    );
+  });
+
+  test("an issue without attachments renders no attachment section", async () => {
+    const { markdown } = await fetchIssueMarkdown(
+      new URL("https://jira.corp/browse/PROJ-123"),
+      adapterSettings(),
+      async () => ({ statusCode: 200, data: issuePayload }),
+    );
+    expect(markdown).not.toContain("## Attachments");
   });
 
   test("non-2xx REST responses stay results with a short note", async () => {
@@ -912,7 +971,7 @@ describe("provider end-to-end with a Jira adapter over a fixture", () => {
     expect(result.body.content).toContain("# PROJ-1: Fixture issue");
     expect(result.body.content).toContain("plain body");
     expect(server.requests.map((request) => request.url)).toEqual([
-      "/rest/api/2/issue/PROJ-1?fields=summary%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated",
+      "/rest/api/2/issue/PROJ-1?fields=summary%2Cdescription%2Cstatus%2Cassignee%2Creporter%2Cpriority%2Clabels%2Ccomponents%2Ccreated%2Cupdated%2Cattachment",
     ]);
   });
 
