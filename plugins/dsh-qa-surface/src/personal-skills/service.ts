@@ -362,6 +362,11 @@ export class QaPersonalSkills {
    * The skills one session cwd exposes to DSH. A file the parser rejects, or
    * one whose name disagrees with its directory, is reported in the editor and
    * never handed to the model as a half-valid skill.
+   *
+   * This is the model-facing discovery path, so it degrades to empty instead
+   * of throwing: a provider that throws marks the whole catalog snapshot
+   * incomplete, and the harness then withholds the available-skills section
+   * from every session — not just this account's skills.
    */
   discover(cwd: string): readonly QaStoredSkill[] {
     const config = this.options.getConfig();
@@ -369,9 +374,16 @@ export class QaPersonalSkills {
     const roots = this.rootsForCwd(cwd, config.accounts.skills.relativeRoot);
     if (roots === undefined) return [];
     this.observe(roots.skills);
-    return listSkillDirectories(roots)
-      .map((directoryName) => this.load(roots, directoryName))
-      .filter((skill) => this.isDiscoverable(skill));
+    try {
+      return listSkillDirectories(roots)
+        .map((directoryName) => this.load(roots, directoryName))
+        .filter((skill) => this.isDiscoverable(skill));
+    } catch (error) {
+      this.options.logger.warn("skill.discover-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
   }
 
   /** Re-read one skill of a session cwd, re-checking the same boundary. */
