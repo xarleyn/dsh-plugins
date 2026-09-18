@@ -1,3 +1,256 @@
+## 0.9.0 (2026-09-18)
+
+### 🚀 Features
+
+- Let an administrator delete a conversation for real, and keep the sidebar's ([4884054](https://github.com/xarleyn/dsh-plugins/commit/4884054))
+  delete what it always was — a per-browser row.
+
+  The console could read, review and rate a conversation but not remove one: the
+  only delete anywhere in the surface was the sidebar's, which forgets a chat in
+  one browser and nothing else, so a chat that should not exist (a broken
+  navigation, a conversation that never belonged, a user's request) stayed on the
+  stand forever.
+
+  The deletion is the console's, admin-only (`conversations.delete`) and audited
+  (`conversation.deleted`), and it removes what the deployment kept rather than a
+  row in a list: the stored logs of the chat and of every session delegated from
+  it, the ownership record that is its authorization boundary, its ratings,
+  reviews and queue entries, and the sources it collected. The Harness offers no
+  deletion seam to lean on — `sessionPersistence` has create/open/flush/stat/list,
+  and a live session leaves memory only with the fiber that owns it — so the
+  deployment's own storage artifacts are what gets removed, and the console says
+  so when a deployment keeps sessions somewhere directories cannot express.
+
+  Refusals come before anything is touched, so a chat is never half-deleted: a
+  conversation the Harness still holds open would have its log written back by
+  the next flush, and one it never had is not a conversation at all. Both say
+  which of the two they are.
+
+- A chat that has been audited now says so, and opens the audit. ([888f303](https://github.com/xarleyn/dsh-plugins/commit/888f303))
+
+  The chat list carries a badge on every row whose session has an audit: a check
+  mark and the verdict, with the finding counts on hover. Clicking it opens a
+  dialog with the same three views the ordinary DSH session shows — report,
+  findings, JSON — over the surface's own shell. The badge and the verdict are
+  deliberately two things: the check says an audit exists, the verdict and counts
+  say how it went, so a green tick beside "poor" reads as "audited, and it went
+  badly" rather than as approval.
+
+  The surface does not scan, watch or index anything to do this. It asks the
+  session-audit plugin, which owns the only audit registry, through one optional
+  Remote namespace; when that plugin is not installed the namespace never
+  resolves, and the rows render exactly as they did before — no badge, no empty
+  state, no other change. Nothing in the surface imports the audit plugin, and the
+  audit plugin knows nothing about this one.
+
+  Loading is two-step and lazy. The badge costs one summary read per listed chat
+  on a slow poll, which is a map lookup on the host; the report and the analysis
+  are fetched only when a dialog opens, and the JSON tree is built only when its
+  tab is selected. A provider that is slow or absent degrades to a sidebar
+  without badges rather than a sidebar that waits.
+
+- Stop a delegated child from being a chat anywhere in the QA surface. ([fc51737](https://github.com/xarleyn/dsh-plugins/commit/fc51737))
+
+  A subagent's session is an implementation detail of one answer: it has no QA
+  owner, the Host refuses to attest it, and its sources reach the parent chat
+  through the provenance inheritance flow. Nothing enforced that on the way into
+  the chat list, though. The browser hands the Host a session id whenever it
+  binds one — including a subagent transcript, which the surface opens read-only
+  — and the id lands in `ensureSessionAccess`, whose first-come claim ran before
+  anything could tell a child from a fresh chat. A child from an earlier Host run
+  is not materialized when a browser first presents it, so its header was
+  unknown, the claim was recorded, and from then on it rendered as an ordinary
+  chat row: the delegated task's title, a transcript that is a subset of the
+  parent's work, and no way to send into it. A deployment that ran an affected
+  release carries one such record per subagent transcript someone opened.
+
+  Three layers close this, each answering a different question:
+
+  The client projection asks the one that matters to a reader — `isDelegatedSession`
+  reads the two marks the host list already carries (`origin`, `parentId`) and the
+  sidebar, the chat counter in the account settings and the claim batch all use
+  it, so a chat row, a chat count and a migrated index cannot disagree about what
+  a chat is. The members list also refuses a stored id that resolved to a child:
+  restoring one, or switching to one through a stale browser index, forgets the
+  entry instead of opening a subagent's transcript as chat history.
+
+  The Host refuses to write the record in the first place: `QaAccessService.claimSessions`
+  filters a browser's legacy chat index before the store sees it, keeping the
+  lineage check on the side that can answer it (`QaAccessService.isDelegatedChild`:
+  the live registry for a running child, the cached durable listing for one that
+  finished).
+
+  And the records already written are reclaimed. `pruneDelegatedOwnership` drops
+  ownership rows for ids the Host positively identified as children — no grace
+  period, because a chat is never a child, but no guessing either: a listing that
+  cannot be read reclaims nothing. The sweep is throttled, runs off the
+  reservation path next to the vanished-session sweep, and remembers the listing
+  so later refusals need no second read.
+
+  One more artifact of the same family goes away: a refused `createSession` used
+  to keep its ownership reservation once the Host session existed, so every
+  refusal (an unmounted tool, a permission preset that no longer resolves) left
+  an empty "Новый чат" row in the account's list that nothing could remove — the
+  browser's delete only forgets it locally, and the record brought it back. The
+  reservation is now released on any failure: the browser never learned the id,
+  so no chat can exist under it.
+
+- Give a parked question the composer, and make sure it never outlives its turn. ([eb31d34](https://github.com/xarleyn/dsh-plugins/commit/eb31d34))
+
+  While a question from `ask_user_question` was on screen, the composer stayed
+  next to it and accepted typing: a send was refused only because the turn looked
+  busy, and a turn whose snapshot stopped reporting as running left an empty field
+  that looked ready while the model kept waiting for an answer to the form above
+  it. The form now takes the composer's place for as long as the request is
+  parked, and the composer is hidden behind it rather than unmounted so the draft
+  the operator had typed is still there when the answer is sent. The run's own
+  stop moved into the form's header, so ending the turn instead of answering
+  stays possible, and `interaction.questions` accepts `enabled` as the same value
+  as `interactive`.
+
+  A parked request is now live only while the agent that asked is running. The
+  asking tool's abort signal already settled a stopped turn, but a request that
+  arrived without one — or one whose turn ended by a path that never aborted it —
+  stayed parked for the life of the process: the operator kept a form that could
+  no longer be answered, and the answer they sent resolved a promise nobody was
+  waiting on. The gate also settles what it parked when that agent goes idle, so
+  the wait and the form end together.
+
+  The page, in turn, keeps reading the Host's list while a form is visible and
+  reads it once per chat binding and per reconnect. A question parked before a
+  reload comes back instead of leaving an empty composer in front of a waiting
+  agent, a request the turn can no longer answer leaves the screen within a poll
+  instead of sitting there answerable but dead, and an answer for a request the
+  Host no longer holds is refused rather than silently resolved.
+
+  Two configurations that quietly do nothing were also made visible: questions
+  interactive while `lockdown.toolPolicy.allow` does not name `ask_user_question`
+  (no form can ever appear), and the tool allowed while questions are refused
+  (every ask is turned away). Both now log one `question.config-incomplete`
+  warning per attested session, naming which half is missing, and the settings
+  card's status view shows the seam's mode and raises the same warning in the
+  page, so an operator sees it without reading a log. The lifecycle of the seam is
+  reported as `question.claimed`, `question.answered`, `question.cancelled`,
+  `question.aborted`, `question.delegated` and `question.refused` — with the shape
+  of an answer, never its text.
+
+- Add the slash interface — user-invocable skills and admitted human commands — ([16349e8](https://github.com/xarleyn/dsh-plugins/commit/16349e8))
+  as an opt-in layer over the native DSH mechanisms.
+
+  The QA composer had one path, `sendPrompt`, and a guard that turned every
+  `/`-leading line away. That guard is still the default: the interface is off
+  until `lockdown.allowSlashCommands` is turned on, and a deployment that upgrades
+  without touching it behaves exactly as before. When it is on, `/generate-tkp …`
+  becomes an ordinary `Session.prompt` carrying the gesture, so the native skill
+  consumer injects the instructions and QA reads no `SKILL.md` of its own; and an
+  admitted `/compact` goes to the native command runtime, which never turns it
+  into a model message and whose `command/run` / `command/done` pair is projected
+  from the session log as a control row rather than a bubble.
+
+  Admission is the Host's, twice over. `slashCatalog` answers with a catalog
+  already cut down by `slashCommands.skills` / `slashCommands.commands` and by the
+  chat's role, and `slashExecute` re-derives the command name from the line it is
+  given and re-checks the policy against the deployment's own config, so a
+  hand-typed name the palette never showed is refused rather than run. Commands
+  default to `deny-all`: a plugin installed on the Host must not put its own
+  control-plane command in front of a user who was never offered it. Skills
+  default to an empty allow-list too, and the one case that widens anything —
+  `allowSlashCommands: true` with no `slashCommands` section at all — admits every
+  user-invocable skill of the chat and still no commands, and says so once in the
+  Host log.
+
+  `lockdown.allowSlashCommands` is now a real switch. It was pinned at `false` by
+  a schema constant and by a resolver that refused `true` outright, which made it
+  dead configuration; it stays off by default and opens nothing by itself, because
+  what it admits is a second, separate decision. Nothing else moved: the sandbox
+  mode, the tool allow-list, the permission preset and the approval policy are
+  untouched, and a skill invoked by hand carries exactly the permissions it
+  carries when the model loads it.
+
+
+### 🩹 Fixes
+
+- Read the administrator's capability catalog in the QA preset's scope. ([4ac878b](https://github.com/xarleyn/dsh-plugins/commit/4ac878b))
+
+  `«Общие возможности»` listed almost nothing: the catalog was read globally, while everything a deployment actually mounts — the kit's skill catalog (`search-jira`, `search-docs`, `search-corporate-work`), the preset's tool family (filesystem, web, delegation) — registers in the agent preset's scope. Every skill the operator opens the console to grant was invisible, and the skill-grant ceilings resolved against a tool set that did not contain the preset's tools either.
+
+  The catalog now borrows the standing scope of the preset QA chats run under (`session.agentPreset`; `qa-research` on the stand) — the same key the harness hands a reader as a registry view scope. Resolving it composes the preset but starts no agent, no session and no turn; without a pinned preset, or when the composition cannot be read, the read degrades to the previous global view and the page still opens.
+
+- A failed personal-skills listing no longer hides the whole skill catalog. ([5a96a7a](https://github.com/xarleyn/dsh-plugins/commit/5a96a7a))
+
+  The discovery provider is one voice in the harness skill registry, and the registry treats a throwing provider as an incomplete snapshot: the model-facing available-skills section is withheld in full, for every session, together with the plugin-provided and file-based skills. One account hitting a racy filesystem error on its own `.dsh/skills` directory — an access denied, a share violation mid-read — was enough to answer `SKILL_NOT_AVAILABLE` for every skill name on the stand.
+
+  `discover` now degrades to "no personal skills read" for that account and logs the reason as `skill.discover-failed`, so the rest of the catalog keeps publishing. The editor paths are unchanged: they still surface diagnostics loudly, because there a refusal is the feature.
+
+- Remove a chat's QA record when the Harness has actually lost it — and only then. ([6576e94](https://github.com/xarleyn/dsh-plugins/commit/6576e94))
+
+  The sweep that reclaims ownership records of deleted chats asked the live
+  session store what exists, and that store answers only for the sessions this
+  process has open. A chat nobody had opened since the last restart was therefore
+  absent from the answer without being gone: once its claim passed the grace
+  period, the record — the chat's authorization boundary — was reclaimed, and the
+  chat left its owner's list, the console and the counters while the conversation
+  itself was still on disk. The sweep now asks both halves of what the Harness
+  knows, the live sessions and the durable listing, and treats an incomplete
+  listing (a deployment that serves no durable query engine, or one that failed
+  this read) as a question it cannot answer: it reclaims nothing rather than
+  guessing.
+
+  Dropping a chat takes the rest of what the deployment kept about it. Ratings,
+  reviews and queue entries are keyed by conversation and outlived it, so a chat
+  deleted in the Harness left its verdicts behind, still counted by the metrics
+  and still pointing at a conversation the console could not open. The sweep
+  hands the ids it reclaimed to the deployment, which drops those rows; the audit
+  trail stays, because it records what administrators did rather than what a
+  conversation held.
+
+  The review reads run the sweep before listing conversations, so the console
+  reflects what exists when it is opened instead of waiting for the next chat
+  creation to trigger housekeeping.
+
+- Document where a per-user QA deployment puts its chats in the host UI, and give ([2029e23](https://github.com/xarleyn/dsh-plugins/commit/2029e23))
+  the operator a way to repair the stragglers that are still adoptable.
+
+  `accounts.perUserWorkspace` hands every QA chat a private
+  `<workspace>/.qa-users/<account UUID>` root and deliberately does not register
+  it as a DSH Workspace. DSH grants Workspace membership only to a session whose
+  stored cwd IS the Workspace path (`Workspace.attachSession` compares the two
+  after `realpath`, and the workspace browser derives its groups from
+  `workspace.sessionIds` alone), so those chats appear under `Ungrouped` in the
+  host's sidebar. The mode is not misconfigured and nothing can move them
+  afterwards: the contract has no attach or membership request for an existing
+  session, `insertSessionBefore` reorders only sessions a Workspace already
+  accounts, and dragging a session never crosses groups. Registering one Workspace
+  per account directory is the one mechanism that would group them, and it would
+  put every visitor's scratch root into the operator's global workspace registry.
+  README, `docs/CONFIGURATION.md` and SPEC.md now state that consequence instead
+  of leaving an operator to rediscover it.
+
+  The second straggler family is repairable and now has a command. A chat created
+  while the deployment pinned `session.cwd` - or through `workspaceId` with the
+  same directory spelled differently (`E:/base` against `E:\base`) - never calls
+  `attachSession` at all, so it lands in `Ungrouped` even though its cwd IS the
+  Workspace path. `qa-attach-sessions`
+  (`scripts/attach-workspace-sessions.mjs`) adopts exactly those: it reads the
+  session store and the workspace registry, matches the stored cwd to a workspace
+  path after `realpath`, and writes the membership the host itself would have
+  written. Dry run by default; `--write` requires DSH to be stopped, keeps an
+  exclusive `*.pre-workspace-attach.bak` copy, replaces the registry atomically
+  and re-reads it before reporting success. Sessions below a workspace path are
+  reported and refused, because the host re-applies the same comparison on every
+  read and would drop them again; subagent sessions and archived sessions stay
+  untouched unless asked for. The command changes no plugin runtime behavior.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.3.0
+- Updated @yadsh/dsh-audit-core to 0.1.0
+- Updated @yadsh/dsh-audit-ui to 0.1.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.8.0 (2026-09-17)
 
 ### 🚀 Features

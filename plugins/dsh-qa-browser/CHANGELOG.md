@@ -1,3 +1,19 @@
+## 0.2.1 (2026-09-18)
+
+### 🩹 Fixes
+
+- Say why a host was blocked, and what lifts the block. ([f2e677b](https://github.com/xarleyn/dsh-plugins/commit/f2e677b))
+
+  `Private-network destinations are blocked by Browser policy.` was the whole answer a model and an operator got for a corporate hostname the deployment's DNS resolves into an internal range — which is the ordinary shape of an intranet Jira or wiki, not an attack. The refusal now names the host, the class of the address it resolved to (RFC1918, carrier-grade NAT, IPv6 unique-local) and the setting that allows it: `security.network.allowHosts` for one host, `security.network.allowPrivateNetworks` for the deployment. The loopback and link-local refusals carry the same detail. No address is disclosed in the message: the class is what a fix depends on.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.9.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-17)
 
 ### 🚀 Features

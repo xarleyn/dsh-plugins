@@ -1,3 +1,175 @@
+## 0.6.0 (2026-09-18)
+
+### 🚀 Features
+
+- Managed service credentials for GitLab and TeamCity. ([bc39062](https://github.com/xarleyn/dsh-plugins/commit/bc39062))
+
+  A deployment can now publish one read-only credential it owns, so a user who
+  cannot mint a personal access token — or does not want to — can still work
+  through the integration layer. A profile is deployment configuration: the
+  provider instance it belongs to, the label users see, the mounted secret, and
+  the resources it may read. A new connection starts on that credential when the
+  deployment says so; an existing connection keeps the credential it already had,
+  because an upgrade must never move somebody onto a shared account.
+
+  The shared credential is not simply read-only. Every operation carries security
+  metadata — effect, sensitivity, and whether the managed credential may reach it —
+  and service mode runs only what is a read, of normal sensitivity, explicitly
+  classified as safe. Writes, admin actions, permission and credential management
+  stay unreachable even when the service token upstream allows them, and sensitive
+  reads stay personal-only: GitLab CI job logs, TeamCity build logs and text
+  artifacts. A confidential GitLab issue is never returned through the shared
+  account — not by id, not in a listing, and not in a search — and a search of
+  notes, where the parent's confidentiality cannot be checked at all, stays
+  personal. An operation the provider does not classify is denied, so a tool added
+  by a later provider update is not reachable through the shared credential until
+  someone classifies it on purpose. An administrator can narrow the ceiling, never
+  widen it.
+
+  Because the shared account sees far more than one user should, every profile
+  carries a resource allowlist that is a hard upper bound. A service-mode call
+  resolves the project it names against that list, a build addressed by its id is
+  first resolved to its owning project, and a listing that names no resource is
+  refused rather than answered with the whole instance view. Expanding a GitLab
+  group asks for the group's own projects and checks every one that comes back, so
+  a project shared into it from elsewhere stays out. A user may narrow the list
+  further from the card; a selection outside it is dropped rather than stored.
+
+  There is no fallback in either direction: a `403` in personal mode is a denial
+  and is not retried with the service account, and the reverse holds too. A stored
+  personal credential stays inactive while a connection runs on the service
+  credential, and either side can be chosen later — switching bumps the binding
+  revision that everything derived from the previous identity is keyed by. The
+  secret is read from its file on each call and identified by a content hash, so
+  rotating a mounted secret takes effect on the next call without anyone
+  reconnecting. Upstream only ever sees the service account, so every audit row
+  records the authenticated QA user, the operation, the credential source and the
+  service profile.
+
+  GitLab's single `ci.read` capability split in two: `ci.metadata.read` for
+  pipelines, jobs and statuses, and `ci.logs.read` for what a job printed, which
+  is personal-only. The deployment switches follow (`ciMetadataRead`,
+  `ciLogsRead`); the pre-split `ciRead` still works and governs both halves, and a
+  connection that stored the old capability id is repaired at startup with the
+  policy it had set.
+
+  Bitrix24, Jira, Confluence, Test IT and Weblate are unchanged: they offer no
+  service mode, and their cards show nothing about it.
+
+- Give `bitrix_search_crm` the filters the audit kept reaching for, and pin the page order so offset paging stops repeating rows. ([6a8d677](https://github.com/xarleyn/dsh-plugins/commit/6a8d677))
+
+  The tool could only narrow by title substring and assignment, so typical questions ("open deals in this funnel", "what moved recently") degenerated into paging through the archive from the first page of ten thousand. The schema now carries `stageId`, `categoryId`, `openOnly` (deals only — the universal item API exposes `closed` for deals), `createdSince`, `updatedSince`, `orderBy` (`id`/`createdTime`/`updatedTime`) and `orderDir`. Every search now sends an explicit deterministic order: offset paging over an unspecified order is what produced identical pages at different offsets. An empty `query` now fails with the repair named in the message — `query is invalid: a non-empty title substring …` — instead of a bare `query is invalid` that one session retried verbatim; the tool description also points at `bitrix_get_crm_stage_history` for the "sitting in a stage too long" question the search could not express.
+
+- Add `bitrix_add_crm_timeline_comment`, the provider's first write tool, behind an operator switch that defaults to off. ([7e70a4f](https://github.com/xarleyn/dsh-plugins/commit/7e70a4f))
+
+  QA tasks kept asking the agent to "add a note to the deal", and the agent — holding only read tools — promised a write it could not perform. The new tool adds exactly one comment to the timeline of a lead, deal, contact or company (`crm.timeline.comment.add`); smart processes and every other mutation stay out of the surface. It mounts only when the deployment sets `bitrix24.crmCommentWrite: true`, rides the new `crm.comment.write` capability, and even then starts policy-denied until the capability is explicitly allowed for the integration. Three gates, because Bitrix24 has no read-only webhook scope: a `crm`-scoped webhook can write on its own, so the flag — not the scope probe — is what bounds the deployment, and the policy is what bounds the user. The read catalog of thirty-nine tools is unchanged and stays mounted whatever the flag says.
+
+- Explain the credential field: where each provider's token comes from, what to ([4561073](https://github.com/xarleyn/dsh-plugins/commit/4561073))
+  grant it, and where the deployment can point somewhere else.
+
+  Every provider card ends in a secret field, and until now each one explained
+  itself in its own words — a sentence in the card, or nothing at all where the
+  answer was long. That copy is now metadata declared next to the provider
+  (`src/providers/<id>/credential-help.ts`): the credential mechanism, the page
+  that issues the credential, the vendor documentation, the required permissions
+  and the steps, with the trigger wording picked from the mechanism, so an OAuth
+  connection is not told to "create a token" and a Bitrix24 incoming webhook says
+  what it actually needs. The cards lost the guidance that duplicated it; the
+  sentence about how the secret is stored stays where it was.
+
+  The help reaches the browser on the authenticated `qaIntegrations/providers`
+  call, already merged with the deployment's overrides. It is metadata only: no
+  credential value, snapshot or authorization result travels in the payload, and
+  the credential architecture is untouched — secrets stay write-only, encrypted
+  at rest and invisible to the browser. Because the addresses live in the Host,
+  a deployment can replace any of them per provider through
+  `credentialHelp.<id>` in its config — corporate GitLab, Jira Data Center, an
+  internal wiki, a proxy gateway — or turn the help off for one provider without
+  touching the field.
+
+  Failure stays proportionate. Metadata is never a runtime dependency: without it
+  the card renders the plain field; an unusable address hides only its own link
+  and is reported once at startup as `credential-help.override`; an unknown
+  mechanism degrades to `custom`; and a vendor page that moved cannot fail a
+  connection. Only `http(s)` renders — `http:` only for loopback, private and
+  self-hosted hosts — and external links open with `noopener noreferrer`.
+
+  The gate follows the same line: `verify:package` asserts that every provider
+  ships its declared help and that no declared address reaches the client bundle,
+  and the bundle's design tokens are checked against the tokens the Host actually
+  defines.
+
+- Add a sixth provider to the integrations plugin: Test IT, read as the connected ([383878b](https://github.com/xarleyn/dsh-plugins/commit/383878b))
+  QA user through their own API token. It ships twenty-two read-only tools — the
+  projects and sections of the test library, test cases, checklists and shared
+  steps with their steps, attributes and tags, the change log and comments of a
+  case, test plans with their per-plan summary, runs with the test points and
+  results inside them, single results with their messages and traces, attachment
+  metadata, a bounded text read of a small attachment, autotests and the
+  configurations a result is recorded against.
+
+  A Test IT installation is operator configuration: `testit.instances` lists the
+  Cloud tenants and on-premise TMS servers this deployment allows, the connect form
+  only picks from that list, and the address is re-resolved from config on every
+  call, so removing or repointing an instance closes existing connections too. The
+  token travels as the `PrivateToken` authorization header and nowhere else.
+
+  The catalog holds GET endpoints only, which is what this package's read-only
+  guarantee is written as: Test IT's search and statistics endpoints are all POSTs,
+  so the provider reaches the same ground through the GET surface — a run's test
+  points instead of its statistics, a plan's summary instead of a filtered
+  aggregate — and the tools it cannot back that way are listed as missing in the
+  README rather than smuggled in. Three of the reads it does use are the endpoints
+  Test IT marks deprecated; they are the only GET reads of those collections, and a
+  version that drops them answers an honest "not available here".
+
+  Test IT text is untrusted content: descriptions, steps, comments, messages and
+  traces reach the model as bounded blocks under `untrustedContent`, and an
+  attachment is described by Test IT itself before a byte is requested, so archives,
+  images and oversized files are refused by the server's own account of the file.
+
+- Add a sixth provider to the integrations plugin: Weblate, the localization ([0a50bde](https://github.com/xarleyn/dsh-plugins/commit/0a50bde))
+  platform, read as the connected QA user. It ships nineteen read-only tools —
+  the connection itself, projects, components, languages of a component, string
+  search, a single string with every plural form and its state, the comments and
+  suggestions left on it, checks that fail, statistics and change history — and
+  the catalog carries no operation that could change Weblate state, so
+  suggestions, comments, edits, approvals, translation files and the repository
+  stay out until the confirmation framework exists.
+
+  A connection is one of the operator's configured instances plus a Weblate API
+  token, kept in one encrypted credential; the connect form picks the instance
+  and never types a host, and the address is re-resolved from deployment config
+  on every call, so an instance the operator removes fails closed instead of
+  moving a token somewhere else. Token prefixes (`wlu_`, `wlp_`) reach the user
+  as a label — personal or project-scoped — and are never treated as a permission
+  check.
+
+  Weblate's search grammar is composed by the provider from validated filters
+  rather than accepted from the model: values are quoted and escaped, states come
+  from Weblate's own `is:` vocabulary, and a follow-up request is reconstructed
+  from the page number of the upstream `next` link, only when that link points at
+  the configured instance. Every answer that carries upstream-authored text — a
+  source string, a translation, a comment, a change — is marked as untrusted
+  external content, and localization strings handed to the model are bounded and
+  say when they were cut.
+
+
+### 🩹 Fixes
+
+- Expose account integrations as a feature-owned Plugins tab so the original DSH ([84b3c4c](https://github.com/xarleyn/dsh-plugins/commit/84b3c4c))
+  settings UI can open them from authenticated LAN browsers without depending on
+  loopback-only settings discovery.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.9.0
+- Updated @yadsh/dsh-plugin-kit to 0.3.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.0 (2026-09-17)
 
 ### 🚀 Features

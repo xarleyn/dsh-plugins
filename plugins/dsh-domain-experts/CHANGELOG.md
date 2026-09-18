@@ -1,3 +1,15 @@
+## 0.1.3 (2026-09-18)
+
+### 🩹 Fixes
+
+- The first `domain_expert` call after a plugin start no longer refuses with "Domain storage is not open yet". ([cd4ee96](https://github.com/xarleyn/dsh-plugins/commit/cd4ee96))
+
+  The storage open is lazy and memoized, and the tools resolved their definition through a synchronous handle check: the one call that raced the open was refused, and because models rarely retry, a restart silently cost the first delegation. The tool dependencies now await the one-time open, so the racing call waits and proceeds; a storage failure that already happened surfaces its underlying `STORAGE_UNAVAILABLE` cause ("Domain storage could not be opened: …") instead of the misleading "not open yet".
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.2 (2026-09-17)
 
 ### 🩹 Fixes

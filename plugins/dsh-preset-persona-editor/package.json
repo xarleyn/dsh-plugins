@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-preset-persona-editor",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Edit an agent preset's persona for the DeepSeek Harness from the settings UI: prefix, suffix, complete mode, and the runtime-context toggle, written back into the preset's own agent.cordis.yml",
   "repository": {
     "type": "git",

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-audit-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Session audit artifact domain layer for DeepSeek Harness: schema, parsing, validation, summary and atomic publishing",
   "repository": {
     "type": "git",

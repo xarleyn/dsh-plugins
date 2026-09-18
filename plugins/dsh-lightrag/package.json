@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-lightrag",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LightRAG knowledge-base tools for DeepSeek Harness agents",
   "repository": {
     "type": "git",
