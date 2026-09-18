@@ -18,9 +18,30 @@ import {
   readDocument,
   type PresetRosterFace,
 } from "../src/host/preset-reader.js";
-import { resetPersona, savePersona } from "../src/host/preset-writer.js";
+import {
+  resetPersona,
+  savePersona as writePreset,
+  type WriteContext,
+} from "../src/host/preset-writer.js";
 import { DEFAULT_LIMITS, type PersonaLimits } from "../src/host/validation.js";
-import type { PersonaDraft } from "../src/types.js";
+import type { PersonaDraft, PresetDraft } from "../src/types.js";
+
+/**
+ * The persona-only form of a save: these tests all start from a preset with no
+ * prompt sections, so the sections half is empty.
+ */
+function savePersona(
+  context: WriteContext,
+  id: string,
+  persona: Partial<PersonaDraft> | undefined,
+  expectedRevision: string,
+): ReturnType<typeof writePreset> {
+  const draft: Partial<PresetDraft> = {
+    persona: persona as PersonaDraft,
+    sections: [],
+  };
+  return writePreset(context, id, draft, expectedRevision);
+}
 
 /** A composition with a persona row and one row this editor must not touch. */
 const OWNED_PRESET = [

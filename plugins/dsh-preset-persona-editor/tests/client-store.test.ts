@@ -17,6 +17,7 @@ import {
   describeFailure,
   isDirty,
   PersonaPageController,
+  sectionIssues,
   type PersonaFace,
 } from "../src/client/store.js";
 import type {
@@ -53,6 +54,11 @@ function documentOf(patch: Partial<PersonaDocument> = {}): PersonaDocument {
     unknownKeys: [],
     foreignKeys: [],
     extraRows: 0,
+    sections: [],
+    sectionsState: "none",
+    sectionsError: "",
+    sectionsModule: "missing",
+    sectionsUnknownKeys: [],
     readError: "",
     source: "- id: persona\n",
     prefixOrder: 0,
@@ -134,6 +140,40 @@ describe("describeFailure", () => {
   });
 });
 
+describe("sectionIssues", () => {
+  it("accepts a complete list", () => {
+    expect(
+      sectionIssues([
+        {
+          name: "team:style",
+          order: 2500,
+          text: "Answer briefly.",
+          enabled: true,
+        },
+        {
+          name: "harness:notes",
+          order: 9000,
+          text: "End with a summary.",
+          enabled: false,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("marks each way a section can be unfinished, by index", () => {
+    const issues = sectionIssues([
+      { name: "", order: 1, text: "text", enabled: true },
+      { name: " padded", order: 2, text: "text", enabled: true },
+      { name: "dupe", order: 3, text: "text", enabled: true },
+      { name: "dupe", order: 4, text: "text", enabled: true },
+      { name: "team:fractional", order: 1.5, text: "text", enabled: true },
+      { name: "team:textless", order: 6, text: "   ", enabled: true },
+    ]);
+    expect(issues.map((issue) => issue.index)).toEqual([0, 1, 3, 4, 5]);
+    expect(issues[2]?.reason).toContain("already uses this name");
+  });
+});
+
 describe("PersonaPageController", () => {
   it("loads the roster", async () => {
     const controller = new PersonaPageController(faceOf());
@@ -164,7 +204,10 @@ describe("PersonaPageController", () => {
     await controller.open("demo");
     const open = controller.snapshot().open;
     expect(open?.status).toBe("ready");
-    expect(open?.draft).toEqual(documentOf().persona);
+    expect(open?.draft).toEqual({
+      persona: documentOf().persona,
+      sections: [],
+    });
     expect(isDirty(open)).toBe(false);
   });
 
@@ -202,7 +245,7 @@ describe("PersonaPageController", () => {
     await controller.open("demo");
     controller.edit({ prefix: "Changed." });
     expect(isDirty(controller.snapshot().open)).toBe(true);
-    expect(controller.snapshot().open?.draft?.prefix).toBe("Changed.");
+    expect(controller.snapshot().open?.draft?.persona.prefix).toBe("Changed.");
     controller.revert();
     expect(isDirty(controller.snapshot().open)).toBe(false);
   });
@@ -216,7 +259,10 @@ describe("PersonaPageController", () => {
     await controller.save();
     expect(face.save).toHaveBeenCalledWith(
       "demo",
-      { ...documentOf().persona, prefix: DRAFT.prefix },
+      {
+        persona: { ...documentOf().persona, prefix: DRAFT.prefix },
+        sections: [],
+      },
       "rev-1",
     );
     expect(controller.snapshot().notice?.text).toBe(strings.saved);
@@ -249,7 +295,7 @@ describe("PersonaPageController", () => {
     await controller.save();
     const open = controller.snapshot().open;
     expect(open?.conflict).toBe(true);
-    expect(open?.draft?.prefix).toBe("Mine.");
+    expect(open?.draft?.persona.prefix).toBe("Mine.");
     expect(controller.snapshot().notice?.text).toBe(strings.conflict);
   });
 
@@ -311,6 +357,73 @@ describe("PersonaPageController", () => {
     await controller.copy();
     expect(controller.snapshot().copyDraft?.error).toContain("already exists");
     expect(controller.snapshot().open?.id).toBe("demo");
+  });
+
+  it("drafts sections: add, edit, remove, and clear", async () => {
+    const controller = new PersonaPageController(faceOf());
+    await controller.open("demo");
+    expect(isDirty(controller.snapshot().open)).toBe(false);
+
+    controller.addSection();
+    expect(controller.snapshot().open?.draft?.sections).toEqual([
+      { name: "", order: 5000, text: "", enabled: true },
+    ]);
+    expect(isDirty(controller.snapshot().open)).toBe(true);
+
+    controller.editSection(0, {
+      name: "team:style",
+      order: 2500,
+      text: "Answer briefly.",
+    });
+    expect(controller.snapshot().open?.draft?.sections).toEqual([
+      {
+        name: "team:style",
+        order: 2500,
+        text: "Answer briefly.",
+        enabled: true,
+      },
+    ]);
+
+    controller.addSection();
+    controller.editSection(1, { name: "harness:notes", enabled: false });
+    controller.removeSection(0);
+    expect(controller.snapshot().open?.draft?.sections).toEqual([
+      { name: "harness:notes", order: 5000, text: "", enabled: false },
+    ]);
+
+    controller.clearSections();
+    expect(controller.snapshot().open?.draft?.sections).toEqual([]);
+    expect(isDirty(controller.snapshot().open)).toBe(false);
+  });
+
+  it("sends the sections with the persona in one save", async () => {
+    const face = faceOf();
+    const controller = new PersonaPageController(face);
+    await controller.load();
+    await controller.open("demo");
+    controller.addSection();
+    controller.editSection(0, {
+      name: "team:style",
+      order: 2500,
+      text: "Answer briefly.",
+    });
+    await controller.save();
+    expect(face.save).toHaveBeenCalledWith(
+      "demo",
+      {
+        persona: documentOf().persona,
+        sections: [
+          {
+            name: "team:style",
+            order: 2500,
+            text: "Answer briefly.",
+            enabled: true,
+          },
+        ],
+      },
+      "rev-1",
+    );
+    expect(controller.snapshot().notice?.text).toBe(strings.saved);
   });
 
   it("replaces the snapshot only when a fact changed", async () => {

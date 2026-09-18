@@ -1,14 +1,18 @@
 # SPEC — @yadsh/dsh-preset-persona-editor
 
-A settings page that edits one field of an agent preset: the persona
-`@deepseek-ai/dsh-persona` composes for the sessions that preset starts.
+A settings page that edits what an agent preset contributes to the prompt: the
+persona `@deepseek-ai/dsh-persona` composes for the sessions that preset starts,
+and — in an advanced area — the named, ordered sections the preset contributes
+in its own name.
 
-The persona is not a new concept and this plugin does not introduce one. DSH
-agent presets are already compositions, and a preset that names
-`@deepseek-ai/dsh-persona` already carries its own system-prompt text. What was
+Neither is a new concept, and the plugin does not introduce one. DSH agent
+presets are already compositions, and a preset that names
+`@deepseek-ai/dsh-persona` already carries its own system-prompt text; what was
 missing is a way to change that text without hand-editing `agent.cordis.yml`.
-This plugin is that editor: it reads the row, writes the row, and owns no
-prompt plumbing of its own.
+Custom sections are the same story one level down: a preset could already
+contribute them by shipping a module that calls `ctx.systemPrompt.section`, and
+the advanced area writes exactly that — a data-driven registrar the preset owns.
+It reads the rows, writes the rows, and owns no prompt plumbing of its own.
 
 ## 1. Product contract
 
@@ -65,6 +69,27 @@ Numbered, testable guarantees for version 0.1.0:
     sessions: the harness reads a composition when a session starts. The page
     says so rather than pretending otherwise, and the plugin has no access to
     session history at all.
+16. **Sections are the preset's own code, not the plugin's.** The advanced area
+    materializes sections as a `./prompt-sections.mjs` row plus a data list in
+    its config: the registrar is written once into the preset directory, is
+    dependency-free, and imports nothing from this plugin. A preset with
+    sections therefore composes with the plugin uninstalled — the same promise
+    the persona keeps.
+17. **The registrar is never rewritten.** A save creates the registrar when it
+    is missing and otherwise leaves it alone, whatever it contains; the page
+    reports that the file was hand-edited. Removing the last section removes the
+    row, and deletes the file only when it is byte-for-byte this editor's own.
+18. **Section data is validated where the harness would fail.** Names must be
+    single-line identifiers, unique within the preset, orders whole numbers,
+    texts non-empty and within the byte ceiling — the rules the harness itself
+    enforces at mount (duplicate sections in one layer throw) plus the ones that
+    keep the file readable. A section list that is not a plain block sequence,
+    or a composition naming more than one sections row, is refused and nothing
+    is written.
+19. **Ordering is the harness's, and shadowing is stated.** The preview places
+    the sections by the harness's own order vocabulary, and the page warns when
+    a section name belongs to a first-party section, because a section
+    registered in a preset's scope shadows the deployment-global one.
 
 ## 2. Data model
 
@@ -99,13 +124,15 @@ Numbered, testable guarantees for version 0.1.0:
 
 - Reading a persona out of the selected preset, and the roster's persona state.
 - Editing `prefix`, `suffix`, `complete`, `includeRuntimeContext`.
-- Inherited/custom indicators, reset, and the two preview readings.
+- Inherited/custom indicators, reset, and the preview readings.
+- The advanced area: named, ordered prompt sections with an `enabled` switch,
+  the registrar module they need, and their place in the assembled prompt.
 - Revision-conflict detection and the read-only refusal for shipped presets.
 - Copying a shipped preset into the user's own presets, so it can be edited.
 
 ### Deferred
 
-- An advanced prompt-sections editor (`ctx.systemPrompt` ordered sections).
+- Editing the registrar module's code from the page (it is the preset's file).
 - Editing any other preset row (tools, skills, sandbox) through this page.
 - A preset's `preset.yml` metadata (name, description, order).
 - Model routing, permission profiles, tool visibility, subagent routing, and
@@ -126,7 +153,16 @@ Every one of these is covered by the test suite:
 9. a malformed composition (refused, nothing written);
 10. a shipped/read-only preset (refused, nothing written);
 11. uninstall safety: the plugin's presence is not required for an edited
-    preset to work — the edit is plain composition YAML.
+    preset to work — the persona is plain composition YAML and the sections are
+    a module the preset owns;
+12. a preset gaining its first section: the registrar is written before the
+    composition names it;
+13. a section turned off: it stays in the file and does not reach the prompt;
+14. a hand-written registrar: preserved, reported, and never overwritten;
+15. the last section removed: the row goes, and the registrar goes with it only
+    when it is this editor's own file;
+16. the assembled prompt of a preset with sections, read back through
+    `ctx.systemPrompt.assemble` in a live harness.
 
 ## 6. Implementation status
 
@@ -134,11 +170,15 @@ Every one of these is covered by the test suite:
 | --- | --- |
 | Host service (`presetPersonaEditor` Remote: list, read, save, reset, copy) | Implemented |
 | Composition surgery (in-place rewrite, insert, remove; comments/`!!js`/EOL/BOM preserved) | Implemented |
+| Prompt sections: reader, writer, registrar module management, validation | Implemented |
 | Revision guard, read-only refusal, validation refusals | Implemented |
-| Browser page (`settings.section`, roster, editor, preview, file viewer) | Implemented |
+| Browser page (`settings.section`, roster, editor, advanced area, preview, file viewer) | Implemented |
 | Package gates (manifest, bundle, compatibility, tarball) | Implemented |
-| Live check on a running deployment | Pending: see the handoff recipe in the README |
+| Live check: a probe rig on 0.1.5-rc.2, driven through the page and through the assembled prompt | Done (2026-09-18) |
 
-The page has been exercised through its own unit and wiring tests; it has not
-yet been opened against a running DSH web deployment from this repository's CI,
-which runs no browser.
+The page was exercised against a live deployment: the roster, a save into a
+composition that uses a folded scalar, reset, a save from the inherited state,
+the revision conflict, the read-only refusal, and copying a shipped preset. The
+advanced area was proven end to end in process — the plugin wrote the sections,
+the harness mounted the preset, and `systemPrompt.assemble` for that preset's
+scope returned the section text, with a disabled section absent.

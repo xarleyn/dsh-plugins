@@ -20,21 +20,30 @@ export {
 export type { Config, PresetPersonaEditorDeps } from "./host/service.js";
 export {
   normalizeDraft,
+  normalizeSections,
   DEFAULT_LIMITS,
   reasonOf,
   validateDraft,
+  validateSections,
   type PersonaLimits,
 } from "./host/validation.js";
 export {
   applyPersonaDraft,
+  applyPromptSections,
   CompositionError,
+  moduleRows,
   parseComposition,
+  personaRows,
   readPersonaValues,
+  readPromptSections,
   removePersonaRow,
+  sectionsRows,
   type CompositionParse,
-  type PersonaConfigKey,
-  type PersonaRow,
+  type CompositionRow,
+  type ModuleRows,
   type PersonaRowValues,
+  type RowConfigKey,
+  type SectionsRowValues,
 } from "./host/composition.js";
 export {
   inspectComposition,
@@ -43,6 +52,7 @@ export {
   readCatalog,
   readDocument,
   readPresetFile,
+  readSectionsModule,
   revisionOf,
   type CompositionInspection,
   type PresetEntry,

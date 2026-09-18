@@ -12,13 +12,20 @@
 
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import {
   PERSONA_PREFIX_FALLBACK_ORDER,
   PERSONA_PREFIX_ORDER_NAME,
+  PERSONA_PLUGIN_NAME,
   PERSONA_SUFFIX_FALLBACK_ORDER,
   PERSONA_SUFFIX_ORDER_NAME,
 } from "../shared/persona.js";
+import {
+  SECTIONS_MODULE_FILE,
+  SECTIONS_MODULE_SOURCE,
+  SECTIONS_MODULE_SPECIFIER,
+} from "../shared/prompt-sections.js";
 import { splitBom } from "../shared/render.js";
 import type {
   PersonaCatalog,
@@ -27,11 +34,16 @@ import type {
   PersonaPresetRow,
   PersonaState,
   PresetTrust,
+  PromptSectionDraft,
+  SectionsModuleState,
+  SectionsState,
 } from "../types.js";
 import {
   CompositionError,
+  moduleRows,
   parseComposition,
   readPersonaValues,
+  readPromptSections,
 } from "./composition.js";
 import { notFound } from "./errors.js";
 import { reasonOf } from "./validation.js";
@@ -76,13 +88,17 @@ export interface PresetFile {
   readonly revision: string;
 }
 
-/** What a composition says about its persona. */
+/** What a composition says about its persona and its prompt sections. */
 export interface CompositionInspection {
   readonly state: Exclude<PersonaState, "unreadable">;
   readonly draft: PersonaDraft;
   readonly unknownKeys: readonly string[];
   readonly foreignKeys: readonly string[];
   readonly extraRows: number;
+  readonly sections: readonly PromptSectionDraft[];
+  readonly sectionsState: Exclude<SectionsState, "unreadable">;
+  readonly sectionsError: string;
+  readonly sectionsUnknownKeys: readonly string[];
 }
 
 /** Content revision of a composition file: a hash of its bytes. */
@@ -115,19 +131,50 @@ export async function readPresetFile(path: string): Promise<PresetFile> {
  */
 export function inspectComposition(text: string): CompositionInspection {
   const parse = parseComposition(text);
-  const values = readPersonaValues(parse.rows);
+  const persona = moduleRows(parse, PERSONA_PLUGIN_NAME).rows;
+  const values = readPersonaValues(persona);
+  const sections = moduleRows(parse, SECTIONS_MODULE_SPECIFIER).rows;
+  const sectionValues = readPromptSections(sections);
   return {
     state:
-      parse.rows.length === 0
+      persona.length === 0
         ? "none"
-        : parse.rows.length === 1
+        : persona.length === 1
           ? "local"
           : "ambiguous",
     draft: values.draft,
     unknownKeys: values.unknownKeys,
     foreignKeys: values.foreignKeys,
-    extraRows: Math.max(0, parse.rows.length - 1),
+    extraRows: Math.max(0, persona.length - 1),
+    sections: sectionValues.sections,
+    sectionsState:
+      sections.length === 0
+        ? "none"
+        : sections.length === 1
+          ? "local"
+          : "ambiguous",
+    sectionsError: sectionValues.error,
+    sectionsUnknownKeys: sectionValues.unknownKeys,
   };
+}
+
+/**
+ * Read the state of the registrar module beside a composition.
+ * @param compositionPath - absolute path of the composition file.
+ * @returns `present` for this editor's own file, `foreign` for an edited one,
+ * `missing` when there is none.
+ */
+export async function readSectionsModule(
+  compositionPath: string,
+): Promise<SectionsModuleState> {
+  const path = join(dirname(compositionPath), SECTIONS_MODULE_FILE);
+  let text: string;
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return "missing";
+  }
+  return text === SECTIONS_MODULE_SOURCE ? "present" : "foreign";
 }
 
 /** The persona state of one preset, with the failure that produced it. */
@@ -140,6 +187,11 @@ interface PresetInspection {
   readonly unknownKeys: readonly string[];
   readonly foreignKeys: readonly string[];
   readonly extraRows: number;
+  readonly sections: readonly PromptSectionDraft[];
+  readonly sectionsState: SectionsState;
+  readonly sectionsError: string;
+  readonly sectionsUnknownKeys: readonly string[];
+  readonly sectionsModule: SectionsModuleState;
 }
 
 const ABSENT: {
@@ -147,6 +199,10 @@ const ABSENT: {
   readonly unknownKeys: readonly string[];
   readonly foreignKeys: readonly string[];
   readonly extraRows: number;
+  readonly sections: readonly PromptSectionDraft[];
+  readonly sectionsState: SectionsState;
+  readonly sectionsError: string;
+  readonly sectionsUnknownKeys: readonly string[];
 } = {
   draft: {
     prefix: "",
@@ -157,12 +213,17 @@ const ABSENT: {
   unknownKeys: [],
   foreignKeys: [],
   extraRows: 0,
+  sections: [],
+  sectionsState: "none",
+  sectionsError: "",
+  sectionsUnknownKeys: [],
 };
 
-/** Read one preset's persona state, converting every failure into a report. */
+/** Read one preset's persona and sections state, reporting every failure. */
 export async function inspectPreset(
   preset: PresetEntry,
 ): Promise<PresetInspection> {
+  const sectionsModule = await readSectionsModule(preset.path);
   let file: PresetFile;
   try {
     file = await readPresetFile(preset.path);
@@ -172,7 +233,9 @@ export async function inspectPreset(
       complete: false,
       revision: "",
       readError: `the composition file could not be read: ${reasonOf(cause)}`,
+      sectionsModule,
       ...ABSENT,
+      sectionsState: "unreadable",
     };
   }
   try {
@@ -186,6 +249,11 @@ export async function inspectPreset(
       unknownKeys: inspection.unknownKeys,
       foreignKeys: inspection.foreignKeys,
       extraRows: inspection.extraRows,
+      sections: inspection.sections,
+      sectionsState: inspection.sectionsState,
+      sectionsError: inspection.sectionsError,
+      sectionsUnknownKeys: inspection.sectionsUnknownKeys,
+      sectionsModule,
     };
   } catch (cause) {
     return {
@@ -193,7 +261,9 @@ export async function inspectPreset(
       complete: false,
       revision: file.revision,
       readError: reasonOf(cause),
+      sectionsModule,
       ...ABSENT,
+      sectionsState: "unreadable",
     };
   }
 }
@@ -281,6 +351,11 @@ export async function readDocument(
     unknownKeys: inspection.unknownKeys,
     foreignKeys: inspection.foreignKeys,
     extraRows: inspection.extraRows,
+    sections: inspection.sections,
+    sectionsState: inspection.sectionsState,
+    sectionsError: inspection.sectionsError,
+    sectionsModule: inspection.sectionsModule,
+    sectionsUnknownKeys: inspection.sectionsUnknownKeys,
     readError: inspection.readError,
     source,
     prefixOrder: orders.prefixOrder,

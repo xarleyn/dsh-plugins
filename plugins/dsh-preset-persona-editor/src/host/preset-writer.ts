@@ -1,6 +1,7 @@
 /**
- * Writing presets: one persona row rewritten, inserted, or removed in the
- * preset's own composition file.
+ * Writing presets: the persona row and the prompt-sections row, rewritten,
+ * inserted, or removed in the preset's own composition file — plus the
+ * registrar module the sections row names.
  *
  * The write path is deliberately short and pessimistic:
  *  - the preset must be one the deployment lets a user own (`trust === "user"`);
@@ -8,24 +9,42 @@
  *  - the new text is re-parsed and read back before it is written, so a
  *    rendering bug refuses instead of producing a composition no session can
  *    compose from;
+ *  - the registrar is created before a composition that names it, and removed
+ *    only when it is this editor's own file, so the preset never points at
+ *    code that is not there and never loses code someone wrote themselves;
  *  - the file is replaced atomically (a sibling temporary file plus a rename),
  *    so a failure leaves the old composition in place.
  *
- * Nothing here is a second source of truth: the persona lives in the preset's
+ * Nothing here is a second source of truth: both rows live in the preset's
  * composition, and this module only moves bytes inside it.
  * @module host/preset-writer
  */
 
 import { randomUUID } from "node:crypto";
-import { chmod, rename, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import type { PersonaDraft, PersonaWriteReceipt } from "../types.js";
+import { PERSONA_PLUGIN_NAME } from "../shared/persona.js";
+import {
+  sameSections,
+  SECTIONS_MODULE_FILE,
+  SECTIONS_MODULE_SOURCE,
+  SECTIONS_MODULE_SPECIFIER,
+} from "../shared/prompt-sections.js";
+import type {
+  PersonaWriteReceipt,
+  PresetDraft,
+  PromptSectionDraft,
+} from "../types.js";
 import {
   applyPersonaDraft,
+  applyPromptSections,
   CompositionError,
+  type CompositionParse,
+  moduleRows,
   parseComposition,
   readPersonaValues,
+  readPromptSections,
   removePersonaRow,
 } from "./composition.js";
 import { conflict, invalid, readOnly } from "./errors.js";
@@ -37,8 +56,10 @@ import {
 } from "./preset-reader.js";
 import {
   normalizeDraft,
+  normalizeSections,
   reasonOf,
   validateDraft,
+  validateSections,
   type PersonaLimits,
 } from "./validation.js";
 
@@ -129,21 +150,73 @@ async function writeAtomic(
   }
 }
 
-/** Re-parse the new text and prove the values read back as intended. */
-function assertReadback(id: string, text: string, draft: PersonaDraft): void {
+/** Re-parse the new text and prove both halves read back as intended. */
+function assertReadback(id: string, text: string, draft: PresetDraft): void {
   const parse = parseComposition(text);
-  const read = readPersonaValues(parse.rows);
-  const same =
-    read.draft.prefix === draft.prefix &&
-    read.draft.suffix === draft.suffix &&
-    read.draft.complete === draft.complete &&
-    read.draft.includeRuntimeContext === draft.includeRuntimeContext;
-  if (parse.rows.length !== 1 || !same) {
+  const persona = readPersonaValues(
+    moduleRows(parse, PERSONA_PLUGIN_NAME).rows,
+  );
+  const samePersona =
+    persona.draft.prefix === draft.persona.prefix &&
+    persona.draft.suffix === draft.persona.suffix &&
+    persona.draft.complete === draft.persona.complete &&
+    persona.draft.includeRuntimeContext === draft.persona.includeRuntimeContext;
+  if (!samePersona) {
     throw invalid(
       id,
-      "the edit could not be read back from the composition; the file is unchanged",
+      "the persona could not be read back from the composition; the file is unchanged",
     );
   }
+  const sections = readPromptSections(
+    moduleRows(parse, SECTIONS_MODULE_SPECIFIER).rows,
+  ).sections;
+  if (!sameSections(sections, draft.sections)) {
+    throw invalid(
+      id,
+      "the prompt sections could not be read back from the composition; the file is unchanged",
+    );
+  }
+}
+
+/**
+ * Create the registrar beside a composition when it is missing.
+ *
+ * A composition that names a module which is not there composes nothing, so the
+ * file is written before the row that references it. An existing file is left
+ * exactly as it is: it is code, a preset may ship it for its own reasons, and
+ * overwriting someone's edit to keep our copy canonical would be the editor
+ * reaching outside its data.
+ * @param compositionPath - absolute path of the composition file.
+ * @param mode - the composition's own mode, so the preset keeps one convention.
+ * @returns what the file was before the call.
+ */
+async function ensureRegistrar(
+  compositionPath: string,
+  mode: number,
+): Promise<"created" | "present" | "foreign"> {
+  const path = join(dirname(compositionPath), SECTIONS_MODULE_FILE);
+  let existing: string;
+  try {
+    existing = await readFile(path, "utf8");
+  } catch {
+    await writeFile(path, SECTIONS_MODULE_SOURCE, { encoding: "utf8", mode });
+    await chmod(path, mode);
+    return "created";
+  }
+  return existing === SECTIONS_MODULE_SOURCE ? "present" : "foreign";
+}
+
+/** Remove the registrar, but only when it is this editor's own file. */
+async function dropRegistrar(compositionPath: string): Promise<void> {
+  const path = join(dirname(compositionPath), SECTIONS_MODULE_FILE);
+  let existing: string;
+  try {
+    existing = await readFile(path, "utf8");
+  } catch {
+    return;
+  }
+  if (existing !== SECTIONS_MODULE_SOURCE) return;
+  await rm(path, { force: true }).catch(() => undefined);
 }
 
 /** Write the new text and report its revision. */
@@ -165,10 +238,35 @@ async function commit(
 }
 
 /**
- * Write the persona values into a preset's composition.
+ * Whether a save would leave the composition exactly as it is.
+ *
+ * A save on a preset that carries nothing — no persona row, no sections row,
+ * and a draft that is the defaults — is not a reason to write a file: the
+ * editor refuses to materialize empty rows that change nothing.
+ */
+function isNoOp(
+  hasPersonaRow: boolean,
+  hasSectionsRow: boolean,
+  draft: PresetDraft,
+): boolean {
+  const personaIsDefault =
+    draft.persona.prefix === "" &&
+    draft.persona.suffix === "" &&
+    !draft.persona.complete &&
+    draft.persona.includeRuntimeContext;
+  return (
+    draft.sections.length === 0 &&
+    !hasPersonaRow &&
+    !hasSectionsRow &&
+    personaIsDefault
+  );
+}
+
+/**
+ * Write the persona and the prompt sections into a preset's composition.
  * @param context - the write context.
  * @param id - the preset id.
- * @param draftInput - the values as they arrived over the wire.
+ * @param draftInput - the draft as it arrived over the wire.
  * @param expectedRevision - the revision the editor read.
  * @returns the revision the file now has.
  * @throws RemoteError on any refusal, with nothing written.
@@ -176,26 +274,55 @@ async function commit(
 export async function savePersona(
   context: WriteContext,
   id: string,
-  draftInput: Partial<PersonaDraft> | undefined,
+  draftInput: Partial<PresetDraft> | undefined,
   expectedRevision: string,
 ): Promise<PersonaWriteReceipt> {
-  const draft = normalizeDraft(id, draftInput);
-  validateDraft(id, draft, context.limits);
+  const draft: PresetDraft = {
+    persona: normalizeDraft(id, draftInput?.persona),
+    sections: normalizeSections(
+      id,
+      draftInput?.sections as
+        readonly Partial<PromptSectionDraft>[] | undefined,
+    ),
+  };
+  validateDraft(id, draft.persona, context.limits);
+  validateSections(id, draft.sections, context.limits);
   const guarded = await openForWrite(context, id, expectedRevision);
+  let parse: CompositionParse;
+  try {
+    parse = parseComposition(guarded.text);
+  } catch (cause) {
+    if (cause instanceof CompositionError) throw invalid(id, reasonOf(cause));
+    throw cause;
+  }
+  const hasPersonaRow = moduleRows(parse, PERSONA_PLUGIN_NAME).rows.length > 0;
+  const hasSectionsRow =
+    moduleRows(parse, SECTIONS_MODULE_SPECIFIER).rows.length > 0;
+  const unchanged = guarded.bom ? `\uFEFF${guarded.text}` : guarded.text;
+  if (isNoOp(hasPersonaRow, hasSectionsRow, draft)) {
+    return { revision: revisionOf(unchanged) };
+  }
   let text: string;
   try {
-    text = applyPersonaDraft(
-      guarded.text,
-      draft,
-      parseComposition(guarded.text),
-    );
+    text = applyPersonaDraft(guarded.text, draft.persona, parse);
+    text = applyPromptSections(text, draft.sections, parseComposition(text));
     assertReadback(id, text, draft);
   } catch (cause) {
     if (cause instanceof CompositionError) throw invalid(id, reasonOf(cause));
     throw cause;
   }
   await guarded.assertUnchanged();
-  return await commit(id, guarded, text);
+  // The registrar goes first: a composition that names a module which is not
+  // there composes nothing at all, while an unreferenced module costs a file.
+  // Removal is the other way round, once the composition stops naming it.
+  if (draft.sections.length > 0) {
+    await ensureRegistrar(guarded.path, guarded.mode);
+  }
+  const receipt = await commit(id, guarded, text);
+  if (draft.sections.length === 0) {
+    await dropRegistrar(guarded.path);
+  }
+  return receipt;
 }
 
 /**

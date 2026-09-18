@@ -22,8 +22,8 @@ import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import type {
   PersonaCatalog,
   PersonaDocument,
-  PersonaDraft,
   PersonaWriteReceipt,
+  PresetDraft,
 } from "../types.js";
 import { PersonaPage, type PersonaPageInjected } from "./PersonaPage.js";
 import { strings } from "./locale.js";
@@ -39,7 +39,7 @@ interface PresetPersonaRemote {
   read(agentPreset: string): Promise<RemoteResult<PersonaDocument>>;
   save(
     agentPreset: string,
-    persona: PersonaDraft,
+    draft: PresetDraft,
     expectedRevision: string,
   ): Promise<RemoteResult<PersonaWriteReceipt>>;
   reset(
@@ -85,10 +85,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const face: PersonaFace = {
         list: () => injected.presetPersonaEditor.list(),
         read: (agentPreset) => injected.presetPersonaEditor.read(agentPreset),
-        save: (agentPreset, persona, expectedRevision) =>
+        save: (agentPreset, draft, expectedRevision) =>
           injected.presetPersonaEditor.save(
             agentPreset,
-            persona,
+            draft,
             expectedRevision,
           ),
         reset: (agentPreset, expectedRevision) =>

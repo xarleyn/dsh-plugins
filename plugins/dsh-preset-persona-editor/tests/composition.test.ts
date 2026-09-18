@@ -12,10 +12,13 @@ import { describe, expect, it } from "vitest";
 import {
   applyPersonaDraft,
   CompositionError,
+  moduleRows,
   parseComposition,
+  personaRows,
   readPersonaValues,
   removePersonaRow,
 } from "../src/host/composition.js";
+import { PERSONA_PLUGIN_NAME } from "../src/shared/persona.js";
 import type { PersonaDraft } from "../src/types.js";
 
 const DEFAULTS: PersonaDraft = {
@@ -75,7 +78,7 @@ function personaRowLines(text: string): {
 describe("parseComposition", () => {
   it("reads the persona row's four values", () => {
     const parse = parseComposition(WITH_PERSONA);
-    const values = readPersonaValues(parse.rows);
+    const values = readPersonaValues(personaRows(parse));
     expect(values.draft).toEqual({
       prefix: "You are a coding agent powered by the {{model}} model.",
       suffix: "Your working directory is {{cwd}}.",
@@ -88,8 +91,8 @@ describe("parseComposition", () => {
 
   it("answers defaults when the composition names no persona", () => {
     const parse = parseComposition(WITHOUT_PERSONA);
-    expect(parse.rows).toHaveLength(0);
-    expect(readPersonaValues(parse.rows).draft).toEqual(DEFAULTS);
+    expect(personaRows(parse)).toHaveLength(0);
+    expect(readPersonaValues(personaRows(parse)).draft).toEqual(DEFAULTS);
   });
 
   it("refuses a document that is not a list of rows", () => {
@@ -115,8 +118,9 @@ describe("parseComposition", () => {
       "",
     ].join("\n");
     const parse = parseComposition(text);
-    expect(parse.rows).toHaveLength(0);
-    expect(parse.deepRows).toBe(1);
+    const rows = moduleRows(parse, PERSONA_PLUGIN_NAME);
+    expect(rows.rows).toHaveLength(0);
+    expect(rows.deep).toBe(1);
     expect(() => applyPersonaDraft(text, DEFAULTS, parse)).toThrow(
       /nested inside a group/u,
     );
@@ -180,7 +184,7 @@ describe("parseComposition", () => {
       "",
     ].join("\n");
     const parse = parseComposition(text);
-    expect(parse.rows).toHaveLength(2);
+    expect(personaRows(parse)).toHaveLength(2);
     expect(() => applyPersonaDraft(text, DEFAULTS, parse)).toThrow(
       /more than one/u,
     );
@@ -199,7 +203,7 @@ describe("applyPersonaDraft", () => {
   it("rewrites the managed values and leaves every other byte alone", () => {
     const parse = parseComposition(WITH_PERSONA);
     const next = applyPersonaDraft(WITH_PERSONA, draft, parse);
-    const read = readPersonaValues(parseComposition(next).rows);
+    const read = readPersonaValues(personaRows(parseComposition(next)));
     expect(read.draft).toEqual(draft);
     // The comments, the expression rows, and their disabled expressions are
     // still byte-identical: only the persona row moved.
@@ -242,9 +246,9 @@ describe("applyPersonaDraft", () => {
       parseComposition(WITH_PERSONA),
     );
     expect(next).toContain("    prefix: |\n");
-    expect(readPersonaValues(parseComposition(next).rows).draft.prefix).toBe(
-      value.prefix,
-    );
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft.prefix,
+    ).toBe(value.prefix);
   });
 
   it("quotes values a plain scalar would resolve differently", () => {
@@ -262,9 +266,9 @@ describe("applyPersonaDraft", () => {
         value,
         parseComposition(WITH_PERSONA),
       );
-      expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(
-        value,
-      );
+      expect(
+        readPersonaValues(personaRows(parseComposition(next))).draft,
+      ).toEqual(value);
     }
   });
 
@@ -280,7 +284,9 @@ describe("applyPersonaDraft", () => {
       "",
     ].join("\n");
     const next = applyPersonaDraft(text, draft, parseComposition(text));
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
     expect(next).toContain("    complete: false");
     expect(next).toContain("    includeRuntimeContext: false");
     // The next row still starts its own item.
@@ -318,7 +324,9 @@ describe("applyPersonaDraft", () => {
       "",
       "- id: tool-shell",
     ]);
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(same);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(same);
   });
 
   it("hangs a config mapping off a row that has none", () => {
@@ -331,7 +339,9 @@ describe("applyPersonaDraft", () => {
       "",
     ].join("\n");
     const next = applyPersonaDraft(text, draft, parseComposition(text));
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
     expect(next).toContain("  config:\n    prefix: |-");
     expect(next).toContain("\n- id: tool-shell\n");
   });
@@ -343,8 +353,8 @@ describe("applyPersonaDraft", () => {
       parseComposition(WITHOUT_PERSONA),
     );
     const parse = parseComposition(next);
-    expect(parse.rows).toHaveLength(1);
-    expect(readPersonaValues(parse.rows).draft).toEqual(draft);
+    expect(personaRows(parse)).toHaveLength(1);
+    expect(readPersonaValues(personaRows(parse)).draft).toEqual(draft);
     expect(next).toContain(
       "- id: persona\n  name: '@deepseek-ai/dsh-persona'\n  config:\n",
     );
@@ -354,7 +364,9 @@ describe("applyPersonaDraft", () => {
 
   it("appends a row to an empty composition", () => {
     const next = applyPersonaDraft("", draft, parseComposition(""));
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
   });
 
   it("follows the file's own line endings", () => {
@@ -364,7 +376,9 @@ describe("applyPersonaDraft", () => {
       "    prefix: |-\r\n      You are a careful reviewer.\r\n",
     );
     expect(next.replace(/\r\n/gu, "")).not.toContain("\r");
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
   });
 
   it("handles a row whose keys sit deeper than the shipped indent", () => {
@@ -377,7 +391,9 @@ describe("applyPersonaDraft", () => {
     ].join("\n");
     const next = applyPersonaDraft(text, draft, parseComposition(text));
     expect(next).toContain("      complete: false");
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
   });
 
   it("closes a file that ends without a line terminator", () => {
@@ -389,7 +405,9 @@ describe("applyPersonaDraft", () => {
     ].join("\n");
     const next = applyPersonaDraft(text, draft, parseComposition(text));
     expect(next).not.toContain("tail    complete");
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(draft);
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(draft);
   });
 
   it("preserves a byte-order mark from the caller's text", () => {
@@ -413,9 +431,9 @@ describe("removePersonaRow", () => {
     expect(next).toContain("# Comments here explain the deployment");
     // The two blank lines around the removed row collapse into one.
     expect(next).not.toMatch(/\n{3,}/u);
-    expect(readPersonaValues(parseComposition(next).rows).draft).toEqual(
-      DEFAULTS,
-    );
+    expect(
+      readPersonaValues(personaRows(parseComposition(next))).draft,
+    ).toEqual(DEFAULTS);
   });
 
   it("is a no-op when the composition has no persona row", () => {
@@ -440,9 +458,9 @@ describe("removePersonaRow", () => {
       draft,
       parseComposition(without),
     );
-    expect(readPersonaValues(parseComposition(restored).rows).draft).toEqual(
-      draft,
-    );
+    expect(
+      readPersonaValues(personaRows(parseComposition(restored))).draft,
+    ).toEqual(draft);
   });
 
   it("removes a row that is the last item of the composition", () => {

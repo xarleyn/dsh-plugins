@@ -53,6 +53,10 @@ const BODY = `
 .preset-persona__details[open] summary{margin-bottom:8px}
 .preset-persona__row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
 .preset-persona__row .preset-persona__field{flex:1 1 160px}
+.preset-persona__row .preset-persona__field--tight{flex:0 1 140px}
+.preset-persona__section-row{list-style:none;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.preset-persona__section-row .preset-persona__check{align-items:center}
+.preset-persona__section-row .preset-persona__check input{margin-top:0}
 `;
 
 /** The full stylesheet: canonical shell first, page body after. */

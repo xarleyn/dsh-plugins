@@ -94,6 +94,44 @@ export const strings = {
   outlineSuppressed: "Suppressed: this persona writes the complete prompt.",
   outlineRows: (rows: number): string =>
     `The preset composes ${rows} plugin row${rows === 1 ? "" : "s"}.`,
+  outlineSection: (name: string): string => `Section: ${name}`,
+  outlineSectionOff: "off",
+
+  sectionsTitle: "Advanced: prompt sections",
+  sectionsHint:
+    "Sections this preset contributes to the assembled prompt, in its own name. A section registered here shadows a deployment-global section with the same name for this preset's sessions.",
+  sectionsKeeps:
+    "A small registrar the preset carries (prompt-sections.mjs) mounts them, so they keep working with this plugin uninstalled.",
+  sectionsEmpty:
+    "This preset contributes no sections of its own: the deployment's prompt stands.",
+  sectionsAdd: "Add section",
+  sectionsRemove: "Remove",
+  sectionsRemoveAll: "Remove all",
+  sectionNameLabel: "Name",
+  sectionOrderLabel: "Order",
+  sectionTextLabel: "Text",
+  sectionEnabledLabel: "Enabled",
+  sectionOff: "off",
+  sectionNameMissing: "Give the section a name.",
+  sectionNamePadded: "A name cannot start or end with a space.",
+  sectionNameDuplicated: "Another section already uses this name.",
+  sectionOrderNotWhole: "The order must be a whole number.",
+  sectionTextMissing:
+    "A section with no text adds nothing; turn it off instead.",
+  sectionFirstPartyName:
+    "This name belongs to a first-party section, and a section of this preset shadows it.",
+  sectionsModulePresent:
+    "The preset ships its registrar (prompt-sections.mjs).",
+  sectionsModuleForeign:
+    "The preset's prompt-sections.mjs was written by hand: this page edits the section list only, and saving leaves that file alone.",
+  sectionsModuleMissing:
+    "The registrar file is missing, so a sections row would register nothing; saving writes it.",
+  sectionsModuleUnknown: "The registrar could not be checked.",
+  sectionsAmbiguous:
+    "More than one composition row names the registrar, so these sections cannot be edited here.",
+  sectionsError: "The section list cannot be rewritten by this editor.",
+  sectionsPreview: "Prompt sections config",
+  sectionsUnknownKeys: "Keys this editor does not manage in the sections row",
 
   unknownKeysTitle: "Keys this editor does not manage",
   unknownKeysHint:

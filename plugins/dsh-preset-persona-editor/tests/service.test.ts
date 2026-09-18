@@ -85,6 +85,19 @@ async function writePreset(id: string, text: string): Promise<void> {
   paths[id] = path;
 }
 
+/**
+ * The persona-only form of a save: these tests all start from a preset with no
+ * prompt sections, so the sections half is empty.
+ */
+function savePersona(
+  service: PresetPersonaEditor,
+  id: string,
+  persona: PersonaDraft,
+  expectedRevision: string,
+): Promise<{ readonly revision: string }> {
+  return service.savePersona(id, { persona, sections: [] }, expectedRevision);
+}
+
 function build(): PresetPersonaEditor {
   return new PresetPersonaEditor(ctx, {}, { logger: silentPluginLogger() });
 }
@@ -151,7 +164,7 @@ describe("PresetPersonaEditor", () => {
     installRoster({ demo: "user" });
     const service = build();
     const before = await service.readPersona("demo");
-    const receipt = await service.savePersona("demo", DRAFT, before.revision);
+    const receipt = await savePersona(service, "demo", DRAFT, before.revision);
     expect(receipt.revision).not.toBe(before.revision);
     const text = await readFile(paths.demo ?? "", "utf8");
     expect(text).toContain("    prefix: You are a careful reviewer.");
@@ -193,7 +206,7 @@ describe("PresetPersonaEditor", () => {
     installRoster({ standard: "system" });
     const service = build();
     await expect(
-      service.savePersona("standard", DRAFT, ""),
+      savePersona(service, "standard", DRAFT, ""),
     ).rejects.toMatchObject({
       code: "preset-persona/read-only",
     });
@@ -210,7 +223,7 @@ describe("PresetPersonaEditor", () => {
     const before = await service.readPersona("demo");
     await writeFile(paths.demo ?? "", `${OWNED}\n# edited by hand\n`, "utf8");
     await expect(
-      service.savePersona("demo", DRAFT, before.revision),
+      savePersona(service, "demo", DRAFT, before.revision),
     ).rejects.toMatchObject({
       code: "preset-persona/conflict",
       details: { agentPreset: "demo", expectedRevision: before.revision },
@@ -225,7 +238,12 @@ describe("PresetPersonaEditor", () => {
     const read = await service.readPersona("demo");
     expect(read.revision).toBeTruthy();
     await expect(
-      service.savePersona("demo", { ...DRAFT, complete: true, prefix: "" }, ""),
+      savePersona(
+        service,
+        "demo",
+        { ...DRAFT, complete: true, prefix: "" },
+        "",
+      ),
     ).rejects.toMatchObject({ code: "preset-persona/invalid" });
     expect(spy).not.toHaveBeenCalled();
   });
@@ -236,11 +254,11 @@ describe("PresetPersonaEditor", () => {
     await expect(service.readPersona("ghost")).rejects.toMatchObject({
       code: "preset-persona/not-found",
     });
-    await expect(service.savePersona("ghost", DRAFT, "")).rejects.toMatchObject(
-      {
-        code: "preset-persona/not-found",
-      },
-    );
+    await expect(
+      savePersona(service, "ghost", DRAFT, ""),
+    ).rejects.toMatchObject({
+      code: "preset-persona/not-found",
+    });
   });
 
   it("honours the deployment's configuration", async () => {
@@ -252,11 +270,13 @@ describe("PresetPersonaEditor", () => {
       { logger: silentPluginLogger() },
     );
     await expect(
-      service.savePersona("demo", { ...DRAFT, complete: true }, ""),
+      savePersona(service, "demo", { ...DRAFT, complete: true }, ""),
     ).rejects.toMatchObject({ code: "preset-persona/invalid" });
-    await expect(service.savePersona("demo", DRAFT, "")).rejects.toMatchObject({
-      code: "preset-persona/invalid",
-    });
+    await expect(savePersona(service, "demo", DRAFT, "")).rejects.toMatchObject(
+      {
+        code: "preset-persona/invalid",
+      },
+    );
   });
 
   it("logs what it wrote without logging the persona text", async () => {
@@ -265,7 +285,7 @@ describe("PresetPersonaEditor", () => {
     const info = vi.fn();
     const logger = { ...silentPluginLogger(), info };
     const service = new PresetPersonaEditor(ctx, {}, { logger });
-    await service.savePersona("demo", DRAFT, "");
+    await savePersona(service, "demo", DRAFT, "");
     const [event, fields] = info.mock.calls[0] ?? [];
     expect(event).toBe("preset-persona.saved");
     expect(fields).toMatchObject({ agentPreset: "demo", complete: false });

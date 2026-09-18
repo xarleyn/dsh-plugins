@@ -32,8 +32,8 @@ import {
 import type {
   PersonaCatalog,
   PersonaDocument,
-  PersonaDraft,
   PersonaWriteReceipt,
+  PresetDraft,
 } from "../types.js";
 import {
   readCatalog,
@@ -54,12 +54,18 @@ export interface Config {
   allowComplete?: boolean;
   /** Byte ceiling for prefix plus suffix. */
   maxPersonaBytes?: number;
+  /** How many prompt sections one preset may contribute. */
+  maxSections?: number;
+  /** Byte ceiling for the prompt sections together. */
+  maxSectionsBytes?: number;
 }
 
 /** The plugin's configuration schema, shared by the Cordis loader. */
 export const ConfigSchema: z<Config> = z.object({
   allowComplete: z.boolean().default(true),
   maxPersonaBytes: z.number().default(DEFAULT_LIMITS.maxPersonaBytes),
+  maxSections: z.number().default(DEFAULT_LIMITS.maxSections),
+  maxSectionsBytes: z.number().default(DEFAULT_LIMITS.maxSectionsBytes),
 });
 
 /** Overridable internals for tests. */
@@ -88,6 +94,9 @@ export class PresetPersonaEditor extends TypertRemoteService {
     this.limits = {
       allowComplete: config.allowComplete ?? DEFAULT_LIMITS.allowComplete,
       maxPersonaBytes: config.maxPersonaBytes ?? DEFAULT_LIMITS.maxPersonaBytes,
+      maxSections: config.maxSections ?? DEFAULT_LIMITS.maxSections,
+      maxSectionsBytes:
+        config.maxSectionsBytes ?? DEFAULT_LIMITS.maxSectionsBytes,
     };
     this.logger =
       deps.logger ??
@@ -122,24 +131,32 @@ export class PresetPersonaEditor extends TypertRemoteService {
     return await readDocument(this.roster, this.prompts, agentPreset);
   }
 
-  /** Write the persona values into the preset's own composition. */
+  /** Write the persona and the prompt sections into the preset's composition. */
   @Remote("save")
   async savePersona(
     agentPreset: string,
-    persona: PersonaDraft,
+    draft: PresetDraft,
     expectedRevision: string,
   ): Promise<PersonaWriteReceipt> {
     const receipt = await writePersona(
       { roster: this.roster, limits: this.limits },
       agentPreset,
-      persona,
+      draft,
       expectedRevision,
     );
     this.logger.info("preset-persona.saved", {
       agentPreset,
-      complete: persona?.complete === true,
-      prefixBytes: Buffer.byteLength(persona?.prefix ?? "", "utf8"),
-      suffixBytes: Buffer.byteLength(persona?.suffix ?? "", "utf8"),
+      complete: draft?.persona?.complete === true,
+      prefixBytes: Buffer.byteLength(draft?.persona?.prefix ?? "", "utf8"),
+      suffixBytes: Buffer.byteLength(draft?.persona?.suffix ?? "", "utf8"),
+      sections: Array.isArray(draft?.sections) ? draft.sections.length : 0,
+      sectionBytes: Array.isArray(draft?.sections)
+        ? draft.sections.reduce(
+            (total, section) =>
+              total + Buffer.byteLength(section?.text ?? "", "utf8"),
+            0,
+          )
+        : 0,
     });
     return receipt;
   }

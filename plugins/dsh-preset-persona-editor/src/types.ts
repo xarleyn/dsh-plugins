@@ -29,6 +29,46 @@ export interface PersonaDraft {
   readonly includeRuntimeContext: boolean;
 }
 
+/**
+ * One prompt section a preset contributes.
+ *
+ * `order` places it in the assembled prompt (the harness's own vocabulary runs
+ * from `-1000` for the harness identity to `10200` for the persona suffix), and
+ * a section registered in an agent's scope shadows a deployment-global section
+ * of the same name.
+ */
+export interface PromptSectionDraft {
+  readonly name: string;
+  readonly order: number;
+  readonly text: string;
+  /** `false` keeps the section in the file without registering it. */
+  readonly enabled: boolean;
+}
+
+/**
+ * How a preset carries its prompt sections:
+ * - `none` — no sections row: the preset contributes no sections of its own;
+ * - `local` — one row of this editor's, with a list it can rewrite;
+ * - `ambiguous` — more than one row names the registrar;
+ * - `unreadable` — the composition itself cannot be read.
+ */
+export type SectionsState = "none" | "local" | "ambiguous" | "unreadable";
+
+/**
+ * The registrar file beside the composition:
+ * - `present` — the file is the one this editor writes;
+ * - `foreign` — a file is there but its content differs (hand-edited);
+ * - `missing` — no file: a sections row would register nothing;
+ * - `unknown` — the composition could not be read, so nothing was checked.
+ */
+export type SectionsModuleState = "present" | "foreign" | "missing" | "unknown";
+
+/** The whole draft one save commits: the persona and the prompt sections. */
+export interface PresetDraft {
+  readonly persona: PersonaDraft;
+  readonly sections: readonly PromptSectionDraft[];
+}
+
 /** One roster row: a preset and the persona state read from its composition. */
 export interface PersonaPresetRow {
   readonly id: string;
@@ -86,6 +126,19 @@ export interface PersonaDocument {
   readonly foreignKeys: readonly string[];
   /** Persona rows beyond the first; non-zero refuses a save. */
   readonly extraRows: number;
+  /** The prompt sections the preset contributes, in file order. */
+  readonly sections: readonly PromptSectionDraft[];
+  /** How the preset carries those sections. */
+  readonly sectionsState: SectionsState;
+  /**
+   * Why the sections list cannot be rewritten (`!!js` inside it, a flow
+   * sequence, more than one sections row); `""` when it can.
+   */
+  readonly sectionsError: string;
+  /** State of the registrar file the sections row names. */
+  readonly sectionsModule: SectionsModuleState;
+  /** Config keys of the sections row other than `sections`. */
+  readonly sectionsUnknownKeys: readonly string[];
   /**
    * Why this preset cannot be edited at all (the file is missing or is not a
    * composition, the persona row is flow-styled, ...); `""` when it can.

@@ -11,12 +11,15 @@
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 
+import { sameSections } from "../shared/prompt-sections.js";
 import type {
   PersonaCatalog,
   PersonaDocument,
   PersonaDraft,
   PersonaPresetRow,
   PersonaWriteReceipt,
+  PresetDraft,
+  PromptSectionDraft,
 } from "../types.js";
 import { strings } from "./locale.js";
 
@@ -26,7 +29,7 @@ export interface PersonaFace {
   read(agentPreset: string): Promise<RemoteResult<PersonaDocument>>;
   save(
     agentPreset: string,
-    persona: PersonaDraft,
+    draft: PresetDraft,
     expectedRevision: string,
   ): Promise<RemoteResult<PersonaWriteReceipt>>;
   reset(
@@ -67,7 +70,7 @@ export interface OpenPreset {
   readonly status: "loading" | "ready" | "failed";
   readonly error: string;
   readonly document: PersonaDocument | null;
-  readonly draft: PersonaDraft | null;
+  readonly draft: PresetDraft | null;
   /** The last save was refused because the file changed underneath. */
   readonly conflict: boolean;
   /** The reset button has been armed and awaits a second click. */
@@ -98,18 +101,69 @@ export const INITIAL_STATE: PersonaPageSnapshot = {
   copyDraft: null,
 };
 
+/** The draft a freshly read document starts from. */
+function draftOf(document: PersonaDocument): PresetDraft {
+  return { persona: document.persona, sections: [...document.sections] };
+}
+
 /** Whether the draft differs from the values the preset carries. */
 export function isDirty(open: OpenPreset | null): boolean {
   if (open === null || open.document === null || open.draft === null)
     return false;
-  const { persona } = open.document;
+  const { persona, sections } = open.document;
   const { draft } = open;
   return (
-    draft.prefix !== persona.prefix ||
-    draft.suffix !== persona.suffix ||
-    draft.complete !== persona.complete ||
-    draft.includeRuntimeContext !== persona.includeRuntimeContext
+    draft.persona.prefix !== persona.prefix ||
+    draft.persona.suffix !== persona.suffix ||
+    draft.persona.complete !== persona.complete ||
+    draft.persona.includeRuntimeContext !== persona.includeRuntimeContext ||
+    !sameSections(draft.sections, sections)
   );
+}
+
+/** A section a save would refuse, with the reason to show beside it. */
+export interface SectionIssue {
+  readonly index: number;
+  readonly reason: string;
+}
+
+/**
+ * What the page can see is wrong with a section draft before a save.
+ *
+ * The host enforces the same rules and stays the authority; this exists so a
+ * half-typed section is marked where it is instead of arriving as a refusal
+ * after a round trip.
+ * @param sections - the draft's sections.
+ * @returns one issue per offending entry, in draft order.
+ */
+export function sectionIssues(
+  sections: readonly PromptSectionDraft[],
+): readonly SectionIssue[] {
+  const issues: SectionIssue[] = [];
+  const seen = new Set<string>();
+  sections.forEach((section, index) => {
+    if (section.name.trim() === "") {
+      issues.push({ index, reason: strings.sectionNameMissing });
+      return;
+    }
+    if (section.name !== section.name.trim()) {
+      issues.push({ index, reason: strings.sectionNamePadded });
+      return;
+    }
+    if (seen.has(section.name)) {
+      issues.push({ index, reason: strings.sectionNameDuplicated });
+      return;
+    }
+    seen.add(section.name);
+    if (!Number.isInteger(section.order)) {
+      issues.push({ index, reason: strings.sectionOrderNotWhole });
+      return;
+    }
+    if (section.text.trim() === "") {
+      issues.push({ index, reason: strings.sectionTextMissing });
+    }
+  });
+  return issues;
 }
 
 /**
@@ -165,6 +219,18 @@ export class PersonaPageController {
     const open = this.state.open;
     if (open === null || open.id !== id) return;
     this.set({ open: { ...open, ...patch } });
+  }
+
+  /** Apply a draft change and clear the state only a fresh read earns. */
+  private touch(id: string, patch: Partial<PresetDraft>): void {
+    const open = this.state.open;
+    if (open?.draft === null || open?.draft === undefined) return;
+    this.setOpen(id, {
+      draft: { ...open.draft, ...patch },
+      conflict: false,
+      pendingReset: false,
+    });
+    if (this.state.notice !== null) this.set({ notice: null });
   }
 
   /** Read the roster. Keeps the current list on screen while it refreshes. */
@@ -223,7 +289,7 @@ export class PersonaPageController {
     this.setOpen(id, {
       status: "ready",
       document: result.value,
-      draft: result.value.persona,
+      draft: draftOf(result.value),
       conflict: false,
       pendingReset: false,
     });
@@ -240,16 +306,50 @@ export class PersonaPageController {
     if (id !== undefined) await this.open(id);
   }
 
-  /** Change one draft value. */
+  /** Change one persona value. */
   edit(patch: Partial<PersonaDraft>): void {
     const open = this.state.open;
     if (open?.draft === null || open?.draft === undefined) return;
-    this.setOpen(open.id, {
-      draft: { ...open.draft, ...patch },
-      conflict: false,
-      pendingReset: false,
+    this.touch(open.id, { persona: { ...open.draft.persona, ...patch } });
+  }
+
+  /** Append an empty section for the user to fill in. */
+  addSection(): void {
+    const open = this.state.open;
+    if (open?.draft === null || open?.draft === undefined) return;
+    this.touch(open.id, {
+      sections: [
+        ...open.draft.sections,
+        { name: "", order: 5000, text: "", enabled: true },
+      ],
     });
-    if (this.state.notice !== null) this.set({ notice: null });
+  }
+
+  /** Change one section. */
+  editSection(index: number, patch: Partial<PromptSectionDraft>): void {
+    const open = this.state.open;
+    if (open?.draft === null || open?.draft === undefined) return;
+    this.touch(open.id, {
+      sections: open.draft.sections.map((section, at) =>
+        at === index ? { ...section, ...patch } : section,
+      ),
+    });
+  }
+
+  /** Drop one section. */
+  removeSection(index: number): void {
+    const open = this.state.open;
+    if (open?.draft === null || open?.draft === undefined) return;
+    this.touch(open.id, {
+      sections: open.draft.sections.filter((_, at) => at !== index),
+    });
+  }
+
+  /** Drop every section, so the preset contributes none of its own. */
+  clearSections(): void {
+    const open = this.state.open;
+    if (open?.draft === null || open?.draft === undefined) return;
+    this.touch(open.id, { sections: [] });
   }
 
   /** Discard local edits back to the loaded values. */
@@ -257,7 +357,7 @@ export class PersonaPageController {
     const open = this.state.open;
     if (open?.document === null || open?.document === undefined) return;
     this.setOpen(open.id, {
-      draft: open.document.persona,
+      draft: draftOf(open.document),
       conflict: false,
       pendingReset: false,
     });
@@ -343,10 +443,9 @@ export class PersonaPageController {
   beginCopy(): void {
     const open = this.state.open;
     if (open === null) return;
-    const suffix = "-copy";
     this.set({
       copyDraft: {
-        id: `${open.id}${suffix}`,
+        id: `${open.id}-copy`,
         name: `${open.document?.name || open.id} copy`,
         busy: false,
         error: "",
@@ -415,7 +514,7 @@ export class PersonaPageController {
     this.setOpen(id, {
       status: "ready",
       document: result.value,
-      draft: result.value.persona,
+      draft: draftOf(result.value),
       conflict: false,
       pendingReset: false,
     });
