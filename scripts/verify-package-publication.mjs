@@ -65,11 +65,31 @@ export async function isVersionPublished(
   version,
   { fetchImpl = fetch } = {},
 ) {
-  return packageExists(
-    name,
-    `/${version}`,
-    { accept: "application/json" },
-    fetchImpl,
+  if (
+    await packageExists(
+      name,
+      `/${version}`,
+      { accept: "application/json" },
+      fetchImpl,
+    )
+  ) {
+    return true;
+  }
+
+  // The version document is a cache entry of its own, and a version published
+  // minutes ago can still answer 404 there while the packument - the document
+  // the publish step reads - already lists it. Both have to disagree before a
+  // version is reported as not yet published.
+  const response = await fetchImpl(registryUrl(name), {
+    headers: { accept: ABBREVIATED_PACKUMENT },
+  });
+  if (response.ok) {
+    const document = await response.json();
+    return Object.hasOwn(document.versions ?? {}, version);
+  }
+  if (response.status === 404) return false;
+  throw new Error(
+    `the npm registry answered ${response.status} for ${name}; cannot tell whether the version exists`,
   );
 }
 

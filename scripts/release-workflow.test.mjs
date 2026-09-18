@@ -19,6 +19,7 @@ import {
   findAdoptedVersions,
   findUnpublishedPackages,
   isPackagePublished,
+  isVersionPublished,
   parsePackageSpec,
   readReleaseRows,
   unpublishedPackagesMessage,
@@ -777,6 +778,35 @@ describe("package publication gate", () => {
     assert.match(message, /npm publish \.\/<tarball>\.tgz --access public/u);
     assert.match(message, /Trusted Publisher/u);
     assert.match(message, /version plans are still intact/u);
+  });
+
+  test("a version the packument lists is adopted despite the version document", async () => {
+    const seen = [];
+    const fetchImpl = async (url) => {
+      seen.push(url);
+      // The version document is cached on its own and answers 404 for a version
+      // the packument already lists.
+      if (/\/@yadsh%2Fdsh-a\/[^/]+$/u.test(url)) {
+        return { status: 404, ok: false };
+      }
+      return {
+        status: 200,
+        ok: true,
+        json: async () => ({ versions: { "1.0.0": {}, "1.1.0": {} } }),
+      };
+    };
+
+    assert.equal(
+      await isVersionPublished("@yadsh/dsh-a", "1.1.0", { fetchImpl }),
+      true,
+      "the packument the publish step reads has to settle an unknown version",
+    );
+    assert.equal(seen.length, 2);
+
+    const absent = await isVersionPublished("@yadsh/dsh-a", "1.2.0", {
+      fetchImpl,
+    });
+    assert.equal(absent, false);
   });
 
   test("a registry failure is not mistaken for an unpublished package", async () => {
