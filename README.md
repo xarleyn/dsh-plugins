@@ -40,6 +40,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | Two-layer safety gate for prompts, streamed output, tools, and tool results |
 | `plugins/dsh-openviking-memory` | `@yadsh/dsh-openviking-memory` | OpenViking memory integration with configurable automatic context injection |
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
+| `plugins/dsh-preset-persona-editor` | `@yadsh/dsh-preset-persona-editor` | Agent-preset persona editing in the settings UI, written back into the preset's own composition |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
 | `plugins/dsh-qa-surface` | `@yadsh/dsh-qa-surface` | Focused end-user QA surface backed by native sessions |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
