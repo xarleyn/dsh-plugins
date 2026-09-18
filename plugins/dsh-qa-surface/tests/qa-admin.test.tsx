@@ -295,6 +295,10 @@ describe("QA administration", () => {
     fireEvent.click(screen.getByText("Изменить →"));
     await waitFor(() => expect(screen.getByText("browser_open")).toBeTruthy());
     expect(screen.getByText("Нет в реестре")).toBeTruthy();
+    // The tool is beyond every visible role's ceiling, so the editor reports
+    // the collapsed verdict instead of listing the same roles per row.
+    expect(screen.getByText("Недоступен ни одной роли")).toBeTruthy();
+    expect(screen.queryByText(/Недоступен: /u)).toBeNull();
 
     // Grant the skill to a second role; the declared audience stays untouched.
     fireEvent.click(screen.getByRole("checkbox", { name: /Разработчик/u }));

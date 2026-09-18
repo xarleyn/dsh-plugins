@@ -841,23 +841,38 @@ function SkillAssignmentEditor(props: {
               {props.skill.tools.map((tool) => (
                 <li key={tool.id}>
                   <code>{tool.id}</code>
-                  {tool.grantableBy.length > 0 ? (
-                    <em>Доступен: {tool.grantableBy.join(", ")}</em>
-                  ) : null}
-                  {tool.installed ? null : (
-                    <em className="dsh-qa-capability__missing">
-                      Нет в реестре
-                    </em>
-                  )}
-                  {tool.blockedFor.length > 0 ? (
-                    <em className="dsh-qa-capability__missing">
-                      Недоступен: {tool.blockedFor.join(", ")}
-                    </em>
-                  ) : null}
+                  <span className="dsh-qa-skill-tools__state">
+                    {tool.grantableBy.length > 0 ? (
+                      <em>Доступен: {tool.grantableBy.join(", ")}</em>
+                    ) : null}
+                    {tool.installed ? null : (
+                      <em className="dsh-qa-capability__missing">
+                        Нет в реестре
+                      </em>
+                    )}
+                    {tool.blockedFor.length > 0 ? (
+                      <em className="dsh-qa-capability__missing">
+                        {tool.grantableBy.length === 0 &&
+                        tool.blockedFor.length === props.skill.visibleTo.length
+                          ? "Недоступен ни одной роли"
+                          : `Недоступен: ${tool.blockedFor.join(", ")}`}
+                      </em>
+                    ) : null}
+                  </span>
                 </li>
               ))}
             </ul>
           )}
+          {props.skill.tools.length > 0 &&
+          props.skill.tools.every(
+            ({ grantableBy }) => grantableBy.length === 0,
+          ) ? (
+            <p className="dsh-qa-role-skills__hint">
+              Ни один инструмент не входит в списки «Доступны через навыки» ни
+              одной роли — отметьте их в общих возможностях или в редакторе
+              роли.
+            </p>
+          ) : null}
           {props.skill.descriptor.requireAll ? (
             <p className="dsh-qa-role-skills__hint">
               Навык строгий: без любого из инструментов он не активируется.
