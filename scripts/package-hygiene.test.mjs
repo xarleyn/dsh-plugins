@@ -12,7 +12,9 @@ import {
 import {
   compareVersions,
   curatedChangelogVersions,
+  globToRegExp,
   incrementVersion,
+  isPublishedFile,
   planBumpFor,
   planProjects,
   validateClientContractGates,
@@ -60,6 +62,30 @@ async function fixture(overrides = {}) {
   });
   return directory;
 }
+
+test("matches `**/` across any depth of directories", () => {
+  // A chained replace once rewrote the `*` inside the group it had just
+  // inserted, so the pattern covered a single directory at most and a nested
+  // CHANGELOG.md slipped past the release-plan gate.
+  assert.equal(globToRegExp("**/CHANGELOG.md").test("CHANGELOG.md"), true);
+  assert.equal(
+    globToRegExp("**/CHANGELOG.md").test(
+      "plugins/dsh-web-fetch-authenticated/CHANGELOG.md",
+    ),
+    true,
+  );
+  assert.equal(globToRegExp("lib/**/*.js").test("lib/a.js"), true);
+  assert.equal(
+    globToRegExp("lib/**/*.js").test("lib/providers/jira/x.js"),
+    true,
+  );
+  assert.equal(globToRegExp("lib/*.js").test("lib/a/b.js"), false);
+});
+
+test("publishes a deeply nested file through a `**` entry", () => {
+  assert.equal(isPublishedFile(["**/*.md"], "docs/specs/deep/note.md"), true);
+  assert.equal(isPublishedFile(["lib/*.js"], "lib/deep/x.js"), false);
+});
 
 test("accepts the plain tsc declaration layout", async () => {
   const directory = await fixture();

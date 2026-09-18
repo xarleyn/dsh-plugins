@@ -221,10 +221,14 @@ const ALWAYS_SHIPPED = [
 export function globToRegExp(pattern) {
   const source = pattern
     .replace(/[.+^${}()|[\]\\]/gu, "\\$&")
+    // One pass: chained replaces would rewrite the `*` inside the group they
+    // just inserted, and `**/` would stop covering more than one directory.
     // `**/` also matches no directory at all, so `lib/**/*.js` covers `lib/a.js`.
-    .replace(/\*\*\//gu, "(?:.*/)?")
-    .replace(/\*\*/gu, ".*")
-    .replace(/\*/gu, "[^/]*");
+    .replace(/\*\*\/|\*\*|\*/gu, (token) => {
+      if (token === "**/") return "(?:.*/)?";
+      if (token === "**") return ".*";
+      return "[^/]*";
+    });
   return new RegExp(`^${source}$`, "u");
 }
 

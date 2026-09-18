@@ -220,9 +220,11 @@ describe("version plan gate", () => {
     const result = check(root, base);
 
     assert.equal(result.status, 1, result.output);
+    // The manifest is not a change: `**/package.json` covers a package nested
+    // two directories deep, so only the source file asks for a plan.
     assert.match(
       result.output,
-      /@fixture\/dsh-gamma: 2 file\(s\) since .* \(never released\)/u,
+      /@fixture\/dsh-gamma: 1 file\(s\) since .* \(never released\)\n {4}plugins\/dsh-gamma\/index\.js/u,
     );
     assert.doesNotMatch(result.output, /@fixture\/dsh-alpha/u);
   });
