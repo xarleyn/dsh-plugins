@@ -34,6 +34,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-domain-experts` | `@yadsh/dsh-domain-experts` | Configurable domain-scoped expert agents with isolated knowledge, memory and tool scope |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
 | `plugins/dsh-git-readonly` | `@yadsh/dsh-git-readonly` | Read-only git provenance tools |
+| `plugins/dsh-jev-compaction` | `@yadsh/dsh-jev-compaction` | Jev-powered, replay-safe semantic pruning of stale tool results |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | Persistent KV-cache/session-state snapshots (llama.cpp slots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | Runtime localization overrides |
 | `plugins/dsh-lightrag` | `@yadsh/dsh-lightrag` | LightRAG knowledge-base tools |

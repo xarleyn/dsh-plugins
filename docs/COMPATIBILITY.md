@@ -40,6 +40,7 @@ instance.
 | `@yadsh/dsh-git-readonly` | tools, schemastery |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
+| `@yadsh/dsh-jev-compaction` | Cordis, schemastery, LLM, session |
 | `@yadsh/dsh-lightrag` | tools, schemastery |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
 | `@yadsh/dsh-openviking-memory` | Cordis, schemastery, agent, LLM, session, tools, MCP client, skill filesystem |

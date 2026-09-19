@@ -1,0 +1,2102 @@
+# dsh-jev-compaction — SPEC & Implementation Plan
+
+**Status:** Implemented — v0.1.0 scope (Phase 0 findings in `docs/compatibility.md`)  
+**Date:** 2026-09-19  
+**Target:** DeepSeek Harness (DSH)  
+**Proposed package/repository name:** `dsh-jev-compaction`  
+**Primary goal:** replay-safe semantic pruning of stale tool results using a Jev/System-One decision backend before ordinary DSH summary compaction is needed.
+
+---
+
+## 1. Executive summary
+
+`dsh-jev-compaction` is a DeepSeek Harness plugin that uses a Jev/System-One
+decision model (TypeSafe hosted Jev, or a self-hosted compatible backend such
+as Jeff) to decide which historical tool outputs still need to remain fully
+visible in the model context.
+
+The plugin is intentionally **not** a replacement for the DSH append-only session log and is **not** a full replacement for `dsh-compaction-basic` in v1.
+
+Instead, it acts as an asynchronous semantic pruning layer:
+
+1. DSH approaches configurable context pressure.
+2. The plugin inspects the current replayed session surface.
+3. User/system/assistant text and recent context are pinned.
+4. Older `tool/result` surface nodes become pruning candidates.
+5. Jev scores whether each candidate still needs its full content.
+6. A local safety policy validates the decisions.
+7. Selected `tool/result` nodes are replaced by replay-safe shortened versions using DSH single-node `surfaceOp: replace`.
+8. The original full-fidelity events remain in the append-only session log.
+9. DSH remeasures context normally.
+10. If pruning was insufficient, the existing `dsh-compaction-basic` summary compaction remains the fallback.
+
+The core principle is:
+
+> **Selective forgetting before lossy summarization.**
+
+The plugin should preserve exact conversational instructions while preferentially removing stale, superseded, duplicated, or cheaply reproducible tool output.
+
+---
+
+## 2. Motivation
+
+Traditional context compaction normally summarizes older history with an LLM. That is useful, but a generated summary can accidentally lose exact details such as:
+
+- file paths;
+- exact error messages;
+- commands;
+- user constraints;
+- configuration values;
+- identifiers;
+- tool-derived evidence;
+- previous decisions that later become relevant.
+
+The project `tamaratran/fast-jev-compaction` demonstrated another approach for Claude Code: retain text verbatim and use Jev to score tool calls/results for selective removal or truncation.
+
+DSH has a particularly useful architecture for adapting this idea:
+
+- the durable session log is append-only;
+- the model-visible **surface** is a replayed projection;
+- current surface nodes can be shadowed through replay-safe replacements;
+- full original tool results can remain in history even when the visible result is shortened;
+- `ctx.tokenMeter` can remeasure the resulting context;
+- `dsh-compaction-basic` can remain the final fallback.
+
+This enables a safer DSH-native design than destructive transcript mutation.
+
+---
+
+## 3. Goals
+
+### 3.1 Primary goals
+
+The v1 plugin MUST:
+
+- reduce model-visible context by pruning stale historical tool results;
+- use Jev as a semantic decision engine;
+- preserve the original durable DSH session events;
+- preserve system, user, and assistant conversational text;
+- avoid rewriting `assistant/message` in v1;
+- mutate only eligible `tool/result` surface nodes;
+- maintain DSH tool/result and surface invariants;
+- be fail-open;
+- cooperate with `dsh-compaction-basic`;
+- support automatic pressure-triggered pruning;
+- support a manual command;
+- support a dry-run mode;
+- expose useful diagnostics and savings statistics;
+- work without modifying DeepSeek Harness core.
+
+### 3.2 Secondary goals
+
+The implementation SHOULD:
+
+- recognize obviously superseded results deterministically;
+- distinguish expensive-to-reproduce from cheap-to-reproduce results;
+- use DSH token measurement instead of relying only on character heuristics;
+- minimize Jev state size and request count;
+- allow future support for different decision backends;
+- isolate DSH-version compatibility code;
+- provide enough telemetry to tune thresholds safely.
+
+### 3.3 Success definition
+
+A successful v1 should make long coding-agent sessions survive materially longer before summary compaction while preserving user/assistant text verbatim and without making the session log unreplayable.
+
+---
+
+## 4. Non-goals for v1
+
+The first release MUST NOT attempt to:
+
+- delete events from the durable DSH session log;
+- rewrite arbitrary `assistant/message` events;
+- delete historical tool calls from assistant provider output;
+- implement an entirely new `CompactionEngine`;
+- replace DSH's canonical overflow recovery;
+- summarize user or assistant messages with Jev;
+- use Jev as an authority that can override deterministic safety rules;
+- compact image/binary content beyond what DSH already supports;
+- automatically expand permissions or tool authority;
+- require a fork of DeepSeek Harness;
+- depend on patching generated DSH files after every update.
+
+These may be evaluated in later versions.
+
+---
+
+## 5. Key design decisions
+
+### 5.1 Prune the surface, never the durable source
+
+DSH sessions are append-only. The plugin should preserve this property.
+
+When a historical tool result is pruned, the original event stays in the log. The plugin appends a new `tool/result` event that replaces exactly one current surface node.
+
+Conceptually:
+
+```text
+durable log
+
+seq 120: tool/result   <full original, remains forever>
+...
+seq 310: tool/result   <short replacement, shadows seq 120>
+```
+
+Model-visible surface:
+
+```text
+seq 310 only
+```
+
+Inspection/replay retains access to seq 120.
+
+### 5.2 v1 rewrites `tool/result` only
+
+Do not rewrite `assistant/message` in v1.
+
+Reasons:
+
+- assistant messages can embed provider-native streams/tool call structure;
+- DSH provenance rules differ for assistant messages;
+- pairing and provider serialization invariants are easier to preserve when the call stays present;
+- single-node `tool/result` replacement matches an existing DSH compaction pattern;
+- the risk of creating an unreplayable session is substantially lower.
+
+### 5.3 Jev proposes; local policy disposes
+
+Jev output MUST be treated as an input to a deterministic local policy.
+
+Jev must never directly mutate the session.
+
+Pipeline:
+
+```text
+candidate collection
+        ↓
+deterministic features / pins
+        ↓
+Jev scoring
+        ↓
+response validation
+        ↓
+local safety policy
+        ↓
+mutation plan
+        ↓
+revalidate surface generation
+        ↓
+apply replacements
+```
+
+### 5.4 Fail open
+
+If Jev, networking, parsing, fitting, compatibility validation, cancellation, or session mutation fails:
+
+- do not perform speculative pruning;
+- preserve the session;
+- allow downstream DSH behavior to continue;
+- leave ordinary DSH compaction as fallback.
+
+The plugin should prefer "no savings" over "corrupt or misleading context".
+
+---
+
+## 6. Relevant DSH architecture
+
+The implementation should be built around public/capability-style DSH seams where possible.
+
+Important concepts:
+
+### 6.1 `agent/pre-step`
+
+DSH runs an asynchronous `agent/pre-step` waterfall before a proposed step is admitted.
+
+This is suitable for calling Jev because it is asynchronous.
+
+The plugin should register a pre-step listener that:
+
+1. checks whether automatic pruning should run;
+2. performs pruning before calling downstream `next()`;
+3. always respects the provided `AbortSignal`;
+4. calls `next()` unless it intentionally rejects the step, which this plugin normally should not do.
+
+The plugin SHOULD register with `{ prepend: true }` so that semantic pruning runs before ordinary compaction listeners registered earlier. Composition order must still be documented and tested.
+
+### 6.2 `ctx.tokenMeter`
+
+Use DSH token measurement to determine whether pruning is needed and whether it helped.
+
+The plugin should not base the primary pressure decision on `characters / 4`.
+
+Character/token heuristics may be used only for Jev request fitting where an exact Jev tokenizer is unavailable.
+
+### 6.3 Session surface replacement
+
+DSH surface nodes can be replaced while original events remain in the log.
+
+For a pruned tool result, append a replacement `tool/result` with:
+
+- the same logical tool result data;
+- only text `content` modified;
+- a single-node `surfaceOp: { op: 'replace', startSeq, endSeq }`;
+- provenance/source coverage required by the current DSH session contract.
+
+The compatibility adapter must use the field names required by the supported DSH version.
+
+### 6.4 Built-in compaction
+
+`dsh-compaction-basic` already owns:
+
+- pressure policy;
+- summary compaction;
+- canonical context-overflow recovery;
+- compaction failure handling.
+
+`dsh-jev-compaction` should complement it.
+
+Expected normal sequence:
+
+```text
+agent/pre-step
+    │
+    ├─ dsh-jev-compaction
+    │     ├─ pressure check
+    │     ├─ Jev scoring
+    │     ├─ safe tool/result replacements
+    │     └─ remeasure
+    │
+    └─ dsh-compaction-basic
+          ├─ pressure check
+          ├─ optional deterministic pruner
+          └─ summary only if still necessary
+```
+
+### 6.5 Existing deterministic tool-result pruner
+
+DSH ships a model-free tool-result pruner that trims oversized outputs with deterministic head/middle/tail logic.
+
+`dsh-jev-compaction` should be compatible with it.
+
+Possible compositions:
+
+```text
+A. Jev first → built-in deterministic pruner → summary
+B. deterministic pruner first → Jev → summary
+```
+
+For v1, prefer **Jev first** if listener ordering allows it, because Jev can preserve semantically valuable large results while pruning irrelevant smaller ones.
+
+If compatibility or ordering proves unreliable, document a supported composition and make tests enforce it.
+
+---
+
+## 7. High-level architecture
+
+```text
+┌───────────────────────────────────────────────┐
+│                 DSH Agent                     │
+└───────────────────────┬───────────────────────┘
+                        │
+                  agent/pre-step
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│           Auto Trigger / Token Meter          │
+│ pressure? cooldown? enough candidates?        │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│             Candidate Collector               │
+│ current surface → old tool/result candidates  │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│          Deterministic Feature Layer          │
+│ recency, superseded, error, path, cost, etc.  │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│                Jev State Builder              │
+│ bounded semantic representation of history   │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│                   Jev Client                  │
+│ batching + timeout + validation + cancellation│
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│              Safety Policy Engine             │
+│ pins + thresholds + minimum savings           │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│              Mutation Plan Builder            │
+│ FULL / STUB / TRUNCATE / NO-OP                │
+└───────────────────────┬───────────────────────┘
+                        │
+                 surface revalidation
+                        │
+                        ▼
+┌───────────────────────────────────────────────┐
+│            Replay-safe Surface Writer         │
+│ append single-node tool/result replacements   │
+└───────────────────────┬───────────────────────┘
+                        │
+                        ▼
+                 token remeasure
+                        │
+                        ▼
+                 downstream next()
+                        │
+                        ▼
+             dsh-compaction-basic
+```
+
+---
+
+## 8. Automatic trigger policy
+
+The plugin should not call Jev on every step.
+
+Recommended v1 trigger conditions:
+
+```text
+enabled
+AND not already running for session
+AND cooldown elapsed
+AND pressure ratio >= trigger.contextRatio
+AND surface tokens >= trigger.minSurfaceTokens
+AND eligible candidate count >= trigger.minCandidates
+AND candidate text chars >= trigger.minCandidateChars
+```
+
+Suggested defaults:
+
+```yaml
+trigger:
+  contextRatio: 0.70
+  minSurfaceTokens: 32000
+  minCandidates: 4
+  minCandidateChars: 8000
+  cooldownTurns: 3
+```
+
+The exact pressure representation depends on the current `ctx.tokenMeter` API and model route. The compatibility layer should expose:
+
+```ts
+interface PressureSnapshot {
+  estimatedSurfaceTokens: number
+  contextWindow?: number
+  ratio?: number
+}
+```
+
+If context-window capacity cannot be resolved safely, auto mode may fall back to `minSurfaceTokens` rather than guessing.
+
+---
+
+## 9. Candidate collection
+
+Only current model-visible `tool/result` surface nodes are candidates.
+
+### 9.1 Always pinned in v1
+
+Never prune:
+
+- system messages;
+- user messages;
+- assistant messages;
+- results in the newest configured messages/steps;
+- results in an active/open step;
+- unresolved or structurally ambiguous call/result pairs;
+- replacement nodes that cannot be traced safely;
+- content whose DSH shape is not understood by the compatibility adapter.
+
+### 9.2 Candidate model
+
+Internal normalized candidate:
+
+```ts
+interface ToolResultCandidate {
+  surfaceSeq: number
+  callId: string
+  toolName?: string
+
+  turn?: number | null
+  step?: number | null
+
+  originalText: string
+  originalChars: number
+
+  isError: boolean
+  ageTurns?: number
+  ageSteps?: number
+
+  toolArgumentsPreview?: string
+
+  // Deterministic signals
+  superseded: boolean
+  duplicateLike: boolean
+  rerunnable: 'cheap' | 'moderate' | 'expensive' | 'unknown'
+  containsLikelyExactEvidence: boolean
+
+  // Optional extracted hints
+  paths?: string[]
+  command?: string
+  exitCode?: number
+}
+```
+
+The normalized model must not leak DSH-version-specific event shapes into planner modules.
+
+---
+
+## 10. Deterministic feature extraction
+
+Jev should not be forced to infer everything from raw history.
+
+The plugin should derive cheap local features where possible.
+
+Examples:
+
+### 10.1 Superseded file reads
+
+If:
+
+```text
+Read src/a.ts @ turn 4
+Read src/a.ts @ turn 18
+```
+
+the older read is likely superseded.
+
+Stronger signal:
+
+```text
+Read src/a.ts @ turn 4
+Edit src/a.ts @ turn 10
+Read src/a.ts @ turn 18
+```
+
+The result from turn 4 is strongly stale.
+
+This MUST remain a signal, not an unconditional deletion rule in the initial release.
+
+### 10.2 Duplicate searches
+
+Repeated grep/search calls with equivalent query/path combinations can mark older results `duplicateLike = true`.
+
+### 10.3 Test/build outputs
+
+Older successful test output is usually cheaper to re-run than:
+
+- an expensive external query;
+- a non-deterministic remote API response;
+- unique diagnostic evidence.
+
+Errors should receive stronger preservation bias.
+
+### 10.4 Exact-evidence hints
+
+The feature layer may detect likely high-value content:
+
+- stack traces;
+- compiler errors;
+- hashes;
+- URLs;
+- issue IDs;
+- migration IDs;
+- generated plans;
+- unique external data.
+
+Detection should only influence preservation bias.
+
+---
+
+## 11. Jev state representation
+
+The state should represent the conversation sufficiently for Jev to judge relevance without sending every historical tool output in full.
+
+Conceptual format:
+
+```text
+SESSION STATE
+
+[user t1]
+Fix failing auth tests.
+Never modify migrations.
+
+[assistant t1]
+I'll inspect the auth implementation and tests.
+
+[tool t1/c1]
+id=t1
+name=read
+args={"path":"src/auth.ts"}
+result=ok, 14382 chars omitted
+features=age:18 turns; superseded:true; rerunnable:cheap
+
+[tool t1/c2]
+id=t2
+name=test
+args={"command":"pnpm test auth"}
+result=error, 8221 chars omitted
+features=age:17 turns; isError:true; rerunnable:moderate
+
+...
+
+[recent user]
+The failure is only on refresh-token rotation.
+```
+
+Important properties:
+
+- user and assistant textual intent remains represented;
+- full historical tool outputs are not copied into state by default;
+- candidate IDs are stable within the request;
+- deterministic signals are explicit;
+- recent task context is favored;
+- state fitting must be deterministic and testable.
+
+---
+
+## 12. Jev questions
+
+v1 SHOULD ask at least one semantic preservation question per candidate.
+
+Recommended primary question:
+
+```text
+Does the agent still need the substantive contents of tool result {candidateId}
+to correctly continue the user's current task?
+```
+
+A second question may be used to distinguish full preservation from shortened preservation:
+
+```text
+Does tool result {candidateId} need to remain substantially verbatim,
+rather than being replaced by a short replay marker describing the tool
+and the fact that its old output was pruned?
+```
+
+Optional future dimension:
+
+```text
+Would re-running the original tool be an acceptable way to recover the
+information if it becomes needed again?
+```
+
+Do not overcomplicate v1 with many correlated questions until empirical evaluation proves value.
+
+---
+
+## 13. Decision model
+
+Recommended internal result:
+
+```ts
+interface JevCandidateDecision {
+  candidateId: string
+  needContents: number
+  needVerbatim?: number
+}
+```
+
+Local policy converts probability into an action.
+
+Example:
+
+```text
+PINNED / unsafe to mutate
+    → KEEP_FULL
+
+needContents >= fullThreshold
+    → KEEP_FULL
+
+needContents >= truncateThreshold
+    → KEEP_TRUNCATED
+
+otherwise
+    → KEEP_STUB
+```
+
+Suggested initial thresholds:
+
+```yaml
+decisions:
+  fullThreshold: 0.70
+  truncateThreshold: 0.45
+```
+
+Do not blindly copy the original project threshold. Tune with DSH replay fixtures.
+
+---
+
+## 14. Mutation modes
+
+### 14.1 `KEEP_FULL`
+
+No mutation.
+
+### 14.2 `KEEP_TRUNCATED`
+
+Preserve a bounded head and optional tail plus a marker.
+
+Example:
+
+```text
+[first 384 chars]
+
+… [dsh-jev-compaction pruned 12,910 historical characters] …
+
+[last 128 chars]
+```
+
+This is useful for:
+
+- command outputs;
+- logs;
+- search results where rough identity still matters.
+
+### 14.3 `KEEP_STUB`
+
+Replace textual result content with a small semantic/replay marker.
+
+Example:
+
+```text
+[dsh-jev-compaction]
+Historical tool output pruned from active model context.
+tool=read
+originalChars=14382
+reason=low semantic retention score
+original event remains available in the session log.
+```
+
+Do NOT claim that Jev proved the result is irrelevant.
+
+Prefer neutral wording such as "pruned from active model context".
+
+### 14.4 No physical tool-call deletion in v1
+
+Even at extremely low score, retain the tool call and a corresponding tool result stub.
+
+This protects tool/result pairing and provider serialization.
+
+---
+
+## 15. Preserving non-text blocks
+
+A tool result may contain rich/non-text blocks.
+
+v1 policy:
+
+- modify text blocks only;
+- preserve non-text blocks and their order unless DSH's own image-offload mechanism already transformed them;
+- never silently drop unknown block types;
+- if a block schema is unknown, pin the entire result.
+
+When reconstructing the replacement result, copy all existing result metadata and modify only intended textual content.
+
+---
+
+## 16. Surface mutation algorithm
+
+Pseudo-code:
+
+```ts
+async function applyPlan(session, plan, snapshot) {
+  assertSurfaceStillMatches(snapshot)
+
+  for (const item of plan.items) {
+    if (item.action === 'KEEP_FULL') continue
+
+    const current = resolveCurrentSurfaceNode(item.originalSeq)
+
+    if (!current) throw new SurfaceChangedError()
+    if (current.type !== 'tool/result') throw new InvariantError()
+
+    const replacementData = {
+      ...current.data,
+      message: replaceToolResultText(
+        current.data.message,
+        renderReplacement(item),
+      ),
+    }
+
+    session.append(
+      'tool/result',
+      replacementData,
+      makeSingleNodeReplacementIntent(current),
+    )
+  }
+}
+```
+
+Exact APIs must be hidden behind `src/dsh/compat.ts`.
+
+### 16.1 Mutation ordering
+
+Apply replacements in the snapshotted surface order.
+
+### 16.2 Partial failure
+
+The DSH log is append-only, so already-landed replacements may be durable if a later replacement fails.
+
+Therefore:
+
+- validate all planned mutations before the first append;
+- revalidate surface generation immediately before applying;
+- make each replacement independently valid;
+- log partial completion clearly;
+- do not attempt unsafe rollback by rewriting history.
+
+---
+
+## 17. Concurrency and race handling
+
+This is a critical area.
+
+### 17.1 Per-session mutex
+
+Only one Jev compaction operation may run per session at a time.
+
+```ts
+Map<SessionId, Promise/Mutex>
+```
+
+Manual and automatic runs share the same lock.
+
+### 17.2 Snapshot identity
+
+Before calling Jev, capture enough state to detect drift:
+
+- session identity;
+- surface replacement generation, if accessible;
+- ordered candidate seqs;
+- latest surface tail seq;
+- token measurement revision if exposed.
+
+After Jev returns, revalidate.
+
+If the relevant surface changed:
+
+```text
+discard plan
+do not apply stale decisions
+continue normally
+```
+
+Optionally retry once only for manual mode. Automatic mode should usually skip and wait for the next step.
+
+### 17.3 Cancellation
+
+Forward the `agent/pre-step` `AbortSignal` through:
+
+- Jev HTTP request;
+- batching;
+- waiting on concurrency;
+- long local processing where practical.
+
+Cancellation must not be converted into a successful prune.
+
+---
+
+## 18. Decision backends (System One)
+
+Create an internal backend interface. The name is deliberately provider-neutral:
+TypeSafe's hosted Jev, the self-hosted Jeff server, and other System
+One-compatible endpoints all speak conceptually the same scoring contract.
+
+```ts
+interface SystemOneBackend {
+  decide(
+    state: string,
+    questions: DecisionQuestion[],
+    signal?: AbortSignal,
+  ): Promise<JevCandidateDecision[]>
+}
+```
+
+Implementations:
+
+```ts
+class SystemOneClient implements SystemOneBackend {} // wire client shared by all presets
+// provider presets over the same client:
+//   typesafe — https://api.typesafe.ai/v1/systemone (hosted Jev)
+//   jeff     — self-hosted, e.g. http://jeff:8000 (logan-markewich/jeff)
+//   custom   — any System One-compatible endpoint (e.g. daseinlabs/open-jev)
+```
+
+TypeSafe hosted Jev cannot currently be self-hosted (closed weights, hosted
+early-access API). Jeff is a drop-in self-hosted System One implementation over
+GLiFormer Large (~400M parameters) that serves the same API surface and accepts
+the `jev-latest` model alias; it trades some accuracy (reasoning-heavy tasks are
+noticeably weaker than hosted Jev) for locality, privacy, and free evals. A
+`custom` preset covers other compatible implementations such as open-jev
+(Gemma-3-based; probabilities are not calibrated to Jev without additional
+training). Backend choice does not change the planner: switching is config-only.
+
+Benefits:
+
+- unit tests use a fake backend;
+- self-hosted backends enable thousands of local evaluation runs before a
+  hosted-Jev comparison pass on the same corpus;
+- transport code stays separate from DSH integration.
+
+### 18.1 Authentication
+
+Per-provider environment variable references (the config stores the NAME of the
+environment variable, never the key):
+
+```text
+typesafe → TYPESAFE_API_KEY
+jeff     → JEFF_API_KEY
+custom   → configured explicitly
+```
+
+Do not store raw API keys in logs.
+
+If DSH provides a stable credential-reference seam suitable for third-party plugins, add optional integration later.
+
+### 18.2 Timeouts
+
+Suggested default:
+
+```yaml
+jev:
+  timeoutMs: 2500
+```
+
+Automatic compaction is latency-sensitive.
+
+Manual `/jev-compact` may optionally allow a longer timeout.
+
+### 18.3 Retries
+
+v1 should use either:
+
+- no retry; or
+- one retry for network/5xx only with tight overall deadline.
+
+Never retry malformed semantic responses indefinitely.
+
+### 18.4 Response validation
+
+Reject:
+
+- missing candidate keys;
+- duplicate candidate keys;
+- probabilities outside `[0, 1]`;
+- `NaN`;
+- non-numeric probabilities;
+- unknown result shape;
+- partial response unless explicitly allowed by policy.
+
+Default: any malformed batch makes that batch fail safe.
+
+---
+
+## 19. Jev state fitting and batching
+
+The request builder must respect Jev request limits without turning fitting into a second summarizer.
+
+Progressive fitting strategy:
+
+1. full conversational text + compact tool metadata;
+2. truncate long tool argument previews;
+3. reduce older assistant/user text to bounded head/tail only if needed;
+4. collapse old tool metadata into one-line records;
+5. omit oldest non-critical metadata blocks;
+6. fail open if a safe state cannot fit.
+
+Do not delete recent user constraints merely to fit Jev.
+
+Questions should be batched when necessary.
+
+Batch requests MAY run concurrently with a configurable cap.
+
+Suggested:
+
+```yaml
+jev:
+  maxConcurrency: 4
+
+state:
+  maxStateTokens: 25000
+  maxRequestTokens: 30000
+  toolInputChars: 1000
+  resultPreviewChars: 300
+```
+
+These are implementation defaults, not API guarantees. Verify against current Jev documentation during implementation.
+
+---
+
+## 20. Minimum savings gate
+
+Do not rewrite dozens of events to save trivial context.
+
+After decisions are computed, estimate expected savings.
+
+Example:
+
+```yaml
+pruning:
+  minSavingsChars: 8000
+  minSavingsRatio: 0.05
+```
+
+Apply only if either/both configured thresholds are satisfied.
+
+For automatic mode:
+
+```text
+too little expected savings
+→ no mutation
+→ downstream built-in compaction proceeds normally
+```
+
+Manual dry-run should still show the plan.
+
+---
+
+## 21. Manual commands
+
+### 21.0 Why `/jev-compact` arms instead of mutating inline
+
+The harness session invariant classifies a `tool/result` surface replacement as
+durable turn work: appending one outside an open turn is rejected at the
+session boundary, and turn numbering is loop-owned (a plugin that fabricated a
+turn would desynchronize the driver's counter and corrupt later turns).
+Manual compaction that replaces `user/message` summary checkpoints is exempt
+from that rule, which is why the built-in `/compact` can run while the agent is
+idle — but `tool/result` pruning cannot.
+
+Therefore the manual command scores and builds the plan at command time (with
+the longer manual timeout), then **arms** it: the prepended `agent/pre-step`
+listener applies the armed plan before the next model step of that session,
+inside the open turn, after full surface revalidation (§17.2). If the surface
+changes before it can apply, the stale plan items are dropped exactly like a
+stale automatic plan. `/jev-compact --dry-run` remains purely read-only.
+
+### 21.1 `/jev-compact`
+
+Score now, apply before the next model step of this session, independent of
+automatic pressure thresholds and cooldown.
+
+Expected output:
+
+```text
+Jev compaction armed
+
+Candidates:   64
+Full kept:    13
+Truncated:    17
+Stubbed:      34
+
+Estimated visible text reduction: 182,450 chars
+Estimated token reduction: 35,200
+
+The plan will be applied before the next model step in this session
+(or when the next message is sent). It is discarded if the history
+changes first. Run /jev-compact --dry-run to preview without arming.
+```
+
+After the armed plan lands, the plugin log records the same before/after
+statistics the automatic path emits. The command itself does not create a user
+model message and does not wake the agent.
+
+### 21.2 `/jev-compact --dry-run`
+
+Never mutate session.
+
+Example:
+
+```text
+Jev compaction dry-run
+
+Candidates: 64
+Would keep full: 13
+Would truncate: 17
+Would stub: 34
+
+Estimated visible text reduction: 182,450 chars
+Estimated token reduction: 35,200
+
+Highest-confidence stub candidates:
+- read src/old-config.ts      0.06
+- grep refreshToken          0.09
+- pnpm test auth (old pass)  0.12
+
+No changes were made.
+```
+
+### 21.3 Optional future commands
+
+```text
+/jev-compact --explain
+/jev-compact --force
+/jev-compact --last-plan
+/jev-compact status
+```
+
+Do not include these in MVP unless implementation cost is negligible.
+
+---
+
+## 22. Configuration
+
+Proposed shape:
+
+```yaml
+- id: jev-compaction
+  name: dsh-jev-compaction
+  config:
+    enabled: true
+
+    decision:
+      provider: typesafe # typesafe | jeff | custom
+      typesafe:
+        baseUrl: https://api.typesafe.ai/v1/systemone
+        apiKeyEnv: TYPESAFE_API_KEY
+        model: jev-latest
+      jeff:
+        baseUrl: http://localhost:8000
+        apiKeyEnv: JEFF_API_KEY
+        model: jev-latest
+      custom:
+        baseUrl: "" # required when provider: custom
+        apiKeyEnv: ""
+        model: jev-latest
+      timeoutMs: 2500
+      maxConcurrency: 4
+      retries: 1
+
+    trigger:
+      contextRatio: 0.70
+      minSurfaceTokens: 32000
+      minCandidates: 4
+      minCandidateChars: 8000
+      cooldownTurns: 3
+
+    preserve:
+      recentMessages: 6
+      recentTokens: 12000
+      errors: true
+
+    decisions:
+      fullThreshold: 0.70
+      truncateThreshold: 0.45
+
+    state:
+      maxStateTokens: 25000
+      maxRequestTokens: 30000
+      toolInputChars: 1000
+      resultPreviewChars: 300
+
+    pruning:
+      truncateHeadChars: 384
+      truncateTailChars: 128
+      minSavingsChars: 8000
+      minSavingsRatio: 0.05
+
+    privacy:
+      includeUserText: true
+      includeAssistantText: true
+      includeToolArguments: true
+      textChars: 1000
+
+    fallback:
+      continueOnFailure: true
+
+    diagnostics:
+      includeCandidateScores: false
+```
+
+### 22.1 Configuration safety
+
+Validate at startup:
+
+- thresholds in `[0,1]`;
+- `truncateThreshold <= fullThreshold`;
+- positive token/character budgets;
+- reasonable concurrency;
+- no secret included in normal config dump.
+
+---
+
+## 23. Recommended plugin lifecycle
+
+Pseudo-skeleton:
+
+```ts
+export const name = 'dsh-jev-compaction'
+
+export function apply(ctx: Context, config: Config) {
+  const service = new JevCompactionService(ctx, config)
+
+  ctx.on(
+    'agent/pre-step',
+    async (payload, next) => {
+      try {
+        await service.maybeCompact(payload.agent, {
+          mode: 'auto',
+          signal: payload.signal,
+        })
+      } catch (error) {
+        service.reportFailure(error, 'auto')
+      }
+
+      return next()
+    },
+    { prepend: true },
+  )
+
+  ctx.commands.register({
+    name: 'jev-compact',
+    description: 'Prune stale tool output with Jev',
+    input: { hint: '[--dry-run]' },
+    handler: async ({ agent, rawInput, signal }) => {
+      return service.runCommand(agent, rawInput, signal)
+    },
+  })
+}
+```
+
+Exact command handler payload must be aligned with the currently installed DSH API.
+
+---
+
+## 24. Compatibility layer
+
+DSH is actively evolving. Do not spread DSH event internals across the project.
+
+Create:
+
+```text
+src/dsh/compat.ts
+src/dsh/types.ts
+src/dsh/surface.ts
+src/dsh/meter.ts
+```
+
+Responsibilities:
+
+- get current surface nodes;
+- identify `tool/result`;
+- extract normalized tool-result content;
+- resolve related tool call metadata;
+- obtain pressure/token measurement;
+- capture a surface revision;
+- detect whether snapshot is still valid;
+- construct a legal single-node replacement;
+- append replacement;
+- expose current session/agent identifiers safely.
+
+Everything outside `src/dsh/` should operate on normalized internal types.
+
+### 24.1 Version support policy
+
+README should state tested DSH versions.
+
+Example:
+
+```text
+Tested:
+- DSH 0.1.x current release line
+
+Best-effort:
+- newer alpha builds
+
+Unsupported:
+- session formats older than required surface replacement support
+```
+
+Do not claim semver compatibility unless CI verifies it.
+
+---
+
+## 25. Compatibility spike — Phase 0
+
+Before full implementation, coding agent MUST verify against the actual target DSH version:
+
+1. exact `agent/pre-step` listener signature;
+2. whether `{ prepend: true }` gives desired ordering;
+3. token-meter measurement API;
+4. method for reading ordered current surface;
+5. replacement-generation/revision API;
+6. exact `Session.append()` shape;
+7. exact `surfaceOp` field names;
+8. source/provenance requirements for `tool/result`;
+9. slash command handler signature;
+10. whether built-in compaction runs after this listener as expected;
+11. whether a single-node replaced tool result is re-priced correctly;
+12. whether a session reloaded from JSONL/SQLite reproduces the same surface.
+
+Output of the spike should be captured in project docs before implementing mutation code.
+
+---
+
+## 26. Relationship with `fast-jev-compaction`
+
+Upstream inspiration:
+
+- repository: `tamaratran/fast-jev-compaction`;
+- license: MIT;
+- core idea: Jev evaluates historical tool call/result retention while conversational text remains verbatim.
+
+### 26.1 Attribution
+
+README and/or NOTICE should explicitly credit the original project and author.
+
+Suggested wording:
+
+```text
+Inspired by fast-jev-compaction by Tamara Tran:
+https://github.com/tamaratran/fast-jev-compaction
+
+The original project introduced the Jev-based selective tool-history
+compaction approach for Claude Code. dsh-jev-compaction adapts that idea
+to DeepSeek Harness' append-only session log and replayable surface model.
+```
+
+If code is copied or adapted, retain required MIT copyright/license notice.
+
+### 26.2 Dependency strategy
+
+Do NOT couple DSH surface mutation to upstream Claude transcript mutation.
+
+Preferred architecture:
+
+```text
+fast-jev ideas / optional reusable Jev helpers
+              │
+              ▼
+       internal Jev adapter
+              │
+              ▼
+        DSH-native planner
+              │
+              ▼
+    DSH-native surface writer
+```
+
+Phase 0 should evaluate whether to reuse exported upstream helpers such as request building, response parsing, state fitting, and batching.
+
+If the upstream package proves unstable because it is very new, vendor/port only the minimal necessary Jev logic behind the internal backend interface and record the upstream commit hash in NOTICE.
+
+### 26.3 Self-hosted System One backends
+
+The decision backend is a first-class abstraction (§18), not a TypeSafe client
+detail. Supported presets:
+
+| Backend | Where | Locality | Notes for compaction |
+|---|---|---|---|
+| TypeSafe Jev | hosted early-access API | cloud | reference quality; closed weights |
+| Jeff | self-hosted `/v1/systemone` (logan-markewich/jeff, GLiFormer ~400M) | local | near drop-in; weaker on reasoning-heavy scoring; ideal for bulk evals |
+| custom | any System One-compatible endpoint (e.g. open-jev) | local | open-jev (Gemma 3) scores are not Jev-calibrated without extra training |
+
+Deployment shape follows the standalone-service pattern: Jeff (or any
+compatible backend) runs as its own Docker service next to Harness, and the
+plugin reaches it over HTTP with `decision.provider: jeff` plus the endpoint
+and key-variable name. No backend dependency ever enters the DSH process.
+
+Recommended evaluation workflow: run the offline corpus (§33) against the
+self-hosted backend for threshold tuning, then replay the identical corpus
+against hosted Jev and compare dangerous-prune-rate curves. Local iteration is
+free; hosted runs validate the shipped defaults.
+
+---
+
+## 27. Logging and observability
+
+Useful structured events/logs:
+
+```text
+jev-compaction/check
+jev-compaction/skip
+jev-compaction/request
+jev-compaction/plan
+jev-compaction/applied
+jev-compaction/fallback
+jev-compaction/error
+```
+
+Suggested fields:
+
+```ts
+{
+  sessionId,
+  mode: 'auto' | 'manual' | 'dry-run',
+  surfaceTokensBefore,
+  surfaceTokensAfter,
+  candidates,
+  keptFull,
+  truncated,
+  stubbed,
+  charsBefore,
+  charsAfter,
+  jevRequests,
+  jevLatencyMs,
+  totalLatencyMs,
+  reason,
+}
+```
+
+Never log:
+
+- API key;
+- entire Jev state by default;
+- full tool outputs;
+- sensitive tool arguments unless explicit debug mode is enabled.
+
+Future: OpenTelemetry spans and metrics.
+
+---
+
+## 28. Optional durable diagnostic events
+
+v1 may avoid adding custom durable session events to minimize compatibility risk.
+
+If later needed, custom log-only events could record a compaction plan without entering the model surface.
+
+Possible future types:
+
+```text
+jev-compaction/start
+jev-compaction/end
+jev-compaction/error
+```
+
+Do not give custom event types a `surfaceOp`.
+
+Before adding any durable plugin event, verify DSH persistence/plugin event extension rules for the target version.
+
+---
+
+## 29. Failure handling
+
+The plugin MUST define explicit behavior for each failure class.
+
+| Failure | Automatic behavior | Manual behavior |
+|---|---|---|
+| API key missing | skip, warn once | error text |
+| Jev timeout | skip | error text |
+| Jev 5xx | skip | error text |
+| invalid JSON/shape | skip | error text |
+| probability invalid | skip affected run | error text |
+| missing decision | skip affected run | error text |
+| state cannot fit | skip | explain |
+| token meter fails | skip | error text |
+| surface changed while Jev ran | discard plan | report stale plan |
+| cancellation | propagate/stop safely | cancelled |
+| candidate invariant fails | pin candidate or abort plan | error |
+| append replacement fails before any mutation | skip | error |
+| append fails after partial mutation | stop; report partial durable changes | explicit partial result |
+
+`continueOnFailure: true` means "continue the agent with unmodified or safely partially modified context", never "invent a fallback pruning decision".
+
+---
+
+## 30. Security and privacy
+
+Using Jev sends a derived representation of session history to the configured
+decision endpoint (hosted TypeSafe Jev or a self-hosted backend).
+
+README MUST state this clearly.
+
+Provide configuration to reduce exposed data:
+
+```yaml
+privacy:
+  includeUserText: true
+  includeAssistantText: true
+  includeToolArguments: true
+  textChars: 1000 # per-message user/assistant text budget
+```
+
+Tool argument previews are bounded separately by `state.toolInputChars`.
+
+Future privacy mode may hash/redact known secret patterns, but secret detection must not be marketed as complete.
+
+The plugin should honor DSH cancellation and should not send tool result bodies in full by default.
+
+---
+
+## 31. Performance requirements
+
+Automatic compaction sits on the pre-step critical path.
+
+Targets for ordinary runs:
+
+- one semantic compaction operation per pressure event, not per step;
+- bounded concurrency;
+- no O(N²) full-log rescans where avoidable;
+- no repeated serialization of full historical tool bodies;
+- Jev call should dominate latency, not local processing.
+
+Cache normalized candidate metadata for one operation only unless a safe revision-aware cache is implemented.
+
+Avoid global unbounded per-session state.
+
+---
+
+## 32. Testing strategy
+
+### 32.1 Unit tests
+
+Test:
+
+- config validation;
+- candidate collection;
+- recent-result pinning;
+- error-result pinning;
+- tool content extraction;
+- feature extraction;
+- state building;
+- state fitting;
+- batching;
+- response validation;
+- thresholds;
+- minimum savings gate;
+- replacement text rendering;
+- fake Jev backend;
+- cancellation;
+- stale snapshot rejection.
+
+### 32.2 Session invariant tests
+
+Fixtures should cover:
+
+```text
+assistant tool call → tool result
+multiple tool calls in one assistant message
+error result
+rich result blocks
+replacement of an already-replaced result
+compacted historical prefix
+recent unpaired/ambiguous structures
+system message at surface head
+```
+
+For every mutation fixture:
+
+1. replay session before;
+2. apply replacements;
+3. replay session after;
+4. derive messages;
+5. ensure serialization/provider-facing history remains valid;
+6. ensure original event remains in log;
+7. reload persisted session;
+8. confirm identical resulting surface.
+
+### 32.3 Integration tests with built-in compaction
+
+Test:
+
+```text
+Jev pruning relieves pressure
+→ built-in summary is skipped
+
+Jev pruning insufficient
+→ built-in summary still runs
+
+Jev fails
+→ built-in compaction remains available
+
+Jev makes partial safe replacements
+→ meter remeasures new surface correctly
+```
+
+### 32.4 Fake backend by default
+
+Unit/integration tests MUST NOT require TypeSafe credentials.
+
+Provide a deterministic fake:
+
+```ts
+new FakeDecisionBackend({
+  t1: { needContents: 0.9 },
+  t2: { needContents: 0.1 },
+})
+```
+
+### 32.5 Live smoke test
+
+Separate opt-in command:
+
+```bash
+TYPESAFE_API_KEY=... pnpm test:live
+```
+
+It should use a synthetic session without secrets.
+
+---
+
+## 33. Evaluation corpus
+
+Before calling the plugin "safe", create a small offline corpus from synthetic or sanitized DSH sessions.
+
+Scenarios:
+
+- repeated file reads;
+- edits invalidating old reads;
+- long grep results;
+- test failures later fixed;
+- test failures still under investigation;
+- API responses that cannot be reproduced;
+- package documentation lookups;
+- user constraints followed by many tools;
+- long shell logs;
+- multi-step debugging;
+- compaction after an earlier summary checkpoint.
+
+For each candidate, manually label:
+
+```text
+must keep
+safe to truncate
+safe to stub
+```
+
+Metrics:
+
+```text
+dangerous prune rate
+full-preservation precision
+average context reduction
+Jev request latency
+Jev input tokens
+fallback rate
+```
+
+Primary quality metric should be **dangerous prune rate**, not maximum compression.
+
+---
+
+## 34. Dry-run UX as evaluation tooling
+
+Dry-run is not merely a user feature. It is the main threshold-tuning mechanism.
+
+Optionally support writing a JSON artifact in debug mode:
+
+```json
+{
+  "sessionId": "...",
+  "surfaceRevision": "...",
+  "candidates": [
+    {
+      "id": "t12",
+      "tool": "read",
+      "chars": 14382,
+      "score": 0.08,
+      "action": "KEEP_STUB",
+      "features": {
+        "superseded": true
+      }
+    }
+  ]
+}
+```
+
+Do not include full result text unless explicitly enabled.
+
+---
+
+## 35. Repository structure
+
+Recommended:
+
+```text
+dsh-jev-compaction/
+├── src/
+│   ├── index.ts
+│   ├── config.ts
+│   ├── service.ts
+│   │
+│   ├── dsh/
+│   │   ├── compat.ts
+│   │   ├── surface.ts
+│   │   ├── meter.ts
+│   │   └── types.ts
+│   │
+│   ├── jev/
+│   │   ├── backend.ts
+│   │   ├── client.ts
+│   │   ├── questions.ts
+│   │   ├── state.ts
+│   │   ├── fit.ts
+│   │   ├── batch.ts
+│   │   └── validate.ts
+│   │
+│   ├── planner/
+│   │   ├── collect.ts
+│   │   ├── features.ts
+│   │   ├── policy.ts
+│   │   ├── savings.ts
+│   │   └── plan.ts
+│   │
+│   ├── mutation/
+│   │   ├── render.ts
+│   │   ├── validate.ts
+│   │   └── apply.ts
+│   │
+│   ├── commands/
+│   │   └── jev-compact.ts
+│   │
+│   └── observability/
+│       └── logging.ts
+│
+├── tests/
+│   ├── unit/
+│   ├── fixtures/
+│   ├── integration/
+│   └── live/
+│
+├── docs/
+│   ├── architecture.md
+│   ├── compatibility.md
+│   └── evaluation.md
+│
+├── NOTICE
+├── LICENSE
+├── README.md
+├── package.json
+├── tsconfig.json
+└── pnpm-lock.yaml
+```
+
+If developed inside a larger DSH plugin monorepo, keep the package boundary equivalent.
+
+---
+
+## 36. Package scripts
+
+Suggested:
+
+```json
+{
+  "scripts": {
+    "build": "...",
+    "typecheck": "...",
+    "lint": "...",
+    "test": "...",
+    "test:unit": "...",
+    "test:integration": "...",
+    "test:live": "...",
+    "eval": "..."
+  }
+}
+```
+
+`test:live` must never be part of default CI without credentials.
+
+---
+
+## 37. CI
+
+Minimum CI:
+
+- install with pnpm;
+- typecheck;
+- lint;
+- unit tests;
+- integration fixtures;
+- build;
+- package dry-run;
+- compatibility matrix where practical.
+
+Future matrix:
+
+```text
+DSH current stable
+DSH current prerelease
+Node active LTS
+Node current
+```
+
+Do not use floating "latest" for all compatibility tests; pin at least one known-good DSH version.
+
+---
+
+## 38. Implementation phases
+
+### Phase 0 — compatibility spike — COMPLETE
+
+Executed against the pinned harness release (`dsh-v0.1.5-rc.2`); the verified
+API facts and their consequences are recorded in `docs/compatibility.md`.
+Notable outcome: `tool/result` surface replacement is only legal inside an
+open turn, which reshaped §21.0 (armed plans applied by the pre-step listener).
+
+Deliverables:
+
+- `docs/compatibility.md`;
+- minimal test plugin;
+- confirmed pre-step ordering;
+- confirmed surface read/write primitives;
+- confirmed token-meter usage;
+- one manually created replay-safe `tool/result` replacement;
+- reload/replay test.
+
+**Exit criterion:** a synthetic single-node tool-result replacement survives persistence and DSH can continue the conversation and run ordinary `/compact`.
+
+### Phase 1 — local deterministic planner
+
+No Jev yet.
+
+Implement:
+
+- candidate collection;
+- feature extraction;
+- preservation window;
+- stub/truncation renderer;
+- dry-run plan;
+- fake decisions;
+- mutation writer;
+- integration tests.
+
+**Exit criterion:** fake backend can safely prune a fixture session.
+
+### Phase 2 — Jev backend
+
+Implement:
+
+- API client;
+- auth;
+- timeout/cancellation;
+- state builder;
+- fitting;
+- batching;
+- strict response validation;
+- fake + live smoke tests.
+
+**Exit criterion:** manual `/jev-compact --dry-run` can score a real local DSH session.
+
+### Phase 3 — manual mutation
+
+Enable:
+
+```text
+/jev-compact
+/jev-compact --dry-run
+```
+
+Add:
+
+- savings report;
+- surface revision validation;
+- partial-failure reporting.
+
+**Exit criterion:** repeated manual runs are idempotent enough and do not corrupt replay.
+
+### Phase 4 — automatic pressure integration
+
+Implement:
+
+- pressure trigger;
+- cooldown;
+- per-session mutex;
+- pre-step hook;
+- integration with downstream built-in compaction.
+
+**Exit criterion:** long synthetic session prunes automatically; if savings are insufficient, ordinary summary compaction still occurs.
+
+### Phase 5 — evaluation and release hardening
+
+Implement:
+
+- evaluation corpus;
+- threshold tuning;
+- privacy docs;
+- NOTICE attribution;
+- compatibility matrix;
+- README demo;
+- release package.
+
+---
+
+## 39. MVP acceptance criteria
+
+The first public release is acceptable when all of the following hold:
+
+- [ ] No DSH core fork is required.
+- [ ] Jev calls happen asynchronously outside the synchronous `ctx.toolResultPruner` seam.
+- [ ] Only historical eligible `tool/result` surface nodes are rewritten.
+- [ ] Original full results remain in the durable session log.
+- [ ] User text is never rewritten by the plugin.
+- [ ] Assistant text is never rewritten by the plugin.
+- [ ] Recent results are pinned.
+- [ ] Unknown/ambiguous result shapes are pinned.
+- [ ] Jev malformed output cannot trigger pruning.
+- [ ] Stale Jev plans are rejected when the surface changes.
+- [ ] Cancellation is honored.
+- [ ] Automatic failure does not block ordinary agent execution.
+- [ ] Built-in DSH compaction remains functional.
+- [ ] `/jev-compact --dry-run` performs no mutation.
+- [ ] Token savings are measured before/after when the meter permits it.
+- [ ] Persistence/reload reproduces the same pruned surface.
+- [ ] README clearly states that derived conversation data is sent to the Jev provider.
+- [ ] Original `fast-jev-compaction` work is credited.
+- [ ] Tests use a fake Jev backend by default.
+
+---
+
+## 40. v1.1 candidates
+
+After MVP:
+
+- smarter superseded-file-read detection;
+- configurable tool-specific preservation policies;
+- provider/tool cost awareness;
+- `agent/request-error` Jev pruning before canonical summary recovery, only if retry semantics can be proven safe;
+- OpenTelemetry metrics;
+- settings/UI panel;
+- per-workspace policy;
+- privacy/redaction rules;
+- plan inspection UI;
+- persisted stats.
+
+---
+
+## 41. v2 exploration
+
+Potential v2 features:
+
+### 41.1 Pair-level removal
+
+Explore removal of both historical tool call and result only when DSH provides a safe public way to reconstruct/rewrite the provider-facing assistant message while preserving provenance.
+
+Do not implement through brittle private event surgery.
+
+### 41.2 Jev-backed compaction engine
+
+Investigate a real `CompactionEngine` implementation only if selective pruning proves insufficient and DSH compaction contracts evolve to support non-summary range transformations cleanly.
+
+### 41.3 Retrieval of pruned originals
+
+A tool could expose original shadowed result data on demand:
+
+```text
+session_get_original_tool_result(seq)
+```
+
+This would turn pruning into explicit cold storage from the agent's perspective.
+
+Security and permission implications must be reviewed first.
+
+### 41.4 Hybrid local + Jev policy
+
+Cheap deterministic rules can prune extremely obvious cases without an API call, while Jev handles ambiguous cases.
+
+Example:
+
+```text
+definitely superseded + cheap rerun + old enough
+→ local stub
+
+ambiguous semantic relevance
+→ Jev
+```
+
+---
+
+## 42. Known risks
+
+### Risk: DSH APIs change quickly
+
+Mitigation:
+
+- isolated compatibility layer;
+- pinned CI version;
+- compatibility smoke fixture;
+- no direct imports from deep private paths where avoidable.
+
+### Risk: Jev incorrectly prunes important evidence
+
+Mitigation:
+
+- conservative thresholds;
+- deterministic pins;
+- recent window;
+- error bias;
+- stubs rather than pair deletion;
+- dry-run;
+- offline evaluation;
+- original event remains durable.
+
+### Risk: pre-step latency
+
+Mitigation:
+
+- pressure-triggered only;
+- cooldown;
+- tight timeout;
+- bounded batching;
+- minimum candidate threshold.
+
+### Risk: waterfall ordering
+
+Mitigation:
+
+- `prepend`;
+- documented composition;
+- integration test with `dsh-compaction-basic`;
+- degrade to manual-only mode if unsupported DSH release breaks ordering.
+
+### Risk: secret leakage to Jev
+
+Mitigation:
+
+- explicit documentation;
+- send compact metadata/result previews rather than full results;
+- optional redaction later;
+- no raw state logging.
+
+### Risk: partial append failure
+
+Mitigation:
+
+- full validation before mutation;
+- legal independent replacements;
+- explicit partial result reporting;
+- append-only semantics respected.
+
+---
+
+## 43. README positioning
+
+Suggested short description:
+
+> **Jev-powered, replay-safe semantic context pruning for DeepSeek Harness. Keeps conversation text verbatim and selectively forgets stale tool output before ordinary summary compaction is needed.**
+
+Suggested tagline:
+
+> **Forget stale tool output, not the conversation.**
+
+Key README comparison:
+
+| Approach | User/assistant text | Tool output | Durable original | Semantic |
+|---|---|---|---|---|
+| DSH summary compaction | summarized for old range | summarized | yes | yes, generative |
+| deterministic tool pruner | unchanged | size-based trim | yes | no |
+| `dsh-jev-compaction` | unchanged | Jev-selected trim/stub | yes | yes, decision model |
+
+Avoid claiming "zero hallucination" or "lossless compaction". The selection decision can still be wrong.
+
+Positioning line: **Jev/System-One semantic compaction for DeepSeek Harness —
+supports TypeSafe Jev and self-hosted compatible backends (Jeff, open-jev) via
+a pluggable decision backend.**
+
+---
+
+## 44. Suggested first release scope
+
+Keep `0.1.0` small:
+
+```text
+✓ manual dry-run
+✓ manual pruning (armed-plan application at the next step boundary)
+✓ automatic pressure trigger
+✓ tool/result only
+✓ TypeSafe Jev hosted API
+✓ self-hosted System One-compatible backends (jeff preset, custom endpoint)
+✓ replay-safe replacement
+✓ fake backend tests
+✓ built-in compaction fallback
+✓ logs/stats
+✓ attribution
+
+✗ UI
+✗ pair deletion
+✗ automatic retrieval
+✗ request-error interception
+```
+
+This is enough to establish the niche without overbuilding.
+
+---
+
+## 45. Recommended implementation order for a coding agent
+
+1. Read current DSH session, compaction, token-meter, commands, and agent lifecycle docs.
+2. Record exact installed DSH version.
+3. Perform Phase 0 compatibility spike.
+4. Write replay fixture before production mutation code.
+5. Implement normalized internal types.
+6. Implement candidate collection and dry-run using fake decisions.
+7. Implement safe `tool/result` replacement.
+8. Prove persistence/reload.
+9. Add Jev backend behind `DecisionBackend`.
+10. Add state fitting and batching.
+11. Add manual command.
+12. Add auto pre-step integration.
+13. Add compaction interoperability tests.
+14. Build offline evaluation corpus.
+15. Tune thresholds.
+16. Add README, NOTICE, privacy warning, release docs.
+17. Publish `0.1.0`.
+
+Do not begin with UI or pair deletion.
+
+---
+
+## 46. References checked while designing this SPEC
+
+### DeepSeek Harness
+
+- Compaction subsystem  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/compaction.md
+
+- Session subsystem / surface replacement  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/session.md
+
+- Agent lifecycle  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/agent-lifecycle.md
+
+- Capability seams  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/capability-seams.md
+
+- Tool-result pruner  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/compaction/compaction-tool-result-pruner/README.md
+
+- Token meter  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/llm/token-meter/README.md
+
+- Commands  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/interaction/commands/README.md
+
+- Cordis event behavior  
+  https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/develop/framework/events.md
+
+### Jev / upstream inspiration
+
+- fast-jev-compaction  
+  https://github.com/tamaratran/fast-jev-compaction
+
+- TypeSafe AI / Jev documentation  
+  https://docs.typesafe.ai/
+
+---
+
+## 47. Final architectural rule
+
+If an implementation choice conflicts with the following ordering, prefer the earlier item:
+
+1. **Do not corrupt or make the DSH session unreplayable.**
+2. **Do not lose explicit user instructions.**
+3. **Do not break tool/result structural validity.**
+4. **Preserve exact evidence when uncertain.**
+5. **Fail open to ordinary DSH behavior.**
+6. **Reduce context.**
+7. **Optimize latency/cost.**
+
+Compression ratio is not the primary correctness criterion.
