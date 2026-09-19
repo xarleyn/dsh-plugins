@@ -25,7 +25,7 @@ import {
   OPENVIKING_PLUGIN_SOURCE,
   promptText,
 } from "./capture.js";
-import { traceIdOf, type OpenVikingClient } from "./client.js";
+import { traceIdOf, type OpenVikingClient } from "./api-client.js";
 import type { InjectionPlan, ResolvedConfig } from "./config.js";
 import { buildProfileBlock } from "./openviking/profile-inject.js";
 import {

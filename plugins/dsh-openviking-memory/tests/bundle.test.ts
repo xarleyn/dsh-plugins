@@ -215,7 +215,7 @@ describe("licence and upstream attribution (SPEC §4)", () => {
 
   it("keeps the changed-file notice on every module ported from upstream", async () => {
     const ported = [
-      "src/client.ts",
+      "src/api-client.ts",
       "src/servers/mcp-proxy.ts",
       ...(await readdir(join(packageRoot, "src/openviking")))
         .filter((name) => name.endsWith(".ts"))
