@@ -5,10 +5,10 @@ import { fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   QaWidthHandle,
-  readQaContentWidth,
+  readQaStoredWidth,
   resolveQaContentWidth,
   useQaContentWidth,
-  writeQaContentWidth,
+  writeQaStoredWidth,
   type UseQaContentWidthResult,
 } from "../src/client/components/QaWidthHandle.js";
 
@@ -87,10 +87,10 @@ describe("QA content width", () => {
 
   it("tolerates unavailable or corrupt durable storage", () => {
     expect(
-      readQaContentWidth({ getItem: () => "not-a-number" }, "width"),
+      readQaStoredWidth({ getItem: () => "not-a-number" }, "width"),
     ).toBeNull();
     expect(
-      readQaContentWidth(
+      readQaStoredWidth(
         {
           getItem: () => {
             throw new Error("denied");
@@ -100,7 +100,7 @@ describe("QA content width", () => {
       ),
     ).toBeNull();
     expect(() =>
-      writeQaContentWidth(
+      writeQaStoredWidth(
         {
           setItem: () => {
             throw new Error("denied");
@@ -181,6 +181,31 @@ describe("QA content width", () => {
         "650px",
       );
       expect(handlers.current?.onStart()).toBe(650);
+    });
+
+    // The reload a reader notices: the width committed before it must come
+    // back as-is, not fall back to the adaptive default.
+    it("restores a committed width on the next mount, as after a reload", () => {
+      vi.stubGlobal(
+        "ResizeObserver",
+        class {
+          observe(): void {}
+          disconnect(): void {}
+        },
+      );
+      const { container } = render(
+        <WidthHarness
+          column={1_200}
+          min={650}
+          storage={memoryStorage("760")}
+          handlers={{ current: null }}
+        />,
+      );
+      expect(
+        (container.firstElementChild as HTMLElement).style.getPropertyValue(
+          "--dsh-qa-content-width",
+        ),
+      ).toBe("760px");
     });
   });
 

@@ -80,8 +80,9 @@ body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-she
 .dsh-qa-body{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
 .dsh-qa-workspace{position:relative;display:flex;flex:1;min-width:0;min-height:0;overflow:hidden}
 .dsh-qa-chat{position:relative;flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
-.dsh-qa-sidebar{flex:none;width:264px;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}
+.dsh-qa-sidebar{flex:none;position:relative;width:var(--dsh-qa-sidebar-width,264px);display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}
 .dsh-qa-sidebar--collapsed{width:52px;align-items:center;padding-top:12px}
+.dsh-qa-sidebar__resize{position:absolute;top:0;bottom:0;right:-4px;width:8px;cursor:col-resize;touch-action:none;user-select:none;z-index:11}
 .dsh-qa-sidebar__head{display:flex;align-items:center;justify-content:space-between;gap:6px;flex:none;padding:14px 10px 10px 16px}
 .dsh-qa-sidebar__brand{display:flex;align-items:center;gap:8px;min-width:0}
 .dsh-qa-sidebar__logo{display:grid;place-items:center;width:20px;height:20px;flex:none;color:var(--dsh-qa-brand)}

@@ -34,7 +34,11 @@ export const QA_BLEED_MAX_WIDTH = QA_HANDLE_FREE_BAND - 8;
 const QA_ADAPTIVE_MIN_WIDTH = 680;
 const QA_ADAPTIVE_MAX_WIDTH = 920;
 
-export function readQaContentWidth(
+/**
+ * A stored positive width, or null when the browser has none (first visit,
+ * denied storage, corrupt value). Shared by every draggable width.
+ */
+export function readQaStoredWidth(
   storage: Pick<Storage, "getItem">,
   key: string,
 ): number | null {
@@ -48,7 +52,7 @@ export function readQaContentWidth(
   }
 }
 
-export function writeQaContentWidth(
+export function writeQaStoredWidth(
   storage: Pick<Storage, "setItem">,
   key: string,
   width: number,
@@ -197,7 +201,7 @@ export function useQaContentWidth({
     const element = root.current;
     if (element === null) return;
     const column = element.offsetWidth;
-    const preference = readQaContentWidth(storage, storageKey);
+    const preference = readQaStoredWidth(storage, storageKey);
     const width = resolveQaContentWidth(column, preference, minContentWidth);
     element.style.setProperty("--dsh-qa-column-width", `${column}px`);
     element.style.setProperty("--dsh-qa-content-width", `${width}px`);
@@ -218,7 +222,7 @@ export function useQaContentWidth({
     if (element === null) return minContentWidth;
     return resolveQaContentWidth(
       element.offsetWidth,
-      readQaContentWidth(storage, storageKey),
+      readQaStoredWidth(storage, storageKey),
       minContentWidth,
     );
   }, [minContentWidth, root, storage, storageKey]);
@@ -246,7 +250,7 @@ export function useQaContentWidth({
         requestedWidth,
         minContentWidth,
       );
-      writeQaContentWidth(storage, storageKey, width);
+      writeQaStoredWidth(storage, storageKey, width);
     },
     [minContentWidth, root, storage, storageKey],
   );
@@ -255,3 +259,169 @@ export function useQaContentWidth({
 }
 
 export type UseQaContentWidthResult = ReturnType<typeof useQaContentWidth>;
+
+/** Drag clamp for the chat-list sidebar, borrowed from the DSH frame. */
+export const QA_SIDEBAR_MIN_WIDTH = 264;
+export const QA_SIDEBAR_MAX_WIDTH = 420;
+/** The width the sidebar keeps until its first drag: today's fixed width. */
+export const QA_SIDEBAR_DEFAULT_WIDTH = QA_SIDEBAR_MIN_WIDTH;
+
+/** Integer pixels, no snapping and no step, like the DSH frame clamp. */
+export function clampQaSidebarWidth(px: number): number {
+  return Math.min(
+    QA_SIDEBAR_MAX_WIDTH,
+    Math.max(QA_SIDEBAR_MIN_WIDTH, Math.round(px)),
+  );
+}
+
+/** Resolve the sidebar width for this browser: the stored drag or the default. */
+export function resolveQaSidebarWidth(stored: number | null): number {
+  return stored === null
+    ? QA_SIDEBAR_DEFAULT_WIDTH
+    : clampQaSidebarWidth(stored);
+}
+
+interface QaSidebarHandleProps {
+  readonly onStart: () => number;
+  readonly onDrag: (width: number) => void;
+  readonly onCommit: (width: number) => void;
+  readonly onEnd: () => void;
+}
+
+/**
+ * The invisible strip on the sidebar's border, like the DSH frame's handle: an
+ * 8px hit target straddling the edge, found by the cursor alone. One-sided —
+ * the pointer delta is the width delta — and pointer-captured, so the drag
+ * keeps tracking outside the strip and never selects text.
+ */
+export function QaSidebarHandle(props: QaSidebarHandleProps) {
+  const [dragging, setDragging] = useState(false);
+  const base = useRef(0);
+  const origin = useRef(0);
+  const latest = useRef(0);
+  const frame = useRef<number | null>(null);
+  const callbacks = useRef(props);
+  callbacks.current = props;
+
+  const cancelFrame = useCallback(() => {
+    if (frame.current === null) return;
+    cancelAnimationFrame(frame.current);
+    frame.current = null;
+  }, []);
+
+  useEffect(() => cancelFrame, [cancelFrame]);
+
+  const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    origin.current = event.clientX;
+    latest.current = event.clientX;
+    base.current = callbacks.current.onStart();
+    setDragging(true);
+  }, []);
+
+  const onPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    latest.current = event.clientX;
+    frame.current ??= requestAnimationFrame(() => {
+      frame.current = null;
+      callbacks.current.onDrag(base.current + latest.current - origin.current);
+    });
+  }, []);
+
+  const onPointerUp = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      cancelFrame();
+      latest.current = event.clientX;
+      if (latest.current !== origin.current) {
+        callbacks.current.onCommit(
+          base.current + latest.current - origin.current,
+        );
+      }
+      setDragging(false);
+      callbacks.current.onEnd();
+    },
+    [cancelFrame],
+  );
+
+  const onPointerCancel = useCallback(() => {
+    cancelFrame();
+    setDragging(false);
+    callbacks.current.onEnd();
+  }, [cancelFrame]);
+
+  return (
+    <div
+      className="dsh-qa-sidebar__resize"
+      data-sidebar-resize=""
+      data-dragging={dragging || undefined}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onPointerCancel}
+    />
+  );
+}
+
+interface UseQaSidebarWidthOptions {
+  /** Whether the expanded sidebar is mounted (the collapsed rail has none). */
+  readonly active: boolean;
+  readonly root: RefObject<HTMLElement | null>;
+  readonly storage: Pick<Storage, "getItem" | "setItem">;
+  readonly storageKey: string;
+}
+
+/**
+ * Sidebar counterpart of `useQaContentWidth`: the width never enters React
+ * state — the drag writes the custom property straight onto the nav element,
+ * so the memoized sidebar does not re-render per frame — and only the
+ * committed value reaches storage, which the next mount restores.
+ */
+export function useQaSidebarWidth({
+  active,
+  root,
+  storage,
+  storageKey,
+}: UseQaSidebarWidthOptions) {
+  const publish = useCallback(() => {
+    const element = root.current;
+    if (element === null) return;
+    const width = resolveQaSidebarWidth(readQaStoredWidth(storage, storageKey));
+    element.style.setProperty("--dsh-qa-sidebar-width", `${width}px`);
+  }, [root, storage, storageKey]);
+
+  useLayoutEffect(() => {
+    if (!active) return;
+    publish();
+  }, [active, publish]);
+
+  const onStart = useCallback(
+    () => resolveQaSidebarWidth(readQaStoredWidth(storage, storageKey)),
+    [storage, storageKey],
+  );
+
+  const onDrag = useCallback(
+    (width: number) => {
+      root.current?.style.setProperty(
+        "--dsh-qa-sidebar-width",
+        `${clampQaSidebarWidth(width)}px`,
+      );
+    },
+    [root],
+  );
+
+  const onCommit = useCallback(
+    (width: number) => {
+      writeQaStoredWidth(storage, storageKey, clampQaSidebarWidth(width));
+    },
+    [storage, storageKey],
+  );
+
+  return { onStart, onDrag, onCommit, onEnd: publish } as const;
+}
+
+export type UseQaSidebarWidthResult = ReturnType<typeof useQaSidebarWidth>;

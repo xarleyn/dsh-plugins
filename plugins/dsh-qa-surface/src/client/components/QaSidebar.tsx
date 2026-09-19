@@ -1,10 +1,11 @@
-import { memo, useState, type ReactNode } from "react";
+import { memo, useRef, useState, type ReactNode } from "react";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 import { isDelegatedSession } from "../lineage.js";
 import { QaAuditRowBadge } from "../audit/QaAuditRowBadge.js";
 import { auditMark, type QaAuditSummary } from "../audit/types.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { relativeTime } from "./format.js";
+import { QaSidebarHandle, useQaSidebarWidth } from "./QaWidthHandle.js";
 
 /** One renderable row of the chat-history sidebar. */
 export interface QaChatRow {
@@ -235,6 +236,13 @@ export const QaSidebar = memo(
     const [query, setQuery] = useState("");
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
+    const nav = useRef<HTMLElement | null>(null);
+    const sidebarWidth = useQaSidebarWidth({
+      active: !collapsed,
+      root: nav,
+      storage: window.localStorage,
+      storageKey: `${props.stateKey}:sidebar-width`,
+    });
     const toggleCollapsed = () => {
       const next = !collapsed;
       setCollapsed(next);
@@ -356,7 +364,7 @@ export const QaSidebar = memo(
         <img src={props.logoUrl} alt="" />
       );
     return (
-      <nav className="dsh-qa-sidebar" aria-label="История чатов">
+      <nav ref={nav} className="dsh-qa-sidebar" aria-label="История чатов">
         <div className="dsh-qa-sidebar__head">
           <span className="dsh-qa-sidebar__brand" title={props.title}>
             <span className="dsh-qa-sidebar__logo">{brand}</span>
@@ -474,6 +482,7 @@ export const QaSidebar = memo(
             Версия {QA_VERSION}
           </button>
         </div>
+        <QaSidebarHandle {...sidebarWidth} />
         <QaChangelogModal
           open={changelogOpen}
           onClose={() => setChangelogOpen(false)}
