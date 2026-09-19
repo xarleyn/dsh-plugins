@@ -4,17 +4,31 @@ import {
 } from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
+import { boundaryHas } from "../../service-credentials/policy.js";
+import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type {
+  OperationSecurityMetadata,
+  ServiceCredentialHealth,
+  ServiceResourceBoundary,
+} from "../../service-credentials/types.js";
+import type {
+  CapabilityServiceState,
   IntegrationCapability,
   IntegrationCapabilityInfo,
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
 import {
+  assertServiceOperationAllowed,
+  serviceBoundaryOf,
+} from "../shared/service-boundary.js";
+import {
   JIRA_CAPABILITY_INFO,
   JIRA_OPERATIONS,
+  JIRA_RESOURCE_KIND,
   enabledCapabilities,
   jiraOperationCapability,
+  jiraOperationMetadata,
 } from "./catalog.js";
 import {
   CUSTOM_FIELD_ID,
@@ -22,7 +36,7 @@ import {
   type JiraFlags,
   type JiraSite,
 } from "./config.js";
-import { needsUserLookup } from "./jql.js";
+import { issueKey as issueKeyOf, needsUserLookup } from "./jql.js";
 import {
   JIRA_HANDLERS,
   JIRA_PROJECTIONS,
@@ -46,7 +60,9 @@ export {
 /**
  * Jira Cloud API tokens are either the classic 24-character form or the newer
  * prefixed one (`ATATT…`, base64url-ish and long). A pasted URL, a YAML snippet
- * or an `email:token` pair is refused before anything is sent upstream.
+ * or a token with whitespace is refused before anything is sent upstream. The
+ * one `email:token` shape that exists is the deployment-managed secret, which
+ * `parseCredential` splits — the connect form never accepts it.
  */
 const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,512}$/u;
 /** The Atlassian account an API token is spent as. Not a secret; not a host. */
@@ -62,6 +78,30 @@ function accountName(displayName: string | undefined, email: string): string {
     ? email
     : `${displayName} (${email})`;
 }
+
+/**
+ * The `email:token` pair of a deployment-managed secret. Jira Cloud
+ * authenticates HTTP Basic over exactly this string, so it is the form the
+ * operator keeps in the secret file or the environment — one record, because
+ * the pair must not be assembled from two. The connect form never produces it:
+ * it collects the e-mail next to the token, and a pasted pair stays refused.
+ */
+function splitBasicPair(
+  raw: string,
+): { email: string; token: string } | undefined {
+  const at = raw.indexOf(":");
+  if (at <= 0) return undefined;
+  const email = raw.slice(0, at);
+  if (!EMAIL_SHAPE.test(email)) return undefined;
+  return { email, token: raw.slice(at + 1) };
+}
+
+/** Operations that read one issue, and so may hit a security-restricted one. */
+const ISSUE_SCOPED_READS: readonly string[] = Object.freeze([
+  "issues.get",
+  "issues.comments",
+  "issues.transitions",
+]);
 
 /**
  * Jira Cloud provider: operator-configured sites over an Atlassian API token.
@@ -104,26 +144,40 @@ export class JiraProvider implements IntegrationProvider {
    * Both non-secret choices come from the connect form and from operator config,
    * never from a tool argument, which is what keeps the broker from dialling any
    * host the caller names.
+   *
+   * The same method turns a deployment-managed secret into this credential
+   * shape. That secret is the whole Basic pair (`email:token`), because Jira
+   * cannot spend the token without the account and the pair must not be split
+   * across two records; the form path instead supplies the e-mail separately,
+   * and keeps refusing a pasted pair.
    */
   parseCredential(
     raw: string,
     options?: Readonly<Record<string, string>>,
   ): { readonly credential: string; readonly portal: string } {
-    const token = raw.trim();
+    const provided = raw.trim();
+    const pair =
+      options?.["email"] === undefined ? splitBasicPair(provided) : undefined;
+    const token = pair === undefined ? provided : pair.token;
     if (!TOKEN_SHAPE.test(token)) {
       throw new IntegrationError(
         "InvalidCredential",
         "Use an Atlassian API token",
       );
     }
-    const email = (options?.["email"] ?? "").trim();
+    const email =
+      (pair === undefined ? options?.["email"] : pair.email)?.trim() ?? "";
     if (!EMAIL_SHAPE.test(email)) {
       throw new IntegrationError(
         "InvalidCredential",
         "Use the e-mail of the Atlassian account the token belongs to",
       );
     }
-    const site = this.resolveSite(options?.["siteId"]);
+    // The connect form names the site; the broker's service path names it
+    // `instanceId`, as it does for every provider.
+    const site = this.resolveSite(
+      options?.["siteId"] ?? options?.["instanceId"],
+    );
     return {
       credential: JSON.stringify({
         siteId: site.id,
@@ -136,6 +190,84 @@ export class JiraProvider implements IntegrationProvider {
 
   operationCapability(operation: string): IntegrationCapability | undefined {
     return jiraOperationCapability(operation);
+  }
+
+  operationMetadata(operation: string): OperationSecurityMetadata | undefined {
+    return jiraOperationMetadata(operation);
+  }
+
+  /** Every project-scoped read names its project through a key or an issue key. */
+  resourceBoundaryKind(operation: string): string | undefined {
+    return JIRA_OPERATIONS[operation]?.security.requiresResourceBoundary ===
+      true
+      ? JIRA_RESOURCE_KIND
+      : undefined;
+  }
+
+  /**
+   * Portal of a configured site. An empty id means "the only site", the same
+   * rule `parseCredential` applies, so deployment configuration and the connect
+   * form name sites alike.
+   */
+  instancePortal(instanceId: string): string | undefined {
+    const sites = this.config.jira.sites;
+    const id = instanceId.trim();
+    if (id === "") {
+      return sites.length === 1 ? sites[0]?.baseUrl : undefined;
+    }
+    return jiraSite(this.config.jira, id)?.baseUrl;
+  }
+
+  capabilityServiceState(
+    capability: IntegrationCapability,
+  ): CapabilityServiceState | undefined {
+    return operationCapabilityServiceState(JIRA_OPERATIONS, capability);
+  }
+
+  /**
+   * Health of a deployment-managed token. The probe reads only the identity
+   * endpoint the personal validation reads, so it never changes upstream state;
+   * Jira reports no granted scopes for an API token, so the answer is healthy
+   * with a warning — the local service ceiling stays the whole local boundary.
+   */
+  async validateServiceCredential(
+    context: ProviderContext,
+  ): Promise<ServiceCredentialHealth> {
+    const credential = credentialFromPlaintext(context.credential);
+    const site = credentialSite(this.config.jira, credential);
+    let myself: Record<string, unknown>;
+    try {
+      myself = await this.transport.getJson<Record<string, unknown>>(
+        site,
+        credential,
+        "/rest/api/3/myself",
+      );
+    } catch (error) {
+      return healthFromFailure(error);
+    }
+    const accountId = myself["accountId"];
+    const identity =
+      typeof accountId === "string" && accountId !== ""
+        ? {
+            id: accountId,
+            label: accountName(
+              typeof myself["displayName"] === "string"
+                ? myself["displayName"]
+                : undefined,
+              typeof myself["emailAddress"] === "string" &&
+                myself["emailAddress"] !== ""
+                ? myself["emailAddress"]
+                : credential.email,
+            ),
+          }
+        : undefined;
+    return {
+      status: "healthy",
+      ...(identity === undefined ? {} : { upstreamIdentity: identity }),
+      warnings: [
+        "Jira did not report the token scopes; the local service ceiling still applies",
+      ],
+    };
   }
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
@@ -187,6 +319,35 @@ export class JiraProvider implements IntegrationProvider {
         "Unsupported Jira operation",
       );
     }
+    // Ceiling first, then the boundary: what the operation is decides before
+    // where it may read.
+    if (context.credentialSource === "service") {
+      assertServiceOperationAllowed(
+        definition.security,
+        "This Jira operation is not available through the service credential",
+      );
+    }
+    const boundary = serviceBoundaryOf(context);
+    if (
+      boundary !== undefined &&
+      definition.security.requiresResourceBoundary
+    ) {
+      this.assertInsideBoundary(operation, input, boundary);
+    }
+    if (
+      boundary !== undefined &&
+      operation === "issues.search" &&
+      (needsUserLookup(input["assignee"]) || needsUserLookup(input["reporter"]))
+    ) {
+      // A person filter becomes JQL only after the site's directory resolves
+      // the name into an accountId, and that directory read is held inside no
+      // project boundary. A shared account is refused it: the question needs
+      // the accountId an issue reported, or a personal credential.
+      throw new IntegrationError(
+        "ServiceResourceNotAllowed",
+        'Resolving a person by name reads the site directory, which service mode does not read; pass the accountId an issue reported or "me"',
+      );
+    }
     const flags = this.config.jira;
     // Two values a question carries but Jira cannot take as they stand: a custom
     // field named by its business term instead of its instance id, and a person
@@ -204,19 +365,39 @@ export class JiraProvider implements IntegrationProvider {
       externalUserId: context.externalUserId,
       flags,
     });
-    const include =
-      operation === "issues.get"
-        ? requestedIncludes(input["include"])
-        : NO_INCLUDES;
+    // In service mode a search also asks for every hit's security level, so the
+    // answer can be held inside the boundary with restricted issues dropped.
+    const query =
+      boundary !== undefined && operation === "issues.search"
+        ? {
+            ...request.query,
+            fields: `${String(request.query["fields"] ?? "")},security`,
+          }
+        : request.query;
+    if (boundary !== undefined && ISSUE_SCOPED_READS.includes(operation)) {
+      await this.assertIssueNotRestricted(
+        site,
+        credential,
+        String(input["issueKey"] ?? ""),
+      );
+    }
     const data = await this.transport.getJson<unknown>(
       site,
       credential,
       request.path,
-      request.query,
+      query,
     );
+    const raw =
+      boundary !== undefined && operation === "issues.search"
+        ? boundedSearchResults(data, boundary)
+        : data;
     // The schema is read only after the issue answered and only when the model
     // asked for named custom fields: an issue that is not there has nothing to
     // name, and the extra call would have been spent for nothing.
+    const include =
+      operation === "issues.get"
+        ? requestedIncludes(input["include"])
+        : NO_INCLUDES;
     const fieldNames =
       wantsFieldNames(include) && flags.fieldsRead
         ? await this.fieldNames(site, credential)
@@ -224,8 +405,8 @@ export class JiraProvider implements IntegrationProvider {
     const projection = JIRA_PROJECTIONS[operation];
     const projected =
       projection === undefined
-        ? data
-        : projection(data, {
+        ? raw
+        : projection(raw, {
             flags,
             site,
             include,
@@ -240,6 +421,64 @@ export class JiraProvider implements IntegrationProvider {
       !Array.isArray(projected)
       ? (projected as Record<string, unknown>)
       : { value: projected ?? null };
+  }
+
+  /**
+   * Hold one call inside the deployment's boundary. A single-resource read
+   * names its project — a project key, or the key an issue key embeds — and
+   * must stay inside it, or nothing is read. A search names none by default, so
+   * it is not refused here but answered with the hits filtered to the boundary
+   * instead.
+   */
+  private assertInsideBoundary(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    boundary: ServiceResourceBoundary,
+  ): void {
+    if (operation === "issues.search") return;
+    if (operation === "projects.get") {
+      const ref =
+        typeof input["projectKey"] === "string"
+          ? input["projectKey"].trim()
+          : "";
+      if (ref === "" || !projectAllowed(boundary, ref)) {
+        throw serviceRefusal();
+      }
+      return;
+    }
+    // Whatever remains is one of the issue-scoped reads: the project is the
+    // part of the issue key before the dash.
+    const key = typeof input["issueKey"] === "string" ? input["issueKey"] : "";
+    const project = key.slice(0, key.indexOf("-"));
+    if (!projectAllowed(boundary, project)) {
+      throw serviceRefusal();
+    }
+  }
+
+  /**
+   * Fail closed on an issue an issue-security level closes off. The service
+   * identity may be allowed to see it upstream, so the check is made here,
+   * before anything about it is returned, and it answers the same not-found a
+   * personal caller would see for an issue they cannot.
+   */
+  private async assertIssueNotRestricted(
+    site: JiraSite,
+    credential: JiraCredential,
+    requested: string,
+  ): Promise<void> {
+    const issue = issueKeyOf(requested);
+    const answer = await this.transport.getJson<Record<string, unknown>>(
+      site,
+      credential,
+      `/rest/api/3/issue/${issue}`,
+      { fields: "security" },
+    );
+    if (restricted(recordOf(answer))) {
+      throw new IntegrationError(
+        "ResourceNotFound",
+        "Resource is not available through the service credential",
+      );
+    }
   }
 
   /**
@@ -444,6 +683,109 @@ export class JiraProvider implements IntegrationProvider {
       throw new IntegrationError("InvalidCredential", "Choose a Jira site");
     }
     return only;
+  }
+}
+
+/**
+ * Whether one caller-named project stays inside the deployment's boundary. The
+ * boundary lists project keys, and a Jira project key compares case-insensitively
+ * upstream while an operator may type it in any case, so the match normalizes
+ * the case; a listed numeric id matches exactly. A project key that is not
+ * listed never widens into its issues: `PROJ` does not cover `PROJX`.
+ */
+export function projectAllowed(
+  boundary: ServiceResourceBoundary,
+  ref: string,
+): boolean {
+  if (boundaryHas(boundary, JIRA_RESOURCE_KIND, ref)) return true;
+  const key = ref.trim().toUpperCase();
+  if (key === "") return false;
+  return (boundary[JIRA_RESOURCE_KIND] ?? []).some(
+    (entry) => entry.trim().toUpperCase() === key,
+  );
+}
+
+/** One refusal shape, so every boundary denial of this provider reads the same. */
+function serviceRefusal(): IntegrationError {
+  return new IntegrationError(
+    "ServiceResourceNotAllowed",
+    "Service mode reads only the projects this workspace is allowed to see",
+  );
+}
+
+/** One search hit as the API returned it, without trusting its projection. */
+function readableServiceHit(
+  boundary: ServiceResourceBoundary,
+  item: unknown,
+): boolean {
+  if (typeof item !== "object" || item === null) return false;
+  const source = item as Record<string, unknown>;
+  if (restricted(source)) return false;
+  const fields = recordOf(source["fields"]);
+  return rawProjectAllowed(boundary, fields["project"]);
+}
+
+/** One project as the API reported it: matched by key or by id. */
+function rawProjectAllowed(
+  boundary: ServiceResourceBoundary,
+  item: unknown,
+): boolean {
+  if (typeof item !== "object" || item === null) return false;
+  const source = item as Record<string, unknown>;
+  const key = source["key"];
+  if (typeof key === "string" && projectAllowed(boundary, key)) return true;
+  const id = source["id"];
+  return (
+    (typeof id === "number" && projectAllowed(boundary, String(id))) ||
+    (typeof id === "string" && projectAllowed(boundary, id))
+  );
+}
+
+/**
+ * The bounded search answer. The page is filtered after it arrived — Jira's
+ * cursor stays its own — so a page may come back shorter than the limit asked
+ * for, and the next page is asked for with the same token.
+ */
+function boundedSearchResults(
+  data: unknown,
+  boundary: ServiceResourceBoundary,
+): unknown {
+  if (typeof data !== "object" || data === null) return data;
+  const source = data as Record<string, unknown>;
+  if (!Array.isArray(source["issues"])) return source;
+  return {
+    ...source,
+    issues: source["issues"].filter((item) =>
+      readableServiceHit(boundary, item),
+    ),
+  };
+}
+
+/** A `security` level on the answer means Jira itself closes the issue off. */
+function restricted(source: Record<string, unknown>): boolean {
+  const level = recordOf(source["fields"])["security"];
+  return level !== null && level !== undefined;
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+/** Map an upstream failure of the probe onto a health status. */
+function healthFromFailure(error: unknown): ServiceCredentialHealth {
+  if (!(error instanceof IntegrationError)) {
+    return { status: "unreachable" };
+  }
+  switch (error.code) {
+    case "CredentialExpired":
+      return { status: "expired" };
+    case "CredentialRevoked":
+    case "ProviderPermissionDenied":
+      return { status: "revoked" };
+    default:
+      return { status: "unreachable" };
   }
 }
 

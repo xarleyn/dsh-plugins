@@ -34,7 +34,6 @@ import { SecretStore } from "./secrets/secret-store.js";
 import { ServiceCredentialRegistry } from "./service-credentials/registry.js";
 import { createIntegrationTools, integrationToolNames } from "./tools.js";
 import type {
-  CredentialInput,
   CredentialSource,
   IntegrationInstanceSummary,
   ServiceCredentialHealth,
@@ -104,6 +103,8 @@ export class QaIntegrations extends TypertRemoteService {
   private readonly configuredTestitInstances: readonly IntegrationInstanceSummary[];
   /** The Weblate instances this deployment allows, in config order. */
   private readonly configuredWeblateInstances: readonly IntegrationInstanceSummary[];
+  /** The Bitrix24 portals this deployment allows, in config order. */
+  private readonly configuredBitrix24Portals: readonly IntegrationInstanceSummary[];
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
@@ -210,6 +211,16 @@ export class QaIntegrations extends TypertRemoteService {
           label: instance.label,
           baseUrl: instance.baseUrl,
           service: this.serviceBinding("testit", instance.id),
+        }))
+      : [];
+    // The portal a Bitrix24 connection answers on is a hostname, not a URL —
+    // the same shape a webhook URL reports, so profile and connection match.
+    this.configuredBitrix24Portals = config.bitrix24.enabled
+      ? config.bitrix24.instances.map((instance) => ({
+          id: instance.id,
+          label: instance.label,
+          baseUrl: instance.portal,
+          service: this.serviceBinding("bitrix24", instance.id),
         }))
       : [];
     this.configuredServer =
@@ -322,11 +333,29 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("putBitrix24Credential")
   async putBitrix24Credential(
     token: string,
-    input: CredentialInput,
+    input: {
+      readonly instanceId: string;
+      readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
+    },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "bitrix24", input),
+      this.broker.connect(
+        principal,
+        "bitrix24",
+        {
+          token: input.token,
+          options: { instanceId: input.instanceId },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
+  }
+
+  @Remote("bitrix24Instances")
+  bitrix24Instances(token: string): readonly IntegrationInstanceSummary[] {
+    return this.run(token, () => this.configuredBitrix24Portals);
   }
 
   @Remote("testBitrix24")
@@ -440,13 +469,20 @@ export class QaIntegrations extends TypertRemoteService {
       readonly instanceId: string;
       readonly email: string;
       readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "confluence", {
-        token: input.token,
-        options: { instanceId: input.instanceId, email: input.email },
-      }),
+      this.broker.connect(
+        principal,
+        "confluence",
+        {
+          token: input.token,
+          options: { instanceId: input.instanceId, email: input.email },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 
@@ -560,13 +596,22 @@ export class QaIntegrations extends TypertRemoteService {
       readonly siteId: string;
       readonly email: string;
       readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "jira", {
-        token: input.token,
-        options: { siteId: input.siteId, email: input.email },
-      }),
+      this.broker.connect(
+        principal,
+        "jira",
+        {
+          token: input.token,
+          // The broker resolves the profile by `instanceId`; Jira names its
+          // instances `siteId` on the wire.
+          options: { instanceId: input.siteId, email: input.email },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 
@@ -611,13 +656,23 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("putTestitCredential")
   async putTestitCredential(
     token: string,
-    input: { readonly instanceId: string; readonly token: string },
+    input: {
+      readonly instanceId: string;
+      readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
+    },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "testit", {
-        token: input.token,
-        options: { instanceId: input.instanceId },
-      }),
+      this.broker.connect(
+        principal,
+        "testit",
+        {
+          token: input.token,
+          options: { instanceId: input.instanceId },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 
@@ -662,13 +717,23 @@ export class QaIntegrations extends TypertRemoteService {
   @Remote("putWeblateCredential")
   async putWeblateCredential(
     token: string,
-    input: { readonly instanceId: string; readonly token: string },
+    input: {
+      readonly instanceId: string;
+      readonly token: string;
+      /** Whether the connect form asked for the managed credential instead. */
+      readonly useServiceCredential?: boolean | undefined;
+    },
   ): Promise<IntegrationSummary> {
     return this.runAsync(token, (principal) =>
-      this.broker.connect(principal, "weblate", {
-        token: input.token,
-        options: { instanceId: input.instanceId },
-      }),
+      this.broker.connect(
+        principal,
+        "weblate",
+        {
+          token: input.token,
+          options: { instanceId: input.instanceId },
+        },
+        { useServiceCredential: input.useServiceCredential },
+      ),
     );
   }
 

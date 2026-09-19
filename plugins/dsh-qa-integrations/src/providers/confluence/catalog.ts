@@ -1,3 +1,4 @@
+import type { OperationSecurityMetadata } from "../../service-credentials/types.js";
 import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
@@ -88,6 +89,36 @@ export const CONFLUENCE_CAPABILITIES: readonly ConfluenceCapabilityDefinition[] 
     },
   ]);
 
+/**
+ * A read of the connected identity alone: no resource, nothing personal.
+ */
+const IDENTITY_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: false,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read whose answer belongs to a space. `requiresResourceBoundary` makes the
+ * broker prove the profile bounds spaces at all, and the provider holds the
+ * call inside the boundary — which is what a service account needs, because it
+ * can see far more than the user it stands in for.
+ *
+ * This is also the ceiling of what this catalog contains. Every read answers
+ * authored Confluence content or its metadata; the one read that would return
+ * arbitrary uploaded bytes — an attachment body download — does not exist here.
+ * Should a write or a byte-returning read ever be added, it must be classified
+ * on purpose: an unclassified operation is unreachable through the managed
+ * credential, which is the fail-closed default.
+ */
+const SPACE_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
 export interface ConfluenceOperationDefinition {
   readonly capability: ConfluenceCapability;
   /** Every Confluence read is a GET; the catalog declares it, the gate checks it. */
@@ -106,13 +137,19 @@ export interface ConfluenceOperationDefinition {
    * the two a `nextCursor` belongs to.
    */
   readonly cursor?: "offset" | "upstream";
+  /** What this operation does, how sensitive it is, who may reach it. */
+  readonly security: OperationSecurityMetadata;
 }
+
+/** The resource kind every space-scoped operation of this provider is bounded by. */
+export const CONFLUENCE_RESOURCE_KIND = "spaces";
 
 /**
  * Every model-reachable operation. The provider refuses any operation that is
- * not listed here, so this table — together with `capability` — is the
- * permission surface. Only GET: the catalog carries no operation that could
- * change Confluence state, and the confirmation framework does not exist yet.
+ * not listed here, so this table — together with `capability` and `security`
+ * — is the permission surface. Only GET: the catalog carries no operation that
+ * could change Confluence state, and the confirmation framework does not exist
+ * yet.
  *
  * The mix of REST versions is deliberate. Confluence Cloud v2 covers pages,
  * comments, attachments, versions and spaces, and that is where the reads go;
@@ -130,6 +167,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "identity.read",
     method: "GET",
     path: "/wiki/rest/api/user/current",
+    security: IDENTITY_READ,
   },
   /** CQL search: the only read Confluence offers for free-text lookup. */
   "search.run": {
@@ -138,6 +176,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     path: "/wiki/rest/api/search",
     list: true,
     cursor: "offset",
+    security: SPACE_READ,
   },
   "spaces.list": {
     capability: "spaces.read",
@@ -145,6 +184,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     path: "/wiki/api/v2/spaces",
     list: true,
     cursor: "upstream",
+    security: SPACE_READ,
   },
   /**
    * v2 addresses a space by numeric id only; a key is resolved through
@@ -154,11 +194,13 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "spaces.read",
     method: "GET",
     path: "/wiki/api/v2/spaces/:spaceId",
+    security: SPACE_READ,
   },
   "pages.get": {
     capability: "content.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId",
+    security: SPACE_READ,
   },
   /**
    * The catalog names the footer collection; inline comments live at the same
@@ -171,13 +213,20 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     path: "/wiki/api/v2/pages/:pageId/footer-comments",
     list: true,
     cursor: "upstream",
+    security: SPACE_READ,
   },
+  /**
+   * Attachment metadata only: a name, a size, a download link. The bytes are
+   * never fetched — a read that returned arbitrary uploaded content would be a
+   * different classification entirely.
+   */
   "pages.attachments": {
     capability: "attachments.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId/attachments",
     list: true,
     cursor: "upstream",
+    security: SPACE_READ,
   },
   "pages.versions": {
     capability: "versions.read",
@@ -185,6 +234,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     path: "/wiki/api/v2/pages/:pageId/versions",
     list: true,
     cursor: "upstream",
+    security: SPACE_READ,
   },
 });
 
@@ -214,4 +264,11 @@ export function confluenceOperationCapability(
   operation: string,
 ): IntegrationCapability | undefined {
   return CONFLUENCE_OPERATIONS[operation]?.capability;
+}
+
+/** Security classification of an operation, or undefined when it is unknown. */
+export function confluenceOperationMetadata(
+  operation: string,
+): OperationSecurityMetadata | undefined {
+  return CONFLUENCE_OPERATIONS[operation]?.security;
 }

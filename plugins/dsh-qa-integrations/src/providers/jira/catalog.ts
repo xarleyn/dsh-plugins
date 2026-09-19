@@ -1,3 +1,4 @@
+import type { OperationSecurityMetadata } from "../../service-credentials/types.js";
 import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
@@ -88,6 +89,52 @@ export const JIRA_CAPABILITIES: readonly JiraCapabilityDefinition[] =
     },
   ]);
 
+/** A read of the connected identity alone: no resource, nothing personal. */
+const IDENTITY_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: false,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read whose answer belongs to a Jira project. `requiresResourceBoundary`
+ * makes the broker prove the profile bounds projects at all, and the provider
+ * holds the call inside the boundary — which is what a service account needs,
+ * because it can see far more than the user it stands in for.
+ */
+const PROJECT_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read that hands over what other users uploaded. It stays a read, so a
+ * personal credential reaches it normally; the managed credential never does,
+ * because a shared account must not expose one user's files to another.
+ */
+const SENSITIVE_READ = {
+  effect: "read",
+  sensitivity: "sensitive",
+  serviceCredential: "deny",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read of the site's own structure — the field catalog. It names no issue and
+ * no project content, and there is nothing of it a profile could list, so it
+ * carries no boundary; the deployment switch for the field catalog stays the
+ * whole local control over it.
+ */
+const SITE_STRUCTURE_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: false,
+} as const satisfies OperationSecurityMetadata;
+
 export interface JiraOperationDefinition {
   readonly capability: JiraCapability;
   /**
@@ -104,7 +151,18 @@ export interface JiraOperationDefinition {
   readonly method: "GET";
   /** Set when the operation answers with one page of a collection. */
   readonly list?: boolean;
+  /** What this operation does, how sensitive it is, who may reach it. */
+  readonly security: OperationSecurityMetadata;
 }
+
+/**
+ * The resource kind every project-scoped operation of this provider is bounded
+ * by. The entries of a `projects` boundary are Jira project keys — the form
+ * every operation addresses a project by (`projects.get` takes a key, an issue
+ * key embeds its project's key). A listed numeric project id is honoured where
+ * Jira reports one, in a filtered search; a key is what an operator lists.
+ */
+export const JIRA_RESOURCE_KIND = "projects";
 
 /**
  * Every model-reachable operation. The provider refuses any operation that is
@@ -125,49 +183,65 @@ export const JIRA_OPERATIONS: Readonly<
     capability: "identity.read",
     path: "/rest/api/3/myself",
     method: "GET",
+    security: IDENTITY_READ,
   },
   "issues.search": {
     capability: "issues.read",
     path: "/rest/api/3/search/jql",
     method: "GET",
     list: true,
+    security: PROJECT_READ,
   },
   "issues.get": {
     capability: "issues.read",
     path: "/rest/api/3/issue/:issueKey",
     method: "GET",
+    security: PROJECT_READ,
   },
   "issues.comments": {
     capability: "comments.read",
     path: "/rest/api/3/issue/:issueKey/comment",
     method: "GET",
     list: true,
+    security: PROJECT_READ,
   },
   /**
-   * Attachment metadata lives on the issue itself; Jira serves no listing
-   * endpoint for it, so this operation reads the issue with the one field asked
-   * for and never downloads a file.
+   * Attachment rows carry what other users put on an issue — file names, types,
+   * sizes, authors — which is the close-to-content metadata a shared account
+   * must not hand around. It is classified sensitive, so a personal credential
+   * still reads it and the managed one never does. The content download this
+   * metadata points at is not in the catalog at all; when it appears, it is
+   * classified at least as sensitive.
    */
   "issues.attachments": {
     capability: "attachments.read",
     path: "/rest/api/3/issue/:issueKey",
     method: "GET",
+    security: SENSITIVE_READ,
   },
+  /**
+   * The transitions read only lists what could be done to one issue and what
+   * fields each move would need; the move itself has no operation here, so the
+   * read stays project-scoped and service-safe.
+   */
   "issues.transitions": {
     capability: "transitions.read",
     path: "/rest/api/3/issue/:issueKey/transitions",
     method: "GET",
+    security: PROJECT_READ,
   },
   "projects.get": {
     capability: "projects.read",
     path: "/rest/api/3/project/:projectKey",
     method: "GET",
+    security: PROJECT_READ,
   },
   "fields.list": {
     capability: "fields.read",
     path: "/rest/api/3/field",
     method: "GET",
     list: true,
+    security: SITE_STRUCTURE_READ,
   },
 });
 
@@ -224,4 +298,11 @@ export function jiraOperationCapability(
   operation: string,
 ): IntegrationCapability | undefined {
   return JIRA_OPERATIONS[operation]?.capability;
+}
+
+/** Security classification of an operation, or undefined when it is unknown. */
+export function jiraOperationMetadata(
+  operation: string,
+): OperationSecurityMetadata | undefined {
+  return JIRA_OPERATIONS[operation]?.security;
 }

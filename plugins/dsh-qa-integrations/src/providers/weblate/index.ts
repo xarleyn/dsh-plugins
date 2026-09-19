@@ -2,29 +2,51 @@ import {
   resolveCredentialHelp,
   type CredentialHelp,
 } from "@yadsh/dsh-plugin-kit";
+import { requiredInteger } from "../../coerce.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
+import { boundaryHas } from "../../service-credentials/policy.js";
+import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type {
+  OperationSecurityMetadata,
+  ServiceCredentialHealth,
+  ServiceResourceBoundary,
+} from "../../service-credentials/types.js";
+import type {
+  CapabilityServiceState,
   IntegrationCapability,
   IntegrationCapabilityInfo,
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
-import { objectOf } from "../shared/account.js";
+import { accountName, objectOf } from "../shared/account.js";
+import {
+  assertServiceOperationAllowed,
+  serviceBoundaryOf,
+  serviceResourceDenied,
+} from "../shared/service-boundary.js";
 import {
   WEBLATE_CAPABILITY_INFO,
   WEBLATE_OPERATIONS,
+  WEBLATE_RESOURCE_KIND,
   enabledCapabilities,
   weblateOperationCapability,
+  weblateOperationMetadata,
 } from "./catalog.js";
-import { weblateInstance, type WeblateFlags } from "./config.js";
+import {
+  weblateInstance,
+  type WeblateFlags,
+  type WeblateInstance,
+} from "./config.js";
 import {
   WEBLATE_HANDLERS,
   WEBLATE_PROJECTIONS,
   WEBLATE_UNTRUSTED_OPERATIONS,
+  accountFromUsers,
   accountIdFrom,
   accountNameFrom,
   textLimitFor,
+  translationRef,
   type WeblateProjectionContext,
   type WeblateRequest,
 } from "./operations.js";
@@ -71,6 +93,106 @@ const TOKEN_KIND_LABEL: Readonly<Record<WeblateTokenKind, string>> =
     project: "токен проекта",
     unknown: "токен",
   });
+
+/**
+ * Operations addressed by the numeric id of a string or a screenshot alone:
+ * service mode resolves that id to the project it belongs to — upstream, out
+ * of the answer's own translation URL — before anything is released.
+ */
+const ID_ADDRESSED: readonly string[] = Object.freeze([
+  "units.get",
+  "units.comments",
+  "units.suggestions",
+  "screenshots.get",
+]);
+
+/**
+ * Listings whose request cannot carry the boundary: the two unit searches over
+ * everything the token sees have their project clause forced in from the
+ * checked argument, and the screenshot listing takes no scope at all, so the
+ * rows of all three are held to the boundary after the read as well.
+ */
+const BOUNDED_AFTER_READ: readonly string[] = Object.freeze([
+  "units.find",
+  "units.failing",
+  "screenshots.list",
+]);
+
+/** The `translation` URL of an upstream answer, when it carries one. */
+function translationUrlOf(data: unknown): unknown {
+  return typeof data === "object" && data !== null
+    ? (data as Record<string, unknown>)["translation"]
+    : undefined;
+}
+
+/** The project slug inside a same-origin translation URL, when it is one. */
+function projectOfTranslation(
+  value: unknown,
+  origin: string,
+): string | undefined {
+  const project = translationRef(value, origin)?.["project"];
+  return typeof project === "string" && project !== "" ? project : undefined;
+}
+
+/**
+ * Drop the rows of a listing that answer for a project outside the boundary.
+ * A row whose project cannot even be resolved is dropped with them: in service
+ * mode an unattributable row is not shown, never shown anyway.
+ */
+function withinBoundary(
+  data: unknown,
+  boundary: ServiceResourceBoundary,
+): unknown {
+  if (!Array.isArray(data)) return data;
+  return data.filter((item) => {
+    const project =
+      typeof item === "object" && item !== null
+        ? (item as Record<string, unknown>)["project"]
+        : undefined;
+    return (
+      typeof project === "string" &&
+      boundaryHas(boundary, WEBLATE_RESOURCE_KIND, project)
+    );
+  });
+}
+
+/**
+ * The identity a `/users/` answer carries. An unprivileged token answers with
+ * its own record; a token that may list users answers with many rows, and then
+ * the probe reports no identity rather than guessing one.
+ */
+function serviceIdentity(
+  data: unknown,
+  fallback: string,
+): { readonly id: string; readonly label: string } | undefined {
+  const { account, resolved } = accountFromUsers(data);
+  const id = account?.["id"];
+  if (!resolved || account === null || typeof id !== "number") return undefined;
+  return { id: String(id), label: accountName(account, fallback) };
+}
+
+/** Map an upstream failure of the probe onto a health status. */
+function healthFromFailure(error: unknown): ServiceCredentialHealth {
+  if (!(error instanceof IntegrationError)) return { status: "unreachable" };
+  switch (error.code) {
+    case "CredentialExpired":
+      return { status: "expired" };
+    case "CredentialRevoked":
+    case "ProviderPermissionDenied":
+      return { status: "revoked" };
+    default:
+      return { status: "unreachable" };
+  }
+}
+
+/** A listed project the service token cannot see is reported, not fatal. */
+function recoverableResource(error: unknown): boolean {
+  return (
+    error instanceof IntegrationError &&
+    (error.code === "ResourceNotFound" ||
+      error.code === "ProviderPermissionDenied")
+  );
+}
 
 /** One answer shape for every list, so the model never loses the cursor. */
 function envelope(
@@ -166,6 +288,38 @@ export class WeblateProvider implements IntegrationProvider {
     return weblateOperationCapability(operation);
   }
 
+  operationMetadata(operation: string): OperationSecurityMetadata | undefined {
+    return weblateOperationMetadata(operation);
+  }
+
+  /** Every project-scoped read is held inside the profile's project boundary. */
+  resourceBoundaryKind(operation: string): string | undefined {
+    return WEBLATE_OPERATIONS[operation]?.security.requiresResourceBoundary ===
+      true
+      ? WEBLATE_RESOURCE_KIND
+      : undefined;
+  }
+
+  /**
+   * Portal of a configured instance. An empty id means "the only instance", the
+   * same rule `parseCredential` applies, so deployment configuration and the
+   * connect form name instances alike.
+   */
+  instancePortal(instanceId: string): string | undefined {
+    const instances = this.config.weblate.instances;
+    const id = instanceId.trim();
+    if (id === "") {
+      return instances.length === 1 ? instances[0]?.baseUrl : undefined;
+    }
+    return weblateInstance(this.config.weblate, id)?.baseUrl;
+  }
+
+  capabilityServiceState(
+    capability: IntegrationCapability,
+  ): CapabilityServiceState | undefined {
+    return operationCapabilityServiceState(WEBLATE_OPERATIONS, capability);
+  }
+
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
     const instance = credentialInstance(this.config.weblate, credential);
@@ -194,6 +348,40 @@ export class WeblateProvider implements IntegrationProvider {
     };
   }
 
+  /**
+   * Health of a deployment-managed token. The probe is the one read personal
+   * validation makes, so it cannot change upstream state; Weblate exposes no
+   * token-scope introspection, so there is nothing wider than read-only to
+   * detect here — the local service ceiling stays the only bound on what the
+   * credential may do, and the warning says so.
+   */
+  async validateServiceCredential(
+    context: ProviderContext,
+  ): Promise<ServiceCredentialHealth> {
+    const credential = credentialFromPlaintext(context.credential);
+    const instance = credentialInstance(this.config.weblate, credential);
+    let data: unknown;
+    try {
+      const response = await this.transport.getJson<unknown>(
+        instance,
+        credential.token,
+        "/users/",
+        { page_size: 2 },
+      );
+      data = response.data;
+    } catch (error) {
+      return healthFromFailure(error);
+    }
+    const identity = serviceIdentity(data, new URL(instance.baseUrl).host);
+    return {
+      status: "healthy",
+      ...(identity === undefined ? {} : { upstreamIdentity: identity }),
+      warnings: [
+        "Weblate did not report the token scopes; the local service ceiling still applies",
+      ],
+    };
+  }
+
   async execute(
     context: ProviderContext,
     operation: string,
@@ -209,7 +397,31 @@ export class WeblateProvider implements IntegrationProvider {
         "Unsupported Weblate operation",
       );
     }
+    // Ceiling first, then the boundary: what the operation is decides before
+    // where it may read.
+    if (context.credentialSource === "service") {
+      assertServiceOperationAllowed(
+        definition.security,
+        "This Weblate operation is not available through the service credential",
+      );
+    }
+    const boundary = serviceBoundaryOf(context);
+    if (
+      boundary !== undefined &&
+      definition.security.requiresResourceBoundary
+    ) {
+      await this.assertInsideBoundary(
+        operation,
+        input,
+        boundary,
+        instance,
+        credential,
+      );
+    }
     const flags = this.config.weblate;
+    if (boundary !== undefined && operation === "projects.list") {
+      return this.listBoundedProjects(instance, credential, boundary, flags);
+    }
     const request: WeblateRequest = handler(input, {
       flags,
       origin: instance.baseUrl,
@@ -233,13 +445,141 @@ export class WeblateProvider implements IntegrationProvider {
     };
     const data =
       projection === undefined ? source : projection(source, projectionContext);
+    // The pagination block below still describes the upstream page: the rows
+    // outside the boundary are removed from it, not renamed into a shorter one.
+    const visible =
+      boundary !== undefined && BOUNDED_AFTER_READ.includes(operation)
+        ? withinBoundary(data, boundary)
+        : data;
     const untrusted = WEBLATE_UNTRUSTED_OPERATIONS.includes(operation);
     if (definition.list === true) {
-      return envelope(data, response.page, untrusted);
+      return envelope(visible, response.page, untrusted);
     }
     return untrusted
       ? { ...objectOf(data), untrustedExternalContent: true }
       : objectOf(data);
+  }
+
+  /**
+   * Hold one call inside the deployment's boundary. A service-safe operation
+   * either names its project in the arguments — a missing slug is refused, which
+   * is what keeps the global unit searches from answering with the shared
+   * account's whole view — or is addressed by the id of a string or a
+   * screenshot, which is resolved to its project upstream first.
+   */
+  private async assertInsideBoundary(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    boundary: ServiceResourceBoundary,
+    instance: WeblateInstance,
+    credential: WeblateCredential,
+  ): Promise<void> {
+    // The project listing is built from the allowlist itself, and the
+    // screenshot listing cannot name a project at all — its rows are held to
+    // the boundary after the read instead.
+    if (operation === "projects.list" || operation === "screenshots.list") {
+      return;
+    }
+    if (ID_ADDRESSED.includes(operation)) {
+      const project = await this.projectOfAddressedResource(
+        operation,
+        input,
+        instance,
+        credential,
+      );
+      if (
+        project === undefined ||
+        !boundaryHas(boundary, WEBLATE_RESOURCE_KIND, project)
+      ) {
+        throw serviceResourceDenied();
+      }
+      return;
+    }
+    const project = input["project"];
+    const ref = project === undefined ? "" : String(project).trim();
+    if (ref === "" || !boundaryHas(boundary, WEBLATE_RESOURCE_KIND, ref)) {
+      throw serviceResourceDenied();
+    }
+  }
+
+  /**
+   * Resolve one id-addressed read to the project it answers for. The probe is
+   * the same read the operation itself makes — Weblate has no cheaper "which
+   * project is this id" endpoint — and the probed answer is discarded unless
+   * the project is inside the boundary, so a foreign id reveals nothing.
+   */
+  private async projectOfAddressedResource(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    instance: WeblateInstance,
+    credential: WeblateCredential,
+  ): Promise<string | undefined> {
+    if (operation === "screenshots.get") {
+      const screenshotId = requiredInteger(
+        input["screenshotId"],
+        "screenshotId",
+      );
+      const { data } = await this.transport.getJson<unknown>(
+        instance,
+        credential.token,
+        `/screenshots/${screenshotId}/`,
+      );
+      return projectOfTranslation(translationUrlOf(data), instance.baseUrl);
+    }
+    const unitId = requiredInteger(input["unitId"], "unitId");
+    const { data } = await this.transport.getJson<unknown>(
+      instance,
+      credential.token,
+      `/units/${unitId}/`,
+    );
+    return projectOfTranslation(translationUrlOf(data), instance.baseUrl);
+  }
+
+  /**
+   * The bounded project listing. A service profile names the projects it covers,
+   * so the answer is built from that list instead of from whatever the shared
+   * account can reach; a project the service token cannot see is reported as
+   * unavailable rather than silently dropped. The whole allowlist is the answer
+   * — its size is bounded by the administrator, not by a cursor.
+   */
+  private async listBoundedProjects(
+    instance: WeblateInstance,
+    credential: WeblateCredential,
+    boundary: ServiceResourceBoundary,
+    flags: WeblateFlags,
+  ): Promise<Record<string, unknown>> {
+    const refs = boundary[WEBLATE_RESOURCE_KIND] ?? [];
+    const collected: unknown[] = [];
+    const unavailable: string[] = [];
+    for (const ref of refs) {
+      try {
+        const { data } = await this.transport.getJson<unknown>(
+          instance,
+          credential.token,
+          `/projects/${encodeURIComponent(ref)}/`,
+        );
+        collected.push(data);
+      } catch (error) {
+        if (!recoverableResource(error)) throw error;
+        unavailable.push(ref);
+      }
+    }
+    const projection = WEBLATE_PROJECTIONS["projects.list"];
+    const projected =
+      projection === undefined
+        ? collected
+        : projection(collected, {
+            flags,
+            origin: instance.baseUrl,
+            textLimit: textLimitFor("projects.list", undefined, flags),
+          });
+    return {
+      items: Array.isArray(projected) ? projected : [],
+      serviceScoped: true,
+      ...(unavailable.length === 0
+        ? {}
+        : { unavailableResources: unavailable }),
+    };
   }
 
   private resolveInstance(requested: string | undefined) {
