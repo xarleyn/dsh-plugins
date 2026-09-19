@@ -11,7 +11,9 @@ import {
   ConfigSchema,
   resolveConfig,
   type QaIntegrationsConfig,
+  type ResolvedQaIntegrationsConfig,
 } from "./config.js";
+import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
 import ConfluenceProvider from "./providers/confluence/index.js";
@@ -86,51 +88,119 @@ export class QaIntegrations extends TypertRemoteService {
 
   readonly broker: IntegrationBroker;
   private readonly logger: PluginLogger;
-  private readonly enabled: boolean;
+  private readonly owner: IntegrationsContext;
+  private enabled = false;
   /** Providers by id; the service-credential registry resolves through them. */
-  private readonly providerRegistry: IntegrationProviderRegistry;
+  private providerRegistry = new IntegrationProviderRegistry();
   /** Absent unless the deployment configured managed service credentials. */
-  private readonly serviceCredentials: ServiceCredentialRegistry | undefined;
-  private readonly defaultForNewConnections: boolean;
-  private readonly providerSummaries: readonly IntegrationProviderSummary[];
-  private readonly configuredInstances: readonly IntegrationInstanceSummary[];
+  private serviceCredentials: ServiceCredentialRegistry | undefined;
+  private defaultForNewConnections = true;
+  private providerSummaries: readonly IntegrationProviderSummary[] = [];
+  private configuredInstances: readonly IntegrationInstanceSummary[] = [];
   /** The Confluence sites this deployment dials, for the connect form. */
-  private readonly configuredConfluenceSites: readonly IntegrationInstanceSummary[];
+  private configuredConfluenceSites: readonly IntegrationInstanceSummary[] = [];
   /** The Jira Cloud sites this deployment allows, in config order. */
-  private readonly configuredJiraSites: readonly IntegrationInstanceSummary[];
+  private configuredJiraSites: readonly IntegrationInstanceSummary[] = [];
   /** The TeamCity server this deployment dials, or null when it mounts none. */
-  private readonly configuredServer: IntegrationInstanceSummary | null;
+  private configuredServer: IntegrationInstanceSummary | null = null;
   /** The Test IT installations this deployment allows, in config order. */
-  private readonly configuredTestitInstances: readonly IntegrationInstanceSummary[];
+  private configuredTestitInstances: readonly IntegrationInstanceSummary[] = [];
   /** The Weblate instances this deployment allows, in config order. */
-  private readonly configuredWeblateInstances: readonly IntegrationInstanceSummary[];
+  private configuredWeblateInstances: readonly IntegrationInstanceSummary[] =
+    [];
+  /**
+   * The composition row the Host resolved at load. It stays the base of the
+   * settings section, and the configuration source until the namespace takes
+   * over, so a deployment without a settings provider keeps booting on it.
+   */
+  private readonly entryConfig: QaIntegrationsConfig;
+  /** Where the live configuration is read from; the settings namespace swaps this. */
+  private configSource: () => QaIntegrationsConfig;
+  /**
+   * The connection store and its key live for the whole process: connections
+   * and wrapped secrets belong to the boot path, and only derivations of the
+   * configuration re-apply while running.
+   */
+  private readonly repository: IntegrationRepository;
+  private readonly secrets: SecretStore;
+  private readonly bootDataPath: string;
+  private readonly bootMasterKeyPath: string;
+  private readonly bootMasterKeyVersion: number;
+  /** Removers of the currently mounted admission and tool registrations. */
+  private toolRemovers: readonly (() => void)[] = [];
+  /** The mounted tool-name list; an unchanged signature never re-registers. */
+  private toolsKey = "";
 
   constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
-    const config = resolveConfig(rawConfig);
-    this.enabled = config.enabled;
+    this.owner = ctx;
     this.logger = getPluginLogger({
       pluginId: "dsh-qa-integrations",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
-    const repository = new IntegrationRepository(config.dataPath, {
-      auditRetentionDays: config.auditRetentionDays,
+    this.entryConfig = structuredClone(rawConfig);
+    this.configSource = () => this.entryConfig;
+    const boot = resolveConfig(rawConfig);
+    const repository = new IntegrationRepository(boot.dataPath, {
+      auditRetentionDays: boot.auditRetentionDays,
     });
     // A deployment upgrading from the JSON store keeps its connections: the
     // file is imported, verified and renamed aside before the broker serves.
-    repository.importLegacyFile(legacySiblingOf(config.dataPath));
+    repository.importLegacyFile(legacySiblingOf(boot.dataPath));
     // A provider that split one capability into two names the pair here; the
     // store stays provider-agnostic and the composition root is where the
     // knowledge of a provider belongs.
     repository.expandCapabilities({
       [GITLAB_LEGACY_CI_CAPABILITY]: GITLAB_CI_SPLIT_CAPABILITIES,
     });
-    const secrets = new SecretStore(
-      new DockerSecretKeyProvider(
-        config.masterKeyPath,
-        config.masterKeyVersion,
-      ),
+    this.repository = repository;
+    this.secrets = new SecretStore(
+      new DockerSecretKeyProvider(boot.masterKeyPath, boot.masterKeyVersion),
     );
+    this.bootDataPath = boot.dataPath;
+    this.bootMasterKeyPath = boot.masterKeyPath;
+    this.bootMasterKeyVersion = boot.masterKeyVersion;
+    this.broker = new IntegrationBroker(
+      repository,
+      this.secrets,
+      new IntegrationProviderRegistry(),
+      this.logger,
+      {},
+    );
+    this.applyConfig(boot);
+    this.installSettings();
+    ctx.effect(
+      () => () => {
+        for (const remove of this.toolRemovers) remove();
+        this.toolRemovers = [];
+      },
+      "dsh-qa-integrations.tools",
+    );
+    ctx.effect(
+      () => async () => this.logger.close(),
+      "dsh-qa-integrations.logger",
+    );
+  }
+
+  /**
+   * Rebuild every configuration-derived surface: the provider registry, the
+   * deployment instance lists, the service-credential registry and the tool
+   * mount. The store and its key do not travel here — connections and wrapped
+   * secrets belong to the boot path, and a card edit that re-points them is
+   * answered with a warning instead of a live reopen.
+   */
+  private applyConfig(config: ResolvedQaIntegrationsConfig): void {
+    this.enabled = config.enabled;
+    if (
+      config.dataPath !== this.bootDataPath ||
+      config.masterKeyPath !== this.bootMasterKeyPath ||
+      config.masterKeyVersion !== this.bootMasterKeyVersion
+    ) {
+      this.logger.warn("config.store-path-needs-restart", {
+        dataPath: config.dataPath,
+        masterKeyPath: config.masterKeyPath,
+      });
+    }
     const providers = new IntegrationProviderRegistry();
     if (config.bitrix24.enabled) {
       providers.register(new Bitrix24Provider(config));
@@ -156,9 +226,9 @@ export class QaIntegrations extends TypertRemoteService {
     this.providerRegistry = providers;
     this.defaultForNewConnections =
       config.managedServiceCredentials.defaultForNewConnections;
-    // Profiles are resolved to a portal here, at load: deployment configuration
-    // that names a provider instance nobody configured fails loudly instead of
-    // leaving users with a checkbox that cannot work.
+    // Profiles are resolved to a portal here, at apply time: deployment
+    // configuration that names a provider instance nobody configured fails
+    // loudly instead of leaving users with a checkbox that cannot work.
     this.serviceCredentials = config.managedServiceCredentials.enabled
       ? new ServiceCredentialRegistry(
           config.managedServiceCredentials,
@@ -229,45 +299,15 @@ export class QaIntegrations extends TypertRemoteService {
           service: this.serviceBinding("weblate", instance.id),
         }))
       : [];
-    this.broker = new IntegrationBroker(
-      repository,
-      secrets,
+    // The broker is one object for the service's lifetime — the mounted tools
+    // close over it — so a fresh configuration is swapped in rather than
+    // mounted beside the old one.
+    this.broker.swap(
       providers,
-      this.logger,
-      {
-        serviceCredentials: this.serviceCredentials,
-        defaultForNewConnections: this.defaultForNewConnections,
-      },
+      this.serviceCredentials,
+      this.defaultForNewConnections,
     );
-
-    if (config.enabled) {
-      const toolOptions = {
-        bitrix24CrmCommentWrite: config.bitrix24.crmCommentWrite,
-      };
-      const toolNames = integrationToolNames(toolOptions);
-      const removeAdmission =
-        ctx.qaSurface.registerPrincipalScopedTools(toolNames);
-      const removers = createIntegrationTools({
-        broker: this.broker,
-        principalForSession: (sessionId) =>
-          ctx.qaSurface.principalForSession(sessionId),
-        ...toolOptions,
-      }).map((definition) => ctx.tools.register(definition));
-      ctx.effect(
-        () => () => {
-          for (const remove of removers.reverse()) remove();
-          removeAdmission();
-        },
-        "dsh-qa-integrations.tools",
-      );
-      this.logger.info("plugin.ready", { tools: [...toolNames] });
-    } else {
-      this.logger.info("plugin.disabled", { tools: [] });
-    }
-    ctx.effect(
-      () => async () => this.logger.close(),
-      "dsh-qa-integrations.logger",
-    );
+    this.syncTools(config);
     if (
       config.teamcity.enabled &&
       networkAllowsNothing(config.teamcity.network)
@@ -289,6 +329,97 @@ export class QaIntegrations extends TypertRemoteService {
         });
       }
     }
+  }
+
+  /**
+   * Mount the tools the configuration asks for. The mounted set changes only
+   * when the plugin or its one write capability flips, so an unrelated card
+   * edit never churns the Host tool registry.
+   */
+  private syncTools(config: ResolvedQaIntegrationsConfig): void {
+    const toolOptions = {
+      bitrix24CrmCommentWrite: config.bitrix24.crmCommentWrite,
+    };
+    const names = config.enabled ? integrationToolNames(toolOptions) : [];
+    const signature = names.join(",");
+    if (signature === this.toolsKey) return;
+    for (const remove of this.toolRemovers) remove();
+    this.toolRemovers = [];
+    this.toolsKey = signature;
+    if (names.length === 0) {
+      this.logger.info("plugin.disabled", { tools: [] });
+      return;
+    }
+    const removeAdmission =
+      this.owner.qaSurface.registerPrincipalScopedTools(names);
+    const removers = createIntegrationTools({
+      broker: this.broker,
+      principalForSession: (sessionId) =>
+        this.owner.qaSurface.principalForSession(sessionId),
+      ...toolOptions,
+    }).map((definition) => this.owner.tools.register(definition));
+    this.toolRemovers = [removeAdmission, ...removers];
+    this.logger.info("plugin.ready", { tools: [...names] });
+  }
+
+  /**
+   * Attach the settings namespace. The installed section becomes the plugin's
+   * configuration source, so an operator card edit re-applies the running
+   * service instead of waiting for a restart; without a settings provider the
+   * composition entry stays authoritative. The read is structural and optional:
+   * a Host without a mounted settings provider keeps this plugin fully working.
+   */
+  private installSettings(): void {
+    this.owner.inject(["settings"], (settingsCtx) => {
+      const settings = (
+        settingsCtx as unknown as { settings?: SettingsInstallFace }
+      ).settings;
+      if (settings === undefined) return;
+      settings.installSection(
+        this.owner,
+        QA_INTEGRATIONS_SETTINGS_NAMESPACE,
+        ConfigSchema,
+        this.entryConfig,
+        {
+          setSource: (current) => {
+            this.configSource = current as () => QaIntegrationsConfig;
+          },
+          onChange: () => {
+            this.reapply();
+          },
+          // Constraints the schema alone cannot carry (a TeamCity host pattern
+          // that matches nothing, an instance list with a duplicate id) are
+          // refused at write time, so the card reports them instead of storing
+          // a configuration the resolvers would throw away at the next boot.
+          validate: (value) => {
+            resolveConfig(value as QaIntegrationsConfig);
+          },
+        },
+      );
+    });
+  }
+
+  /**
+   * Re-resolve the source after a committed settings change and rebuild what
+   * derives from it. A source the resolvers refuse keeps the running state:
+   * the settings provider validates on write, so this only covers a value
+   * that arrived through another path.
+   */
+  private reapply(): void {
+    let next: ResolvedQaIntegrationsConfig;
+    try {
+      next = resolveConfig(this.configSource());
+    } catch (error) {
+      this.logger.warn("config.rejected", {
+        message: String((error as Error).message),
+      });
+      return;
+    }
+    this.applyConfig(next);
+    this.logger.info("config.reloaded", {
+      enabled: next.enabled,
+      providers: this.providerSummaries.map((provider) => provider.id),
+    });
   }
 
   @Remote("describe")
@@ -1287,3 +1418,18 @@ export {
   type BitrixCredential,
 } from "./providers/bitrix24/transport.js";
 export default QaIntegrations;
+
+/** Structural face of the Host settings provider, read defensively at runtime. */
+interface SettingsInstallFace {
+  installSection(
+    owner: Context,
+    namespace: string,
+    schema: unknown,
+    entry: unknown,
+    hooks: {
+      setSource(current: () => unknown): void;
+      onChange(): void;
+      validate?(value: unknown): void;
+    },
+  ): void;
+}
