@@ -29,6 +29,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 
 | Directory | npm package | Purpose |
 | --- | --- | --- |
+| `plugins/dsh-answer-review-gate` | `@yadsh/dsh-answer-review-gate` | Independent answer review gate enforced at the turn boundary |
 | `plugins/dsh-cas-results` | `@yadsh/dsh-cas-results` | Content-addressed offload store for bulky tool results |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
 | `plugins/dsh-domain-experts` | `@yadsh/dsh-domain-experts` | Configurable domain-scoped expert agents with isolated knowledge, memory and tool scope |

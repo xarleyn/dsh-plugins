@@ -1,0 +1,103 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  candidateHash,
+  collectCandidate,
+  normalizeCandidateText,
+  type CandidateSession,
+} from "../src/candidate.js";
+
+interface FakeEvent {
+  readonly type: string;
+  readonly data: unknown;
+}
+
+function makeSession(events: readonly FakeEvent[]): CandidateSession {
+  return {
+    surface: { nodes: events.map((_, seq) => seq) },
+    eventAt: (seq) => events[seq],
+  };
+}
+
+function userMessage(text: string, kind = "user"): FakeEvent {
+  return {
+    type: "user/message",
+    data: { source: { kind }, content: [{ type: "text", text }] },
+  };
+}
+
+function assistantMessage(
+  text: string,
+  options: { interrupted?: true } = {},
+): FakeEvent {
+  return {
+    type: "assistant/message",
+    data: {
+      turn: 1,
+      step: 1,
+      message: { content: [{ type: "text", text }] },
+      stream: [],
+      ...options,
+    },
+  };
+}
+
+describe("collectCandidate", () => {
+  it("collects the latest assistant message and the user request before it", () => {
+    const session = makeSession([
+      userMessage("What locks does the runtime use?"),
+      assistantMessage("A first draft answer that is long enough for review."),
+      userMessage("thanks", "tool"),
+      assistantMessage("The runtime uses file locks around journal writes."),
+    ]);
+    expect(collectCandidate(session)).toEqual({
+      text: "The runtime uses file locks around journal writes.",
+      requestText: "What locks does the runtime use?",
+    });
+  });
+
+  it("skips non-user message sources when locating the request", () => {
+    const session = makeSession([
+      userMessage("injected context", "plugin"),
+      userMessage("the real question"),
+      assistantMessage("A candidate answer of sufficient length."),
+    ]);
+    const candidate = collectCandidate(session);
+    expect(candidate?.requestText).toBe("the real question");
+  });
+
+  it("treats an interrupted latest message as no candidate", () => {
+    const session = makeSession([
+      userMessage("the question"),
+      assistantMessage("Partial truncated ans", { interrupted: true }),
+    ]);
+    expect(collectCandidate(session)).toBeNull();
+  });
+
+  it("returns null for sessions without assistant output", () => {
+    expect(collectCandidate(makeSession([userMessage("hello")]))).toBeNull();
+    expect(collectCandidate(makeSession([]))).toBeNull();
+  });
+});
+
+describe("normalizeCandidateText", () => {
+  it("collapses encoding noise but keeps paragraph structure", () => {
+    expect(normalizeCandidateText("  A\r\nB\rC \n\n\n\nD  ")).toBe(
+      "A\nB\nC\n\nD",
+    );
+  });
+});
+
+describe("candidateHash", () => {
+  it("is stable across cosmetic-only edits", () => {
+    const base = candidateHash("Answer one.\n\nAnswer two.");
+    expect(candidateHash("Answer one.\r\n\r\n\r\nAnswer two. ")).toBe(base);
+  });
+
+  it("changes when the content changes, invalidating a PASS", () => {
+    const before = candidateHash("The answer is 42.");
+    const after = candidateHash("The answer is 42, within documented limits.");
+    expect(before).not.toBe(after);
+    expect(before).toMatch(/^[0-9a-f]{64}$/u);
+  });
+});
