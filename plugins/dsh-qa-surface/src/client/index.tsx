@@ -37,7 +37,8 @@ import type {
   QaSlashApi,
   QaSourceApi,
 } from "./types.js";
-import { QA_OVERLAY_STYLES } from "./styles.js";
+import { QA_OVERLAY_STYLES, QA_ROOT_STYLES } from "./styles.js";
+import { qaKioskBasePath, qaKioskMode } from "./kiosk.js";
 import { QaAuditController } from "./audit/controller.js";
 import { createQaAuditApi, type QaAuditRemote } from "./audit/types.js";
 import type {
@@ -376,6 +377,16 @@ type QaClientRemote = ClientRemote & { readonly qaSurface: QaPolicyRemote };
 
 const QA_WELCOME_SLOT_ID = "welcome-notice";
 
+/**
+ * Priority of the kiosk root registration. 'root' is a single slot whose
+ * lowest-priority entry renders, so this must sit below the ui-layout
+ * fail-safe occupant's priority (1000 in the kiosk branch) — the surface
+ * shadows the static error screen the moment it registers, and if this
+ * registration never happens, the error screen is what the user sees instead
+ * of a native shell.
+ */
+const QA_ROOT_OWNER_PRIORITY = -1000;
+
 function qaWelcomeStorageKey(config: ResolvedQaSurfaceConfig): string {
   return `${qaStorageNamespace(config)}:welcome-notice`;
 }
@@ -389,8 +400,14 @@ export const inject = [
   "remote",
 ];
 
-/** Register the route-aware, full-frame QA entry in the additive overlay slot. */
+/** Register the route-aware, full-frame QA entry: root owner in the kiosk, additive overlay slot otherwise. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
+  // The presentation is a property of the deployment, published once in the
+  // document prelude: kiosk = the surface owns the 'root' slot, overlay = the
+  // surface covers the native shell from 'shell.overlay'. Read once here —
+  // the prelude runs before any application script, so the answer is final
+  // for this page load.
+  const kiosk = qaKioskMode();
   const panels = new QaSurfacePanelRegistry();
   const settingsSections = new QaUserSettingsSectionRegistry();
   // Cards that mount outside the QA overlay (the host's plugin settings) read
@@ -655,8 +672,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       }, "dsh-qa-surface: settings-card");
       const syncRoute = () => {
         const snapshot = config.getSnapshot();
+        // Kiosk: the harness route policy serves the application under the
+        // base path it published in the prelude, so the route the page
+        // matches is that path — the plugin config row is the overlay
+        // composition's setting and would diverge from the server policy.
+        const effective = kiosk
+          ? {
+              ...snapshot.config,
+              route: { path: qaKioskBasePath(), matchChildren: true },
+            }
+          : snapshot.config;
         route.configure(
-          snapshot.config,
+          effective,
           snapshot.status === "ready" || snapshot.status === "unavailable",
         );
       };
@@ -727,7 +754,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       ctx.effect(() => {
         const style = document.createElement("style");
         style.dataset.dshQaSurface = "styles";
-        style.textContent = QA_OVERLAY_STYLES;
+        // The kiosk sheet carries no host-hiding rules: nothing native mounts
+        // beneath the surface in that composition, so there is nothing to hide.
+        style.textContent = kiosk ? QA_ROOT_STYLES : QA_OVERLAY_STYLES;
         document.head.append(style);
         return () => style.remove();
       }, "dsh-qa-surface: styles");
@@ -742,69 +771,104 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         "dsh-qa-surface: controllers",
       );
 
-      ctx.slots.inject("shell.overlay", () =>
-        ctx.slots.register(
+      // The face both presentations hand to the guard. Read host services
+      // lazily (cordis service visibility), so assembly can fail here — the
+      // guard then renders the failure card instead of the entry crashing.
+      const qaFace = (): QaSurfaceFace => {
+        try {
+          return {
+            route,
+            config,
+            // The host dsh-session merge types ctx.sessions as SessionStore in
+            // this program; the client assembly provides the ISessions face.
+            sessions: ctx.sessions as unknown as QaSessions,
+            conversation: ctx.uiConversation,
+            api: qaApi,
+            connection: ctx.connection.generation,
+            secureSession,
+            createSession: (
+              token: string,
+              subroleId: string | null,
+              adminPreview: boolean,
+            ) => policyRemote.createSession(token, subroleId, adminPreview),
+            accessApi,
+            adminApi,
+            sourceApi,
+            skillApi,
+            approvalApi,
+            questionApi,
+            slashApi,
+            accounts,
+            panels,
+            settingsSections,
+            audit,
+            // The upload service is optional on the page: a deployment that
+            // does not serve it keeps images, and a staged file refuses the
+            // send with a message instead of losing the draft. Read through
+            // the untyped service lookup on purpose — the QA bundle does not
+            // link the upload package.
+            fileUpload: () =>
+              (
+                ctx as unknown as {
+                  get(service: string): unknown;
+                }
+              ).get("fileUpload") as QaFileUpload | undefined,
+          };
+        } catch {
+          return {} as QaSurfaceFace;
+        }
+      };
+
+      if (kiosk) {
+        // The kiosk composition: the surface IS the application. Registering
+        // into 'root' (the runtime's single root slot) shadows the host's
+        // fail-safe occupant — a static error screen the ui-layout kiosk
+        // branch holds at a higher priority exactly for the case where this
+        // registration never happens. The panel seat is declared here so the
+        // extension panels keep resolving under the root owner.
+        //
+        // This program's register() contract types 'root' without a children
+        // seat and the guard's props against the overlay composition; the
+        // root occupant receives the same runtime face at runtime (props plus
+        // the inject face), and the frame's child slots live in the host
+        // program's SlotMap — so this one registration crosses the seam
+        // through the erased signature the slots runtime actually executes.
+        const registerRootOwner = ctx.slots.register as unknown as (
+          options: {
+            name: "root";
+            priority?: number;
+            children?: Record<string, { kind: "keyed"; scope: "root" }>;
+            inject?: () => QaSurfaceFace;
+          },
+          component: unknown,
+        ) => () => void;
+        registerRootOwner(
           {
-            name: "shell.overlay",
-            id: "dsh-qa-surface",
-            order: -10_000,
+            name: "root",
+            priority: QA_ROOT_OWNER_PRIORITY,
             children: {
               "qa.surface.panel": { kind: "keyed", scope: "root" },
             },
-            inject: (): QaSurfaceFace => {
-              try {
-                return {
-                  route,
-                  config,
-                  // The host dsh-session merge types ctx.sessions as SessionStore in
-                  // this program; the client assembly provides the ISessions face.
-                  sessions: ctx.sessions as unknown as QaSessions,
-                  conversation: ctx.uiConversation,
-                  api: qaApi,
-                  connection: ctx.connection.generation,
-                  secureSession,
-                  createSession: (
-                    token: string,
-                    subroleId: string | null,
-                    adminPreview: boolean,
-                  ) =>
-                    policyRemote.createSession(token, subroleId, adminPreview),
-                  accessApi,
-                  adminApi,
-                  sourceApi,
-                  skillApi,
-                  approvalApi,
-                  questionApi,
-                  slashApi,
-                  accounts,
-                  panels,
-                  settingsSections,
-                  audit,
-                  // The upload service is optional on the page: a deployment that
-                  // does not serve it keeps images, and a staged file refuses the
-                  // send with a message instead of losing the draft. Read through
-                  // the untyped service lookup on purpose — the QA bundle does not
-                  // link the upload package.
-                  fileUpload: () =>
-                    (
-                      ctx as unknown as {
-                        get(service: string): unknown;
-                      }
-                    ).get("fileUpload") as QaFileUpload | undefined,
-                };
-              } catch {
-                // The face reads host services lazily (cordis service
-                // visibility), so assembly can fail here. Hand the guard an
-                // empty face: it renders the fullscreen failure card instead
-                // of the entry crashing, which would retire the overlay and
-                // uncover the host shell beneath it.
-                return {} as QaSurfaceFace;
-              }
-            },
+            inject: qaFace,
           },
           QaSurfaceGuard,
-        ),
-      );
+        );
+      } else {
+        ctx.slots.inject("shell.overlay", () =>
+          ctx.slots.register(
+            {
+              name: "shell.overlay",
+              id: "dsh-qa-surface",
+              order: -10_000,
+              children: {
+                "qa.surface.panel": { kind: "keyed", scope: "root" },
+              },
+              inject: qaFace,
+            },
+            QaSurfaceGuard,
+          ),
+        );
+      }
     },
   );
   return disposeRemote;

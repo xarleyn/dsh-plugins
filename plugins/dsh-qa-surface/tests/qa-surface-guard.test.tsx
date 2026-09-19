@@ -4,7 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QaSurfaceProps } from "../src/client/QaSurface.js";
 import { QaSurfaceGuard } from "../src/client/QaSurfaceGuard.js";
-import { QA_SURFACE_STYLES } from "../src/client/styles.js";
+import { QA_OVERLAY_STYLES, QA_ROOT_STYLES } from "../src/client/styles.js";
 
 // The guard is the whole `shell.overlay` entry. A render crash inside the
 // surface must be absorbed here and never reported to the host slot
@@ -50,9 +50,12 @@ describe("QaSurfaceGuard", () => {
     // not the operator shell. The hiding rule therefore hangs on the body
     // attribute the surface effect owns (a div deletion cannot unset it) and
     // finds the frame structurally via the host's stable overlay-layer hook.
-    expect(QA_SURFACE_STYLES).toContain(
-      `body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-shell-overlay]){display:none!important}`,
-    );
+    // It belongs to the overlay sheet only: the kiosk sheet never carries a
+    // host-hiding rule, because the kiosk composition never mounts the shell
+    // the rule would hide.
+    const mask = `body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-shell-overlay]){display:none!important}`;
+    expect(QA_OVERLAY_STYLES).toContain(mask);
+    expect(QA_ROOT_STYLES).not.toContain(mask);
   });
 
   it("keeps the body mask attribute set while the surface is broken", () => {

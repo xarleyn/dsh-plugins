@@ -39,6 +39,7 @@ import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
+import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
@@ -397,11 +398,16 @@ export class QaSurface extends TypertRemoteService {
     });
     ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue
-    // into /qa, the loopback operator keeps the full harness UI.
-    ctx.on("webserver/index-inject", (table) => {
-      const row = entryRedirectRow(this.getConfig());
-      if (row !== undefined) table.push(row);
-    });
+    // into /qa, the loopback operator keeps the full harness UI. Not in the
+    // kiosk composition: there the index itself is served under /qa, so the
+    // script would meet its own target on every load and reload the page in
+    // a loop, and the server policy already routes the site root into /qa.
+    if (!qaKioskDeployment()) {
+      ctx.on("webserver/index-inject", (table) => {
+        const row = entryRedirectRow(this.getConfig());
+        if (row !== undefined) table.push(row);
+      });
+    }
     ctx.inject(["settings"], (settingsCtx) => {
       settingsCtx.settings.installSection(
         ctx,
@@ -1291,14 +1297,31 @@ export class QaSurface extends TypertRemoteService {
 
   private refreshRoute(): void {
     const config = this.getConfig();
-    const key = config.enabled
-      ? `${config.route.path}:${config.route.matchChildren}`
-      : undefined;
+    // Kiosk: the harness route policy owns the QA paths and serves the
+    // application there directly. This plugin's navigation redirect route
+    // must not register — a named route shadows the fallback seat, so it
+    // would bounce every /qa navigation to /?marker while the policy bounces
+    // / back to /qa: a redirect loop. The kiosk key keeps the transition
+    // machinery honest (dispose on entering kiosk, no re-registration, one
+    // log line per transition).
+    const key = qaKioskDeployment()
+      ? "kiosk"
+      : config.enabled
+        ? `${config.route.path}:${config.route.matchChildren}`
+        : undefined;
     if (key === this.routeKey) return;
     this.disposeRoute?.();
     this.disposeRoute = undefined;
     this.routeKey = undefined;
     if (key === undefined || this.webServer === undefined) return;
+    if (key === "kiosk") {
+      this.logger.info("route.kiosk", {
+        message:
+          "DSH_UI_MODE=qa: the navigation redirect route is not registered; the harness route policy serves the QA surface directly",
+      });
+      this.routeKey = key;
+      return;
+    }
     this.disposeRoute = registerQaNavigationRoute(this.webServer, config, {
       launchToken: this.launchToken,
     });

@@ -26,6 +26,7 @@ import type {
   QaFeedbackReason,
 } from "../types.js";
 import { effectiveQuickQuestions } from "../starters.js";
+import { qaKioskMode } from "./kiosk.js";
 import type { QaQuickQuestion } from "./types.js";
 import type { QaConfigController } from "./QaConfigController.js";
 import type { QaRouteController } from "./QaRouteController.js";
@@ -103,6 +104,17 @@ import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 import { useQaAdminPreview } from "./role/preview.js";
 
 const noopSubscribe = () => () => undefined;
+
+/**
+ * The surface element's class. In the kiosk composition the element is the
+ * runtime's root occupant, so it carries the root-presentation modifier and
+ * owns the viewport in normal flow; in the overlay composition it covers the
+ * native shell as before. The mode is fixed for the page — the prelude runs
+ * before any application script — so the class is computed once, here.
+ */
+const QA_SURFACE_CLASS = qaKioskMode()
+  ? "dsh-qa-surface dsh-qa-surface--root"
+  : "dsh-qa-surface";
 
 /** Stable empty stand-in so memoized children see one identity, not a fresh []. */
 const NO_QUESTIONS: readonly QaQuickQuestion[] = Object.freeze([]);
@@ -850,7 +862,7 @@ export function QaSurface(props: QaSurfaceProps) {
         <>
           {welcomeNotice}
           <main
-            className="dsh-qa-surface"
+            className={QA_SURFACE_CLASS}
             aria-busy="true"
             aria-label={config.branding.title}
             tabIndex={-1}
@@ -1001,7 +1013,7 @@ export function QaSurface(props: QaSurfaceProps) {
         />
       )}
       <main
-        className="dsh-qa-surface"
+        className={QA_SURFACE_CLASS}
         data-phase={state.phase}
         aria-label={config.branding.title}
         tabIndex={-1}

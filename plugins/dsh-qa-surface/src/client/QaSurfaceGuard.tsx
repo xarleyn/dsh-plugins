@@ -9,6 +9,7 @@ import type {
   QaRouteSnapshot,
 } from "./QaRouteController.js";
 import type { QaConfigController } from "./QaConfigController.js";
+import { qaKioskMode } from "./kiosk.js";
 import { QaSurface, type QaSurfaceProps } from "./QaSurface.js";
 
 /** Fallback route read when the face failed to assemble: keep the page masked. */
@@ -85,10 +86,26 @@ export function QaSurfaceGuard(props: QaSurfaceProps): ReactNode {
     };
   }, [active, props.config]);
 
-  // Off-route the host shell is the page again (the mask attribute lifts);
-  // unmounting the subtree also gives a crashed surface a fresh boundary on
-  // re-entry instead of a permanently stuck failure card.
-  if (!active) return null;
+  // Off-route the host shell is the page again in the overlay composition
+  // (the mask attribute lifts); unmounting the subtree also gives a crashed
+  // surface a fresh boundary on re-entry instead of a permanently stuck
+  // failure card. In the kiosk composition there is no host shell to return
+  // to — this entry owns the root slot — so an off-route or disabled surface
+  // states why the page is empty instead of silently showing nothing.
+  if (!active) {
+    if (!qaKioskMode()) return null;
+    return (
+      <main className="dsh-qa-surface dsh-qa-surface--root" role="alert">
+        <section className="dsh-qa-crash__card">
+          <h1>QA-интерфейс недоступен</h1>
+          <p>
+            Поверхность выключена конфигурацией стенда или запрошен адрес вне
+            её маршрута. Сообщите администратору стенда.
+          </p>
+        </section>
+      </main>
+    );
+  }
   return <QaSurfaceBoundary {...props} />;
 }
 

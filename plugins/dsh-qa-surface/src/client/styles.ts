@@ -54,15 +54,28 @@ const QA_BRAND_TOKENS = Object.entries(QA_BRAND_PALETTE)
   .map(([token, value]) => `--dsh-qa-${tokenName(token)}:${value}`)
   .join(";");
 
+/**
+ * Overlay-compatibility mask (documented exception to the no-hiding-hacks
+ * rule): while the QA surface owns the page in the OVERLAY composition, mask
+ * every sibling of the host's overlay layer inside the app frame, so deleting
+ * the overlay element in the browser reveals a blank page instead of the
+ * operator shell. The mask hangs off the body attribute the surface effect
+ * owns — not off the overlay node itself — and finds the frame structurally,
+ * since the frame's own classes are CSS-module hashed.
+ *
+ * In the kiosk presentation this rule is not shipped at all: the host's
+ * `DSH_UI_MODE=qa` composition never mounts the app frame beneath the
+ * surface, so there is nothing to hide and no hack to carry.
+ */
+const QA_HOST_COLUMN_MASK_RULE = String.raw`
+body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-shell-overlay]){display:none!important}`;
+
 export const QA_SURFACE_STYLES = String.raw`
-/* While the QA surface owns the page, mask every sibling of the host's
-   overlay layer inside the app frame, so deleting the overlay element in the
-   browser reveals a blank page instead of the operator shell. The mask hangs
-   off the body attribute the surface effect owns — not off the overlay node
-   itself — and finds the frame structurally, since the frame's own classes
-   are CSS-module hashed. */
-body[data-dsh-qa-surface="active"] div:has(>[data-shell-overlay])>:not([data-shell-overlay]){display:none!important}
 .dsh-qa-surface{${QA_BRAND_TOKENS};position:fixed;inset:0;z-index:2147483000;pointer-events:auto;display:flex;flex-direction:row;min-width:0;height:100vh;height:100dvh;overflow:hidden;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font-family:inherit}
+/* Root-presentation modifier (kiosk): the surface is registered into the
+   runtime's 'root' slot and owns the viewport in normal flow — no fixed
+   cover, no stacking race, the document has no native shell beneath it. */
+.dsh-qa-surface--root{position:relative;inset:auto;z-index:auto;width:100%}
 .dsh-qa-onboarding{${QA_BRAND_TOKENS};position:fixed;inset:0;z-index:2147483640;display:grid;place-items:center;padding:24px;background:var(--dsh-qa-overlay);color:var(--dsw-alias-label-primary);font-family:inherit}
 .dsh-qa-onboarding__panel{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px;width:min(620px,100%);max-height:100%;overflow-y:auto;padding:28px;border:1px solid var(--dsw-alias-border-l2);border-radius:18px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 22px 64px rgba(0,0,0,.28)}
 .dsh-qa-onboarding__mark{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;background:var(--dsh-qa-accent-soft);color:var(--dsh-qa-accent-hover)}
@@ -843,10 +856,12 @@ ${QA_ADMIN_CONSOLE_STYLES}
 `;
 
 /**
- * Everything the QA overlay paints, as one sheet for one `<style>` tag.
+ * Everything the QA surface paints, as one sheet for one `<style>` tag — the
+ * kiosk form, with no host-hiding rules: in the kiosk composition the native
+ * shell never mounts, so the sheet carries nothing aimed at it.
  *
  * The shared audit components keep their own stylesheet in
- * `@yadsh/dsh-audit-ui`; it is folded in here so the overlay is self-contained
+ * `@yadsh/dsh-audit-ui`; it is folded in here so the surface is self-contained
  * — the audit dialog must look right whether or not the audit plugin's own
  * client bundle happens to have injected the same rules into the document.
  *
@@ -854,6 +869,15 @@ ${QA_ADMIN_CONSOLE_STYLES}
  * way: the data-URI fonts resolve whatever the Host page loads, and identical
  * rules from its own KaTeX stylesheet are harmless.
  */
-export const QA_OVERLAY_STYLES = `${QA_SURFACE_STYLES}
+export const QA_ROOT_STYLES = `${QA_SURFACE_STYLES}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
+
+/**
+ * The overlay-composition sheet: the same rules as {@link QA_ROOT_STYLES}
+ * plus the host-column mask. Deployed into hosts without the kiosk patches,
+ * where the surface still covers a mounted native shell and the mask is what
+ * a deleted overlay element uncovers — a blank page instead of the shell.
+ */
+export const QA_OVERLAY_STYLES = `${QA_HOST_COLUMN_MASK_RULE}
+${QA_ROOT_STYLES}`;
