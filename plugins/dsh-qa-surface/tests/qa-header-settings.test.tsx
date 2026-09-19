@@ -14,7 +14,6 @@ const BASE: QaHeaderProps = {
   title: "Чат",
   viewingSubagent: false,
   onCloseSubagent: () => undefined,
-  agentPreset: null,
   agentCount: 0,
   agentsOpen: false,
   onToggleAgents: () => undefined,

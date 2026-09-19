@@ -6,14 +6,6 @@
  */
 import type { ReactNode } from "react";
 
-function modeLabel(agentPreset: string | null): string {
-  if (agentPreset === null) return "Режим вопросов";
-  const name = agentPreset
-    .replace(/[-_]+/gu, " ")
-    .replace(/^\p{Ll}/u, (letter) => letter.toUpperCase());
-  return `Режим «${name}»`;
-}
-
 function RobotBadge() {
   return (
     <svg
@@ -52,10 +44,9 @@ export interface QaHeaderProps {
   readonly logoUrl: string | null;
   /** The derived conversation title; null hides the heading. */
   readonly title: string | null;
-  /** A subagent view replaces the mode caption with its return control. */
+  /** A subagent view shows its return control in the title row. */
   readonly viewingSubagent: boolean;
   readonly onCloseSubagent: () => void;
-  readonly agentPreset: string | null;
   readonly roleSelector?: ReactNode;
   readonly administration?: { readonly onOpen: () => void };
   readonly agentCount: number;
@@ -92,7 +83,6 @@ export function QaHeader({
   title,
   viewingSubagent,
   onCloseSubagent,
-  agentPreset,
   roleSelector,
   administration,
   agentCount,
@@ -132,17 +122,7 @@ export function QaHeader({
                 ← В чат
               </button>
             </span>
-          ) : (
-            <span className="dsh-qa-header__mode">
-              <svg viewBox="0 0 16 16" aria-hidden="true">
-                <circle cx="8" cy="3.25" r="1.5" />
-                <circle cx="4" cy="11.75" r="1.5" />
-                <circle cx="12" cy="11.75" r="1.5" />
-                <path d="M8 4.75v2.5m0 0H4v3m4-3h4v3" />
-              </svg>
-              {modeLabel(agentPreset)}
-            </span>
-          )}
+          ) : null}
           {roleSelector}
           <button
             type="button"

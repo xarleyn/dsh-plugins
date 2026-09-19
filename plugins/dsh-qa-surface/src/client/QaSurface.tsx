@@ -1069,7 +1069,6 @@ export function QaSurface(props: QaSurfaceProps) {
               title={conversationTitle}
               viewingSubagent={state.viewingSubagent !== null}
               onCloseSubagent={handleCloseSubagent}
-              agentPreset={config.session.agentPreset}
               roleSelector={
                 access === undefined ||
                 selectedSubrole === null ||

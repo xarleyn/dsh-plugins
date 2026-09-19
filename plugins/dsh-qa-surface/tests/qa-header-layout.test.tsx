@@ -15,7 +15,6 @@ const BASE: QaHeaderProps = {
   title: "Чат",
   viewingSubagent: false,
   onCloseSubagent: () => undefined,
-  agentPreset: null,
   agentCount: 0,
   agentsOpen: false,
   onToggleAgents: () => undefined,
@@ -88,5 +87,13 @@ describe("header action cluster", () => {
       "Администрирование",
       "Настройки",
     ]);
+  });
+
+  // The agent-preset caption was a service label a reader could do nothing
+  // about; the title row carries only the conversation and its controls.
+  it("keeps the service mode badge out of the title row", () => {
+    const { container } = render(<QaHeader {...BASE} />);
+    expect(container.querySelector(".dsh-qa-header__mode")).toBeNull();
+    expect(container.querySelector(".dsh-qa-header__viewing")).toBeNull();
   });
 });
