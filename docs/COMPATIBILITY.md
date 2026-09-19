@@ -32,6 +32,7 @@ instance.
 
 | Package | DSH peers |
 | --- | --- |
+| `@yadsh/dsh-answer-review-gate` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
 | `@yadsh/dsh-documents` | Cordis, schemastery, tools, settings, client settings/settings-plugins/slots, React |

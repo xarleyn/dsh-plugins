@@ -1,0 +1,4 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/node",
+  "include": ["src", "tests"]
+}

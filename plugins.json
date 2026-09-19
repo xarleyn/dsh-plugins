@@ -82,6 +82,27 @@
       "client": false
     },
     {
+      "name": "dsh-answer-review-gate",
+      "npm": "@yadsh/dsh-answer-review-gate",
+      "path": "plugins/dsh-answer-review-gate",
+      "description": "Independent answer review gate for DeepSeek Harness agent responses",
+      "keywords": [
+        "answer-review",
+        "agent",
+        "cordis",
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-answer-review-gate",
+        "dsh-plugin",
+        "quality-gate",
+        "review-gate"
+      ],
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-answer-review-gate",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-answer-review-gate#readme",
+      "client": false
+    },
+    {
       "name": "dsh-cas-results",
       "npm": "@yadsh/dsh-cas-results",
       "path": "plugins/dsh-cas-results",
