@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * The client entry's wiring: the QA page and the feature-owned Host tab mount
- * independently of the loopback-only settings namespace directory.
+ * The client entry's wiring: the operator card, the QA page and the
+ * feature-owned Host tab. The operator card edits the plugin's settings
+ * namespace and mounts without waiting for the Remote to describe the
+ * deployment — an operator's first act may be enabling the plugin; the two
+ * user surfaces mount only for an enabled one, independently of the
+ * loopback-only settings namespace directory.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -10,9 +14,11 @@ import { apply } from "../src/client/index.js";
 
 interface SlotRegistration {
   readonly name: string;
+  readonly key?: string;
   readonly id?: string;
   readonly order?: number;
   readonly label?: string;
+  readonly inject?: unknown;
 }
 
 interface Stub {
@@ -21,6 +27,9 @@ interface Stub {
   readonly slots: SlotRegistration[];
   readonly effects: string[];
 }
+
+/** The namespace the operator card binds, captured to pin the identity. */
+const boundNamespaces: string[] = [];
 
 function stub(enabled: boolean): Stub {
   const sections: { id?: string; title?: string; order?: number }[] = [];
@@ -47,6 +56,26 @@ function stub(enabled: boolean): Stub {
       getSnapshot: () => ({ stage: "anonymous", token: null }),
       subscribe: () => () => {},
     },
+    settingsScope: {
+      bind: (spec: { namespace: string }) => {
+        boundNamespaces.push(spec.namespace);
+        return {
+          getSnapshot: () => ({
+            status: "unavailable",
+            value: undefined,
+            base: undefined,
+            user: undefined,
+            revision: undefined,
+            writable: false,
+            mode: "memory",
+          }),
+          subscribe: () => () => {},
+          mutate: async () => {},
+          set: async () => {},
+          unset: async () => {},
+        };
+      },
+    },
     slots: {
       inject: (_name: string, factory: () => unknown) => {
         factory();
@@ -54,11 +83,16 @@ function stub(enabled: boolean): Stub {
       },
       register: (options: {
         name: string;
+        key?: string;
         id?: string;
         order?: number;
         label?: () => string;
+        inject?: () => unknown;
       }) => {
         slots.push({ ...options, label: options.label?.() });
+        // The host calls the slot's inject factory when it dispatches a card;
+        // calling it here is what binds the settings scope.
+        options.inject?.();
         return () => {};
       },
     },
@@ -86,7 +120,7 @@ function settle(): Promise<void> {
 }
 
 describe("integrations client entry", () => {
-  it("mounts both surfaces without settings namespace discovery", async () => {
+  it("mounts all three surfaces while the deployment is enabled", async () => {
     const { ctx, sections, slots } = stub(true);
     await apply(ctx);
     await settle();
@@ -96,7 +130,15 @@ describe("integrations client entry", () => {
       title: "Интеграции",
       order: 40,
     });
+    // The operator card keyed on the plugin's settings namespace, then the
+    // feature-owned tab. The card mounts first: it does not wait for
+    // `describe()`.
     expect(slots).toEqual([
+      {
+        name: "settings.plugin.item",
+        key: "qa-integrations",
+        inject: expect.any(Function),
+      },
       {
         name: "settings.plugins.tab",
         id: "qa-integrations",
@@ -104,14 +146,23 @@ describe("integrations client entry", () => {
         label: "Интеграции",
       },
     ]);
+    expect(boundNamespaces).toEqual(["qa-integrations"]);
   });
 
-  it("registers nothing while the deployment disabled the plugin", async () => {
+  it("keeps only the operator card while the plugin is disabled", async () => {
     const { ctx, sections, slots, effects } = stub(false);
     await apply(ctx);
     await settle();
     expect(sections).toEqual([]);
-    expect(slots).toEqual([]);
+    // The operator card is the surface that enables the plugin, so it mounts
+    // regardless of the deployment's answer; the user surfaces do not.
+    expect(slots).toEqual([
+      {
+        name: "settings.plugin.item",
+        key: "qa-integrations",
+        inject: expect.any(Function),
+      },
+    ]);
     // The stylesheet is mounted with the injection, not with the answer.
     expect(effects).toEqual(["dsh-qa-integrations: styles"]);
   });

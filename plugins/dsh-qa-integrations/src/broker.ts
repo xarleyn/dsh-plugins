@@ -42,18 +42,35 @@ export interface BrokerOptions {
 
 /** In-process broker boundary; no caller outside it receives decrypted secrets. */
 export class IntegrationBroker {
-  private readonly serviceCredentials: ServiceCredentialRegistry | undefined;
-  private readonly defaultForNewConnections: boolean;
+  private serviceCredentials: ServiceCredentialRegistry | undefined;
+  private defaultForNewConnections: boolean;
 
   constructor(
     private readonly repository: IntegrationRepository,
     private readonly secrets: SecretStore,
-    private readonly providers: IntegrationProviderRegistry,
+    private providers: IntegrationProviderRegistry,
     private readonly logger: PluginLogger,
     options: BrokerOptions = {},
   ) {
     this.serviceCredentials = options.serviceCredentials;
     this.defaultForNewConnections = options.defaultForNewConnections ?? true;
+  }
+
+  /**
+   * Re-point the broker at the provider set and service-credential registry a
+   * fresh configuration resolved. The store and its key are process-lifetime —
+   * connections and wrapped secrets travel with them — so only derivations of
+   * the configuration move here. An in-flight call keeps the captures it
+   * already made and finishes against them.
+   */
+  swap(
+    providers: IntegrationProviderRegistry,
+    serviceCredentials: ServiceCredentialRegistry | undefined,
+    defaultForNewConnections: boolean,
+  ): void {
+    this.providers = providers;
+    this.serviceCredentials = serviceCredentials;
+    this.defaultForNewConnections = defaultForNewConnections;
   }
 
   listProviders(): readonly IntegrationProviderSummary[] {

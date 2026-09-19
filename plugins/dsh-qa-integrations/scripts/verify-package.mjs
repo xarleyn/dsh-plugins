@@ -139,11 +139,12 @@ assert.match(client, /Почта аккаунта Atlassian/u);
 assert.match(client, /Atlassian API token/u);
 assert.match(client, /Оператор не настроил ни одного сайта Confluence/u);
 assert.doesNotMatch(client, /atlassian\.net|api\.atlassian\.com/u);
-// The TeamCity address is stand-wide configuration: the card sends the token
-// alone, shows the address the Host resolved, and says so when there is none.
-assert.doesNotMatch(client, /serverUrl/u);
+// The TeamCity address is stand-wide configuration. The user card sends the
+// token alone and shows the address the Host resolved; the operator card is
+// the surface that sets the address, so the field lives there.
 assert.match(client, /задан оператором стенда/u);
 assert.match(client, /Оператор не настроил адрес TeamCity/u);
+assert.match(client, /Адрес сервера TeamCity/u);
 // The Jira card follows the same rule: the site list comes from the Host, the
 // account e-mail is an identity rather than a secret, and the token stays a
 // write-only field.
@@ -191,13 +192,22 @@ for (const address of [
 
 // The feature-owned Plugins tab stays available without the loopback-only Host
 // settings directory. It may reuse the standard card shell inside its own list.
+// Beside it, the operator card edits the plugin's real settings namespace from
+// "Plugin configuration" — the namespace the Host plugin installs as its
+// configuration source, so the card's write re-applies the running service.
 verifyPluginCardContract(client);
 assert.match(client, /"settings\.plugins\.tab"/u);
+assert.match(client, /"settings\.plugin\.item"/u);
 assert.match(client, /"qa-integrations"/u);
-assert.doesNotMatch(client, /"settings\.plugin\.item"/u);
 assert.match(client, /dsh-qa-integrations__host-tab/u);
 assert.match(client, /Развернуть настройки интеграций/u);
 assert.match(client, /Свернуть настройки интеграций/u);
+assert.match(client, /Развернуть конфигурацию интеграций/u);
+assert.match(client, /Свернуть конфигурацию интеграций/u);
+assert.match(client, /Сбросить переопределения/u);
+assert.match(client, /dsh-plugin-card__header/u);
+assert.match(client, /dsh-plugin-card__chevron/u);
+assert.doesNotMatch(client, /⌄|▾/u);
 // The browser has no module table for Node builtins: one `require("node:…")`
 // left in the bundle is a card that never mounts.
 for (const builtin of ["node:path", "node:fs", "node:os", "node:zlib"]) {
