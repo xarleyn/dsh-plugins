@@ -1612,44 +1612,108 @@ It should use a synthetic session without secrets.
 
 ---
 
-## 33. Evaluation corpus
+## 33. Evaluation corpus — executable plan
 
-Before calling the plugin "safe", create a small offline corpus from synthetic or sanitized DSH sessions.
+Before calling the plugin "safe", run it against an offline corpus of
+synthetic DSH sessions. The corpus doubles as the threshold-tuning harness
+and as the A/B baseline against `dsh-compaction-basic` (backend mode, §6.6).
 
-Scenarios:
-
-- repeated file reads;
-- edits invalidating old reads;
-- long grep results;
-- test failures later fixed;
-- test failures still under investigation;
-- API responses that cannot be reproduced;
-- package documentation lookups;
-- user constraints followed by many tools;
-- long shell logs;
-- multi-step debugging;
-- compaction after an earlier summary checkpoint.
-
-For each candidate, manually label:
+### 33.1 Corpus format and location
 
 ```text
-must keep
-safe to truncate
-safe to stub
+tests/eval/
+├── corpus/
+│   ├── <scenario-id>.session.json     # full SessionEvent[] fixture (seq-contiguous)
+│   ├── <scenario-id>.labels.json      # per-candidate labels
+│   └── MANIFEST.md                    # scenario table + intent notes
+├── results/                           # gitignored run artifacts (§34 JSON)
+└── run-eval.mjs                       # offline runner (no network by default)
 ```
 
-Metrics:
+- Sessions are built with the same event vocabulary as the unit fixtures
+  (closed tool steps inside closed turns, optional open tail turn) and must
+  replay through the real `Session` (`Session.create(id, events)`), fold
+  cleanly, and pass `deriveMessages()` — a fixture that cannot replay is a
+  corpus bug, not an eval result.
+- Labels address candidates by `callId` and use exactly the three action
+  grades the policy can emit:
+
+```json
+{
+  "callId": "call-7",
+  "label": "must-keep | safe-to-truncate | safe-to-stub",
+  "why": "one-line rationale, synthetic content only"
+}
+```
+
+### 33.2 Scenario matrix (minimum 12 sessions)
+
+| # | Scenario id | Exercises | Danger axis |
+|---|---|---|---|
+| 1 | `reread-same-file` | repeated reads of one path | low |
+| 2 | `edit-invalidates-read` | read → edit → old read stale | low |
+| 3 | `edit-invalidates-many` | one edit invalidating N older reads | medium |
+| 4 | `long-grep` | one huge search result, never cited again | low |
+| 5 | `grep-cited-later` | search result referenced by later user text | high |
+| 6 | `test-fail-then-fix` | failing run, later fixed, then green | low |
+| 7 | `test-fail-investigating` | failing run still under investigation | high |
+| 8 | `unique-api-response` | non-reproducible external response | high |
+| 9 | `docs-lookup` | package docs query, generic content | low |
+| 10 | `user-constraint-fanout` | explicit user constraint + many tools after | high |
+| 11 | `long-shell-log` | verbose build log, identity matters (head/tail) | medium |
+| 12 | `after-summary-checkpoint` | pruning on a surface that already has a compaction checkpoint | medium |
+
+Scenario intent: every `high` row must contain at least one candidate whose
+correct action is `must-keep` despite looking prune-worthy deterministically
+(old, large, cheap-looking) — those are the rows that catch a dangerous prune.
+
+Synthetic content only (repo leak rules): paths like `src/demo/auth.ts`,
+hosts `api.example.corp`, ticket keys `PROJ-123`.
+
+### 33.3 Runner and metrics
+
+`run-eval.mjs` loads each session + labels, runs the real pipeline with a
+scripted decision backend (label-derived probabilities, so runs are
+deterministic and free), applies plans to a scratch `Session`, and scores:
 
 ```text
-dangerous prune rate
-full-preservation precision
-average context reduction
-Jev request latency
-Jev input tokens
-fallback rate
+dangerousPruneRate  = labeled must-keep candidates with action ≠ KEEP_FULL
+                      ÷ all labeled must-keep candidates     ← PRIMARY
+fullKeepPrecision   = correctly-kept must-keep ÷ kept full
+contextReduction    = Σ savedChars ÷ Σ candidateChars
+summaryFallbackRate = runs where a (backend-mode) summary still fired
+jevRequests / est. input tokens per run (from the state builder, no network)
+latency budget      = local pipeline time excluding backend
 ```
 
-Primary quality metric should be **dangerous prune rate**, not maximum compression.
+Acceptance gates for shipping default thresholds:
+
+- `dangerousPruneRate = 0` on the corpus (any hit blocks the release and
+  forces a pin, threshold change, or feature fix — never a corpus edit);
+- `contextReduction ≥ 0.55` averaged over scenarios 1–4, 9, 11;
+- no run may regress `dangerousPruneRate` versus the previous released
+  thresholds (baselines are checked in under `results/baseline.json`).
+
+### 33.4 Threshold-tuning procedure
+
+1. Sweep `decisions.fullThreshold` ∈ {0.5…0.9 step 0.05} ×
+   `decisions.truncateThreshold` ∈ {0.3…0.6 step 0.05} with the scripted
+   backend; keep the Pareto frontier of (`dangerousPruneRate`,
+   `contextReduction`).
+2. Pick the knee with `dangerousPruneRate = 0`; if no knee is safe, bias
+   `fullThreshold` up (preserve more) — compression is not the goal (§47).
+3. Replay the chosen thresholds against the hosted TypeSafe Jev and a local
+   Jeff backend over the identical corpus; compare per-scenario deltas.
+   Divergences larger than one grade on `high` rows are documented in
+   `docs/evaluation.md` before defaults ship.
+4. Re-run on every planner/features change; the corpus is the regression net
+   for "smart" heuristics.
+
+### 33.5 What the corpus deliberately does not cover
+
+Live provider variance, secret-shaped content, and multi-session workspaces
+are out of scope for the offline corpus; they belong to the rig smoke
+(§38 Track A, phase A6) and to future privacy work (§30).
 
 ---
 
@@ -1800,101 +1864,214 @@ Do not use floating "latest" for all compatibility tests; pin at least one known
 
 ## 38. Implementation phases
 
-### Phase 0 — compatibility spike — COMPLETE
+The plan runs as two tracks. **Track A (companion, 0.1.x)** is the shipped
+architecture of §6.6: own prepended `agent/pre-step` listener, built-in
+compaction untouched below. **Track B (backend, 0.2)** replaces
+`dsh-compaction-basic` through the `ctx.compaction` seam. Track A phases A1–
+A5 landed as one implementation wave; per-phase verification below is what
+each stage contributes to the current test surface.
 
-Executed against the pinned harness release (`dsh-v0.1.5-rc.2`); the verified
-API facts and their consequences are recorded in `docs/compatibility.md`.
-Notable outcome: `tool/result` surface replacement is only legal inside an
-open turn, which reshaped §21.0 (armed plans applied by the pre-step listener).
+### Track A — companion mode
 
-Deliverables:
+#### Phase A0 — compatibility spike — COMPLETE
 
-- `docs/compatibility.md`;
-- minimal test plugin;
-- confirmed pre-step ordering;
-- confirmed surface read/write primitives;
-- confirmed token-meter usage;
-- one manually created replay-safe `tool/result` replacement;
-- reload/replay test.
+Executed against the pinned harness release (`dsh-v0.1.5-rc.2`); verified
+facts and their consequences in `docs/compatibility.md`. Decisive findings:
+`tool/result` replacement is legal only inside an open turn and the
+content-only rewrite rule (§3 there), which shaped §21.0 arming; `{prepend:
+true}` ordering; `tokenMeter.measure` per-node pricing; the command
+invocation/result contract.
 
-**Exit criterion:** a synthetic single-node tool-result replacement survives persistence and DSH can continue the conversation and run ordinary `/compact`.
+**Exit criterion (met):** a synthetic single-node tool-result replacement
+survives persistence and replay; DSH continues the conversation and ordinary
+`/compact` still works.
 
-### Phase 1 — local deterministic planner
+#### Phase A1 — local deterministic planner — COMPLETE (`b69409f`)
 
-No Jev yet.
+Delivered: candidate collection with the full pin set (`collect.ts`),
+deterministic features (`features.ts`), preservation window by position and
+metered tokens, stub/truncate renderers with convergence pinning
+(`render.ts`), plan assembly and savings gate (`plan.ts`, `savings.ts`),
+mutation writer with snapshot revalidation (`apply.ts`).
 
-Implement:
+Verification: `tests/unit/{render-policy-savings,features}.test.ts`,
+`tests/integration/surface.test.ts` (real `Session` replay: prune → reload →
+identical derived messages and `replaceGeneration`).
 
-- candidate collection;
-- feature extraction;
-- preservation window;
-- stub/truncation renderer;
-- dry-run plan;
-- fake decisions;
-- mutation writer;
-- integration tests.
+**Exit criterion (met):** the fake backend safely prunes a fixture session;
+repeated runs converge (markers pin re-pruning).
 
-**Exit criterion:** fake backend can safely prune a fixture session.
+#### Phase A2 — System One backend — COMPLETE (`b69409f`)
 
-### Phase 2 — Jev backend
+Delivered: provider-neutral `SystemOneClient` over the System One scoring
+wire (`backend.ts`) with per-provider presets `typesafe | jeff | custom`
+(`decision.provider`, `SYSTEM_ONE_PRESETS`), keyless mode (empty
+`apiKeyEnv`), timeout + caller cancellation, zero-or-one network/5xx retry,
+strict response validation (`validate.ts`), state builder with progressive
+fitting (`state.ts`), two questions per candidate (`questions.ts`), batching
+with a concurrency cap (`batch.ts`).
 
-Implement:
+Verification: `tests/unit/backend.test.ts` (wire contract, keyless header,
+retry, cancellation), `tests/unit/jev-state-fit-batch.test.ts`,
+`tests/unit/config.test.ts` (preset resolution, custom-required-baseUrl,
+legacy override order).
 
-- API client;
-- auth;
-- timeout/cancellation;
-- state builder;
-- fitting;
-- batching;
-- strict response validation;
-- fake + live smoke tests.
+**Exit criterion (met):** manual `/jev-compact --dry-run` scores a real
+session through the full pipeline with a fake or local backend; malformed
+responses can never trigger pruning.
 
-**Exit criterion:** manual `/jev-compact --dry-run` can score a real local DSH session.
+#### Phase A3 — manual mutation — COMPLETE (`b69409f`)
 
-### Phase 3 — manual mutation
+Delivered: `/jev-compact` and `/jev-compact --dry-run` (`commands/
+jev-compact.ts`) with the arming design of §21.0 — the command scores and
+queues; the prepended pre-step listener recomputes and applies inside the
+open turn; per-item revalidation and partial-failure reporting
+(`apply.ts`); savings report; manual failures surfaced as command errors
+(§29 manual column).
 
-Enable:
+Verification: `tests/integration/service.test.ts` (queueing, fail-open,
+waterfall continuation).
 
-```text
-/jev-compact
-/jev-compact --dry-run
-```
+**Exit criterion (met):** repeated manual runs are idempotent enough and do
+not corrupt replay (integration surface tests reload and recompare).
 
-Add:
+#### Phase A4 — automatic pressure integration — COMPLETE (`b69409f`)
 
-- savings report;
-- surface revision validation;
-- partial-failure reporting.
+Delivered: pressure snapshot over `ctx.tokenMeter` with the routed
+context-window lookup and absolute-token fallback (`dsh/meter.ts`); trigger
+gates (ratio or `minSurfaceTokens`, `minCandidates`, `minCandidateChars`,
+`cooldownTurns`); per-session mutex; prepended pre-step hook
+(`service.ts`, `dsh/lifecycle` wiring in `index.ts`); downstream
+`dsh-compaction-basic` interop by ordering (prepended → basic appended).
 
-**Exit criterion:** repeated manual runs are idempotent enough and do not corrupt replay.
+**Exit criterion (met in fixture scope):** a pressured synthetic session
+prunes automatically; when savings miss the gate, the run skips and the
+built-in summary path remains available (ordering facts in
+`docs/compatibility.md` §1).
 
-### Phase 4 — automatic pressure integration
+#### Phase A5 — release hardening — COMPLETE (`b69409f`, `31b15da`, `b8874eb`)
 
-Implement:
+Delivered: README (privacy notice, provider table, roadmap), NOTICE
+attribution, `compatibility.json` (`agent/pre-step`), version plan,
+`plugins.json` regeneration, root README + `docs/COMPATIBILITY.md` rows,
+phase-0 findings doc, deployment-mode design (§6.6).
 
-- pressure trigger;
-- cooldown;
-- per-session mutex;
-- pre-step hook;
-- integration with downstream built-in compaction.
+**Exit criterion (met):** all repository gates green — plugin `pnpm run
+check`, `verify:logging`, `verify:packages`, `deps:check`,
+`tarball:verify:packages`, prettier; leak sweep clean.
 
-**Exit criterion:** long synthetic session prunes automatically; if savings are insufficient, ordinary summary compaction still occurs.
+#### Phase A6 — 0.1.x hardening (OPEN)
 
-### Phase 5 — evaluation and release hardening
+Ordered backlog, each item independently shippable:
 
-Implement:
+1. **Evaluation corpus + runner** (§33): 12 fixture sessions, labels,
+   `run-eval.mjs`, baseline checked in. Exit: acceptance gates of §33.3 hold
+   with shipped defaults.
+2. **Threshold tuning** (§33.4): sweep + hosted-Jev and Jeff replay over the
+   identical corpus; publish `docs/evaluation.md`.
+3. **Live rig smoke** (opt-in, credentials required): real session on a local
+   rig, `/jev-compact --dry-run` and one armed application; reload the
+   session from storage and confirm the surface; record latencies. Exit:
+   smoke checklist in `docs/evaluation.md`; no durable-log surprises.
+4. **Persisted run stats** (optional): storage-domain counters per session
+   (runs, applied, chars saved) surfaced in `/jev-compact` output. Exit:
+   dispose symmetry proven, no journal writes (§28 holds).
 
-- evaluation corpus;
-- threshold tuning;
-- privacy docs;
-- NOTICE attribution;
-- compatibility matrix;
-- README demo;
-- release package.
+### Track B — backend mode (0.2 target, per §6.6)
+
+#### Phase B0 — entry/loader spike (BLOCKING)
+
+Answer, on a real rig, before any engine code:
+
+1. Does the profile loader accept a subpath specifier as a plugin row
+   (`@yadsh/dsh-jev-compaction/backend`), and does the generated shim's
+   `target.default` compose it? (App-boot resolves bare specifiers and the
+   shim takes `.default`; subpath behavior is unverified.)
+2. Confirm the duplicate-service behavior when both `dsh-compaction-basic`
+   and our engine claim `compaction` (expected: composition error — document
+   the deployment rule "exactly one engine").
+3. Catalog wiring for `@deepseek-ai/dsh-compaction` (both catalogs +
+   lockfile) and `deps:check` posture for the new peer.
+4. Re-verify on 0.1.6-alpha: are `compaction/*` events subject to the new
+   required-projection category, and does our bracket usage need projections?
+
+Deliverable: `docs/backend-mode-spike.md` with the chosen entry mechanic.
+
+**Exit criterion:** an empty stub engine mounted by the chosen mechanic
+serves `/compact` on a rig while `dsh-compaction-basic` is removed from the
+profile, with no journal readability regressions.
+
+#### Phase B1 — engine skeleton
+
+`JevCompactionEngine extends CompactionEngine` providing `ctx.compaction`:
+
+- `compactIfNeeded('pressure')`: below `trigger.jevPruneRatio` → no-op; at
+  it → the existing Jev prune pipeline; remeasure; conventional summary only
+  above `trigger.summaryRatio` (reusing the retained-range selection rules);
+- `compactNow()` / `compactRegion()`: idle-phase summary exactly like
+  basic's manual path; manual tool-result pruning stays under §21.0 arming;
+- the compaction event protocol (`compaction/start` … `compaction/summary`
+  … `compaction/end`), `ManualCompactionError` classes, balanced range
+  selection and surface-stability checks — reuse the seam exports
+  (`toolPairingBalanced*`, checkpoint source); port basic-internal pieces
+  behind `src/dsh/` with tests, upstream changes tracked;
+- two-threshold config lands as §6.6 (`jevPruneRatio` / `summaryRatio`),
+  validated at startup (ordering, [0,1]).
+
+**Exit criterion:** on a rig, a long synthetic session in backend mode never
+summarizes while Jev pruning holds it under `summaryRatio`; forced past it,
+the summary checkpoint lands with correct brackets and replay.
+
+#### Phase B2 — overflow recovery
+
+Re-implement the `agent/request-error` context-overflow path that basic owns
+(not part of the base contract): bypass thresholds, one useful balanced
+reduction, retry accounting, cancellation precedence, durable-progress
+retry-proof (the basic semantics reproduced by tests against our engine).
+
+**Exit criterion:** a forced `CONTEXT_WINDOW_EXCEEDED` recovers through our
+engine with a retry that succeeds; aborts never convert into prunes.
+
+#### Phase B3 — deployment and migration
+
+Preset/kit patch rows for the swap (remove `@deepseek-ai/dsh-compaction-basic`,
+add ours), a migration guide ("what changes for the operator"), README mode
+table, `compatibility.json` `requiredHostFeatures` update, version plan.
+
+**Exit criterion:** the docker kit runs A/B (basic vs ours) through the same
+smoke checklist; rollback is a one-row profile change.
+
+#### Phase B4 — comparative evaluation
+
+§33 corpus across three engines: `compaction-basic`, companion Jev, backend
+Jev. Metrics per §33.3 plus `summaryFallbackRate` and summary-token spend.
+
+**Exit criterion:** backend mode with `dangerousPruneRate = 0` and strictly
+fewer summary invocations than basic at equal pressure profiles.
+
+#### Phase B5 — release 0.2.0
+
+Minor version plan, changelog, README mode docs finalized, wave release.
+
+### Cross-track risks
+
+| Risk | Tracks | Mitigation |
+|---|---|---|
+| Harness 0.1.6 required-projection categories change journal rules | A, B | spike B0.4 pins it; `known-event-types` is generated — re-verify on every harness bump |
+| Two pressure policies drift apart (companion) | A | our default `contextRatio` stays strictly below basic's `0.8`; documented composition; §33 re-run gates |
+| Entry mechanic rejected by the loader | B | fallback mechanic is the second-package layout over a shared workspace core (B0 decision) |
+| Pre-step latency | A, B | pressure-gated, cooldown, tight backend timeout, bounded batching; latency recorded per eval run |
+| Secret exposure via state | A, B | §30 budgets; rig smoke includes a canary-token session; never log state |
 
 ---
 
 ## 39. MVP acceptance criteria
+
+Status after Track A (`b69409f`): every criterion below is implemented and
+covered by the gates listed in §38, with one honest caveat — "built-in DSH
+compaction remains functional" rests on the verified ordering facts
+(`docs/compatibility.md` §1) rather than a live-rig run; the live smoke is
+phase A6.3.
 
 The first public release is acceptable when all of the following hold:
 
@@ -1920,20 +2097,31 @@ The first public release is acceptable when all of the following hold:
 
 ---
 
-## 40. v1.1 candidates
+## 40. Post-0.1 backlog (prioritized, track-tagged)
 
-After MVP:
+Ordered by value-to-risk; `[A]` ships inside companion 0.1.x, `[B]` belongs
+to the backend track, `[A/B]` benefits both.
 
-- smarter superseded-file-read detection;
-- configurable tool-specific preservation policies;
-- provider/tool cost awareness;
-- `agent/request-error` Jev pruning before canonical summary recovery, only if retry semantics can be proven safe;
-- OpenTelemetry metrics;
-- settings/UI panel;
-- per-workspace policy;
-- privacy/redaction rules;
-- plan inspection UI;
-- persisted stats.
+1. `[A]` Evaluation corpus + runner + threshold tuning (§33, phase A6.1–A6.2)
+   — the safety net every later change stands on.
+2. `[A]` Live rig smoke checklist (A6.3) — closes the §39 caveat.
+3. `[B]` B0 entry/loader spike — unblocks the whole backend track.
+4. `[A/B]` Persisted per-session stats (A6.4) — becomes the backend mode's
+   `summaryFallbackRate` telemetry source.
+5. `[A]` Configurable tool-specific preservation policies (per-tool pin or
+   bias overrides in config; must pass the §33 gates).
+6. `[A]` Smarter superseded-file-read detection (path-keyed read/write
+   chains in `features.ts`) — gated by the corpus, never an unconditional
+   delete rule (§10.1).
+7. `[A/B]` Privacy redaction pass over the state builder (best-effort
+   secret patterns, never marketed as complete; §30).
+8. `[B]` Overflow recovery (B2) and the two-threshold policy (B1) — the
+   core of the backend track.
+9. `[A/B]` `agent/request-error` Jev pruning before canonical summary
+   recovery, only if B2 proves the retry semantics safe.
+10. `[A/B]` OpenTelemetry spans/metrics behind the existing structured
+    events; per-workspace policy overrides; plan inspection UI; retrieval
+    of pruned originals (`§41.3`) — evaluate after backend mode lands.
 
 ---
 
@@ -2104,27 +2292,32 @@ This is enough to establish the niche without overbuilding.
 
 ---
 
-## 45. Recommended implementation order for a coding agent
+## 45. Implementation order — as executed, and what follows
 
-1. Read current DSH session, compaction, token-meter, commands, and agent lifecycle docs.
-2. Record exact installed DSH version.
-3. Perform Phase 0 compatibility spike.
-4. Write replay fixture before production mutation code.
-5. Implement normalized internal types.
-6. Implement candidate collection and dry-run using fake decisions.
-7. Implement safe `tool/result` replacement.
-8. Prove persistence/reload.
-9. Add Jev backend behind `DecisionBackend`.
-10. Add state fitting and batching.
-11. Add manual command.
-12. Add auto pre-step integration.
-13. Add compaction interoperability tests.
-14. Build offline evaluation corpus.
-15. Tune thresholds.
-16. Add README, NOTICE, privacy warning, release docs.
-17. Publish `0.1.0`.
+Track A was executed in one wave (spike first, then the full stack):
 
-Do not begin with UI or pair deletion.
+1. Read the harness sources for session, compaction, token meter, commands,
+   and agent lifecycle; record the installed version (`0.1.5-rc.2`).
+2. Phase A0 compatibility spike → `docs/compatibility.md`.
+3. Real-`Session` replay fixtures before any mutation code.
+4. Normalized internal types, structural host views (`src/dsh/`).
+5. Candidate collection, features, policy, savings, plan; dry-run with a
+   fake backend.
+6. Safe `tool/result` replacement + persistence/reload proof.
+7. System One client behind `SystemOneBackend` + provider presets; state
+   fitting and batching; strict validation.
+8. Manual command (dry-run + armed application).
+9. Automatic pre-step integration (pressure, cooldown, mutex).
+10. Compaction interoperability by verified ordering.
+11. README, NOTICE, privacy warning, version plan; gates; commit.
+
+Never begin with UI or pair deletion (unchanged rule).
+
+Next up, in order:
+
+12. Track A6: evaluation corpus, threshold tuning, live rig smoke (§33).
+13. Track B0 spike, then B1–B5 (§38 Track B) toward the 0.2 backend release.
+14. §40 backlog items in priority order as capacity allows.
 
 ---
 
