@@ -7,7 +7,8 @@ export interface QaSubagentRow {
   readonly title: string;
   readonly running: boolean;
   readonly completed: boolean;
-  readonly meta: string;
+  /** Muted facts rendered after the title, one span per part. */
+  readonly meta: readonly string[];
 }
 
 /**
@@ -29,7 +30,7 @@ export function collectSubagents(
       title: summary.blank ? "Субагент" : summary.displayTitle,
       running: summary.running,
       completed: summary.completed === true,
-      meta: relativeTime(summary.updatedAt, now),
+      meta: [relativeTime(summary.updatedAt, now)],
     });
   }
   return rows.sort((left, right) =>
@@ -70,6 +71,11 @@ export function QaAgentsDrawer({
       <div className="dsh-qa-agents__list">
         {agents.map((agent) => {
           const active = activeId === agent.id;
+          const status = agent.running
+            ? ["выполняется"]
+            : agent.completed
+              ? ["завершён"]
+              : agent.meta;
           return (
             <button
               key={agent.id}
@@ -91,12 +97,16 @@ export function QaAgentsDrawer({
               />
               <span className="dsh-qa-agents__text">
                 <span className="dsh-qa-agents__title">{agent.title}</span>
-                <span className="dsh-qa-agents__meta">
-                  {agent.running
-                    ? "выполняется"
-                    : agent.completed
-                      ? "завершён"
-                      : agent.meta}
+                <span
+                  className={
+                    status.length > 1
+                      ? "dsh-qa-agents__meta dsh-qa-agents__meta-list"
+                      : "dsh-qa-agents__meta"
+                  }
+                >
+                  {status.map((part, index) => (
+                    <span key={index}>{part}</span>
+                  ))}
                 </span>
               </span>
               <span className="dsh-qa-agents__open">

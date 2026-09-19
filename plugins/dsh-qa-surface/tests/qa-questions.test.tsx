@@ -48,14 +48,14 @@ const DOUBLE = request([
 function mount(pending: QaPendingQuestion) {
   const onAnswer = vi.fn(async () => undefined);
   const onCancel = vi.fn(async () => undefined);
-  render(
+  const { container } = render(
     <QaQuestions
       questions={[pending]}
       onAnswer={onAnswer}
       onCancel={onCancel}
     />,
   );
-  return { onAnswer, onCancel };
+  return { onAnswer, onCancel, container };
 }
 
 describe("QA question form", () => {
@@ -65,6 +65,49 @@ describe("QA question form", () => {
     expect(screen.getByText("Куда писать отчёт?")).toBeDefined();
     expect(screen.getByText("Отчёт за квартал")).toBeDefined();
     expect(screen.getByText("В Confluence")).toBeDefined();
+  });
+
+  it("hides punctuation-only junk a model put into details and descriptions", () => {
+    const junk = request([
+      {
+        id: "target",
+        question: "Какой объём анализа нужен?",
+        header: null,
+        detail: "?",
+        multiSelect: false,
+        options: [
+          { label: "Подробный анализ", description: "?" },
+          { label: "Краткий анализ", description: "..." },
+          { label: "Обзор", description: "С перечнем разделов" },
+        ],
+      },
+    ]);
+    const { container } = mount(junk);
+    expect(screen.getByText("С перечнем разделов")).toBeDefined();
+    expect(screen.queryByText("?")).toBeNull();
+    expect(screen.queryByText("...")).toBeNull();
+    expect(
+      container.querySelectorAll(".dsh-qa-question__option-description"),
+    ).toHaveLength(1);
+    expect(container.querySelector(".dsh-qa-question__detail")).toBeNull();
+  });
+
+  it("splits the strip into a status text and a right-aligned pager", () => {
+    const { container } = mount(DOUBLE);
+    expect(screen.getByText("Требуется ответ")).toBeDefined();
+    expect(screen.getByText("вопрос 1 из 2")).toBeDefined();
+    const count = container.querySelector(".dsh-qa-question__count");
+    expect(count).not.toBeNull();
+    expect(count?.textContent).toBe("вопрос 1 из 2");
+    expect(
+      container.querySelector(".dsh-qa-question__strip")?.textContent ?? "",
+    ).not.toContain("·");
+  });
+
+  it("keeps the pager out of a single-question strip", () => {
+    const { container } = mount(SINGLE);
+    expect(container.querySelector(".dsh-qa-question__count")).toBeNull();
+    expect(screen.getByText("Требуется ответ")).toBeDefined();
   });
 
   it("sends the chosen option and refuses to submit a blank answer", async () => {
@@ -107,8 +150,10 @@ describe("QA question form", () => {
   });
 
   it("pages through questions and sends one answer per question", async () => {
-    const { onAnswer } = mount(DOUBLE);
-    expect(screen.getByText("Требуется ответ · вопрос 1 из 2")).toBeDefined();
+    const { onAnswer, container } = mount(DOUBLE);
+    expect(screen.getByText("Требуется ответ")).toBeDefined();
+    expect(screen.getByText("вопрос 1 из 2")).toBeDefined();
+    expect(container.querySelector(".dsh-qa-question__count")).not.toBeNull();
     fireEvent.click(screen.getByText("В Confluence"));
     // A single-select choice advances by itself.
     expect(screen.getByText("Какие разделы включить?")).toBeDefined();

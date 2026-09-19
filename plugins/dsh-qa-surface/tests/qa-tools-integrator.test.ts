@@ -96,7 +96,10 @@ describe("QaTools integrator", () => {
         value: { name: "qa-surface", content: "x" },
       },
     );
-    expect(tools.activeToolNames(agent)).toEqual(["qa_tools_selfcheck"]);
+    expect(tools.activeToolNames(agent)).toEqual([
+      "qa_tools_selfcheck",
+      "file_delete",
+    ]);
   });
 
   it("keeps an agent of another preset inactive", () => {
@@ -120,7 +123,10 @@ describe("QaTools integrator", () => {
     const tools = qaTools(w.ctx, { dynamicActivation: false });
     const agent = w.agent("a", "qa-research");
     w.emit("agent/created", { agent });
-    expect(tools.activeToolNames(agent)).toEqual(["qa_tools_selfcheck"]);
+    expect(tools.activeToolNames(agent)).toEqual([
+      "qa_tools_selfcheck",
+      "file_delete",
+    ]);
   });
 
   it("stops reporting names once the plugin disposes", () => {
@@ -135,7 +141,10 @@ describe("QaTools integrator", () => {
         value: { name: "qa-surface", content: "x" },
       },
     );
-    expect(tools.activeToolNames(agent)).toEqual(["qa_tools_selfcheck"]);
+    expect(tools.activeToolNames(agent)).toEqual([
+      "qa_tools_selfcheck",
+      "file_delete",
+    ]);
     tools.dispose();
     // The plugin listener is gone; a later skill load no longer activates.
     const fresh = w.agent("b");

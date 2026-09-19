@@ -18,15 +18,18 @@ function catalog() {
 }
 
 describe("QA tool catalog", () => {
-  it("exposes unique, prefixed names in catalog order", () => {
+  it("exposes unique, known names in catalog order", () => {
     const names = qaToolNames(catalog());
-    expect(names.length).toBeGreaterThan(0);
-    expect(new Set(names).size).toBe(names.length);
-    for (const name of names) expect(name).toMatch(/^qa_/u);
+    expect(names).toEqual(["qa_tools_selfcheck", "file_delete"]);
+  });
+
+  it("lists file_delete exactly once", () => {
+    const names = qaToolNames(catalog());
+    expect(names.filter((name) => name === "file_delete")).toHaveLength(1);
   });
 
   it("carries a stable, non-empty catalog version", () => {
-    expect(QA_TOOL_CATALOG_VERSION).toMatch(/^\d+$/u);
+    expect(QA_TOOL_CATALOG_VERSION).toBe("2");
   });
 
   it("builds without registering anything", () => {

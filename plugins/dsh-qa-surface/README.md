@@ -40,6 +40,12 @@ Session and Agent Loop.
 - attaches its own QA tool catalog per agent only after the activation skill
   loads (`tools.dynamicActivation`), keeping every QA schema out of the initial
   request and restoring the catalog on resume from the session's own journal;
+- ships a destructive-but-fenced `file_delete` tool in that catalog: it removes
+  one regular file strictly inside the chat's workspace and refuses
+  directories, missing paths and anything that leaves the root — symlink
+  escapes included — with an explicit, path-safe reason; every call answers
+  `ask`, so the interactive approval card parks it for the operator and
+  nothing is ever deleted without a person's answer;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
   migration of the browser's existing chats, a `qa-accounts` management CLI
@@ -278,6 +284,20 @@ that will never use them. `tools.dynamicActivation` (the default) inverts that:
 the plugin's catalog is registered into the agent's own scope only after the
 model successfully loads `tools.activationSkill`, and `qa_tools_selfcheck`
 reports the resulting state.
+
+As of catalog version 2 the shipped catalog carries two tools:
+`qa_tools_selfcheck`, the activation diagnostic, and `file_delete`, the one
+destructive capability — it deletes a single regular file strictly inside the
+calling chat's workspace and refuses directories, missing paths and anything
+that escapes the root, symlink escapes included, with an explicit reason that
+never echoes a host path. Every `file_delete` call is answered `ask` by an
+inner gate that sits inside the approval flow, so on a deployment with
+`interaction.approvals: interactive` the interactive approval card parks the
+call for the operator, and on `blocked` the call is refused outright: nothing
+is deleted without a person. Like every catalog tool it is admitted as a
+dynamic name at execution time — it needs no `lockdown.toolPolicy` entry —
+and a role-managed deployment grants it through the same Tools baskets as any
+other tool.
 
 The trigger is the authoritative result of the built-in `skill` tool, not the
 model's attempt, not a keyword in the transcript, and not a coincidentally

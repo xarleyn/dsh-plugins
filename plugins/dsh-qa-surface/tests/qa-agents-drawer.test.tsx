@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 
+import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { collectSubagents } from "../src/client/components/QaAgentsDrawer.js";
+import {
+  collectSubagents,
+  QaAgentsDrawer,
+} from "../src/client/components/QaAgentsDrawer.js";
 import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/client";
 
 describe("subagent panel", () => {
@@ -56,9 +60,34 @@ describe("subagent panel", () => {
     expect(rows[0]).toMatchObject({
       title: "Count words in README.md",
       running: true,
-      meta: "1 мин",
+      meta: ["1 мин"],
     });
     expect(rows[1]).toMatchObject({ completed: true });
+  });
+
+  it("renders each meta part as its own span with no dot separator", () => {
+    const { container } = render(
+      <QaAgentsDrawer
+        agents={[
+          {
+            id: "child",
+            title: "Собрать статистику",
+            running: false,
+            completed: false,
+            meta: ["Задача: Собрать статистику", "Идентификатор: eaa454a4"],
+          },
+        ]}
+        activeId={null}
+        onView={() => undefined}
+        onClose={() => undefined}
+      />,
+    );
+    const meta = container.querySelector(".dsh-qa-agents__meta");
+    expect(meta?.className).toBe(
+      "dsh-qa-agents__meta dsh-qa-agents__meta-list",
+    );
+    expect(meta?.children).toHaveLength(2);
+    expect(container.textContent).not.toContain("·");
   });
 
   it("follows the viewed subagent and ignores unrelated sessions", () => {

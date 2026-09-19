@@ -46,7 +46,10 @@ export function parseSettlement(text: string): SettledSubagent | undefined {
 export interface SettlementView {
   readonly title: string;
   readonly body: string;
-  /** Muted correlation line above the body; absent when the title says it all. */
+  /**
+   * Muted correlation lines above the body, one fact per line; absent when
+   * the title says it all.
+   */
   readonly meta?: string;
 }
 
@@ -103,6 +106,6 @@ export function settlementView(
         ? `Субагент ${shortId} ${settled.ending}`
         : `Субагент «${subject}» ${settled.ending}`,
     body: settled.body,
-    ...(metaParts.length === 0 ? {} : { meta: metaParts.join(" · ") }),
+    ...(metaParts.length === 0 ? {} : { meta: metaParts.join("\n") }),
   };
 }

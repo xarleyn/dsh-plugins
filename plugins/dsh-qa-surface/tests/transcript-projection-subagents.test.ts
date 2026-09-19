@@ -146,6 +146,8 @@ describe("transcript projection", () => {
     expect(notice?.title).not.toContain("Собрать статистику");
     expect(notice?.meta).toContain("Задача: Собрать статистику");
     expect(notice?.meta).toContain("Идентификатор: eaa454a4");
+    // The facts stay separate items; no decorative separator glues them.
+    expect(notice?.meta).not.toContain("·");
   });
 
   it("keeps the short-id title when nothing readable is known", () => {

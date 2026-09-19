@@ -53,13 +53,27 @@ describe("QA approval card", () => {
   });
 
   it("marks a request that came from a delegated child", () => {
-    render(
+    const { container } = render(
       <QaApproval
         approvals={[{ ...REQUEST, delegated: true }]}
         onAnswer={vi.fn(async () => undefined)}
       />,
     );
-    expect(screen.getByText(/запросил субагент/u)).toBeDefined();
+    const mark = screen.getByText("запросил субагент");
+    // The mark is its own span, not a dot-glued suffix of the tool name.
+    expect(mark.className).toBe("dsh-qa-approval__delegated");
+    expect(container.textContent).not.toContain("·");
+  });
+
+  it("leaves the delegation mark off a plain request", () => {
+    const { container } = render(
+      <QaApproval
+        approvals={[REQUEST]}
+        onAnswer={vi.fn(async () => undefined)}
+      />,
+    );
+    expect(screen.queryByText("запросил субагент")).toBeNull();
+    expect(container.querySelector(".dsh-qa-approval__delegated")).toBeNull();
   });
 
   it("answers the refusal from the other button", async () => {

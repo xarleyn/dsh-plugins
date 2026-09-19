@@ -35,6 +35,7 @@ import {
   QaAttestationError,
   qaAttestationFailureMessage,
 } from "./attestation.js";
+import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { entryRedirectRow } from "./entry-redirect.js";
@@ -169,6 +170,7 @@ export class QaSurface extends TypertRemoteService {
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
   private readonly approvals: QaApprovalGate;
+  private readonly fileDeleteGate: QaFileDeleteGate;
   private readonly userQuestions: QaQuestionGate;
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
@@ -322,8 +324,15 @@ export class QaSurface extends TypertRemoteService {
       ownership,
       this.logger,
     );
+    // The destructive tool of the QA catalog composes the same approval flow
+    // around itself: registered without `prepend`, it sits inside the approval
+    // gate and answers `ask` for every file_delete call of an attested chat,
+    // so the interactive card parks it for the operator (or the blocked
+    // configuration refuses it — nothing is deleted without a person).
+    this.fileDeleteGate = new QaFileDeleteGate(ctx, ownership);
     this.approvals.install();
     this.userQuestions.install();
+    this.fileDeleteGate.install();
     // The identity note and the provenance rule ride the conversation as
     // durable context messages, delegated experts included: the QA preset's
     // complete persona closes the system prompt to plugins, the conversation
@@ -357,6 +366,10 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () => () => this.approvals.dispose(),
       "dsh-qa-surface.approvals",
+    );
+    ctx.effect(
+      () => () => this.fileDeleteGate.dispose(),
+      "dsh-qa-surface.file-delete-gate",
     );
     ctx.effect(
       () => () => this.userQuestions.dispose(),

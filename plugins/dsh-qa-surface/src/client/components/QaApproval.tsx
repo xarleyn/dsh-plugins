@@ -43,7 +43,11 @@ export const QaApproval = memo(function QaApproval(props: QaApprovalProps) {
           </p>
           <p className="dsh-qa-approval__tool">
             <code>{approval.toolName}</code>
-            {approval.delegated ? " · запросил субагент" : ""}
+            {approval.delegated ? (
+              <span className="dsh-qa-approval__delegated">
+                запросил субагент
+              </span>
+            ) : null}
           </p>
           <div className="dsh-qa-approval__actions">
             <button

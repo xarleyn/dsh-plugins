@@ -34,6 +34,10 @@ const NO_DRAFT: Draft = { selected: [], custom: "", skipped: false };
 const isAnswered = (draft: Draft): boolean =>
   draft.skipped || draft.selected.length > 0 || draft.custom.trim() !== "";
 
+/** A model may emit junk like "?" as a description; only render text that carries a letter or digit. */
+const isMeaningful = (value: string | null): value is string =>
+  value !== null && /[\p{L}\p{N}]/u.test(value);
+
 /**
  * Encode one question's draft the way the harness decodes it (its
  * user-questions README): a skipped question carries no selection, free text
@@ -124,18 +128,21 @@ function QaQuestionForm({
     <section className="dsh-qa-question" aria-live="polite">
       <p className="dsh-qa-question__strip">
         <span className="dsh-qa-question__dot" aria-hidden="true" />
-        {questions.length > 1
-          ? `Требуется ответ · вопрос ${index + 1} из ${questions.length}`
-          : "Требуется ответ"}
+        <span>Требуется ответ</span>
+        {questions.length > 1 ? (
+          <span className="dsh-qa-question__count">
+            вопрос {index + 1} из {questions.length}
+          </span>
+        ) : null}
       </p>
       {question.header === null ? null : (
         <p className="dsh-qa-question__header">{question.header}</p>
       )}
       <fieldset className="dsh-qa-question__fieldset" disabled={busy !== null}>
         <legend className="dsh-qa-question__text">{question.question}</legend>
-        {question.detail === null ? null : (
+        {isMeaningful(question.detail) ? (
           <p className="dsh-qa-question__detail">{question.detail}</p>
-        )}
+        ) : null}
         {question.options.length === 0 ? null : (
           <div
             className="dsh-qa-question__options"
@@ -160,11 +167,11 @@ function QaQuestionForm({
                     <span className="dsh-qa-question__option-label">
                       {option.label}
                     </span>
-                    {option.description === null ? null : (
+                    {isMeaningful(option.description) ? (
                       <span className="dsh-qa-question__option-description">
                         {option.description}
                       </span>
-                    )}
+                    ) : null}
                   </span>
                 </label>
               );
