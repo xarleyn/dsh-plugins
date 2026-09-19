@@ -56,8 +56,14 @@ export interface BrowserPanelProps extends PropsRuntime<
  * holds the lease expects their own clicks to show up promptly; an idle preview
  * is not worth a screenshot every second.
  */
-const POLL_IDLE_MS = 2_000;
 const POLL_ACTIVE_MS = 1_000;
+/**
+ * Idle panels poll slowly: the frame itself is fetched only when the tab
+ * revision changes (a ~0.5 MB PNG per poll is not a heartbeat), so the idle
+ * poll only costs one small panelState call. A real screencast channel is
+ * the structural fix and stays a SPEC non-goal for this release.
+ */
+const POLL_IDLE_MS = 5_000;
 
 function remoteValue<T>(result: RemoteResult<T>): T {
   if (result.ok) return result.value;
@@ -204,21 +210,23 @@ export function BrowserPanel(props: BrowserPanelProps) {
     [refresh],
   );
 
+  // The busy flag, not the tabs array, is the dependency: every poll produces
+  // new tab objects, and an identity churn here would re-run this effect (and
+  // invalidate an in-flight frame fetch) once per poll.
+  const anyTabLoading =
+    state?.tabs.some((tab) => tab.status === "loading") ?? false;
+
   useEffect(() => {
     if (!owner.visible || owner.sessionId === null) return;
     void refresh(true);
-    const busy =
-      ownsControl ||
-      (state?.tabs.some((tab) => tab.status === "loading") ?? false);
     const timer = window.setInterval(
       () => void refresh(false),
-      busy ? POLL_ACTIVE_MS : POLL_IDLE_MS,
+      ownsControl || anyTabLoading ? POLL_ACTIVE_MS : POLL_IDLE_MS,
     );
     return () => {
       window.clearInterval(timer);
-      requestSequence.current += 1;
     };
-  }, [owner.sessionId, owner.visible, ownsControl, refresh, state?.tabs]);
+  }, [owner.sessionId, owner.visible, ownsControl, anyTabLoading, refresh]);
 
   useEffect(() => {
     if (editingAddress) return;

@@ -85,4 +85,45 @@ describe("BrowserPanel", () => {
     );
     await waitFor(() => expect(mocks.panelFrame).toHaveBeenCalledTimes(2));
   });
+
+  it("renders a frame that settles after the poll effect re-ran", async () => {
+    // Regression: the poll effect's cleanup used to invalidate the in-flight
+    // frame fetch (requestSequence bump), while its tab-array dependency
+    // churned on every poll — the frame arrived and was discarded forever, so
+    // the stage stayed on «Получаем изображение…». The cleanup no longer
+    // invalidates: a frame settling after a re-run must still mount.
+    const releaseRef: { current: ((frame: unknown) => void) | null } = {
+      current: null,
+    };
+    const { remote, mocks } = host(panelState([tab()], "tab-a"));
+    mocks.panelFrame.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseRef.current = resolve;
+        }),
+    );
+    const first = owner(remote);
+    const { rerender } = render(<BrowserPanel {...first} />);
+    await waitFor(() => expect(mocks.panelFrame).toHaveBeenCalledTimes(1));
+
+    // The effect re-runs (the host hides the panel); the fetch is still in
+    // flight when the cleanup runs.
+    rerender(<BrowserPanel {...first} visible={false} />);
+    expect(screen.queryByRole("img", { name: /Example App/u })).toBeNull();
+    releaseRef.current?.({
+      ok: true as const,
+      value: {
+        tabId: "tab-a",
+        revision: 3,
+        url: "https://example.test/app",
+        title: "Example App",
+        mediaType: "image/png",
+        bytes: 1,
+        data: "AA==",
+      },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: /Example App/u })).toBeTruthy(),
+    );
+  });
 });
