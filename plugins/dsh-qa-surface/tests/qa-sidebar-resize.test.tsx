@@ -182,23 +182,17 @@ describe("QA sidebar resize", () => {
     window.localStorage.setItem(`${STATE_KEY}:sidebar-collapsed`, "1");
     window.localStorage.setItem(WIDTH_KEY, "400");
     const { container } = renderSidebar();
-    expect(
-      container.querySelector(".dsh-qa-sidebar--collapsed"),
-    ).toBeTruthy();
+    expect(container.querySelector(".dsh-qa-sidebar--collapsed")).toBeTruthy();
     expect(container.querySelector(".dsh-qa-sidebar__resize")).toBeNull();
 
     fireEvent.click(
-      container.querySelector(
-        ".dsh-qa-sidebar__expand",
-      ) as HTMLButtonElement,
+      container.querySelector(".dsh-qa-sidebar__expand") as HTMLButtonElement,
     );
     const nav = container.querySelector(
       ".dsh-qa-sidebar:not(.dsh-qa-sidebar--collapsed)",
     ) as HTMLElement;
     expect(nav).toBeTruthy();
-    expect(
-      container.querySelector(".dsh-qa-sidebar__resize"),
-    ).toBeTruthy();
+    expect(container.querySelector(".dsh-qa-sidebar__resize")).toBeTruthy();
     expect(nav.style.getPropertyValue("--dsh-qa-sidebar-width")).toBe("400px");
   });
 });
