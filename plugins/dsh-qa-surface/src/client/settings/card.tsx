@@ -49,6 +49,7 @@ import {
   EmbeddingSection,
   InterfaceSection,
   LockdownSection,
+  NotesSection,
   SessionSection,
   SlashSection,
   SourcesSection,
@@ -276,6 +277,7 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
           <SlashSection {...sectionProps} />
           <AccountsSection {...sectionProps} />
           <SourcesSection {...sectionProps} />
+          <NotesSection {...sectionProps} />
           <AttachmentsSection {...sectionProps} />
           <EmbeddingSection {...sectionProps} />
           <div className="qa-card-footer">

@@ -462,6 +462,12 @@ in. See
 [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md)
 for the limits and the prompt's exact wording.
 
+The wording of that note — and of the source-provenance and delegation-naming
+notes — is editable without touching the source: the «Заметки модели» section
+of the settings card (the `notes` config block) mutes each note and rewords
+its text, keeping the generated parts (`{identity}`, `{instructions}`,
+`{reportTool}`) as placeholders.
+
 ### Starter messages
 
 The same `Настройки` dialog carries a «Быстрые сообщения» section where the

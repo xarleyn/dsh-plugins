@@ -19,6 +19,7 @@ export { BrandingSection } from "./sections/branding.js";
 export { EmbeddingSection } from "./sections/embedding.js";
 export { InterfaceSection } from "./sections/interface.js";
 export { LockdownSection } from "./sections/lockdown.js";
+export { NotesSection } from "./sections/notes.js";
 export { SessionSection } from "./sections/session.js";
 export { SlashSection } from "./sections/slash.js";
 export { SourcesSection } from "./sections/sources.js";

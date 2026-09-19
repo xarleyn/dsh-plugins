@@ -493,6 +493,35 @@ const configSchema = z.object({
       ...D.attachments,
       extensions: [...D.attachments.extensions],
     }),
+  notes: z
+    .object({
+      identity: z
+        .object({
+          enabled: z.boolean().default(D.notes.identity.enabled),
+          template: z.string().default(D.notes.identity.template),
+        })
+        .default({ ...D.notes.identity }),
+      sources: z
+        .object({
+          enabled: z.boolean().default(D.notes.sources.enabled),
+          template: z.string().default(D.notes.sources.template),
+          fallbackTemplate: z
+            .string()
+            .default(D.notes.sources.fallbackTemplate),
+        })
+        .default({ ...D.notes.sources }),
+      delegation: z
+        .object({
+          enabled: z.boolean().default(D.notes.delegation.enabled),
+          template: z.string().default(D.notes.delegation.template),
+        })
+        .default({ ...D.notes.delegation }),
+    })
+    .default({
+      identity: { ...D.notes.identity },
+      sources: { ...D.notes.sources },
+      delegation: { ...D.notes.delegation },
+    }),
 });
 
 export const ConfigSchema = configSchema as unknown as z<QaSurfaceConfig>;

@@ -190,5 +190,14 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxPending: 8,
       extensions: DEFAULT_QA_TEXT_EXTENSIONS,
     }),
+    notes: Object.freeze({
+      identity: Object.freeze({ enabled: true, template: "" }),
+      sources: Object.freeze({
+        enabled: true,
+        template: "",
+        fallbackTemplate: "",
+      }),
+      delegation: Object.freeze({ enabled: true, template: "" }),
+    }),
   },
 );

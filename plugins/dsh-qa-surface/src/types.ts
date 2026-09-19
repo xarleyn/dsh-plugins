@@ -586,6 +586,31 @@ export interface QaSourcesConfig {
   };
 }
 
+/**
+ * The ambient notes the injector writes into a QA chat as plugin-sourced user
+ * messages (`prompt-notes.ts`). Each note can be switched off and reworded;
+ * an empty template keeps the built-in wording.
+ */
+export interface QaNotesConfig {
+  /** Who the assistant is talking to; `{identity}` + `{instructions}`. */
+  readonly identity?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
+  /** Source-provenance rules; `{reportTool}` names the subagent report tool. */
+  readonly sources?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+    /** The sentence appended when the report-tool fallback is on. */
+    readonly fallbackTemplate?: string;
+  };
+  /** How to label background delegations; no placeholders. */
+  readonly delegation?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
+}
+
 export interface QaSurfaceConfig {
   readonly enabled?: boolean;
   readonly route?: {
@@ -766,6 +791,7 @@ export interface QaSurfaceConfig {
   };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
+  readonly notes?: QaNotesConfig;
 }
 
 /** What a QA visitor may attach to one message. */
@@ -955,6 +981,18 @@ export interface ResolvedQaSurfaceConfig {
     readonly maxFileBytes: number;
     readonly maxPending: number;
     readonly extensions: readonly string[];
+  };
+  readonly notes: {
+    readonly identity: { readonly enabled: boolean; readonly template: string };
+    readonly sources: {
+      readonly enabled: boolean;
+      readonly template: string;
+      readonly fallbackTemplate: string;
+    };
+    readonly delegation: {
+      readonly enabled: boolean;
+      readonly template: string;
+    };
   };
 }
 

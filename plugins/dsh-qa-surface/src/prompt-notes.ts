@@ -23,6 +23,30 @@ export const QA_SOURCES_NOTE = "dsh-qa-surface:structured-sources";
 /** Note name asking the model to name its delegations. */
 export const QA_DELEGATION_NOTE = "dsh-qa-surface:delegation-naming";
 
+/**
+ * Built-in note texts. Each is the fallback for its settings template
+ * (`notes.*.template`); the placeholders mark the parts the injector
+ * substitutes. Unknown or empty placeholders render as empty text.
+ */
+export const QA_IDENTITY_NOTE_TEMPLATE = "{identity}\n\n{instructions}";
+export const QA_SOURCES_NOTE_TEMPLATE =
+  "Source provenance is collected automatically from your tool calls; the QA surface lists what it collected beside the answer. Do not append a manual Sources/Источники bibliography of your own.";
+export const QA_SOURCES_FALLBACK_TEMPLATE =
+  "A delegated run whose provider cannot expose tool events must call {reportTool} before finishing.";
+export const QA_DELEGATION_NOTE_TEMPLATE =
+  "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.";
+
+/** Substitute `{name}` placeholders; a placeholder without a value drops out. */
+function renderTemplate(
+  template: string,
+  tokens: Record<string, string>,
+): string {
+  return template.replace(/\{(\w+)\}/g, (token, name: string) => {
+    const value = tokens[name];
+    return value === undefined ? token : value;
+  });
+}
+
 /** Bound on the durable delegation chain walked to find a chat's root session. */
 const QA_NOTES_MAX_DEPTH = 64;
 
@@ -199,6 +223,7 @@ export class QaPromptNotes {
   ): readonly QaPromptNote[] {
     const profileConfig = config.accounts.profile;
     if (!profileConfig.enabled || !profileConfig.inject) return [];
+    if (!config.notes.identity.enabled) return [];
     const identity = this.identityOf(rootSessionId);
     if (identity === undefined) return [];
     const rendered = renderUserIdentity({
@@ -206,9 +231,17 @@ export class QaPromptNotes {
       profile: identity.profile,
       identities: profileConfig.identities,
     });
-    const text = [rendered.identity, rendered.instructions]
-      .filter((part) => part !== "")
-      .join("\n\n");
+    const parts = [rendered.identity, rendered.instructions];
+    // `{identity}` is the payload: a template without it would inject a note
+    // that never says who the user is, so it falls back to the built-in order.
+    const template = config.notes.identity.template;
+    const text =
+      template === "" || !template.includes("{identity}")
+        ? parts.filter((part) => part !== "").join("\n\n")
+        : renderTemplate(template, {
+            identity: rendered.identity,
+            instructions: rendered.instructions,
+          }).trim();
     return text === "" ? [] : [{ name: QA_IDENTITY_NOTE, text }];
   }
 
@@ -219,12 +252,26 @@ export class QaPromptNotes {
   ): readonly QaPromptNote[] {
     const sources = config.sources;
     if (!sources.enabled || !this.options.isQaSession(rootSessionId)) return [];
+    if (!config.notes.sources.enabled) return [];
     const lines = [
-      "Source provenance is collected automatically from your tool calls; the QA surface lists what it collected beside the answer. Do not append a manual Sources/Источники bibliography of your own.",
+      renderTemplate(
+        config.notes.sources.template === ""
+          ? QA_SOURCES_NOTE_TEMPLATE
+          : config.notes.sources.template,
+        { reportTool: QA_REPORT_SOURCES_TOOL },
+      ),
     ];
     if (sources.subagents.enableReportToolFallback) {
+      const fallback = config.notes.sources.fallbackTemplate;
+      // `{reportTool}` is what makes the fallback actionable; without it the
+      // built-in sentence is the safer carrier.
       lines.push(
-        `A delegated run whose provider cannot expose tool events must call ${QA_REPORT_SOURCES_TOOL} before finishing.`,
+        renderTemplate(
+          fallback === "" || !fallback.includes("{reportTool}")
+            ? QA_SOURCES_FALLBACK_TEMPLATE
+            : fallback,
+          { reportTool: QA_REPORT_SOURCES_TOOL },
+        ),
       );
     }
     return [{ name: QA_SOURCES_NOTE, text: lines.join("\n") }];
@@ -238,10 +285,15 @@ export class QaPromptNotes {
    */
   private delegationNotes(rootSessionId: string): readonly QaPromptNote[] {
     if (!this.options.isQaSession(rootSessionId)) return [];
+    if (!this.options.config().notes.delegation.enabled) return [];
+    const template = this.options.config().notes.delegation.template;
     return [
       {
         name: QA_DELEGATION_NOTE,
-        text: "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.",
+        text:
+          template === ""
+            ? QA_DELEGATION_NOTE_TEMPLATE
+            : renderTemplate(template, {}).trim(),
       },
     ];
   }

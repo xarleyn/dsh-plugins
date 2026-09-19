@@ -6,6 +6,7 @@ import {
 } from "./config-resolvers/basics.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./config-resolvers/defaults.js";
 import { resolveLockdown } from "./config-resolvers/lockdown.js";
+import { resolveNotes } from "./config-resolvers/notes.js";
 import { resolveSession } from "./config-resolvers/session.js";
 import { resolveSlashCommands } from "./config-resolvers/slash-commands.js";
 import { resolveSources } from "./config-resolvers/sources.js";
@@ -59,5 +60,6 @@ export function resolveConfig(
     sources,
     attachments,
     tools,
+    notes: resolveNotes(input.notes),
   });
 }

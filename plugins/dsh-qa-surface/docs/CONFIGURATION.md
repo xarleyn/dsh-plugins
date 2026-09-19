@@ -259,6 +259,48 @@ provenance rather than write a bibliography is unchanged either way.
 See [Structured sources migration](SOURCES-MIGRATION.md) before removing an
 older prompt-authored bibliography convention.
 
+## Model notes
+
+The `notes` block governs the ambient plugin messages themselves: the three
+notes the injector writes into a QA chat as hidden user messages — who the
+user is (`identity`), the source-provenance rules (`sources`), and how to
+label background delegations (`delegation`). Each can be muted and reworded
+without touching the plugin source, from the «Заметки модели» section of the
+settings card or the deployment config:
+
+```yaml
+notes:
+  identity:
+    enabled: true
+    # {identity} - name, email and handles; {instructions} - the user's own
+    # guidance. Empty string keeps the built-in wording.
+    template: ""
+  sources:
+    enabled: true
+    template: "" # the provenance sentence
+    fallbackTemplate: "" # {reportTool} names the subagent report tool
+  delegation:
+    enabled: true
+    template: ""
+```
+
+- An empty template always resolves to the built-in text, so a deployment can
+  flip a note back to the shipped wording by clearing the field.
+- `notes.identity.template` must keep the `{identity}` placeholder; a wording
+  that never says who the user is falls back to the built-in composition
+  instead of silently anonymizing the note. `{instructions}` renders as empty
+  text while the profile carries none.
+- `notes.sources.fallbackTemplate` must keep `{reportTool}`; the fallback
+  sentence exists to name the tool, so one without the placeholder falls back
+  to the built-in sentence.
+- Muting stops future notes only. A note already delivered stays in the
+  conversation it reached; the injector writes again as soon as the text
+  changes, so rewording an existing note updates on the next step rather than
+  duplicating.
+- Notes are advisory text and never authority. The lockdown, the tool
+  allow-list and the sandbox keep holding whatever the conversation says, so
+  muting or rewording a note cannot widen what a chat may do.
+
 ## Accounts and the QA gate
 
 `accounts.enabled: true` mounts the login/registration gate in front of the
