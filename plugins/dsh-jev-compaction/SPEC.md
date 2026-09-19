@@ -289,6 +289,76 @@ For v1, prefer **Jev first** if listener ordering allows it, because Jev can pre
 
 If compatibility or ordering proves unreliable, document a supported composition and make tests enforce it.
 
+### 6.6 Deployment modes: `companion` (shipped) and `backend` (target)
+
+Compaction in DSH is a capability seam, and the harness explicitly invites
+alternative backends. Verified against the pinned sources (0.1.5-rc.2):
+
+- `CompactionEngine extends Service` registers under the service name
+  `compaction` (`packages/compaction/compaction/src/index.ts`); the package
+  README documents mounting a backend by profile row
+  (`- name: '@deepseek-ai/dsh-compaction-basic'`) and names "a backend with a
+  different summarizer" as the intended extension.
+- `dsh-command-compact` declares `inject = ['commands', 'compaction']` — it
+  depends on the seam, not on `dsh-compaction-basic`. `/compact` keeps working
+  unchanged when a different engine provides `ctx.compaction`.
+- Shipped basic defaults: `thresholdRatio = 0.8`, `retainRatio = 0.16`. The
+  optional deterministic pruner runs only AFTER the threshold is already
+  reached, and the LLM summary runs only if a remeasure is still above it —
+  so below 80% nothing prunes tool results today. Semantic GC that starts
+  earlier is genuine headroom, not a duplicate.
+- The `ctx.toolResultPruner` seam is synchronous
+  (`pruneSession(session): PruneResult`); an asynchronous Jev decision cannot
+  ride it. Jev can therefore either sit before the threshold decision
+  (companion) or own the engine (backend) — there is no third "drop-in async
+  pruner" path.
+
+Consequences for this plugin:
+
+**`companion` mode — shipped 0.1.0.** Own prepended `agent/pre-step` listener;
+`dsh-compaction-basic` stays mounted and remains the summary fallback. Lowest
+risk, no compaction contract to honor; cost: two pressure policies and an
+ordering relationship to maintain.
+
+**`backend` mode — target architecture (0.2+).** The package provides
+`ctx.compaction` by subclassing `CompactionEngine` and must honor the full
+contract:
+
+- `compactIfNeeded(trigger)` — Jev prune first at an early semantic threshold,
+  remeasure, conventional summary fallback only above a second, higher
+  threshold:
+
+  ```yaml
+  trigger:
+    jevPruneRatio: 0.65 # semantic GC starts here
+    summaryRatio: 0.82  # conventional summary only above this
+  ```
+
+- `compactNow()` / `compactRegion()` — manual and programmatic entry points.
+  Manual summary compaction may run in the idle phase (like basic's
+  `compactNow`); manual *tool-result* pruning remains bound by the open-turn
+  invariant, so the §21.0 arming design carries over to backend mode.
+- **Overflow recovery is not part of the base contract.** The
+  `agent/request-error` context-overflow listener is registered by
+  `dsh-compaction-basic` itself; a replacement engine must re-implement it.
+- The compaction event protocol (`compaction/start` … `compaction/summary` …
+  `compaction/end` brackets), `ManualCompactionError` failure classes,
+  balanced range selection and surface-stability checks (basic's region
+  machinery; the seam package exports the tool-pairing and checkpoint
+  building blocks).
+- New peer dependency `@deepseek-ai/dsh-compaction` (catalog additions) and an
+  updated `requiredHostFeatures`.
+
+**`mode` cannot be runtime config.** The profile loader imports the package
+and composes its default export; the service name is fixed at class
+construction (`'jevCompaction'` for the companion service, `'compaction'` for
+an engine), and mounting both engines simultaneously collides on the
+`compaction` service name. Mode therefore selects the composition entry, by
+one of two mechanics to be decided by a small compatibility spike before
+implementation: a subpath export (e.g. `@yadsh/dsh-jev-compaction/backend`)
+mounted as its own profile row, or a second package over a shared workspace
+core (plugin-to-plugin dependencies are forbidden by `pnpm deps:check`).
+
 ---
 
 ## 7. High-level architecture
@@ -1877,9 +1947,17 @@ Explore removal of both historical tool call and result only when DSH provides a
 
 Do not implement through brittle private event surgery.
 
-### 41.2 Jev-backed compaction engine
+### 41.2 Jev-backed compaction engine (promoted to the §6.6 target)
 
-Investigate a real `CompactionEngine` implementation only if selective pruning proves insufficient and DSH compaction contracts evolve to support non-summary range transformations cleanly.
+The full replacement of `dsh-compaction-basic` — subclassing
+`CompactionEngine`, Jev prune as the first stage, conventional summary as the
+fallback — is no longer speculative: the `ctx.compaction` seam is designed for
+alternative backends, and `/compact` keeps working through it. See §6.6 for
+the verified contract, the two-threshold policy, the re-implementation
+obligations (overflow recovery, event protocol, entry-selection constraint),
+and the spike that must precede implementation. The original precondition is
+superseded; what remains deferred is only the spike and the build itself,
+planned for 0.2.
 
 ### 41.3 Retrieval of pruned originals
 
@@ -2000,7 +2078,8 @@ a pluggable decision backend.**
 
 ## 44. Suggested first release scope
 
-Keep `0.1.0` small:
+Keep `0.1.0` small (companion mode per §6.6; the `backend` replacement is the
+0.2+ target):
 
 ```text
 ✓ manual dry-run

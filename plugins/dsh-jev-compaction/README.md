@@ -140,6 +140,32 @@ jev-compaction:
 Without a resolvable model context window the automatic trigger falls back to
 `trigger.minSurfaceTokens` on the metered total instead of guessing a ratio.
 
+### Decision provider presets
+
+The `decision` block selects the scoring endpoint by preset instead of
+listing the endpoint fields by hand:
+
+```yaml
+jev-compaction:
+  decision:
+    provider: typesafe   # typesafe | jeff | custom
+    # typesafe:            # per-preset overrides (optional)
+    #   model: jev-latest
+    # custom:              # `provider: custom` requires an explicit baseUrl
+    #   baseUrl: https://internal.example.corp/v1/systemone
+    #   apiKeyEnv: MY_JEV_KEY
+```
+
+- `typesafe` — the public TypeSafe AI System One endpoint (`jev-latest`,
+  `TYPESAFE_API_KEY`); the default.
+- `jeff` — a local System One-compatible server on `http://localhost:8000`
+  (`JEFF_API_KEY`).
+- `custom` — bring your own endpoint; an explicit `baseUrl` is required and
+  a missing one fails loudly at startup.
+
+The flat `jev.*` fields from the example above remain supported and override
+the resolved preset one-for-one.
+
 ## Comparison
 
 | Approach | User/assistant text | Tool output | Durable original | Semantic |
@@ -152,6 +178,17 @@ The selection decision can still be wrong; this plugin does not claim
 lossless compaction. Use `/jev-compact --dry-run` to audit what would be
 pruned before enabling automatic mode. The original of every pruned result
 stays recoverable from the session log.
+
+## Roadmap
+
+- **0.1 — companion mode (this release):** runs before `dsh-compaction-basic`;
+  the built-in engine remains the summary fallback.
+- **0.2 — `backend` mode (target):** the plugin provides `ctx.compaction`
+  itself — Jev pruning at an early semantic threshold, conventional summary
+  fallback above a higher one — replacing `dsh-compaction-basic` through the
+  official capability seam; `/compact` keeps working unchanged. Design notes:
+  SPEC §6.6 and
+  [docs/compatibility.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/compatibility.md).
 
 ## Compatibility
 
