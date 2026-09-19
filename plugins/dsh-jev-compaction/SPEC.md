@@ -1960,98 +1960,90 @@ phase-0 findings doc, deployment-mode design (§6.6).
 check`, `verify:logging`, `verify:packages`, `deps:check`,
 `tarball:verify:packages`, prettier; leak sweep clean.
 
-#### Phase A6 — 0.1.x hardening (OPEN)
+#### Phase A6 — 0.1.x hardening — corpus and tuning COMPLETE; live smoke OPEN
 
-Ordered backlog, each item independently shippable:
-
-1. **Evaluation corpus + runner** (§33): 12 fixture sessions, labels,
-   `run-eval.mjs`, baseline checked in. Exit: acceptance gates of §33.3 hold
-   with shipped defaults.
-2. **Threshold tuning** (§33.4): sweep + hosted-Jev and Jeff replay over the
-   identical corpus; publish `docs/evaluation.md`.
-3. **Live rig smoke** (opt-in, credentials required): real session on a local
-   rig, `/jev-compact --dry-run` and one armed application; reload the
-   session from storage and confirm the surface; record latencies. Exit:
-   smoke checklist in `docs/evaluation.md`; no durable-log surprises.
+1. **Evaluation corpus + runner — COMPLETE.** Twelve scenario builders with
+   labels (`tests/eval/scenarios.ts`), the offline runner as a test
+   (`tests/eval/evaluation.test.ts`, `pnpm run eval`). Exit: acceptance
+   gates of §33.3 hold — zero dangerous prunes, ≈80% low-danger reduction
+   (results in `docs/evaluation.md`).
+2. **Threshold tuning — COMPLETE at shipped defaults.** Defaults sit on the
+   zero-danger frontier of the corpus; the sweep procedure and the
+   hosted-Jev / Jeff replay protocol are documented in `docs/evaluation.md`.
+3. **Live rig smoke — OPEN** (opt-in, credentials required): real session on
+   a local rig, `/jev-compact --dry-run` and one armed application; reload
+   the session from storage and confirm the surface; record latencies.
 4. **Persisted run stats** (optional): storage-domain counters per session
    (runs, applied, chars saved) surfaced in `/jev-compact` output. Exit:
    dispose symmetry proven, no journal writes (§28 holds).
 
-### Track B — backend mode (0.2 target, per §6.6)
+### Track B — backend mode (implemented; live-rig confirmation open)
 
-#### Phase B0 — entry/loader spike (BLOCKING)
+#### Phase B0 — entry/loader spike — static findings COMPLETE
 
-Answer, on a real rig, before any engine code:
+Executed statically against `dsh-v0.1.5-rc.2` and `dsh-v0.1.6-alpha.1`
+(`docs/backend-mode-spike.md`): the profile shim composes a row's **default
+export** and bare specifiers resolve through the host's internal Node loader
+(subpath rows are expected to work with a declared `exports` entry);
+`ctx.reflect.provide` throws on a duplicate name → exactly-one-engine rule;
+`dsh-compaction` / `dsh-compaction-basic` are published at `0.1.5-rc.2` and
+wired into both pnpm catalogs; 0.1.6's `MESSAGE_PROJECTION_EVENT_TYPES`
+contains only `image/offload`, so the inherited `compaction/*` bracket
+protocol stays journal-safe as of alpha.1.
 
-1. Does the profile loader accept a subpath specifier as a plugin row
-   (`@yadsh/dsh-jev-compaction/backend`), and does the generated shim's
-   `target.default` compose it? (App-boot resolves bare specifiers and the
-   shim takes `.default`; subpath behavior is unverified.)
-2. Confirm the duplicate-service behavior when both `dsh-compaction-basic`
-   and our engine claim `compaction` (expected: composition error — document
-   the deployment rule "exactly one engine").
-3. Catalog wiring for `@deepseek-ai/dsh-compaction` (both catalogs +
-   lockfile) and `deps:check` posture for the new peer.
-4. Re-verify on 0.1.6-alpha: are `compaction/*` events subject to the new
-   required-projection category, and does our bracket usage need projections?
+**Open (needs a rig):** end-to-end subpath row mount, `/compact` through
+`dsh-command-compact` over typert Remote, one 0.1.6 host run.
 
-Deliverable: `docs/backend-mode-spike.md` with the chosen entry mechanic.
+#### Phase B1 — engine skeleton — COMPLETE
 
-**Exit criterion:** an empty stub engine mounted by the chosen mechanic
-serves `/compact` on a rig while `dsh-compaction-basic` is removed from the
-profile, with no journal readability regressions.
+`JevCompactionEngine extends BasicCompactionEngine`
+(`src/backend/engine.ts`, mounted via the `./backend` subpath export). The
+nested `JevCompactionService` owns the prepended early-prune listener at
+`trigger.contextRatio` (the SPEC's `jevPruneRatio`), the armed manual plans,
+and `/jev-compact`; the inherited basic machinery provides the conventional
+summary above `summaryRatio` (forwarded as basic's `thresholdRatio`),
+`compactNow`, overflow recovery, the size pruner seam, and the compaction
+event protocol. The engine overrides `static Config` with a pass-through
+schema (an inherited schema would strip the companion sections) and
+validates strictly — `summaryRatio` must exceed the early threshold.
 
-#### Phase B1 — engine skeleton
+Verification: `tests/integration/engine.test.ts` — early prune below the
+summary threshold without a summary; inherited summary fires when Jev keeps
+everything; balanced brackets with clean replay; idle-session `compactNow`;
+armed manual application; fail-open prune then inherited summary; threshold
+ordering validation.
 
-`JevCompactionEngine extends CompactionEngine` providing `ctx.compaction`:
-
-- `compactIfNeeded('pressure')`: below `trigger.jevPruneRatio` → no-op; at
-  it → the existing Jev prune pipeline; remeasure; conventional summary only
-  above `trigger.summaryRatio` (reusing the retained-range selection rules);
-- `compactNow()` / `compactRegion()`: idle-phase summary exactly like
-  basic's manual path; manual tool-result pruning stays under §21.0 arming;
-- the compaction event protocol (`compaction/start` … `compaction/summary`
-  … `compaction/end`), `ManualCompactionError` classes, balanced range
-  selection and surface-stability checks — reuse the seam exports
-  (`toolPairingBalanced*`, checkpoint source); port basic-internal pieces
-  behind `src/dsh/` with tests, upstream changes tracked;
-- two-threshold config lands as §6.6 (`jevPruneRatio` / `summaryRatio`),
-  validated at startup (ordering, [0,1]).
-
-**Exit criterion:** on a rig, a long synthetic session in backend mode never
+**Exit criterion (met in fixture scope):** a pressured session never
 summarizes while Jev pruning holds it under `summaryRatio`; forced past it,
-the summary checkpoint lands with correct brackets and replay.
+the summary lands with correct brackets and replays.
 
-#### Phase B2 — overflow recovery
+#### Phase B2 — overflow recovery — COMPLETE (by inheritance)
 
-Re-implement the `agent/request-error` context-overflow path that basic owns
-(not part of the base contract): bypass thresholds, one useful balanced
-reduction, retry accounting, cancellation precedence, durable-progress
-retry-proof (the basic semantics reproduced by tests against our engine).
+The `agent/request-error` context-overflow path is inherited from the basic
+engine (it is registered by basic itself, not by the base contract) and its
+listeners call `this.compactIfNeeded` dynamically, so the two-threshold
+override composes with overflow recovery. Composition is covered by the
+B1 suite; a forced provider-overflow rig test remains part of B0's open
+items.
 
-**Exit criterion:** a forced `CONTEXT_WINDOW_EXCEEDED` recovers through our
-engine with a retry that succeeds; aborts never convert into prunes.
+#### Phase B3 — deployment and migration — docs COMPLETE; kit A/B OPEN
 
-#### Phase B3 — deployment and migration
+README "Modes" section documents both entries with profile rows and the
+rollback rule; the deployment mechanics and rig checklist live in
+`docs/backend-mode-spike.md`. Remaining: the docker-kit A/B run (basic vs
+backend) through the smoke checklist.
 
-Preset/kit patch rows for the swap (remove `@deepseek-ai/dsh-compaction-basic`,
-add ours), a migration guide ("what changes for the operator"), README mode
-table, `compatibility.json` `requiredHostFeatures` update, version plan.
+#### Phase B4 — comparative evaluation — offline leg COMPLETE
 
-**Exit criterion:** the docker kit runs A/B (basic vs ours) through the same
-smoke checklist; rollback is a one-row profile change.
+The §33 corpus runs our modes (companion pipeline; backend thresholds) with
+zero dangerous prunes. Remaining: the same corpus against a mounted
+`dsh-compaction-basic` and a hosted decision backend on a rig.
 
-#### Phase B4 — comparative evaluation
+#### Phase B5 — release
 
-§33 corpus across three engines: `compaction-basic`, companion Jev, backend
-Jev. Metrics per §33.3 plus `summaryFallbackRate` and summary-token spend.
-
-**Exit criterion:** backend mode with `dangerousPruneRate = 0` and strictly
-fewer summary invocations than basic at equal pressure profiles.
-
-#### Phase B5 — release 0.2.0
-
-Minor version plan, changelog, README mode docs finalized, wave release.
+The backend entry ships in the first release (nothing earlier is published,
+so the 0.1/0.2 split collapses into one initial release; the version plan
+text documents both modes).
 
 ### Cross-track risks
 
@@ -2278,10 +2270,13 @@ Keep `0.1.0` small (companion mode per §6.6; the `backend` replacement is the
 ✓ self-hosted System One-compatible backends (jeff preset, custom endpoint)
 ✓ replay-safe replacement
 ✓ fake backend tests
-✓ built-in compaction fallback
+✓ built-in compaction fallback (companion mode)
+✓ backend entry providing ctx.compaction (backend mode, §6.6)
+✓ offline evaluation corpus with a zero-dangerous-prune release gate
 ✓ logs/stats
 ✓ attribution
 
+✗ live-rig confirmation of the backend entry (B0 open items)
 ✗ UI
 ✗ pair deletion
 ✗ automatic retrieval

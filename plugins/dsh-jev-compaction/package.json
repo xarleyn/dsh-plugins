@@ -20,6 +20,10 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./backend": {
+      "types": "./lib/backend/index.d.ts",
+      "default": "./lib/backend/index.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -40,12 +44,16 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-compaction": "catalog:dsh",
+    "@deepseek-ai/dsh-compaction-basic": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-compaction": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-compaction-basic": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
@@ -82,6 +90,7 @@
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eval": "vitest run tests/eval",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",

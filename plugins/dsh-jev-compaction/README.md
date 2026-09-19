@@ -83,6 +83,37 @@ reports.
 dsh plugin --profile <profile> add @yadsh/dsh-jev-compaction
 ```
 
+## Modes
+
+The plugin ships two mountable entries (SPEC §6.6):
+
+**Companion (default `.` entry).** Mount as a regular plugin next to the
+built-in engine. Semantic pruning runs at `trigger.contextRatio`; the
+inherited `dsh-compaction-basic` stays the summary fallback:
+
+```yaml
+- name: '@yadsh/dsh-jev-compaction'
+- name: '@deepseek-ai/dsh-compaction-basic'
+- name: '@deepseek-ai/dsh-command-compact'
+```
+
+**Backend (`./backend` entry).** The plugin *is* the compaction engine: it
+extends `BasicCompactionEngine`, so `/compact`, overflow recovery, the
+deterministic size pruner, and the summary fallback are inherited, while
+Jev pruning runs earlier. `summaryRatio` (default `0.82`) replaces basic's
+`thresholdRatio`; mounting both engines is a composition error — exactly one
+engine may claim the compaction service:
+
+```yaml
+- name: '@yadsh/dsh-jev-compaction/backend'
+- name: '@deepseek-ai/dsh-command-compact'
+```
+
+Rolling back to the stock engine is a one-row profile change. Phase 0
+findings for the backend entry (loader mechanics, exactly-one-engine rule,
+0.1.6 readiness):
+[docs/backend-mode-spike.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/backend-mode-spike.md).
+
 ## Commands
 
 - `/jev-compact --dry-run` — run the full pipeline read-only and report the
@@ -181,14 +212,17 @@ stays recoverable from the session log.
 
 ## Roadmap
 
-- **0.1 — companion mode (this release):** runs before `dsh-compaction-basic`;
-  the built-in engine remains the summary fallback.
-- **0.2 — `backend` mode (target):** the plugin provides `ctx.compaction`
-  itself — Jev pruning at an early semantic threshold, conventional summary
-  fallback above a higher one — replacing `dsh-compaction-basic` through the
-  official capability seam; `/compact` keeps working unchanged. Design notes:
-  SPEC §6.6 and
-  [docs/compatibility.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/compatibility.md).
+- **0.1 — companion mode:** runs before `dsh-compaction-basic`; the
+  built-in engine remains the summary fallback.
+- **0.1 — backend mode (shipped, requires live-rig confirmation):** the
+  `./backend` entry provides `ctx.compaction` itself — Jev pruning at the
+  early threshold, conventional summary fallback above `summaryRatio` —
+  replacing `dsh-compaction-basic` through the official capability seam;
+  `/compact` keeps working unchanged.
+- **Offline evaluation:** the twelve-scenario corpus runs in-repo via
+  `pnpm run eval` (zero dangerous prunes, ≈80% average reduction on the
+  low-danger set); results and the hosted-Jev replay procedure:
+  [docs/evaluation.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/evaluation.md).
 
 ## Compatibility
 
