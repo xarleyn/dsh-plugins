@@ -1868,7 +1868,12 @@ export interface QaAdminUserDetail {
   }[];
   readonly activity: {
     readonly conversations: number;
-    readonly messages: number;
+    /**
+     * Unknown until the conversations page is opened: the count needs every
+     * conversation's log read, so the detail card reports null instead of
+     * blocking its payload on the scan.
+     */
+    readonly messages: number | null;
     readonly positiveRatings: number;
     readonly negativeRatings: number;
   };

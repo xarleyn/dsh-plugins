@@ -10,6 +10,7 @@ import { QaAdminService } from "../src/admin/service.js";
 import { QaQualityStore } from "../src/admin/quality-store.js";
 import {
   staticSessionLogReader,
+  type QaSessionLogReader,
   type QaStoredSessionEraser,
   type QaStoredSessionHeader,
 } from "../src/admin/session-log.js";
@@ -130,6 +131,8 @@ export function harness(
     readonly held?: readonly string[];
     /** Sessions the deployment lists besides the two fixture chats. */
     readonly extraSessions?: readonly QaStoredSessionHeader[];
+    /** Replaces the whole log reader; the default is the static fixture. */
+    readonly sessionLog?: QaSessionLogReader;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-admin-"));
@@ -244,19 +247,21 @@ export function harness(
     quality: () => quality,
     roles: () => roles,
     access: () => access,
-    sessionLog: staticSessionLogReader({
-      sessions: [
-        {
-          id: "session-alice",
-          createdAt: 1_700_000_000_000,
-          agentPreset: "qa-research",
-        },
-        { id: "session-bob", createdAt: 1_700_000_100_000 },
-        ...(catalog.extraSessions ?? []),
-      ],
-      events: conversations,
-      ...(catalog.held === undefined ? {} : { held: catalog.held }),
-    }),
+    sessionLog:
+      catalog.sessionLog ??
+      staticSessionLogReader({
+        sessions: [
+          {
+            id: "session-alice",
+            createdAt: 1_700_000_000_000,
+            agentPreset: "qa-research",
+          },
+          { id: "session-bob", createdAt: 1_700_000_100_000 },
+          ...(catalog.extraSessions ?? []),
+        ],
+        events: conversations,
+        ...(catalog.held === undefined ? {} : { held: catalog.held }),
+      }),
     ...(catalog.sessionFiles === undefined
       ? {}
       : { sessionFiles: catalog.sessionFiles }),

@@ -229,8 +229,11 @@ export function AdminUserDetail(props: {
       setError(adminErrorMessage(result.error));
       return;
     }
+    // The update response is the fresh detail: applying it directly both
+    // confirms the edit on the next render and skips a second heavy read —
+    // a reload here used to re-ask for everything the card has just paid for.
     setError(undefined);
-    await resource.reload();
+    resource.apply(result.value);
   };
 
   if (resource.error !== undefined) {
@@ -384,7 +387,22 @@ export function AdminUserDetail(props: {
             <dt>Разговоры</dt>
             <dd>{formatCount(detail.activity.conversations)}</dd>
             <dt>Сообщения</dt>
-            <dd>{formatCount(detail.activity.messages)}</dd>
+            <dd>
+              {/* The count lives where the logs are read anyway: the
+                  conversations page. Reading every conversation here made the
+                  card wait minutes on a real store. */}
+              <span
+                title={
+                  detail.activity.messages === null
+                    ? "Считается на странице «Разговоры»"
+                    : undefined
+                }
+              >
+                {detail.activity.messages === null
+                  ? "—"
+                  : formatCount(detail.activity.messages)}
+              </span>
+            </dd>
             <dt>Положительные оценки</dt>
             <dd>{formatCount(detail.activity.positiveRatings)}</dd>
             <dt>Негативные оценки</dt>

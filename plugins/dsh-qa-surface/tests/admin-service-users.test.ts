@@ -164,7 +164,42 @@ describe("admin user management", () => {
       },
     ]);
     expect(detail.activity.conversations).toBe(1);
-    expect(detail.activity.messages).toBe(2);
+    expect(detail.activity.messages).toBe(null);
+  });
+
+  it("answers the detail card without reading any conversation log", async () => {
+    // One log read costs a full persistence listing on the Harness before it
+    // reaches the one log, so counting the account's messages blocked the
+    // whole card on minutes of scanning a real store. The count now lives on
+    // the conversations page, which reads the transcripts for its rows anyway.
+    const { service, admin, alice } = harness({
+      sessionLog: {
+        live: () => false,
+        list: async () => {
+          throw new Error("the detail card must not list the logs");
+        },
+        read: async () => {
+          throw new Error("the detail card must not read the logs");
+        },
+      },
+    });
+    const detail = await service.user(admin.token, alice.user.id);
+    expect(detail.activity.conversations).toBe(1);
+    expect(detail.activity.messages).toBe(null);
+    expect(detail.activity.positiveRatings).toBe(0);
+    expect(detail.activity.negativeRatings).toBe(0);
+    // A write returns the fresh detail the console applies directly, so the
+    // save path stays cheap for the same reason.
+    const updated = await service.updateUser(admin.token, alice.user.id, {
+      access: {
+        allowedSubroles: ["analyst", "developer"],
+        defaultSubrole: "analyst",
+      },
+    });
+    expect(updated.user.access.allowedSubroles).toEqual([
+      "analyst",
+      "developer",
+    ]);
   });
 
   it("counts the pinned tools a profile resolves, not only its own list", async () => {

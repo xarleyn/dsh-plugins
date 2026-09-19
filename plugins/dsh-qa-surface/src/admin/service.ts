@@ -568,11 +568,6 @@ export class QaAdminService {
         ),
       });
     });
-    let messages = 0;
-    for (const record of ownership.slice(0, QA_ADMIN_SCAN_LIMIT)) {
-      const transcript = await this.transcript(record.sessionId);
-      if (transcript.ok) messages += transcript.project.messages.length;
-    }
     const userFeedback = feedback.filter((item) => item.userId === userId);
     return Object.freeze({
       user: Object.freeze({
@@ -583,7 +578,13 @@ export class QaAdminService {
       effective: Object.freeze(effective),
       activity: Object.freeze({
         conversations: ownership.length,
-        messages,
+        // Counting messages means reading every conversation the account owns,
+        // and on the Harness each such read costs a full persistence listing
+        // before it reaches the one log — minutes for a real store, all to
+        // fill one counter. The conversations page computes the count per row
+        // from the transcripts it is already reading; the card reports
+        // "unknown" instead of blocking its whole payload on the scan.
+        messages: null,
         positiveRatings: userFeedback.filter(
           ({ rating }) => rating === "positive",
         ).length,

@@ -52,10 +52,16 @@ export function useAdminResource<T>(
   readonly error: string | undefined;
   readonly loading: boolean;
   reload: () => Promise<void>;
+  /** Adopt a value this page already holds, without re-asking the Host. */
+  apply: (value: T) => void;
 } {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const apply = useCallback((value: T) => {
+    setData(value);
+    setError(undefined);
+  }, []);
   const reload = useCallback(async () => {
     setLoading(true);
     try {
@@ -77,7 +83,7 @@ export function useAdminResource<T>(
   useEffect(() => {
     void reload();
   }, [reload]);
-  return { data, error, loading, reload };
+  return { data, error, loading, reload, apply };
 }
 
 /** A status chip; the modifier class carries the semantic colour. */
