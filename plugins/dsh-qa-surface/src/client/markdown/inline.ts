@@ -1,10 +1,13 @@
 /**
  * GFM inline grammar for the chat renderer: code spans, emphasis, links,
- * images, autolinks, and the two line-break flavors. Emphasis follows the
- * CommonMark intent (a closer must match its opener's delimiter run, `_` never
- * opens inside a word) rather than the full delimiter-stack algorithm — the
- * shapes this grammar cannot express are the pathological ones, and they
- * degrade to literal text instead of mangling the sentence.
+ * images, autolinks, TeX math, footnotes, and the two line-break flavors.
+ * Emphasis follows the CommonMark intent (a closer must match its opener's
+ * delimiter run, `_` never opens inside a word) rather than the full
+ * delimiter-stack algorithm — the shapes this grammar cannot express are the
+ * pathological ones, and they degrade to literal text instead of mangling the
+ * sentence. Math follows the Host transcript: `$…$` and `$$…$$` spans, with
+ * maximal-munch dollar runs and whitespace padding stripped only when both
+ * ends carry it.
  */
 
 /** One inline node; `children` nodes nest. */
@@ -22,7 +25,9 @@ export type MarkdownInline =
       readonly href: string;
       readonly children: readonly MarkdownInline[];
     }
-  | { readonly kind: "image"; readonly src: string; readonly alt: string };
+  | { readonly kind: "image"; readonly src: string; readonly alt: string }
+  | { readonly kind: "inlineMath"; readonly value: string }
+  | { readonly kind: "footnoteRef"; readonly id: string };
 
 /** Nesting ceiling for inline containers. */
 const MAX_INLINE_DEPTH = 8;
@@ -34,19 +39,37 @@ const ESCAPABLE = /[!-/:-@[-`{-~]/u;
 /** Characters a bare URL may not start right after. */
 const URL_BOUNDARY = /[\s([{<«„"'*_~]/u;
 const TRAILING_PUNCTUATION = /[.,;:!?…]+$/u;
+/** A footnote label may not carry whitespace or brackets. */
+const FOOTNOTE_LABEL = /^[^\]\s[]+$/u;
+
+/** The reference targets one inline pass resolves against. */
+export interface InlineTargets {
+  /** Link/image definitions by upper-cased identifier. */
+  readonly definitions: ReadonlyMap<string, string>;
+  /** Footnote identifiers that have a definition, by upper-cased label. */
+  readonly footnotes: ReadonlyMap<string, unknown>;
+}
+
+const NO_TARGETS: InlineTargets = {
+  definitions: new Map(),
+  footnotes: new Map(),
+};
 
 /**
  * Parse the inline content of one leaf block.
  * @param text - Raw inline Markdown, newlines included.
- * @param definitions - Link/image definitions collected by the block pass.
+ * @param targets - The definitions and footnotes this pass resolves against.
  * @param depth - Inline nesting depth.
  * @returns The inline nodes in document order.
  */
 export function parseInline(
   text: string,
-  definitions: ReadonlyMap<string, string>,
+  targets: ReadonlyMap<string, string> | InlineTargets,
   depth = 0,
 ): MarkdownInline[] {
+  const { definitions, footnotes } = isTargets(targets)
+    ? targets
+    : { definitions: targets, footnotes: NO_TARGETS.footnotes };
   if (depth > MAX_INLINE_DEPTH) return [{ kind: "text", value: text }];
   const nodes: MarkdownInline[] = [];
   // The delimiter index is built once per pass, on the first emphasis run —
@@ -110,6 +133,29 @@ export function parseInline(
       continue;
     }
 
+    if (char === "$") {
+      const math = readMathSpan(text, index);
+      if (math !== undefined) {
+        flush();
+        nodes.push({ kind: "inlineMath", value: math.value });
+        index = math.end;
+        continue;
+      }
+      buffer += char;
+      index += 1;
+      continue;
+    }
+
+    if (char === "[" && text[index + 1] === "^") {
+      const footnote = readFootnoteRef(text, index, footnotes);
+      if (footnote !== undefined) {
+        flush();
+        nodes.push({ kind: "footnoteRef", id: footnote.id });
+        index = footnote.end;
+        continue;
+      }
+    }
+
     if (char === "<") {
       const autolink = AUTOLINK.exec(text.slice(index));
       const email =
@@ -149,7 +195,11 @@ export function parseInline(
         nodes.push({
           kind: "link",
           href: target.href,
-          children: parseInline(target.label, definitions, depth + 1),
+          children: parseInline(
+            target.label,
+            { definitions, footnotes },
+            depth + 1,
+          ),
         });
         index = target.end;
         continue;
@@ -161,6 +211,7 @@ export function parseInline(
         text,
         index,
         definitions,
+        footnotes,
         depth,
         delimiters,
       );
@@ -213,6 +264,72 @@ function readCodeSpan(
   const raw = text.slice(start + length, close).replace(/\n/gu, " ");
   const padded = raw.length > 2 && raw.startsWith(" ") && raw.endsWith(" ");
   return { value: padded ? raw.slice(1, -1) : raw, end: close + length };
+}
+
+/** Whether the argument is the full target set rather than bare definitions. */
+function isTargets(
+  value: ReadonlyMap<string, string> | InlineTargets,
+): value is InlineTargets {
+  return "footnotes" in value;
+}
+
+/**
+ * One `$…$` or `$$…$$` span, or nothing when no equal-length dollar run
+ * closes it. The opener run is maximal (`$$$$` is a four-dollar opener, not
+ * two), the closer is the next run of exactly that length, and surrounding
+ * whitespace is stripped only when both ends carry it and data sits between —
+ * the shapes the Host's grammar reads. A backslash inside the span is TeX
+ * data, so `\$` does not hide a closer.
+ */
+function readMathSpan(
+  text: string,
+  start: number,
+): { readonly value: string; readonly end: number } | undefined {
+  let length = 1;
+  while (text[start + length] === "$") length += 1;
+  let index = start + length;
+  while (index < text.length) {
+    if (text[index] !== "$") {
+      index += 1;
+      continue;
+    }
+    let run = 1;
+    while (text[index + run] === "$") run += 1;
+    if (run === length) {
+      const raw = text.slice(start + length, index);
+      const padded =
+        raw.length >= 2 &&
+        isSpaceOrLineEnding(raw[0] ?? "") &&
+        isSpaceOrLineEnding(raw[raw.length - 1] ?? "") &&
+        /\S/u.test(raw);
+      return { value: padded ? raw.slice(1, -1) : raw, end: index + run };
+    }
+    index += run;
+  }
+  return undefined;
+}
+
+/** A space or a line ending — the two characters math padding may carry. */
+function isSpaceOrLineEnding(char: string): boolean {
+  return char === " " || char === "\n" || char === "\t" || char === "\r";
+}
+
+/**
+ * A `[^label]` reference the document defines, or nothing — an undefined
+ * label stays literal text, as GitHub renders it.
+ */
+function readFootnoteRef(
+  text: string,
+  start: number,
+  footnotes: ReadonlyMap<string, unknown>,
+): { readonly id: string; readonly end: number } | undefined {
+  const close = text.indexOf("]", start + 2);
+  if (close < 0) return undefined;
+  const label = text.slice(start + 2, close);
+  if (!FOOTNOTE_LABEL.test(label) || !footnotes.has(label.toUpperCase())) {
+    return undefined;
+  }
+  return { id: label, end: close + 1 };
 }
 
 /** The closing bracket of a `[label]`, honoring nesting and escapes. */
@@ -330,7 +447,8 @@ interface DelimiterIndex {
  * precedes the run, where the scan steps in and examines the second char
  * against the run shortened by one. Recording that one entry position per run
  * (with the `_`-in-a-word rejection applied) turns every later closer lookup
- * into a binary search instead of a rescan of the tail.
+ * into a binary search instead of a rescan of the tail. Math spans are
+ * skipped the way code spans are: `*` inside `$…$` is TeX, not emphasis.
  */
 function scanDelimiters(text: string): DelimiterIndex {
   const runs: DelimiterRun[] = [];
@@ -344,6 +462,13 @@ function scanDelimiters(text: string): DelimiterIndex {
     }
     if (current === "`") {
       const span = readCodeSpan(text, index);
+      if (span !== undefined) {
+        index = span.end;
+        continue;
+      }
+    }
+    if (current === "$") {
+      const span = readMathSpan(text, index);
       if (span !== undefined) {
         index = span.end;
         continue;
@@ -416,6 +541,7 @@ function readEmphasis(
   text: string,
   start: number,
   definitions: ReadonlyMap<string, string>,
+  footnotes: ReadonlyMap<string, unknown>,
   depth: number,
   delimiters: () => DelimiterIndex,
 ): { readonly node: MarkdownInline; readonly end: number } | undefined {
@@ -440,7 +566,7 @@ function readEmphasis(
   if (close === undefined) return undefined;
   const children = parseInline(
     text.slice(start + length, close),
-    definitions,
+    { definitions, footnotes },
     depth + 1,
   );
   const node: MarkdownInline =

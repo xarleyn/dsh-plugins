@@ -4,6 +4,7 @@ import type { MarkdownBlock, MarkdownListItem } from "./blocks.js";
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
+import { renderTexToReact } from "./math.js";
 import {
   codeChip,
   linkChip,
@@ -14,6 +15,12 @@ import {
 /** One render pass: the owner's source vocabulary plus the document's targets. */
 interface RenderContext extends MarkdownSourceContext {
   readonly definitions: ReadonlyMap<string, string>;
+  /** Footnote bodies by upper-cased identifier. */
+  readonly footnotes: ReadonlyMap<string, readonly MarkdownBlock[]>;
+  /** Footnote identifiers in first-reference order, appended while rendering. */
+  readonly footnoteOrder: string[];
+  /** How many times each footnote rendered; drives its back-reference count. */
+  readonly footnoteCounts: Map<string, number>;
 }
 
 /**
@@ -23,15 +30,26 @@ interface RenderContext extends MarkdownSourceContext {
  * instead of a plain link or code token.
  * @param text - Assistant-authored markdown.
  * @param context - Source resolution handed down by the owning message.
- * @returns The document's blocks.
+ * @returns The document's blocks, plus the footnote section when the document
+ * references a defined footnote.
  */
 export function renderMarkdown(
   text: string,
   context: MarkdownSourceContext,
 ): ReactNode[] {
-  const { blocks, definitions } = parseMarkdown(text);
-  const pass: RenderContext = { ...context, definitions };
-  return blocks.map((block, index) => renderBlock(block, `b${index}`, pass));
+  const { blocks, definitions, footnotes } = parseMarkdown(text);
+  const pass: RenderContext = {
+    ...context,
+    definitions,
+    footnotes,
+    footnoteOrder: [],
+    footnoteCounts: new Map(),
+  };
+  const elements = blocks.map((block, index) =>
+    renderBlock(block, `b${index}`, pass),
+  );
+  const footnotesSection = renderFootnoteSection(pass);
+  return footnotesSection === null ? elements : [...elements, footnotesSection];
 }
 
 function renderBlock(
@@ -49,12 +67,26 @@ function renderBlock(
         ...inline(block.text, key, context),
       );
     case "code":
+      if (block.lang === "math" && block.text.trim() !== "") {
+        // A ```math fence renders as display TeX, the way the Host does.
+        return (
+          <div key={key} className="dsh-qa-md-math">
+            {renderTexToReact(block.text, true)}
+          </div>
+        );
+      }
       return (
         <CodeBlock
           key={key}
           code={block.text}
           {...(block.lang === undefined ? {} : { lang: block.lang })}
         />
+      );
+    case "math":
+      return (
+        <div key={key} className="dsh-qa-md-math">
+          {renderTexToReact(block.text, true)}
+        </div>
       );
     case "quote":
       return (
@@ -177,7 +209,14 @@ function inline(
   key: string,
   context: RenderContext,
 ): ReactNode[] {
-  return inlineNodes(parseInline(text, context.definitions), key, context);
+  return inlineNodes(
+    parseInline(text, {
+      definitions: context.definitions,
+      footnotes: context.footnotes,
+    }),
+    key,
+    context,
+  );
 }
 
 function inlineNodes(
@@ -272,8 +311,77 @@ function inlineNodes(
           />
         );
       }
+      case "inlineMath":
+        return (
+          <Fragment key={nodeKey}>
+            {renderTexToReact(node.value, false)}
+          </Fragment>
+        );
+      case "footnoteRef":
+        return (
+          <sup key={nodeKey} className="dsh-qa-md-fn-ref">
+            {footnoteNumber(node.id, context)}
+          </sup>
+        );
     }
   });
+}
+
+/**
+ * The 1-based number of a footnote in first-reference order, recording this
+ * reference so the trailing section knows the footnote rendered.
+ */
+function footnoteNumber(id: string, context: RenderContext): number {
+  const key = id.toUpperCase();
+  const seen = context.footnoteCounts.get(key);
+  if (seen === undefined) context.footnoteOrder.push(key);
+  context.footnoteCounts.set(key, (seen ?? 0) + 1);
+  return context.footnoteOrder.indexOf(key) + 1;
+}
+
+/**
+ * The trailing footnote section: every footnote a reference rendered, in
+ * first-reference order, with the definition's body and one back-reference
+ * marker per rendered reference. Footnotes without a definition never render
+ * a reference, so they never reach here.
+ * @param context - The render pass, carrying reference order and targets.
+ * @returns The section, or null when no referenced footnote has a body.
+ */
+function renderFootnoteSection(context: RenderContext): ReactNode | null {
+  const items: ReactNode[] = [];
+  for (const [index, key] of context.footnoteOrder.entries()) {
+    const body = context.footnotes.get(key);
+    if (body === undefined) continue;
+    const count = context.footnoteCounts.get(key) ?? 0;
+    const backrefs: ReactNode[] = [];
+    for (let reference = 1; reference <= count; reference++) {
+      if (backrefs.length > 0) backrefs.push(" ");
+      backrefs.push("↩");
+      if (reference > 1)
+        backrefs.push(<sup key={`re-${reference}`}>{reference}</sup>);
+    }
+    const tail = body[body.length - 1];
+    const children: ReactNode[] = body.map((block, blockIndex) =>
+      blockIndex === body.length - 1 && block.kind === "paragraph" ? (
+        <p key={`b${blockIndex}`}>
+          {inline(block.text, `f${index}:${blockIndex}`, context)}
+          {backrefs.length > 0 ? <Fragment> {backrefs}</Fragment> : null}
+        </p>
+      ) : (
+        renderBlock(block, `f${index}:${blockIndex}`, context)
+      ),
+    );
+    if (tail === undefined || tail.kind !== "paragraph") {
+      children.push(...backrefs);
+    }
+    items.push(<li key={key}>{children}</li>);
+  }
+  if (items.length === 0) return null;
+  return (
+    <section className="dsh-qa-md-footnotes" aria-label="Сноски">
+      <ol>{items}</ol>
+    </section>
+  );
 }
 
 function children(

@@ -9,6 +9,13 @@
  * blocks, setext inside lists, link reference definitions spanning lines) stay
  * out. Raw HTML never becomes a block: a tag line is a paragraph whose inline
  * pass leaves the tag as literal text.
+ *
+ * Math follows the Host transcript's settled grammar: display TeX is a
+ * `$$`-delimited block (a fence on its own lines or one line
+ * `$$…$$`) or a ```math fence, and nothing else — the `\(…\)` and `\[…\]`
+ * delimiters stay literal text, exactly as the Host renders them. Footnote
+ * definitions (`[^id]: …`) are collected the way GitHub's dialect does, with
+ * lazy and indented continuation lines.
  */
 
 /** `#`-through-`######` heading levels. */
@@ -47,6 +54,7 @@ export type MarkdownBlock =
       readonly head: readonly string[];
       readonly rows: readonly (readonly string[])[];
     }
+  | { readonly kind: "math"; readonly text: string }
   | { readonly kind: "rule" };
 
 /** A parsed document: its blocks plus the reference targets they resolve. */
@@ -54,6 +62,8 @@ export interface ParsedMarkdown {
   readonly blocks: readonly MarkdownBlock[];
   /** Link/image definitions by upper-cased identifier. */
   readonly definitions: ReadonlyMap<string, string>;
+  /** Footnote bodies by upper-cased identifier; first definition wins. */
+  readonly footnotes: ReadonlyMap<string, readonly MarkdownBlock[]>;
 }
 
 /** Container depth ceiling: enough for real answers, too low to recurse away.
@@ -69,6 +79,14 @@ const LIST_MARKER = /^( {0,3})([-+*]|\d{1,9}[.)])([ \t]+|$)/u;
 const DEFINITION = /^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*<?([^\s>]+)>?[ \t]*$/u;
 const ALIGNMENT_CELL = /^:?-+:?$/u;
 const CHECKBOX = /^\[([ xX])\][ \t]+/u;
+/** Display math opener: `$$` with the rest of the line as same-line content. */
+const MATH_FLOW = /^ {0,3}\$\$(.*)$/u;
+/** Display math closing fence: `$$` alone on its line. */
+const MATH_FLOW_CLOSE = /^ {0,3}\$\$\s*$/u;
+/** Footnote definition: `[^label]:` with the first body line inline. */
+const FOOTNOTE_DEFINITION = /^ {0,3}\[\^([^\]\s]+)\]:[ \t]*(.*)$/u;
+/** Continuation lines of a footnote body are indented this far. */
+const FOOTNOTE_INDENT = 4;
 
 function isBlank(line: string): boolean {
   return line.trim() === "";
@@ -85,7 +103,9 @@ function startsBlock(line: string): boolean {
     ATX_HEADING.test(line) ||
     RULE.test(line) ||
     QUOTE.test(line) ||
-    LIST_MARKER.test(line)
+    LIST_MARKER.test(line) ||
+    MATH_FLOW.test(line) ||
+    FOOTNOTE_DEFINITION.test(line)
   );
 }
 
@@ -142,20 +162,27 @@ function closesFence(line: string, marker: string): boolean {
  */
 export function parseMarkdown(text: string): ParsedMarkdown {
   const definitions = new Map<string, string>();
+  const footnotes = new Map<string, readonly MarkdownBlock[]>();
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
-  return { blocks: parseBlocks(lines, definitions, 0), definitions };
+  return {
+    blocks: parseBlocks(lines, definitions, footnotes, 0),
+    definitions,
+    footnotes,
+  };
 }
 
 /**
  * Parse the blocks of one container (document, quote, or list item).
  * @param lines - Container lines, already de-indented by the caller.
  * @param definitions - Document-wide definition accumulator.
+ * @param footnotes - Document-wide footnote accumulator.
  * @param depth - Container nesting depth.
  * @returns The container's blocks.
  */
 export function parseBlocks(
   lines: readonly string[],
   definitions: Map<string, string>,
+  footnotes: Map<string, readonly MarkdownBlock[]>,
   depth: number,
 ): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
@@ -193,6 +220,18 @@ export function parseBlocks(
       continue;
     }
 
+    const math = MATH_FLOW.exec(line);
+    if (math !== null) {
+      const parsed = parseMathFlow(lines, index, math[1] ?? "");
+      if (parsed !== undefined) {
+        blocks.push({ kind: "math", text: parsed.text });
+        index = parsed.next;
+        continue;
+      }
+      // Unclosed or content-bearing without a same-line close: the line stays
+      // a paragraph, whose inline pass leaves the dollars literal.
+    }
+
     const heading = ATX_HEADING.exec(line);
     if (heading !== null) {
       blocks.push({
@@ -228,7 +267,7 @@ export function parseBlocks(
       }
       blocks.push({
         kind: "quote",
-        blocks: parseBlocks(body, definitions, depth + 1),
+        blocks: parseBlocks(body, definitions, footnotes, depth + 1),
       });
       continue;
     }
@@ -250,7 +289,7 @@ export function parseBlocks(
     }
 
     if (depth < MAX_DEPTH && LIST_MARKER.test(line)) {
-      const list = parseList(lines, index, definitions, depth);
+      const list = parseList(lines, index, definitions, footnotes, depth);
       blocks.push(list.list);
       index = list.next;
       continue;
@@ -261,6 +300,20 @@ export function parseBlocks(
       const id = (definition[1] ?? "").trim().toUpperCase();
       if (!definitions.has(id)) definitions.set(id, definition[2] ?? "");
       index += 1;
+      continue;
+    }
+
+    const footnote = FOOTNOTE_DEFINITION.exec(line);
+    if (footnote !== null) {
+      const id = (footnote[1] ?? "").toUpperCase();
+      const body = footnoteBody(lines, index, footnote[2] ?? "");
+      if (!footnotes.has(id)) {
+        footnotes.set(
+          id,
+          parseBlocks(body.lines, definitions, footnotes, depth + 1),
+        );
+      }
+      index = body.next;
       continue;
     }
 
@@ -312,6 +365,81 @@ function collectParagraph(
 }
 
 /**
+ * Parse display math opening at `start` (the `$$` opener line), returning its
+ * TeX payload and the index after the block — or undefined when the opener
+ * does not begin a math block, in which case the line stays paragraph text.
+ * A same-line `$$…$$` closes immediately; otherwise the rest of the opener
+ * line must be empty and the content runs to a `$$` fence line, as GitHub's
+ * dialect reads it. The Host drops content written after a fence opener's
+ * `$$`; here such a line stays a paragraph instead, so no text is lost.
+ * @param lines - Container lines.
+ * @param start - Index of the opener line.
+ * @param rest - The opener line after its `$$`.
+ * @returns The math text and the index after the closing fence.
+ */
+function parseMathFlow(
+  lines: readonly string[],
+  start: number,
+  rest: string,
+): { readonly text: string; readonly next: number } | undefined {
+  const sameLine = rest.indexOf("$$");
+  if (sameLine >= 0 && rest.slice(sameLine + 2).trim() === "") {
+    return { text: rest.slice(0, sameLine), next: start + 1 };
+  }
+  if (rest.trim() !== "") return undefined;
+  const body: string[] = [];
+  let index = start + 1;
+  while (index < lines.length && !MATH_FLOW_CLOSE.test(lines[index] ?? "")) {
+    body.push(lines[index] ?? "");
+    index += 1;
+  }
+  if (index >= lines.length) return undefined;
+  return { text: body.join("\n"), next: index + 1 };
+}
+
+/**
+ * Collect a footnote definition's body: the opener line's inline tail plus
+ * the indented and lazy-continuation lines GitHub's dialect keeps inside it.
+ * @param lines - Container lines.
+ * @param start - Index of the `[^label]:` opener line.
+ * @param rest - The opener line after its `]:`.
+ * @returns The body lines and the index after the definition.
+ */
+function footnoteBody(
+  lines: readonly string[],
+  start: number,
+  rest: string,
+): { readonly lines: readonly string[]; readonly next: number } {
+  const body: string[] = [rest];
+  let index = start + 1;
+  while (index < lines.length) {
+    const current = lines[index] ?? "";
+    if (isBlank(current)) {
+      // A blank line only continues the definition when an indented line
+      // really follows it (a second body paragraph).
+      let next = index + 1;
+      while (next < lines.length && isBlank(lines[next] ?? "")) next += 1;
+      if (next >= lines.length || indentOf(lines[next] ?? "") < FOOTNOTE_INDENT)
+        break;
+      body.push("");
+      index += 1;
+      continue;
+    }
+    if (indentOf(current) >= FOOTNOTE_INDENT) {
+      body.push(current.slice(FOOTNOTE_INDENT));
+      index += 1;
+      continue;
+    }
+    // A lazy continuation line belongs to the definition's last paragraph;
+    // anything that opens a block of its own ends the definition instead.
+    if (startsBlock(current)) break;
+    body.push(current.trimStart());
+    index += 1;
+  }
+  return { lines: body, next: index };
+}
+
+/**
  * Parse one list: sibling items at the same level, their nested blocks
  * recursively parsed.
  * @param lines - Container lines.
@@ -324,6 +452,7 @@ function parseList(
   lines: readonly string[],
   start: number,
   definitions: Map<string, string>,
+  footnotes: Map<string, readonly MarkdownBlock[]>,
   depth: number,
 ): { readonly list: MarkdownBlock; readonly next: number } {
   const first = LIST_MARKER.exec(lines[start] ?? "");
@@ -390,7 +519,9 @@ function parseList(
       itemLines[0] = (itemLines[0] ?? "").slice(checkbox[0].length);
     }
     const itemBlocks =
-      depth >= MAX_DEPTH ? [] : parseBlocks(itemLines, definitions, depth + 1);
+      depth >= MAX_DEPTH
+        ? []
+        : parseBlocks(itemLines, definitions, footnotes, depth + 1);
     // Only a blank line inside the item spreads it: an item that merely carries
     // a nested list or a fence still renders as a tight item, as GFM says.
     if (itemSpread) loose = true;

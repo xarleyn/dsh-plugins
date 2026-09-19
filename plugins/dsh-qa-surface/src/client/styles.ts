@@ -1,6 +1,7 @@
 import { QA_BLEED_MAX_WIDTH } from "./components/QaWidthHandle.js";
 import { QA_ADMIN_CONSOLE_STYLES } from "./admin/styles.js";
 import { AUDIT_UI_STYLES } from "@yadsh/dsh-audit-ui";
+import { KATEX_CSS } from "./markdown/katex-css.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -650,6 +651,14 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-md-table th,.dsh-qa-md-table td{max-width:max(160px,calc(var(--dsh-qa-content-width,920px)*0.35));border:1px solid var(--dsw-alias-border-l2);padding:6px 10px;vertical-align:top;overflow-wrap:anywhere}
 .dsh-qa-md-table thead th{background:var(--dsw-alias-bg-layer-2);font-weight:600}
 .dsh-qa-md-table tbody tr:nth-child(even){background:var(--dsw-alias-bg-layer-2)}
+.dsh-qa-md-math{overflow-x:auto;overflow-y:hidden;margin:16px 0;text-align:center}
+.dsh-qa-md-math .katex-display{margin:0}
+.dsh-qa-md-fn-ref{margin:0 1px;font-size:.8em;line-height:0;vertical-align:super}
+.dsh-qa-md-footnotes{margin:20px 0 0;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);font-size:.9em}
+.dsh-qa-md-footnotes ol{margin:0;padding-left:22px}
+.dsh-qa-md-footnotes li{margin-top:4px}
+.dsh-qa-md-footnotes li>:first-child{margin-top:0}
+.dsh-qa-md-footnotes sup{margin:0 1px;font-size:.8em;line-height:0;vertical-align:super}
 .dsh-qa-message--assistant .dsh-qa-message__content .dsh-qa-md-code{width:calc(100% + var(--dsh-qa-bleed)*2);margin-right:calc(var(--dsh-qa-bleed)*-1);margin-left:calc(var(--dsh-qa-bleed)*-1)}
 .dsh-qa-message__cursor{display:inline-block;width:7px;height:1em;margin-left:3px;vertical-align:-2px;background:var(--dsw-alias-label-secondary);animation:dsh-qa-blink 1s steps(2,start) infinite}
 @keyframes dsh-qa-blink{50%{opacity:0}}
@@ -837,6 +846,11 @@ ${QA_ADMIN_CONSOLE_STYLES}
  * `@yadsh/dsh-audit-ui`; it is folded in here so the overlay is self-contained
  * — the audit dialog must look right whether or not the audit plugin's own
  * client bundle happens to have injected the same rules into the document.
+ *
+ * The math styles and their fonts come from the bundled KaTeX copy the same
+ * way: the data-URI fonts resolve whatever the Host page loads, and identical
+ * rules from its own KaTeX stylesheet are harmless.
  */
 export const QA_OVERLAY_STYLES = `${QA_SURFACE_STYLES}
+${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;

@@ -15,7 +15,9 @@ Session and Agent Loop.
   a responsive first-party-style conversation layout;
 - renders assistant Markdown with this plugin's own GFM grammar — headings
   through `######`, nested and task lists, tables, quotes, images, autolinks,
-  reference links — inside an HTML-free renderer, and relays the host theme's
+  reference links, TeX math (`$…$`, `$$…$$`, ```math fences, through a bundled
+  self-contained KaTeX) and footnotes (`[^label]` with the trailing section) —
+  inside an HTML-free renderer, and relays the host theme's
   own typography and syntax colors (`--dsw-font-markdown-*`,
   `--dsw-alias-markdown-*`, `--shiki-token-*`) so a fenced block here reads
   like one in DSH's own transcript, in either theme and at any font-size

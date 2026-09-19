@@ -407,6 +407,14 @@ assert.doesNotMatch(
   /micromark|mdast|react-markdown|@shikijs/u,
   "the self-contained client must not bundle a Markdown or highlighting engine",
 );
+// TeX math renders through the bundled KaTeX copy (a rendering library, not a
+// Markdown engine), self-contained the way the highlighter is: the stylesheet
+// and its woff2 fonts travel as data URIs, so math looks right on any Host.
+assert.match(client, /dsh-qa-md-math/u);
+assert.match(client, /katex-display/u);
+assert.match(client, /data:font\/woff2;base64,/u);
+assert.match(client, /dsh-qa-md-footnotes/u);
+assert.match(client, /dsh-qa-md-fn-ref/u);
 assert.match(client, /#3D9E9A/u);
 assert.match(client, /--dsh-qa-accent-contrast/u);
 assert.match(client, /TTFT/u);
