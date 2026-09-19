@@ -69,6 +69,40 @@ export function TextField(props: any) {
   );
 }
 
+export function TextAreaField(props: any) {
+  const state = props.state;
+  return createElement(
+    "div",
+    { className: "ddi_field" },
+    FieldHead(
+      props.t,
+      props.id,
+      props.labelKey,
+      state,
+      props.disabled,
+      props.onReset,
+    ),
+    createElement("textarea", {
+      id: props.id,
+      className: state.invalid
+        ? "ddi_input ddi_textarea ddi_inputInvalid"
+        : "ddi_input ddi_textarea",
+      rows: props.rows,
+      spellCheck: false,
+      value: state.text,
+      disabled: props.disabled,
+      onChange: function (event: any) {
+        props.onEdit(event.target.value);
+      },
+    }),
+    createElement(
+      "p",
+      { className: state.invalid ? "ddi_invalid" : "ddi_hint" },
+      state.invalid ? props.t("invalidTemplate") : props.t(props.hintKey),
+    ),
+  );
+}
+
 export function NumberField(props: any) {
   const state = props.state;
   return createElement(

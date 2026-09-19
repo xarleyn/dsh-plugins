@@ -7,7 +7,13 @@ import {
 } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
 import { MODE_OPTIONS, ON_LIMIT_OPTIONS } from "./settings-form.js";
-import { BoolField, ChoiceField, NumberField, TextField } from "./fields.js";
+import {
+  BoolField,
+  ChoiceField,
+  NumberField,
+  TextAreaField,
+  TextField,
+} from "./fields.js";
 
 const CSS = [
   PLUGIN_CARD_SHELL_CSS.trim(),
@@ -29,8 +35,9 @@ const CSS = [
   ".ddi_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}",
   ".ddi_reset:disabled{opacity:.4;cursor:default}",
   ".ddi_input,.ddi_select{appearance:none;font:inherit;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.5;width:100%;box-sizing:border-box}",
-  ".ddi_input:focus-visible,.ddi_select:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}",
-  ".ddi_input:disabled,.ddi_select:disabled{opacity:.5;cursor:default}",
+  ".ddi_textarea{resize:vertical;min-height:132px;font-family:inherit}",
+  ".ddi_input:focus-visible,.ddi_select:focus-visible,.ddi_textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}",
+  ".ddi_input:disabled,.ddi_select:disabled,.ddi_textarea:disabled{opacity:.5;cursor:default}",
   ".ddi_inputInvalid{border-color:var(--dsw-alias-label-error)}",
   ".ddi_hint{color:var(--dsw-alias-label-tertiary);margin:6px 0 0;font-size:12px;line-height:1.5}",
   ".ddi_invalid{color:var(--dsw-alias-label-error);margin:6px 0 0;font-size:12px;line-height:1.5}",
@@ -82,6 +89,21 @@ export function ConfigCard(props: any) {
       },
       onReset: function () {
         props.resetField("enabled");
+      },
+    }),
+    createElement(BoolField, {
+      t: t,
+      id: "doc-impact-steer",
+      labelKey: "steerLabel",
+      hintKey: "steerHint",
+      fallback: true,
+      state: fields.steer,
+      disabled: disabled,
+      onChoose: function (value: unknown) {
+        props.choose("steer", value);
+      },
+      onReset: function () {
+        props.resetField("steer");
       },
     }),
     createElement(TextField, {
@@ -142,6 +164,36 @@ export function ConfigCard(props: any) {
       },
       onReset: function () {
         props.resetField("onLimit");
+      },
+    }),
+    createElement(TextAreaField, {
+      t: t,
+      id: "doc-impact-reminder-template",
+      labelKey: "reminderTemplateLabel",
+      hintKey: "reminderTemplateHint",
+      rows: 9,
+      state: fields.reminderTemplate,
+      disabled: disabled,
+      onEdit: function (text: string) {
+        props.edit("reminderTemplate", text);
+      },
+      onReset: function () {
+        props.resetField("reminderTemplate");
+      },
+    }),
+    createElement(TextAreaField, {
+      t: t,
+      id: "doc-impact-limit-template",
+      labelKey: "limitTemplateLabel",
+      hintKey: "limitTemplateHint",
+      rows: 7,
+      state: fields.limitTemplate,
+      disabled: disabled,
+      onEdit: function (text: string) {
+        props.edit("limitTemplate", text);
+      },
+      onReset: function () {
+        props.resetField("limitTemplate");
       },
     }),
     createElement(NumberField, {

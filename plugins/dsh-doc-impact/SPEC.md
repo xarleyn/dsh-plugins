@@ -1044,6 +1044,19 @@ doc_impact_resolve with status "reviewed-current".
 
 Не добавлять огромный policy prompt.
 
+Формулировки сообщения и финального limit-уведомления редактируются настройками
+плагина без правки исходников (§37):
+
+- `reminderTemplate` — текст напоминания; плейсхолдеры `{intro}` (строка
+  атрибуции), `{count}` (число сработавших правил), `{body}` (сгенерированный
+  список impacts), `{tail}` (инструкция, зависящая от режима);
+- `limitTemplate` — limit-уведомление; плейсхолдеры `{rounds}` (число
+  раундов) и `{impacts}` (список нерешённых impacts).
+
+Пустое значение или шаблон без обязательного плейсхолдера (`{body}` /
+`{impacts}`) откатывается к встроенному тексту, который воспроизводит канонический
+вид сообщения выше.
+
 ---
 
 # 33. Multiple impacts
@@ -1171,12 +1184,30 @@ Global plugin config:
     enabled: true
     configFile: .dsh/doc-impact.yml
 
+    # Отключает докидывание напоминаний, сохраняя обнаружение, тулы и статус:
+    # pending impacts видны в `/doc-impact`, но ход не прерывается, раунды не
+    # тратятся, limit-уведомление не отправляется.
+    steer: true
+
     defaults:
       mode: remind
 
     safety:
       maxReminderRounds: 2
       onLimit: allow
+
+    # Тексты сообщений (§32). Пустая строка = встроенный текст.
+    # reminderTemplate: |
+    #   Documentation impact check
+    #
+    #   {intro}
+    #
+    #   {count}
+    #
+    #   {body}
+    #
+    #   {tail}
+    # limitTemplate: ""
 ```
 
 Workspace config содержит project relations.

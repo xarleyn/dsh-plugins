@@ -113,4 +113,53 @@ describe("doc impact engine", () => {
       (await engine.evaluateStop("a1", "/virtual", 1)).steer,
     ).toBeUndefined();
   });
+
+  it("keeps detection alive without steering while the steer switch is off", async () => {
+    const state = new Map<string, string>([
+      ["src/auth/session.ts", "v1"],
+      ["docs/authentication.md", "d1"],
+    ]);
+    let steerOn = false;
+    const engine = engineWith(workspace(AUTH_RULE), state, {
+      steeringEnabled: () => steerOn,
+    });
+    await engine.ensureBaseline("a1", "/virtual", 1);
+    state.set("src/auth/session.ts", "v2");
+
+    const muted = await engine.evaluateStop("a1", "/virtual", 1);
+    expect(muted.steer).toBeUndefined();
+    expect(muted.pending).toHaveLength(1);
+
+    // The muted stop must not spend reminder rounds: re-enabling steers again.
+    steerOn = true;
+    expect(
+      (await engine.evaluateStop("a1", "/virtual", 1)).steer,
+    ).toBeDefined();
+  });
+
+  it("renders the steering texts from the live templates provider", async () => {
+    const state = new Map<string, string>([
+      ["src/auth/session.ts", "v1"],
+      ["docs/authentication.md", "d1"],
+    ]);
+    const ws = workspace(AUTH_RULE, {
+      safety: { maxReminderRounds: 1, onLimit: "error" },
+    });
+    const engine = engineWith(ws, state, {
+      messageTemplates: () => ({
+        reminder: "Проверка документации:\n{body}",
+        limit: "Лимит напоминаний ({rounds}):\n{impacts}",
+      }),
+    });
+    await engine.ensureBaseline("a1", "/virtual", 1);
+    state.set("src/auth/session.ts", "v2");
+
+    const first = await engine.evaluateStop("a1", "/virtual", 1);
+    expect(first.steer?.startsWith("Проверка документации:")).toBe(true);
+    expect(first.steer).toContain("1. auth");
+
+    const limited = await engine.evaluateStop("a1", "/virtual", 1);
+    expect(limited.steer?.startsWith("Лимит напоминаний (1):")).toBe(true);
+    expect(limited.steer).toContain("- auth → docs/authentication.md");
+  });
 });

@@ -105,6 +105,14 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
       if (!config.enabled) return undefined;
       return loadWorkspaceConfig(cwd);
     },
+    steeringEnabled: () => readConfig().steer,
+    messageTemplates: () => {
+      const config = readConfig();
+      return {
+        reminder: config.reminderTemplate,
+        limit: config.limitTemplate,
+      };
+    },
     logger: engineLogger,
     concurrentAgents: (cwd: string): number =>
       agents

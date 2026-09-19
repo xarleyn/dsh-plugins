@@ -62,13 +62,54 @@ const STRICT_TAIL = [
   'Use status "not-applicable" with a non-empty reason when the link does not apply to this change.',
 ].join("\n");
 
+/**
+ * The steering messages are user-editable templates (settings `reminderTemplate`
+ * / `limitTemplate`). `{body}` is the generated impact payload a reminder
+ * cannot do without; `{tail}` stays mode-aware. A template without the
+ * required placeholder falls back to the default rather than silencing the
+ * plugin's primary output.
+ */
+export const DEFAULT_REMINDER_TEMPLATE = [
+  "Documentation impact check",
+  "",
+  "{intro}",
+  "",
+  "{count}",
+  "",
+  "{body}",
+  "",
+  "{tail}",
+].join("\n");
+
+export const DEFAULT_LIMIT_TEMPLATE = [
+  "Documentation impact check: reminder limit reached",
+  "",
+  "The following impacts stayed unresolved after {rounds} reminder round(s); allowing the turn to finish:",
+  "{impacts}",
+  "",
+  "Please review the linked documentation as soon as possible.",
+].join("\n");
+
+function renderTemplate(
+  template: string,
+  required: string,
+  fallback: string,
+  tokens: Record<string, string>,
+): string {
+  const source = template.includes(required) ? template : fallback;
+  return source.replace(/\{(\w+)\}/g, (token, name: string) => {
+    const value = tokens[name];
+    return value === undefined ? token : value;
+  });
+}
+
 /** The single grouped steering message (SPEC §32-§33). */
 export function buildReminderMessage(
   impacts: readonly Impact[],
   knownFiles: ReadonlySet<string>,
   attribution: Attribution = "own",
+  template: string = DEFAULT_REMINDER_TEMPLATE,
 ): string {
-  const header = "Documentation impact check";
   const intro =
     attribution === "uncertain"
       ? "Files changed while this agent was active, and project rules link them to documentation."
@@ -84,26 +125,30 @@ export function buildReminderMessage(
       ? REMIND_TAIL
       : STRICT_TAIL;
 
-  return [header, "", intro, "", count, "", body, "", tail].join("\n");
+  return renderTemplate(template, "{body}", DEFAULT_REMINDER_TEMPLATE, {
+    intro,
+    count,
+    body,
+    tail,
+  });
 }
 
 /** Final fail-open notice when `maxReminderRounds` is exhausted (SPEC §34, §36). */
 export function buildLimitMessage(
   impacts: readonly Impact[],
   rounds: number,
+  template: string = DEFAULT_LIMIT_TEMPLATE,
 ): string {
-  const ids = impacts.map(
-    (impact) =>
-      `- ${impact.ruleId} → ${impact.targetFiles.join(", ") || "(no targets)"}`,
-  );
-  return [
-    "Documentation impact check: reminder limit reached",
-    "",
-    `The following impacts stayed unresolved after ${rounds} reminder round(s); allowing the turn to finish:`,
-    ...ids,
-    "",
-    "Please review the linked documentation as soon as possible.",
-  ].join("\n");
+  const list = impacts
+    .map(
+      (impact) =>
+        `- ${impact.ruleId} → ${impact.targetFiles.join(", ") || "(no targets)"}`,
+    )
+    .join("\n");
+  return renderTemplate(template, "{impacts}", DEFAULT_LIMIT_TEMPLATE, {
+    rounds: String(rounds),
+    impacts: list,
+  });
 }
 
 /** `/doc-impact` status summary (SPEC §41). */

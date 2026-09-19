@@ -91,6 +91,10 @@ The bundle inserts the `dsh-doc-impact` Cordis row. Override its defaults in the
   config:
     enabled: true
     configFile: .dsh/doc-impact.yml
+    # Detect impacts without steering reminders into the turn: tools,
+    # `/doc-impact`, and status keep working, reminder rounds are not spent,
+    # and the limit notice is not sent. Useful with the default `true`.
+    steer: true
     defaults:
       mode: remind
     safety:
@@ -98,6 +102,12 @@ The bundle inserts the `dsh-doc-impact` Cordis row. Override its defaults in the
       onLimit: allow # allow | warn | error
     changeDetection:
       maxSnapshotFiles: 10000
+    # Wording of the two steering messages; empty = built-in text.
+    # reminderTemplate placeholders: {intro} {count} {body} {tail} — {body}
+    # carries the generated impact list and is required.
+    # limitTemplate placeholders: {rounds} {impacts} — {impacts} is required.
+    reminderTemplate: ""
+    limitTemplate: ""
     debug: false
 ```
 
@@ -116,7 +126,7 @@ The bundle inserts the `dsh-doc-impact` Cordis row. Override its defaults in the
 
 The browser half adds a **Doc Impact** card under **Settings → Plugins → Plugin Configuration**. It provides staged edits, Save and Discard actions, an unsaved-state badge, validation, and per-field reset to composition defaults.
 
-Editable fields include `enabled`, `configFile`, default `mode`, `maxReminderRounds`, `onLimit`, `maxSnapshotFiles`, and `debug`. Saved settings apply to the merged runtime configuration without a host restart.
+Editable fields include `enabled`, `steer` (send reminder messages, or detect silently), `configFile`, default `mode`, `maxReminderRounds`, `onLimit`, the `reminderTemplate` and `limitTemplate` message texts with their placeholders documented inline, `maxSnapshotFiles`, and `debug`. A template that loses its required `{body}` / `{impacts}` placeholder is rejected by the form, and the host falls back to the built-in wording. Saved settings apply to the merged runtime configuration without a host restart.
 
 ## Diagnostics
 

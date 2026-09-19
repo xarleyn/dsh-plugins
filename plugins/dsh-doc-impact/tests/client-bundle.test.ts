@@ -264,6 +264,48 @@ describe("client bundle", () => {
     expect(snapshot.dirty).toBe(true); // drafts kept for correction
   });
 
+  it("gates the reminder template on its payload placeholder and resets by unset", async () => {
+    const bundle = await loadBundle();
+    const scope = fakeScope({
+      status: "ready",
+      value: { reminderTemplate: "Custom: {body}" },
+      base: {},
+      user: { reminderTemplate: "Custom: {body}" },
+      writable: true,
+    });
+    const ctx = makeCtx(scope);
+    bundle.factory(fakeReact).apply(ctx);
+    const face = ctx.registered[0]!.options!.inject!() as {
+      hooks: { docImpactCard: { getSnapshot: () => Record<string, any> } };
+      edit: (field: string, text: string) => void;
+      resetField: (field: string) => void;
+      discard: () => void;
+      save: () => Promise<void>;
+    };
+    const snapshot = () => face.hooks.docImpactCard.getSnapshot();
+
+    // An unset multiline field previews the default template for editing.
+    face.edit("limitTemplate", "Limit after {rounds}:\n{impacts}");
+    await face.save();
+    expect(scope.sets).toEqual([
+      ["limitTemplate", "Limit after {rounds}:\n{impacts}"],
+    ]);
+
+    // Dropping the {body} placeholder blocks the save.
+    face.edit("reminderTemplate", "no payload");
+    expect(snapshot().invalid).toBe(true);
+    expect(snapshot().fields.reminderTemplate.invalid).toBe(true);
+    await face.save();
+    expect(scope.sets).toHaveLength(1); // nothing new landed
+
+    // Reset stages a clear: the user layer drops back to the default text.
+    face.discard();
+    face.resetField("reminderTemplate");
+    expect(snapshot().fields.reminderTemplate.invalid).toBe(false);
+    await face.save();
+    expect(scope.unsets).toEqual(["reminderTemplate"]);
+  });
+
   it("renders nothing while the namespace is unavailable", async () => {
     const bundle = await loadBundle();
     const scope = fakeScope({ status: "loading", writable: false });

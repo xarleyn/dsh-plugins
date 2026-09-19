@@ -1,6 +1,11 @@
 // Staged settings form over the `doc-impact` settings namespace — a port of
 // the first-party CardForm semantics: staged drafts never write; Save commits
 // field-granular set/unset calls in staging order (SPEC §37).
+import {
+  DEFAULT_LIMIT_TEMPLATE,
+  DEFAULT_REMINDER_TEMPLATE,
+} from "../engine/reminder.js";
+
 export const MODE_OPTIONS = [
   "remind",
   "require-review",
@@ -9,9 +14,12 @@ export const MODE_OPTIONS = [
 ];
 export const ON_LIMIT_OPTIONS = ["allow", "warn", "error"];
 
-/** Field specs: kind text/number render as inputs, choice/bool as selects. */
+/** Field specs: kind text/number render as inputs, choice/bool as selects.
+ *  Multiline text renders as a textarea; `requires` pins the placeholder that
+ *  keeps the steering message usable. */
 export const FIELDS = [
   { field: "enabled", kind: "bool", fallback: true },
+  { field: "steer", kind: "bool", fallback: true },
   { field: "configFile", kind: "text", fallback: ".dsh/doc-impact.yml" },
   { field: "mode", kind: "choice", options: MODE_OPTIONS, fallback: "remind" },
   { field: "maxReminderRounds", kind: "number", fallback: 2 },
@@ -20,6 +28,20 @@ export const FIELDS = [
     kind: "choice",
     options: ON_LIMIT_OPTIONS,
     fallback: "allow",
+  },
+  {
+    field: "reminderTemplate",
+    kind: "text",
+    multiline: true,
+    requires: "{body}",
+    fallback: DEFAULT_REMINDER_TEMPLATE,
+  },
+  {
+    field: "limitTemplate",
+    kind: "text",
+    multiline: true,
+    requires: "{impacts}",
+    fallback: DEFAULT_LIMIT_TEMPLATE,
   },
   { field: "maxSnapshotFiles", kind: "number", fallback: 10000 },
   { field: "debug", kind: "bool", fallback: false },
@@ -161,6 +183,13 @@ SettingsForm.prototype.plan = function () {
           field: field,
           run: () => this.runClear(field),
         });
+      } else if (
+        typeof spec.requires === "string" &&
+        !String(write.value).includes(spec.requires)
+      ) {
+        // A steering template without its payload placeholder would emit a
+        // reminder without the impact list; keep the draft staged-but-invalid.
+        plan.push({ field: field, run: undefined });
       } else {
         const value = write.value;
         plan.push({
@@ -231,16 +260,26 @@ SettingsForm.prototype.field = function (field: string) {
       spec.kind === "number"
         ? parseNumber(staged.text)
         : parseText(staged.text);
+    const broken =
+      write !== undefined &&
+      write.kind === "set" &&
+      typeof spec.requires === "string" &&
+      !String(write.value).includes(spec.requires);
     return {
       text: staged.text,
       value: undefined,
       overridden: write !== undefined && write.kind === "set",
-      invalid: write === undefined,
+      invalid: write === undefined || broken,
     };
   }
   const current = this.sectionValue(field);
+  const text =
+    spec.kind === "number" ? formatNumber(current) : formatText(current);
   return {
-    text: spec.kind === "number" ? formatNumber(current) : formatText(current),
+    // A multiline template shows its effective text even when unset, so the
+    // draft starts from the default instead of an empty box.
+    text:
+      spec.multiline === true && text === "" ? formatText(spec.fallback) : text,
     value: current === undefined ? spec.fallback : current,
     overridden: this.stored(field),
     invalid: false,
@@ -264,6 +303,12 @@ SettingsForm.prototype.actions = function () {
     resetField: (field: string) => {
       const spec = specOf(field);
       if (spec.kind === "text" || spec.kind === "number") {
+        if (spec.multiline === true) {
+          // A template resets to the composition default by dropping the user
+          // override, not by writing a copy of the default into the user layer.
+          this.stage(field, { op: "clear" });
+          return;
+        }
         const cleared = this.clearedValue(field);
         this.stage(field, {
           op: "set",

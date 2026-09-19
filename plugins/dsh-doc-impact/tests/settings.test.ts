@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  SETTINGS_DEFAULTS,
   declaredSettingsBase,
   fromSettingsSection,
   resolvePluginConfig,
@@ -54,7 +55,59 @@ describe("settings section mapping", () => {
       safety: { maxReminderRounds: 4, onLimit: "error" },
       maxSnapshotFiles: 7,
       debug: true,
+      steer: true,
+      reminderTemplate: SETTINGS_DEFAULTS.reminderTemplate,
+      limitTemplate: SETTINGS_DEFAULTS.limitTemplate,
     });
+  });
+
+  it("carries the steering switch and templates through every layer", () => {
+    expect(resolvePluginConfig(undefined)).toMatchObject({
+      steer: true,
+      reminderTemplate: SETTINGS_DEFAULTS.reminderTemplate,
+      limitTemplate: SETTINGS_DEFAULTS.limitTemplate,
+    });
+
+    const base = declaredSettingsBase({
+      steer: false,
+      reminderTemplate: "Check: {body}",
+      limitTemplate: "Limit ({rounds}):\n{impacts}",
+    });
+    expect(base).toEqual({
+      steer: false,
+      reminderTemplate: "Check: {body}",
+      limitTemplate: "Limit ({rounds}):\n{impacts}",
+    });
+
+    const config = fromSettingsSection(base);
+    expect(config.steer).toBe(false);
+    expect(config.reminderTemplate).toBe("Check: {body}");
+    expect(config.limitTemplate).toBe("Limit ({rounds}):\n{impacts}");
+  });
+
+  it("degrades a template without its payload placeholder to the default", () => {
+    const degraded = fromSettingsSection({
+      steer: "yes",
+      reminderTemplate: "text without payload",
+      limitTemplate: 42,
+    });
+    // Same convention as `enabled`: anything but `true` reads as off.
+    expect(degraded.steer).toBe(false);
+    expect(degraded.reminderTemplate).toBe(SETTINGS_DEFAULTS.reminderTemplate);
+    expect(degraded.limitTemplate).toBe(SETTINGS_DEFAULTS.limitTemplate);
+  });
+
+  it("rejects unknown keys and malformed template values loudly", () => {
+    expect(() => resolvePluginConfig({ steer: false })).not.toThrow();
+    expect(() => resolvePluginConfig({ reminders: true })).toThrow(
+      /unknown key/,
+    );
+    expect(() => resolvePluginConfig({ steer: "off" })).toThrow(
+      "steer must be a boolean",
+    );
+    expect(() => resolvePluginConfig({ reminderTemplate: "   " })).toThrow(
+      "reminderTemplate must be a non-empty string",
+    );
   });
 
   it("degrades gracefully on missing or malformed sections", () => {

@@ -41,6 +41,14 @@ export interface EngineOptions {
   logger?: EngineLogger;
   /** Live-agent probe for attribution uncertainty (SPEC §49); returns how many agents are concurrently active. */
   concurrentAgents?: (cwd: string) => number;
+  /**
+   * Master switch of the steering loop (settings `steer`): `false` keeps
+   * detection, tools, and status alive but never interrupts a turn — no
+   * reminder rounds are recorded and no limit notice is sent.
+   */
+  steeringEnabled?: () => boolean;
+  /** Live steering texts (settings `reminderTemplate` / `limitTemplate`). */
+  messageTemplates?: () => { reminder: string; limit: string };
   /** Detector seam for tests; defaults to the real Git/filesystem factory. */
   detectorFactory?: (
     mode: ChangeDetectionMode,
@@ -275,6 +283,19 @@ export class DocImpactEngine {
         };
       }
 
+      // Steering switched off (settings `steer`): report pending impacts
+      // through the tools and commands, but never spend reminder rounds or
+      // interrupt the turn — so re-enabling starts from a clean slate.
+      if (this.#options.steeringEnabled?.() === false) {
+        return {
+          steer: undefined,
+          pending,
+          changed: diff.changes,
+          knownFiles,
+          degraded: diff.degraded,
+        };
+      }
+
       const steerables = pending.filter((impact) =>
         runtime.state.shouldRemind(impact),
       );
@@ -305,6 +326,7 @@ export class DocImpactEngine {
           limitSteer ??= buildLimitMessage(
             exhausted,
             runtime.safety.maxReminderRounds,
+            this.#options.messageTemplates?.().limit,
           );
         }
       }
@@ -323,7 +345,12 @@ export class DocImpactEngine {
           );
         }
         const attribution: Attribution = concurrent > 1 ? "uncertain" : "own";
-        steer = buildReminderMessage(steerables, knownFiles, attribution);
+        steer = buildReminderMessage(
+          steerables,
+          knownFiles,
+          attribution,
+          this.#options.messageTemplates?.().reminder,
+        );
         this.#log(
           `reminder sent: ${steerables.length} impact(s), rules: ${steerables.map((impact) => impact.ruleId).join(", ")}, attribution: ${attribution}`,
         );

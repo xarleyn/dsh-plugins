@@ -1,6 +1,7 @@
 import {
   declaredSettingsBase,
   fromSettingsSection,
+  SETTINGS_DEFAULTS,
   type DocImpactPluginConfig,
 } from "./plugin-config.js";
 
@@ -59,6 +60,11 @@ function buildSchema(Schema: SchemasteryModule["default"]): unknown {
     onLimit: Schema.union(["allow", "warn", "error"]).default("allow"),
     maxSnapshotFiles: Schema.number().min(1).step(1).default(10_000),
     debug: Schema.boolean().default(false),
+    steer: Schema.boolean().default(true),
+    reminderTemplate: Schema.string().default(
+      SETTINGS_DEFAULTS.reminderTemplate,
+    ),
+    limitTemplate: Schema.string().default(SETTINGS_DEFAULTS.limitTemplate),
   });
 }
 

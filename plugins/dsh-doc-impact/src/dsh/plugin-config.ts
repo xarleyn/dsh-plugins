@@ -1,5 +1,9 @@
 import type { ResolutionMode } from "../config/types.js";
 import { ConfigError } from "../config/errors.js";
+import {
+  DEFAULT_LIMIT_TEMPLATE,
+  DEFAULT_REMINDER_TEMPLATE,
+} from "../engine/reminder.js";
 
 export interface DocImpactPluginConfig {
   enabled: boolean;
@@ -11,6 +15,11 @@ export interface DocImpactPluginConfig {
   safety: { maxReminderRounds: number; onLimit: "allow" | "warn" | "error" };
   maxSnapshotFiles: number;
   debug: boolean;
+  /** Master switch of the steering loop; `false` keeps detection without reminders. */
+  steer: boolean;
+  /** Steering message templates; `{body}` / `{impacts}` carry the generated payload. */
+  reminderTemplate: string;
+  limitTemplate: string;
 }
 
 /**
@@ -26,6 +35,9 @@ export interface DocImpactSettingsSection {
   onLimit: "allow" | "warn" | "error";
   maxSnapshotFiles: number;
   debug: boolean;
+  steer: boolean;
+  reminderTemplate: string;
+  limitTemplate: string;
 }
 
 export const SETTINGS_DEFAULTS: DocImpactSettingsSection = {
@@ -36,6 +48,9 @@ export const SETTINGS_DEFAULTS: DocImpactSettingsSection = {
   onLimit: "allow",
   maxSnapshotFiles: 10_000,
   debug: false,
+  steer: true,
+  reminderTemplate: DEFAULT_REMINDER_TEMPLATE,
+  limitTemplate: DEFAULT_LIMIT_TEMPLATE,
 };
 
 const MODES = [
@@ -45,6 +60,26 @@ const MODES = [
   "require-update",
 ] as const;
 const ON_LIMIT = ["allow", "warn", "error"] as const;
+/** The placeholder a steering template must keep to stay usable (SPEC §37). */
+const TEMPLATE_REQUIREMENTS: Record<
+  "reminderTemplate" | "limitTemplate",
+  string
+> = { reminderTemplate: "{body}", limitTemplate: "{impacts}" };
+
+/**
+ * A template lands in the user layer verbatim; one that dropped its payload
+ * placeholder would steer a reminder without the impact list, so it degrades
+ * to the default instead.
+ */
+function templateOr(
+  value: unknown,
+  field: keyof typeof TEMPLATE_REQUIREMENTS,
+): string {
+  return typeof value === "string" &&
+    value.includes(TEMPLATE_REQUIREMENTS[field])
+    ? value
+    : SETTINGS_DEFAULTS[field];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -73,6 +108,9 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
         "safety",
         "changeDetection",
         "debug",
+        "steer",
+        "reminderTemplate",
+        "limitTemplate",
       ].includes(key),
   );
   if (unknown.length > 0) {
@@ -84,6 +122,9 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
     throw new ConfigError("enabled must be a boolean");
   }
+  if (config.steer !== undefined && typeof config.steer !== "boolean") {
+    throw new ConfigError("steer must be a boolean");
+  }
   if (
     config.configFile !== undefined &&
     (typeof config.configFile !== "string" || config.configFile.trim() === "")
@@ -92,6 +133,15 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   }
   if (config.debug !== undefined && typeof config.debug !== "boolean") {
     throw new ConfigError("debug must be a boolean");
+  }
+  for (const field of ["reminderTemplate", "limitTemplate"] as const) {
+    const value = config[field];
+    if (
+      value !== undefined &&
+      (typeof value !== "string" || value.trim() === "")
+    ) {
+      throw new ConfigError(`${field} must be a non-empty string`);
+    }
   }
 
   const defaults = expectRecord(config.defaults, "defaults");
@@ -157,6 +207,13 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
     },
     maxSnapshotFiles,
     debug: config.debug ?? SETTINGS_DEFAULTS.debug,
+    steer: config.steer ?? SETTINGS_DEFAULTS.steer,
+    reminderTemplate:
+      (config.reminderTemplate as string | undefined) ??
+      SETTINGS_DEFAULTS.reminderTemplate,
+    limitTemplate:
+      (config.limitTemplate as string | undefined) ??
+      SETTINGS_DEFAULTS.limitTemplate,
   };
 }
 
@@ -173,8 +230,13 @@ export function declaredSettingsBase(
   if (!isRecord(raw)) return {};
   const base: Partial<DocImpactSettingsSection> = {};
   if (raw.enabled !== undefined) base.enabled = raw.enabled === true;
+  if (raw.steer !== undefined) base.steer = raw.steer === true;
   if (raw.configFile !== undefined) base.configFile = String(raw.configFile);
   if (raw.debug !== undefined) base.debug = raw.debug === true;
+  if (raw.reminderTemplate !== undefined)
+    base.reminderTemplate = String(raw.reminderTemplate);
+  if (raw.limitTemplate !== undefined)
+    base.limitTemplate = String(raw.limitTemplate);
   const defaults = expectRecord(raw.defaults, "defaults");
   if (defaults.mode !== undefined)
     base.mode = String(defaults.mode) as DocImpactSettingsSection["mode"];
@@ -236,5 +298,8 @@ export function fromSettingsSection(section: unknown): DocImpactPluginConfig {
       SETTINGS_DEFAULTS.maxSnapshotFiles,
     ),
     debug: s.debug === undefined ? SETTINGS_DEFAULTS.debug : s.debug === true,
+    steer: s.steer === undefined ? SETTINGS_DEFAULTS.steer : s.steer === true,
+    reminderTemplate: templateOr(s.reminderTemplate, "reminderTemplate"),
+    limitTemplate: templateOr(s.limitTemplate, "limitTemplate"),
   };
 }
