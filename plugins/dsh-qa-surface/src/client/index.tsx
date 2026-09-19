@@ -827,22 +827,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // registration never happens. The panel seat is declared here so the
         // extension panels keep resolving under the root owner.
         //
-        // This program's register() contract types 'root' without a children
-        // seat and the guard's props against the overlay composition; the
-        // root occupant receives the same runtime face at runtime (props plus
-        // the inject face), and the frame's child slots live in the host
-        // program's SlotMap — so this one registration crosses the seam
-        // through the erased signature the slots runtime actually executes.
-        const registerRootOwner = ctx.slots.register as unknown as (
-          options: {
-            name: "root";
-            priority?: number;
-            children?: Record<string, { kind: "keyed"; scope: "root" }>;
-            inject?: () => QaSurfaceFace;
-          },
-          component: unknown,
-        ) => () => void;
-        registerRootOwner(
+        // The call MUST stay attached to ctx.slots: the register
+        // implementation is a prototype function reading this.ctx (bound by
+        // the cordis service proxy at property-access time), so extracting
+        // it into a variable lands in a fiber-less context and throws. This
+        // program's type contract does not know the root's children seat
+        // (that is the host program's knowledge), hence the argument casts —
+        // they widen the arguments, never detach the receiver.
+        ctx.slots.register(
           {
             name: "root",
             priority: QA_ROOT_OWNER_PRIORITY,
@@ -850,8 +842,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               "qa.surface.panel": { kind: "keyed", scope: "root" },
             },
             inject: qaFace,
-          },
-          QaSurfaceGuard,
+          } as unknown as Parameters<typeof ctx.slots.register>[0],
+          QaSurfaceGuard as unknown as Parameters<typeof ctx.slots.register>[1],
         );
       } else {
         ctx.slots.inject("shell.overlay", () =>
