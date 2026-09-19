@@ -2,11 +2,13 @@ import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
 import { useState } from "react";
 import type {
+  CredentialSource,
   IntegrationInstanceSummary,
+  IntegrationServiceBoundary,
   IntegrationSummary,
   PolicyPatch,
 } from "../types.js";
-import { createProviderCard } from "./provider-card.js";
+import { createProviderCard, serviceConnectOption } from "./provider-card.js";
 
 export interface WeblateRemote {
   weblateInstances(
@@ -15,7 +17,11 @@ export interface WeblateRemote {
   getWeblate(token: string): Promise<RemoteResult<IntegrationSummary>>;
   putWeblateCredential(
     token: string,
-    input: { readonly instanceId: string; readonly token: string },
+    input: {
+      readonly instanceId: string;
+      readonly token: string;
+      readonly useServiceCredential?: boolean;
+    },
   ): Promise<RemoteResult<IntegrationSummary>>;
   testWeblate(token: string): Promise<RemoteResult<IntegrationSummary>>;
   patchWeblatePolicy(
@@ -23,6 +29,23 @@ export interface WeblateRemote {
     patch: PolicyPatch,
   ): Promise<RemoteResult<IntegrationSummary>>;
   disconnectWeblate(token: string): Promise<RemoteResult<boolean>>;
+  managedServiceCredentials(token: string): Promise<
+    RemoteResult<{
+      readonly enabled: boolean;
+      readonly defaultForNewConnections: boolean;
+    }>
+  >;
+  credentialSource(
+    token: string,
+    input: { readonly provider: string; readonly source: CredentialSource },
+  ): Promise<RemoteResult<IntegrationSummary>>;
+  serviceBoundary(
+    token: string,
+    input: {
+      readonly provider: string;
+      readonly selection: IntegrationServiceBoundary | null;
+    },
+  ): Promise<RemoteResult<IntegrationSummary>>;
 }
 
 const ERROR_COPY: Readonly<Record<string, string>> = {
@@ -42,6 +65,20 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   UpstreamTimeout: "Weblate не ответил вовремя. Попробуйте ещё раз.",
   TlsFailure:
     "Сертификат Weblate не принят стендом. Нужен сертификат, которому доверяет сервер.",
+  ServiceCredentialUnavailable:
+    "Для этого инстанса администратор не настроил сервисный токен.",
+  ServiceCredentialDisabled:
+    "Сервисный токен этого инстанса отключён администратором.",
+  ServiceCredentialInvalid:
+    "Сервисный токен не подходит для выбранного инстанса. Сообщите администратору.",
+  PersonalCredentialRequired:
+    "Личный токен не сохранён: подключите его, чтобы вернуться к личному аккаунту.",
+  ServiceResourceNotAllowed:
+    "Сервисный токен не даёт доступа к этому проекту. Сузьте доступ в списке или подключите личный аккаунт.",
+  SensitiveReadRequiresPersonalCredential:
+    "Эта операция может содержать личные или чувствительные данные. Подключите личный аккаунт, чтобы использовать её.",
+  OperationNotAllowedWithServiceCredential:
+    "Сервисный режим — только безопасное чтение: изменения недоступны.",
 };
 
 interface WeblateExtra {
@@ -84,46 +121,104 @@ export function createWeblateCard(remote: WeblateRemote) {
       accept(await remote.getWeblate(token));
     },
     calls: {
-      save: (token, credential, extra) =>
+      save: (token, credential, extra, options) =>
         remote.putWeblateCredential(token, {
           instanceId: extra.instanceId,
           token: credential,
+          useServiceCredential: options.useServiceCredential,
         }),
       test: (token) => remote.testWeblate(token),
       patch: (token, patch) => remote.patchWeblatePolicy(token, patch),
       disconnect: (token) => remote.disconnectWeblate(token),
+      setSource: (token, source) =>
+        remote.credentialSource(token, { provider: "weblate", source }),
+      setBoundary: (token, selection) =>
+        remote.serviceBoundary(token, { provider: "weblate", selection }),
+    },
+    // Exactly the selected instance's managed credential: falling back to
+    // another instance's would offer a checkbox whose connect could only fail.
+    serviceBinding: (extra) => {
+      if (extra.instanceId === "") {
+        return extra.instances.length === 1
+          ? (extra.instances[0]?.service ?? null)
+          : null;
+      }
+      return (
+        extra.instances.find((instance) => instance.id === extra.instanceId)
+          ?.service ?? null
+      );
+    },
+    serviceDefault: async (token) => {
+      const result = await remote.managedServiceCredentials(token);
+      return result.ok
+        ? result.value.enabled && result.value.defaultForNewConnections
+        : false;
     },
     credentialSection: (state, help) => {
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
       const needsChoice = instances.length > 1;
+      const service = serviceConnectOption(state);
+      const instancePicker = needsChoice ? (
+        <label className="dsh-qa-integrations__field">
+          Инстанс Weblate
+          <select
+            className="dsh-qa-integrations__input"
+            value={instanceId}
+            disabled={state.busy}
+            onChange={(event) =>
+              state.extra.setInstanceId(event.currentTarget.value)
+            }
+          >
+            <option value="">Выберите инстанс</option>
+            {instances.map((instance) => (
+              <option key={instance.id} value={instance.id}>
+                {instance.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <span className="dsh-qa-integrations__muted">
+          Инстанс: {instances[0]?.label ?? ""}
+        </span>
+      );
+      // With a managed credential there is nothing to paste: the host spends the
+      // deployment's token, so the form keeps the instance picker and the
+      // checkbox and drops the secret field entirely.
+      if (state.useService) {
+        return (
+          <div className="dsh-qa-integrations__section">
+            {instancePicker}
+            {service}
+            <div className="dsh-qa-integrations__actions">
+              <button
+                className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
+                type="button"
+                disabled={state.busy || (needsChoice && instanceId === "")}
+                onClick={state.save}
+              >
+                Подключить сервисный токен
+              </button>
+              {state.connected ? (
+                <button
+                  className="dsh-qa-integrations__button"
+                  type="button"
+                  disabled={state.busy}
+                  onClick={state.cancelCredential}
+                >
+                  Отмена
+                </button>
+              ) : null}
+            </div>
+          </div>
+        );
+      }
       return (
         <div className="dsh-qa-integrations__section">
-          {needsChoice ? (
-            <label className="dsh-qa-integrations__field">
-              Инстанс Weblate
-              <select
-                className="dsh-qa-integrations__input"
-                value={instanceId}
-                disabled={state.busy}
-                onChange={(event) =>
-                  state.extra.setInstanceId(event.currentTarget.value)
-                }
-              >
-                <option value="">Выберите инстанс</option>
-                {instances.map((instance) => (
-                  <option key={instance.id} value={instance.id}>
-                    {instance.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <span className="dsh-qa-integrations__muted">
-              Инстанс: {instances[0]?.label ?? ""}
-            </span>
-          )}
+          {service}
+          {instancePicker}
           <label className="dsh-qa-integrations__field">
             API-токен Weblate
             <input

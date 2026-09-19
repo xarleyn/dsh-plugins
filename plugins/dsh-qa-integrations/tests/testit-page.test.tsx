@@ -70,13 +70,23 @@ function remote(overrides: Partial<TestitRemote> = {}): TestitRemote {
     testTestit: async () => ({ ok: true, value: connected }),
     patchTestitPolicy: async () => ({ ok: true, value: connected }),
     disconnectTestit: async () => ({ ok: true, value: true }),
+    managedServiceCredentials: async () => ({
+      ok: true,
+      value: { enabled: false, defaultForNewConnections: false },
+    }),
+    credentialSource: async () => ({ ok: true, value: connected }),
+    serviceBoundary: async () => ({ ok: true, value: connected }),
     ...overrides,
   };
 }
 
 describe("Integrations Test IT card", () => {
   it("keeps the API token write-only and the installation a choice, not a host", async () => {
-    const writes: { instanceId: string; token: string }[] = [];
+    const writes: {
+      instanceId: string;
+      token: string;
+      useServiceCredential?: boolean;
+    }[] = [];
     const Card = createTestitCard(
       remote({
         testitInstances: async () => ({ ok: true, value: TWO }),
@@ -102,7 +112,9 @@ describe("Integrations Test IT card", () => {
     fireEvent.change(installation, { target: { value: "tms" } });
     fireEvent.click(connect);
     await screen.findByText(/Test IT Cloud/u);
-    expect(writes).toEqual([{ instanceId: "tms", token: secret }]);
+    expect(writes).toEqual([
+      { instanceId: "tms", token: secret, useServiceCredential: false },
+    ]);
     await waitFor(() =>
       expect(screen.queryByLabelText("API-токен Test IT")).toBeNull(),
     );

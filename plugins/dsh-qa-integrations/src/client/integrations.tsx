@@ -3,7 +3,11 @@ import type { CredentialHelp } from "@yadsh/dsh-plugin-kit";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { useEffect, useRef, useState } from "react";
 import type { IntegrationProviderSummary } from "../types.js";
-import { createBitrix24Card, type IntegrationsRemote } from "./bitrix24.js";
+import {
+  createBitrix24Card,
+  type Bitrix24Remote,
+  type IntegrationsRemote,
+} from "./bitrix24.js";
 import { createConfluenceCard, type ConfluenceRemote } from "./confluence.js";
 import { createGitlabCard, type GitlabRemote } from "./gitlab.js";
 import { createJiraCard, type JiraRemote } from "./jira.js";
@@ -20,6 +24,7 @@ export interface CredentialHelpRemote {
 
 export type IntegrationsClientRemote = CredentialHelpRemote &
   IntegrationsRemote &
+  Bitrix24Remote &
   ConfluenceRemote &
   GitlabRemote &
   TeamcityRemote &

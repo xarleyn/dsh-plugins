@@ -5,13 +5,26 @@ import {
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
 import { redactSecrets } from "../../redaction.js";
+import { boundaryHas } from "../../service-credentials/policy.js";
+import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type {
+  OperationSecurityMetadata,
+  ServiceCredentialHealth,
+  ServiceResourceBoundary,
+} from "../../service-credentials/types.js";
+import type {
+  CapabilityServiceState,
   IntegrationCapability,
   IntegrationCapabilityInfo,
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
 import { objectOf } from "../shared/account.js";
+import {
+  assertServiceOperationAllowed,
+  serviceBoundaryOf,
+  serviceResourceDenied,
+} from "../shared/service-boundary.js";
 import {
   assertReadableSize,
   attachmentBinaryProblem,
@@ -21,14 +34,23 @@ import {
 import {
   TESTIT_CAPABILITY_INFO,
   TESTIT_OPERATIONS,
+  TESTIT_RESOURCE_KIND,
   enabledCapabilities,
   testitOperationCapability,
+  testitOperationMetadata,
 } from "./catalog.js";
-import type { TestitFlags, TestitInstance } from "./config.js";
+import {
+  testitInstance,
+  type TestitFlags,
+  type TestitInstance,
+} from "./config.js";
 import {
   TESTIT_HANDLERS,
+  TESTIT_LIMITS,
   TESTIT_PROJECTIONS,
   contentBlock,
+  listLimit,
+  listOffset,
   type TestitRequest,
 } from "./operations.js";
 import { TESTIT_CREDENTIAL_HELP } from "./credential-help.js";
@@ -54,8 +76,53 @@ const TOKEN_SHAPE = /^\S{16,4096}$/u;
 const URL_LIKE = /^https?:\/\//iu;
 
 /**
+ * Whether one caller-named project stays inside the deployment's boundary.
+ * Test IT addresses projects by their id and offers no hierarchy a boundary
+ * entry could cover, so the match is the exact identifier the profile lists.
+ */
+export function projectAllowed(
+  boundary: ServiceResourceBoundary,
+  ref: string,
+): boolean {
+  return boundaryHas(boundary, TESTIT_RESOURCE_KIND, ref.trim());
+}
+
+/** Operations that answer exactly the project the call names. */
+const PROJECT_ADDRESSED: readonly string[] = Object.freeze([
+  "projects.get",
+  "sections.list",
+  "workItems.list",
+  "testPlans.list",
+  "testRuns.list",
+  "configurations.list",
+  // `autoTests.list` takes the project optionally upstream; service mode does
+  // not, because unscoped it would answer with the shared account's whole
+  // installation — exactly what the boundary exists to prevent.
+  "autoTests.list",
+]);
+
+/**
+ * Operations answered from one object that names its own project. The id alone
+ * proves nothing, so the check runs on the fetched answer, before any of it is
+ * returned.
+ */
+const SELF_SCOPED_READS: readonly string[] = Object.freeze([
+  "workItems.get",
+  "testPlans.get",
+  "testRuns.get",
+  "autoTests.get",
+]);
+
+/** The project an upstream object declares, when it declares one. */
+function projectOf(source: Record<string, unknown>): string | undefined {
+  const id = source["projectId"];
+  return typeof id === "string" && id !== "" ? id : undefined;
+}
+
+/**
  * Test IT provider: one Test IT installation per QA user, connected with that
- * user's own API token.
+ * user's own API token, or with the deployment's managed read-only credential
+ * when the user's binding asks for it.
  *
  * The installation is operator configuration — the connect form only picks from
  * the configured list — so the broker cannot be pointed at a host of the
@@ -122,6 +189,38 @@ export class TestitProvider implements IntegrationProvider {
     return testitOperationCapability(operation);
   }
 
+  operationMetadata(operation: string): OperationSecurityMetadata | undefined {
+    return testitOperationMetadata(operation);
+  }
+
+  /** Every project-scoped read is bounded by the profile's project list. */
+  resourceBoundaryKind(operation: string): string | undefined {
+    return TESTIT_OPERATIONS[operation]?.security.requiresResourceBoundary ===
+      true
+      ? TESTIT_RESOURCE_KIND
+      : undefined;
+  }
+
+  /**
+   * Portal of a configured installation. An empty id means "the only
+   * installation", the same rule `parseCredential` applies, so deployment
+   * configuration and the connect form name installations alike.
+   */
+  instancePortal(instanceId: string): string | undefined {
+    const instances = this.config.testit.instances;
+    const id = instanceId.trim();
+    if (id === "") {
+      return instances.length === 1 ? instances[0]?.baseUrl : undefined;
+    }
+    return testitInstance(this.config.testit, id)?.baseUrl;
+  }
+
+  capabilityServiceState(
+    capability: IntegrationCapability,
+  ): CapabilityServiceState | undefined {
+    return operationCapabilityServiceState(TESTIT_OPERATIONS, capability);
+  }
+
   /**
    * The documented first validation call is the project list: an authorized
    * answer proves the address and the token at once, and an empty project list
@@ -161,6 +260,44 @@ export class TestitProvider implements IntegrationProvider {
     };
   }
 
+  /**
+   * Health of the deployment's managed token. Test IT reports neither the
+   * scopes of a token nor its owner, so the probe is the same read the personal
+   * validation makes — it never changes upstream state — and the answer says
+   * what was and was not learned instead of implying an audit it did not
+   * perform.
+   */
+  async validateServiceCredential(
+    context: ProviderContext,
+  ): Promise<ServiceCredentialHealth> {
+    const credential = credentialFromPlaintext(context.credential);
+    const instance = credentialInstance(this.config.testit, credential);
+    try {
+      const probe = TESTIT_HANDLERS["connection.get"];
+      if (probe === undefined) {
+        throw new IntegrationError(
+          "ProviderUnavailable",
+          "Test IT connection probe is unavailable",
+        );
+      }
+      const probeRequest = probe({}, { flags: this.config.testit });
+      await this.transport.getJson<unknown>(
+        instance,
+        credential.token,
+        probeRequest.path,
+        probeRequest.query,
+      );
+      return {
+        status: "healthy",
+        warnings: [
+          "Test IT did not report the token scopes; the local service ceiling still applies",
+        ],
+      };
+    } catch (error) {
+      return healthFromFailure(error);
+    }
+  }
+
   async execute(
     context: ProviderContext,
     operation: string,
@@ -176,6 +313,30 @@ export class TestitProvider implements IntegrationProvider {
         "Unsupported Test IT operation",
       );
     }
+    // Ceiling first, then the boundary: what the operation is decides before
+    // where it may read.
+    if (context.credentialSource === "service") {
+      assertServiceOperationAllowed(
+        definition.security,
+        "This Test IT operation is not available through the service credential",
+      );
+    }
+    const boundary = serviceBoundaryOf(context);
+    if (
+      boundary !== undefined &&
+      definition.security.requiresResourceBoundary
+    ) {
+      await this.assertInsideBoundary(
+        operation,
+        input,
+        boundary,
+        instance,
+        credential,
+      );
+    }
+    if (boundary !== undefined && operation === "projects.list") {
+      return this.listBoundedProjects(instance, credential, boundary, input);
+    }
     const flags = this.config.testit;
     const request = handler(input, { flags });
     if (definition.stream === true) {
@@ -187,6 +348,18 @@ export class TestitProvider implements IntegrationProvider {
       request.path,
       request.query,
     );
+    if (
+      boundary !== undefined &&
+      (SELF_SCOPED_READS.includes(operation) || operation === "testResults.get")
+    ) {
+      await this.assertAnswerInside(
+        operation,
+        response.data,
+        boundary,
+        instance,
+        credential,
+      );
+    }
     const projection = TESTIT_PROJECTIONS[operation];
     if (projection === undefined) return objectOf(response.data);
     const projected = projection(response.data, {
@@ -199,6 +372,248 @@ export class TestitProvider implements IntegrationProvider {
     // A list projection already answered with its envelope; a single-resource
     // answer is wrapped so every tool result has the same object shape.
     return definition.list === undefined ? objectOf(projected) : projected;
+  }
+
+  /**
+   * Hold one call inside the deployment's boundary. A call addressed by a
+   * project must name one the boundary lists; an id-addressed read resolves
+   * the project its object lives in first, and only then is answered. The
+   * project listing needs no check here: it is built from the allowlist
+   * itself, not from whatever the shared account can reach.
+   */
+  private async assertInsideBoundary(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    boundary: ServiceResourceBoundary,
+    instance: TestitInstance,
+    credential: TestitCredential,
+  ): Promise<void> {
+    if (operation === "projects.list") return;
+    if (PROJECT_ADDRESSED.includes(operation)) {
+      const project = input["projectId"];
+      this.assertProject(
+        boundary,
+        project === undefined ? undefined : String(project).trim(),
+      );
+      return;
+    }
+    if (
+      operation === "workItems.history" ||
+      operation === "workItems.comments" ||
+      operation === "workItems.testResults"
+    ) {
+      this.assertProject(
+        boundary,
+        await this.projectThrough(
+          "workItems.get",
+          { workItemId: input["workItemId"] },
+          instance,
+          credential,
+        ),
+      );
+      return;
+    }
+    if (operation === "testPlans.summary") {
+      this.assertProject(
+        boundary,
+        await this.projectThrough(
+          "testPlans.get",
+          { testPlanId: input["testPlanId"] },
+          instance,
+          credential,
+        ),
+      );
+      return;
+    }
+    if (operation === "testRuns.results") {
+      this.assertProject(
+        boundary,
+        await this.projectThrough(
+          "testRuns.get",
+          { testRunId: input["testRunId"] },
+          instance,
+          credential,
+        ),
+      );
+      return;
+    }
+    if (operation === "testResults.attachments") {
+      // A test result names no project; the run it belongs to does.
+      const result = await this.readFor(
+        "testResults.get",
+        input,
+        instance,
+        credential,
+      );
+      const runId =
+        typeof result["testRunId"] === "string"
+          ? result["testRunId"]
+          : undefined;
+      const project =
+        runId === undefined
+          ? undefined
+          : await this.projectThrough(
+              "testRuns.get",
+              { testRunId: runId },
+              instance,
+              credential,
+            );
+      this.assertProject(boundary, project);
+      return;
+    }
+    if (
+      SELF_SCOPED_READS.includes(operation) ||
+      operation === "testResults.get"
+    ) {
+      // Answered from one fetched object that names its project; the check
+      // runs on the answer, before any of it is returned.
+      return;
+    }
+    // An operation this provider cannot map to a project is refused rather
+    // than answered from the shared account's whole installation.
+    throw serviceResourceDenied();
+  }
+
+  /**
+   * Hold a fetched answer inside the boundary before it is returned. The
+   * object read names its project — directly, or through the run a test
+   * result belongs to — and a resource outside the boundary is discarded
+   * whole: upstream saw the read, the model never does.
+   */
+  private async assertAnswerInside(
+    operation: string,
+    data: unknown,
+    boundary: ServiceResourceBoundary,
+    instance: TestitInstance,
+    credential: TestitCredential,
+  ): Promise<void> {
+    const source = objectOf(data);
+    if (operation === "testResults.get") {
+      const runId =
+        typeof source["testRunId"] === "string"
+          ? source["testRunId"]
+          : undefined;
+      const project =
+        runId === undefined
+          ? undefined
+          : await this.projectThrough(
+              "testRuns.get",
+              { testRunId: runId },
+              instance,
+              credential,
+            );
+      this.assertProject(boundary, project);
+      return;
+    }
+    this.assertProject(boundary, projectOf(source));
+  }
+
+  /** Refuse unless the resolved project is one the boundary lists. */
+  private assertProject(
+    boundary: ServiceResourceBoundary,
+    project: string | undefined,
+  ): void {
+    if (project === undefined || !projectAllowed(boundary, project)) {
+      throw serviceResourceDenied();
+    }
+  }
+
+  /**
+   * One companion read used to locate the project an id-addressed answer
+   * belongs to. It goes through the catalog handler of the operation it
+   * mirrors, so the id is validated exactly like a direct call's.
+   */
+  private async readFor(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    instance: TestitInstance,
+    credential: TestitCredential,
+  ): Promise<Record<string, unknown>> {
+    const handler = TESTIT_HANDLERS[operation];
+    if (handler === undefined) {
+      throw new IntegrationError(
+        "InvalidRequest",
+        "Unsupported Test IT operation",
+      );
+    }
+    const request = handler(input, { flags: this.config.testit });
+    const response = await this.transport.getJson<unknown>(
+      instance,
+      credential.token,
+      request.path,
+      request.query,
+    );
+    return objectOf(response.data);
+  }
+
+  /** The project of the object one companion read answers. */
+  private async projectThrough(
+    operation: string,
+    input: Readonly<Record<string, unknown>>,
+    instance: TestitInstance,
+    credential: TestitCredential,
+  ): Promise<string | undefined> {
+    return projectOf(
+      await this.readFor(operation, input, instance, credential),
+    );
+  }
+
+  /**
+   * The bounded project listing: a service profile names the projects it
+   * covers, so the answer is fetched from that list instead of from whatever
+   * the shared account can reach. A project the service token cannot see is
+   * reported as unavailable rather than silently dropped, which is what tells
+   * the operator their boundary and their token disagree.
+   */
+  private async listBoundedProjects(
+    instance: TestitInstance,
+    credential: TestitCredential,
+    boundary: ServiceResourceBoundary,
+    input: Readonly<Record<string, unknown>>,
+  ): Promise<Record<string, unknown>> {
+    const entries = boundary[TESTIT_RESOURCE_KIND] ?? [];
+    const collected: unknown[] = [];
+    const unavailable: string[] = [];
+    for (const entry of entries) {
+      try {
+        const { data } = await this.transport.getJson<unknown>(
+          instance,
+          credential.token,
+          `/projects/${encodeURIComponent(entry)}`,
+        );
+        collected.push(data);
+      } catch (error) {
+        if (!recoverableResource(error)) throw error;
+        unavailable.push(entry);
+      }
+    }
+    const flags = this.config.testit;
+    // The window is cut here, because the allowlist — not the upstream page —
+    // is what this answer pages over; the projection keeps the caller's text
+    // filter and the item shape the personal listing answers with.
+    const offset = listOffset(input["offset"]);
+    const window = collected.slice(
+      offset,
+      offset + listLimit(input["limit"], TESTIT_LIMITS.projects, flags),
+    );
+    const projection = TESTIT_PROJECTIONS["projects.list"];
+    const projected = objectOf(
+      projection === undefined
+        ? window
+        : projection(window, {
+            flags,
+            input,
+            instanceLabel: instance.label,
+            baseUrl: instance.baseUrl,
+          }),
+    );
+    return {
+      ...projected,
+      serviceScoped: true,
+      ...(unavailable.length === 0
+        ? {}
+        : { unavailableResources: unavailable }),
+    };
   }
 
   /**
@@ -282,6 +697,31 @@ export class TestitProvider implements IntegrationProvider {
       );
     }
     return only;
+  }
+}
+
+/** A missing or forbidden project inside a boundary is reported, not fatal. */
+function recoverableResource(error: unknown): boolean {
+  return (
+    error instanceof IntegrationError &&
+    (error.code === "ResourceNotFound" ||
+      error.code === "ProviderPermissionDenied")
+  );
+}
+
+/** Map an upstream failure of the probe onto a health status. */
+function healthFromFailure(error: unknown): ServiceCredentialHealth {
+  if (!(error instanceof IntegrationError)) {
+    return { status: "unreachable" };
+  }
+  switch (error.code) {
+    case "CredentialExpired":
+      return { status: "expired" };
+    case "CredentialRevoked":
+    case "ProviderPermissionDenied":
+      return { status: "revoked" };
+    default:
+      return { status: "unreachable" };
   }
 }
 

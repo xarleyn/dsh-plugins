@@ -1,3 +1,4 @@
+import type { OperationSecurityMetadata } from "../../service-credentials/types.js";
 import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
@@ -125,6 +126,54 @@ export const TESTIT_CAPABILITIES: readonly TestitCapabilityDefinition[] =
  */
 export type TestitListKind = "paged" | "capped";
 
+/** A read of the connection itself: no project, nothing of anybody's work. */
+const IDENTITY_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: false,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read whose answer belongs to one Test IT project. `requiresResourceBoundary`
+ * makes the broker prove the profile bounds projects at all, and the provider
+ * holds the call inside the boundary — which is what a service account needs,
+ * because it can see every project of the installation, not just the ones this
+ * workspace was granted.
+ */
+const PROJECT_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "allow",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read of bytes somebody uploaded. The provider reads only small text files
+ * even personally, but the body is still whatever a colleague put there — a log
+ * with a password in it, a key, a screenshot — so the managed credential never
+ * downloads one.
+ */
+const SENSITIVE_READ = {
+  effect: "read",
+  sensitivity: "sensitive",
+  serviceCredential: "deny",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
+/**
+ * A read that stays a normal read but is refused to the managed credential all
+ * the same: Test IT names no owner on attachment metadata, so a global
+ * attachment id cannot be mapped to a project and service mode cannot prove
+ * where it lives. Denied, not bounded — fail closed when in doubt.
+ */
+const UNMAPPABLE_READ = {
+  effect: "read",
+  sensitivity: "normal",
+  serviceCredential: "deny",
+  requiresResourceBoundary: true,
+} as const satisfies OperationSecurityMetadata;
+
 export interface TestitOperationDefinition {
   readonly capability: TestitCapability;
   /**
@@ -146,7 +195,12 @@ export interface TestitOperationDefinition {
    * the provider reads it through its bounded text path instead.
    */
   readonly stream?: boolean;
+  /** What this operation does, how sensitive it is, who may reach it. */
+  readonly security: OperationSecurityMetadata;
 }
+
+/** The resource kind every project-scoped operation of this provider is bounded by. */
+export const TESTIT_RESOURCE_KIND = "projects";
 
 /**
  * Every model-reachable operation. The provider refuses any operation that is
@@ -164,6 +218,11 @@ export interface TestitOperationDefinition {
  * endpoints Test IT marks deprecated: they are kept because they are the only
  * GET reads of those collections, and a version that drops them answers
  * `ResourceNotFound`, which the model sees as an honest "not available here".
+ *
+ * The catalog carries no operation that could change Test IT state — no test-case
+ * edits, comments, run lifecycle or attachment uploads; those wait for the
+ * confirmation framework the specification requires for them. What a managed
+ * credential reaches is decided per operation by `security`.
  */
 export const TESTIT_OPERATIONS: Readonly<
   Record<string, TestitOperationDefinition>
@@ -172,125 +231,147 @@ export const TESTIT_OPERATIONS: Readonly<
     capability: "projects.read",
     path: "/projects",
     method: "GET",
+    security: IDENTITY_READ,
   },
   "projects.list": {
     capability: "projects.read",
     path: "/projects",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "projects.get": {
     capability: "projects.read",
     path: "/projects/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "sections.list": {
     capability: "sections.read",
     path: "/projects/{projectId}/sections",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "workItems.list": {
     capability: "workItems.read",
     path: "/projects/{projectId}/workItems",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "workItems.get": {
     capability: "workItems.read",
     path: "/workItems/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "workItems.history": {
     capability: "history.read",
     path: "/workItems/{id}/history",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "workItems.comments": {
     capability: "comments.read",
     path: "/workItems/{id}/comments",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
   "workItems.testResults": {
     capability: "testResults.read",
     path: "/workItems/{id}/testResults/history",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "testPlans.list": {
     capability: "testPlans.read",
     path: "/projects/{projectId}/testPlans",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
   "testPlans.get": {
     capability: "testPlans.read",
     path: "/testPlans/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "testPlans.summary": {
     capability: "testPlans.read",
     path: "/testPlans/{id}/summaries",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
   "testRuns.list": {
     capability: "testRuns.read",
     path: "/projects/{projectId}/testRuns",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "testRuns.get": {
     capability: "testRuns.read",
     path: "/testRuns/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "testRuns.results": {
     capability: "testResults.read",
     path: "/testRuns/{id}/testPoints/results",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
   "testResults.get": {
     capability: "testResults.read",
     path: "/testResults/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "testResults.attachments": {
     capability: "attachments.read",
     path: "/testResults/{id}/attachments",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
   "attachments.metadata": {
     capability: "attachments.read",
     path: "/attachments/{id}/metadata",
     method: "GET",
+    security: UNMAPPABLE_READ,
   },
   "attachments.text": {
     capability: "attachments.read",
     path: "/attachments/{id}",
     method: "GET",
     stream: true,
+    security: SENSITIVE_READ,
   },
   "autoTests.list": {
     capability: "autoTests.read",
     path: "/autoTests",
     method: "GET",
     list: "paged",
+    security: PROJECT_READ,
   },
   "autoTests.get": {
     capability: "autoTests.read",
     path: "/autoTests/{id}",
     method: "GET",
+    security: PROJECT_READ,
   },
   "configurations.list": {
     capability: "configurations.read",
     path: "/projects/{projectId}/configurations",
     method: "GET",
     list: "capped",
+    security: PROJECT_READ,
   },
 });
 
@@ -320,4 +401,11 @@ export function testitOperationCapability(
   operation: string,
 ): IntegrationCapability | undefined {
   return TESTIT_OPERATIONS[operation]?.capability;
+}
+
+/** Security classification of an operation, or undefined when it is unknown. */
+export function testitOperationMetadata(
+  operation: string,
+): OperationSecurityMetadata | undefined {
+  return TESTIT_OPERATIONS[operation]?.security;
 }

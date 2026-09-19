@@ -59,7 +59,7 @@ export function isNumericSpace(value: string): boolean {
 }
 
 /** Space keys the model named, upper-cased the way CQL and the policy spell them. */
-function spaceKeys(value: unknown, field: string): string[] {
+export function spaceKeys(value: unknown, field: string): string[] {
   if (value === undefined) return [];
   return requiredStringList(value, field, 20, 255).map((key) =>
     key.toUpperCase(),

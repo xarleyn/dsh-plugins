@@ -70,6 +70,12 @@ function remote(overrides: Partial<WeblateRemote> = {}): WeblateRemote {
     testWeblate: async () => ({ ok: true, value: connected }),
     patchWeblatePolicy: async () => ({ ok: true, value: connected }),
     disconnectWeblate: async () => ({ ok: true, value: true }),
+    managedServiceCredentials: async () => ({
+      ok: true,
+      value: { enabled: false, defaultForNewConnections: false },
+    }),
+    credentialSource: async () => ({ ok: true, value: connected }),
+    serviceBoundary: async () => ({ ok: true, value: connected }),
     ...overrides,
   };
 }
@@ -122,7 +128,11 @@ describe("Integrations Weblate card", () => {
   });
 
   it("keeps the API token write-only and the instance a choice", async () => {
-    const writes: { instanceId: string; token: string }[] = [];
+    const writes: {
+      instanceId: string;
+      token: string;
+      useServiceCredential?: boolean;
+    }[] = [];
     const Card = createWeblateCard(
       remote({
         putWeblateCredential: async (_token, input) => {
@@ -146,7 +156,9 @@ describe("Integrations Weblate card", () => {
     fireEvent.change(input, { target: { value: secret } });
     fireEvent.click(connect);
     await screen.findByText(/Alice Example/u);
-    expect(writes).toEqual([{ instanceId: "corp", token: secret }]);
+    expect(writes).toEqual([
+      { instanceId: "corp", token: secret, useServiceCredential: false },
+    ]);
     await waitFor(() =>
       expect(screen.queryByLabelText("API-токен Weblate")).toBeNull(),
     );
