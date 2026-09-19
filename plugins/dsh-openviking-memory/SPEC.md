@@ -73,6 +73,35 @@ Two mechanisms worth stating:
   (clamped), because they bypass validation by construction. Schema-validated
   config is never clamped.
 
+### 2.1 Settings namespace and the Web GUI card
+
+The schema registers under the settings namespace `dsh-openviking-memory` — the
+Cordis plugin id. The package ships a browser client bundle that registers as
+`@yadsh/dsh-openviking-memory` and mounts a card into the shared
+`settings.plugin.item` slot, so the plugin appears in **Settings → Plugins**
+like every first-party plugin.
+
+The card is an editor over that namespace, nothing more:
+
+- Sections mirror the contract: automatic context presentation (the four
+  injection knobs), connection, peer identity, recall, capture and commit, and
+  an advanced group (`skipSubagentSessions`, the two timeouts, the deprecated
+  `captureMode`).
+- Writes are immediate scalar `set`s; a cleared field becomes an `unset`, which
+  drops the user-layer override and re-inherits the composition layer. Every
+  field shows an **override** marker while the user layer carries a value, and
+  a reset action clears all overrides in one mutation.
+- An emptied connection field is an `unset`, not a written empty string — so a
+  blank key never hides a credential arriving from `OPENVIKING_*` or the
+  credential files.
+- Fields the schema leaves without a default (`recallLimit`,
+  `recallQueryExpansion`, `recallMaxTokens`, `recallCompressMaxBullets`) render
+  their upstream fallback as a placeholder and write only when the user names a
+  value, preserving the "configured" vs "defaulted" distinction of §2.
+- The card is config-only: it has no Remote face, and the header badge
+  projects the master switch (`Auto-inject` / `Manual recall`), not live
+  runtime state.
+
 ## 3. Lifecycle
 
 ```
@@ -126,18 +155,21 @@ without the context face is not re-probed on every turn.
   queue and drainer, `viking://` guard.
 - The four injection controls and their zero-work semantics.
 - A typed, validated configuration schema with per-field documentation.
+- A settings card in the DSH Web GUI that edits the plugin's
+  `dsh-openviking-memory` settings namespace (SPEC §2.1).
 - Structured file logging.
 - Tests for the injection matrix, manual-only mode, capture, config, the guard,
-  the runtime write paths and the proxy core.
+  the runtime write paths, the proxy core and the settings card.
 
 **Deferred**
 
-- A settings card in the DSH Web GUI. The typed config is the v1 contract; a
-  card would need a separate client bundle and is not a release blocker.
 - Upstream-sync tooling (`scripts/check-openviking-upstream.mjs`). The manual
   process is documented and sufficient until the first stable release.
 - Optional live E2E against a real OpenViking server. Upstream's opt-in test is
   not ported; there is no server in CI to point it at.
+- A live-browser pass of the settings card on a rig (the card is covered by
+  jsdom interaction tests and packaged-bundle gates; nobody has clicked it on a
+  running host yet).
 
 **Explicitly out of scope for v1**
 
@@ -182,7 +214,7 @@ official plugin; any change to the MCP tool contracts.
 | Injection controls (`autoInject`, `injectStartupProfile`, `injectStepProfile`, `autoRecall`) with zero-work semantics | Implemented |
 | Structured file logging | Implemented |
 | Injection matrix / manual-only / capture / config / guard / runtime / queue / proxy tests | Implemented |
-| Settings card in the Web GUI | Deferred |
+| Settings card in the Web GUI | Implemented |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
-| Visual/browser verification of the Web GUI | Not applicable (host-only plugin, no client bundle) |
+| Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet) |

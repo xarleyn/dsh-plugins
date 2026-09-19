@@ -32,7 +32,7 @@ import type { Session } from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
-import { OpenVikingClient } from "./client.js";
+import { OpenVikingClient } from "./api-client.js";
 import {
   Config as ConfigSchema,
   MCP_SERVER_NAME,
@@ -70,7 +70,7 @@ export type {
   InjectionPlan,
   ResolvedConfig,
 } from "./config.js";
-export { OpenVikingClient } from "./client.js";
+export { OpenVikingClient } from "./api-client.js";
 export { OPENVIKING_PLUGIN_SOURCE } from "./capture.js";
 export { injectStartupProfile } from "./lifecycle.js";
 export { buildMcpConfig, PROXY_PATH } from "./mcp.js";

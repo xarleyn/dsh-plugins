@@ -1,6 +1,7 @@
 {
   "extends": "@yadsh/dsh-config/tsconfig/node",
   "compilerOptions": {
+    "jsx": "react-jsx",
     "types": ["node"],
     "rootDir": "src",
     "outDir": "lib"

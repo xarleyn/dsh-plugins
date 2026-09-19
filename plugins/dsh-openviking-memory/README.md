@@ -53,6 +53,9 @@ recall HTTP request (not "the request is made and the result dropped").
   enums, and DSH refuses to load the plugin when a value is out of range instead
   of silently clamping it. Out-of-range defaults still resolve to the upstream
   behaviour.
+- **A settings card in the web UI.** The plugin ships a browser bundle, so its
+  configuration is editable from **Settings → Plugins** without touching a
+  patch file. See [Settings card](#settings-card).
 - **Repository-conventional package layout.** The upstream `.mjs` sources are
   ported to TypeScript under `src/`, with a Cordis service, a `@yadsh`
   structured log file under `<$DSH_HOME>/logs/dsh-openviking-memory/`, and the
@@ -165,6 +168,27 @@ its behalf.
 
 Every key is optional; the default column is what `resolveConfig` uses when the
 key is absent, and it matches upstream.
+
+## Settings card
+
+The package ships a browser bundle, so the plugin gets a card under
+**Settings → Plugins** in the DSH web UI. It edits the plugin's
+`dsh-openviking-memory` settings namespace directly — no patch file required:
+
+- **Sections** follow the reference tables below: automatic context
+  presentation, connection, peer identity, recall, capture and commit, plus an
+  advanced group with `skipSubagentSessions`, the timeouts and the deprecated
+  `captureMode`.
+- **Writes are immediate.** Toggles and selects apply on change; text and
+  number fields commit on blur or Enter. Emptying a field clears the override,
+  so the value falls back to the profile's composition layer — and for the
+  connection fields that means the `OPENVIKING_*` environment variables and
+  credential files stay in charge.
+- **Overrides are visible.** A field the profile's user layer carries is
+  marked, and a reset action clears every override in one step.
+- **The badge is configuration, not status.** It shows `Auto-inject` or
+  `Manual recall` from the master switch. Runtime diagnostics live in the
+  plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
 
 ### Injection
 
