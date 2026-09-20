@@ -113,8 +113,13 @@ export function apply(
     logger: logger as GateLogSink,
     audit,
     now: () => Date.now(),
+    // The provider registers this service as `ctx.domainExperts` (its own
+    // wiring test pins the key): `domain-experts` is the plugin id and the
+    // settings namespace, not the service name, and asking for it resolved to
+    // nothing — every review then failed as "service is not loaded" while the
+    // plugin was running right next to this one.
     domainExperts: () =>
-      ctx.get("domain-experts") as DomainExpertsFace | undefined,
+      ctx.get("domainExperts") as DomainExpertsFace | undefined,
     subagents: () => ctx.get("subagents") as SubagentsFace | undefined,
     steerMessage: (agent, text, summary) => {
       agent.steer(

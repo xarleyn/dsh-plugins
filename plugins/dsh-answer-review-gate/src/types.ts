@@ -144,7 +144,7 @@ export interface ReviewerBackend {
 
 /**
  * Structural view of the `domain-experts` service the gate needs. Resolved
- * per call with `ctx.get("domain-experts")`; absence is a reviewer failure
+ * per call with `ctx.get("domainExperts")`; absence is a reviewer failure
  * handled by the failure policy, never a load-time dependency.
  */
 export interface DomainExpertsFace {

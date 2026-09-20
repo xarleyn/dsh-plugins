@@ -30,7 +30,7 @@ export type ReviewerConfig = ResolvedAnswerReviewGateConfig["reviewer"];
 /**
  * `reviewer.backend = domain-expert`: run the configured reviewer domain of
  * dsh-domain-experts by stable domain id. The face is the caller's per-call
- * `ctx.get("domain-experts")` result; absence is a reviewer failure handled
+ * `ctx.get("domainExperts")` result; absence is a reviewer failure handled
  * by the failure policy, never a load-time dependency.
  *
  * Known Phase 1 bound: the domain-experts test entry owns its lifecycle, so

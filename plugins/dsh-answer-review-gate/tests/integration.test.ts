@@ -116,7 +116,9 @@ async function runWiredGate(options: {
   readonly subagents?: SubagentsFace;
 }) {
   const { host, events } = makeHost({
-    "domain-experts": options.domainExperts,
+    // The key the provider registers (`ctx.domainExperts`, pinned by
+    // dsh-domain-experts' own wiring test) — not its plugin id.
+    domainExperts: options.domainExperts,
     subagents: options.subagents,
   });
   apply(host, {
@@ -188,6 +190,31 @@ describe("plugin wiring", () => {
     expect(steer.text).toContain("Default is 512");
   });
 
+  it("does not resurrect the plugin-id spelling of the reviewer service", async () => {
+    // `domain-experts` is the plugin id and the settings namespace; the service
+    // is registered as `domainExperts`. A service published under the kebab
+    // spelling must not be treated as the reviewer backend — this is the
+    // regression that made every review fail as "service is not loaded" while
+    // the plugin ran next to this one.
+    const { host, events } = makeHost({ "domain-experts": domainFace() });
+    apply(host, {
+      reviewer: { backend: "domain-expert" },
+      minCandidateChars: 10,
+    });
+    const agent = agentWithCandidate(
+      "session-9",
+      "The runtime uses file locks around journal writes.",
+    ) as GateAgent & { readonly steers: readonly { readonly text: string }[] };
+    await dispatch(events, "agent/turn-stopping", {
+      agent,
+      turn: 1,
+      signal: new AbortController().signal,
+    });
+    expect(agent.steers.map((steer) => steer.text).join(" ")).toContain(
+      "domain-experts-unavailable",
+    );
+  });
+
   it("degrades to the failure policy when the backend service is absent", async () => {
     const { steers } = await runWiredGate({});
     expect(steers).toHaveLength(1);
@@ -198,7 +225,7 @@ describe("plugin wiring", () => {
   it("delegates ownership bookkeeping through the delegation tool results", async () => {
     const calls: [string, string, string][] = [];
     const { host, events } = makeHost({
-      "domain-experts": {
+      domainExperts: {
         testExpert: (
           domainId: string,
           task: string,
