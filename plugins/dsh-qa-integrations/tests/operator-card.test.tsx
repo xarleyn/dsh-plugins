@@ -10,8 +10,13 @@
 
 import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
+
+// Rendering the whole card in jsdom costs seconds, and the shared CI runner is
+// about three times slower than a developer machine: the two heaviest tests
+// measure 1.8s locally and 5.6s there, against the 5s default budget.
+vi.setConfig({ testTimeout: 30_000 });
 
 /** The slot props the Host supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
