@@ -339,6 +339,35 @@ export class ImmediateResultShaper {
   }
 
   /**
+   * Settle an archive write against the shaper's deadline. The store keeps
+   * its own size bound; this bounds how long the tool path may wait for it.
+   */
+  private withArchiveDeadline<T>(
+    work: Promise<T>,
+    signal: AbortSignal,
+  ): Promise<T> {
+    if (signal.aborted) {
+      return Promise.reject(new Error("archive write timed out"));
+    }
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = (): void => {
+        reject(new Error("archive write timed out"));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      work.then(
+        (value) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(value);
+        },
+        (error: unknown) => {
+          signal.removeEventListener("abort", onAbort);
+          reject(error instanceof Error ? error : new Error(String(error)));
+        },
+      );
+    });
+  }
+
+  /**
    * Store the pre-shaping content. Returns the short reference, `undefined`
    * when archiving is disabled, or `"blocked"` when the archive failed under
    * the `keep-original` policy.
@@ -365,9 +394,14 @@ export class ImmediateResultShaper {
       config.resultShaping.requestTimeoutMs,
     );
     try {
-      const ref = await this.deps.archive.put(entry, {
-        signal: deadline.signal,
-      });
+      // The deadline is enforced here, not inside the store: a filesystem
+      // write cannot be aborted, and the tool path must not wait on a stuck
+      // one. Losing the race keeps the original, which is the safe answer even
+      // if the write happens to land afterwards.
+      const ref = await this.withArchiveDeadline(
+        this.deps.archive.put(entry, { signal: deadline.signal }),
+        deadline.signal,
+      );
       metrics.increment(SHAPE_METRICS.archiveWrites);
       return shortRef(ref);
     } catch (error: unknown) {

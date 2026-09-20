@@ -234,3 +234,67 @@ describe("TurnShapeBudget", () => {
     expect(new TurnShapeBudget().tryConsume("s", 1, 0, off)).toBe(false);
   });
 });
+
+describe("archive deadline", () => {
+  it("keeps the original when the archive store never settles", async () => {
+    const { ImmediateResultShaper } =
+      await import("../../src/result-shaping/shaper.js");
+    const { resolveJevCompactionConfig, DEFAULT_SHAPE_TOOLS } =
+      await import("../../src/config.js");
+    const { ShapingMetrics } =
+      await import("../../src/result-shaping/metrics.js");
+    const config = resolveJevCompactionConfig({
+      resultShaping: {
+        enabled: true,
+        includeTools: [...DEFAULT_SHAPE_TOOLS],
+        requestTimeoutMs: 1000,
+        thresholdChars: 1000,
+      },
+    });
+    const skips: string[] = [];
+    const shaper = new ImmediateResultShaper({
+      readConfig: () => config,
+      // Decisive answers, so the pipeline reaches the archive step.
+      backend: {
+        score: async (_state, questions) => {
+          const answers = new Map<string, number>();
+          for (const question of questions) {
+            answers.set(
+              question.name,
+              question.name.startsWith("routine_") ? 0.99 : 0.01,
+            );
+          }
+          return answers;
+        },
+      },
+      // A store that hangs: the tool path must not wait for it.
+      archive: {
+        put: () => new Promise<string>(() => undefined),
+        get: async () => null,
+      },
+      metrics: new ShapingMetrics(),
+      onSkip: (reason) => {
+        skips.push(reason);
+      },
+      onShaped: () => undefined,
+    });
+
+    const log = [
+      "installing dependencies",
+      ...Array.from(
+        { length: 300 },
+        (_, index) => `progress ${index + 1}% of dependency graph`,
+      ),
+      "added 42 packages in 3s",
+    ].join("\n");
+    const outcome = await shaper.maybeShape({
+      callId: "call-1",
+      toolName: "bash",
+      isError: false,
+      content: [{ type: "text", text: log }],
+      goal: "goal",
+    });
+    expect(outcome).toBeUndefined();
+    expect(skips).toContain("archive-error");
+  }, 10_000);
+});

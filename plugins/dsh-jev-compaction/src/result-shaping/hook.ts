@@ -77,7 +77,7 @@ export function createPostExecuteListener(
       // Nested code-mode/PTC dispatches never reach the model as their own
       // result: shaping them would be invisible at best (SPEC §28).
       if (exec.parent !== undefined) {
-        onSkip("own-result", { tool: exec.name });
+        onSkip("nested-dispatch", { tool: exec.name });
         return downstream;
       }
       if (exec.name.startsWith(OWN_TOOL_PREFIX)) {

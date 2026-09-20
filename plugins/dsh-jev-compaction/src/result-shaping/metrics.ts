@@ -16,6 +16,7 @@ export type ShapeSkipReason =
   | "unsupported-content"
   | "already-spilled"
   | "already-shaped"
+  | "nested-dispatch"
   | "turn-budget"
   | "not-repetitive"
   | "low-savings"
