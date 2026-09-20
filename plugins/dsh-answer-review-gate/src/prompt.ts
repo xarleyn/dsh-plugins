@@ -39,6 +39,11 @@ export function renderSubagentReviewerTask(input: {
       "authoritative sources; user assumptions restated as facts; false certainty; whether the question is fully " +
       "covered.",
     "",
+    "Work the evidence, not the tool in a loop: a call that errors, times out or is refused has already answered — " +
+      "record it, change the source or the query, and never repeat the same call or a near-variant of it. Read tools " +
+      "take an explicit path: a pattern without one searches your own working directory and says nothing about the " +
+      "source you meant. If a source is unavailable for this run, report that instead of guessing its contents.",
+    "",
     "<user_request>",
     request,
     "</user_request>",
@@ -81,6 +86,11 @@ export function renderExpertReviewTask(input: {
     "For material factual claims, establish the best available source, whether it actually entails the claim, " +
       "whether a newer or contradicting source exists, and whether scope, version and preconditions are preserved. " +
       "Lack of evidence is a valid finding.",
+    "",
+    "Work the evidence, not the tool in a loop: a call that errors, times out or is refused has already answered — " +
+      "record it, change the source or the query, and never repeat the same call or a near-variant of it. Read tools " +
+      "take an explicit path: a pattern without one searches your own working directory and says nothing about the " +
+      "source you meant. If a source is unavailable for this run, report that instead of guessing its contents.",
     "",
     "<user_request>",
     request,

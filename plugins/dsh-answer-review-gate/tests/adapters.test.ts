@@ -308,4 +308,20 @@ describe("reviewer prompts", () => {
     expect(expert).toContain("Adversarial");
     expect(expert).toContain("(the original user request was not recorded)");
   });
+
+  it("tell the reviewer not to loop on a failing tool", () => {
+    const subagent = renderSubagentReviewerTask({
+      requestText: "Explain PROJ-123 handling.",
+      candidateText: "PROJ-123 is handled by the demo policy.",
+    });
+    const expert = renderExpertReviewTask({
+      requestText: null,
+      candidateText: "Candidate body.",
+    });
+    for (const prompt of [subagent, expert]) {
+      expect(prompt).toContain("Work the evidence, not the tool in a loop");
+      expect(prompt).toContain("never repeat the same call");
+      expect(prompt).toContain("Read tools take an explicit path");
+    }
+  });
 });
