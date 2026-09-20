@@ -80,6 +80,11 @@ const entry = await readFile(new URL("lib/index.js", root), "utf8");
 assert.match(entry, /installDocumentSubsystem/u);
 assert.match(entry, /DOCUMENT_TOOL_NAMES/u);
 assert.match(entry, /mountDocumentSkills/u);
+// The in-process face sibling host plugins convert through (no Remote: the
+// name is published with ctx.provide and looked up by string).
+assert.match(entry, /provide\("documents"/u);
+assert.match(entry, /toMarkdown/u);
+assert.match(entry, /convert/u);
 // The package builds per module, so the comparison tools live beside the
 // others and each one declares its own name.
 const compareTool = await readFile(

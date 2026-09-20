@@ -28,11 +28,14 @@ interface Stub {
   readonly registered: string[];
   /** Plugin mounts the entry performed, by the config each was given. */
   readonly mounted: { readonly providerName?: string }[];
+  /** Services the plugin published for its Host siblings, by name. */
+  readonly provided: Map<string, unknown>;
 }
 
 function stubContext(): Stub {
   const registered: string[] = [];
   const mounted: { readonly providerName?: string }[] = [];
+  const provided = new Map<string, unknown>();
   const ctx = {
     logger: {
       trace: () => {},
@@ -52,20 +55,32 @@ function stubContext(): Stub {
     effect: () => {},
     inject: () => {},
     get: () => undefined,
+    provide: (serviceName: string, value: unknown) => {
+      provided.set(serviceName, value);
+      return () => {
+        provided.delete(serviceName);
+      };
+    },
     plugin: (_plugin: unknown, config: unknown) => {
       mounted.push((config ?? {}) as { readonly providerName?: string });
     },
   } as unknown as Context;
-  return { ctx, registered, mounted };
+  return { ctx, registered, mounted, provided };
 }
 
 function plugin(config: DocumentsConfig = {}): {
   registered: string[];
   mounted: { readonly providerName?: string }[];
+  provided: Map<string, unknown>;
   instance: DocumentsPlugin;
 } {
-  const { ctx, registered, mounted } = stubContext();
-  return { registered, mounted, instance: new DocumentsPlugin(ctx, config) };
+  const { ctx, registered, mounted, provided } = stubContext();
+  return {
+    registered,
+    mounted,
+    provided,
+    instance: new DocumentsPlugin(ctx, config),
+  };
 }
 
 describe("documents plugin", () => {
@@ -109,6 +124,23 @@ describe("documents plugin", () => {
     const { registered, mounted } = plugin({ enabled: false });
     expect(registered).toEqual([]);
     expect(mounted).toEqual([]);
+  });
+
+  test("publishes the runtime face a sibling host plugin converts through", () => {
+    const { provided } = plugin();
+    const face = provided.get("documents") as
+      Record<string, unknown> | undefined;
+    expect(face).toBeDefined();
+    // The three operations the panel needs, each bound to the live runtime
+    // rather than to a snapshot of it.
+    expect(typeof face?.toMarkdown).toBe("function");
+    expect(typeof face?.convert).toBe("function");
+    expect(typeof face?.inspect).toBe("function");
+  });
+
+  test("publishes nothing while the pipeline is disabled", () => {
+    const { provided } = plugin({ enabled: false });
+    expect(provided.has("documents")).toBe(false);
   });
 
   test("mounts the contract-review skill with the comparison it teaches", () => {

@@ -39,8 +39,16 @@ import {
   DOCUMENT_TOOL_NAMES,
   DocumentError,
   installDocumentSubsystem,
+  type DocumentConvertInput,
+  type DocumentConvertResult,
   type DocumentFetchSource,
+  type DocumentInspectInput,
+  type DocumentInspectResult,
+  type DocumentRuntime,
+  type DocumentScope,
   type DocumentSubsystem,
+  type DocumentToMarkdownInput,
+  type DocumentToMarkdownResult,
 } from "./documents/index.js";
 
 /**
@@ -74,6 +82,31 @@ export type Config = DocumentsConfig;
 export const Config = ConfigSchema;
 
 /**
+ * The subsystem as other Host plugins see it.
+ *
+ * The four operations and nothing else: a sibling plugin that wants a document
+ * preview converts or extracts through the same runtime, its provider registry,
+ * its semaphores and its limits, instead of standing up a second pipeline.
+ * There is still no Remote face — this service lives in the Host process, so a
+ * browser never reaches it directly (§7), and a deployment that never calls it
+ * pays nothing for it.
+ */
+export interface DocumentsFace {
+  toMarkdown(
+    input: DocumentToMarkdownInput,
+    scope: DocumentScope,
+  ): Promise<DocumentToMarkdownResult>;
+  convert(
+    input: DocumentConvertInput,
+    scope: DocumentScope,
+  ): Promise<DocumentConvertResult>;
+  inspect(
+    input: DocumentInspectInput,
+    scope: DocumentScope,
+  ): Promise<DocumentInspectResult>;
+}
+
+/**
  * DSH Host plugin: registers the document tools, keeps them in step with the
  * `documents` settings namespace, and schedules the artifact retention sweep.
  */
@@ -87,6 +120,8 @@ export class DocumentsPlugin {
   /** Live configuration: the settings section once it is installed. */
   private configSource: () => DocumentsConfig;
   private documents: DocumentSubsystem | undefined;
+  /** Disposer of the face published to sibling Host plugins. */
+  private documentsFace: (() => void) | undefined;
   /** Identity of the installed subsystem, so unchanged config is a no-op. */
   private documentsKey: string | undefined;
   /** Resolved per call: a provider that arrives late is still picked up. */
@@ -145,6 +180,8 @@ export class DocumentsPlugin {
     }
     ctx.effect(
       () => () => {
+        this.documentsFace?.();
+        this.documentsFace = undefined;
         this.documents?.dispose();
         this.documents = undefined;
         this.documentsKey = undefined;
@@ -194,6 +231,36 @@ export class DocumentsPlugin {
         return await web.fetch({ url }, signal);
       },
     });
+    this.publishFace();
+  }
+
+  /**
+   * Offer the installed runtime to sibling Host plugins, replacing whatever a
+   * previous configuration published. The callbacks read `this.documents` at
+   * call time, so a rebuild that swaps the subsystem never leaves a caller
+   * holding a disposed one.
+   */
+  private publishFace(): void {
+    this.documentsFace?.();
+    this.documentsFace = undefined;
+    if (this.documents === undefined) return;
+    this.documentsFace = this.hostCtx.provide("documents", {
+      toMarkdown: (input, scope) => this.runtime().toMarkdown(input, scope),
+      convert: (input, scope) => this.runtime().convert(input, scope),
+      inspect: (input, scope) => this.runtime().inspect(input, scope),
+    } satisfies DocumentsFace);
+  }
+
+  /** The live subsystem, or a refusal when no configuration enabled it. */
+  private runtime(): DocumentRuntime {
+    const documents = this.documents;
+    if (documents === undefined) {
+      throw new DocumentError(
+        "BACKEND_UNAVAILABLE",
+        "the document subsystem is not installed in this deployment",
+      );
+    }
+    return documents.runtime;
   }
 }
 

@@ -125,3 +125,16 @@ kept: renaming it would orphan existing artifacts for no functional gain.
 the plugin relies on (`tools/register`, `settings`, `skills/provider`), plus the
 client feature (`settings.plugin.item`). Nothing here needs a Remote service, so
 the package ships no generated Typert face.
+
+### 7.1 The host service sibling plugins convert through
+
+The tools are still the only face the model sees, and the browser still reaches
+nothing here. Sibling **host** plugins do have one seam: `apply()` publishes the
+installed runtime under `ctx.provide("documents", …)` as {@link DocumentsFace} —
+`toMarkdown`, `convert` and `inspect`, each delegating to the live subsystem so
+a caller never holds a disposed one, and each going through the same provider
+registry, semaphores and limits as the tools. A deployment whose configuration
+disabled the pipeline publishes nothing, and a caller that finds no face refuses
+instead of building a second converter. The qa-surface files panel is the first
+consumer: it renders a Word document of a chat's workspace as the PDF this
+pipeline produces.
