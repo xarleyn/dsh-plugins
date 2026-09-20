@@ -25,3 +25,8 @@ dist/
 coverage/
 node_modules/
 .nx/
+
+# Machine-local workspace (leak-scan tooling, slice backups). It is ignored
+# through .git/info/exclude, which Prettier does not read, so it needs its own
+# entry or every machine with local files there fails `pnpm format`.
+.private/
