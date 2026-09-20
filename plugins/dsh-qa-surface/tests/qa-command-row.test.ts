@@ -110,9 +110,8 @@ describe("command rows in the transcript", () => {
         kind: "user",
         seq: 1,
         time: 1,
-        turn: 1,
-        step: 0,
         content: [{ type: "text", text: "Привет" }],
+        source: {},
       } as ConversationNode,
       commandNode({ seq: 2 }),
     );
