@@ -148,10 +148,10 @@ describe("Jira managed service credentials", () => {
     const { fetcher, calls } = stub(() => ({ json: ISSUE }));
     const { provider, plaintext } = credential(fetcher);
     for (const [operation, input] of [
-      ["issues.get", { issueKey: "OTHER-9" }],
-      ["issues.comments", { issueKey: "OTHER-2" }],
-      ["issues.transitions", { issueKey: "OTHER-3" }],
-      ["projects.get", { projectKey: "OTHER" }],
+      ["issues.get", { issueKey: "TASK-9" }],
+      ["issues.comments", { issueKey: "TASK-2" }],
+      ["issues.transitions", { issueKey: "TASK-3" }],
+      ["projects.get", { projectKey: "TASK" }],
     ] as const) {
       await expect(
         provider.execute(
@@ -175,7 +175,7 @@ describe("Jira managed service credentials", () => {
           // Matched by the listed numeric id: Jira reports the project on the
           // hit either way.
           { key: "PROJ-2", fields: { project: { id: "10001" } } },
-          { key: "OTHER-5", fields: { project: { key: "OTHER" } } },
+          { key: "TASK-5", fields: { project: { key: "TASK" } } },
           {
             key: "PROJ-4",
             fields: {
@@ -291,7 +291,7 @@ describe("Jira managed service credentials", () => {
     // with no security probe and no project restriction.
     await expect(
       provider.execute({ credential: plaintext }, "issues.get", {
-        issueKey: "OTHER-9",
+        issueKey: "TASK-9",
       }),
     ).resolves.toBeDefined();
     await expect(
@@ -301,7 +301,7 @@ describe("Jira managed service credentials", () => {
     ).resolves.toBeDefined();
     await expect(
       provider.execute({ credential: plaintext }, "projects.get", {
-        projectKey: "OTHER",
+        projectKey: "TASK",
       }),
     ).resolves.toBeDefined();
     expect(
