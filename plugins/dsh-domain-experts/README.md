@@ -52,6 +52,16 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 Then open `Settings → Plugins → Domain Experts`.
 
+## Managing domains
+
+The tab lists every domain with its scope counts and degradations. `Edit` — or
+the card itself — opens one in the same pane: identity and status, persona,
+filesystem and knowledge scope, memory namespaces, tool policy, cross-domain
+delegation, model route and the test screen. `All domains` goes back to the list,
+asking first when the form holds unsaved edits, and `Save` writes the record in
+place. Every domain is an ordinary record in the plugin's storage, no matter who
+created it: there is no built-in expert the UI refuses to change.
+
 ## Tools
 
 The plugin registers three agent-facing tools.

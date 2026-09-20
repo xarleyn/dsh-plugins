@@ -62,7 +62,6 @@ export interface EditorProps {
   readonly onChange: (next: DomainDefinition) => void;
   readonly onSave: () => void;
   readonly onDelete: () => void;
-  readonly onCancel: () => void;
   readonly onInspectMemory: (namespace: string) => void;
   readonly onClearMemory: () => void;
   readonly onRunTest: (task: string) => void;
@@ -580,14 +579,6 @@ export function DomainEditor(props: EditorProps) {
           onClick={props.onSave}
         >
           {props.isNew ? "Create domain" : "Save"}
-        </button>
-        <button
-          type="button"
-          className="dx-button"
-          disabled={props.busy}
-          onClick={props.onCancel}
-        >
-          Close
         </button>
         {props.isNew ? null : (
           <button

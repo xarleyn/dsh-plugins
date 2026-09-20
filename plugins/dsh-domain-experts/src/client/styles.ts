@@ -11,16 +11,18 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .dx-title{color:var(--dsw-alias-label-primary);font-size:18px;font-weight:600;line-height:1.35;margin:0}
 .dx-subtitle{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5;margin:4px 0 0}
-/* Two columns that collapse on their own when the container is narrow. A
-   viewport media query cannot do this job: the page renders inside the settings
-   dialog, where the available width is far below the viewport width. */
-.dx-layout{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;min-width:0}
-.dx-column{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1 1 260px}
-.dx-column--detail{flex:2 1 380px}
+/* The list and the editor are one pane each, not two wrapping columns. A
+   viewport media query cannot decide this and neither could the old
+   flex-wrap: the page renders inside the settings dialog, whose width is the
+   host's choice and far below the viewport, so a two-column layout collapsed
+   into "the editor is below the list", out of sight. */
+.dx-detail{display:flex;flex-direction:column;gap:12px;min-width:0}
+.dx-detail:focus{outline:none}
+.dx-back{display:inline-flex;align-items:center;gap:6px;align-self:flex-start}
+.dx-back-icon{width:12px;height:12px;flex:none}
 .dx-list{display:flex;flex-direction:column;gap:8px;margin:0;padding:0;list-style:none;min-width:0}
 .dx-list-card{display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;transition:border-color .16s,background .16s;min-width:0}
 .dx-list-card:hover{border-color:var(--dsw-alias-label-dimmed)}
-.dx-list-card[data-selected="true"]{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-brand-primary)}
 .dx-list-item{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;background:0 0;border:0;border-radius:10px 10px 0 0;padding:12px 14px;min-width:0}
 .dx-list-item:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .dx-list-actions{display:flex;gap:8px;align-items:center;border-top:1px solid var(--dsw-alias-border-l2);padding:8px 14px}

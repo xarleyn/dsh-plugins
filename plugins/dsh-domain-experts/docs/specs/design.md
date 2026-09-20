@@ -1103,6 +1103,12 @@ Domain Experts
 └──────────────────────────────────────────┘
 ```
 
+Implemented as one pane: `[Edit]` (or the card body) replaces the list with the
+editor of that domain, and `All domains` above the form returns to it. The
+settings dialog is the host's width and is narrower than the list and the editor
+need side by side, so a two-column layout degrades into an editor rendered below
+the list — where nobody looking for it will find it.
+
 ---
 
 # 26. Domain editor

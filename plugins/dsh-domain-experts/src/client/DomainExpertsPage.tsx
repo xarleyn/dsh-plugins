@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   emptyDomainDraft,
   type CatalogInfo,
@@ -90,6 +90,13 @@ const QUIET: { readonly tone: "info" | "error"; readonly text: string } = {
  * The page is a thin client of the host service: it holds the draft being
  * edited and renders the host's answers, and never decides policy itself. That
  * is what keeps CLI and API use of the same service possible later.
+ *
+ * The list and the editor share one pane. They were two wrapping flex columns
+ * until the settings dialog turned out to be narrower than their combined
+ * minimum: the editor rendered below a list of eight cards, out of view, so
+ * picking a domain looked like it had done nothing at all. One pane at a time
+ * needs no width assumptions, which is the one thing this page cannot make:
+ * the dialog width is the host's choice.
  */
 export function DomainExpertsPage({
   api,
@@ -100,16 +107,24 @@ export function DomainExpertsPage({
 }) {
   const [domains, setDomains] = useState<readonly DomainSummary[]>([]);
   const [catalog, setCatalog] = useState<CatalogInfo>(EMPTY_CATALOG);
-  const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState<DomainDefinition | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [issues, setIssues] = useState<readonly ValidationIssueView[]>([]);
   const [profile, setProfile] = useState<ResolvedExpertProfile | null>(null);
   const [profileError, setProfileError] = useState("");
   const [busy, setBusy] = useState(false);
+  /*
+   * Two status channels because they are read in two places: `status` sits in
+   * the editor next to Save, `pageStatus` on the list, which is the only
+   * surface left when a list-level action fails.
+   */
   const [status, setStatus] = useState(QUIET);
+  const [pageStatus, setPageStatus] = useState(QUIET);
+  /** Serialized form of the draft as loaded or last saved, for the discard guard. */
+  const [baseline, setBaseline] = useState("");
   const [loadError, setLoadError] = useState("");
   const [newId, setNewId] = useState("");
+  const detailRef = useRef<HTMLDivElement | null>(null);
   const [memory, setMemory] = useState<MemoryView>({ result: null, error: "" });
   const [test, setTest] = useState<TestView>({
     running: false,
@@ -118,6 +133,7 @@ export function DomainExpertsPage({
     findings: [],
     error: "",
   });
+  const editing = draft !== null;
 
   const refresh = useCallback(async (): Promise<void> => {
     const [listed, described] = await Promise.all([
@@ -138,6 +154,15 @@ export function DomainExpertsPage({
     void refresh();
   }, [refresh]);
 
+  /*
+   * Opening a domain replaces the control the user just clicked, so focus
+   * follows the content instead of being dropped on the document body.
+   */
+  useEffect(() => {
+    if (!editing) return;
+    detailRef.current?.focus();
+  }, [editing]);
+
   const loadProfile = useCallback(
     async (domainId: string): Promise<void> => {
       const resolved = await api.resolveScope(domainId);
@@ -154,9 +179,11 @@ export function DomainExpertsPage({
 
   const openDomain = useCallback(
     async (domainId: string): Promise<void> => {
-      setSelected(domainId);
       setIsNew(false);
       setStatus(QUIET);
+      setPageStatus(QUIET);
+      setProfile(null);
+      setProfileError("");
       setMemory({ result: null, error: "" });
       setTest({
         running: false,
@@ -168,7 +195,8 @@ export function DomainExpertsPage({
       const loaded = await api.getDomain(domainId);
       if (!loaded.ok || loaded.data.domain === null) {
         setDraft(null);
-        setStatus({
+        setBaseline("");
+        setPageStatus({
           tone: "error",
           text: loaded.ok
             ? "The domain no longer exists."
@@ -177,28 +205,52 @@ export function DomainExpertsPage({
         return;
       }
       setDraft(loaded.data.domain);
+      setBaseline(JSON.stringify(loaded.data.domain));
       setIssues([]);
       await loadProfile(domainId);
     },
     [api, loadProfile],
   );
 
+  /**
+   * Leaving the editor drops whatever was typed into it. The draft is compared
+   * against the definition it was loaded from, so a stray click on the way back
+   * cannot silently throw away a persona.
+   */
+  const confirmDiscard = useCallback((): boolean => {
+    if (draft === null || JSON.stringify(draft) === baseline) return true;
+    return window.confirm(
+      `Discard unsaved changes to "${draft.name || draft.id}"?`,
+    );
+  }, [baseline, draft]);
+
+  const backToList = useCallback((): void => {
+    if (!confirmDiscard()) return;
+    setDraft(null);
+    setBaseline("");
+    setProfile(null);
+    setProfileError("");
+    setStatus(QUIET);
+  }, [confirmDiscard]);
+
   const startNew = useCallback(async (): Promise<void> => {
     const id = newId.trim();
     if (id === "") return;
+    if (!confirmDiscard()) return;
     const seeded = await api.draftDomain(id);
     const fallback = emptyDomainDraft(id, Date.now());
     const next =
       seeded.ok && seeded.data.domain !== null ? seeded.data.domain : fallback;
     setDraft(next);
-    setSelected(null);
+    setBaseline(JSON.stringify(next));
     setIsNew(true);
     setIssues([]);
     setProfile(null);
     setProfileError("");
     setStatus(QUIET);
+    setPageStatus(QUIET);
     setNewId("");
-  }, [api, newId]);
+  }, [api, confirmDiscard, newId]);
 
   /** Live validation so the user sees a bad path before saving it. */
   const change = useCallback(
@@ -232,9 +284,9 @@ export function DomainExpertsPage({
       return;
     }
     setDraft(outcome.data.domain);
+    setBaseline(JSON.stringify(outcome.data.domain));
     const created = isNew;
     setIsNew(false);
-    setSelected(outcome.data.domain.id);
     setStatus({
       tone: "info",
       text: created ? "Domain created." : "Changes saved.",
@@ -260,9 +312,10 @@ export function DomainExpertsPage({
       return;
     }
     setDraft(null);
-    setSelected(null);
+    setBaseline("");
     setProfile(null);
-    setStatus({ tone: "info", text: "Domain deleted." });
+    setStatus(QUIET);
+    setPageStatus({ tone: "info", text: "Domain deleted." });
     await refresh();
   }, [api, draft, isNew, refresh]);
 
@@ -270,16 +323,17 @@ export function DomainExpertsPage({
     async (domainId: string, enabled: boolean): Promise<void> => {
       const outcome = await api.setDomainEnabled(domainId, enabled);
       if (!outcome.ok) {
-        setStatus({
+        setPageStatus({
           tone: "error",
           text: `${outcome.code}: ${outcome.message}`,
         });
         return;
       }
+      setPageStatus(QUIET);
       await refresh();
-      if (selected === domainId) await loadProfile(domainId);
+      if (draft?.id === domainId) await loadProfile(domainId);
     },
-    [api, loadProfile, refresh, selected],
+    [api, draft, loadProfile, refresh],
   );
 
   const inspectMemory = useCallback(
@@ -413,131 +467,151 @@ export function DomainExpertsPage({
       {loadError === "" ? null : (
         <StatusLine tone="error">{loadError}</StatusLine>
       )}
+      {pageStatus.text === "" ? null : (
+        <StatusLine tone={pageStatus.tone}>{pageStatus.text}</StatusLine>
+      )}
 
-      <div className="dx-layout">
-        <div className="dx-column">
-          <ul className="dx-list">
-            {sorted.length === 0 ? (
-              <li className="dx-empty">
-                No domains yet. Create one to give a part of the product its own
-                expert.
-              </li>
-            ) : (
-              sorted.map((domain) => (
-                <li
-                  className="dx-list-card"
-                  data-selected={selected === domain.id}
-                  key={domain.id}
+      {editing ? null : (
+        <ul className="dx-list">
+          {sorted.length === 0 ? (
+            <li className="dx-empty">
+              No domains yet. Create one to give a part of the product its own
+              expert.
+            </li>
+          ) : (
+            sorted.map((domain) => (
+              <li className="dx-list-card" key={domain.id}>
+                {/*
+                 * Selecting and enabling are two different actions, so they
+                 * are two sibling controls: nesting a toggle inside the card
+                 * button would produce invalid interactive markup and a
+                 * keyboard trap.
+                 */}
+                <button
+                  type="button"
+                  className="dx-list-item"
+                  onClick={() => {
+                    void openDomain(domain.id);
+                  }}
                 >
+                  <span className="dx-list-name">
+                    {domain.icon === "" ? null : (
+                      <span aria-hidden="true">{domain.icon}</span>
+                    )}
+                    {domain.name}
+                    <span
+                      className={
+                        domain.enabled ? "dx-chip" : "dx-chip dx-chip--advisory"
+                      }
+                    >
+                      {domain.enabled ? "enabled" : "disabled"}
+                    </span>
+                    {domain.degradations > 0 ? (
+                      <span className="dx-chip dx-chip--warning">
+                        {String(domain.degradations)} degraded
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="dx-list-desc">
+                    {domain.description || "No description."}
+                  </span>
+                  <span className="dx-list-meta">
+                    {String(domain.primaryPaths)} primary paths ·{" "}
+                    {String(domain.sharedPaths)} shared ·{" "}
+                    {String(domain.memoryNamespaces)} memory namespaces ·{" "}
+                    {String(domain.tools)} tools
+                  </span>
+                </button>
+                <div className="dx-list-actions">
                   {/*
-                   * Selecting and enabling are two different actions, so they
-                   * are two sibling controls: nesting a toggle inside the card
-                   * button would produce invalid interactive markup and a
-                   * keyboard trap.
+                   * The card body opens the editor too, but nothing on screen
+                   * says so. The label is what makes editing discoverable at
+                   * all, and a card that only offers "Disable" reads as a
+                   * record that cannot be changed.
                    */}
                   <button
                     type="button"
-                    className="dx-list-item"
-                    aria-current={selected === domain.id}
+                    className="dx-button dx-button--small"
+                    aria-label={`Edit ${domain.name}`}
                     onClick={() => {
                       void openDomain(domain.id);
                     }}
                   >
-                    <span className="dx-list-name">
-                      {domain.icon === "" ? null : (
-                        <span aria-hidden="true">{domain.icon}</span>
-                      )}
-                      {domain.name}
-                      <span
-                        className={
-                          domain.enabled
-                            ? "dx-chip"
-                            : "dx-chip dx-chip--advisory"
-                        }
-                      >
-                        {domain.enabled ? "enabled" : "disabled"}
-                      </span>
-                      {domain.degradations > 0 ? (
-                        <span className="dx-chip dx-chip--warning">
-                          {String(domain.degradations)} degraded
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="dx-list-desc">
-                      {domain.description || "No description."}
-                    </span>
-                    <span className="dx-list-meta">
-                      {String(domain.primaryPaths)} primary paths ·{" "}
-                      {String(domain.sharedPaths)} shared ·{" "}
-                      {String(domain.memoryNamespaces)} memory namespaces ·{" "}
-                      {String(domain.tools)} tools
-                    </span>
+                    Edit
                   </button>
-                  <div className="dx-list-actions">
-                    <button
-                      type="button"
-                      className="dx-button dx-button--small"
-                      aria-pressed={!domain.enabled}
-                      onClick={() => {
-                        void toggleEnabled(domain.id, !domain.enabled);
-                      }}
-                    >
-                      {domain.enabled ? "Disable" : "Enable"}
-                    </button>
-                  </div>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-
-        <div className="dx-column dx-column--detail">
-          {draft === null ? (
-            <div className="dx-panel">
-              <p className="dx-empty">
-                Select a domain to edit it, or create a new one. Every
-                restriction the inspector shows is labelled either{" "}
-                <strong>enforced</strong> or <strong>advisory</strong>.
-              </p>
-            </div>
-          ) : (
-            <DomainEditor
-              draft={draft}
-              isNew={isNew}
-              busy={busy}
-              status={status}
-              issues={issues}
-              catalog={catalog}
-              profile={profile}
-              profileError={profileError}
-              memory={memory}
-              test={test}
-              onChange={change}
-              onSave={() => {
-                void save();
-              }}
-              onDelete={() => {
-                void remove();
-              }}
-              onCancel={() => {
-                setDraft(null);
-                setSelected(null);
-                setProfile(null);
-                setStatus(QUIET);
-              }}
-              onInspectMemory={(namespace) => {
-                void inspectMemory(namespace);
-              }}
-              onClearMemory={() => {
-                void clearMemory();
-              }}
-              onRunTest={(task) => {
-                void runTest(task);
-              }}
-            />
+                  <button
+                    type="button"
+                    className="dx-button dx-button--small"
+                    aria-pressed={!domain.enabled}
+                    onClick={() => {
+                      void toggleEnabled(domain.id, !domain.enabled);
+                    }}
+                  >
+                    {domain.enabled ? "Disable" : "Enable"}
+                  </button>
+                </div>
+              </li>
+            ))
           )}
+        </ul>
+      )}
+
+      {editing ? (
+        <div className="dx-detail" ref={detailRef} tabIndex={-1}>
+          {/*
+           * The way back sits above the form rather than at its foot: the
+           * editor is eight tabs long, so a control that only exists next to
+           * Save is a control nobody finds.
+           */}
+          <button
+            type="button"
+            className="dx-button dx-button--small dx-back"
+            onClick={backToList}
+          >
+            <svg
+              aria-hidden="true"
+              className="dx-back-icon"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M11 7H3M6.5 3.5 3 7l3.5 3.5" />
+            </svg>
+            All domains
+          </button>
+          <DomainEditor
+            draft={draft}
+            isNew={isNew}
+            busy={busy}
+            status={status}
+            issues={issues}
+            catalog={catalog}
+            profile={profile}
+            profileError={profileError}
+            memory={memory}
+            test={test}
+            onChange={change}
+            onSave={() => {
+              void save();
+            }}
+            onDelete={() => {
+              void remove();
+            }}
+            onInspectMemory={(namespace) => {
+              void inspectMemory(namespace);
+            }}
+            onClearMemory={() => {
+              void clearMemory();
+            }}
+            onRunTest={(task) => {
+              void runTest(task);
+            }}
+          />
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }
