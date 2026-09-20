@@ -30,7 +30,10 @@ export {
 export {
   JevApiKeyMissingError,
   JevTransportError,
+  missingCredential,
   SystemOneClient,
+  systemOneEndpoint,
+  type MissingCredential,
 } from "./jev/backend.js";
 export {
   SYSTEM_ONE_PRESETS,

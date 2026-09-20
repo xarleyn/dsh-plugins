@@ -30,10 +30,73 @@ export class JevTransportError extends Error {
 
 /** Error thrown when the configured API key environment variable is unset. */
 export class JevApiKeyMissingError extends Error {
-  constructor(envName: string) {
-    super(`jev-compaction: ${envName} is not configured`);
+  constructor(envName: string, provider?: string, endpoint?: string) {
+    const where =
+      provider === undefined
+        ? ""
+        : ` for the "${provider}" decision backend${endpoint === undefined || endpoint === "" ? "" : ` (${endpoint})`}`;
+    super(
+      `jev-compaction: ${envName} is not configured${where} — set the variable in the deployment environment, or point decision.provider at a backend that needs no key`,
+    );
     this.name = "JevApiKeyMissingError";
   }
+}
+
+/**
+ * The scoring endpoint for one configured base URL.
+ *
+ * The client POSTs to this URL as it stands, and a System One endpoint is the
+ * route `/v1/systemone` — which both hosted and self-hosted presets spell out,
+ * but a deployment that names only a host ("http://jeff:8000") would otherwise
+ * post to `/` and read a bare 404. The route is appended only when the URL
+ * carries no path of its own, so a deployment pointing at a reverse proxy or a
+ * non-standard path keeps exactly what it wrote.
+ */
+/** One backend whose key variable is empty, as the startup warning reports it. */
+export interface MissingCredential {
+  readonly provider: string;
+  readonly apiKeyEnv: string;
+  readonly endpoint: string;
+}
+
+/**
+ * The backend whose API key variable is not set, or nothing when there is
+ * nothing to warn about.
+ *
+ * An empty `apiKeyEnv` is a deliberate keyless deployment (the custom provider
+ * documents it), so it is never reported. Everything else is: a key that is
+ * missing at startup fails every decision later, and the failure names only the
+ * variable — this report names the provider and the endpoint too, which is what
+ * tells an operator which backend is actually configured.
+ */
+export function missingCredential(
+  decision: { readonly provider: string },
+  endpoint: { readonly apiKeyEnv: string; readonly baseUrl: string },
+  env: NodeJS.ProcessEnv,
+): MissingCredential | undefined {
+  const apiKeyEnv = endpoint.apiKeyEnv.trim();
+  if (apiKeyEnv === "") return undefined;
+  const value = env[apiKeyEnv];
+  if (typeof value === "string" && value.trim() !== "") return undefined;
+  return {
+    provider: decision.provider,
+    apiKeyEnv,
+    endpoint: systemOneEndpoint(endpoint.baseUrl),
+  };
+}
+
+export function systemOneEndpoint(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/u, "");
+  if (trimmed === "") return "";
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.pathname === "" || parsed.pathname === "/") {
+      return `${trimmed}/v1/systemone`;
+    }
+  } catch {
+    // Not an absolute URL: leave it to the transport to refuse.
+  }
+  return trimmed;
 }
 
 /** Combine the caller's signal with a timeout into one abort controller. */
@@ -121,7 +184,11 @@ export class SystemOneClient implements SystemOneBackend {
     if (envName.length === 0) return undefined;
     const value = process.env[envName];
     if (typeof value !== "string" || value.length === 0) {
-      throw new JevApiKeyMissingError(envName);
+      throw new JevApiKeyMissingError(
+        envName,
+        this.config.decision.provider,
+        systemOneEndpoint(this.config.jev.baseUrl),
+      );
     }
     return value;
   }
@@ -133,8 +200,9 @@ export class SystemOneClient implements SystemOneBackend {
   ): Promise<JevAnswers> {
     const apiKey = this.apiKey();
     const controller = withTimeout(signal, this.config.jev.timeoutMs);
+    const endpoint = systemOneEndpoint(this.config.jev.baseUrl);
     try {
-      const response = await this.fetcher(this.config.jev.baseUrl, {
+      const response = await this.fetcher(endpoint, {
         method: "POST",
         headers: {
           "content-type": "application/json",

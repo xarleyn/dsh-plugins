@@ -1140,7 +1140,7 @@ Proposed shape:
         apiKeyEnv: TYPESAFE_API_KEY
         model: jev-latest
       jeff:
-        baseUrl: http://localhost:8000
+        baseUrl: http://localhost:8000/v1/systemone
         apiKeyEnv: JEFF_API_KEY
         model: jev-latest
       custom:

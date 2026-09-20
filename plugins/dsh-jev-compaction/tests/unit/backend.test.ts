@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  missingCredential,
+  systemOneEndpoint,
   SystemOneClient,
   JevApiKeyMissingError,
   JevTransportError,
@@ -119,7 +121,9 @@ describe("SystemOneClient", () => {
     );
     const answers = await backend.score(STATE, QUESTIONS, undefined);
     expect(answers.get("needContents_t1")).toBe(0.1);
-    expect(captured?.url).toBe("http://openjev:8000");
+    // A host-only base URL resolves to the System One route; a backend served
+    // under its own path configures that path and it is used verbatim.
+    expect(captured?.url).toBe("http://openjev:8000/v1/systemone");
     expect(captured?.headers.authorization).toBeUndefined();
   });
 
@@ -182,5 +186,110 @@ describe("SystemOneClient", () => {
         backend.score(STATE, QUESTIONS, controller.signal),
       ),
     ).rejects.toThrow(JevTransportError);
+  });
+});
+
+describe("decision endpoint", () => {
+  it("names the System One route when the base URL carries only a host", () => {
+    expect(systemOneEndpoint("http://jeff:8000")).toBe(
+      "http://jeff:8000/v1/systemone",
+    );
+    expect(systemOneEndpoint("http://jeff:8000/")).toBe(
+      "http://jeff:8000/v1/systemone",
+    );
+    expect(systemOneEndpoint("  http://jeff:8000//  ")).toBe(
+      "http://jeff:8000/v1/systemone",
+    );
+  });
+
+  it("keeps a path the deployment spelled out, and the keyless empty value", () => {
+    expect(systemOneEndpoint("http://jeff:8000/v1/systemone")).toBe(
+      "http://jeff:8000/v1/systemone",
+    );
+    expect(systemOneEndpoint("https://gateway.example/score")).toBe(
+      "https://gateway.example/score",
+    );
+    expect(systemOneEndpoint("")).toBe("");
+  });
+
+  it("POSTs to that route rather than the bare host", async () => {
+    let captured: string | undefined;
+    const fetcher: FetchLike = async (url, init) => {
+      captured = url;
+      return okFetch({
+        answers: {
+          needContents_t1: { noul: 0.5 },
+          needVerbatim_t1: { noul: 0.1 },
+        },
+      })("", init);
+    };
+    const backend = new SystemOneClient(
+      resolveJevCompactionConfig({
+        decision: { provider: "jeff", jeff: { baseUrl: "http://jeff:8000" } },
+        jev: { apiKeyEnv: "JEFF_API_KEY" },
+      }),
+      fetcher,
+    );
+    await withEnv("JEFF_API_KEY", "k", () =>
+      backend.score(STATE, QUESTIONS, undefined),
+    );
+    expect(captured).toBe("http://jeff:8000/v1/systemone");
+  });
+});
+
+describe("missing credential report", () => {
+  it("reports the provider and endpoint behind an unset variable", () => {
+    expect(
+      missingCredential(
+        { provider: "jeff" },
+        { apiKeyEnv: "JEFF_API_KEY", baseUrl: "http://jeff:8000" },
+        {},
+      ),
+    ).toEqual({
+      provider: "jeff",
+      apiKeyEnv: "JEFF_API_KEY",
+      endpoint: "http://jeff:8000/v1/systemone",
+    });
+  });
+
+  it("stays quiet for a set variable and for a deliberately keyless backend", () => {
+    expect(
+      missingCredential(
+        { provider: "jeff" },
+        { apiKeyEnv: "JEFF_API_KEY", baseUrl: "http://jeff:8000" },
+        { JEFF_API_KEY: "token" },
+      ),
+    ).toBeUndefined();
+    expect(
+      missingCredential(
+        { provider: "custom" },
+        { apiKeyEnv: "", baseUrl: "http://scorer.example/v1/systemone" },
+        {},
+      ),
+    ).toBeUndefined();
+    expect(
+      missingCredential(
+        { provider: "jeff" },
+        { apiKeyEnv: "JEFF_API_KEY", baseUrl: "http://jeff:8000" },
+        { JEFF_API_KEY: "   " },
+      ),
+    ).toBeDefined();
+  });
+
+  it("names the backend in the refusal the pipeline raises", async () => {
+    const backend = new SystemOneClient(
+      resolveJevCompactionConfig({
+        decision: { provider: "jeff", jeff: { baseUrl: "http://jeff:8000" } },
+        jev: { apiKeyEnv: "JEFF_API_KEY" },
+      }),
+      okFetch({ answers: {} }),
+    );
+    await expect(
+      withEnv("JEFF_API_KEY", undefined, () =>
+        backend.score(STATE, QUESTIONS, undefined),
+      ),
+    ).rejects.toThrow(
+      /JEFF_API_KEY is not configured for the "jeff" decision backend \(http:\/\/jeff:8000\/v1\/systemone\)/u,
+    );
   });
 });

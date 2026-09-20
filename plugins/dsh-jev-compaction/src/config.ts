@@ -18,7 +18,9 @@ export const SYSTEM_ONE_PRESETS = {
     model: "jev-latest",
   },
   jeff: {
-    baseUrl: "http://localhost:8000",
+    // The System One route, exactly as the typesafe preset spells it: the
+    // client POSTs to this URL as it stands, so a bare host would answer 404.
+    baseUrl: "http://localhost:8000/v1/systemone",
     apiKeyEnv: "JEFF_API_KEY",
     model: "jev-latest",
   },
@@ -483,10 +485,32 @@ function resolveArchivePolicy(
 }
 
 /**
+ * The legacy flat `jev` block, minus the values the settings layer materializes
+ * from the shipped defaults.
+ *
+ * The legacy block stays an override for deployments that wrote it — but the
+ * settings service hands the resolver a value with every default filled in, so
+ * a key equal to its shipped default means "nobody configured this" rather than
+ * "the deployment chose it". Honouring those would shadow
+ * `decision.<provider>` — the shape the README documents and the profiles use —
+ * on every deployment, which is how a self-hosted `jeff` deployment ended up
+ * asking for `TYPESAFE_API_KEY` and never reached its own scorer.
+ */
+function legacyOverride(
+  raw: JevCompactionConfig,
+  key: "model" | "apiKeyEnv" | "baseUrl",
+): string | undefined {
+  const value = raw.jev?.[key];
+  if (value === undefined || value === DEFAULTS.jev[key]) return undefined;
+  return value;
+}
+
+/**
  * Resolve the decision backend endpoint: pick the provider preset, layer the
- * `decision.<provider>` overrides on top, then let the legacy flat `jev`
- * block override one-for-one. `provider: custom` must carry an explicit
- * `baseUrl` — a misconfigured endpoint must fail loudly at startup.
+ * `decision.<provider>` overrides on top, then let an explicitly configured
+ * legacy flat `jev` block override one-for-one. `provider: custom` must carry
+ * an explicit `baseUrl` — a misconfigured endpoint must fail loudly at
+ * startup, not silently prune or score against the wrong service.
  */
 function resolveEndpoint(raw: JevCompactionConfig): {
   decision: ResolvedJevCompactionConfig["decision"];
@@ -505,13 +529,14 @@ function resolveEndpoint(raw: JevCompactionConfig): {
   const preset = SYSTEM_ONE_PRESETS[provider];
   const override: SystemOneProviderOverride | undefined = rawDecision[provider];
   const endpoint = {
-    model: override?.model ?? preset.model,
-    apiKeyEnv: override?.apiKeyEnv ?? preset.apiKeyEnv,
-    baseUrl: override?.baseUrl ?? preset.baseUrl,
+    model: legacyOverride(raw, "model") ?? override?.model ?? preset.model,
+    apiKeyEnv:
+      legacyOverride(raw, "apiKeyEnv") ??
+      override?.apiKeyEnv ??
+      preset.apiKeyEnv,
+    baseUrl:
+      legacyOverride(raw, "baseUrl") ?? override?.baseUrl ?? preset.baseUrl,
   };
-  endpoint.model = raw.jev?.model ?? endpoint.model;
-  endpoint.apiKeyEnv = raw.jev?.apiKeyEnv ?? endpoint.apiKeyEnv;
-  endpoint.baseUrl = raw.jev?.baseUrl ?? endpoint.baseUrl;
   if (provider === "custom" && endpoint.baseUrl.length === 0) {
     throw new TypeError(
       "jev-compaction: decision.custom.baseUrl is required when provider is custom",

@@ -106,7 +106,7 @@ System One scoring contract; switching is configuration, not code.
 | `decision.provider`  | Endpoint                               | Key variable       | Notes                                                                                                                                                   |
 | -------------------- | -------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `typesafe` (default) | `https://api.typesafe.ai/v1/systemone` | `TYPESAFE_API_KEY` | hosted Jev; reference quality                                                                                                                           |
-| `jeff`               | `http://localhost:8000`                | `JEFF_API_KEY`     | self-hosted [jeff](https://github.com/logan-markewich/jeff) server (GLiFormer ~400M); near drop-in, free local evals, weaker on reasoning-heavy scoring |
+| `jeff`               | `http://localhost:8000/v1/systemone`   | `JEFF_API_KEY`     | self-hosted [jeff](https://github.com/logan-markewich/jeff) server (GLiFormer ~400M); near drop-in, free local evals, weaker on reasoning-heavy scoring |
 | `custom`             | required                               | optional           | any System One-compatible endpoint (e.g. open-jev); set `decision.custom.baseUrl`; an empty `apiKeyEnv` disables the Authorization header               |
 
 ```yaml
@@ -114,7 +114,7 @@ jev-compaction:
   decision:
     provider: jeff # typesafe | jeff | custom
     jeff:
-      baseUrl: http://jeff:8000
+      baseUrl: http://jeff:8000/v1/systemone
       apiKeyEnv: JEFF_API_KEY
     timeoutMs: 2500
     maxConcurrency: 4
@@ -142,7 +142,16 @@ not enable text categories you would not share with the endpoint operator.
 
 The API key is read from the environment variable named by the provider's
 `apiKeyEnv` (default `TYPESAFE_API_KEY`) and is never logged or included in
-reports.
+reports. A backend whose variable is unset at startup is reported once in the
+plugin log (`jev-compaction/credential-missing`) with its provider and
+endpoint, because the environment is not part of the configuration and the
+first symptom would otherwise be a prune refused minutes later.
+
+`decision.<provider>` is the authoritative shape. The legacy flat `jev` block
+still overrides it one-for-one, but only for values that differ from the
+shipped defaults: a settings-driven deployment is handed a configuration with
+every default filled in, and letting those win would shadow the provider the
+deployment actually selected.
 
 ## Installation
 
@@ -299,7 +308,9 @@ jev-compaction:
 
 - `typesafe` — the public TypeSafe AI System One endpoint (`jev-latest`,
   `TYPESAFE_API_KEY`); the default.
-- `jeff` — a local System One-compatible server on `http://localhost:8000`
+- `jeff` — a local System One-compatible server on `http://localhost:8000`; the
+  `/v1/systemone` route is added when a deployment names only a host, so both
+  spellings work
   (`JEFF_API_KEY`).
 - `custom` — bring your own endpoint; an explicit `baseUrl` is required and
   a missing one fails loudly at startup.

@@ -19,6 +19,13 @@ export const JEV_EVENTS = {
   applied: "jev-compaction/applied",
   fallback: "jev-compaction/fallback",
   error: "jev-compaction/error",
+  /**
+   * The configured backend names an API key variable that is not set. Logged
+   * once per backend at startup and on every settings change: the environment
+   * is not part of the config, so the resolver cannot catch it — without this
+   * line the first sign is a refused prune minutes later.
+   */
+  credentialMissing: "jev-compaction/credential-missing",
   queued: "jev-compaction/queued",
   /** Immediate result shaping at `tools/post-execute`. */
   shapingSkip: "jev-compaction/result-shaping-skip",

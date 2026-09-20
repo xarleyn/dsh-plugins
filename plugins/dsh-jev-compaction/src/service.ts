@@ -29,7 +29,7 @@ import type {
   PressureSnapshot,
   TokenMeterLike,
 } from "./dsh/types.js";
-import { SystemOneClient } from "./jev/backend.js";
+import { missingCredential, SystemOneClient } from "./jev/backend.js";
 import { batchCandidates, mapWithConcurrency } from "./jev/batch.js";
 import { questionsFor } from "./jev/questions.js";
 import { buildState, fitState } from "./jev/state.js";
@@ -145,6 +145,8 @@ export class JevCompactionService extends Service {
   private readonly tokenMeter: TokenMeterLike;
   private readonly backend: SystemOneBackend;
   private readonly sessions = new Map<string, SessionState>();
+  /** Backends whose key warning was already logged, keyed provider+variable. */
+  private readonly warnedCredentials = new Set<string>();
   private readonly disposers: Array<() => void> = [];
   /** Immediate result shaping at `tools/post-execute` (SPEC result-shaping). */
   readonly shaping: ResultShapingSubsystem;
@@ -171,6 +173,7 @@ export class JevCompactionService extends Service {
     // change to the endpoint, key variable, timeout or retries applies at
     // once without rebuilding the plugin.
     this.backend = backend ?? new SystemOneClient(() => this.resolvedConfig);
+    this.warnOnMissingCredential();
 
     // Immediate shaping runs on the tool-execution path, so it is registered
     // through its own subsystem with its own budget, metrics and archive. Its
@@ -250,6 +253,32 @@ export class JevCompactionService extends Service {
    */
   protected onConfigChanged(): void {
     this.shaping.onConfigChanged();
+    this.warnOnMissingCredential();
+  }
+
+  /**
+   * Say once per configured backend that its API key variable is empty.
+   *
+   * The environment is not part of the config, so no resolver can refuse this:
+   * without the line the first sign is a prune refused minutes later, which
+   * reads as "the scorer is broken" rather than "the variable is unset". The
+   * provider and the endpoint are logged with the variable name, so the operator
+   * can see which backend the deployment actually points at.
+   */
+  private warnOnMissingCredential(): void {
+    const missing = missingCredential(
+      this.resolvedConfig.decision,
+      this.resolvedConfig.jev,
+      process.env,
+    );
+    if (missing === undefined) return;
+    const key = `${missing.provider} ${missing.apiKeyEnv}`;
+    if (this.warnedCredentials.has(key)) return;
+    this.warnedCredentials.add(key);
+    jevLogger.warn(JEV_EVENTS.credentialMissing, {
+      ...missing,
+      hint: 'every Jev decision will fail with "not configured" until the variable is set; a backend that needs no key is configured by pointing decision.provider at it (or by an empty apiKeyEnv)',
+    });
   }
 
   /**

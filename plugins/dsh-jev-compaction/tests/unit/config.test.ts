@@ -71,9 +71,38 @@ describe("resolveJevCompactionConfig", () => {
       decision: { provider: "jeff" },
     });
     expect(resolved.decision.provider).toBe("jeff");
-    expect(resolved.jev.baseUrl).toBe("http://localhost:8000");
+    // The preset names the System One route, never a bare host: the client
+    // POSTs to this URL as it stands.
+    expect(resolved.jev.baseUrl).toBe("http://localhost:8000/v1/systemone");
     expect(resolved.jev.apiKeyEnv).toBe("JEFF_API_KEY");
     expect(resolved.jev.model).toBe("jev-latest");
+  });
+
+  it("lets decision.<provider> win over the legacy block the settings layer materializes", () => {
+    // What a settings-driven deployment actually resolves: the namespace value
+    // carries every shipped default, so `jev` is present without anyone having
+    // written it. Honouring it would shadow decision.jeff.* — this is the bug
+    // that made a self-hosted deployment ask for TYPESAFE_API_KEY.
+    const resolved = resolveJevCompactionConfig({
+      decision: {
+        provider: "jeff",
+        jeff: {
+          baseUrl: "http://jeff:8000",
+          apiKeyEnv: "JEFF_API_KEY",
+        },
+      },
+      jev: { ...DEFAULTS.jev },
+    });
+    expect(resolved.jev.baseUrl).toBe("http://jeff:8000");
+    expect(resolved.jev.apiKeyEnv).toBe("JEFF_API_KEY");
+  });
+
+  it("keeps an explicitly configured legacy block as an override", () => {
+    const resolved = resolveJevCompactionConfig({
+      decision: { provider: "jeff", jeff: { baseUrl: "http://jeff:8000" } },
+      jev: { baseUrl: "http://legacy.example/v1/systemone" },
+    });
+    expect(resolved.jev.baseUrl).toBe("http://legacy.example/v1/systemone");
   });
 
   it("applies per-provider overrides over the preset", () => {
