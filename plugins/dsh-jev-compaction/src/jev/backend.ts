@@ -95,15 +95,24 @@ export type FetchLike = (
 
 /** The live System One decision backend over HTTP. */
 export class SystemOneClient implements SystemOneBackend {
-  private readonly config: ResolvedJevCompactionConfig;
+  /**
+   * Either a frozen config or a provider read per request, so a live settings
+   * change (endpoint, key variable, timeout, retries) reaches the wire without
+   * rebuilding the client.
+   */
+  private readonly configSource: () => ResolvedJevCompactionConfig;
   private readonly fetcher: FetchLike;
 
   constructor(
-    config: ResolvedJevCompactionConfig,
+    config: ResolvedJevCompactionConfig | (() => ResolvedJevCompactionConfig),
     fetcher: FetchLike = fetch as never,
   ) {
-    this.config = config;
+    this.configSource = typeof config === "function" ? config : () => config;
     this.fetcher = fetcher;
+  }
+
+  private get config(): ResolvedJevCompactionConfig {
+    return this.configSource();
   }
 
   /** Resolve the key from the configured env var; empty env name = keyless. */

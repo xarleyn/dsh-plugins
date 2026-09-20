@@ -62,7 +62,42 @@ function formatPlanCounts(plan: JevCompactionPlan): string {
   return `Would keep full: ${keptFull}\nWould truncate: ${truncated}\nWould stub: ${stubbed}`;
 }
 
-function renderReport(report: JevRunReport, includeScores: boolean): string {
+/**
+ * The immediate-shaping layer's own counters for the audit output. The two
+ * layers are reported separately on purpose: one combined "saved" number
+ * would hide which of them did the work.
+ */
+function formatShapingStats(
+  stats: ReturnType<JevCompactionService["shaping"]["stats"]>,
+): string[] {
+  const seen = stats.counters["resultShaping.seen"] ?? 0;
+  if (seen === 0) return [];
+  const shaped = stats.counters["resultShaping.shaped"] ?? 0;
+  const saved = stats.counters["resultShaping.savedChars"] ?? 0;
+  const lines = [
+    "",
+    "Immediate result shaping (this process):",
+    `  seen ${seen}, eligible ${stats.counters["resultShaping.eligible"] ?? 0}, shaped ${shaped}`,
+    `  saved ${saved.toLocaleString("en-US")} chars`,
+  ];
+  const reasons = Object.entries(stats.skipReasons)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 4);
+  if (reasons.length > 0) {
+    lines.push(
+      `  skipped: ${reasons
+        .map(([reason, count]) => `${reason}=${count}`)
+        .join(" ")}`,
+    );
+  }
+  return lines;
+}
+
+function renderReport(
+  report: JevRunReport,
+  includeScores: boolean,
+  shaping?: ReturnType<JevCompactionService["shaping"]["stats"]>,
+): string {
   if (report.skipped !== undefined && report.plan === undefined) {
     const reason = report.skipped.replace(/-/g, " ");
     return `Jev compaction: nothing to do (${reason}).`;
@@ -92,6 +127,7 @@ function renderReport(report: JevRunReport, includeScores: boolean): string {
     }
     if (includeScores) lines.push(formatScores(report));
     if (report.mode === "dry-run") {
+      if (shaping !== undefined) lines.push(...formatShapingStats(shaping));
       lines.push("", "No changes were made.");
       return lines.join("\n");
     }
@@ -154,12 +190,18 @@ export function registerJevCompactCommand(
             };
           }
           if (dryRun) {
-            return { kind: "success", text: renderReport(report, true) };
+            return {
+              kind: "success",
+              text: renderReport(report, true, service.shaping.stats()),
+            };
           }
           // Non-dry-run manual pass: compute the plan now (fresh Jev
           // scoring) and queue the application for the next pre-step.
           if (report.plan === undefined || report.plan.mutations.length === 0) {
-            return { kind: "success", text: renderReport(report, true) };
+            return {
+              kind: "success",
+              text: renderReport(report, true, service.shaping.stats()),
+            };
           }
           const queued = service.queueManualRun(agent);
           return {

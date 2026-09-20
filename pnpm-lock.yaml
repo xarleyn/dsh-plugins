@@ -871,6 +871,9 @@ importers:
 
   plugins/dsh-jev-compaction:
     dependencies:
+      '@yadsh/dsh-plugin-kit':
+        specifier: workspace:^
+        version: link:../../packages/plugin-kit
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
@@ -878,33 +881,75 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-settings-plugins':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-compaction':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(9a0d74c3ee7e7ca38cd21c7ae52044f6)
       '@deepseek-ai/dsh-compaction-basic':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(3eab187485304ad087546da24abec2bc)
+      '@deepseek-ai/dsh-home-paths':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-llm':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-session':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.2)))
+      '@deepseek-ai/dsh-tools':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(3d1f7388b5ad3ebe6299c7cfa1d9c23a)
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.2
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: catalog:tooling
         version: 26.4.0
+      '@types/react':
+        specifier: catalog:frontend-dev
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: catalog:frontend-dev
+        version: 18.3.7(@types/react@18.3.28)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../../packages/plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit
       eslint:
         specifier: catalog:tooling
         version: 10.9.1(jiti@2.7.0)
+      jsdom:
+        specifier: catalog:tooling
+        version: 26.1.0
+      react:
+        specifier: catalog:frontend-dev
+        version: 18.3.1
+      react-dom:
+        specifier: catalog:frontend-dev
+        version: 18.3.1(react@18.3.1)
+      tsdown:
+        specifier: catalog:tooling
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.22.4)(typescript@5.9.3)
       typescript:
         specifier: catalog:tooling
         version: 5.9.3

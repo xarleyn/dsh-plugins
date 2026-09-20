@@ -16,6 +16,7 @@ import {
   readSurfaceEvents,
 } from "../dsh/surface.js";
 import { PRUNED_BY } from "../mutation/render.js";
+import { isShapedText, readArchiveRef } from "../result-shaping/reconstruct.js";
 import type { ResolvedJevCompactionConfig } from "../config.js";
 
 /** Normalized candidate model (SPEC §9.2) — no DSH event shapes. */
@@ -32,6 +33,15 @@ export interface ToolResultCandidate {
   /** Surface position from the tail (0 = newest surface node). */
   agePositions: number;
   toolArgumentsPreview?: string;
+  /**
+   * The result was already reduced by immediate result shaping before it was
+   * persisted (result-shaping SPEC §26). It stays a candidate for later
+   * truncation or stubbing — only its omission markers must be
+   * recognized so a stub does not pretend the output was untouched.
+   */
+  alreadyShaped?: boolean;
+  /** Archive reference recorded in the shaping marker, when one is present. */
+  archiveRef?: string;
 }
 
 /** Result of one collection pass. */
@@ -158,9 +168,14 @@ export function collectCandidates(
     if (raw.callId === undefined || !raw.textOnly) continue;
     if (!callIndex.has(raw.callId)) continue;
     // Already-pruned nodes (our own stub/truncate markers) are pinned so
-    // repeated runs converge instead of re-pruning the marker.
+    // repeated runs converge instead of re-pruning the marker. A node that
+    // was *shaped* before persistence is not pinned: it is a normal candidate
+    // that may later be truncated or stubbed, and its marker is carried into
+    // the stub (result-shaping SPEC §26).
     if (raw.text.includes(PRUNED_BY)) continue;
     const info = callIndex.get(raw.callId)!;
+    const shaped = isShapedText(raw.text);
+    const archiveRef = shaped ? readArchiveRef(raw.text) : undefined;
     candidates.push({
       surfaceSeq: raw.seq,
       callId: raw.callId,
@@ -172,6 +187,8 @@ export function collectCandidates(
       isError: raw.isError,
       agePositions: total - 1 - index,
       toolArgumentsPreview: argumentsPreview(info, config.state.toolInputChars),
+      ...(shaped ? { alreadyShaped: true } : {}),
+      ...(archiveRef === undefined ? {} : { archiveRef }),
     });
   }
   return { candidates, callIndex, currentTurn };

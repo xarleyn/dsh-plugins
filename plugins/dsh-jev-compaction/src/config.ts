@@ -43,6 +43,42 @@ export interface SystemOneProviderOverride {
   readonly model?: string;
 }
 
+/**
+ * Tools shaped by default (SPEC §11.1 of the result-shaping SPEC). Only
+ * command-like tools whose output is bulk, line-oriented and cheaply
+ * reproducible: everything else — file reads, diffs, searches, structured
+ * business tools, subagent results — may carry unique evidence that cannot be
+ * recovered from output shape alone.
+ */
+export const DEFAULT_SHAPE_TOOLS: readonly string[] = Object.freeze([
+  "bash",
+  "terminal",
+  "pwsh",
+  "run_command",
+  "execute_command",
+  "run_tests",
+]);
+
+/** Result-shaping category of one collapsed run (SPEC §18). */
+export const SHAPING_KINDS = [
+  "routine_progress",
+  "summary",
+  "warning",
+  "failure",
+  "important_evidence",
+  "unknown",
+] as const;
+
+export type ShapingKind = (typeof SHAPING_KINDS)[number];
+
+/** Archive failure policy (SPEC §24). */
+export const ARCHIVE_FAILURE_POLICIES = [
+  "keep-original",
+  "shape-anyway",
+] as const;
+
+export type ArchiveFailurePolicy = (typeof ARCHIVE_FAILURE_POLICIES)[number];
+
 /** Raw user-facing configuration (SPEC §22). */
 export interface JevCompactionConfig {
   /** Master switch; when false the plugin listens but never acts. */
@@ -134,6 +170,68 @@ export interface JevCompactionConfig {
     /** Do not mutate below this fraction of candidate characters. */
     readonly minSavingsRatio?: number;
   };
+  /**
+   * Immediate semantic shaping of large tool outputs at `tools/post-execute`
+   * (result-shaping SPEC §10-§21): runs before the durable `tool/result` is
+   * persisted, so it is opt-in and archives the original by default.
+   */
+  readonly resultShaping?: {
+    /** Master switch; off by default — this path changes durable content. */
+    readonly enabled?: boolean;
+    /** Tools whose results may be shaped; exclusions win. */
+    readonly includeTools?: readonly string[];
+    /** Tools whose results are never shaped, whatever the allowlist says. */
+    readonly excludeTools?: readonly string[];
+    /** Minimum text length in characters before shaping is considered. */
+    readonly thresholdChars?: number;
+    /** Length that triggers consideration even without line structure. */
+    readonly hardLengthTriggerChars?: number;
+    /** Minimum line count for the line-structure trigger. */
+    readonly minLines?: number;
+    /** Minimum collapsed-line ratio for the repetition trigger. */
+    readonly repetitionTriggerRatio?: number;
+    /** Shaping requests allowed per turn. */
+    readonly maxPerTurn?: number;
+    /** Concurrent shaping requests (clamped 1-8). */
+    readonly maxConcurrent?: number;
+    /** Leave failed tool results untouched. */
+    readonly preserveErrors?: boolean;
+    /** Minimum run length that may collapse into one marker. */
+    readonly minRunLines?: number;
+    /** Head lines pinned from collapsing. */
+    readonly keepHeadLines?: number;
+    /** Tail lines pinned from collapsing. */
+    readonly keepTailLines?: number;
+    /** Minimum confidence to act on a classification. */
+    readonly minClassificationConfidence?: number;
+    /** Do not shape below this many saved characters. */
+    readonly minSavingsChars?: number;
+    /** Do not shape below this fraction of the original characters. */
+    readonly minSavingsRatio?: number;
+    /** Per-request wall-clock budget in ms (clamped 500-60_000). */
+    readonly requestTimeoutMs?: number;
+    /** Character budget for shaping requests per turn. */
+    readonly maxInputCharsPerTurn?: number;
+  };
+  /**
+   * Plugin-owned archive of the pre-shaping rendered result (result-shaping
+   * SPEC §22-§25). Shaping happens before DSH persists the result, so without
+   * an archive the original is not recoverable from session replay.
+   */
+  readonly archive?: {
+    /** Persist originals before shaping. */
+    readonly enabled?: boolean;
+    /** Archive root; empty resolves under the harness home. */
+    readonly rootPath?: string;
+    /** Retention window in days; 0 keeps entries forever. */
+    readonly retentionDays?: number;
+    /** Retention ceiling in bytes; 0 disables the size cap. */
+    readonly maxBytes?: number;
+    /** Reuse the content-addressed entry instead of writing a duplicate. */
+    readonly deduplicate?: boolean;
+    /** What to do when the archive write fails. */
+    readonly onFailure?: ArchiveFailurePolicy;
+  };
   readonly privacy?: {
     /** Include user text (bounded) in the Jev state. */
     readonly includeUserText?: boolean;
@@ -200,6 +298,35 @@ export interface ResolvedJevCompactionConfig {
     readonly minSavingsChars: number;
     readonly minSavingsRatio: number;
   };
+  readonly resultShaping: {
+    readonly enabled: boolean;
+    readonly includeTools: readonly string[];
+    readonly excludeTools: readonly string[];
+    readonly thresholdChars: number;
+    readonly hardLengthTriggerChars: number;
+    readonly minLines: number;
+    readonly repetitionTriggerRatio: number;
+    readonly maxPerTurn: number;
+    readonly maxConcurrent: number;
+    readonly preserveErrors: boolean;
+    readonly minRunLines: number;
+    readonly keepHeadLines: number;
+    readonly keepTailLines: number;
+    readonly minClassificationConfidence: number;
+    readonly minSavingsChars: number;
+    readonly minSavingsRatio: number;
+    readonly requestTimeoutMs: number;
+    readonly maxInputCharsPerTurn: number;
+  };
+  readonly archive: {
+    readonly enabled: boolean;
+    /** Empty means "resolve under the harness home at runtime". */
+    readonly rootPath: string;
+    readonly retentionDays: number;
+    readonly maxBytes: number;
+    readonly deduplicate: boolean;
+    readonly onFailure: ArchiveFailurePolicy;
+  };
   readonly privacy: {
     readonly includeUserText: boolean;
     readonly includeAssistantText: boolean;
@@ -255,6 +382,34 @@ export const DEFAULTS: ResolvedJevCompactionConfig = Object.freeze({
     minSavingsChars: 8000,
     minSavingsRatio: 0.05,
   }),
+  resultShaping: Object.freeze({
+    enabled: false,
+    includeTools: DEFAULT_SHAPE_TOOLS,
+    excludeTools: Object.freeze([]) as readonly string[],
+    thresholdChars: 12000,
+    hardLengthTriggerChars: 32000,
+    minLines: 80,
+    repetitionTriggerRatio: 0.45,
+    maxPerTurn: 2,
+    maxConcurrent: 2,
+    preserveErrors: true,
+    minRunLines: 3,
+    keepHeadLines: 8,
+    keepTailLines: 12,
+    minClassificationConfidence: 0.6,
+    minSavingsChars: 4000,
+    minSavingsRatio: 0.3,
+    requestTimeoutMs: 2500,
+    maxInputCharsPerTurn: 50000,
+  }),
+  archive: Object.freeze({
+    enabled: true,
+    rootPath: "",
+    retentionDays: 14,
+    maxBytes: 1_073_741_824,
+    deduplicate: true,
+    onFailure: "keep-original" as const,
+  }),
   privacy: Object.freeze({
     includeUserText: true,
     includeAssistantText: true,
@@ -295,6 +450,35 @@ function resolveLevel(value: unknown, fallback: LogLevel): LogLevel {
   return typeof value === "string" &&
     (LEVELS as readonly string[]).includes(value)
     ? (value as LogLevel)
+    : fallback;
+}
+
+/**
+ * Normalize a tool-name list: drop non-strings and blanks, trim, deduplicate
+ * case-sensitively (tool names are exact identifiers, not display text).
+ */
+function resolveToolList(
+  value: readonly string[] | undefined,
+  fallback: readonly string[],
+): readonly string[] {
+  if (!Array.isArray(value)) return fallback;
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (trimmed.length === 0) continue;
+    seen.add(trimmed);
+  }
+  return Object.freeze([...seen]);
+}
+
+function resolveArchivePolicy(
+  value: unknown,
+  fallback: ArchiveFailurePolicy,
+): ArchiveFailurePolicy {
+  return typeof value === "string" &&
+    (ARCHIVE_FAILURE_POLICIES as readonly string[]).includes(value)
+    ? (value as ArchiveFailurePolicy)
     : fallback;
 }
 
@@ -483,6 +667,130 @@ export function resolveJevCompactionConfig(
       minSavingsRatio: clampProbability(
         raw.pruning?.minSavingsRatio ?? DEFAULTS.pruning.minSavingsRatio,
         "pruning.minSavingsRatio",
+      ),
+    },
+    resultShaping: {
+      enabled: raw.resultShaping?.enabled ?? DEFAULTS.resultShaping.enabled,
+      includeTools: resolveToolList(
+        raw.resultShaping?.includeTools,
+        DEFAULTS.resultShaping.includeTools,
+      ),
+      excludeTools: resolveToolList(
+        raw.resultShaping?.excludeTools,
+        DEFAULTS.resultShaping.excludeTools,
+      ),
+      thresholdChars: clampInt(
+        raw.resultShaping?.thresholdChars ??
+          DEFAULTS.resultShaping.thresholdChars,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        "resultShaping.thresholdChars",
+      ),
+      hardLengthTriggerChars: clampInt(
+        raw.resultShaping?.hardLengthTriggerChars ??
+          DEFAULTS.resultShaping.hardLengthTriggerChars,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        "resultShaping.hardLengthTriggerChars",
+      ),
+      minLines: clampInt(
+        raw.resultShaping?.minLines ?? DEFAULTS.resultShaping.minLines,
+        1,
+        1_000_000,
+        "resultShaping.minLines",
+      ),
+      repetitionTriggerRatio: clampProbability(
+        raw.resultShaping?.repetitionTriggerRatio ??
+          DEFAULTS.resultShaping.repetitionTriggerRatio,
+        "resultShaping.repetitionTriggerRatio",
+      ),
+      maxPerTurn: clampInt(
+        raw.resultShaping?.maxPerTurn ?? DEFAULTS.resultShaping.maxPerTurn,
+        0,
+        1000,
+        "resultShaping.maxPerTurn",
+      ),
+      maxConcurrent: clampInt(
+        raw.resultShaping?.maxConcurrent ??
+          DEFAULTS.resultShaping.maxConcurrent,
+        1,
+        8,
+        "resultShaping.maxConcurrent",
+      ),
+      preserveErrors:
+        raw.resultShaping?.preserveErrors ??
+        DEFAULTS.resultShaping.preserveErrors,
+      minRunLines: clampInt(
+        raw.resultShaping?.minRunLines ?? DEFAULTS.resultShaping.minRunLines,
+        2,
+        1000,
+        "resultShaping.minRunLines",
+      ),
+      keepHeadLines: clampInt(
+        raw.resultShaping?.keepHeadLines ??
+          DEFAULTS.resultShaping.keepHeadLines,
+        0,
+        100_000,
+        "resultShaping.keepHeadLines",
+      ),
+      keepTailLines: clampInt(
+        raw.resultShaping?.keepTailLines ??
+          DEFAULTS.resultShaping.keepTailLines,
+        0,
+        100_000,
+        "resultShaping.keepTailLines",
+      ),
+      minClassificationConfidence: clampProbability(
+        raw.resultShaping?.minClassificationConfidence ??
+          DEFAULTS.resultShaping.minClassificationConfidence,
+        "resultShaping.minClassificationConfidence",
+      ),
+      minSavingsChars: clampInt(
+        raw.resultShaping?.minSavingsChars ??
+          DEFAULTS.resultShaping.minSavingsChars,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        "resultShaping.minSavingsChars",
+      ),
+      minSavingsRatio: clampProbability(
+        raw.resultShaping?.minSavingsRatio ??
+          DEFAULTS.resultShaping.minSavingsRatio,
+        "resultShaping.minSavingsRatio",
+      ),
+      requestTimeoutMs: clampInt(
+        raw.resultShaping?.requestTimeoutMs ??
+          DEFAULTS.resultShaping.requestTimeoutMs,
+        500,
+        60_000,
+        "resultShaping.requestTimeoutMs",
+      ),
+      maxInputCharsPerTurn: clampInt(
+        raw.resultShaping?.maxInputCharsPerTurn ??
+          DEFAULTS.resultShaping.maxInputCharsPerTurn,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        "resultShaping.maxInputCharsPerTurn",
+      ),
+    },
+    archive: {
+      enabled: raw.archive?.enabled ?? DEFAULTS.archive.enabled,
+      rootPath: raw.archive?.rootPath ?? DEFAULTS.archive.rootPath,
+      retentionDays: clampInt(
+        raw.archive?.retentionDays ?? DEFAULTS.archive.retentionDays,
+        0,
+        36_500,
+        "archive.retentionDays",
+      ),
+      maxBytes: clampInt(
+        raw.archive?.maxBytes ?? DEFAULTS.archive.maxBytes,
+        0,
+        Number.MAX_SAFE_INTEGER,
+        "archive.maxBytes",
+      ),
+      deduplicate: raw.archive?.deduplicate ?? DEFAULTS.archive.deduplicate,
+      onFailure: resolveArchivePolicy(
+        raw.archive?.onFailure,
+        DEFAULTS.archive.onFailure,
       ),
     },
     privacy: {
@@ -739,6 +1047,156 @@ export const JevCompactionConfigSchema = z.object({
         "Skip mutation below this fraction of candidate characters.",
       ),
   }),
+  resultShaping: z
+    .object({
+      enabled: z
+        .boolean()
+        .default(DEFAULTS.resultShaping.enabled)
+        .description(
+          "Immediate semantic shaping of large tool outputs before they are persisted.",
+        ),
+      includeTools: z
+        .array(z.string())
+        .default([...DEFAULTS.resultShaping.includeTools])
+        .description("Tools whose results may be shaped."),
+      excludeTools: z
+        .array(z.string())
+        .default([...DEFAULTS.resultShaping.excludeTools])
+        .description(
+          "Tools whose results are never shaped; wins over the allowlist.",
+        ),
+      thresholdChars: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.thresholdChars)
+        .description("Minimum text length before shaping is considered."),
+      hardLengthTriggerChars: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.hardLengthTriggerChars)
+        .description("Length that triggers shaping without line structure."),
+      minLines: z
+        .number()
+        .min(1)
+        .step(1)
+        .default(DEFAULTS.resultShaping.minLines)
+        .description("Minimum line count for the line-structure trigger."),
+      repetitionTriggerRatio: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(DEFAULTS.resultShaping.repetitionTriggerRatio)
+        .description(
+          "Minimum collapsible-line ratio for the repetition trigger.",
+        ),
+      maxPerTurn: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.maxPerTurn)
+        .description("Shaping requests allowed per turn."),
+      maxConcurrent: z
+        .number()
+        .min(1)
+        .max(8)
+        .step(1)
+        .default(DEFAULTS.resultShaping.maxConcurrent)
+        .description("Concurrent shaping requests."),
+      preserveErrors: z
+        .boolean()
+        .default(DEFAULTS.resultShaping.preserveErrors)
+        .description("Leave failed tool results untouched."),
+      minRunLines: z
+        .number()
+        .min(2)
+        .step(1)
+        .default(DEFAULTS.resultShaping.minRunLines)
+        .description("Minimum run length that may collapse into one marker."),
+      keepHeadLines: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.keepHeadLines)
+        .description("Head lines pinned from collapsing."),
+      keepTailLines: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.keepTailLines)
+        .description("Tail lines pinned from collapsing."),
+      minClassificationConfidence: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(DEFAULTS.resultShaping.minClassificationConfidence)
+        .description("Minimum confidence to act on a classification."),
+      minSavingsChars: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.minSavingsChars)
+        .description("Skip shaping below this many saved characters."),
+      minSavingsRatio: z
+        .number()
+        .min(0)
+        .max(1)
+        .default(DEFAULTS.resultShaping.minSavingsRatio)
+        .description(
+          "Skip shaping below this fraction of the original characters.",
+        ),
+      requestTimeoutMs: z
+        .number()
+        .min(500)
+        .max(60_000)
+        .step(1)
+        .default(DEFAULTS.resultShaping.requestTimeoutMs)
+        .description("Per-request timeout for shaping in ms."),
+      maxInputCharsPerTurn: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.resultShaping.maxInputCharsPerTurn)
+        .description("Character budget for shaping requests per turn."),
+    })
+    .description("Immediate result shaping at tools/post-execute."),
+  archive: z
+    .object({
+      enabled: z
+        .boolean()
+        .default(DEFAULTS.archive.enabled)
+        .description("Archive the original rendered result before shaping it."),
+      rootPath: z
+        .string()
+        .default(DEFAULTS.archive.rootPath)
+        .description(
+          "Archive root; empty resolves under the harness home data directory.",
+        ),
+      retentionDays: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.archive.retentionDays)
+        .description("Retention window in days; 0 keeps entries forever."),
+      maxBytes: z
+        .number()
+        .min(0)
+        .step(1)
+        .default(DEFAULTS.archive.maxBytes)
+        .description("Retention ceiling in bytes; 0 disables the size cap."),
+      deduplicate: z
+        .boolean()
+        .default(DEFAULTS.archive.deduplicate)
+        .description("Reuse content-addressed entries instead of duplicating."),
+      onFailure: z
+        .union([...ARCHIVE_FAILURE_POLICIES])
+        .default(DEFAULTS.archive.onFailure)
+        .description(
+          "Archive failure policy: keep-original (recommended) or shape-anyway.",
+        ),
+    })
+    .description("Plugin-owned archive of pre-shaping tool output."),
   privacy: z.object({
     includeUserText: z
       .boolean()

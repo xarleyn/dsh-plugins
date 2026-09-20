@@ -20,4 +20,9 @@ export const JEV_EVENTS = {
   fallback: "jev-compaction/fallback",
   error: "jev-compaction/error",
   queued: "jev-compaction/queued",
+  /** Immediate result shaping at `tools/post-execute`. */
+  shapingSkip: "jev-compaction/result-shaping-skip",
+  shapingApplied: "jev-compaction/result-shaping-applied",
+  shapingArchiveRoot: "jev-compaction/result-shaping-archive-root",
+  shapingArchiveGc: "jev-compaction/result-shaping-archive-gc",
 } as const;

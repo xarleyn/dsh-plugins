@@ -23,6 +23,13 @@ export const PRUNED_BY = "[dsh-jev-compaction]";
 /**
  * KEEP_STUB: a small semantic/replay marker. The original event remains in
  * the session log; the marker says exactly that.
+ *
+ * When the result had already been reduced by immediate shaping before it was
+ * persisted (result-shaping SPEC §26), the stub records two extra facts: the
+ * visible content was a reconstruction, and — when one exists — the reference
+ * under which the pre-shaping original was archived. The reference is a
+ * content hash, never a filesystem path, and it is not a capability: nothing
+ * resolves it without a plugin-side lookup.
  */
 export function renderStub(
   candidate: ToolResultCandidate,
@@ -34,8 +41,14 @@ export function renderStub(
     `tool=${candidate.toolName ?? "unknown"}`,
     `originalChars=${candidate.originalChars}`,
     `reason=${reason}`,
-    "The original event remains available in the session log.",
   ];
+  if (candidate.alreadyShaped === true) {
+    lines.push("previouslyShaped=true");
+  }
+  if (candidate.archiveRef !== undefined) {
+    lines.push(`archivedOriginal=${candidate.archiveRef}`);
+  }
+  lines.push("The original event remains available in the session log.");
   return lines.join("\n");
 }
 

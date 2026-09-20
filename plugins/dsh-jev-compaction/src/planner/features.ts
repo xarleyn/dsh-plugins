@@ -48,6 +48,12 @@ export interface CandidateFeatures {
   rerunnable: Rerunnable;
   /** Likely exact evidence: stack traces, hashes, URLs, identifiers. */
   containsLikelyExactEvidence: boolean;
+  /**
+   * The result was already reduced by immediate shaping before persistence.
+   * Carried so the classifier and the state know the visible text is a
+   * reconstruction with omission markers, not the raw tool output.
+   */
+  alreadyShaped?: boolean;
 }
 
 const EXACT_EVIDENCE_PATTERNS: RegExp[] = [
@@ -184,6 +190,7 @@ export function extractFeatures(
       duplicateLike,
       rerunnable: classifyRerunnable(candidate.toolName, command),
       containsLikelyExactEvidence: matchesEvidence(candidate.originalText),
+      ...(candidate.alreadyShaped === true ? { alreadyShaped: true } : {}),
     });
   }
   return features;
@@ -199,5 +206,6 @@ export function formatFeatures(
   if (features.duplicateLike) parts.push("duplicateLike:true");
   parts.push(`rerunnable:${features.rerunnable}`);
   if (features.containsLikelyExactEvidence) parts.push("exactEvidence:true");
+  if (features.alreadyShaped === true) parts.push("alreadyShaped:true");
   return parts.length > 0 ? parts.join("; ") : "none";
 }

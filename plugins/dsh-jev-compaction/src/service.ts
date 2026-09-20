@@ -52,6 +52,8 @@ import { decideAction, type CandidateScores } from "./planner/policy.js";
 import { meetsSavingsGate } from "./planner/savings.js";
 import { JEV_EVENTS, jevLogger } from "./observability/logging.js";
 import { registerJevCompactCommand } from "./commands/jev-compact.js";
+import { installJevCompactionSettings } from "./settings/install.js";
+import { ResultShapingSubsystem } from "./result-shaping/index.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -128,13 +130,29 @@ export class JevCompactionService extends Service {
 
   static Config = JevCompactionConfigSchema;
 
-  /** Resolved and immutable configuration. */
-  readonly config: ResolvedJevCompactionConfig;
+  /** The composition entry: the base layer under any settings override. */
+  private readonly entryConfig: JevCompactionConfig;
+
+  /**
+   * The active configuration source. It is the composition entry while no
+   * settings provider is attached and the resolved settings scope once one
+   * is, so a live settings change reaches the next run without a restart.
+   */
+  private configSource: () => JevCompactionConfig;
+
+  private resolvedConfig: ResolvedJevCompactionConfig;
 
   private readonly tokenMeter: TokenMeterLike;
   private readonly backend: SystemOneBackend;
   private readonly sessions = new Map<string, SessionState>();
   private readonly disposers: Array<() => void> = [];
+  /** Immediate result shaping at `tools/post-execute` (SPEC result-shaping). */
+  readonly shaping: ResultShapingSubsystem;
+
+  /** Resolved and immutable configuration (re-resolved on settings change). */
+  get config(): ResolvedJevCompactionConfig {
+    return this.resolvedConfig;
+  }
 
   constructor(
     ctx: Context,
@@ -142,23 +160,49 @@ export class JevCompactionService extends Service {
     backend?: SystemOneBackend,
   ) {
     super(ctx, "jevCompaction");
-    this.config = resolveJevCompactionConfig(config);
+    this.entryConfig = config;
+    this.configSource = () => this.entryConfig;
+    this.resolvedConfig = resolveJevCompactionConfig(config);
     this.tokenMeter = (
       ctx as unknown as { tokenMeter: TokenMeterLike }
     ).tokenMeter;
     // Test seam: stub decision engines are wired here, not through config.
-    this.backend = backend ?? new SystemOneClient(this.config);
+    // The live client reads the configuration per request, so a settings
+    // change to the endpoint, key variable, timeout or retries applies at
+    // once without rebuilding the plugin.
+    this.backend = backend ?? new SystemOneClient(() => this.resolvedConfig);
 
-    if (this.config.enabled) {
-      const host = ctx as unknown as JevHostContext;
-      this.disposers.push(
-        host.on(
-          "agent/pre-step",
-          (payload, next) => this.handlePreStep(payload, next),
-          { prepend: true },
-        ),
-      );
-    }
+    // Immediate shaping runs on the tool-execution path, so it is registered
+    // through its own subsystem with its own budget, metrics and archive. Its
+    // listener is also registered unconditionally and re-reads `enabled` per
+    // call, which is what makes the settings toggle live in both directions.
+    this.shaping = new ResultShapingSubsystem({
+      owner: ctx,
+      readConfig: () => this.resolvedConfig,
+      backend: this.backend,
+      debug: (event, details) => {
+        jevLogger.debug(event, details);
+      },
+      info: (event, details) => {
+        jevLogger.info(event, details);
+      },
+      warn: (event, details) => {
+        jevLogger.warn(event, details);
+      },
+    });
+    this.shaping.register();
+
+    // The pre-step listener is registered unconditionally: `enabled` is
+    // re-read from the live configuration on every step, so the settings
+    // toggle takes effect without a restart. A disabled plugin skips at the
+    // top of the pipeline and never touches a session.
+    this.disposers.push(
+      (ctx as unknown as JevHostContext).on(
+        "agent/pre-step",
+        (payload, next) => this.handlePreStep(payload, next),
+        { prepend: true },
+      ),
+    );
     const commandHost = ctx as unknown as JevHostContext;
     commandHost.inject(["commands"], (injected) => {
       const commands = (
@@ -169,6 +213,43 @@ export class JevCompactionService extends Service {
       if (commands === undefined) return;
       this.disposers.push(registerJevCompactCommand(commands, this));
     });
+
+    installJevCompactionSettings({
+      owner: ctx,
+      entryConfig: this.entryConfig,
+      schema: JevCompactionConfigSchema,
+      setSource: (current) => {
+        this.configSource = current;
+      },
+      onChange: () => {
+        this.reapply();
+      },
+      validate: (value) => {
+        resolveJevCompactionConfig(value);
+      },
+    });
+  }
+
+  /**
+   * Re-resolve the runtime configuration from the active source and adopt it.
+   * Every failure is contained: an invalid committed value leaves the running
+   * plugin on its previous configuration instead of breaking the agent loop.
+   */
+  reapply(): void {
+    try {
+      this.resolvedConfig = resolveJevCompactionConfig(this.configSource());
+      this.onConfigChanged();
+    } catch (error: unknown) {
+      this.reportFailure(error, "");
+    }
+  }
+
+  /**
+   * Hook for subsystems that cache configuration-derived state. Called after
+   * every successful re-resolve, including the initial install.
+   */
+  protected onConfigChanged(): void {
+    this.shaping.onConfigChanged();
   }
 
   /**
@@ -671,6 +752,7 @@ export class JevCompactionService extends Service {
 
   /** Dispose listeners and the command registration (fail-open teardown). */
   dispose(): void {
+    this.shaping.dispose();
     for (const disposer of this.disposers.splice(0)) {
       try {
         disposer();

@@ -24,7 +24,11 @@
       "types": "./lib/backend/index.d.ts",
       "default": "./lib/backend/index.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./client": {
+      "types": "./lib/client/index.d.ts",
+      "default": "./lib/client.js"
+    }
   },
   "files": [
     "lib",
@@ -37,10 +41,21 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "external": [
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ],
+      "platform": "web"
     }
   },
   "dependencies": {
-    "@yadsh/dsh-plugin-log": "workspace:^"
+    "@yadsh/dsh-plugin-log": "workspace:^",
+    "@yadsh/dsh-plugin-kit": "workspace:^"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
@@ -48,7 +63,14 @@
     "@deepseek-ai/dsh-compaction-basic": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
-    "@deepseek-ai/schemastery": "catalog:dsh"
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
+    "@deepseek-ai/dsh-home-paths": "catalog:dsh",
+    "@deepseek-ai/dsh-tools": "catalog:dsh",
+    "react": "^18.2.0"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
@@ -62,7 +84,21 @@
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
-    "vitest": "catalog:tooling"
+    "vitest": "catalog:tooling",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-home-paths": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "jsdom": "catalog:tooling",
+    "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
+    "@yadsh/dsh-plugin-scripts": "workspace:^"
   },
   "publishConfig": {
     "access": "public",
@@ -86,8 +122,8 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
-    "build": "pnpm run clean && tsc -p tsconfig.build.json",
-    "lint": "eslint src tests scripts",
+    "build": "pnpm run clean && tsc -p tsconfig.build.json && tsdown",
+    "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "eval": "vitest run tests/eval",
