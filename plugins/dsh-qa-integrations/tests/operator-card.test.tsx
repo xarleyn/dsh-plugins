@@ -119,6 +119,7 @@ const RESOLVED = {
   bitrix24: { enabled: true, crmRead: true, crmCommentWrite: false },
   gitlab: {
     enabled: true,
+    maxFileBytes: 131072,
     instances: [
       { id: "corp", label: "Corp", baseUrl: "https://gitlab.example.corp" },
     ],
@@ -159,6 +160,84 @@ describe("integrations operator card", () => {
     expect(
       (screen.getByLabelText(/Плагин включён/u) as HTMLInputElement).checked,
     ).toBe(false);
+  });
+
+  it("summarises each collapsed provider in its header", () => {
+    renderCard({ value: RESOLVED });
+    expand();
+    // GitLab: on, one instance, all seven capabilities on by default.
+    expect(
+      screen.getByText("включён · 1 инстанс · доступно 7 из 7"),
+    ).toBeDefined();
+    // Bitrix24 counts the deny-listed write tool as off.
+    expect(screen.getByText("включён · доступно 8 из 9")).toBeDefined();
+  });
+
+  it("groups a provider into labelled blocks with the knobs folded away", () => {
+    renderCard({ value: RESOLVED });
+    expand();
+    fireEvent.click(screen.getByText("GitLab"));
+    const section = screen
+      .getByText("Инстансы GitLab")
+      .closest(".qai-op__section") as HTMLElement;
+    const titles = [...section.querySelectorAll(".qai-op__group-title")].map(
+      (title) => title.textContent,
+    );
+    expect(titles).toEqual([
+      "Провайдер",
+      "Подключение",
+      "Что доступно агенту",
+      "Ограничения и повторы",
+    ]);
+    // Capabilities sit in their own checklist, connection editors own the row.
+    expect(section.querySelector(".qai-op__group--checks")).toBeTruthy();
+    expect(section.querySelector(".qai-op__group--wide")).toBeTruthy();
+    // The numeric knobs stay folded until someone asks for them.
+    const limits = section.querySelector(
+      ".qai-op__group--limits",
+    ) as HTMLDetailsElement;
+    expect(limits.open).toBe(false);
+    fireEvent.click(limits.querySelector("summary") as HTMLElement);
+    expect(limits.open).toBe(true);
+    expect(
+      (screen.getByLabelText("Потолок файла, байт") as HTMLInputElement).value,
+    ).toBe("131072");
+  });
+
+  it("keeps every deployment knob reachable after the regrouping", () => {
+    renderCard({ value: RESOLVED });
+    expand();
+    for (const provider of [
+      "Confluence",
+      "GitLab",
+      "TeamCity",
+      "Jira",
+      "Test IT",
+      "Weblate",
+    ]) {
+      fireEvent.click(screen.getByText(provider));
+    }
+    // One representative of each kind, in each provider that has it.
+    for (const label of [
+      "Инстансы GitLab",
+      "Сайты Confluence",
+      "Адрес сервера TeamCity",
+      "Сайты Jira Cloud",
+      "Инсталляции Test IT",
+      "Инстансы Weblate",
+    ]) {
+      expect(screen.getByText(label)).toBeDefined();
+    }
+    for (const label of [
+      "CI: чтение",
+      "Версии: чтение",
+      "Агенты: чтение",
+      "Переходы: чтение",
+      "Автотесты: чтение",
+      "Скриншоты: чтение",
+    ]) {
+      expect(screen.getByLabelText(label)).toBeDefined();
+    }
   });
 
   it("writes a capability toggle as one path-addressed set", () => {

@@ -51,6 +51,22 @@ export const styles = `${PLUGIN_CARD_SHELL_CSS}${CREDENTIAL_HELP_CSS}${String.ra
 .qai-op__section[open]>.qai-op__section-summary::before{transform:rotate(45deg)}
 .qai-op__section-body{display:flex;flex-direction:column;gap:12px;padding:2px 14px 14px;border-top:1px solid var(--dsw-alias-border-l2)}
 .qai-op__grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px 18px}
+.qai-op__section-state{margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qai-op__group{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--dsw-alias-border-l2)}
+.qai-op__section-body>.qai-op__group:first-child{padding-top:0;border-top:0}
+.qai-op__group-title{margin:0;color:var(--dsw-alias-label-secondary);font-size:11.5px;font-weight:600;letter-spacing:.02em;text-transform:uppercase}
+.qai-op__group-hint{margin:0;color:var(--dsw-alias-label-tertiary);font-size:11.5px;line-height:1.45}
+.qai-op__group--wide>.qai-op__grid{grid-template-columns:minmax(0,1fr)}
+.qai-op__group--checks>.qai-op__grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:2px 18px}
+.qai-op__group--checks .qai-op__toggle-row{flex-direction:row-reverse;justify-content:flex-end;align-items:center;gap:9px;padding:3px 0;text-align:left}
+.qai-op__group--checks .qai-op__toggle-copy span{padding-left:25px}
+.qai-op__group--limits{border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}
+.qai-op__group-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;cursor:pointer;list-style:none;user-select:none}
+.qai-op__group-summary::-webkit-details-marker{display:none}
+.qai-op__group-summary::before{content:"";width:6px;height:6px;flex:none;align-self:center;border-right:1.5px solid var(--dsw-alias-label-tertiary);border-bottom:1.5px solid var(--dsw-alias-label-tertiary);transform:rotate(-45deg);transition:transform .16s}
+.qai-op__group--limits[open]>.qai-op__group-summary::before{transform:rotate(45deg)}
+.qai-op__group-summary:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.qai-op__group--limits>.qai-op__grid{padding-top:10px}
 .qai-op__field{display:flex;flex-direction:column;gap:6px;font-size:13px;min-width:0}
 .qai-op__label{display:flex;align-items:center;gap:6px;font-weight:600;color:var(--dsw-alias-label-primary);font-size:12.5px}
 .qai-op__hint{color:var(--dsw-alias-label-tertiary);font-size:11.5px;line-height:1.45;font-weight:400}

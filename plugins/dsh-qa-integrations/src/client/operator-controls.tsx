@@ -39,6 +39,11 @@ function OverriddenMark(props: { shown: boolean }) {
   return <span className="qai-op__overridden">переопределено</span>;
 }
 
+/** The control's DOM id, derived from its settings path: one per field. */
+export function fieldId(path: readonly string[]): string {
+  return `qai-op-${path.join("-")}`;
+}
+
 function FieldFrame(props: {
   label: string;
   path: readonly string[];
@@ -48,10 +53,11 @@ function FieldFrame(props: {
 }) {
   return (
     <div className="qai-op__field">
-      <span className="qai-op__label">
+      {/* A real label, so clicking the caption lands in the field. */}
+      <label className="qai-op__label" htmlFor={fieldId(props.path)}>
         {props.label}
         <OverriddenMark shown={props.overridden} />
-      </span>
+      </label>
       {props.children}
       {props.hint === undefined ? null : (
         <span className="qai-op__hint">{props.hint}</span>
@@ -127,6 +133,7 @@ export function NumberField(props: {
       hint={props.hint}
     >
       <input
+        id={fieldId(props.path)}
         className="qai-op__input"
         type="text"
         inputMode="numeric"
@@ -181,6 +188,7 @@ export function TextField(props: {
       hint={props.hint}
     >
       <input
+        id={fieldId(props.path)}
         className="qai-op__input"
         type="text"
         value={draft}
@@ -220,6 +228,7 @@ export function SelectField(props: {
       hint={props.hint}
     >
       <select
+        id={fieldId(props.path)}
         className="qai-op__input"
         value={props.value}
         disabled={props.disabled}

@@ -145,6 +145,12 @@ function overriddenKeys(user: unknown): readonly string[] {
 function Section(props: {
   title: string;
   hint?: string;
+  /**
+   * One line of state for the collapsed header — whether the provider is on,
+   * how many connections are configured, how much of the surface is open. A
+   * closed section that says nothing forces the reader to open all seven.
+   */
+  state?: string;
   open?: boolean;
   children: ReactNode;
 }): ReactElement {
@@ -152,6 +158,9 @@ function Section(props: {
     <details className="qai-op__section" open={props.open}>
       <summary className="qai-op__section-summary">
         <span className="qai-op__section-title">{props.title}</span>
+        {props.state === undefined || props.state === "" ? null : (
+          <span className="qai-op__section-state">{props.state}</span>
+        )}
         {props.hint === undefined ? null : (
           <span className="qai-op__hint">{props.hint}</span>
         )}
@@ -159,6 +168,106 @@ function Section(props: {
       <div className="qai-op__section-body">{props.children}</div>
     </details>
   );
+}
+
+/**
+ * A labelled block inside one section: switches that describe the provider,
+ * the connections it reads through, the surface it opens to the agent, and the
+ * tuning knobs folded away at the end. The fields stay the same controls in the
+ * same paths — only the headings that say what belongs with what change.
+ */
+function Group(props: {
+  title: string;
+  hint?: string;
+  /** A capability checklist reads as a list, not as a column of switches. */
+  kind?: "checks";
+  /** Connection editors own the full width: instance and site rows are wide. */
+  wide?: boolean;
+  children: ReactNode;
+}): ReactElement {
+  const className = [
+    "qai-op__group",
+    props.kind === "checks" ? "qai-op__group--checks" : "",
+    props.wide === true ? "qai-op__group--wide" : "",
+  ]
+    .filter((part) => part !== "")
+    .join(" ");
+  return (
+    <section className={className}>
+      <h4 className="qai-op__group-title">{props.title}</h4>
+      {props.hint === undefined ? null : (
+        <p className="qai-op__group-hint">{props.hint}</p>
+      )}
+      <div className="qai-op__grid">{props.children}</div>
+    </section>
+  );
+}
+
+/** The tuning knobs of one provider, folded away until someone needs them. */
+function LimitsGroup(props: {
+  hint?: string;
+  children: ReactNode;
+}): ReactElement {
+  return (
+    <details className="qai-op__group qai-op__group--limits">
+      <summary className="qai-op__group-summary">
+        <span className="qai-op__group-title">Ограничения и повторы</span>
+        <span className="qai-op__group-hint">
+          {props.hint ?? "потолки ответов и повторы при ошибках провайдера"}
+        </span>
+      </summary>
+      <div className="qai-op__grid">{props.children}</div>
+    </details>
+  );
+}
+
+/** `1 инстанс`, `3 инстанса`, `11 инстансов`. */
+function plural(
+  count: number,
+  forms: readonly [string, string, string],
+): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const [one, few, many] = forms;
+  if (mod10 === 1 && mod100 !== 11) return `${count} ${one}`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${count} ${few}`;
+  }
+  return `${count} ${many}`;
+}
+
+/** One line describing a collapsed provider: on/off, connections, surface. */
+function providerState(
+  provider: Record<string, unknown>,
+  shape: {
+    /** Include the on/off word; false for sections without a provider switch. */
+    readonly enabled?: boolean;
+    /** Capability keys with the default the card's own toggle uses. */
+    readonly capabilities?: readonly (readonly [string, boolean])[];
+    /** List-valued connection fields worth counting, with their word forms. */
+    readonly counts?: readonly {
+      readonly path: string;
+      readonly forms: readonly [string, string, string];
+    }[];
+  } = {},
+): string {
+  const parts: string[] = [];
+  if (shape.enabled === true) {
+    parts.push(rawBool(provider.enabled, true) ? "включён" : "выключен");
+  }
+  for (const entry of shape.counts ?? []) {
+    const list = provider[entry.path];
+    const size = Array.isArray(list) ? list.length : 0;
+    if (size > 0) parts.push(plural(size, entry.forms));
+  }
+  const capabilities = shape.capabilities ?? [];
+  if (capabilities.length > 0) {
+    const on = capabilities.filter(([key, fallback]) =>
+      rawBool(provider[key], fallback),
+    ).length;
+    parts.push(`доступно ${on} из ${capabilities.length}`);
+  }
+  return parts.join(" · ");
 }
 
 /** Deployment instances, in editor draft shape (the wire shape is the same). */
@@ -805,31 +914,19 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
           </div>
 
           <Section title="Общие" open>
-            <div className="qai-op__grid">
+            <Group title="Плагин">
               {tg(
                 "Плагин включён",
                 ["enabled"],
                 rawBool(config.enabled, false),
                 "выключенный плагин не регистрирует инструменты и прячет пользовательские страницы",
               )}
-              <NumberField
-                label="Таймаут запроса, мс"
-                path={["timeoutMs"]}
-                value={rawNumber(config.timeoutMs)}
-                {...control}
-              />
-              <NumberField
-                label="Потолок ответа провайдера, байт"
-                path={["maxResponseBytes"]}
-                value={rawNumber(config.maxResponseBytes)}
-                {...control}
-              />
-              <NumberField
-                label="Хранение аудита, дней"
-                path={["auditRetentionDays"]}
-                value={rawNumber(config.auditRetentionDays)}
-                {...control}
-              />
+            </Group>
+            <Group
+              title="Хранилище и ключи"
+              wide
+              hint="пути читаются хостом при старте: правка действует со следующего рестарта"
+            >
               <TextField
                 label="Файл хранилища подключений"
                 hint="применяется со следующим рестартом хоста"
@@ -850,6 +947,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(config.masterKeyVersion)}
                 {...control}
               />
+            </Group>
+            <Group title="Домены подключений">
               <StringListField
                 label="Суффиксы порталов Bitrix24"
                 hint="хосты, на которые может указывать вебхук; каждый с точки"
@@ -858,16 +957,54 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 placeholder=".bitrix24.example"
                 {...control}
               />
-            </div>
+            </Group>
+            <LimitsGroup hint="потолки ответов провайдеров и срок хранения аудита">
+              <NumberField
+                label="Таймаут запроса, мс"
+                path={["timeoutMs"]}
+                value={rawNumber(config.timeoutMs)}
+                {...control}
+              />
+              <NumberField
+                label="Потолок ответа провайдера, байт"
+                path={["maxResponseBytes"]}
+                value={rawNumber(config.maxResponseBytes)}
+                {...control}
+              />
+              <NumberField
+                label="Хранение аудита, дней"
+                path={["auditRetentionDays"]}
+                value={rawNumber(config.auditRetentionDays)}
+                {...control}
+              />
+            </LimitsGroup>
           </Section>
 
-          <Section title="Bitrix24">
-            <div className="qai-op__grid">
+          <Section
+            title="Bitrix24"
+            state={providerState(rawObject(config.bitrix24), {
+              enabled: true,
+              capabilities: [
+                ["crmRead", true],
+                ["crmCommentWrite", false],
+                ["chatRead", true],
+                ["openlinesRead", true],
+                ["userRead", true],
+                ["departmentRead", true],
+                ["tasksRead", true],
+                ["calendarRead", true],
+                ["diskRead", true],
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["bitrix24", "enabled"],
                 rawBool(rawObject(config.bitrix24).enabled, true),
               )}
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {tg(
                 "CRM: чтение",
                 ["bitrix24", "crmRead"],
@@ -914,11 +1051,31 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 ["bitrix24", "diskRead"],
                 rawBool(rawObject(config.bitrix24).diskRead, true),
               )}
-            </div>
+            </Group>
           </Section>
 
-          <Section title="Confluence">
-            <div className="qai-op__grid">
+          <Section
+            title="Confluence"
+            state={providerState(rawObject(config.confluence), {
+              enabled: true,
+              capabilities: [
+                ["identityRead", true],
+                ["spacesRead", true],
+                ["searchRead", true],
+                ["contentRead", true],
+                ["commentsRead", true],
+                ["attachmentsRead", true],
+                ["versionsRead", true],
+              ],
+              counts: [
+                {
+                  path: "instances",
+                  forms: ["сайт", "сайта", "сайтов"] as const,
+                },
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["confluence", "enabled"],
@@ -930,6 +1087,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 rawBool(rawObject(config.confluence).allowInsecureHttp, false),
                 "только для dev-стенда",
               )}
+            </Group>
+            <Group title="Подключение" wide>
               <InstanceListField
                 label="Сайты Confluence"
                 hint="пользователь выбирает сайт из списка и вводит e-mail с токеном"
@@ -947,6 +1106,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 placeholder="PROJ"
                 {...control}
               />
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {tg(
                 "Профиль: чтение",
                 ["confluence", "identityRead"],
@@ -982,6 +1143,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 ["confluence", "versionsRead"],
                 rawBool(rawObject(config.confluence).versionsRead, true),
               )}
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Тело страницы по умолчанию, знаков"
                 path={["confluence", "defaultBodyChars"]}
@@ -1012,11 +1175,31 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.confluence).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
-          <Section title="GitLab">
-            <div className="qai-op__grid">
+          <Section
+            title="GitLab"
+            state={providerState(rawObject(config.gitlab), {
+              enabled: true,
+              capabilities: [
+                ["identityRead", true],
+                ["projectsRead", true],
+                ["repositoryRead", true],
+                ["searchRead", true],
+                ["issuesRead", true],
+                ["mergeRequestsRead", true],
+                ["ciRead", true],
+              ],
+              counts: [
+                {
+                  path: "instances",
+                  forms: ["инстанс", "инстанса", "инстансов"] as const,
+                },
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["gitlab", "enabled"],
@@ -1028,6 +1211,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 rawBool(rawObject(config.gitlab).allowInsecureHttp, false),
                 "только для dev-стенда",
               )}
+            </Group>
+            <Group title="Подключение" wide>
               <InstanceListField
                 label="Инстансы GitLab"
                 hint="пользователь выбирает инстанс из списка, произвольный хост ввести нельзя"
@@ -1035,6 +1220,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 instances={instanceRows(rawObject(config.gitlab).instances)}
                 {...control}
               />
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {tg(
                 "Профиль: чтение",
                 ["gitlab", "identityRead"],
@@ -1070,6 +1257,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 ["gitlab", "ciRead"],
                 rawBool(rawObject(config.gitlab).ciRead, true),
               )}
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Потолок файла, байт"
                 path={["gitlab", "maxFileBytes"]}
@@ -1094,16 +1283,44 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.gitlab).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
-          <Section title="TeamCity">
-            <div className="qai-op__grid">
+          <Section
+            title="TeamCity"
+            state={providerState(rawObject(config.teamcity), {
+              enabled: true,
+              capabilities: [
+                ["identityRead", true],
+                ["projectsRead", true],
+                ["buildConfigsRead", true],
+                ["buildsRead", true],
+                ["failuresRead", true],
+                ["logsRead", true],
+                ["queueRead", true],
+                ["investigationsRead", true],
+                ["agentsRead", true],
+                ["artifactsRead", true],
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["teamcity", "enabled"],
                 rawBool(rawObject(config.teamcity).enabled, true),
               )}
+              {tg(
+                "Разрешить http",
+                ["teamcity", "network", "allowHttp"],
+                rawBool(
+                  rawObject(rawObject(config.teamcity).network).allowHttp,
+                  false,
+                ),
+                "незащищённые адреса TeamCity",
+              )}
+            </Group>
+            <Group title="Подключение" wide>
               <TextField
                 label="Адрес сервера TeamCity"
                 hint="один на весь стенд; пользователь вводит только токен"
@@ -1165,15 +1382,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 placeholder="8111"
                 {...control}
               />
-              {tg(
-                "Разрешить http",
-                ["teamcity", "network", "allowHttp"],
-                rawBool(
-                  rawObject(rawObject(config.teamcity).network).allowHttp,
-                  false,
-                ),
-                "незащищённые адреса TeamCity",
-              )}
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {(
                 [
                   ["identityRead", "Профиль: чтение"],
@@ -1194,6 +1404,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                   rawBool(rawObject(config.teamcity)[key], true),
                 ),
               )}
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Строк в ответе лога"
                 path={["teamcity", "maxLogLines"]}
@@ -1232,11 +1444,28 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.teamcity).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
-          <Section title="Jira">
-            <div className="qai-op__grid">
+          <Section
+            title="Jira"
+            state={providerState(rawObject(config.jira), {
+              enabled: true,
+              capabilities: [
+                ["identityRead", true],
+                ["issuesRead", true],
+                ["commentsRead", true],
+                ["attachmentsRead", true],
+                ["transitionsRead", true],
+                ["projectsRead", true],
+                ["fieldsRead", true],
+              ],
+              counts: [
+                { path: "sites", forms: ["сайт", "сайта", "сайтов"] as const },
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["jira", "enabled"],
@@ -1248,6 +1477,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 rawBool(rawObject(config.jira).allowInsecureHttp, false),
                 "только для dev-стенда",
               )}
+            </Group>
+            <Group title="Подключение" wide>
               <InstanceListField
                 label="Сайты Jira Cloud"
                 hint="пользователь выбирает сайт из списка, произвольный хост ввести нельзя"
@@ -1255,6 +1486,17 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 instances={instanceRows(rawObject(config.jira).sites)}
                 {...control}
               />
+              <RecordField
+                label="Псевдонимы полей"
+                hint="имя поля Jira по бизнес-термину"
+                path={["jira", "fieldAliases"]}
+                entries={rawRecord(rawObject(config.jira).fieldAliases)}
+                keyPlaceholder="продукт"
+                valuePlaceholder="customfield_10000"
+                {...control}
+              />
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {(
                 [
                   ["identityRead", "Профиль: чтение"],
@@ -1272,15 +1514,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                   rawBool(rawObject(config.jira)[key], true),
                 ),
               )}
-              <RecordField
-                label="Псевдонимы полей"
-                hint="имя поля Jira по бизнес-термину"
-                path={["jira", "fieldAliases"]}
-                entries={rawRecord(rawObject(config.jira).fieldAliases)}
-                keyPlaceholder="продукт"
-                valuePlaceholder="customfield_10000"
-                {...control}
-              />
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Строк поиска по умолчанию"
                 path={["jira", "defaultSearchLimit"]}
@@ -1311,11 +1546,35 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.jira).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
-          <Section title="Test IT">
-            <div className="qai-op__grid">
+          <Section
+            title="Test IT"
+            state={providerState(rawObject(config.testit), {
+              enabled: true,
+              capabilities: [
+                ["projectsRead", true],
+                ["sectionsRead", true],
+                ["workItemsRead", true],
+                ["historyRead", true],
+                ["commentsRead", true],
+                ["testPlansRead", true],
+                ["testRunsRead", true],
+                ["testResultsRead", true],
+                ["autoTestsRead", true],
+                ["attachmentsRead", true],
+                ["configurationsRead", true],
+              ],
+              counts: [
+                {
+                  path: "instances",
+                  forms: ["инстанс", "инстанса", "инстансов"] as const,
+                },
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["testit", "enabled"],
@@ -1327,12 +1586,16 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 rawBool(rawObject(config.testit).allowInsecureHttp, false),
                 "только для dev-стенда",
               )}
+            </Group>
+            <Group title="Подключение" wide>
               <InstanceListField
                 label="Инсталляции Test IT"
                 path={["testit", "instances"]}
                 instances={instanceRows(rawObject(config.testit).instances)}
                 {...control}
               />
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {(
                 [
                   ["projectsRead", "Проекты: чтение"],
@@ -1354,6 +1617,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                   rawBool(rawObject(config.testit)[key], true),
                 ),
               )}
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Строк по умолчанию"
                 path={["testit", "defaultResults"]}
@@ -1392,11 +1657,35 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.testit).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
-          <Section title="Weblate">
-            <div className="qai-op__grid">
+          <Section
+            title="Weblate"
+            state={providerState(rawObject(config.weblate), {
+              enabled: true,
+              capabilities: [
+                ["identityRead", true],
+                ["projectsRead", true],
+                ["componentsRead", true],
+                ["translationsRead", true],
+                ["unitsRead", true],
+                ["checksRead", true],
+                ["commentsRead", true],
+                ["suggestionsRead", true],
+                ["changesRead", true],
+                ["statisticsRead", true],
+                ["screenshotsRead", true],
+              ],
+              counts: [
+                {
+                  path: "instances",
+                  forms: ["инстанс", "инстанса", "инстансов"] as const,
+                },
+              ],
+            })}
+          >
+            <Group title="Провайдер">
               {tg(
                 "Провайдер включён",
                 ["weblate", "enabled"],
@@ -1408,12 +1697,16 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 rawBool(rawObject(config.weblate).allowInsecureHttp, false),
                 "только для dev-стенда",
               )}
+            </Group>
+            <Group title="Подключение" wide>
               <InstanceListField
                 label="Инстансы Weblate"
                 path={["weblate", "instances"]}
                 instances={instanceRows(rawObject(config.weblate).instances)}
                 {...control}
               />
+            </Group>
+            <Group title="Что доступно агенту" kind="checks">
               {(
                 [
                   ["identityRead", "Профиль: чтение"],
@@ -1435,6 +1728,8 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                   rawBool(rawObject(config.weblate)[key], true),
                 ),
               )}
+            </Group>
+            <LimitsGroup>
               <NumberField
                 label="Знаков строки в ответе"
                 path={["weblate", "maxTextChars"]}
@@ -1453,14 +1748,14 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 value={rawNumber(rawObject(config.weblate).retries)}
                 {...control}
               />
-            </div>
+            </LimitsGroup>
           </Section>
 
           <Section
             title="Сервисные доступы"
             hint="общие read-only креденшалы, которыми владеет развёртывание"
           >
-            <div className="qai-op__grid">
+            <Group title="Режим">
               {tg(
                 "Сервисные доступы включены",
                 ["managedServiceCredentials", "enabled"],
@@ -1471,6 +1766,12 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 ["managedServiceCredentials", "defaultForNewConnections"],
                 rawBool(msc.defaultForNewConnections, true),
               )}
+            </Group>
+            <Group
+              title="Профили доступа"
+              wide
+              hint="read-only аккаунт, которым развёртывание подключается вместо гостя"
+            >
               <ServiceProfilesField
                 profiles={profileDrafts(msc.profiles)}
                 disabled={!writable}
@@ -1478,7 +1779,7 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 unset={unset}
                 overridden={overridden}
               />
-            </div>
+            </Group>
           </Section>
 
           <Section
