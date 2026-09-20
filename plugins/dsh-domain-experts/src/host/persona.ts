@@ -35,6 +35,11 @@ export const BASE_POLICY = [
   "Never present an inference as an implementation detail.",
   "Name the file path, document or memory key behind each finding.",
   "When you cannot find evidence, say so plainly rather than filling the gap.",
+  "",
+  "Work the evidence, not the tool in a loop:",
+  "- A call that errors, times out or is refused has already answered: record it and change the source or the query, never repeat the same call or a near-variant of it.",
+  '- Read tools take an explicit path. A pattern without one searches your own working directory, which is usually not the place you were pointed at, and a bare "no matches" says nothing about the sources you were given.',
+  "- When a source is unavailable for this run, say that it was unavailable and continue with the next one; never fill its place with a guess or with remembered content presented as its text.",
 ].join("\n");
 
 export interface PersonaInput {

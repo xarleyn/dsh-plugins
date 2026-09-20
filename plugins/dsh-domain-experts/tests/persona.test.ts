@@ -74,6 +74,17 @@ describe("persona: composition", () => {
     expect(persona).toContain(BASE_POLICY);
   });
 
+  it("tells every expert how to work tools without looping", () => {
+    // The policy is the one place all domains inherit, so the tool discipline
+    // lives here: a failing call is an answer, read tools need a path, and an
+    // unavailable source is reported rather than guessed.
+    expect(BASE_POLICY).toContain("Work the evidence, not the tool in a loop");
+    expect(BASE_POLICY).toContain("never repeat the same call");
+    expect(BASE_POLICY).toContain("Read tools take an explicit path");
+    expect(BASE_POLICY).toContain("unavailable for this run");
+    expect(compose()).toContain("Work the evidence, not the tool in a loop");
+  });
+
   it("orders the sections the design asks for", () => {
     const persona = compose({
       description: "Payment processing and settlement.",
