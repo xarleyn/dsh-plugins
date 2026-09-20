@@ -210,6 +210,21 @@ function delegationSection(input: PersonaInput): string {
   return lines.join("\n");
 }
 
+/**
+ * The caller's request as the child's own first message.
+ *
+ * The persona is a standing policy and reaches the child as a system section;
+ * the request is not policy. Sending the composed persona as the child's first
+ * user message made the deployment's instructions look like something the user
+ * said — and, for a reviewer that exists to separate what the user asked from
+ * what a candidate claims, that is the wrong material to seed a conversation
+ * with. The task travels alone here; the persona document keeps its own copy
+ * under `## Task` for readers of the composed preview.
+ */
+export function composeTask(input: PersonaInput): string {
+  return taskSection(input);
+}
+
 function taskSection(input: PersonaInput): string {
   const { request } = input;
   const task = clamp(request.task);

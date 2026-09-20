@@ -77,6 +77,7 @@ export const PROFILE: ResolvedExpertProfile = {
   customInstructions: "Prefer the ledger.",
   persona:
     "You are the designated expert for one domain.\n## Scope\n- services/payments/**",
+  task: "Investigate the settlement status.",
   scope: {
     domainId: "payments",
     filesystem: {

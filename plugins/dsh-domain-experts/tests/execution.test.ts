@@ -119,7 +119,7 @@ async function run(
 }
 
 describe("execution: composition handed to the runtime", () => {
-  it("passes persona, tool filter, depth cap and a labelled prompt", async () => {
+  it("hands the policy to the runtime as the persona and the request as the prompt", async () => {
     const harness = harnessOf();
     await run(harness);
     const started = harness.subagents.started[0];
@@ -131,10 +131,17 @@ describe("execution: composition handed to the runtime", () => {
     );
     expect(started?.request.toolFilter?.allow).toContain("domain_expert");
     expect(started?.request.maxDepth).toBe(3);
-    expect(started?.request.prompt[0]).toEqual({
-      type: "text",
-      text: started?.request.persona,
-    });
+    // The child's first message is the caller's request, never the policy
+    // document: the persona reaches the child as a system section, and the
+    // deployment's instructions must not read as something the user said.
+    const promptBlock = started?.request.prompt[0];
+    const promptText =
+      promptBlock !== undefined && promptBlock.type === "text"
+        ? promptBlock.text
+        : "";
+    expect(promptText).toContain("Investigate the settlement status.");
+    expect(promptText).not.toContain("You are the designated expert");
+    expect(promptText).not.toContain("## Answer format");
   });
 
   it("does not send model options when the domain inherits", async () => {

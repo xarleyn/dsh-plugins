@@ -195,7 +195,10 @@ export async function runExpert(
 
   const request: SubagentStartRequest = {
     label: `domain-expert:${definition.id}`,
-    prompt: [{ type: "text", text: profile.persona }],
+    // The policy travels as the persona (a system section); the child's first
+    // message is the caller's request. Sending the persona as the prompt as
+    // well made the deployment's instructions read as user text.
+    prompt: [{ type: "text", text: profile.task }],
     parent: input.parent,
     signal: input.signal,
     persona: profile.persona,
