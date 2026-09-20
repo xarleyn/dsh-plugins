@@ -118,7 +118,10 @@
     "system-one",
     "compaction",
     "context-window",
-    "session-surface"
+    "session-surface",
+    "result-shaping",
+    "tool-output",
+    "settings-card"
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
