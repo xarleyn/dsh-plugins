@@ -426,6 +426,18 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           sourcePath,
         ),
+      listWorkspaceFiles: (sessionId: string, path: string) =>
+        props.sourceApi.listWorkspaceFiles(
+          accounts?.token() ?? "",
+          sessionId,
+          path,
+        ),
+      readWorkspaceFile: (sessionId: string, path: string) =>
+        props.sourceApi.readWorkspaceFile(
+          accounts?.token() ?? "",
+          sessionId,
+          path,
+        ),
     }),
     [accounts, props.sourceApi],
   );
@@ -691,6 +703,11 @@ export function QaSurface(props: QaSurfaceProps) {
     () => countChatAttachments(fileGroups),
     [fileGroups],
   );
+  // The files tab opens on either half of its content: the chat's attachments
+  // or the chat's own workspace, which only the file-reading switch can permit.
+  const filesEnabled =
+    attachmentCount > 0 ||
+    (state.sessionId !== null && config.sources.filePreview.enabled);
   // Buttons above an empty composer: the account's own starters, then the
   // deployment's suggestions unless the account hid them. Anonymous visitors
   // (and deployments with the feature off) see the deployment list alone.
@@ -840,6 +857,8 @@ export function QaSurface(props: QaSurfaceProps) {
           groups={fileGroups}
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
+          sessionId={state.sessionId ?? undefined}
+          api={boundSourceApi}
         />
       ),
     },
@@ -1135,6 +1154,7 @@ export function QaSurface(props: QaSurfaceProps) {
               sourcesOpen={rail.railOpen && rail.railTab === "sources"}
               onOpenSources={() => rail.openTab("sources")}
               fileCount={attachmentCount}
+              filesEnabled={filesEnabled}
               filesOpen={rail.railOpen && rail.railTab === "files"}
               onOpenFiles={() => rail.openTab("files")}
               panelLauncher={<QaPanelLauncher panels={props.panels} />}

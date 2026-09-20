@@ -56,7 +56,9 @@ import {
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
 import {
+  listWorkspaceDirectory,
   readSourceFilePreview,
+  readWorkspaceFile,
   QaSourcePreviewError,
 } from "./provenance/file-preview.js";
 import {
@@ -86,6 +88,8 @@ import type {
   QaSkillValidation,
   QaSourceFilePreview,
   QaWhoamiResult,
+  QaWorkspaceFile,
+  QaWorkspaceListing,
   QaPrincipal,
   QaAccessAdminSnapshot,
   QaAdminAuditEvent,
@@ -1193,6 +1197,98 @@ export class QaSurface extends TypertRemoteService {
         error instanceof QaSourcePreviewError ? error.reason : "unavailable",
       );
     }
+  }
+
+  /**
+   * List one directory of the chat's own workspace for the files panel.
+   *
+   * Browsing is deliberately narrower than the source preview: it stays inside
+   * the chat's own directory tree, so a visitor can look at what their
+   * conversation produced and at nothing else of the deployment.
+   * `readWorkspaceFile` opens one entry of such a listing.
+   */
+  @Remote("listWorkspaceFiles")
+  async listWorkspaceFiles(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<QaWorkspaceListing> {
+    await this.admission.secureSession(token, sessionId);
+    const { config, cwd } = await this.browseContext(sessionId);
+    try {
+      return await listWorkspaceDirectory({
+        dirPath: path ?? "",
+        cwd,
+        maxEntries: config.sources.filePreview.maxListingEntries,
+      });
+    } catch (error) {
+      throw this.browseRefusal("workspace.list-refused", sessionId, error);
+    }
+  }
+
+  /**
+   * Read one file of the chat's workspace: text when it decodes as UTF-8, bytes
+   * when it does not, so a document the agent produced can be downloaded while
+   * a note previews inline. The readable roots are the ones the model itself
+   * may read; unlike the source preview this does not require the file to be
+   * recorded evidence, because the panel is browsing a tree rather than
+   * reopening a cited source.
+   */
+  @Remote("readWorkspaceFile")
+  async readWorkspaceFile(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<QaWorkspaceFile> {
+    await this.admission.secureSession(token, sessionId);
+    const { config, cwd } = await this.browseContext(sessionId);
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      return await readWorkspaceFile({
+        filePath: path ?? "",
+        cwd,
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        maxBytes: config.sources.filePreview.maxBytes,
+        maxMarkdownRenderBytes:
+          config.sources.filePreview.maxMarkdownRenderBytes,
+      });
+    } catch (error) {
+      throw this.browseRefusal("workspace.read-refused", sessionId, error);
+    }
+  }
+
+  /**
+   * Shared admission facts of both browse methods: the preview switch is what
+   * opens the panel's file reading at all, and the chat's cwd is the tree that
+   * browsing is confined to.
+   */
+  private async browseContext(sessionId: string): Promise<{
+    readonly config: ResolvedQaSurfaceConfig;
+    readonly cwd: string;
+  }> {
+    const config = this.getConfig();
+    if (!config.sources.filePreview.enabled) {
+      throw sourcePreviewRefusal("unavailable");
+    }
+    const agent = this.ctx.agents.get(
+      (await import("@deepseek-ai/dsh-session/types")).SessionId(sessionId),
+    );
+    const cwd = agent?.session.header.cwd;
+    if (cwd === undefined) throw sourcePreviewRefusal("unavailable");
+    return { config, cwd };
+  }
+
+  /** One browse refusal, logged with its coarse reason and rethrown for the wire. */
+  private browseRefusal(
+    event: string,
+    sessionId: string,
+    error: unknown,
+  ): Error {
+    const reason =
+      error instanceof QaSourcePreviewError ? error.reason : "unavailable";
+    this.logger.debug(event, { sessionId, reason });
+    return sourcePreviewRefusal(reason);
   }
 
   /** Every personal skill of the token's account, sorted by name. */

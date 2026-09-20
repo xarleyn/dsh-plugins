@@ -75,6 +75,14 @@ describe("QA session controller", () => {
           ok: false as const,
           error: { code: "not-found" },
         })),
+        listWorkspaceFiles: vi.fn(async () => ({
+          ok: false as const,
+          error: { code: "not-found" },
+        })),
+        readWorkspaceFile: vi.fn(async () => ({
+          ok: false as const,
+          error: { code: "not-found" },
+        })),
       },
       config: resolveConfig(),
     });

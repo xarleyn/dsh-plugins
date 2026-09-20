@@ -182,7 +182,12 @@ describe("QA sources panel direct detail", () => {
         sources={[webSource(), fileSource()]}
         complete
         sessionId={null}
-        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() }}
+        sourceApi={{
+          sources: vi.fn(),
+          readSourceFile: vi.fn(),
+          listWorkspaceFiles: vi.fn(),
+          readWorkspaceFile: vi.fn(),
+        }}
         display={display}
         filePreview={filePreview}
         initialDetail={fileSource()}

@@ -212,6 +212,32 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   }
     ? Result
     : never;
+  listWorkspaceFiles(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): QaSourceApi extends {
+    listWorkspaceFiles(
+      token: string,
+      sessionId: string,
+      path: string,
+    ): infer Result;
+  }
+    ? Result
+    : never;
+  readWorkspaceFile(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): QaSourceApi extends {
+    readWorkspaceFile(
+      token: string,
+      sessionId: string,
+      path: string,
+    ): infer Result;
+  }
+    ? Result
+    : never;
   pendingApprovals(
     token: string,
     sessionId: string,
@@ -537,6 +563,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             sourcePath,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
+        listWorkspaceFiles: (token, sessionId, path) =>
+          policyRemote.listWorkspaceFiles(
+            token,
+            sessionId,
+            path,
+          ) as unknown as ReturnType<QaSourceApi["listWorkspaceFiles"]>,
+        readWorkspaceFile: (token, sessionId, path) =>
+          policyRemote.readWorkspaceFile(
+            token,
+            sessionId,
+            path,
+          ) as unknown as ReturnType<QaSourceApi["readWorkspaceFile"]>,
       };
       const questionApi: QaQuestionApi = {
         pendingQuestions: (token, sessionId) =>

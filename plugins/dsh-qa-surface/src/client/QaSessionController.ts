@@ -248,6 +248,14 @@ export class QaSessionController {
           ok: false as const,
           error: "unavailable",
         }),
+        listWorkspaceFiles: async () => ({
+          ok: false as const,
+          error: "unavailable",
+        }),
+        readWorkspaceFile: async () => ({
+          ok: false as const,
+          error: "unavailable",
+        }),
       } satisfies QaSourceApi);
     this.chats = new QaChatIndex(
       options.storage,

@@ -23,6 +23,7 @@ const BASE: QaHeaderProps = {
   sourcesOpen: false,
   onOpenSources: () => undefined,
   fileCount: 0,
+  filesEnabled: true,
   filesOpen: false,
   onOpenFiles: () => undefined,
   showReset: false,

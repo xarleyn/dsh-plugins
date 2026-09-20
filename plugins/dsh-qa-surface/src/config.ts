@@ -426,6 +426,12 @@ const configSchema = z.object({
             .min(1024)
             .max(10_000_000)
             .default(D.sources.filePreview.maxMarkdownRenderBytes),
+          maxListingEntries: z
+            .number()
+            .step(1)
+            .min(10)
+            .max(5000)
+            .default(D.sources.filePreview.maxListingEntries),
         })
         .default({ ...D.sources.filePreview }),
       subagents: z

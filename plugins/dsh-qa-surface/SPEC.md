@@ -2713,8 +2713,23 @@ package.
   - the list/preview content is the former drawer's, unchanged (groups,
     badges, safe local-file preview).
 - Files tab: a new header «Файлы» button (count badge, disabled when the chat
-  has no attachments) opens a roster of everything the visitor attached in
-  this chat:
+  has no attachments and no readable workspace) opens the chat's own working
+  directory above a roster of everything the visitor attached in this chat.
+  The browser section (`QaWorkspaceBrowser`) walks the chat's workspace one
+  directory at a time through the Host's `listWorkspaceFiles`: crumbs from the
+  chat root, directories before files, no travel by path — a listing cannot
+  walk the visitor out of the chat's tree, and symlinked children are omitted
+  rather than followed. Opening an entry calls `readWorkspaceFile`, which
+  returns decoded text for a text file (Markdown rendered with the source
+  detail's rendered/raw toggle, anything else as monospaced text) and base64
+  bytes for a binary one, rendered as a handle with a «Скачать» action instead
+  of a preview. Browsing is confined to the chat's cwd; reading reuses the
+  source preview's root policy (chat cwd, shared read-only roots, attachment
+  store) without requiring recorded evidence. The listing cap is
+  `sources.filePreview.maxListingEntries` (default 500) and reports its cut; the
+  switch that opens file reading at all is `sources.filePreview.enabled`, the
+  same one that governs the source preview.
+  The roster below it is unchanged:
   - grouped by sending message, newest message first, each group headed by
     `formatDayTime` and a jump control that scrolls the transcript to that
     user message via the existing `data-dsh-qa-turn-anchor` seam;
@@ -2735,8 +2750,9 @@ package.
   column, not the dockkit's pane model.
 - No persistence of the rail's open state across reloads; chat-local only.
 - No integration with the Host's right Sidebar (see 46.1).
-- Per-user workspace file browsing needs a new Host listing RPC; it is future
-  work, not part of this section's MVP.
+- The files browser lists and reads only; it does not write, rename, delete or
+  upload, and it does not watch the workspace for changes — a directory is
+  re-read when the visitor navigates to it.
 - The agents drawer migrates into a tab post-MVP; until then it stays a
   drawer.
 

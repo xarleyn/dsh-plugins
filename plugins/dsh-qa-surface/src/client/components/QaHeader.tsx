@@ -60,6 +60,13 @@ export interface QaHeaderProps {
   readonly sourcesOpen: boolean;
   readonly onOpenSources: () => void;
   readonly fileCount: number;
+  /**
+   * Whether the files tab has anything to open: attachments, or the chat's own
+   * workspace when the deployment lets the panel read files. The count stays
+   * the attachment number, so an empty chat with a readable workspace shows no
+   * badge but still opens.
+   */
+  readonly filesEnabled: boolean;
   readonly filesOpen: boolean;
   readonly onOpenFiles: () => void;
   /**
@@ -94,6 +101,7 @@ export function QaHeader({
   sourcesOpen,
   onOpenSources,
   fileCount,
+  filesEnabled,
   filesOpen,
   onOpenFiles,
   settings,
@@ -159,7 +167,7 @@ export function QaHeader({
           <button
             type="button"
             className="dsh-qa-header__files"
-            disabled={fileCount === 0}
+            disabled={!filesEnabled}
             aria-expanded={filesOpen}
             onClick={onOpenFiles}
           >

@@ -19,6 +19,9 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
   const maxMarkdownRenderBytes =
     input.sources?.filePreview?.maxMarkdownRenderBytes ??
     DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.maxMarkdownRenderBytes;
+  const maxListingEntries =
+    input.sources?.filePreview?.maxListingEntries ??
+    DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.maxListingEntries;
   const retention = {
     maxTurnsPerSession:
       input.sources?.retention?.maxTurnsPerSession ??
@@ -58,6 +61,12 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
     maxMarkdownRenderBytes,
     1_024,
     10_000_000,
+  );
+  assertIntInRange(
+    "sources.filePreview.maxListingEntries",
+    maxListingEntries,
+    10,
+    5_000,
   );
   if (maxMarkdownRenderBytes > maxBytes) {
     throw new TypeError(
@@ -127,6 +136,7 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
         DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.allowRawToggle,
       maxBytes,
       maxMarkdownRenderBytes,
+      maxListingEntries,
     }),
     subagents: Object.freeze({
       inheritSources:

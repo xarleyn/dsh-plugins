@@ -570,6 +570,7 @@ export interface QaSourcesConfig {
     readonly allowRawToggle?: boolean;
     readonly maxBytes?: number;
     readonly maxMarkdownRenderBytes?: number;
+    readonly maxListingEntries?: number;
   };
   readonly subagents?: {
     readonly inheritSources?: boolean;
@@ -964,6 +965,7 @@ export interface ResolvedQaSurfaceConfig {
       readonly allowRawToggle: boolean;
       readonly maxBytes: number;
       readonly maxMarkdownRenderBytes: number;
+      readonly maxListingEntries: number;
     };
     readonly subagents: {
       readonly inheritSources: boolean;
@@ -1186,6 +1188,43 @@ export interface QaSourceFilePreview {
   readonly truncated: boolean;
   readonly markdown: boolean;
   readonly renderableMarkdown: boolean;
+}
+
+/** One directory entry of a chat's own workspace, as the files panel browses it. */
+export interface QaWorkspaceEntry {
+  readonly name: string;
+  readonly type: "file" | "directory";
+  readonly size: number | null;
+}
+
+/**
+ * One directory of the chat's workspace. `path` is the canonical form of the
+ * directory as requested — the chat root itself is the empty string — so the
+ * panel can build a breadcrumb without another round trip.
+ */
+export interface QaWorkspaceListing {
+  readonly path: string;
+  readonly entries: readonly QaWorkspaceEntry[];
+  /** More children existed than one listing carries. */
+  readonly truncated: boolean;
+}
+
+/**
+ * One file of the chat's workspace: decoded text when it reads as UTF-8, base64
+ * bytes when it does not. The panel needs both — documents the agent produced
+ * are binary, while notes and transcripts preview as text.
+ */
+export interface QaWorkspaceFile {
+  readonly path: string;
+  readonly size: number;
+  readonly truncated: boolean;
+  readonly markdown: boolean;
+  readonly renderableMarkdown: boolean;
+  readonly mime: string;
+  /** Present when the file decoded as text; absent for binary content. */
+  readonly text?: string;
+  /** Present when the file is not text; base64 of at most the byte cap. */
+  readonly base64?: string;
 }
 
 /** Host-attested facts required before the QA composer may become writable. */

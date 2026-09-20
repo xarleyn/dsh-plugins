@@ -81,7 +81,12 @@ describe("sources panel", () => {
         sources={[fileSource]}
         complete
         sessionId="root"
-        sourceApi={{ sources: vi.fn(), readSourceFile }}
+        sourceApi={{
+          sources: vi.fn(),
+          readSourceFile,
+          listWorkspaceFiles: vi.fn(),
+          readWorkspaceFile: vi.fn(),
+        }}
         display={config.display}
         filePreview={config.filePreview}
       />,

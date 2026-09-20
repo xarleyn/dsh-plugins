@@ -22,6 +22,7 @@ export function SourcesSection(props: ConfigProps) {
   const filePreview = sources?.filePreview;
   const maxBytes = filePreview?.maxBytes ?? 2_000_000;
   const maxRender = filePreview?.maxMarkdownRenderBytes ?? 1_000_000;
+  const maxListing = filePreview?.maxListingEntries ?? 500;
   const paths: SectionPaths = [["sources"]];
   const modified = overriddenAny(props, paths);
   const blocked = disabled || !enabled;
@@ -205,8 +206,8 @@ export function SourcesSection(props: ConfigProps) {
             <Toggle
               checked={filePreview?.enabled ?? true}
               disabled={blocked}
-              label="Открывать источник-файл"
-              hint="Просмотр доступен только для файлов, уже попавших в источники ответа."
+              label="Открывать файлы в панели"
+              hint="Источник — только уже попавшие в источники ответа; рабочий каталог чата читается целиком, силами того же предела."
               onChange={(value) => {
                 props.write(["sources", "filePreview", "enabled"], value);
               }}
@@ -244,6 +245,20 @@ export function SourcesSection(props: ConfigProps) {
               hint={`≈ ${formatCount(Math.round(maxBytes / 1024))} КиБ.`}
               onChange={(value) => {
                 props.write(["sources", "filePreview", "maxBytes"], value);
+              }}
+            />
+            <NumberField
+              label="Файлов в одном каталоге"
+              value={maxListing}
+              min={10}
+              max={5_000}
+              disabled={blocked || !(filePreview?.enabled ?? true)}
+              hint="Дольше список — с пометкой, что показаны не все файлы."
+              onChange={(value) => {
+                props.write(
+                  ["sources", "filePreview", "maxListingEntries"],
+                  value,
+                );
               }}
             />
             <NumberField

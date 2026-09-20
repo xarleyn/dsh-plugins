@@ -174,6 +174,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         allowRawToggle: true,
         maxBytes: 2_000_000,
         maxMarkdownRenderBytes: 1_000_000,
+        maxListingEntries: 500,
       }),
       subagents: Object.freeze({
         inheritSources: true,

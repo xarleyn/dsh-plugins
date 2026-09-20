@@ -30,6 +30,8 @@ import type {
   QaSourceFilePreview,
   QaTurnSources,
   QaWhoamiResult,
+  QaWorkspaceFile,
+  QaWorkspaceListing,
   QaCapabilitySelection,
   QaCurrentAccess,
   QaSessionAccess,
@@ -262,6 +264,24 @@ export interface QaSourceApi {
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+  /** One directory of the chat's own workspace, for the files panel. */
+  listWorkspaceFiles(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaWorkspaceListing }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  /** One file of that workspace: decoded text, or bytes when it is binary. */
+  readWorkspaceFile(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaWorkspaceFile }
+    | { readonly ok: false; readonly error: unknown }
+  >;
 }
 
 /**
@@ -296,6 +316,20 @@ export type QaBoundSourceApi = {
     sourcePath: string,
   ): Promise<
     | { readonly ok: true; readonly value: QaSourceFilePreview }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  listWorkspaceFiles(
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaWorkspaceListing }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  readWorkspaceFile(
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaWorkspaceFile }
     | { readonly ok: false; readonly error: unknown }
   >;
 };
