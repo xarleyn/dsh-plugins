@@ -83,6 +83,10 @@ describe("QA session controller", () => {
           ok: false as const,
           error: { code: "not-found" },
         })),
+        previewWorkspaceDocument: vi.fn(async () => ({
+          ok: false as const,
+          error: { code: "not-found" },
+        })),
       },
       config: resolveConfig(),
     });

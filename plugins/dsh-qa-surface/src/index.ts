@@ -55,6 +55,7 @@ import {
   defaultQaProvenanceDirectoryPath,
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
+import { previewConvertibleDocument } from "./provenance/document-preview.js";
 import {
   listWorkspaceDirectory,
   readSourceFilePreview,
@@ -65,6 +66,7 @@ import {
   existingQaUserWorkspace,
   prepareQaUserWorkspace,
 } from "./user-workspace.js";
+import type { DocumentsFace } from "@yadsh/dsh-documents";
 import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountProfileInput,
@@ -73,6 +75,7 @@ import type {
   QaAccountUserPublic,
   QaApprovalDecision,
   QaClaimResult,
+  QaDocumentPreview,
   QaLockdownProof,
   QaOwnershipEntry,
   QaPendingApproval,
@@ -159,7 +162,8 @@ const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
  * disabled capability, a chat without a cwd and an unreadable file alike; the
  * panel tells the audience the file may be gone, which is true of all three.
  */
-type QaSourcePreviewRefusal = "outside-roots" | "not-evidence" | "unavailable";
+type QaSourcePreviewRefusal =
+  "outside-roots" | "not-evidence" | "unavailable" | "unsupported";
 
 /** Fold a preview refusal into the shared reason marker. */
 function sourcePreviewRefusal(reason: QaSourcePreviewRefusal): Error {
@@ -1255,6 +1259,40 @@ export class QaSurface extends TypertRemoteService {
       });
     } catch (error) {
       throw this.browseRefusal("workspace.read-refused", sessionId, error);
+    }
+  }
+
+  /**
+   * Render one Word document of the chat's workspace as a PDF for the panel.
+   *
+   * The conversion is the document pipeline's own, reached through the service
+   * `@yadsh/dsh-documents` publishes for its Host siblings — the panel gets the
+   * same providers, limits and refusals the `document_*` tools see, and a
+   * deployment without that plugin refuses instead of showing a guess. The
+   * produced PDF is read back here and travels as base64, so the audience never
+   * reaches an unfenced byte route.
+   */
+  @Remote("previewWorkspaceDocument")
+  async previewWorkspaceDocument(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<QaDocumentPreview> {
+    await this.admission.secureSession(token, sessionId);
+    const { config, cwd } = await this.browseContext(sessionId);
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      return await previewConvertibleDocument({
+        filePath: path ?? "",
+        cwd,
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
+        sessionId,
+        maxBytes: config.sources.filePreview.maxBytes,
+      });
+    } catch (error) {
+      throw this.browseRefusal("workspace.preview-refused", sessionId, error);
     }
   }
 

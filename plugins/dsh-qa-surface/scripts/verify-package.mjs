@@ -123,6 +123,12 @@ assert.match(patch, /id:\s*dsh-qa-surface/u);
 assert.match(patch, /name:\s*"@yadsh\/dsh-qa-surface"/u);
 
 const host = await readFile(new URL("lib/index.js", root), "utf8");
+// The workspace browser's Host half: the three fenced read methods the panel
+// calls, plus the in-process documents lookup the preview converts through.
+assert.match(host, /listWorkspaceFiles/u);
+assert.match(host, /readWorkspaceFile/u);
+assert.match(host, /previewWorkspaceDocument/u);
+assert.match(host, /"documents"/u);
 const admission = await readFile(
   new URL("lib/secure-session.js", root),
   "utf8",
@@ -435,6 +441,10 @@ assert.match(client, /Рабочий каталог/u);
 assert.match(client, /dsh-qa-ws__entry/u);
 assert.match(client, /Скачать/u);
 assert.match(client, /Файл не читается как текст/u);
+assert.match(client, /Развернуть файл/u);
+assert.match(client, /dsh-qa-ws__pdf/u);
+assert.match(client, /Готовлю предпросмотр/u);
+assert.match(client, /dsh-qa-modal__panel--document/u);
 assert.match(client, /dsh-qa-composer__images/u);
 assert.match(client, /dsh-qa-message__images/u);
 assert.match(client, /dsh-qa-composer__files/u);

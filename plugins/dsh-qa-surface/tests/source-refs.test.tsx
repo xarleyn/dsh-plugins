@@ -187,6 +187,7 @@ describe("QA sources panel direct detail", () => {
           readSourceFile: vi.fn(),
           listWorkspaceFiles: vi.fn(),
           readWorkspaceFile: vi.fn(),
+          previewWorkspaceDocument: vi.fn(),
         }}
         display={display}
         filePreview={filePreview}

@@ -2729,6 +2729,16 @@ package.
   `sources.filePreview.maxListingEntries` (default 500) and reports its cut; the
   switch that opens file reading at all is `sources.filePreview.enabled`, the
   same one that governs the source preview.
+  A Word document is not shown as bytes: the panel asks the Host for a
+  renderable copy (`previewWorkspaceDocument`), which converts the file through
+  the `documents` service published by `@yadsh/dsh-documents` and returns the
+  produced PDF base64, drawn by the browser's own viewer in a blob frame. A
+  missing pipeline, an unrenderable format and a failed conversion all degrade
+  to the download handle with the shared `unsupported` copy. PDFs in the
+  workspace preview the same way from the bytes the read already returned.
+  Any open file can be expanded out of the rail with `Развернуть файл` into the
+  `document`-sized `QaModal` (the same body, more room), which closes back to
+  the directory.
   The roster below it is unchanged:
   - grouped by sending message, newest message first, each group headed by
     `formatDayTime` and a jump control that scrolls the transcript to that
@@ -2753,6 +2763,13 @@ package.
 - The files browser lists and reads only; it does not write, rename, delete or
   upload, and it does not watch the workspace for changes — a directory is
   re-read when the visitor navigates to it.
+- The Word preview converts through the document pipeline, which writes its
+  result as an artifact in the chat's own workspace: previewing a document may
+  leave an `artifacts/documents/<id>` entry beside the file. The panel caches
+  the conversion for as long as the file is open and does not convert on
+  download.
+- No Office formats beyond Word: the pipeline renders DOCX; sheets and slides
+  stay downloads until the pipeline learns them.
 - The agents drawer migrates into a tab post-MVP; until then it stays a
   drawer.
 

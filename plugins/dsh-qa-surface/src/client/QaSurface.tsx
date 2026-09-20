@@ -438,6 +438,12 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           path,
         ),
+      previewWorkspaceDocument: (sessionId: string, path: string) =>
+        props.sourceApi.previewWorkspaceDocument(
+          accounts?.token() ?? "",
+          sessionId,
+          path,
+        ),
     }),
     [accounts, props.sourceApi],
   );

@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { QaWorkspaceEntry, QaWorkspaceFile } from "../../types.js";
+import type {
+  QaDocumentPreview,
+  QaWorkspaceEntry,
+  QaWorkspaceFile,
+} from "../../types.js";
 import type { QaBoundSourceApi } from "../types.js";
 import { formatFileSize } from "../attachments.js";
 import { base64ToBytes } from "../base64.js";
+import { isConvertibleDocument } from "../../shared/documents.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
+import { QaModal } from "./QaModal.js";
 
 /** Name of one entry: the last path segment, root spelled as the directory. */
 function entryName(path: string): string {
@@ -93,18 +99,113 @@ function EntryRow({
   );
 }
 
-/** The opened file: markdown or plain text inline, anything else as a handle. */
+/**
+ * Object URL for a PDF body, revoked when the payload changes or the panel
+ * closes. A blob URL is what lets the browser's own viewer draw the document
+ * without the bytes ever leaving the page.
+ */
+function usePdfUrl(payload: string | undefined): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (payload === undefined) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(
+      new Blob([base64ToBytes(payload) as BlobPart], {
+        type: "application/pdf",
+      }),
+    );
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [payload]);
+  return url;
+}
+
+/**
+ * The opened file's content, shared by the rail and the expanded dialog: an
+ * image inline, a PDF through the browser's viewer, Markdown or plain text, and
+ * anything else as an honest handle rather than a guess in the wrong alphabet.
+ */
+function FileBody({
+  file,
+  raw,
+  converted,
+  converting,
+  conversionFailure,
+}: {
+  readonly file: QaWorkspaceFile;
+  readonly raw: boolean;
+  /** The PDF the Host rendered out of this file, when it is convertible. */
+  readonly converted: QaDocumentPreview | undefined;
+  readonly converting: boolean;
+  readonly conversionFailure: string;
+}) {
+  const nativePdf =
+    file.mime === "application/pdf" && !file.truncated
+      ? file.base64
+      : undefined;
+  const pdf = usePdfUrl(converted?.base64 ?? nativePdf);
+  if (file.mime.startsWith("image/") && file.base64 !== undefined) {
+    return (
+      <img
+        className="dsh-qa-ws__image"
+        alt={entryName(file.path)}
+        src={`data:${file.mime};base64,${file.base64}`}
+      />
+    );
+  }
+  if (pdf !== null) {
+    return (
+      <iframe
+        className="dsh-qa-ws__pdf"
+        title={entryName(file.path)}
+        src={pdf}
+      />
+    );
+  }
+  if (converting) {
+    return <p className="dsh-qa-ws__status">Готовлю предпросмотр…</p>;
+  }
+  if (file.text === undefined) {
+    return (
+      <p className="dsh-qa-ws__status">
+        {isConvertibleDocument(file.mime)
+          ? conversionFailure
+          : file.truncated
+            ? "Файл больше предела предпросмотра — показана только его часть."
+            : "Файл не читается как текст — его можно скачать целиком."}
+      </p>
+    );
+  }
+  if (file.markdown && file.renderableMarkdown && !raw) {
+    return <Markdown text={file.text} />;
+  }
+  return <pre className="dsh-qa-ws__text">{file.text}</pre>;
+}
+
+/** The opened file in the rail: chrome, the read/write toggles, and the body. */
 function FilePreview({
   file,
   status,
+  raw,
+  converted,
+  converting,
+  conversionFailure,
+  onToggleRaw,
   onBack,
+  onExpand,
 }: {
   readonly file: QaWorkspaceFile | undefined;
   readonly status: "loading" | "ready" | "refused";
+  readonly raw: boolean;
+  readonly converted: QaDocumentPreview | undefined;
+  readonly converting: boolean;
+  readonly conversionFailure: string;
+  readonly onToggleRaw: () => void;
   readonly onBack: () => void;
+  readonly onExpand: () => void;
 }) {
-  const [raw, setRaw] = useState(false);
-  useEffect(() => setRaw(false), [file?.path]);
   if (status !== "ready" || file === undefined) {
     return (
       <div className="dsh-qa-ws__preview">
@@ -117,8 +218,6 @@ function FilePreview({
       </div>
     );
   }
-  const image = file.mime.startsWith("image/") && file.base64 !== undefined;
-  const rendered = file.markdown && file.renderableMarkdown && !raw;
   return (
     <div className="dsh-qa-ws__preview">
       <div className="dsh-qa-ws__preview-head">
@@ -128,6 +227,17 @@ function FilePreview({
         <span className="dsh-qa-ws__preview-name" title={file.path}>
           {entryName(file.path)}
         </span>
+        <button
+          type="button"
+          className="dsh-qa-ws__expand"
+          aria-label="Развернуть файл"
+          title="Развернуть"
+          onClick={onExpand}
+        >
+          <svg viewBox="0 0 14 14" aria-hidden="true">
+            <path d="M5.5 2.25H2.25v3.25m6.25-3.25h3.25v3.25m0 3.25v3.25H8.5m-6.25-3.25v3.25h3.25" />
+          </svg>
+        </button>
         <button
           type="button"
           className="dsh-qa-ws__download"
@@ -145,26 +255,18 @@ function FilePreview({
           type="button"
           className="dsh-qa-ws__toggle"
           aria-pressed={raw}
-          onClick={() => setRaw((value) => !value)}
+          onClick={onToggleRaw}
         >
           {raw ? "Показать разметкой" : "Показать исходником"}
         </button>
       ) : null}
-      {image ? (
-        <img
-          className="dsh-qa-ws__image"
-          alt={entryName(file.path)}
-          src={`data:${file.mime};base64,${file.base64 ?? ""}`}
-        />
-      ) : rendered ? (
-        <Markdown text={file.text ?? ""} />
-      ) : file.text === undefined ? (
-        <p className="dsh-qa-ws__status">
-          Файл не читается как текст — его можно скачать целиком.
-        </p>
-      ) : (
-        <pre className="dsh-qa-ws__text">{file.text}</pre>
-      )}
+      <FileBody
+        file={file}
+        raw={raw}
+        converted={converted}
+        converting={converting}
+        conversionFailure={conversionFailure}
+      />
     </div>
   );
 }
@@ -198,6 +300,13 @@ export function QaWorkspaceBrowser({
     "loading",
   );
   const [opened, setOpened] = useState<string | null>(null);
+  const [converted, setConverted] = useState<QaDocumentPreview | undefined>(
+    undefined,
+  );
+  const [converting, setConverting] = useState(false);
+  const [conversionFailure, setConversionFailure] = useState("");
+  const [raw, setRaw] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const generation = useRef(0);
 
   useEffect(() => {
@@ -224,11 +333,53 @@ export function QaWorkspaceBrowser({
     );
   }, [api, directory, sessionId]);
 
+  /**
+   * Ask the Host for a renderable copy when the bytes themselves are not
+   * drawable — a Word document arrives as the PDF the document pipeline made of
+   * it. The panel keeps the file's own bytes either way, so download never
+   * depends on the conversion succeeding.
+   */
+  const convert = useCallback(
+    (path: string) => {
+      setConverted(undefined);
+      setConversionFailure("");
+      setConverting(true);
+      api.previewWorkspaceDocument(sessionId, path).then(
+        (result) => {
+          setOpened((current) => {
+            if (current !== path) return current;
+            setConverting(false);
+            if (result.ok) {
+              setConverted(result.value);
+            } else {
+              setConversionFailure(sourcePreviewFailureCopy(result.error));
+            }
+            return current;
+          });
+        },
+        (failure: unknown) => {
+          setOpened((current) => {
+            if (current !== path) return current;
+            setConverting(false);
+            setConversionFailure(sourcePreviewFailureCopy(failure));
+            return current;
+          });
+        },
+      );
+    },
+    [api, sessionId],
+  );
+
   const openFile = useCallback(
     (path: string) => {
       setOpened(path);
       setFile(undefined);
       setFileStatus("loading");
+      setConverted(undefined);
+      setConversionFailure("");
+      setConverting(false);
+      setRaw(false);
+      setExpanded(false);
       api.readWorkspaceFile(sessionId, path).then(
         (result) => {
           setOpened((current) => {
@@ -236,6 +387,7 @@ export function QaWorkspaceBrowser({
             if (result.ok) {
               setFile(result.value);
               setFileStatus("ready");
+              if (isConvertibleDocument(result.value.mime)) convert(path);
             } else {
               setFileStatus("refused");
             }
@@ -250,19 +402,52 @@ export function QaWorkspaceBrowser({
         },
       );
     },
-    [api, sessionId],
+    [api, convert, sessionId],
   );
 
   if (opened !== null) {
+    const closeFile = () => {
+      setOpened(null);
+      setFile(undefined);
+      setExpanded(false);
+    };
     return (
-      <FilePreview
-        file={file}
-        status={fileStatus}
-        onBack={() => {
-          setOpened(null);
-          setFile(undefined);
-        }}
-      />
+      <div className="dsh-qa-ws">
+        <FilePreview
+          file={file}
+          status={fileStatus}
+          raw={raw}
+          converted={converted}
+          converting={converting}
+          conversionFailure={conversionFailure}
+          onToggleRaw={() => setRaw((value) => !value)}
+          onBack={closeFile}
+          onExpand={() => setExpanded(true)}
+        />
+        <QaModal
+          open={expanded && file !== undefined}
+          size="document"
+          title={file === undefined ? "" : entryName(file.path)}
+          closeLabel="Закрыть файл"
+          onClose={() => setExpanded(false)}
+        >
+          <div className="dsh-qa-ws__expanded">
+            <p className="dsh-qa-ws__meta">
+              {formatFileSize(file?.size ?? 0)}
+              {file?.truncated === true ? " · показана только часть файла" : ""}
+            </p>
+            {file === undefined ? null : (
+              <FileBody
+                file={file}
+                raw={raw}
+                converted={converted}
+                converting={converting}
+                conversionFailure={conversionFailure}
+              />
+            )}
+          </div>
+        </QaModal>
+      </div>
     );
   }
   const crumbs = crumbsOf(directory);

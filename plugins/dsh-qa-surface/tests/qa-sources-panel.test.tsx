@@ -86,6 +86,7 @@ describe("sources panel", () => {
           readSourceFile,
           listWorkspaceFiles: vi.fn(),
           readWorkspaceFile: vi.fn(),
+          previewWorkspaceDocument: vi.fn(),
         }}
         display={config.display}
         filePreview={config.filePreview}

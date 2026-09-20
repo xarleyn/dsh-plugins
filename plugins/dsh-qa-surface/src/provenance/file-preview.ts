@@ -15,7 +15,11 @@ import { canonicalizeWorkspacePath } from "./normalize.js";
  * telling every audience that a present file moved away.
  */
 export type QaSourcePreviewReason =
-  "outside-roots" | "not-evidence" | "unavailable";
+  | "outside-roots"
+  | "not-evidence"
+  | "unavailable"
+  /** The panel has no way to render this format at all. */
+  | "unsupported";
 
 /** Host refusal whose wire message carries the coarse reason marker. */
 export class QaSourcePreviewError extends Error {
@@ -101,7 +105,7 @@ interface QaAllowedFile {
  * while anything else is refused with the coarse `outside-roots` reason
  * instead of leaking whether it exists.
  */
-async function resolveAllowedFile({
+export async function resolveAllowedFile({
   filePath,
   cwd,
   sharedReadOnlyRoots = [],
@@ -202,6 +206,7 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   md: "text/markdown",
   markdown: "text/markdown",
   pdf: "application/pdf",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   png: "image/png",
   svg: "image/svg+xml",
   txt: "text/plain",
@@ -212,7 +217,7 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
 };
 
 /** The advertised type of one file: by extension, else opaque bytes. */
-function mimeOf(path: string): string {
+export function mediaTypeOf(path: string): string {
   const extension = /\.([a-z\d]+)$/iu.exec(path)?.[1]?.toLowerCase();
   return (
     (extension === undefined ? undefined : MIME_BY_EXTENSION[extension]) ??
@@ -352,11 +357,13 @@ export async function readWorkspaceFile({
     truncated,
     markdown,
     renderableMarkdown: markdown && file.size <= maxMarkdownRenderBytes,
-    mime: mimeOf(file.canonical),
+    mime: mediaTypeOf(file.canonical),
   };
-  // A truncated read of a text file stays text: the panel shows the head and
-  // says the rest was cut, which is more useful than refusing the whole file.
-  if (!decodesAsText(window) && !truncated) {
+  // Text and bytes are told apart by the window itself, not by the size: a
+  // truncated text file still previews as its head, while a binary file stays
+  // bytes whatever the window holds — decoding it as text would hand the panel
+  // mojibake it cannot tell from content.
+  if (!decodesAsText(window)) {
     return { ...base, base64: window.toString("base64") };
   }
   return { ...base, text: window.toString("utf8") };

@@ -164,7 +164,11 @@ describe("workspace browsing", () => {
       maxMarkdownRenderBytes: 10_000,
     });
     expect(file.text).toBeUndefined();
-    expect(file.mime).toBe("application/octet-stream");
+    // The panel needs the real type: it is what decides that this document is
+    // rendered through the pipeline instead of being shown as a download.
+    expect(file.mime).toBe(
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    );
     expect(Buffer.from(file.base64 ?? "", "base64")).toEqual(
       Buffer.from([0x50, 0x4b, 0x00, 0x01]),
     );

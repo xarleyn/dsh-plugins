@@ -19,11 +19,12 @@ export interface QaModalProps {
   readonly footer?: ReactNode;
   readonly wide?: boolean;
   /**
-   * Panel size: `wide` fits prose that must not wrap mid-sentence, and
+   * Panel size: `wide` fits prose that must not wrap mid-sentence,
    * `settings` the sectioned user-settings dialog, which needs both a
-   * comfortable height and a two-column body.
+   * comfortable height and a two-column body, and `document` a file
+   * preview the reader expanded out of the rail.
    */
-  readonly size?: "default" | "wide" | "settings";
+  readonly size?: "default" | "wide" | "settings" | "document";
 }
 
 /**

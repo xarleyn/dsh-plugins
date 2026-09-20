@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QaWorkspaceListing } from "../src/types.js";
 import type { QaBoundSourceApi } from "../src/client/types.js";
@@ -28,6 +34,7 @@ function api(overrides: Partial<QaBoundSourceApi>): QaBoundSourceApi {
     readSourceFile: refused("unavailable"),
     listWorkspaceFiles: refused("unavailable"),
     readWorkspaceFile: refused("unavailable"),
+    previewWorkspaceDocument: refused("unsupported"),
     ...overrides,
   };
 }
@@ -139,6 +146,175 @@ describe("workspace browser", () => {
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:file");
+  });
+
+  it("opens the same file in an expanded dialog and closes it", async () => {
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({
+          listWorkspaceFiles: listing({
+            path: "",
+            truncated: false,
+            entries: [{ name: "guide.md", type: "file", size: 9 }],
+          }),
+          readWorkspaceFile: async () => ({
+            ok: true as const,
+            value: {
+              path: "guide.md",
+              size: 9,
+              truncated: false,
+              markdown: true,
+              renderableMarkdown: true,
+              mime: "text/markdown",
+              text: "# Guide\n",
+            },
+          }),
+        })}
+      />,
+    );
+    fireEvent.click(await screen.findByText("guide.md"));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Развернуть файл" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "guide.md" });
+    expect(dialog.className).toBe("dsh-qa-modal");
+    expect(within(dialog).getByRole("heading", { name: "Guide" })).toBeTruthy();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Закрыть файл" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("renders a PDF through the browser viewer instead of a text guess", async () => {
+    const createObjectURL = vi.fn(() => "blob:pdf");
+    Object.defineProperty(URL, "createObjectURL", {
+      value: createObjectURL,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: vi.fn(),
+      configurable: true,
+    });
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({
+          listWorkspaceFiles: listing({
+            path: "",
+            truncated: false,
+            entries: [{ name: "report.pdf", type: "file", size: 4 }],
+          }),
+          readWorkspaceFile: async () => ({
+            ok: true as const,
+            value: {
+              path: "report.pdf",
+              size: 4,
+              truncated: false,
+              markdown: false,
+              renderableMarkdown: false,
+              mime: "application/pdf",
+              base64: "JVBERi0=",
+            },
+          }),
+        })}
+      />,
+    );
+    fireEvent.click(await screen.findByText("report.pdf"));
+    await waitFor(() =>
+      expect(document.querySelector("iframe.dsh-qa-ws__pdf")).toBeTruthy(),
+    );
+    const frame = document.querySelector(
+      "iframe.dsh-qa-ws__pdf",
+    ) as HTMLIFrameElement;
+    expect(frame.getAttribute("src")).toBe("blob:pdf");
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks the Host to render a Word document instead of guessing at bytes", async () => {
+    const previewWorkspaceDocument = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        kind: "pdf" as const,
+        base64: "JVBERi0=",
+        mime: "application/pdf" as const,
+        name: "report.docx",
+        bytes: 8,
+      },
+    }));
+    const createObjectURL = vi.fn(() => "blob:converted");
+    Object.defineProperty(URL, "createObjectURL", {
+      value: createObjectURL,
+      configurable: true,
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      value: vi.fn(),
+      configurable: true,
+    });
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({
+          listWorkspaceFiles: listing({
+            path: "",
+            truncated: false,
+            entries: [{ name: "report.docx", type: "file", size: 4 }],
+          }),
+          readWorkspaceFile: async () => ({
+            ok: true as const,
+            value: {
+              path: "report.docx",
+              size: 4,
+              truncated: false,
+              markdown: false,
+              renderableMarkdown: false,
+              mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              base64: "UEsAAQ==",
+            },
+          }),
+          previewWorkspaceDocument,
+        })}
+      />,
+    );
+    fireEvent.click(await screen.findByText("report.docx"));
+    await waitFor(() =>
+      expect(document.querySelector("iframe.dsh-qa-ws__pdf")).toBeTruthy(),
+    );
+    expect(previewWorkspaceDocument).toHaveBeenCalledWith("s1", "report.docx");
+    const frame = document.querySelector(
+      "iframe.dsh-qa-ws__pdf",
+    ) as HTMLIFrameElement;
+    expect(frame.getAttribute("src")).toBe("blob:converted");
+  });
+
+  it("keeps the download and says why when the conversion is refused", async () => {
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({
+          listWorkspaceFiles: listing({
+            path: "",
+            truncated: false,
+            entries: [{ name: "report.docx", type: "file", size: 4 }],
+          }),
+          readWorkspaceFile: async () => ({
+            ok: true as const,
+            value: {
+              path: "report.docx",
+              size: 4,
+              truncated: false,
+              markdown: false,
+              renderableMarkdown: false,
+              mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+              base64: "UEsAAQ==",
+            },
+          }),
+        })}
+      />,
+    );
+    fireEvent.click(await screen.findByText("report.docx"));
+    expect(await screen.findByText(/не открывается в панели/u)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Скачать" })).toBeTruthy();
   });
 
   it("explains a refusal that leaves the chat's own tree", async () => {

@@ -30,6 +30,7 @@ import type {
   QaSourceFilePreview,
   QaTurnSources,
   QaWhoamiResult,
+  QaDocumentPreview,
   QaWorkspaceFile,
   QaWorkspaceListing,
   QaCapabilitySelection,
@@ -282,6 +283,19 @@ export interface QaSourceApi {
     | { readonly ok: true; readonly value: QaWorkspaceFile }
     | { readonly ok: false; readonly error: unknown }
   >;
+  /**
+   * A Word document of that workspace rendered as PDF by the deployment's
+   * document pipeline; the panel shows the PDF the browser already knows how
+   * to draw instead of uploading the bytes anywhere.
+   */
+  previewWorkspaceDocument(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaDocumentPreview }
+    | { readonly ok: false; readonly error: unknown }
+  >;
 }
 
 /**
@@ -330,6 +344,13 @@ export type QaBoundSourceApi = {
     path: string,
   ): Promise<
     | { readonly ok: true; readonly value: QaWorkspaceFile }
+    | { readonly ok: false; readonly error: unknown }
+  >;
+  previewWorkspaceDocument(
+    sessionId: string,
+    path: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: QaDocumentPreview }
     | { readonly ok: false; readonly error: unknown }
   >;
 };

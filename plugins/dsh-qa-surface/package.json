@@ -148,6 +148,7 @@
   "dependencies": {
     "@yadsh/dsh-audit-core": "workspace:^",
     "@yadsh/dsh-audit-ui": "workspace:^",
+    "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "yaml": "^2.9.0",

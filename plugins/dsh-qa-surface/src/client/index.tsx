@@ -238,6 +238,19 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   }
     ? Result
     : never;
+  previewWorkspaceDocument(
+    token: string,
+    sessionId: string,
+    path: string,
+  ): QaSourceApi extends {
+    previewWorkspaceDocument(
+      token: string,
+      sessionId: string,
+      path: string,
+    ): infer Result;
+  }
+    ? Result
+    : never;
   pendingApprovals(
     token: string,
     sessionId: string,
@@ -575,6 +588,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             path,
           ) as unknown as ReturnType<QaSourceApi["readWorkspaceFile"]>,
+        previewWorkspaceDocument: (token, sessionId, path) =>
+          policyRemote.previewWorkspaceDocument(
+            token,
+            sessionId,
+            path,
+          ) as unknown as ReturnType<QaSourceApi["previewWorkspaceDocument"]>,
       };
       const questionApi: QaQuestionApi = {
         pendingQuestions: (token, sessionId) =>

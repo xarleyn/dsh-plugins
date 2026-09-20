@@ -1190,6 +1190,18 @@ export interface QaSourceFilePreview {
   readonly renderableMarkdown: boolean;
 }
 
+/**
+ * A file the panel renders by conversion rather than by bytes: the document
+ * pipeline turned a Word file into PDF, and the browser shows that PDF.
+ */
+export interface QaDocumentPreview {
+  readonly kind: "pdf";
+  readonly base64: string;
+  readonly mime: "application/pdf";
+  readonly name: string;
+  readonly bytes: number;
+}
+
 /** One directory entry of a chat's own workspace, as the files panel browses it. */
 export interface QaWorkspaceEntry {
   readonly name: string;

@@ -1623,6 +1623,9 @@ importers:
       '@yadsh/dsh-audit-ui':
         specifier: workspace:^
         version: link:../../packages/audit-ui
+      '@yadsh/dsh-documents':
+        specifier: workspace:^
+        version: link:../dsh-documents
       '@yadsh/dsh-plugin-kit':
         specifier: workspace:^
         version: link:../../packages/plugin-kit
