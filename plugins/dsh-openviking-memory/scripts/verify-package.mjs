@@ -7,7 +7,9 @@
  * @yadsh/dsh-plugin-scripts/run-verify-package.
  */
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
+import { verifyPluginCardContract } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
 
 await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
@@ -112,3 +114,12 @@ await runVerifyPackage({
     assert.match(skill, /^---\nname: openviking-memory\n/u);
   },
 });
+
+// The settings card registers under `settings.plugin.item`, so the compiled
+// browser bundle has to satisfy the shared card shell contract.
+verifyPluginCardContract(
+  await readFile(
+    new URL("lib/client.js", new URL("../", import.meta.url)),
+    "utf8",
+  ),
+);
