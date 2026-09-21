@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QA_BROWSER_ERROR_CODES } from "./errors.js";
 import type {
   InvocationDescriptor,
   RemoteResult,
@@ -77,9 +78,16 @@ const tabSchema = z.strictObject({
   }),
 });
 
+const refusalSchema = z.strictObject({
+  code: z.enum(QA_BROWSER_ERROR_CODES),
+  host: z.string().max(255),
+  message: z.string().min(1),
+});
+
 const stateSchema = z.strictObject({
   session: sessionSchema.nullable(),
   tabs: z.array(tabSchema),
+  policyRefusal: refusalSchema.nullable(),
   humanControlEnabled: z.boolean(),
   humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),

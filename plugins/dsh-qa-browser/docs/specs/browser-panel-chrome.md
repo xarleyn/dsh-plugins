@@ -53,6 +53,31 @@ The agent's own `browser_tabs` listing deliberately stays free of the depth: a
 tool that never greys a button has no use for it. The panel gets it through
 `listPanelTabs`, and the panel state carries it per tab.
 
+## A refusal is the operator's to answer
+
+The URL and DNS policy is deployment configuration, so a navigation it refuses
+is not something the chat can fix — and until now the refusal reached the model
+alone, as a tool result nobody else reads. The session records the last refusal
+(`{code, host, message}`) and the panel renders it above the status line.
+
+The gates that record are the ones whose refusal nobody sees: the agent's
+`browser_navigate` and history moves, and the provider's pre-dial validation of
+every redirect and subrequest Chromium dials — which is how a page that loaded
+from an allowed host but pulls one blocked resource gets an explanation. The
+panel's own navigation deliberately does not record: its refusal appears in the
+panel's error line already, and a banner repeating it would be noise.
+
+The banner repeats the refusal text verbatim rather than paraphrasing it: that
+text already names the host, the class of address and the setting that lifts the
+block, and a second wording would be a second thing to keep true. What the
+banner adds is the part the refusal cannot know — that the choice between one
+allow-listed host and `allowPrivateNetworks` for the whole deployment belongs to
+the operator, and that the two are not equivalent.
+
+The notice is per session and is cleared by the next navigation the policy
+allows, so it explains a panel that is not loading instead of living on as
+history. A session the manager does not hold has refused nothing.
+
 ## Taking control starts the browser
 
 Asking for the lease on a chat whose browser has not started yet starts it.
@@ -93,3 +118,7 @@ status line wrap. Verified at 320 px, 460 px and full width.
   address rules.
 - `tests/panel-authorization.test.ts` — every new mutation authorizes against
   QA Surface before it touches the browser.
+- `tests/session-manager-security.test.ts`, `tests/browser-panel-render.test.tsx`
+  — a refused navigation is recorded with its host and the message naming the
+  fix, cleared by the next navigation the policy allows, and rendered as the
+  panel's alert; a session that refused nothing shows no banner.

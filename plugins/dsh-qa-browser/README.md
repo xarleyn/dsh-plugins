@@ -85,6 +85,15 @@ as `*.internal.example`. Explicitly allowed hosts may resolve to private
 addresses, but cannot bypass the metadata-endpoint deny. `denyHosts` always
 wins.
 
+A refusal is the operator's message, not only the model's. When the policy
+blocks a navigation, the Browser panel shows the refused host, the class of
+address it resolved to and the setting that lifts the block, and the Host logs
+`browser.policy-refused` with the same facts. The panel names both ways out —
+an `allowHosts` entry for one host, or `allowPrivateNetworks` for the whole
+deployment — because they are not equivalent: the first opens one intranet
+service, the second opens every private range to whatever the model asks for.
+The notice clears once a navigation the policy allows completes.
+
 `denyDshOrigin` automatically covers the active Harness listener on localhost,
 the machine hostname and its network interfaces. Add reverse-proxy/public
 origins explicitly through `dshOrigins`; Browser rechecks every redirect and

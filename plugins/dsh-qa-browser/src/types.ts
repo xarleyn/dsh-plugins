@@ -1,3 +1,5 @@
+import type { QaBrowserErrorCode } from "./errors.js";
+
 export type BrowserSessionStatus =
   "starting" | "ready" | "idle" | "crashed" | "closed";
 
@@ -154,10 +156,36 @@ export interface BrowserWaitRequest {
   readonly timeoutMs?: number;
 }
 
+/**
+ * The last navigation refusal the URL and DNS policy handed this session.
+ *
+ * A refused navigation is a deployment question — an intranet host the policy
+ * will not reach until an operator changes a setting — and the model is not
+ * the party who can answer it. The message already names the class of address
+ * and the setting that lifts the block, so the panel carries it to the person
+ * who owns the configuration instead of leaving it in the chat's tool result.
+ */
+export interface BrowserPolicyRefusal {
+  /** The policy code, e.g. `BROWSER_HOST_BLOCKED`. */
+  readonly code: QaBrowserErrorCode;
+  /**
+   * The refused destination host. It stays a host and not a full URL: the fix
+   * is a host allow-list entry, and a path or query adds nothing to it.
+   */
+  readonly host: string;
+  /** The refusal text, which names the address class and the setting. */
+  readonly message: string;
+}
+
 /** Read-only state exposed to the authenticated QA Surface panel. */
 export interface BrowserPanelState {
   readonly session: BrowserSessionInfo | null;
   readonly tabs: readonly BrowserPanelTab[];
+  /**
+   * The last refusal of this session, cleared once a navigation the policy
+   * allows completes; `null` while the policy has refused nothing.
+   */
+  readonly policyRefusal: BrowserPolicyRefusal | null;
   readonly humanControlEnabled: boolean;
   readonly humanControlLeaseSeconds: number;
   readonly autoRevealOnAgentActivity: boolean;

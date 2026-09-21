@@ -136,6 +136,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const ownsControl =
     session?.control.owner === "human" && session.control.clientId === clientId;
   const coordinateInputEnabled = state?.coordinateInputEnabled === true;
+  const refusal = state?.policyRefusal ?? null;
   const interactive = ownsControl && session !== null;
   const scale = BROWSER_SCALES.find((option) => option.id === scaleId)?.scale;
 
@@ -689,6 +690,28 @@ export function BrowserPanel(props: BrowserPanelProps) {
         onPaste={paste}
         onWheel={wheel}
       />
+      {refusal === null ? null : (
+        <div className="dsh-qa-browser-panel__refusal" role="alert">
+          <p className="dsh-qa-browser-panel__refusal-title">
+            {refusal.host === ""
+              ? "Политика Browser отклонила переход"
+              : `Политика Browser не пускает на ${refusal.host}`}
+          </p>
+          <p className="dsh-qa-browser-panel__refusal-text">
+            {refusal.message}
+          </p>
+          {/*
+            The refusal names the setting; what it cannot say is which of the
+            two ways to open the deployment is the sane one, and that is the
+            operator's decision to make here rather than in the chat.
+          */}
+          <p className="dsh-qa-browser-panel__refusal-hint">
+            Это настройка контура, а не чата: точечно — добавить узел в
+            security.network.allowHosts, широко — включить
+            security.network.allowPrivateNetworks для всей приватной сети.
+          </p>
+        </div>
+      )}
       <BrowserStatusBar
         status={browserStatus(state, loading)}
         viewport={selected?.viewport ?? null}

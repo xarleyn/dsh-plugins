@@ -126,4 +126,30 @@ describe("BrowserPanel", () => {
       expect(screen.getByRole("img", { name: /Example App/u })).toBeTruthy(),
     );
   });
+
+  it("shows a policy refusal to the operator, not only to the model", async () => {
+    const { remote } = host(
+      panelState([tab()], "tab-a", {
+        policyRefusal: {
+          code: "BROWSER_HOST_BLOCKED",
+          host: "intranet.example.corp",
+          message:
+            'Private-network destinations are blocked by Browser policy: "intranet.example.corp" resolves to a RFC1918 (10/8, 172.16/12, 192.168/16) address. Allow the host in security.network.allowHosts (or set security.network.allowPrivateNetworks) to reach it.',
+        },
+      }),
+    );
+    render(<BrowserPanel {...owner(remote)} />);
+
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toContain("intranet.example.corp");
+    expect(banner.textContent).toContain("security.network.allowHosts");
+  });
+
+  it("keeps the banner out of the panel while nothing was refused", async () => {
+    const { remote } = host(panelState([tab()], "tab-a"));
+    render(<BrowserPanel {...owner(remote)} />);
+    await screen.findByRole("img", { name: /Example App/u });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });

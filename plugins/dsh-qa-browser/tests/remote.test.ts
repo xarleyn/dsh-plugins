@@ -48,6 +48,7 @@ describe("QA Browser Remote contribution", () => {
     const state$ = {
       session: null,
       tabs: [tab],
+      policyRefusal: null,
       humanControlEnabled: true,
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
@@ -62,6 +63,45 @@ describe("QA Browser Remote contribution", () => {
       state.schema.parse({
         ...state$,
         tabs: [{ id, url, title, status, revision, viewport }],
+      }),
+    ).toThrow();
+  });
+
+  it("carries a policy refusal by its code, host and message only", () => {
+    const state = qaBrowserRemote.descriptors.find(
+      (item) => item.method === "panelState",
+    )?.result;
+    if (state?.mode !== "strict") throw new Error("panelState must be strict");
+    const state$ = {
+      session: null,
+      tabs: [],
+      policyRefusal: {
+        code: "BROWSER_HOST_BLOCKED",
+        host: "intranet.example.corp",
+        message: "Private-network destinations are blocked by Browser policy.",
+      },
+      humanControlEnabled: true,
+      humanControlLeaseSeconds: 30,
+      autoRevealOnAgentActivity: true,
+      focusOnAutoReveal: false,
+      coordinateInputEnabled: true,
+    };
+    expect(() => state.schema.parse(state$)).not.toThrow();
+    // The taxonomy is one list: a code the error type does not name cannot
+    // travel to the panel, and neither can a refusal with no host to fix.
+    expect(() =>
+      state.schema.parse({
+        ...state$,
+        policyRefusal: { ...state$.policyRefusal, code: "BROWSER_INVENTED" },
+      }),
+    ).toThrow();
+    expect(() =>
+      state.schema.parse({
+        ...state$,
+        policyRefusal: {
+          code: state$.policyRefusal.code,
+          message: state$.policyRefusal.message,
+        },
       }),
     ).toThrow();
   });
