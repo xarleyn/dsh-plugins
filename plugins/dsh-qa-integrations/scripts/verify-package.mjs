@@ -582,6 +582,28 @@ for (const provider of await readdir(new URL("src/providers", root))) {
   }
 }
 
+// Every provider proves those boundaries with the shared suite. A provider that
+// ships without its fixture is a provider whose redirects, cap, retries and
+// secret placement nobody checks — and the check is too valuable to be a thing
+// a new integration remembers to copy.
+for (const provider of await readdir(new URL("src/providers", root))) {
+  const dir = new URL(`src/providers/${provider}/`, root);
+  if (provider === "shared" || !(await stat(dir)).isDirectory()) continue;
+  const fixture = await readFile(
+    new URL(`tests/${provider}/conformance.test.ts`, root),
+    "utf8",
+  ).catch(() => undefined);
+  assert.ok(
+    fixture !== undefined,
+    `tests/${provider}/conformance.test.ts is missing; every provider runs the shared conformance suite`,
+  );
+  assert.match(
+    fixture,
+    /describeProviderConformance\(/u,
+    `tests/${provider}/conformance.test.ts must run the shared conformance suite`,
+  );
+}
+
 // The emptiness rule is the reason that policy has one owner: an empty string
 // field is absent, never a value a caller could pass back.
 const sharedPayload = await readFile(
