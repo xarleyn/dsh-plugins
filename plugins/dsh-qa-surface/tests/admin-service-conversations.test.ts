@@ -1,9 +1,13 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { describe, expect, it, vi } from "vitest";
 import { QaAccessService } from "../src/access/service.js";
 import { QaAdminService } from "../src/admin/service.js";
 import { staticSessionLogReader } from "../src/admin/session-log.js";
+import { QaPersonalSkills } from "../src/personal-skills/index.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import { harness, refusal } from "./admin-service.helpers.js";
 
@@ -164,11 +168,20 @@ describe("admin conversation reads", () => {
       logger,
       repository: roles,
     });
+    // Skills are not what this file reads; the console still requires a store
+    // because every construction is the same production wiring.
+    const skills = new QaPersonalSkills(ctx, {
+      getConfig: () => resolveConfig({ accounts: { enabled: true } }),
+      logger,
+      workspacePath: () => mkdtempSync(path.join(tmpdir(), "qa-skills-")),
+      invalidate() {},
+    });
     const service = new QaAdminService({
       accounts: () => accounts,
       quality: () => quality,
       roles: () => roles,
       access: () => access,
+      skills: () => skills,
       sessionLog: {
         live: () => false,
         async list() {
@@ -221,11 +234,18 @@ describe("admin conversation reads", () => {
         repository: roles,
         sessionLog: listing,
       });
+      const skills = new QaPersonalSkills(ctx, {
+        getConfig: () => resolveConfig({ accounts: { enabled: true } }),
+        logger,
+        workspacePath: () => mkdtempSync(path.join(tmpdir(), "qa-skills-")),
+        invalidate() {},
+      });
       const service = new QaAdminService({
         accounts: () => accounts,
         quality: () => quality,
         roles: () => roles,
         access: () => access,
+        skills: () => skills,
         sessionLog: listing,
         logger,
       });

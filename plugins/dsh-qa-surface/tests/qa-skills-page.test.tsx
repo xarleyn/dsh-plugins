@@ -76,4 +76,27 @@ describe("skills settings page", () => {
       "Хранилище навыков недоступно",
     );
   });
+
+  it("tells the owner when an administrator wrote the skill", async () => {
+    const rig = api({
+      skills: [
+        summary({
+          adminEdit: { actorId: "admin-1", at: "2026-09-21T09:00:00.000Z" },
+        }),
+      ],
+    });
+    render(<QaSkillsSettingsPage api={rig.api} />);
+    // The person whose skill it is reads the role that changed it, not the
+    // account id: a personal page names nobody's administrator.
+    expect(
+      await screen.findByText(/Изменено администратором/u),
+    ).toBeTruthy();
+  });
+
+  it("shows no mark on a skill its owner wrote", async () => {
+    const rig = api({ skills: [summary()] });
+    render(<QaSkillsSettingsPage api={rig.api} />);
+    expect(await screen.findByText("api-testing")).toBeTruthy();
+    expect(screen.queryByText(/Изменено администратором/u)).toBeNull();
+  });
 });

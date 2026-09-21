@@ -45,6 +45,7 @@ function summary(overrides: Partial<QaSkillSummary> = {}): QaSkillSummary {
     diagnostics: [],
     updatedAt: null,
     revision: "rev-1",
+    adminEdit: null,
     ...overrides,
   };
 }

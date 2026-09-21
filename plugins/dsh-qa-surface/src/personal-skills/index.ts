@@ -38,15 +38,21 @@ export {
   type QaSkillValidationInput,
 } from "./skill-format.js";
 export {
+  QA_SHARED_SKILLS_RANK,
+  QA_SHARED_SKILLS_SOURCE,
   QA_USER_SKILLS_PROVIDER,
   QA_USER_SKILLS_RANK,
   QA_USER_SKILLS_SOURCE,
   createQaUserSkillProvider,
 } from "./provider.js";
 export {
+  QA_SKILL_ADMIN_EDITS_FILE,
   QaPersonalSkills,
   type QaPersonalSkillContext,
   type QaPersonalSkillsOptions,
+  type QaSharedSkillContext,
+  type QaSkillScope,
+  type QaSkillWriteOrigin,
   type QaStoredSkill,
 } from "./service.js";
 export {

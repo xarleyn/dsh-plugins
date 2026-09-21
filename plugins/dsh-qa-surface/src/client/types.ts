@@ -43,6 +43,8 @@ import type {
   QaAdminAuditEvent,
   QaAdminOverview,
   QaAdminPage,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaAdminUserDetail,
   QaAdminUserRow,
   QaAdminUserUpdate,
@@ -217,6 +219,43 @@ export interface QaAdminApi {
     cursor: string | null,
     limit: number | null,
   ): Promise<RemoteResult<QaAdminPage<QaAdminAuditEvent>>>;
+  /**
+   * Skill files an administrator may edit: the deployment's shared store, or
+   * one named account's own. These are the same files the owner edits from
+   * their settings dialog, opened here with the authorization to leave a mark
+   * the owner sees.
+   */
+  skills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<QaAdminSkillsView>>;
+  skill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  saveSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  deleteSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  validateSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
+  skillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
 }
 
 /**

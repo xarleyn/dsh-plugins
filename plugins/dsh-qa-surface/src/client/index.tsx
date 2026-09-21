@@ -71,6 +71,8 @@ import type {
   QaAdminAuditEvent,
   QaAdminOverview,
   QaAdminPage,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaAdminUserDetail,
   QaAdminUserRow,
   QaAdminUserUpdate,
@@ -178,6 +180,37 @@ interface QaAdminRemote {
     cursor: string | null,
     limit: number | null,
   ): Promise<RemoteResult<QaAdminPage<QaAdminAuditEvent>>>;
+  adminSkills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<QaAdminSkillsView>>;
+  adminSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  adminSkillSave(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  adminSkillDelete(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  adminSkillValidate(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
+  adminSkillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>>;
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
@@ -564,6 +597,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         metrics: (token) => policyRemote.adminMetrics(token),
         audit: (token, query, cursor, limit) =>
           policyRemote.adminAudit(token, query, cursor, limit),
+        skills: (token, scope) => policyRemote.adminSkills(token, scope),
+        skill: (token, scope, name) =>
+          policyRemote.adminSkill(token, scope, name),
+        saveSkill: (token, scope, name, input) =>
+          policyRemote.adminSkillSave(token, scope, name, input),
+        deleteSkill: (token, scope, name, expectedRevision) =>
+          policyRemote.adminSkillDelete(token, scope, name, expectedRevision),
+        validateSkill: (token, scope, name, input) =>
+          policyRemote.adminSkillValidate(token, scope, name, input),
+        skillTools: async (token, scope) => {
+          const result = await policyRemote.adminSkillTools(token, scope);
+          return result.ok
+            ? { ok: true, value: result.value.tools }
+            : { ok: false, error: result.error };
+        },
       };
       const sourceApi: QaSourceApi = {
         sources: (token, sessionId) =>

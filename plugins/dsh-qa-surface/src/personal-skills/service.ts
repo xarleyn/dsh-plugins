@@ -21,6 +21,7 @@ import {
   QA_USER_WORKSPACES_DIRECTORY,
 } from "../user-workspace.js";
 import type {
+  QaSkillAdminEdit,
   QaSkillDiagnostic,
   QaSkillDocument,
   QaSkillDraftInput,
@@ -64,16 +65,62 @@ import {
  */
 const RECOGNIZED_RESOURCES = new Set(["references", "assets", "scripts"]);
 
+/**
+ * Name of the sidecar that records which skills an administrator wrote. It
+ * sits beside the skill directories, and everything that enumerates skills
+ * ignores dot entries — so the record never becomes a skill and never reaches
+ * the model.
+ */
+export const QA_SKILL_ADMIN_EDITS_FILE = ".admin-edits.json";
+
+/** Cap on the sidecar: its entry count, and the bytes read back from it. */
+const ADMIN_EDITS_MAX = 512;
+const ADMIN_EDITS_MAX_BYTES = 64 * 1024;
+
 /** Per-account identity of the skill storage boundary. */
 export interface QaPersonalSkillContext {
   /** The authenticated account id whose personal root holds these skills. */
   readonly userId: string;
 }
 
+/**
+ * The deployment-wide store: skills every account may read, which only an
+ * administrator writes. It is resolved against the registered workspace (the
+ * same relative root, a different owner), so the two scopes have identical
+ * geometry and identical path checks.
+ */
+export interface QaSharedSkillContext {
+  readonly shared: true;
+}
+
+/** Which store a call reads or writes. */
+export type QaSkillScope = QaPersonalSkillContext | QaSharedSkillContext;
+
+/**
+ * What a save must record about itself beyond the draft.
+ *
+ * `actorId` is the administrator behind an administrator's write. An owner's
+ * own save passes nothing, which clears whatever mark the skill carried: the
+ * stored revision is theirs again, and the badge is a statement about the
+ * bytes on disk rather than a history nobody can act on. Removal takes no
+ * origin because a removed skill has no bytes left to mark — the audit row the
+ * console writes is where that actor is named.
+ */
+export interface QaSkillWriteOrigin {
+  readonly actorId?: string;
+}
+
+/** One stored administrator mark, valid only for the revision it names. */
+interface QaAdminEditRecord extends QaSkillAdminEdit {
+  readonly revision: string;
+}
+
 /** One stored skill: its parsed contents plus the facts a DTO needs. */
 export interface QaStoredSkill {
   /** Whether the skill directory itself exists. */
   readonly exists: boolean;
+  /** Whether the skill came from the deployment-wide store. */
+  readonly shared: boolean;
   /** Directory name; the skill's identity for every write. */
   readonly directoryName: string;
   readonly directory: string;
@@ -99,9 +146,9 @@ export interface QaPersonalSkillsOptions {
 }
 
 /**
- * Personal Skills over one account's own directory.
+ * Skills over one directory: an account's own, or the deployment's shared one.
  *
- * The service is the only writer: it derives every path from the account id,
+ * The service is the only writer: it derives every path from the scope,
  * validates a draft before touching the disk, writes `SKILL.md` through a
  * temporary file and a rename, and keeps a removed skill recoverable in the
  * trash beside its skills root. Reading is deliberately permissive — a skill
@@ -122,27 +169,17 @@ export class QaPersonalSkills {
     return this.options.getConfig().accounts.skills.enabled;
   }
 
-  /** Resolve one account's storage roots, or refuse the operation. */
-  private rootsFor(context: QaPersonalSkillContext): QaSkillRoots {
+  /** Resolve one scope's storage roots, or refuse the operation. */
+  private rootsFor(scope: QaSkillScope): QaSkillRoots {
+    if (isSharedScope(scope)) return this.sharedRoots();
     const config = this.options.getConfig();
-    if (!config.accounts.skills.enabled) {
-      throw new QaPersonalSkillError(
-        "skills-disabled",
-        "personal skills are not enabled on this deployment",
-      );
-    }
-    const workspacePath = this.options.workspacePath();
-    if (workspacePath === undefined) {
-      throw new QaPersonalSkillError(
-        "workspace-unavailable",
-        "the configured QA workspace is not registered",
-      );
-    }
+    this.requireEnabled();
+    const workspacePath = this.requireWorkspacePath();
     let personalRoot: string;
     try {
       // `prepare` tolerates a missing account directory: reading one's own
       // skills must not require an unrelated session to exist first.
-      personalRoot = prepareQaUserWorkspace(workspacePath, context.userId);
+      personalRoot = prepareQaUserWorkspace(workspacePath, scope.userId);
     } catch (error) {
       throw new QaPersonalSkillError(
         "workspace-unavailable",
@@ -155,6 +192,50 @@ export class QaPersonalSkills {
     );
     ensureSkillRoots(roots);
     return roots;
+  }
+
+  /** The deployment's own skills root, below the registered workspace. */
+  private sharedRoots(): QaSkillRoots {
+    const config = this.options.getConfig();
+    this.requireEnabled();
+    const workspacePath = this.requireWorkspacePath();
+    const roots = resolveSkillRoots(
+      workspacePath,
+      config.accounts.skills.relativeRoot,
+      "the deployment workspace's",
+    );
+    ensureSkillRoots(roots);
+    return { ...roots, shared: true };
+  }
+
+  private requireEnabled(): void {
+    if (!this.options.getConfig().accounts.skills.enabled) {
+      throw new QaPersonalSkillError(
+        "skills-disabled",
+        "personal skills are not enabled on this deployment",
+      );
+    }
+  }
+
+  /** The registered workspace every scope is resolved against, or a refusal. */
+  private requireWorkspacePath(): string {
+    const workspacePath = this.options.workspacePath();
+    if (workspacePath === undefined) {
+      throw new QaPersonalSkillError(
+        "workspace-unavailable",
+        "the configured QA workspace is not registered",
+      );
+    }
+    return workspacePath;
+  }
+
+  /**
+   * The absolute directory a scope reads and writes. The console names it so
+   * an operator can open the same path in a file manager; nothing in the wire
+   * contract can name a path the service did not derive itself.
+   */
+  rootPath(scope: QaSkillScope): string {
+    return this.rootsFor(scope).skills;
   }
 
   /**
@@ -182,17 +263,18 @@ export class QaPersonalSkills {
     }
   }
 
-  /** Every skill of one account, sorted by directory name. */
-  list(context: QaPersonalSkillContext): readonly QaSkillSummary[] {
+  /** Every skill of one scope, sorted by directory name. */
+  list(context: QaSkillScope): readonly QaSkillSummary[] {
     const roots = this.rootsFor(context);
     const available = this.availableTools();
+    const edits = this.adminEdits(roots);
     return listSkillDirectories(roots).map((directoryName) =>
-      this.summarize(this.load(roots, directoryName), available),
+      this.summarize(this.load(roots, directoryName), available, edits),
     );
   }
 
   /** One skill with everything the editor needs. */
-  get(context: QaPersonalSkillContext, name: string): QaSkillDocument {
+  get(context: QaSkillScope, name: string): QaSkillDocument {
     const roots = this.rootsFor(context);
     const stored = this.load(roots, name);
     if (!stored.exists) {
@@ -201,7 +283,7 @@ export class QaPersonalSkills {
         `no skill directory named ${name}`,
       );
     }
-    return this.document(stored, this.availableTools());
+    return this.document(stored, this.availableTools(), this.adminEdits(roots));
   }
 
   /**
@@ -212,7 +294,7 @@ export class QaPersonalSkills {
    * cannot know). `name` is the stored skill being edited, or null to create.
    */
   validate(
-    context: QaPersonalSkillContext,
+    context: QaSkillScope,
     name: string | null,
     input: QaSkillDraftInput,
   ): QaSkillValidation {
@@ -234,8 +316,8 @@ export class QaPersonalSkills {
     };
   }
 
-  /** Whether one account stores a skill under this name. */
-  has(context: QaPersonalSkillContext, name: string): boolean {
+  /** Whether one scope stores a skill under this name. */
+  has(context: QaSkillScope, name: string): boolean {
     try {
       const roots = this.rootsFor(context);
       return directoryExists(skillDirectory(roots, name));
@@ -246,8 +328,9 @@ export class QaPersonalSkills {
 
   /** Create one skill directory and its `SKILL.md`. */
   create(
-    context: QaPersonalSkillContext,
+    context: QaSkillScope,
     input: QaSkillDraftInput,
+    origin: QaSkillWriteOrigin = {},
   ): QaSkillDocument {
     const roots = this.rootsFor(context);
     const prepared = this.prepareWrite(input, this.options.getConfig(), true);
@@ -260,12 +343,13 @@ export class QaPersonalSkills {
     }
     try {
       mkdirSync(directory, { recursive: true, mode: 0o700 });
-      this.writeSkillFile(skillFilePath(roots, prepared.name), prepared.text);
+      this.writeAtomic(skillFilePath(roots, prepared.name), prepared.text);
     } catch (error) {
       rmSync(directory, { recursive: true, force: true });
       throw this.storageError(error);
     }
     this.refreshCatalog("skill.create", context, prepared.name);
+    this.rememberWrite(roots, prepared.name, prepared.text, undefined, origin);
     return this.get(context, prepared.name);
   }
 
@@ -274,9 +358,10 @@ export class QaPersonalSkills {
    * does not own and moving the whole directory when the name changed.
    */
   update(
-    context: QaPersonalSkillContext,
+    context: QaSkillScope,
     name: string,
     input: QaSkillDraftInput,
+    origin: QaSkillWriteOrigin = {},
   ): QaSkillDocument {
     const roots = this.rootsFor(context);
     const prepared = this.prepareWrite(input, this.options.getConfig(), true);
@@ -296,17 +381,18 @@ export class QaPersonalSkills {
     });
     const target = skillDirectory(roots, prepared.name);
     if (current.directory === target) {
-      this.writeSkillFile(current.filePath, text);
+      this.writeAtomic(current.filePath, text);
     } else {
       this.renameSkillDirectory(current.directory, target, text, prepared.name);
     }
     this.refreshCatalog("skill.update", context, prepared.name);
+    this.rememberWrite(roots, prepared.name, text, name, origin);
     return this.get(context, prepared.name);
   }
 
   /** Move one skill directory into the trash beside its skills root. */
   remove(
-    context: QaPersonalSkillContext,
+    context: QaSkillScope,
     name: string,
     expectedRevision: string | null,
   ): QaSkillRemoval {
@@ -326,6 +412,7 @@ export class QaPersonalSkills {
       throw this.storageError(error);
     }
     this.refreshCatalog("skill.delete", context, name);
+    this.forgetWrite(roots, name);
     return { name, trashed: true };
   }
 
@@ -335,7 +422,7 @@ export class QaPersonalSkills {
    * a skill may grant: a declared tool the scope excludes stays listed and
    * stays unavailable.
    */
-  tools(context: QaPersonalSkillContext): readonly QaSkillToolDescriptor[] {
+  tools(context: QaSkillScope): readonly QaSkillToolDescriptor[] {
     const available = this.availableTools();
     const described = new Map<string, string>();
     for (const schema of this.ctx.tools.schemas()) {
@@ -374,6 +461,18 @@ export class QaPersonalSkills {
     const roots = this.rootsForCwd(cwd, config.accounts.skills.relativeRoot);
     if (roots === undefined) return [];
     this.observe(roots.skills);
+    const shared = this.sharedRootsForDiscovery(roots);
+    // The account's own skills come first: on a duplicate name the registry
+    // ranks a personal skill above the shared one, and this order is the same
+    // decision told to every caller that reads the list directly.
+    return [
+      ...this.discoverIn(roots),
+      ...(shared === undefined ? [] : this.discoverIn(shared)),
+    ];
+  }
+
+  /** One roots pair's discoverable skills; never throws. */
+  private discoverIn(roots: QaSkillRoots): readonly QaStoredSkill[] {
     try {
       return listSkillDirectories(roots)
         .map((directoryName) => this.load(roots, directoryName))
@@ -386,12 +485,45 @@ export class QaPersonalSkills {
     }
   }
 
+  /**
+   * The deployment's shared root for one cwd-scoped read, or undefined. It
+   * answers undefined when shared skills cannot be resolved at all, and when
+   * the shared root is the root the personal read already covered — a session
+   * pinned to the workspace root would otherwise list everything twice.
+   */
+  private sharedRootsForDiscovery(
+    personal: QaSkillRoots,
+  ): QaSkillRoots | undefined {
+    let shared: QaSkillRoots;
+    try {
+      shared = this.sharedRoots();
+    } catch (error) {
+      this.options.logger.warn("skill.shared-discover-failed", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+    if (sameDirectory(shared.skills, personal.skills)) return undefined;
+    this.observe(shared.skills);
+    return shared;
+  }
+
   /** Re-read one skill of a session cwd, re-checking the same boundary. */
   read(cwd: string, directoryName: string): QaStoredSkill | undefined {
     const config = this.options.getConfig();
     if (!config.accounts.skills.enabled) return undefined;
     const roots = this.rootsForCwd(cwd, config.accounts.skills.relativeRoot);
     if (roots === undefined) return undefined;
+    const personal = this.readFrom(roots, directoryName);
+    if (personal !== undefined) return personal;
+    const shared = this.sharedRootsForDiscovery(roots);
+    return shared === undefined ? undefined : this.readFrom(shared, directoryName);
+  }
+
+  private readFrom(
+    roots: QaSkillRoots,
+    directoryName: string,
+  ): QaStoredSkill | undefined {
     let directory: string;
     try {
       directory = skillDirectory(roots, directoryName);
@@ -417,7 +549,7 @@ export class QaPersonalSkills {
     return new Set(this.options.getConfig().lockdown.toolPolicy.allow);
   }
 
-  private declaredTools(context: QaPersonalSkillContext): readonly string[] {
+  private declaredTools(context: QaSkillScope): readonly string[] {
     const names = new Set<string>();
     let roots: QaSkillRoots;
     try {
@@ -444,6 +576,7 @@ export class QaPersonalSkills {
   private load(roots: QaSkillRoots, directoryName: string): QaStoredSkill {
     const absent: QaStoredSkill = {
       exists: false,
+      shared: roots.shared,
       directoryName,
       directory: path.join(roots.skills, directoryName),
       filePath: path.join(roots.skills, directoryName, "SKILL.md"),
@@ -470,6 +603,7 @@ export class QaPersonalSkills {
     const resources = this.resources(directory);
     const base = {
       exists: true,
+      shared: roots.shared,
       directoryName,
       directory,
       filePath,
@@ -678,7 +812,7 @@ export class QaPersonalSkills {
         renameSync(path.join(from, entry), path.join(to, entry));
         moved.push(entry);
       }
-      this.writeSkillFile(path.join(to, "SKILL.md"), text);
+      this.writeAtomic(path.join(to, "SKILL.md"), text);
     } catch (error) {
       // Put every entry back before reporting: a half-moved skill directory is
       // worse than a refused save.
@@ -706,7 +840,7 @@ export class QaPersonalSkills {
   }
 
   /** Write one file through a temporary sibling and a rename. */
-  private writeSkillFile(filePath: string, text: string): void {
+  private writeAtomic(filePath: string, text: string): void {
     const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`;
     try {
       writeFileSync(temporary, text, "utf8");
@@ -750,6 +884,7 @@ export class QaPersonalSkills {
   private summarize(
     stored: QaStoredSkill,
     available: ReadonlySet<string>,
+    edits: ReadonlyMap<string, QaAdminEditRecord>,
   ): QaSkillSummary {
     const contents = stored.contents;
     return {
@@ -767,16 +902,18 @@ export class QaPersonalSkills {
       diagnostics: stored.diagnostics,
       updatedAt: stored.updatedAt,
       revision: stored.revision,
+      adminEdit: this.adminEditOf(stored, edits),
     };
   }
 
   private document(
     stored: QaStoredSkill,
     available: ReadonlySet<string>,
+    edits: ReadonlyMap<string, QaAdminEditRecord>,
   ): QaSkillDocument {
     const contents = stored.contents;
     return {
-      ...this.summarize(stored, available),
+      ...this.summarize(stored, available, edits),
       body: contents?.body ?? skillFileBody(stored.raw),
       extraFrontmatter: contents?.extraFrontmatter ?? {},
       sourcePath: stored.filePath,
@@ -800,15 +937,20 @@ export class QaPersonalSkills {
    */
   private refreshCatalog(
     action: string,
-    context: QaPersonalSkillContext,
+    context: QaSkillScope,
     name: string,
   ): void {
-    // The account id is hashed: an audit line names no personal data.
+    // The account id is hashed: an audit line names no personal data. The
+    // deployment-wide store has no account to name at all.
     this.options.logger.info(action, {
-      user: createHash("sha256")
-        .update(context.userId)
-        .digest("hex")
-        .slice(0, 12),
+      ...(isSharedScope(context)
+        ? { scope: "shared" as const }
+        : {
+            user: createHash("sha256")
+              .update(context.userId)
+              .digest("hex")
+              .slice(0, 12),
+          }),
       skill: name,
     });
     try {
@@ -816,6 +958,114 @@ export class QaPersonalSkills {
     } catch (error) {
       this.options.logger.error("skill.provider.invalidate-failed", {
         skill: name,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Administrator provenance
+  // -------------------------------------------------------------------------
+
+  /**
+   * The administrator marks stored beside one skills root.
+   *
+   * The sidecar is advisory: a mark that cannot be read or written never fails
+   * a save, because losing a badge is a smaller failure than losing an edit.
+   * Each mark names the revision it describes, so a mark whose content has
+   * since changed reports as absent rather than as a claim about the present.
+   */
+  private adminEdits(
+    roots: QaSkillRoots,
+  ): ReadonlyMap<string, QaAdminEditRecord> {
+    const read = readSkillText(
+      path.join(roots.skills, QA_SKILL_ADMIN_EDITS_FILE),
+      ADMIN_EDITS_MAX_BYTES,
+    );
+    if (read === undefined) return new Map();
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(read.text);
+    } catch {
+      return new Map();
+    }
+    if (typeof parsed !== "object" || parsed === null) return new Map();
+    const entries = (parsed as { readonly entries?: unknown }).entries;
+    if (typeof entries !== "object" || entries === null) return new Map();
+    const marks = new Map<string, QaAdminEditRecord>();
+    for (const [name, value] of Object.entries(entries)) {
+      const record = adminEditRecord(value);
+      if (record !== undefined) marks.set(name, record);
+    }
+    return marks;
+  }
+
+  /** The mark to report for one stored skill: absent unless it still matches. */
+  private adminEditOf(
+    stored: QaStoredSkill,
+    edits: ReadonlyMap<string, QaAdminEditRecord>,
+  ): QaSkillAdminEdit | null {
+    const record = edits.get(stored.directoryName);
+    if (record === undefined || stored.revision === "") return null;
+    if (record.revision !== stored.revision) return null;
+    return { actorId: record.actorId, at: record.at };
+  }
+
+  /**
+   * Record one administrator write, or clear the mark when the owner wrote.
+   * `previousName` is the directory the skill had before the write, so a
+   * rename by an administrator moves the mark with the skill instead of
+   * leaving one behind for a name nothing answers to any more.
+   */
+  private rememberWrite(
+    roots: QaSkillRoots,
+    name: string,
+    text: string,
+    previousName: string | undefined,
+    origin: QaSkillWriteOrigin,
+  ): void {
+    const actorId = origin.actorId;
+    const edits = new Map(this.adminEdits(roots));
+    let changed = false;
+    if (previousName !== undefined && previousName !== name) {
+      changed = edits.delete(previousName) || changed;
+    }
+    if (actorId === undefined) {
+      changed = edits.delete(name) || changed;
+    } else {
+      edits.set(name, {
+        actorId,
+        at: new Date().toISOString(),
+        revision: hashText(text),
+      });
+      changed = true;
+    }
+    if (!changed) return;
+    this.writeAdminEdits(roots, edits);
+  }
+
+  /** Drop the mark of a skill that no longer exists. */
+  private forgetWrite(roots: QaSkillRoots, name: string): void {
+    const edits = new Map(this.adminEdits(roots));
+    if (!edits.delete(name)) return;
+    this.writeAdminEdits(roots, edits);
+  }
+
+  private writeAdminEdits(
+    roots: QaSkillRoots,
+    edits: ReadonlyMap<string, QaAdminEditRecord>,
+  ): void {
+    try {
+      mkdirSync(roots.skills, { recursive: true, mode: 0o700 });
+      const entries = [...edits.entries()]
+        .sort((left, right) => (left[1].at < right[1].at ? 1 : -1))
+        .slice(0, ADMIN_EDITS_MAX);
+      this.writeAtomic(
+        path.join(roots.skills, QA_SKILL_ADMIN_EDITS_FILE),
+        `${JSON.stringify({ version: 1, entries: Object.fromEntries(entries) }, null, 2)}\n`,
+      );
+    } catch (error) {
+      this.options.logger.warn("skill.admin-edit-record-failed", {
         message: error instanceof Error ? error.message : String(error),
       });
     }
@@ -828,6 +1078,36 @@ export class QaPersonalSkills {
  * root, which is what keeps the discovery provider from reading arbitrary
  * directories a session happens to be pinned to.
  */
+/** Whether a scope names the deployment-wide store. */
+function isSharedScope(scope: QaSkillScope): scope is QaSharedSkillContext {
+  return (scope as QaSharedSkillContext).shared === true;
+}
+
+/** Whether two derived directories are the same one. */
+function sameDirectory(left: string, right: string): boolean {
+  return process.platform === "win32"
+    ? left.toLowerCase() === right.toLowerCase()
+    : left === right;
+}
+
+/** One mark read back from the sidecar, or undefined when it is malformed. */
+function adminEditRecord(value: unknown): QaAdminEditRecord | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as { readonly [key: string]: unknown };
+  const { actorId, at, revision } = record;
+  if (
+    typeof actorId !== "string" ||
+    actorId === "" ||
+    typeof at !== "string" ||
+    at === "" ||
+    typeof revision !== "string" ||
+    revision === ""
+  ) {
+    return undefined;
+  }
+  return { actorId, at, revision };
+}
+
 function qaUserWorkspaceFromCwd(cwd: string): string | undefined {
   const segments = path.resolve(cwd).split(/[/\\]+/u);
   const userId = segments.at(-1);
