@@ -548,6 +548,20 @@ async function* providerSources(dir) {
   }
 }
 
+// Names are not enough to keep that ownership. The body reader this rule is
+// meant to catch went by `readBounded`, so it was never a re-declaration of
+// `readBoundedText` — it was a second answer to "what may an upstream body
+// cost us". Whoever touches the response stream or its declared size *is* the
+// body reader, whatever it is called.
+const READS_RESPONSE_STREAM =
+  /\.getReader\(\)|headers\.get\(\s*["']content-length["']\s*\)/u;
+assert.match("response.body.getReader();", READS_RESPONSE_STREAM);
+assert.match('response.headers.get("content-length");', READS_RESPONSE_STREAM);
+assert.doesNotMatch(
+  "await readBoundedText(response, this.config.maxResponseBytes);",
+  READS_RESPONSE_STREAM,
+);
+
 for (const provider of await readdir(new URL("src/providers", root))) {
   const dir = new URL(`src/providers/${provider}/`, root);
   if (provider === "shared" || !(await stat(dir)).isDirectory()) continue;
@@ -560,6 +574,11 @@ for (const provider of await readdir(new URL("src/providers", root))) {
         `src/providers/${provider}/${file.path} re-declares ${name}, which the shared layer owns`,
       );
     }
+    assert.doesNotMatch(
+      source,
+      READS_RESPONSE_STREAM,
+      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/shared/http.ts owns that policy`,
+    );
   }
 }
 

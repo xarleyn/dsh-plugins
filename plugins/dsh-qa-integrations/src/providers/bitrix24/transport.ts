@@ -1,6 +1,7 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
+import { readBoundedText } from "../shared/http.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -97,47 +98,6 @@ export function parseBitrixWebhook(
   };
 }
 
-async function readBounded(
-  response: Response,
-  maxBytes: number,
-): Promise<unknown> {
-  const contentLength = Number(response.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    throw new IntegrationError(
-      "ProviderUnavailable",
-      "Provider response is too large",
-    );
-  }
-  if (response.body === null) return null;
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const next = await reader.read();
-    if (next.done) break;
-    size += next.value.byteLength;
-    if (size > maxBytes) {
-      await reader.cancel();
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Provider response is too large",
-      );
-    }
-    chunks.push(next.value);
-  }
-  const body = Buffer.concat(
-    chunks.map((chunk) => Buffer.from(chunk)),
-  ).toString("utf8");
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw new IntegrationError(
-      "ProviderUnavailable",
-      "Provider returned invalid JSON",
-    );
-  }
-}
-
 function count(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
@@ -176,15 +136,41 @@ export class BitrixTransport {
           signal: controller.signal,
         },
       );
-      const envelope = (await readBounded(
-        response,
-        this.config.maxResponseBytes,
-      )) as BitrixEnvelope | null;
-      if (!response.ok || envelope?.error !== undefined) {
+      // The status is decided before the body is touched: a failed answer is
+      // never read at all, exactly as in the shared transport loop.
+      if (!response.ok) {
         const denied = response.status === 401 || response.status === 403;
         throw new IntegrationError(
           denied ? "ProviderPermissionDenied" : "ProviderUnavailable",
           denied ? "Provider denied this operation" : "Provider request failed",
+        );
+      }
+      // One bounded read for every provider: the deployment's byte cap decides
+      // how much is read, and a capped body is this provider's own
+      // `ResultTooLarge`, not a transport failure.
+      const body = await readBoundedText(
+        response,
+        this.config.maxResponseBytes,
+      );
+      if (body.truncated) {
+        throw new IntegrationError(
+          "ResultTooLarge",
+          "Provider response is too large",
+        );
+      }
+      let envelope: BitrixEnvelope | null;
+      try {
+        envelope = JSON.parse(body.text) as BitrixEnvelope | null;
+      } catch {
+        throw new IntegrationError(
+          "ProviderUnavailable",
+          "Provider returned invalid JSON",
+        );
+      }
+      if (envelope?.error !== undefined) {
+        throw new IntegrationError(
+          "ProviderUnavailable",
+          "Provider request failed",
         );
       }
       return {
