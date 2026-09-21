@@ -7,8 +7,9 @@ import type {
   QaAccountStarters,
   QaAccountStartersInput,
 } from "../../types.js";
-import type { QaBoundSkillApi } from "../types.js";
+import type { QaBoundSkillApi, QaIntegrationTokenApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
+import { QaIntegrationTokensPage } from "./IntegrationTokensPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
 import { QaStartersSettingsPage } from "./StartersSettingsPage.js";
@@ -16,7 +17,7 @@ import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
 export type QaSettingsSectionId =
-  "profile" | "starters" | "general" | "skills" | (string & {});
+  "profile" | "starters" | "tokens" | "general" | "skills" | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -38,6 +39,8 @@ export interface QaUserSettingsDialogProps {
     readonly starters: QaAccountStarters;
     readonly onSave: (input: QaAccountStartersInput) => Promise<string | null>;
   };
+  /** Integration tokens; absent when accounts are off altogether. */
+  readonly integrationTokens?: QaIntegrationTokenApi;
   /** Personal skills; absent when the deployment cannot host them. */
   readonly skills?: QaBoundSkillApi;
   /** Additive pages contributed by separately shipped QA plugins. */
@@ -84,6 +87,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.starters !== undefined) {
       models.push({ id: "starters", title: "Быстрые сообщения" });
     }
+    if (props.integrationTokens !== undefined) {
+      models.push({ id: "tokens", title: "Интеграционные токены" });
+    }
     models.push({ id: "general", title: "Общие" });
     if (props.skills !== undefined) {
       models.push({ id: "skills", title: "Навыки" });
@@ -92,7 +98,13 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
       ...extensionSnapshot.sections.map(({ id, title }) => ({ id, title })),
     );
     return models;
-  }, [props.profile, props.starters, props.skills, extensionSnapshot.sections]);
+  }, [
+    props.profile,
+    props.starters,
+    props.integrationTokens,
+    props.skills,
+    extensionSnapshot.sections,
+  ]);
   // A section the deployment withdrew while the dialog was open must not leave
   // an empty panel behind.
   const active = sections.some((entry) => entry.id === section)
@@ -150,6 +162,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               starters={props.starters.starters}
               onSave={props.starters.onSave}
             />
+          ) : null}
+          {active === "tokens" && props.integrationTokens !== undefined ? (
+            <QaIntegrationTokensPage api={props.integrationTokens} />
           ) : null}
           {active === "general" ? (
             <QaGeneralSettingsPage

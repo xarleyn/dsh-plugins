@@ -41,6 +41,7 @@ import type {
   QaAccessApi,
   QaAdminApi,
   QaBoundSkillApi,
+  QaIntegrationTokenApi,
   QaConversation,
   QaCreateSession,
   QaFileUpload,
@@ -754,6 +755,24 @@ export function QaSurface(props: QaSurfaceProps) {
         : undefined,
     [accountsSnapshot],
   );
+  // The integration-token section is memoized on its own: the page loads the
+  // list when it mounts, and a new object on every account snapshot change
+  // would make it reload the list under the reader.
+  const integrationTokens = useMemo(
+    (): QaIntegrationTokenApi | undefined =>
+      accounts === undefined
+        ? undefined
+        : {
+            // The API the credential is for is what makes minting meaningful;
+            // listing and revoking stay available either way, because a
+            // credential that already exists has to remain revocable.
+            canCreate: config.integration.enabled,
+            list: () => accounts.serviceTokens(),
+            create: (input) => accounts.createServiceToken(input),
+            revoke: (tokenId) => accounts.revokeServiceToken(tokenId),
+          },
+    [accounts, config.integration.enabled],
+  );
   // Everything the dialog needs, assembled once per change. Each face is
   // absent where the deployment withheld the feature, and the dialog simply
   // renders the sections it was given.
@@ -781,8 +800,14 @@ export function QaSurface(props: QaSurfaceProps) {
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    return { profile, starters, skills };
-  }, [accounts, accountsSnapshot, config, boundSkillApi]);
+    return { profile, starters, skills, integrationTokens };
+  }, [
+    accounts,
+    accountsSnapshot,
+    config,
+    boundSkillApi,
+    integrationTokens,
+  ]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
   // Projected even while the sidebar is hidden: the account settings report
@@ -1032,6 +1057,9 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.starters === undefined
             ? {}
             : { starters: settingsDialog.starters })}
+          {...(settingsDialog.integrationTokens === undefined
+            ? {}
+            : { integrationTokens: settingsDialog.integrationTokens })}
           {...(settingsDialog.skills === undefined
             ? {}
             : { skills: settingsDialog.skills })}

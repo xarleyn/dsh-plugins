@@ -17,6 +17,8 @@ import type {
   QaClaimResult,
   QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
+  QaIssuedServiceToken,
+  QaServiceTokenSummary,
   QaSkillActivationRecord,
   QaUserAccess,
   QaWhoamiResult,
@@ -52,6 +54,12 @@ import { mintToken, verifyToken } from "./token.js";
 export { QaAccountsError } from "./errors.js";
 export type { QaAccountsErrorReason } from "./errors.js";
 export { defaultAccountsFilePath } from "./file.js";
+// The read shapes are declared with the other wire types, because the client
+// bundle renders them too; they stay re-exported here for the operator CLI.
+export type {
+  QaIssuedServiceToken,
+  QaServiceTokenSummary,
+} from "../types.js";
 
 export interface QaAccountsOptions {
   readonly sessionTtlDays: number;
@@ -145,24 +153,6 @@ export interface QaServiceTokenIssueInput {
    * issued with an explicit owner.
    */
   readonly userId?: string;
-}
-
-/** One integration token as the operator's list shows it. No secret, ever. */
-export interface QaServiceTokenSummary {
-  readonly id: string;
-  readonly label: string;
-  readonly scopes: readonly QaServiceTokenScope[];
-  readonly createdAt: string;
-  readonly expiresAt: string;
-  readonly lastUsedAt: string | null;
-  readonly revokedAt: string | null;
-  readonly useCount: number;
-}
-
-/** One freshly minted token: the plaintext is shown here and nowhere else. */
-export interface QaIssuedServiceToken extends QaServiceTokenSummary {
-  /** The credential to hand to the integration. Never recoverable later. */
-  readonly token: string;
 }
 
 /** What a presented integration token resolved to. */

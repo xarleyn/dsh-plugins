@@ -243,6 +243,8 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-settings__field input,.dsh-qa-settings__field textarea{appearance:none;width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
 .dsh-qa-settings__field textarea{min-height:64px;line-height:19px;resize:vertical}
 .dsh-qa-settings__field input:focus,.dsh-qa-settings__field textarea:focus{outline:none;border-color:var(--dsh-qa-brand)}
+.dsh-qa-settings__field select{appearance:none;width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
+.dsh-qa-settings__field select:focus{outline:none;border-color:var(--dsh-qa-brand)}
 .dsh-qa-settings__field input:read-only{opacity:.6}
 .dsh-qa-settings__code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:20px}
 .dsh-qa-settings__field-hint{margin:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px}

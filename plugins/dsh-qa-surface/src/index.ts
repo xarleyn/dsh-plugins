@@ -79,11 +79,14 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaIssuedServiceToken,
   QaLockdownProof,
   QaOwnershipEntry,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaSkillDocument,
@@ -693,6 +696,45 @@ export class QaSurface extends TypertRemoteService {
     input: QaAccountStartersInput,
   ): QaAccountUserPublic {
     return this.accountRemotes.updateStarters(token, input);
+  }
+
+  /**
+   * The caller's own integration tokens. The list is the account's own: the
+   * token names it, and a secret is never part of a summary, so reading this
+   * cannot repeat a credential that was already handed over.
+   */
+  @Remote("accountsListServiceTokens")
+  accountsListServiceTokens(token: string): {
+    readonly tokens: readonly QaServiceTokenSummary[];
+  } {
+    return this.accountRemotes.listServiceTokens(token);
+  }
+
+  /**
+   * Mint one integration token for the caller. The answer carries the
+   * plaintext exactly once — nothing stores it, so nothing can repeat it — and
+   * the account is always the authenticated one: there is no owner field on
+   * the wire.
+   */
+  @Remote("accountsCreateServiceToken")
+  accountsCreateServiceToken(
+    token: string,
+    input: QaServiceTokenCreateInput,
+  ): QaIssuedServiceToken {
+    return this.accountRemotes.createServiceToken(token, input);
+  }
+
+  /**
+   * Revoke one of the caller's own integration tokens. This is the immediate
+   * kill switch the profile page offers: the next request that presents the
+   * credential is refused, without waiting for its expiry.
+   */
+  @Remote("accountsRevokeServiceToken")
+  accountsRevokeServiceToken(
+    token: string,
+    tokenId: string,
+  ): { readonly revoked: boolean } {
+    return this.accountRemotes.revokeServiceToken(token, tokenId);
   }
 
   /**

@@ -103,7 +103,28 @@ and the timeout above. `confidence` is `medium` for a published answer and
 deployment judges an answer and a field that always said `high` would be worse
 than no field at all.
 
-### 2.7 The answer is cut here, where a cut can be read
+### 2.7 The account issues its own credential, from the profile page
+
+A token is minted, read once and revoked in the `Настройки` dialog, next to the
+profile and the starter buttons — the same self-service shape as everything else
+that belongs to an account. Two details carry the weight:
+
+- **The owner is never on the wire.** The remote takes a label, scopes and a
+  lifetime; the account is the one that authenticated. The administrative path
+  that mints for somebody else (`mintServiceToken` with a `userId`) already
+existed for the CLI and stays there, so a page can never name another account.
+- **Minting requires something to mint for.** With `integration.enabled` false
+the section explains the off state instead of offering a button that only ever
+refuses, while listing and revoking keep working: an endpoint that is switched
+off must not make an existing credential irrevocable. The refusal is enforced
+in the Host (`integration-disabled`), not only by hiding the form.
+
+The secret is shown once, in the answer that minted it, and the list that
+follows carries no token field in any state — a list that could repeat a
+credential would be a list that leaks it. Revocation asks twice, because it is
+not undoable and a live integration may be depending on the token.
+
+### 2.8 The answer is cut here, where a cut can be read
 
 The caller publishes the answer into a ticket comment, and the specification
 names a size for it. The comment is the one place where an over-long answer
@@ -137,11 +158,6 @@ copy, and it is the contract this implementation is tested against.
 - **Async ask.** The specification marks `202` + polling as optional and says
   not to implement it preemptively. The synchronous endpoint with an escalation
   path satisfies the stated budget.
-- **A browser UI for tokens.** Tokens are issued and revoked with
-  `qa-accounts token …`. The operator CLI is where a service credential is
-  handed over today; a profile-page section with the same three operations is a
-  natural follow-up (`mintServiceToken`/`listServiceTokens`/`revokeServiceToken`
-  on the store already exist for the token-shaped caller).
 - **Idempotency keys.** Every question opens exactly one turn. A retried
   request after a `503` asks again rather than reconciling with the earlier
   attempt; the contract has no client-side request id to reconcile on.
@@ -155,6 +171,16 @@ copy, and it is the contract this implementation is tested against.
   unknown, revoked or expired credential is one refusal; a disabled account and
   `revokeTokens` stop it; scopes are granted as requested and no more; one
   account's tokens are unreachable from another's; TTL and label are bounded.
+- `tests/integration-token-remotes.test.ts` — the browser seam: minting is
+  refused with `integration-disabled` while the API is off (while the read path
+  keeps answering), a list never carries the secret, an account can only revoke
+  its own token, and an absent session is refused as one reason.
+- `tests/qa-integration-tokens.test.tsx` — the page: the secret is shown once
+  and dropped when acknowledged, copied on request, a revoke asks twice and
+  leaves a record, an expired token offers no revoke, and the off state explains
+  itself instead of offering a form.
+- `tests/accounts-controller-actions.test.ts` — the controller binds the account
+  token to the three calls and turns each refusal into the copy a person reads.
 - `tests/integration-http.test.ts` — the JSON and multipart encodings (text
   fields, the JSON-string `context`, an inline image), the refusals (`400`,
   `413`, `415`), the body ceiling, `405` with `Allow`, the health payload's

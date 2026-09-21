@@ -402,6 +402,49 @@ export interface QaClaimResult {
 }
 
 /**
+ * What an integration token may do. The credential a non-browser application
+ * presents to the QA HTTP API carries its own scopes, so a bridge that asks
+ * questions cannot read back conversations it was never given.
+ */
+export type QaServiceTokenScope = "ask" | "sessions:read";
+
+/**
+ * What an account asks a new integration token to be. The credential is always
+ * issued to the caller: nothing a browser sends may name another account, so
+ * this shape has no owner field and the administrative path keeps its own.
+ */
+export interface QaServiceTokenCreateInput {
+  /** A note the operator's list shows; empty becomes a generic label. */
+  readonly label?: string;
+  /** Requested scopes; unknown ones are dropped, empty falls back to `ask`. */
+  readonly scopes?: readonly string[];
+  /** How long the token lives, in days; bounded server-side. */
+  readonly ttlDays?: number;
+}
+
+/**
+ * One integration token as a list shows it. The plaintext is deliberately not
+ * part of this shape: a secret is shown once, when it is minted, and a list
+ * that could repeat it would be a list that leaks it.
+ */
+export interface QaServiceTokenSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly scopes: readonly QaServiceTokenScope[];
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly lastUsedAt: string | null;
+  readonly revokedAt: string | null;
+  readonly useCount: number;
+}
+
+/** One freshly minted token: the plaintext is here and nowhere else, ever. */
+export interface QaIssuedServiceToken extends QaServiceTokenSummary {
+  /** The credential to hand to the integration. Never recoverable later. */
+  readonly token: string;
+}
+
+/**
  * One chat-ownership entry as the admin views see it: the session, its owner
  * and the owner's display name resolved at read time (a disabled account
  * still names its chats).
