@@ -29,7 +29,7 @@ describe("QaBrowserSessionManager", () => {
       [...provider.contexts.values()][0]?.options?.validateRequest ??
       (() => Promise.resolve());
     await expect(
-      validateRequest("https://public.example/"),
+      validateRequest("https://public.example/", { kind: "document" }),
     ).resolves.toBeUndefined();
     await manager.dispose();
 
@@ -55,7 +55,9 @@ describe("QaBrowserSessionManager", () => {
     });
     await manager2.ensureSession("flapping");
     const gate = [...provider2.contexts.values()][0]?.options?.validateRequest;
-    await expect(gate!("https://public.example/")).rejects.toMatchObject({
+    await expect(
+      gate!("https://public.example/", { kind: "document" }),
+    ).rejects.toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
     } satisfies Partial<QaBrowserError>);
     await manager2.dispose();
@@ -74,7 +76,7 @@ describe("policy refusals the panel can show", () => {
       provider,
       policy: new BrowserNetworkPolicy(config.security.network, {
         lookup: (async (hostname: string) =>
-          hostname === "intranet.example.corp"
+          hostname.includes("intranet")
             ? [{ address: "10.1.2.3", family: 4 }]
             : [{ address: "203.0.113.10", family: 4 }]) as never,
       }),
@@ -83,11 +85,18 @@ describe("policy refusals the panel can show", () => {
     return { manager, provider };
   }
 
-  it("remembers the refusal and forgets it after an allowed navigation", async () => {
+  /** The provider's pre-dial gate of the context a session just created. */
+  function requestGate(provider: FakeProvider) {
+    const gate = [...provider.contexts.values()][0]?.options?.validateRequest;
+    if (gate === undefined) throw new Error("the context exposed no gate");
+    return gate;
+  }
+
+  it("remembers a refused navigation and forgets it on the next page", async () => {
     const { manager } = refusalHarness();
     await manager.ensureSession("panel");
     const [tab] = await manager.listTabs("panel");
-    expect(manager.policyRefusal("panel")).toBeNull();
+    expect(manager.policyRefusals("panel")).toEqual([]);
 
     await expect(
       manager.navigate("panel", tab!.id, {
@@ -97,10 +106,12 @@ describe("policy refusals the panel can show", () => {
 
     // The panel needs the two facts it can act on: which host, and which
     // setting lifts the block. The refusal text carries the second one.
-    const refusal = manager.policyRefusal("panel");
+    const [refusal] = manager.policyRefusals("panel");
     expect(refusal).toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
+      kind: "document",
       host: "intranet.example.corp",
+      count: 1,
     });
     expect(refusal?.message).toContain("security.network.allowHosts");
     expect(refusal?.host).not.toContain("/");
@@ -108,30 +119,78 @@ describe("policy refusals the panel can show", () => {
     await manager.navigate("panel", tab!.id, {
       url: "https://public.example/docs",
     });
-    expect(manager.policyRefusal("panel")).toBeNull();
+    expect(manager.policyRefusals("panel")).toEqual([]);
     await manager.dispose();
   });
 
-  it("records the redirect the provider itself refuses", async () => {
+  it("separates a refused request from a refused page and counts repeats", async () => {
     const { manager, provider } = refusalHarness();
-    await manager.ensureSession("redirect");
-    const gate = [...provider.contexts.values()][0]?.options?.validateRequest;
+    await manager.ensureSession("partial");
+    const gate = requestGate(provider);
+    const resource = { kind: "resource" } as const;
+
     await expect(
-      gate!("https://intranet.example.corp/report"),
+      gate("https://api.intranet.example.corp/items", resource),
     ).rejects.toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
     } satisfies Partial<QaBrowserError>);
-    expect(manager.policyRefusal("redirect")).toMatchObject({
+    await expect(
+      gate("https://api.intranet.example.corp/items?page=2", resource),
+    ).rejects.toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
-      host: "intranet.example.corp",
-    });
+    } satisfies Partial<QaBrowserError>);
+    // The page itself loaded from an allowed host, so the entry a reader must
+    // not confuse with it is a request; a retried endpoint stays one entry.
+    expect(manager.policyRefusals("partial")).toMatchObject([
+      {
+        kind: "resource",
+        host: "api.intranet.example.corp",
+        count: 2,
+      },
+    ]);
+
+    await expect(
+      gate("https://intranet.example.corp/report", { kind: "document" }),
+    ).rejects.toMatchObject({
+      code: "BROWSER_HOST_BLOCKED",
+    } satisfies Partial<QaBrowserError>);
+    expect(manager.policyRefusals("partial")).toMatchObject([
+      { kind: "resource", host: "api.intranet.example.corp", count: 2 },
+      { kind: "document", host: "intranet.example.corp", count: 1 },
+    ]);
+    await manager.dispose();
+  });
+
+  it("stops growing the notice at a bounded number of hosts", async () => {
+    const { manager, provider } = refusalHarness();
+    await manager.ensureSession("many");
+    const gate = requestGate(provider);
+
+    for (let index = 0; index < 12; index += 1) {
+      await expect(
+        gate(`https://host-${String(index)}.intranet.example.corp/app.js`, {
+          kind: "resource",
+        }),
+      ).rejects.toMatchObject({
+        code: "BROWSER_HOST_BLOCKED",
+      } satisfies Partial<QaBrowserError>);
+    }
+
+    // A page failing on more destinations than a banner can explain keeps the
+    // first eight: the earliest failures are the ones worth an operator's
+    // attention, and a list that keeps reshuffling as the page fails reads as
+    // noise instead of a cause.
+    const refusals = manager.policyRefusals("many");
+    expect(refusals).toHaveLength(8);
+    expect(refusals[0]).toMatchObject({ host: "host-0.intranet.example.corp" });
+    expect(refusals[7]).toMatchObject({ host: "host-7.intranet.example.corp" });
     await manager.dispose();
   });
 
   it("shows nothing for a session the manager does not hold", async () => {
     const { manager } = refusalHarness();
     await manager.ensureSession("quiet");
-    expect(manager.policyRefusal("never-started")).toBeNull();
+    expect(manager.policyRefusals("never-started")).toEqual([]);
     await manager.dispose();
   });
 });

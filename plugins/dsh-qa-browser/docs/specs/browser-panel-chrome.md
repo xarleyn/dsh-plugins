@@ -62,21 +62,29 @@ alone, as a tool result nobody else reads. The session records the last refusal
 
 The gates that record are the ones whose refusal nobody sees: the agent's
 `browser_navigate` and history moves, and the provider's pre-dial validation of
-every redirect and subrequest Chromium dials — which is how a page that loaded
-from an allowed host but pulls one blocked resource gets an explanation. The
-panel's own navigation deliberately does not record: its refusal appears in the
-panel's error line already, and a banner repeating it would be noise.
+every request Chromium dials — which is how a page that loaded from an allowed
+host but pulls a blocked resource gets an explanation. That gate is told what
+it is gating (`isNavigationRequest()`), so a refused document and a refused
+subresource stay apart: one means nothing opened, the other means the page is
+quietly missing an asset or an API answer. The panel's own navigation
+deliberately does not record: its refusal appears in the panel's error line
+already, and a banner repeating it would be noise.
 
-The banner repeats the refusal text verbatim rather than paraphrasing it: that
-text already names the host, the class of address and the setting that lifts the
-block, and a second wording would be a second thing to keep true. What the
-banner adds is the part the refusal cannot know — that the choice between one
-allow-listed host and `allowPrivateNetworks` for the whole deployment belongs to
-the operator, and that the two are not equivalent.
+The notice is a list, one entry per refused destination, counted rather than
+repeated — a page retrying a blocked endpoint is one thing to fix. It is capped
+at eight destinations, keeping the first ones, because a banner that keeps
+reshuffling as a page fails reads as noise instead of a cause. It describes the
+page the session is on: the next navigation starts it empty.
 
-The notice is per session and is cleared by the next navigation the policy
-allows, so it explains a panel that is not loading instead of living on as
-history. A session the manager does not hold has refused nothing.
+The banner leads with which kind of failure the page hit («Политика Browser не
+пускает на …» against «Страница загрузилась не полностью…»), then the
+list, then the refusal text verbatim rather than paraphrased: that text already
+names the host, the class of address and the setting that lifts the block, and
+a second wording would be a second thing to keep true. What the banner adds is
+the part the refusal cannot know — that the choice between one allow-listed host
+and `allowPrivateNetworks` for the whole deployment belongs to the operator, and
+that the two are not equivalent. A session the manager does not hold has
+refused nothing.
 
 ## Taking control starts the browser
 
@@ -119,6 +127,8 @@ status line wrap. Verified at 320 px, 460 px and full width.
 - `tests/panel-authorization.test.ts` — every new mutation authorizes against
   QA Surface before it touches the browser.
 - `tests/session-manager-security.test.ts`, `tests/browser-panel-render.test.tsx`
-  — a refused navigation is recorded with its host and the message naming the
-  fix, cleared by the next navigation the policy allows, and rendered as the
-  panel's alert; a session that refused nothing shows no banner.
+  — a refused destination is recorded with its kind, host and the message
+  naming the fix; repeats count instead of appending; the list stops at eight;
+  the next navigation empties it; the panel words a refused page and a page
+  with refused requests differently, and shows no banner for a session that
+  refused nothing.

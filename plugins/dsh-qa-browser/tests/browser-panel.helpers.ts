@@ -52,7 +52,7 @@ export function panelState(
   return {
     session: session(tabs, selectedTabId),
     tabs,
-    policyRefusal: null,
+    policyRefusals: [],
     humanControlEnabled: true,
     humanControlLeaseSeconds: 30,
     autoRevealOnAgentActivity: true,

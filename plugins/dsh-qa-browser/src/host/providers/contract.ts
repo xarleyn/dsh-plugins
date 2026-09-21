@@ -1,6 +1,7 @@
 import type {
   BrowserFormValue,
   BrowserNavigationRequest,
+  BrowserRequestKind,
   BrowserSnapshotMode,
   BrowserViewport,
   BrowserWaitRequest,
@@ -20,7 +21,16 @@ export interface BrowserContextOptions {
   readonly viewport: BrowserViewport;
   readonly actionTimeoutMs: number;
   readonly navigationTimeoutMs: number;
-  readonly validateRequest: (url: string) => Promise<void>;
+  /**
+   * The pre-dial gate for every request the context makes. The kind is passed
+   * along because the caller records what it refuses, and a refused document
+   * and a refused subresource mean different things to the operator watching
+   * the page.
+   */
+  readonly validateRequest: (
+    url: string,
+    request: { readonly kind: BrowserRequestKind },
+  ) => Promise<void>;
 }
 
 export interface ProviderNavigationResult {

@@ -30,7 +30,11 @@ import {
   type QaSurfacePanelOwnerProps,
 } from "@yadsh/dsh-qa-surface/client/panels";
 
-import type { BrowserPanelFrame, BrowserPanelState } from "../types.js";
+import type {
+  BrowserPanelFrame,
+  BrowserPanelState,
+  BrowserPolicyRefusal,
+} from "../types.js";
 import {
   BrowserDeviceRow,
   BrowserMenu,
@@ -102,6 +106,32 @@ function makeClientId(): string {
   return `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/**
+ * What went wrong, in one line, before any host is named.
+ *
+ * A page that never opened and a page that opened without its assets are
+ * different problems: the first is the model asking for somewhere the policy
+ * will not go, the second is a page that looks broken and is not. The operator
+ * decides which of them a host entry fixes from that sentence.
+ */
+function refusalTitle(refusals: readonly BrowserPolicyRefusal[]): string {
+  const blocked = refusals.find((entry) => entry.kind === "document");
+  if (blocked !== undefined) {
+    return `Политика Browser не пускает на ${blocked.host}`;
+  }
+  return refusals.length === 1
+    ? "Страница загрузилась не полностью: запрос заблокирован политикой Browser"
+    : `Страница загрузилась не полностью: заблокировано запросов — ${refusals.length}`;
+}
+
+/** One refused destination, said the way a reader asks about it. */
+function refusalKindLabel(entry: BrowserPolicyRefusal): string {
+  if (entry.kind === "document") return "переход";
+  return entry.count === 1
+    ? "запрос страницы"
+    : `запросы страницы ×${entry.count}`;
+}
+
 function keyboardShortcut(event: KeyboardEvent<HTMLElement>): string {
   const modifiers = [
     event.ctrlKey ? "Control" : null,
@@ -136,7 +166,12 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const ownsControl =
     session?.control.owner === "human" && session.control.clientId === clientId;
   const coordinateInputEnabled = state?.coordinateInputEnabled === true;
-  const refusal = state?.policyRefusal ?? null;
+  const refusals = state?.policyRefusals ?? [];
+  // The refusal text is shown once, verbatim. It is the same shape for every
+  // entry — class of address plus the setting that lifts the block — so the
+  // page's own refusal explains the list whenever there is one.
+  const leadRefusal =
+    refusals.find((entry) => entry.kind === "document") ?? refusals[0];
   const interactive = ownsControl && session !== null;
   const scale = BROWSER_SCALES.find((option) => option.id === scaleId)?.scale;
 
@@ -690,15 +725,28 @@ export function BrowserPanel(props: BrowserPanelProps) {
         onPaste={paste}
         onWheel={wheel}
       />
-      {refusal === null ? null : (
+      {leadRefusal === undefined ? null : (
         <div className="dsh-qa-browser-panel__refusal" role="alert">
           <p className="dsh-qa-browser-panel__refusal-title">
-            {refusal.host === ""
-              ? "Политика Browser отклонила переход"
-              : `Политика Browser не пускает на ${refusal.host}`}
+            {refusalTitle(refusals)}
           </p>
+          <ul className="dsh-qa-browser-panel__refusal-list">
+            {refusals.map((entry) => (
+              <li
+                className="dsh-qa-browser-panel__refusal-item"
+                key={`${entry.kind}:${entry.code}:${entry.host}`}
+              >
+                <span className="dsh-qa-browser-panel__refusal-host">
+                  {entry.host}
+                </span>
+                <span className="dsh-qa-browser-panel__refusal-kind">
+                  {refusalKindLabel(entry)}
+                </span>
+              </li>
+            ))}
+          </ul>
           <p className="dsh-qa-browser-panel__refusal-text">
-            {refusal.message}
+            {leadRefusal.message}
           </p>
           {/*
             The refusal names the setting; what it cannot say is which of the

@@ -86,13 +86,19 @@ addresses, but cannot bypass the metadata-endpoint deny. `denyHosts` always
 wins.
 
 A refusal is the operator's message, not only the model's. When the policy
-blocks a navigation, the Browser panel shows the refused host, the class of
-address it resolved to and the setting that lifts the block, and the Host logs
-`browser.policy-refused` with the same facts. The panel names both ways out —
-an `allowHosts` entry for one host, or `allowPrivateNetworks` for the whole
-deployment — because they are not equivalent: the first opens one intranet
-service, the second opens every private range to whatever the model asks for.
-The notice clears once a navigation the policy allows completes.
+blocks a destination, the Browser panel lists it — whether the page itself or a
+request the page made, the host, how many requests were refused, and the
+refusal text, which names the class of address and the setting that lifts the
+block — and the Host logs `browser.policy-refused` with the same facts. The two
+kinds read differently on purpose: a refused navigation means nothing opened,
+while a refused request means the page opened without an asset or an API
+answer, which is a page that looks broken rather than one that was blocked. The
+panel names both ways out — an `allowHosts` entry for one host, or
+`allowPrivateNetworks` for the whole deployment — because they are not
+equivalent: the first opens one intranet service, the second opens every
+private range to whatever the model asks for. The list describes the page the
+session is on: the next navigation starts it empty, one entry per destination,
+at most eight of them.
 
 `denyDshOrigin` automatically covers the active Harness listener on localhost,
 the machine hostname and its network interfaces. Add reverse-proxy/public

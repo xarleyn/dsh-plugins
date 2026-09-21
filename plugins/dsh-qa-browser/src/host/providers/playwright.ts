@@ -653,7 +653,12 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     };
     await context.route("**/*", async (route) => {
       try {
-        await options.validateRequest(route.request().url());
+        // A navigation request is the page being replaced; everything else is
+        // something a page asked for. The gate records which, and the panel
+        // says it differently: one did not open, the other opened incomplete.
+        await options.validateRequest(route.request().url(), {
+          kind: route.request().isNavigationRequest() ? "document" : "resource",
+        });
         await route.continue();
       } catch (error) {
         blockedRequests.sequence += 1;

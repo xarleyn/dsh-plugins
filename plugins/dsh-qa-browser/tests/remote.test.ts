@@ -48,7 +48,7 @@ describe("QA Browser Remote contribution", () => {
     const state$ = {
       session: null,
       tabs: [tab],
-      policyRefusal: null,
+      policyRefusals: [],
       humanControlEnabled: true,
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
@@ -67,19 +67,22 @@ describe("QA Browser Remote contribution", () => {
     ).toThrow();
   });
 
-  it("carries a policy refusal by its code, host and message only", () => {
+  it("carries each refusal by code, kind, host, message and count", () => {
     const state = qaBrowserRemote.descriptors.find(
       (item) => item.method === "panelState",
     )?.result;
     if (state?.mode !== "strict") throw new Error("panelState must be strict");
+    const refusal = {
+      code: "BROWSER_HOST_BLOCKED",
+      kind: "resource",
+      host: "intranet.example.corp",
+      message: "Private-network destinations are blocked by Browser policy.",
+      count: 2,
+    };
     const state$ = {
       session: null,
       tabs: [],
-      policyRefusal: {
-        code: "BROWSER_HOST_BLOCKED",
-        host: "intranet.example.corp",
-        message: "Private-network destinations are blocked by Browser policy.",
-      },
+      policyRefusals: [refusal],
       humanControlEnabled: true,
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
@@ -88,20 +91,23 @@ describe("QA Browser Remote contribution", () => {
     };
     expect(() => state.schema.parse(state$)).not.toThrow();
     // The taxonomy is one list: a code the error type does not name cannot
-    // travel to the panel, and neither can a refusal with no host to fix.
+    // travel to the panel, and neither can a refusal without the host to fix,
+    // a kind the panel cannot word, or a count that says nothing happened.
+    for (const broken of [
+      { ...refusal, code: "BROWSER_INVENTED" },
+      { ...refusal, kind: "subrequest" },
+      { ...refusal, count: 0 },
+      { code: refusal.code, kind: refusal.kind, message: refusal.message },
+    ]) {
+      expect(() =>
+        state.schema.parse({ ...state$, policyRefusals: [broken] }),
+      ).toThrow();
+    }
+    // The wire keeps its own bound on the list, whatever a Host sends.
     expect(() =>
       state.schema.parse({
         ...state$,
-        policyRefusal: { ...state$.policyRefusal, code: "BROWSER_INVENTED" },
-      }),
-    ).toThrow();
-    expect(() =>
-      state.schema.parse({
-        ...state$,
-        policyRefusal: {
-          code: state$.policyRefusal.code,
-          message: state$.policyRefusal.message,
-        },
+        policyRefusals: Array.from({ length: 17 }, () => refusal),
       }),
     ).toThrow();
   });

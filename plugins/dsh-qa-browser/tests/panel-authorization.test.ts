@@ -64,7 +64,7 @@ describe("QA Browser panel authorization", () => {
     await expect(service.panelState("qa-token", "session-x")).resolves.toEqual({
       session: null,
       tabs: [],
-      policyRefusal: null,
+      policyRefusals: [],
       humanControlEnabled: true,
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,

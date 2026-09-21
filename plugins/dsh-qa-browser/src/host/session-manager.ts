@@ -13,6 +13,7 @@ import type {
   BrowserNavigationRequest,
   BrowserPanelTab,
   BrowserPolicyRefusal,
+  BrowserRequestKind,
   BrowserSessionInfo,
   BrowserSnapshot,
   BrowserSnapshotOptions,
@@ -83,15 +84,24 @@ interface SessionRecord {
   lastActivityAt: number;
   activeActions: number;
   /**
-   * The last refusal the URL and DNS policy raised for this session, kept so
-   * the panel can show the operator what to change. Set by every refusal,
-   * cleared by the next navigation the policy allows.
+   * What the URL and DNS policy refused for the page this session is on, kept
+   * so the panel can show the operator what to change: one entry per refused
+   * destination, in the order they were refused, with a count. Reset when the
+   * next navigation starts, because the entries describe one page.
    */
-  policyRefusal: BrowserPolicyRefusal | null;
+  policyRefusals: BrowserPolicyRefusal[];
   control:
     | { owner: "agent"; leaseExpiresAt: null }
     | { owner: "human"; clientId: string; leaseExpiresAt: number };
 }
+
+/**
+ * Destinations one page can report before the list stops growing. A page that
+ * fails on more hosts than this is past explaining with a list: the first ones
+ * are the ones the operator would act on anyway, and a stable list beats one
+ * whose entries shuffle as the page keeps failing.
+ */
+const MAX_POLICY_REFUSALS = 8;
 
 /**
  * The host a refused request aimed at, for the operator's message. A URL the
@@ -267,7 +277,10 @@ export class QaBrowserSessionManager {
     return this.enqueueMutation(record, tab, async () => {
       const started = this.now();
       const from = tab.page.url();
-      await this.assertPolicyAllowed(record, request.url);
+      // The page is being replaced either way: whatever the policy refused on
+      // the last one stops being the answer to "why is this page broken".
+      this.clearPolicyRefusals(record);
+      await this.assertPolicyAllowed(record, request.url, "document");
       tab.status = "loading";
       try {
         const result = await tab.page.navigate(request);
@@ -276,8 +289,7 @@ export class QaBrowserSessionManager {
         this.recordNavigation(tab, result.url, "new");
         tab.status = "ready";
         this.advanceRevision(tab);
-        await this.assertPolicyAllowed(record, result.url);
-        this.clearPolicyRefusal(record);
+        await this.assertPolicyAllowed(record, result.url, "document");
         this.logger.debug("browser.action", {
           sessionId,
           tabId: id,
@@ -563,11 +575,11 @@ export class QaBrowserSessionManager {
     return this.enqueueMutation(record, tab, async () => {
       const from = tab.page.url();
       const result = await tab.page.history(action);
-      await this.assertPolicyAllowed(record, result.url);
+      await this.assertPolicyAllowed(record, result.url, "document");
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
-      this.clearPolicyRefusal(record);
+      this.clearPolicyRefusals(record);
       return this.finishMutation(record, tab, `${action} completed.`, {
         from,
         to: result.url,
@@ -679,6 +691,7 @@ export class QaBrowserSessionManager {
       // The panel's own navigation answers with the refusal in its error line,
       // so it is not recorded as a banner too: the banner exists for the
       // refusals the person in front of the panel never sees.
+      this.clearPolicyRefusals(record);
       await this.options.policy.assertAllowed(request.url);
       const result = await tab.page.navigate(request);
       await this.options.policy.assertAllowed(result.url);
@@ -686,7 +699,6 @@ export class QaBrowserSessionManager {
       tab.title = result.title;
       this.recordNavigation(tab, result.url, "new");
       tab.status = "ready";
-      this.clearPolicyRefusal(record);
       return this.finishMutation(record, tab, "Human navigation completed.", {
         from,
         to: result.url,
@@ -825,7 +837,7 @@ export class QaBrowserSessionManager {
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
-      this.clearPolicyRefusal(record);
+      this.clearPolicyRefusals(record);
       return this.finishMutation(record, tab, `Human ${action} completed.`, {
         from,
         to: result.url,
@@ -895,15 +907,21 @@ export class QaBrowserSessionManager {
       viewport: this.options.config.viewport,
       actionTimeoutMs: this.options.config.runtime.actionTimeoutMs,
       navigationTimeoutMs: this.options.config.runtime.navigationTimeoutMs,
-      validateRequest: async (url) => {
-        // The provider asks this before every request it dials, so a redirect
-        // into a refused range is recorded here rather than surfacing only as
-        // an error inside Chromium.
+      validateRequest: async (url, request) => {
+        // The provider asks this before every request it dials — the document,
+        // a redirect, an asset, an API call — so a destination it refuses is
+        // recorded here rather than surfacing only inside Chromium as a
+        // request that never completed.
         try {
           await this.options.policy.assertAllowed(url);
           await this.options.policy.assertUnchangedResolution(url);
         } catch (error) {
-          this.notePolicyRefusal(this.sessions.get(sessionId), url, error);
+          this.notePolicyRefusal(
+            this.sessions.get(sessionId),
+            url,
+            request.kind,
+            error,
+          );
           throw error;
         }
       },
@@ -917,7 +935,7 @@ export class QaBrowserSessionManager {
       createdAt: now,
       lastActivityAt: now,
       activeActions: 0,
-      policyRefusal: null,
+      policyRefusals: [],
       control: { owner: "agent", leaseExpiresAt: null },
     };
     try {
@@ -1178,39 +1196,41 @@ export class QaBrowserSessionManager {
   }
 
   /**
-   * The session's last policy refusal, or `null`.
+   * What the policy refused for the page this session is on, oldest first.
    *
    * The panel asks for it rather than the model: a refusal is answered by an
    * operator changing `security.network`, and the panel is the surface that
    * operator is looking at. A session the manager does not hold (never
    * started, already evicted) has refused nothing.
    */
-  policyRefusal(sessionId: string): BrowserPolicyRefusal | null {
-    return this.sessions.get(sessionId)?.policyRefusal ?? null;
+  policyRefusals(sessionId: string): readonly BrowserPolicyRefusal[] {
+    const refusals = this.sessions.get(sessionId)?.policyRefusals;
+    return refusals === undefined ? [] : [...refusals];
   }
 
   /**
-   * The policy gate the agent's own navigations pass, with the refusal kept
+   * The policy gate the agent's own navigation passes, with the refusal kept
    * when it closes.
-   *
-   * A successful navigation clears the notice on its way out, so what the
-   * panel shows is the session's current standing with the policy rather than
-   * a growing list of everything it once refused.
    */
   private async assertPolicyAllowed(
     record: SessionRecord,
     url: string,
+    kind: BrowserRequestKind,
   ): Promise<void> {
     try {
       await this.options.policy.assertAllowed(url);
     } catch (error) {
-      this.notePolicyRefusal(record, url, error);
+      this.notePolicyRefusal(record, url, kind, error);
       throw error;
     }
   }
 
   /**
    * Keep a refusal for the panel and the host log.
+   *
+   * One entry per destination: a page that keeps retrying a blocked endpoint
+   * is one thing to fix, so a repeat raises the count instead of appending
+   * another row.
    *
    * `record` may be absent: the provider's pre-dial gate runs for requests of
    * a context whose session record is not registered yet (or is already gone),
@@ -1219,26 +1239,52 @@ export class QaBrowserSessionManager {
   private notePolicyRefusal(
     record: SessionRecord | undefined,
     url: string,
+    kind: BrowserRequestKind,
     error: unknown,
   ): void {
     if (!(error instanceof QaBrowserError)) return;
     const host = refusalHost(url);
     if (record !== undefined) {
-      record.policyRefusal = {
-        code: error.code,
-        host,
-        message: error.message,
-      };
+      const index = record.policyRefusals.findIndex(
+        (entry) =>
+          entry.code === error.code &&
+          entry.kind === kind &&
+          entry.host === host,
+      );
+      if (index === -1) {
+        if (record.policyRefusals.length < MAX_POLICY_REFUSALS) {
+          record.policyRefusals.push({
+            code: error.code,
+            kind,
+            host,
+            message: error.message,
+            count: 1,
+          });
+        }
+      } else {
+        const known = record.policyRefusals[index]!;
+        record.policyRefusals[index] = {
+          ...known,
+          message: error.message,
+          count: known.count + 1,
+        };
+      }
     }
     this.logger.warn("browser.policy-refused", {
       sessionId: record?.sessionId ?? null,
       code: error.code,
+      kind,
       host,
     });
   }
 
-  private clearPolicyRefusal(record: SessionRecord): void {
-    record.policyRefusal = null;
+  /**
+   * A new page starts with a clean notice. The entries describe how one page
+   * stands with the policy, so carrying a previous page's blocked endpoint
+   * into the next one would explain a page that is no longer on screen.
+   */
+  private clearPolicyRefusals(record: SessionRecord): void {
+    record.policyRefusals = [];
   }
 
   private requireSession(sessionId: string): SessionRecord {

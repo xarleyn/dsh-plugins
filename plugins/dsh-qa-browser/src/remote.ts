@@ -80,14 +80,18 @@ const tabSchema = z.strictObject({
 
 const refusalSchema = z.strictObject({
   code: z.enum(QA_BROWSER_ERROR_CODES),
+  kind: z.enum(["document", "resource"]),
   host: z.string().max(255),
   message: z.string().min(1),
+  count: z.number().int().positive(),
 });
 
 const stateSchema = z.strictObject({
   session: sessionSchema.nullable(),
   tabs: z.array(tabSchema),
-  policyRefusal: refusalSchema.nullable(),
+  // The Host caps the list; the wire keeps its own bound so a compromised or
+  // outdated Host cannot make the panel render an unbounded list.
+  policyRefusals: z.array(refusalSchema).max(16),
   humanControlEnabled: z.boolean(),
   humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),
