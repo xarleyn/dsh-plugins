@@ -41,7 +41,11 @@ interface CapturedSettings {
 
 function wire(
   config?: Record<string, unknown>,
-  options?: { agents?: AgentRegistryFace; approval?: unknown; deferInject?: boolean },
+  options?: {
+    agents?: AgentRegistryFace;
+    approval?: unknown;
+    deferInject?: boolean;
+  },
 ): { captured: CapturedHost; gate: ModelSafetyGate } {
   const ctx = new Context();
   const shadow = ctx as unknown as Record<string, unknown>;

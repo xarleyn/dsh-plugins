@@ -50,14 +50,18 @@ function userTextOf(event: StoredSessionEvent): string | undefined {
 
 /** The ISO timestamp of an event the log gave a time, when it gave a usable one. */
 function atOf(event: StoredSessionEvent): string | undefined {
-  if (event.time === undefined || !Number.isFinite(event.time)) return undefined;
+  if (event.time === undefined || !Number.isFinite(event.time))
+    return undefined;
   return new Date(event.time).toISOString();
 }
 
 /** Whether the events already arrive in ascending seq order. */
 function isOrderedBySeq(events: readonly StoredSessionEvent[]): boolean {
   for (let index = 1; index < events.length; index += 1) {
-    if ((events[index] as StoredSessionEvent).seq < (events[index - 1] as StoredSessionEvent).seq) {
+    if (
+      (events[index] as StoredSessionEvent).seq <
+      (events[index - 1] as StoredSessionEvent).seq
+    ) {
       return false;
     }
   }
@@ -65,7 +69,9 @@ function isOrderedBySeq(events: readonly StoredSessionEvent[]): boolean {
 }
 
 /** One message's published form, or nothing when the event has none. */
-function messageOf(event: StoredSessionEvent): QaIntegrationMessage | undefined {
+function messageOf(
+  event: StoredSessionEvent,
+): QaIntegrationMessage | undefined {
   const role =
     event.type === "user/message"
       ? ("user" as const)

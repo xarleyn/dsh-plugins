@@ -170,10 +170,9 @@ describe("integration multipart parsing", () => {
     });
     const image = parsed.attachments[0];
     expect(
-      Buffer.from(
-        image?.kind === "image" ? image.data : "",
-        "base64",
-      ).toString("binary"),
+      Buffer.from(image?.kind === "image" ? image.data : "", "base64").toString(
+        "binary",
+      ),
     ).toBe("\u0089PNG");
   });
 

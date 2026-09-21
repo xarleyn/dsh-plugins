@@ -33,7 +33,9 @@ function answerMessage(seq: number): StoredSessionEvent {
     seq,
     time: 1_700_000_000_000 + seq * 1_000,
     type: "assistant/message",
-    data: { message: { content: [{ type: "text", text: `ответ ${String(seq)}` }] } },
+    data: {
+      message: { content: [{ type: "text", text: `ответ ${String(seq)}` }] },
+    },
   };
 }
 
@@ -47,15 +49,21 @@ function conversation(turns: number, offset = 0): StoredSessionEvent[] {
   const events: StoredSessionEvent[] = [];
   for (let turn = 0; turn < turns; turn += 1) {
     const base = offset + turn * 3;
-    events.push(userMessage(base + 1), toolEvent(base + 2), answerMessage(base + 3));
+    events.push(
+      userMessage(base + 1),
+      toolEvent(base + 2),
+      answerMessage(base + 3),
+    );
   }
   return events;
 }
 
-function fakeLog(input: {
-  readonly events?: Readonly<Record<string, readonly StoredSessionEvent[]>>;
-  readonly held?: Readonly<Record<string, readonly StoredSessionEvent[]>>;
-} = {}) {
+function fakeLog(
+  input: {
+    readonly events?: Readonly<Record<string, readonly StoredSessionEvent[]>>;
+    readonly held?: Readonly<Record<string, readonly StoredSessionEvent[]>>;
+  } = {},
+) {
   const events = new Map<string, readonly StoredSessionEvent[]>(
     Object.entries(input.events ?? {}),
   );
@@ -107,12 +115,12 @@ describe("integration transcript reader probe", () => {
       events: { [CHAT]: [userMessage(1), toolEvent(2), answerMessage(3)] },
     });
     expect(log.snapshot(CHAT)?.map((event) => event.seq)).toEqual([1, 2, 3]);
-    expect(
-      log.snapshot(CHAT, { after: 1 })?.map((event) => event.seq),
-    ).toEqual([2, 3]);
-    expect(
-      log.snapshot(CHAT, { after: 3 })?.map((event) => event.seq),
-    ).toEqual([]);
+    expect(log.snapshot(CHAT, { after: 1 })?.map((event) => event.seq)).toEqual(
+      [2, 3],
+    );
+    expect(log.snapshot(CHAT, { after: 3 })?.map((event) => event.seq)).toEqual(
+      [],
+    );
     // Not held is not the same answer as nothing written: a caller that cannot
     // tell them apart would cache half a conversation.
     expect(log.snapshot("session-elsewhere")).toBeUndefined();
@@ -124,9 +132,9 @@ describe("integration transcript reader", () => {
     const { log, read } = fakeLog({ events: { [CHAT]: conversation(2) } });
     const reader = new QaIntegrationTranscriptReader({ log });
 
-    await expect(reader.page(CHAT, { after: 0, limit: 2 })).resolves.toMatchObject(
-      { lastSeq: 6, truncated: true },
-    );
+    await expect(
+      reader.page(CHAT, { after: 0, limit: 2 }),
+    ).resolves.toMatchObject({ lastSeq: 6, truncated: true });
     const second = await reader.page(CHAT, { after: 3, limit: 2 });
     expect(second.messages.map((message) => message.seq)).toEqual([4, 6]);
     expect(second.lastSeq).toBe(6);

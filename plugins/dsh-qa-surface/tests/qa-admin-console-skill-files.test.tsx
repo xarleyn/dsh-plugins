@@ -29,10 +29,12 @@ function rig(users: readonly QaAdminUserRow[]) {
     ok: true as const,
     value: { items: users, nextCursor: null, total: users.length },
   }));
-  const listSkills = vi.fn(async (_token: string, scope: QaAdminSkillScope) => ({
-    ok: true as const,
-    value: { scope, owner: null, skills: [], rootPath: "" },
-  }));
+  const listSkills = vi.fn(
+    async (_token: string, scope: QaAdminSkillScope) => ({
+      ok: true as const,
+      value: { scope, owner: null, skills: [], rootPath: "" },
+    }),
+  );
   return {
     api: adminApi({ users: listUsers, skills: listSkills }),
     listUsers,
@@ -68,7 +70,9 @@ describe("admin console skill files", () => {
       }),
     );
     expect(
-      screen.getByText("Выберите пользователя, чтобы открыть его личные навыки."),
+      screen.getByText(
+        "Выберите пользователя, чтобы открыть его личные навыки.",
+      ),
     ).toBeTruthy();
     // No store was opened, so no personal catalog was asked for.
     expect(listSkills).not.toHaveBeenCalledWith(TOKEN, {

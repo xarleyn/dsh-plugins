@@ -104,7 +104,10 @@ export interface QaAccountRemotes {
     input: QaServiceTokenCreateInput,
   ): QaIssuedServiceToken;
   /** Revoke one of the caller's own integration tokens, by id. */
-  revokeServiceToken(token: string, tokenId: string): { readonly revoked: boolean };
+  revokeServiceToken(
+    token: string,
+    tokenId: string,
+  ): { readonly revoked: boolean };
 }
 
 /** Build the account-remotes context for one `QaSurface` service instance. */

@@ -1509,7 +1509,9 @@ export class QaAdminService {
       action: name === null ? "skill.created" : "skill.updated",
       targetType: "skill",
       targetId: document.name,
-      ...(before === undefined ? {} : { before: this.skillImage(target, before) }),
+      ...(before === undefined
+        ? {}
+        : { before: this.skillImage(target, before) }),
       after: this.skillImage(target, document),
     });
     this.options.logger.info("admin.skill-saved", {
@@ -1531,11 +1533,9 @@ export class QaAdminService {
     const { accounts, actor } = this.require(token, "skills.manage");
     const target = this.skillTarget(accounts, scope);
     const before = this.existingSkill(target, name);
-    const removal = this.options.skills().remove(
-      target.scope,
-      name,
-      expectedRevision,
-    );
+    const removal = this.options
+      .skills()
+      .remove(target.scope, name, expectedRevision);
     this.options.quality().appendAudit({
       actorId: actor.id,
       action: "skill.deleted",

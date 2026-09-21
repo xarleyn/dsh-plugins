@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { StoredSessionEvent } from "../src/admin/conversation-log.js";
-import { answerAfter, boundAnswer, lastPromptSeq } from "../src/integration/answer.js";
+import {
+  answerAfter,
+  boundAnswer,
+  lastPromptSeq,
+} from "../src/integration/answer.js";
 
 /**
  * Reading one turn's answer out of the durable log. What the bridge publishes

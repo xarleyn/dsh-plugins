@@ -122,13 +122,15 @@ describe("attachment media types", () => {
     expect(safeAttachmentName("C:\\temp\\отчёт.csv", "text/csv")).toBe(
       "отчёт.csv",
     );
-    expect(safeAttachmentName("..\\..\\x.docx", "application/pdf")).toBe("x.docx");
+    expect(safeAttachmentName("..\\..\\x.docx", "application/pdf")).toBe(
+      "x.docx",
+    );
     expect(safeAttachmentName("", "text/csv")).toBe("attachment.csv");
     expect(safeAttachmentName(".", "text/plain")).toBe("attachment.plain");
     expect(safeAttachmentName("a".repeat(400), "text/plain")).toHaveLength(120);
-    expect(
-      safeAttachmentName("bad\u0000name.txt", "text/plain"),
-    ).toBe("badname.txt");
+    expect(safeAttachmentName("bad\u0000name.txt", "text/plain")).toBe(
+      "badname.txt",
+    );
   });
 });
 
@@ -189,10 +191,7 @@ describe("attachment prompt parts", () => {
         deps(failing.face),
       ),
     ).rejects.toBeInstanceOf(QaIntegrationAttachmentError);
-    for (const directory of [
-      ...working.directories,
-      ...failing.directories,
-    ]) {
+    for (const directory of [...working.directories, ...failing.directories]) {
       expect(existsSync(directory)).toBe(false);
       expect(existsSync(`${directory}/doc.docx`)).toBe(false);
     }
@@ -204,7 +203,13 @@ describe("attachment prompt parts", () => {
     let thrown: unknown;
     try {
       await attachmentPromptParts(
-        [file("book.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "x")],
+        [
+          file(
+            "book.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "x",
+          ),
+        ],
         deps(mock.face, { logger: { warn } as never }),
       );
     } catch (error) {
@@ -251,6 +256,8 @@ describe("attachment prompt parts", () => {
   });
 
   it("answers with no parts when the request carries no files", async () => {
-    await expect(attachmentPromptParts([], deps(undefined))).resolves.toEqual([]);
+    await expect(attachmentPromptParts([], deps(undefined))).resolves.toEqual(
+      [],
+    );
   });
 });

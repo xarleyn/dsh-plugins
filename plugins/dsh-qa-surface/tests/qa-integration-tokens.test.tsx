@@ -71,7 +71,9 @@ function tokenApi(options: {
       if (options.createError !== undefined) {
         return { ok: false, error: options.createError };
       }
-      const minted = issued({ label: input.label === "" ? "integration" : String(input.label) });
+      const minted = issued({
+        label: input.label === "" ? "integration" : String(input.label),
+      });
       tokens = [minted, ...tokens];
       return { ok: true, value: minted };
     },
@@ -132,9 +134,7 @@ describe("integration tokens page", () => {
     expect(created).toEqual([
       { label: "мост заявок", scopes: ["ask"], ttlDays: 90 },
     ]);
-    expect(
-      screen.getByText(/Показать его повторно нельзя/u),
-    ).toBeTruthy();
+    expect(screen.getByText(/Показать его повторно нельзя/u)).toBeTruthy();
     // The row that appears below carries no secret in any state.
     expect(screen.getByText(/использований: 0/u)).toBeTruthy();
     expect(document.body.textContent).not.toContain("qsat.");
@@ -158,7 +158,9 @@ describe("integration tokens page", () => {
         "qsat.00000000-0000-4000-8000-000000000000.secret-value",
       );
     });
-    expect(await screen.findByRole("button", { name: "Скопировано" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Скопировано" }),
+    ).toBeTruthy();
   });
 
   it("asks twice before revoking, and reports the state it leaves behind", async () => {
@@ -167,7 +169,9 @@ describe("integration tokens page", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
     expect(revoked).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
-    expect(screen.queryByRole("button", { name: "Отзыв окончательный" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Отзыв окончательный" }),
+    ).toBeNull();
     expect(revoked).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
     fireEvent.click(
@@ -199,17 +203,22 @@ describe("integration tokens page", () => {
     expect(screen.getByText(/Интеграционный API выключен/u)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Создать токен" })).toBeNull();
     // A credential that already exists has to stay revocable.
-    expect(await screen.findByRole("button", { name: "Отозвать" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Отозвать" }),
+    ).toBeTruthy();
   });
 
   it("keeps the page and shows the refusal copy", async () => {
     const { api, revoked } = tokenApi({
       tokens: [summary()],
-      revokeError: "Этот токен принадлежит другой учётной записи или уже удалён.",
+      revokeError:
+        "Этот токен принадлежит другой учётной записи или уже удалён.",
     });
     render(<QaIntegrationTokensPage api={api} />);
     fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
-    fireEvent.click(screen.getByRole("button", { name: "Отозвать окончательно" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Отозвать окончательно" }),
+    );
     expect((await screen.findByRole("alert")).textContent).toContain(
       "принадлежит другой учётной записи",
     );
@@ -217,7 +226,9 @@ describe("integration tokens page", () => {
   });
 
   it("shows a failed read as copy rather than an empty list", async () => {
-    const { api } = tokenApi({ listError: "Не удалось войти. Попробуйте ещё раз." });
+    const { api } = tokenApi({
+      listError: "Не удалось войти. Попробуйте ещё раз.",
+    });
     render(<QaIntegrationTokensPage api={api} />);
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Не удалось войти",

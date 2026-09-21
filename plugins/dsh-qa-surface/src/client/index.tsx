@@ -219,7 +219,9 @@ interface QaAdminRemote {
   adminSkillTools(
     token: string,
     scope: QaAdminSkillScope,
-  ): Promise<RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>>;
+  ): Promise<
+    RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
+  >;
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
