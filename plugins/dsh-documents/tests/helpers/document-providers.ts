@@ -50,11 +50,21 @@ export interface StubProviderOptions {
   readonly extractWarnings?: ExtractedDocument["warnings"];
   readonly extractPages?: number;
   readonly typstPdf?: boolean;
+  /**
+   * Version the extractor reports about itself. Providers are free to omit it,
+   * so the default is a backend without one; cache tests supply it to prove a
+   * backend upgrade invalidates stored results.
+   */
+  readonly extractorVersion?: string | (() => string | undefined);
+  readonly converterVersion?: string | (() => string | undefined);
 }
 
 export interface StubProviders {
   readonly providers: ProviderSet;
   readonly calls: StubCalls;
+  /** Change what `version()` reports, as an upgraded backend would. */
+  setExtractorVersion(version: string | undefined): void;
+  setConverterVersion(version: string | undefined): void;
 }
 
 export function stubProviderSet(
@@ -87,8 +97,20 @@ export function stubProviderSet(
     },
   };
 
+  let extractorVersion =
+    typeof options.extractorVersion === "function"
+      ? options.extractorVersion()
+      : options.extractorVersion;
+  let converterVersion =
+    typeof options.converterVersion === "function"
+      ? options.converterVersion()
+      : options.converterVersion;
+
   const converter = {
     name: "libreoffice",
+    async version(): Promise<string | undefined> {
+      return converterVersion;
+    },
     supports: (source: string, target: string) =>
       source === "docx" && target === "pdf",
     async convert(input: ConvertPdfInput): Promise<ConvertedDocument> {
@@ -106,8 +128,13 @@ export function stubProviderSet(
     },
   };
 
-  const extractor: DocumentExtractor = {
+  const extractor: DocumentExtractor & {
+    version(): Promise<string | undefined>;
+  } = {
     name: "docling",
+    async version(): Promise<string | undefined> {
+      return extractorVersion;
+    },
     supports: () => true,
     async extract(input: ExtractInput): Promise<ExtractedDocument> {
       calls.extract.push(input);
@@ -158,7 +185,16 @@ export function stubProviderSet(
     markitdown: undefined,
     markitdownHealth: undefined,
   };
-  return { providers, calls };
+  return {
+    providers,
+    calls,
+    setExtractorVersion: (version) => {
+      extractorVersion = version;
+    },
+    setConverterVersion: (version) => {
+      converterVersion = version;
+    },
+  };
 }
 
 /** Read a produced artifact file back for content assertions. */
