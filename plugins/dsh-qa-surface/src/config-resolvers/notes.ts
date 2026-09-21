@@ -28,5 +28,6 @@ export function resolveNotes(input: QaNotesConfig | undefined): ResolvedNotes {
       fallbackTemplate: text(raw.sources?.fallbackTemplate),
     },
     delegation: one(raw.delegation ?? {}),
+    documents: one(raw.documents ?? {}),
   };
 }

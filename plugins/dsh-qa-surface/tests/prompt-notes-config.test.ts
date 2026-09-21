@@ -21,6 +21,7 @@ describe("notes configuration", () => {
       identity: { enabled: true, template: "" },
       sources: { enabled: true, template: "", fallbackTemplate: "" },
       delegation: { enabled: true, template: "" },
+      documents: { enabled: true, template: "" },
     });
   });
 
@@ -33,6 +34,7 @@ describe("notes configuration", () => {
           identity: { enabled: false },
           sources: { enabled: false },
           delegation: { enabled: false },
+          documents: { enabled: false },
         },
       }),
       qaSessions: ["session-root"],

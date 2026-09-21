@@ -522,11 +522,18 @@ const configSchema = z.object({
           template: z.string().default(D.notes.delegation.template),
         })
         .default({ ...D.notes.delegation }),
+      documents: z
+        .object({
+          enabled: z.boolean().default(D.notes.documents.enabled),
+          template: z.string().default(D.notes.documents.template),
+        })
+        .default({ ...D.notes.documents }),
     })
     .default({
       identity: { ...D.notes.identity },
       sources: { ...D.notes.sources },
       delegation: { ...D.notes.delegation },
+      documents: { ...D.notes.documents },
     }),
 });
 
