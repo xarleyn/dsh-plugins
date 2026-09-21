@@ -840,14 +840,15 @@ export interface QaSurfaceConfig {
 }
 
 /**
- * The HTTP API an external application (the ticket bridge) uses to ask questions:
- * `POST {basePath}/ask` and `GET {basePath}/health`, authenticated with an
+ * The HTTP API an external application (the ticket bridge) uses to ask
+ * questions and read its own conversations back: `POST {basePath}/ask`,
+ * `GET {basePath}/session` and `GET {basePath}/health`, authenticated with an
  * account's integration token. Off unless a deployment asks for it.
  */
 export interface QaIntegrationConfig {
   /** Serve the API at all. Requires accounts; off by default. */
   readonly enabled?: boolean;
-  /** Route namespace; the two endpoints hang off it. */
+  /** Route namespace; the endpoints all hang off it. */
   readonly basePath?: string;
   /** Default lifetime of a minted integration token, in days. */
   readonly tokenTtlDays?: number;

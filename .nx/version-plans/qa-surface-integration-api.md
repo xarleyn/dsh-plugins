@@ -10,8 +10,9 @@ client bundle, and there was no long-lived credential and no HTTP endpoint for
 another application at all. A ticket system integration therefore had nowhere to
 send its questions.
 
-The deployment can now serve `POST {integration.basePath}/ask` and
-`GET {integration.basePath}/health` (off by default, `/qa/api` when switched on).
+The deployment can now serve `POST {integration.basePath}/ask`,
+`GET {integration.basePath}/session` and `GET {integration.basePath}/health`
+(off by default, `/qa/api` when switched on).
 `/ask` takes the same request the bridge already sends — `application/json`, or
 `multipart/form-data` with the ticket's attachments: an image rides the prompt
 inline, a text file is decoded, and a PDF or Office document is extracted to
@@ -42,7 +43,19 @@ and it is revoked on its own (`qa-accounts token create|list|revoke`) without
 touching anybody's browser session. An account that is disabled, and the
 operator's `revoke <email>` leak response, do stop it.
 
-The endpoint runs questions through the same admission path as the browser —
+The conversation can be read back too: `GET {basePath}/session?chat_id=…`
+returns the prompts and answers of a chat the token's account owns, in the same
+words the answer carries them, page by page from a cursor the caller keeps
+(`after`, `limit` up to 200, `truncated` when older messages stayed below the
+window). This is what the `sessions:read` scope is for — a bridge whose question
+was escalated can show the specialist what was already said instead of spending
+a turn to ask it again, and a read-only integration can be granted that scope
+without the right to spend inference. Injected context, reasoning and tool
+traffic are never published: they are model input the caller did not write.
+Ownership is the rule `ask` already applies, so an unknown chat id and another
+account's chat answer one `404`.
+
+The endpoints run questions through the same admission path as the browser —
 deployment preflight, the per-user workspace, the capability snapshot, the QA
 tool policy and the attestation record — so an external caller cannot reach a
 chat composition a person could not open, and it can only ever continue chats

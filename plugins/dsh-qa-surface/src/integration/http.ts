@@ -6,6 +6,7 @@ import {
   isIntegrationDocumentMediaType,
   isIntegrationTextMediaType,
 } from "./attachments.js";
+import { QA_INTEGRATION_MAX_TRANSCRIPT_MESSAGES } from "./transcript.js";
 import {
   QaIntegrationError,
   type QaAskAnswer,
@@ -18,12 +19,13 @@ import type { QaIntegrationService } from "./service.js";
 /**
  * The integration API's HTTP transport.
  *
- * Two exact routes under one configurable base path — the required
- * `POST {base}/ask` and the optional `GET {base}/health` of the ticket bridge
- * contract — speaking `application/json` and `multipart/form-data`, which is
- * what the bridge sends. Everything below the transport (credentials, budgets,
- * turns) lives in {@link QaIntegrationService}; this file owns bytes, encodings
- * and status codes and nothing else.
+ * Three exact routes under one configurable base path — the required
+ * `POST {base}/ask`, `GET {base}/session` and the optional `GET {base}/health`
+ * of the ticket bridge contract — speaking `application/json` and
+ * `multipart/form-data`, which is what the bridge sends. Everything below the
+ * transport (credentials, scopes, budgets, turns) lives in
+ * {@link QaIntegrationService}; this file owns bytes, encodings and status
+ * codes and nothing else.
  *
  * Method checking happens inside each handler rather than by registering one
  * route per verb: a `GET /qa/api/ask` must answer 405 with an `Allow` header,
@@ -76,6 +78,20 @@ export function registerQaIntegrationRoutes(
     }),
     webServer.register({
       kind: "exact",
+      path: `${base}/session`,
+      handler: (request, response) =>
+        handleSession(request, response, options).catch(() =>
+          sendRefusal(
+            response,
+            new QaIntegrationError(
+              "unavailable",
+              "the conversation could not be read",
+            ),
+          ),
+        ),
+    }),
+    webServer.register({
+      kind: "exact",
       path: `${base}/health`,
       handler: (request, response) =>
         handleHealth(request, response, options).catch(() =>
@@ -118,6 +134,119 @@ async function handleAsk(
   } catch (error) {
     sendRefusal(response, error);
   }
+}
+
+/** The page size a caller gets when it does not ask for one. */
+export const QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT = 50;
+
+/**
+ * Read one conversation back, for the application that owns it.
+ *
+ * `GET {base}/session?chat_id=…&after=…&limit=…`: the chat id is the required
+ * part, `after` is the caller's own cursor (the `last_seq` of its previous
+ * read) and `limit` bounds the page. Path parameters were avoided on purpose —
+ * one exact route per endpoint is what this table is good at, and a chat id in
+ * a query string never has to be unescaped out of a path.
+ */
+async function handleSession(
+  request: IncomingMessage,
+  response: ServerResponse,
+  options: QaIntegrationRouteOptions,
+): Promise<void> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    sendMethodNotAllowed(response, "GET, HEAD");
+    return;
+  }
+  try {
+    const query = queryOf(request);
+    const chatId = (query.get("chat_id") ?? "").trim();
+    if (chatId === "") {
+      throw new QaIntegrationError(
+        "invalid-request",
+        "chat_id is required",
+      );
+    }
+    const after = integerParameter(query, "after", 0);
+    if (after < 0) {
+      throw new QaIntegrationError(
+        "invalid-request",
+        "after must not be negative",
+      );
+    }
+    // A page size is a preference, not a contract: a caller that asks for more
+    // than the ceiling gets the ceiling rather than a refusal, because the
+    // window it needs is still in the answer, just shorter.
+    const requested = integerParameter(
+      query,
+      "limit",
+      QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
+    );
+    if (requested <= 0) {
+      throw new QaIntegrationError(
+        "invalid-request",
+        "limit must be positive",
+      );
+    }
+    const transcript = await options.service.session(
+      headerOf(request, "authorization"),
+      {
+        chatId,
+        after,
+        limit: Math.min(requested, QA_INTEGRATION_MAX_TRANSCRIPT_MESSAGES),
+      },
+    );
+    sendJson(response, 200, {
+      chat_id: transcript.chatId,
+      messages: transcript.messages.map((message) => ({
+        seq: message.seq,
+        role: message.role,
+        text: message.text,
+        at: message.at ?? null,
+      })),
+      last_seq: transcript.lastSeq,
+      truncated: transcript.truncated,
+    });
+  } catch (error) {
+    sendRefusal(response, error);
+  }
+}
+
+/** The query string of a request, decoded once into a lookup. */
+function queryOf(request: IncomingMessage): Map<string, string> {
+  const raw = request.url?.split("?")[1] ?? "";
+  const query = new Map<string, string>();
+  for (const pair of raw.split("&")) {
+    if (pair === "") continue;
+    const separator = pair.indexOf("=");
+    const key = decodeURIComponent(
+      separator === -1 ? pair : pair.slice(0, separator),
+    );
+    const value = decodeURIComponent(
+      separator === -1 ? "" : pair.slice(separator + 1),
+    );
+    if (!query.has(key)) query.set(key, value);
+  }
+  return query;
+}
+
+/**
+ * One numeric query parameter, refused rather than coerced when it is not a
+ * number: a cursor the caller did not mean is worse than a clear refusal.
+ */
+function integerParameter(
+  query: ReadonlyMap<string, string>,
+  name: string,
+  fallback: number,
+): number {
+  const raw = query.get(name)?.trim() ?? "";
+  if (raw === "") return fallback;
+  if (!/^\d+$/u.test(raw)) {
+    throw new QaIntegrationError(
+      "invalid-request",
+      `${name} must be a whole number`,
+    );
+  }
+  return Number(raw);
 }
 
 async function handleHealth(

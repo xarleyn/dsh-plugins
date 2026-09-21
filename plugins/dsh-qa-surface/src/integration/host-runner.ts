@@ -24,8 +24,10 @@ import type {
   QaInlineImageAttachment,
   QaIntegrationAttachment,
   QaIntegrationRunner,
+  QaIntegrationTranscript,
   QaIntegrationTurn,
 } from "./contract.js";
+import { projectIntegrationTranscript } from "./transcript.js";
 
 /**
  * The session half of the integration API: open a chat, send one question,
@@ -277,6 +279,32 @@ export function createQaIntegrationRunner(
         answer: projected.answer,
         sources: sourcesOf(chatId),
         interrupted: projected.interrupted,
+      });
+    },
+
+    async transcript(input: {
+      readonly chatId: string;
+      readonly after: number;
+      readonly limit: number;
+    }): Promise<QaIntegrationTranscript> {
+      const read = await options.sessionLog.read(input.chatId);
+      if (!read.ok) {
+        if (read.reason === "not-found") {
+          // The ownership record is written before the first message, so a
+          // chat that exists but has written nothing yet is an empty
+          // conversation rather than a failure.
+          return Object.freeze({
+            chatId: input.chatId,
+            messages: Object.freeze([]),
+            lastSeq: input.after,
+            truncated: false,
+          });
+        }
+        throw new Error(`the session log is unavailable (${read.reason})`);
+      }
+      return projectIntegrationTranscript(input.chatId, read.events, {
+        after: input.after,
+        limit: input.limit,
       });
     },
 

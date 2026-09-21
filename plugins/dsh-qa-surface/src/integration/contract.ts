@@ -17,6 +17,7 @@ import type { QaSourceReference } from "../provenance/types.js";
 export type QaIntegrationReason =
   | "unauthorized"
   | "forbidden"
+  | "not-found"
   | "invalid-request"
   | "unsupported-media"
   | "payload-too-large"
@@ -35,6 +36,7 @@ export const QA_INTEGRATION_STATUS: Readonly<
 > = Object.freeze({
   unauthorized: 401,
   forbidden: 403,
+  "not-found": 404,
   "invalid-request": 400,
   "unsupported-media": 415,
   "payload-too-large": 413,
@@ -154,6 +156,41 @@ export interface QaAskAnswer {
   readonly reason: string;
 }
 
+/**
+ * One message of a conversation as an external caller reads it.
+ *
+ * The text is the same flattening the answer itself uses (prose only, with
+ * attachments named), so a caller that keeps asking questions and a caller
+ * that reads back the transcript never see two versions of one message.
+ */
+export interface QaIntegrationMessage {
+  /** Durable position of the message; the cursor for the next read. */
+  readonly seq: number;
+  readonly role: "user" | "assistant";
+  readonly text: string;
+  /** ISO timestamp, when the log recorded one for the event. */
+  readonly at?: string;
+}
+
+/**
+ * A conversation as the caller that owns it reads it back.
+ *
+ * `sessions:read` exists for exactly this: a bridge that escalated a question,
+ * or that wants to show the specialist what was already said, reads the chat
+ * it started without asking it again. The read is bounded from both ends —
+ * `after` is the caller's own cursor, the newest `limit` messages are the
+ * window — so a long conversation costs one page, not one transcript per call.
+ */
+export interface QaIntegrationTranscript {
+  readonly chatId: string;
+  /** The window, oldest first. */
+  readonly messages: readonly QaIntegrationMessage[];
+  /** Newest seq the caller has now seen; 0 when the chat holds no messages. */
+  readonly lastSeq: number;
+  /** True when older messages exist below the window. */
+  readonly truncated: boolean;
+}
+
 /** `GET /qa/api/health` payload; the bridge only needs `ok`. */
 export interface QaHealth {
   readonly ok: boolean;
@@ -199,6 +236,21 @@ export interface QaIntegrationRunner {
      */
     readonly onChat?: (chatId: string) => void;
   }): Promise<QaIntegrationTurn>;
+
+  /**
+   * Read back the messages of one conversation.
+   *
+   * The service has already authenticated the credential and established that
+   * the chat belongs to that account; the implementation reads the log and
+   * projects it, and reports an unreadable log rather than an empty answer.
+   */
+  transcript(input: {
+    readonly chatId: string;
+    /** Exclusive lower bound: only messages after this seq are returned. */
+    readonly after: number;
+    /** Newest messages to return; older ones are reported as truncated. */
+    readonly limit: number;
+  }): Promise<QaIntegrationTranscript>;
 
   /** Model ids the deployment can route right now, for the health payload. */
   models(): Promise<readonly string[]>;

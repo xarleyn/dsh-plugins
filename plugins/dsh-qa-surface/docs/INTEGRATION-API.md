@@ -31,7 +31,8 @@ DSH Remote transport, or serve HTTP ourselves. The bridge's own contract is
 HTTP with a bearer token, and its fallback paths (`415`, retry on `5xx`) are
 HTTP semantics; making it speak a DSH-specific transport would have moved the
 whole integration cost onto the other team. The Host web server already exists
-(`@deepseek-ai/dsh-host-webserver`), so the routes are two `register` calls.
+(`@deepseek-ai/dsh-host-webserver`), so the routes are three `register` calls
+under one base path, each an exact match.
 
 `basePath` defaults to `/qa/api`. The exact path is matched before the QA
 navigation route's prefix (`/qa`), so the endpoints never fall into the page
@@ -179,6 +180,54 @@ The alternative — publishing the whole answer and letting the caller decide �
 was rejected because the caller has no signal to decide with: it receives
 Markdown and posts it.
 
+### 2.10 `sessions:read` is a real scope, and reading is not asking
+
+The scope table promised `ask` and `sessions:read` from the first delivery, and
+the second had no endpoint behind it: a caller could be granted the right to
+read a conversation it had no way to read. `GET {basePath}/session?chat_id=…`
+closes that, and the shape of the read is the decision worth recording.
+
+**The alternative was to widen `ask`.** A bridge that escalates a ticket wants
+the specialist to see what was already said, and the cheap version of that is to
+re-ask the question and take the answer as "history". That is not the same
+thing: it spends a model turn to reproduce text that is already stored, it
+answers from the current state of the deployment rather than from what was said
+at the time, and a conversation with three exchanges costs three turns to read
+back. A second scope also lets a deployment hand a reporting integration the
+right to read without the right to spend inference, which one scope cannot
+express.
+
+**What is published is narrower than the log.** Only `user/message` events the
+person actually sent (`source.kind === "user"`) and `assistant/message` events
+with prose are returned. Injected context — identity notes, skill payloads, an
+expanded slash command — is recorded as a user message and is model input the
+caller never wrote; tool calls and results are plumbing whose outcome is already
+in the answer; reasoning is not the caller's to read. The text is flattened with
+the same rule the answer path uses (`messageContentText`), so one message never
+has two versions depending on how it was read.
+
+**The read is cursor-based, not "the transcript".** `after` is the caller's own
+position (the `last_seq` of its previous read) and the window is the newest
+`limit` messages, with `truncated` reporting that older ones were left below.
+The alternative — return the whole log — makes one call cost whatever the
+conversation has accumulated, and a caller showing a ticket summary does not
+need the first fifty exchanges to render the last two. `last_seq` is the newest
+seq in the page rather than the newest in the log, so a truncated page still
+moves the caller forward without skipping a message it never saw.
+
+**Ownership is the same rule `ask` applies.** `ownerIdOf(chatId)` must name the
+token's account, and an unknown chat and another account's chat are one `404`:
+an id alone must not confirm that somebody else's conversation exists. The
+refusal vocabulary reuses `unauthorized`/`forbidden`/`not-found`, and a token
+without `sessions:read` is refused before the log is opened at all.
+
+**An unreadable log is a failure, not an empty chat.** The one exception is a
+`not-found` log for a chat whose ownership record exists: the record is written
+before the first message, so a chat that has not been asked anything yet is an
+honest empty conversation. Any other read failure is a `503`, because "the log
+could not be read" is a transient condition and answering it with `messages: []`
+would tell the caller the conversation is empty.
+
 ## 3. Contract
 
 See the README's "Integration API (HTTP)" section for the request/response
@@ -216,13 +265,28 @@ copy, and it is the contract this implementation is tested against.
 - `tests/integration-http.test.ts` — the JSON and multipart encodings (text
   fields, the JSON-string `context`, an inline image), the refusals (`400`,
   `413`, `415`), the body ceiling, `405` with `Allow`, the health payload's
-  field names, and disposal of both routes.
+  field names, the read route's query handling (an escaped chat id, the default
+  and clamped page size, a refused cursor that never reaches the service), its
+  wire shape and the `404` a foreign chat becomes, and disposal of every route.
+- `tests/integration-runner.test.ts` — the Host seam behind the read: the page
+  projected from the durable log, the caller's cursor and window honoured, a
+  chat that has written nothing yet read as empty (and its cursor left where
+  the caller had it), a log that cannot be read refused instead of answered
+  empty, and the model catalog flattened to its routable ids.
+- `tests/integration-transcript.test.ts` — the projection a caller reads: order,
+  the log's timestamps as ISO instants (and none invented when the log had
+  none), injected context, tool traffic and reasoning left out, the same
+  flattening the answer uses, `after` as an exclusive cursor, the newest page
+  with `truncated` for what it left below, a cursor preserved when nothing new
+  was written, events returned out of order, and the empty chat's shape.
 - `tests/integration-service.test.ts` — credential and scope refusals, the
   disabled/deployment-off states, the answer shape, citation bounding, the
   publication budget cutting an over-long answer to a readable head, the
   escalation paths (empty, interrupted, timed out — the last one keeping the
   chat), a host failure as `503`, the rate and concurrency budgets, health with
-  and without a model catalog, and a dropped connection.
+  and without a model catalog, a dropped connection, and the read path: the
+  `sessions:read` scope, an unknown and another account's chat refused as one
+  `404`, and an unreadable log reported rather than answered empty.
 - `tests/integration-attachments.test.ts` — the media-type families the parser
   accepts; a caller's name reduced to a label (traversal, control characters and
   length); a text file decoded; bytes labelled as text refused; a document
@@ -245,6 +309,6 @@ copy, and it is the contract this implementation is tested against.
   `tests/user-workspace-admission.test.ts` — the admission gate's new
   `ownerIdOf` seam.
 
-Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (189 files, 1291 tests at
+Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (194 files, 1350 tests at
 the time of writing — the pre-existing 184 files stay green, which is the
 regression signal that matters most for the admission refactor).

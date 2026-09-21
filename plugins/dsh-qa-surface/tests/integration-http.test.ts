@@ -4,10 +4,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   parseAskBody,
   parseMultipart,
+  QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
   QA_INTEGRATION_MAX_FILES,
   readBody,
   registerQaIntegrationRoutes,
 } from "../src/integration/http.js";
+import { QA_INTEGRATION_MAX_TRANSCRIPT_MESSAGES } from "../src/integration/transcript.js";
 import { QaIntegrationError } from "../src/integration/contract.js";
 import type { QaAskRequest } from "../src/integration/contract.js";
 import type { QaIntegrationService } from "../src/integration/service.js";
@@ -496,7 +498,7 @@ describe("integration routes", () => {
     });
   });
 
-  it("removes both routes when disposed", () => {
+  it("removes every route when disposed", () => {
     const register = vi.fn(() => vi.fn());
     const dispose = registerQaIntegrationRoutes({ register } as never, {
       config,
@@ -509,9 +511,160 @@ describe("integration routes", () => {
         close() {},
       } as never,
     });
-    expect(register).toHaveBeenCalledTimes(2);
+    expect(register).toHaveBeenCalledTimes(3);
     dispose();
     const removers = register.mock.results.map((result) => result.value);
     for (const remover of removers) expect(remover).toHaveBeenCalledOnce();
+  });
+});
+
+/** A request whose URL carries the query the session route reads. */
+function sessionRequest(url: string, method = "GET"): IncomingMessage {
+  const request = Readable.from([]) as unknown as IncomingMessage;
+  request.method = method;
+  request.headers = { authorization: "Bearer qsat.x.y" };
+  request.url = url;
+  return request;
+}
+
+describe("integration session route", () => {
+  const transcript = {
+    chatId: "session-1",
+    messages: [
+      { seq: 1, role: "user" as const, text: "вопрос" },
+      {
+        seq: 2,
+        role: "assistant" as const,
+        text: "ответ",
+        at: "2026-09-21T10:00:00.000Z",
+      },
+    ],
+    lastSeq: 2,
+    truncated: false,
+  };
+
+  it("serves the transcript in the bridge's own field names", async () => {
+    const session = vi.fn(async () => transcript);
+    const { at } = harness({ session: session as never });
+    const { response, state } = fakeResponse();
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=session-1&after=0&limit=10"),
+      response,
+    );
+    expect(state.status).toBe(200);
+    expect(state.headers["cache-control"]).toBe("no-store");
+    // A message the log gave no time gets `null` rather than a missing field:
+    // the bridge reads one message shape, and absence is its own bug there.
+    expect(JSON.parse(state.body)).toEqual({
+      chat_id: "session-1",
+      messages: [
+        { seq: 1, role: "user", text: "вопрос", at: null },
+        {
+          seq: 2,
+          role: "assistant",
+          text: "ответ",
+          at: "2026-09-21T10:00:00.000Z",
+        },
+      ],
+      last_seq: 2,
+      truncated: false,
+    });
+    expect(session).toHaveBeenCalledWith("Bearer qsat.x.y", {
+      chatId: "session-1",
+      after: 0,
+      limit: 10,
+    });
+  });
+
+  it("defaults the page size and clamps one past the ceiling", async () => {
+    const session = vi.fn(async () => transcript);
+    const { at } = harness({ session: session as never });
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=session-1"),
+      fakeResponse().response,
+    );
+    // A caller that asks for no page still gets one, so the answer has the
+    // same shape either way.
+    expect(session).toHaveBeenLastCalledWith("Bearer qsat.x.y", {
+      chatId: "session-1",
+      after: 0,
+      limit: QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
+    });
+    // A page size is a preference: more than the ceiling is served at the
+    // ceiling, because the window is still an answer and only shorter.
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=session-1&limit=9999"),
+      fakeResponse().response,
+    );
+    expect(session).toHaveBeenLastCalledWith("Bearer qsat.x.y", {
+      chatId: "session-1",
+      after: 0,
+      limit: QA_INTEGRATION_MAX_TRANSCRIPT_MESSAGES,
+    });
+  });
+
+  it("decodes an escaped chat id and honours the caller's cursor", async () => {
+    const session = vi.fn(async () => transcript);
+    const { at } = harness({ session: session as never });
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=chat%3A1&after=41"),
+      fakeResponse().response,
+    );
+    expect(session).toHaveBeenCalledWith("Bearer qsat.x.y", {
+      chatId: "chat:1",
+      after: 41,
+      limit: QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
+    });
+  });
+
+  it("refuses a missing chat id, a negative cursor and a page of zero", async () => {
+    const session = vi.fn(async () => transcript);
+    const { at } = harness({ session: session as never });
+    for (const url of [
+      "/qa/api/session",
+      "/qa/api/session?chat_id=%20",
+      "/qa/api/session?chat_id=session-1&after=-1",
+      "/qa/api/session?chat_id=session-1&after=abc",
+      "/qa/api/session?chat_id=session-1&limit=0",
+      "/qa/api/session?chat_id=session-1&limit=1.5",
+    ]) {
+      const { response, state } = fakeResponse();
+      await at("/qa/api/session")?.handler(sessionRequest(url), response);
+      expect(state.status).toBe(400);
+      expect(JSON.parse(state.body).code).toBe("invalid-request");
+    }
+    // A cursor the caller did not mean is refused before the log is opened: no
+    // page is read for it.
+    expect(session).not.toHaveBeenCalled();
+  });
+
+  it("answers a wrong method with 405 and the allowed verbs", async () => {
+    const { at } = harness({ session: vi.fn() });
+    const { response, state } = fakeResponse();
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=session-1", "POST"),
+      response,
+    );
+    expect(state.status).toBe(405);
+    expect(state.headers.allow).toBe("GET, HEAD");
+  });
+
+  it("maps a refusal onto its status without leaking the credential", async () => {
+    const { at } = harness({
+      session: vi.fn(async () => {
+        throw new QaIntegrationError("not-found", "no such conversation");
+      }) as never,
+    });
+    const { response, state } = fakeResponse();
+    await at("/qa/api/session")?.handler(
+      sessionRequest("/qa/api/session?chat_id=session-1"),
+      response,
+    );
+    expect(state.status).toBe(404);
+    expect(JSON.parse(state.body)).toEqual({
+      error: "no such conversation",
+      code: "not-found",
+    });
+    expect(state.body).not.toContain("qsat");
   });
 });
