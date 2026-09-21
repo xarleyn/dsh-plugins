@@ -5,7 +5,11 @@
  * round trip, not to replace the Host's own admission.
  */
 
-import { countTextLines, hasTextExtension } from "../attachment-rules.js";
+import {
+  countTextLines,
+  fileExtensionOf,
+  hasAcceptedExtension,
+} from "../attachment-rules.js";
 import type {
   QaAttachmentDraft,
   QaFileDraft,
@@ -54,8 +58,9 @@ export function attachmentLimits(
 }
 
 /**
- * The file picker's `accept` value: the raster formats plus either the
- * configured text extensions or the browser's whole `text/*` family.
+ * The file picker's `accept` value: the raster formats plus either every
+ * configured extension and the browser's whole `text/*` family, or nothing
+ * when file attachments are off.
  * @param limits - attachment policy in effect.
  * @returns the accept attribute value.
  */
@@ -90,16 +95,51 @@ function isTextMediaType(mediaType: string): boolean {
   return mediaType.toLowerCase().startsWith("text/");
 }
 
-/** Whether a dropped payload may be attached as a text file at all. */
-export function acceptsTextFile(
+/**
+ * Whether a dropped payload may be attached as a file at all. An extension the
+ * operator listed is enough on its own: the list is what the deployment can
+ * work with, and a stand whose pipeline reads Word documents lists `docx`
+ * rather than hoping the browser calls it text.
+ */
+export function acceptsFileAttachment(
   name: string,
   mediaType: string,
   limits: QaAttachmentLimits,
 ): boolean {
   if (!limits.textFiles) return false;
   return (
-    hasTextExtension(name, limits.extensions) || isTextMediaType(mediaType)
+    hasAcceptedExtension(name, limits.extensions) || isTextMediaType(mediaType)
   );
+}
+
+/**
+ * Why one non-image file is refused, in the visitor's terms, or null when it is
+ * accepted. The copy used to name a fixed list ("md, txt, log и другие") that
+ * had nothing to do with the deployment's own setting, which is how a stand
+ * able to read Word documents ended up looking like a text-only one.
+ * @param name - display file name.
+ * @param mediaType - MIME type the browser reported.
+ * @param limits - attachment policy in effect.
+ * @returns the refusal message, or null.
+ */
+export function fileAttachmentRefusal(
+  name: string,
+  mediaType: string,
+  limits: QaAttachmentLimits,
+): string | null {
+  if (acceptsFileAttachment(name, mediaType, limits)) return null;
+  if (!limits.textFiles) {
+    return "Файловые вложения выключены: можно приложить только изображения.";
+  }
+  // `fileExtensionOf` reports the whole leaf when there is no dot, and a
+  // dotfile's leaf is its own name: both mean "no extension to match on", and
+  // saying "формат .noextension" about them would be nonsense.
+  const leaf = name.trim().toLowerCase();
+  const extension = fileExtensionOf(name);
+  if (extension === "" || extension === leaf) {
+    return "У файла нет расширения, а принять его можно только по расширению из списка разрешённых.";
+  }
+  return `Формат «.${extension}» не разрешён на этом стенде. Список разрешённых расширений задаёт оператор.`;
 }
 
 function imageDraftFromBlob(blob: Blob, name: string): Promise<QaImageDraft> {
@@ -130,11 +170,8 @@ export async function draftFromFile(
     }
     return imageDraftFromBlob(file, file.name);
   }
-  if (!acceptsTextFile(file.name, file.type, limits)) {
-    return limits.textFiles
-      ? "Поддерживаются изображения и текстовые файлы (md, txt, log и другие)."
-      : "Поддерживаются изображения PNG, JPEG, WebP и GIF.";
-  }
+  const refusal = fileAttachmentRefusal(file.name, file.type, limits);
+  if (refusal !== null) return refusal;
   if (file.size > limits.maxFileBytes) {
     return `Файл слишком большой (лимит ${formatFileSize(limits.maxFileBytes)}).`;
   }

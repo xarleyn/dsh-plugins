@@ -1,4 +1,4 @@
-import { DEFAULT_QA_TEXT_EXTENSIONS } from "../attachment-rules.js";
+import { DEFAULT_QA_ATTACHMENT_EXTENSIONS } from "../attachment-rules.js";
 import { QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX } from "../profile.js";
 import { DEFAULT_QA_PROVENANCE_RETENTION } from "../provenance/retention.js";
 import {
@@ -189,7 +189,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       pastedTextLines: 200,
       maxFileBytes: 10_485_760,
       maxPending: 8,
-      extensions: DEFAULT_QA_TEXT_EXTENSIONS,
+      extensions: DEFAULT_QA_ATTACHMENT_EXTENSIONS,
     }),
     notes: Object.freeze({
       identity: Object.freeze({ enabled: true, template: "" }),

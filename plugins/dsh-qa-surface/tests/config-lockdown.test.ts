@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_QA_TEXT_EXTENSIONS } from "../src/attachment-rules.js";
+import { DEFAULT_QA_ATTACHMENT_EXTENSIONS } from "../src/attachment-rules.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import { DEFAULT_THINKING_PHRASES } from "../src/thinking-phrases.js";
 import { schemaParse } from "./config.helpers.js";
@@ -43,13 +43,13 @@ describe("qa surface config", () => {
     expect(config.thinkingPhrases).toEqual(["Точу"]);
   });
 
-  it("defaults attachment intake to text files with a 200-line paste rule", () => {
+  it("defaults attachment intake to files with a 200-line paste rule", () => {
     expect(resolveConfig().attachments).toEqual({
       textFiles: true,
       pastedTextLines: 200,
       maxFileBytes: 10_485_760,
       maxPending: 8,
-      extensions: DEFAULT_QA_TEXT_EXTENSIONS,
+      extensions: DEFAULT_QA_ATTACHMENT_EXTENSIONS,
     });
   });
 
