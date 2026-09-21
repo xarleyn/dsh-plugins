@@ -10,7 +10,7 @@
  * runtime; the host entry adapts the real `agent/pre-step` contract.
  */
 
-import type { ResolvedSafetyGateConfig } from "../config.js";
+import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
 import { applyGateMode } from "../rules/policy.js";
 import type { TurnRiskTracker } from "./risk-state.js";
@@ -67,12 +67,18 @@ export interface InputGuardDeps {
 
 /**
  * Build the pre-step listener. Behavior:
+ *  - gate off, or the input surface disabled → `next()` without scanning;
  *  - allow → `next()` untouched;
  *  - warn / review → `next()` (prompt continues; audit recorded);
  *  - block → `{ kind: "reject" }` without calling `next()`.
  */
 export function createInputGuard(deps: InputGuardDeps): PreStepListener {
   return async (payload, next) => {
+    // An off gate and a disabled input surface are both "do nothing here" —
+    // and they are decided before the turn stamp, because a gate that is not
+    // watching must not move the bookkeeping a watching gate would move.
+    if (isGateOff(deps.config) || !deps.config.input.enabled) return next();
+
     if (payload.sessionId !== undefined && deps.risk !== undefined) {
       deps.risk.beginTurn(payload.sessionId, payload.turn ?? 0);
     }

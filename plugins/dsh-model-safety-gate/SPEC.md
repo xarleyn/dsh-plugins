@@ -58,6 +58,11 @@ Numbered, testable guarantees for version 0.1.0:
     extension points (`agent/pre-step`, `llm/stream`, `tools/pre-execute`,
     `tools/post-execute`) and installs with a plain `dsh plugin add`.
 16. **Peer-only runtime.** All `@deepseek-ai/*` packages are peer dependencies.
+17. **Off means off.** The master switch (`enabled: false`) and the `off`
+    profile silence every surface together: nothing is scanned, classified,
+    audited or blocked on the input, streaming-output, tool-call or tool-result
+    surface, and no classifier request is issued. A gate switched off at
+    runtime stops the next check without re-registering a listener.
 
 ## 2. Data model
 
@@ -152,6 +157,10 @@ guard to the classifier's own traffic.
 6. **Benign traffic.** Security-research-style discussion and quoted malicious
    content pass through without blocks (regression corpus with benign
    fixtures).
+7. **Off gate.** With `enabled: false` (or `mode: off`) the jailbreak prompt of
+   scenario 1, the destructive tool call of the tool gate and the injected tool
+   result of scenario 5 all pass through untouched, and no scan, classifier
+   call or audit record is produced on any surface.
 
 ## 6. Implementation status
 
