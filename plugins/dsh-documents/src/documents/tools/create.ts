@@ -19,6 +19,7 @@ import {
   toolFiles,
   toolWarnings,
   type DocumentToolExec,
+  type DocumentToolOptions,
   warningsSchema,
 } from "./shared.js";
 
@@ -30,9 +31,7 @@ const DESCRIPTION = [
   "Assets referenced by the Markdown must be supplied through `assets`; remote images are never fetched.",
 ].join(" ");
 
-export function createDocumentCreateTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentCreateTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_CREATE_TOOL,
     description: DESCRIPTION,
@@ -194,7 +193,7 @@ export function createDocumentCreateTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.create(
         args as unknown as Parameters<DocumentRuntime["create"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         artifactId: result.artifactId,

@@ -107,8 +107,10 @@ kept: renaming it would orphan existing artifacts for no functional gain.
 - backends are invoked with argument vectors assembled by the plugin; the model
   never supplies a flag, and provider output is sanitized before it can reach an
   error message;
-- path inputs are contained to the session workspace (or the configured
-  document roots) and rejected otherwise;
+- path inputs are contained to the session workspace, the configured document
+  roots and the roots a caller granted for one session (§7.1) and rejected
+  otherwise; a granted root is read-only and single-file, so a shared store it
+  names can never be walked;
 - every stage has a configured cap: input bytes, pages, images, asset bytes,
   Markdown characters, inline response characters, backend timeouts;
 - `document_from_url` performs no network I/O of its own: retrieval goes through
@@ -138,3 +140,14 @@ disabled the pipeline publishes nothing, and a caller that finds no face refuses
 instead of building a second converter. The qa-surface files panel is the first
 consumer: it renders a Word document of a chat's workspace as the PDF this
 pipeline produces.
+
+The same service carries the one fact a sibling knows and this plugin cannot:
+which out-of-workspace roots a session may read. `registerInputRoots(sessionId,
+roots)` grants the document tools of one session the roots its own read fence
+allows — the mounted attachment store today, which sits outside every workspace
+while the prompt hands the model the stored path of an upload — and returns the
+remover that takes the grant back. The grant is read at call time, so a fence
+that re-attests or revokes is honoured on the next document call, and a session
+nobody granted keeps reading its workspace and the configured roots only. A
+caller that starts a conversion itself passes the same root inline through
+`extraInputRoots`, which is what the files panel does for an uploaded document.

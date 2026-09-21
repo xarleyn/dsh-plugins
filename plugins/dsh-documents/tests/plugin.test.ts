@@ -3,12 +3,17 @@
  * invariants the card and the deployment manifest depend on.
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
+import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { describe, expect, test } from "vitest";
 
 import DocumentsPlugin, {
   DOCUMENTS_SETTINGS_NAMESPACE,
   name as pluginName,
+  type DocumentsFace,
 } from "../src/index.js";
 import { ConfigSchema } from "../src/schema.js";
 import { DOCUMENT_TOOL_NAMES } from "../src/shared/settings.js";
@@ -22,10 +27,13 @@ import {
 } from "../src/documents/config.js";
 import type { DocumentsConfig } from "../src/documents/config.js";
 import { DOCUMENT_COMPARISON_TOOL_NAMES as CARD_COMPARISON_TOOL_NAMES } from "../src/shared/settings.js";
+import { docxBytes } from "./helpers/document-fixtures.js";
 
 interface Stub {
   readonly ctx: Context;
   readonly registered: string[];
+  /** The registered definitions themselves, by tool name. */
+  readonly definitions: Map<string, ToolDefinition>;
   /** Plugin mounts the entry performed, by the config each was given. */
   readonly mounted: { readonly providerName?: string }[];
   /** Services the plugin published for its Host siblings, by name. */
@@ -34,6 +42,7 @@ interface Stub {
 
 function stubContext(): Stub {
   const registered: string[] = [];
+  const definitions = new Map<string, ToolDefinition>();
   const mounted: { readonly providerName?: string }[] = [];
   const provided = new Map<string, unknown>();
   const ctx = {
@@ -47,9 +56,13 @@ function stubContext(): Stub {
       child: () => undefined,
     },
     tools: {
-      register: (definition: { name: string }) => {
+      register: (definition: ToolDefinition) => {
         registered.push(definition.name);
-        return () => {};
+        definitions.set(definition.name, definition);
+        return () => {
+          registered.splice(registered.indexOf(definition.name), 1);
+          definitions.delete(definition.name);
+        };
       },
     },
     effect: () => {},
@@ -65,18 +78,20 @@ function stubContext(): Stub {
       mounted.push((config ?? {}) as { readonly providerName?: string });
     },
   } as unknown as Context;
-  return { ctx, registered, mounted, provided };
+  return { ctx, registered, definitions, mounted, provided };
 }
 
 function plugin(config: DocumentsConfig = {}): {
   registered: string[];
+  definitions: Map<string, ToolDefinition>;
   mounted: { readonly providerName?: string }[];
   provided: Map<string, unknown>;
   instance: DocumentsPlugin;
 } {
-  const { ctx, registered, mounted, provided } = stubContext();
+  const { ctx, registered, definitions, mounted, provided } = stubContext();
   return {
     registered,
+    definitions,
     mounted,
     provided,
     instance: new DocumentsPlugin(ctx, config),
@@ -141,6 +156,59 @@ describe("documents plugin", () => {
   test("publishes nothing while the pipeline is disabled", () => {
     const { provided } = plugin({ enabled: false });
     expect(provided.has("documents")).toBe(false);
+  });
+
+  test("carries a session's granted input roots into the document tools", async () => {
+    const workspace = await mkdtemp(path.join(tmpdir(), "qa-docs-plugin-ws-"));
+    const store = await mkdtemp(path.join(tmpdir(), "qa-docs-plugin-store-"));
+    const stored = path.join(store, "files", "ab12", "report.docx");
+    await mkdir(path.dirname(stored), { recursive: true });
+    await writeFile(stored, docxBytes({ headings: ["Отчёт"] }));
+    try {
+      const { definitions, provided } = plugin();
+      const inspect = definitions.get("document_inspect");
+      if (inspect === undefined)
+        throw new Error("document_inspect is not registered");
+      const face = provided.get("documents") as DocumentsFace;
+      const exec = (sessionId: string): ToolRunContext =>
+        ({
+          signal: new AbortController().signal,
+          agent: { session: { header: { cwd: workspace, id: sessionId } } },
+        }) as unknown as ToolRunContext;
+
+      // The store sits outside the workspace, so the grant is the only reason
+      // these calls can read it — and only for the session it names.
+      const stale = face.registerInputRoots("session-1", [
+        path.join(workspace, "..", "nowhere"),
+        "  ",
+      ]);
+      await expect(
+        inspect.execute({ file: stored }, exec("session-1")),
+      ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+
+      const live = face.registerInputRoots("session-1", [store]);
+      await expect(
+        inspect.execute({ file: stored }, exec("session-1")),
+      ).resolves.toMatchObject({ format: "docx" });
+      await expect(
+        inspect.execute({ file: stored }, exec("session-2")),
+      ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+
+      // A re-attestation replaces the grant, so the remover it displaced is
+      // inert rather than a way to revoke the newer one.
+      stale();
+      await expect(
+        inspect.execute({ file: stored }, exec("session-1")),
+      ).resolves.toMatchObject({ format: "docx" });
+
+      live();
+      await expect(
+        inspect.execute({ file: stored }, exec("session-1")),
+      ).rejects.toMatchObject({ code: "FILE_NOT_FOUND" });
+    } finally {
+      await rm(workspace, { recursive: true, force: true });
+      await rm(store, { recursive: true, force: true });
+    }
   });
 
   test("mounts the contract-review skill with the comparison it teaches", () => {
