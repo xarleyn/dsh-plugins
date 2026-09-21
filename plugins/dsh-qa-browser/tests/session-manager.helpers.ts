@@ -46,7 +46,17 @@ export class FakePage implements BrowserPageHandle {
     return this.currentUrl;
   }
 
+  /**
+   * A one-shot hook a test uses to act at the moment a title is read: by then
+   * the page exists and may already be talking to the network, while the tab
+   * that will own it is a live question.
+   */
+  titleHook?: (page: FakePage) => void;
+
   async title(): Promise<string> {
+    const hook = this.titleHook;
+    this.titleHook = undefined;
+    hook?.(this);
     return this.currentTitle;
   }
 
@@ -190,6 +200,8 @@ export class FakeContext implements BrowserContextHandle {
   readonly pages: FakePage[] = [];
   closed = false;
   options?: BrowserContextOptions;
+  /** A test's chance to arm a page the moment the context creates it. */
+  onPageCreated?: (page: FakePage) => void;
 
   constructor(
     readonly id: string,
@@ -200,6 +212,7 @@ export class FakeContext implements BrowserContextHandle {
     PAGE_SEQUENCE.pages += 1;
     const page = new FakePage(`page_${String(PAGE_SEQUENCE.pages)}`);
     this.pages.push(page);
+    this.onPageCreated?.(page);
     return page;
   }
 
@@ -223,12 +236,16 @@ export class FakeProvider implements BrowserProvider {
     this.stops += 1;
   }
 
+  /** A test's chance to arm every page this provider's contexts create. */
+  onPageCreated?: (page: FakePage) => void;
+
   async createContext(options: BrowserContextOptions): Promise<FakeContext> {
     const context = new FakeContext(
       `context_${this.contexts.size + 1}`,
       options.sessionId,
     );
     context.options = options;
+    context.onPageCreated = (page) => this.onPageCreated?.(page);
     this.contexts.set(context.id, context);
     return context;
   }

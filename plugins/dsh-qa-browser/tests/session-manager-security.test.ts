@@ -230,6 +230,34 @@ describe("policy refusals the panel can show", () => {
     await manager.dispose();
   });
 
+  it("finds a tab by its page before the tab's title was read", async () => {
+    const { manager, provider } = refusalHarness();
+    let refused: Promise<unknown> | undefined;
+    provider.onPageCreated = (page) => {
+      page.titleHook = () => {
+        // The page exists and is already talking to the network, while the
+        // tab that will own it is being built. A refusal here has to land on
+        // that tab, not fall into the session's untabbed list.
+        refused = expect(
+          requestGate(provider)("https://api.intranet.example.corp/early", {
+            kind: "resource",
+            pageId: page.id,
+          }),
+        ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
+      };
+    };
+
+    await manager.ensureSession("early");
+    await refused;
+
+    const [tab] = await manager.listTabs("early");
+    expect(await tabRefusals(manager, "early", tab!.id)).toMatchObject([
+      { kind: "resource", host: "api.intranet.example.corp" },
+    ]);
+    expect(manager.policyRefusals("early")).toEqual([]);
+    await manager.dispose();
+  });
+
   it("stops growing one tab's notice at a bounded number of hosts", async () => {
     const { manager, provider } = refusalHarness();
     await manager.ensureSession("many");

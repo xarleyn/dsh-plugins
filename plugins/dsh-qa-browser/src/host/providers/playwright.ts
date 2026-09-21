@@ -27,6 +27,7 @@ import type {
   ProviderNavigationResult,
   ProviderSnapshotNode,
 } from "./contract.js";
+import { PageIdentities } from "./page-identities.js";
 
 type PlaywrightModule = typeof import("playwright");
 type PlaywrightLoader = () => Promise<PlaywrightModule>;
@@ -36,14 +37,6 @@ interface PolicyBlockState {
   sequence: number;
   lastError?: unknown;
 }
-
-/**
- * The page identities one context handed out, keyed by the Playwright page.
- * The route handler sees a request's page and nothing else about the Host's
- * tabs, so this map is what lets a refusal carry the page it belongs to back
- * to the caller.
- */
-type PageIdentityRegistry = Map<Page, string>;
 
 function systemBrowserCandidates(): readonly string[] {
   if (process.platform === "win32") {
@@ -565,7 +558,7 @@ class PlaywrightContextHandle implements BrowserContextHandle {
   constructor(
     private readonly context: BrowserContext,
     private readonly blockedRequests: PolicyBlockState,
-    private readonly pageIds: PageIdentityRegistry,
+    private readonly pageIds: PageIdentities<Page>,
   ) {}
 
   async newPage(): Promise<BrowserPageHandle> {
@@ -576,9 +569,14 @@ class PlaywrightContextHandle implements BrowserContextHandle {
       );
     }
     const page = await this.context.newPage();
-    const id = `page_${randomUUID().replaceAll("-", "")}`;
-    this.pageIds.set(page, id);
-    return new PlaywrightPageHandle(id, page, this.blockedRequests);
+    // Asking the registry rather than minting here: a request this page made
+    // before this line ran already asked it, and both answers must be the same
+    // identity or the refusal would belong to no tab.
+    return new PlaywrightPageHandle(
+      this.pageIds.idOf(page),
+      page,
+      this.blockedRequests,
+    );
   }
 
   async close(): Promise<void> {
@@ -662,7 +660,7 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       byPage: new WeakMap<Page, unknown>(),
       sequence: 0,
     };
-    const pageIds: PageIdentityRegistry = new Map();
+    const pageIds = new PageIdentities<Page>();
     /** The page a request belongs to, or none for a request without a frame. */
     const pageOf = (request: Request): Page | undefined => {
       try {
@@ -680,7 +678,7 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
         const page = pageOf(route.request());
         await options.validateRequest(route.request().url(), {
           kind: route.request().isNavigationRequest() ? "document" : "resource",
-          ...(page === undefined ? {} : { pageId: pageIds.get(page) }),
+          ...(page === undefined ? {} : { pageId: pageIds.idOf(page) }),
         });
         await route.continue();
       } catch (error) {

@@ -175,11 +175,15 @@ export class QaBrowserSessionManager {
     this.assertAvailable();
     const id = this.validSessionId(sessionId);
     const existing = this.sessions.get(id);
-    if (existing !== undefined && existing.status !== "crashed") {
+    if (existing !== undefined && existing.status === "crashed") {
+      this.sessions.delete(id);
+    } else if (existing !== undefined && existing.status !== "starting") {
       this.touch(existing);
       return this.sessionInfo(existing);
     }
-    if (existing?.status === "crashed") this.sessions.delete(id);
+    // A record that is still starting is one a creation is building — it is
+    // registered early so refusals can find it — so this caller joins that
+    // creation instead of answering with a session that has no tab yet.
 
     let pending = this.creating.get(id);
     if (pending === undefined) {
@@ -948,17 +952,25 @@ export class QaBrowserSessionManager {
       policyRefusals: [],
       control: { owner: "agent", leaseExpiresAt: null },
     };
+    // Registered before the first tab exists, because the context is already
+    // dialling: the page this session is about to open can be refused while it
+    // is being built, and a refusal nobody can look up is a refusal the panel
+    // never shows. The window is the same reason the tab is registered before
+    // its title is read.
+    this.sessions.set(sessionId, record);
     try {
       const tab = await this.createTab(record);
       record.selectedTabId = tab.id;
       record.status = "ready";
-      this.sessions.set(sessionId, record);
       this.logger.info("browser.session-created", {
         sessionId,
         contextId: context.id,
       });
       return record;
     } catch (error) {
+      // A session that could not open its first tab is not a session: leaving
+      // it in the map would answer the panel with a dead browser.
+      this.sessions.delete(sessionId);
       await this.options.provider
         .closeContext(context.id)
         .catch(() => undefined);
@@ -975,7 +987,7 @@ export class QaBrowserSessionManager {
       viewport: { ...this.options.config.viewport },
       history: { entries: [url], index: 0 },
       url,
-      title: await page.title(),
+      title: "",
       status: "ready",
       revision: 0,
       refs: new Map(),
@@ -983,13 +995,21 @@ export class QaBrowserSessionManager {
       queue: Promise.resolve(),
       disposers: [],
     };
+    // Nothing may await between the page existing and it being findable: a
+    // request the fresh page makes is attributed by looking its page up here,
+    // and a refusal that arrives in between would be filed against no tab at
+    // all. So the record goes in first and the title, which needs a round trip
+    // to the page, is filled after it.
+    record.tabs.set(tab.id, tab);
     tab.disposers.push(
       page.onChanged(() => {
         void this.refreshTab(tab, true);
       }),
       page.onClosed(() => this.onPageClosed(record, tab)),
     );
-    record.tabs.set(tab.id, tab);
+    // A page that cannot report its title is still a page; refusing to create
+    // the tab over it would leave a running page with no way to see it.
+    tab.title = await page.title().catch(() => "");
     return tab;
   }
 
@@ -1244,9 +1264,10 @@ export class QaBrowserSessionManager {
    * another row. The entry goes to `tab` when the request has a page and to the
    * session's untabbed list when it has none.
    *
-   * `record` may be absent: the provider's pre-dial gate runs for requests of a
-   * context whose session record is not registered yet (or is already gone),
-   * and those still belong in the log.
+   * `record` may be absent only when the session is already gone — a context
+   * that outlives its record while it is being torn down — and what it refused
+   * still belongs in the log. A record that is merely young is registered
+   * before its first tab exists, precisely so this lookup finds it.
    */
   private notePolicyRefusal(
     record: SessionRecord | undefined,
