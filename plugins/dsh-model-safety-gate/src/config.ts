@@ -30,7 +30,7 @@ export type StreamMode = "observe" | "interrupt" | "buffered";
 export interface ModelSafetyGateConfig {
   /** Master switch; when false nothing is scanned or blocked. */
   readonly enabled?: boolean;
-  /** off | audit | warn | enforce (design SPEC §24). */
+  /** off | audit | warn | enforce (design SPEC §24); `off` scans nothing. */
   readonly mode?: GateMode;
 
   readonly classifier?: {
@@ -200,6 +200,23 @@ export const SAFETY_GATE_DEFAULTS = {
   allowSessionOverride: true,
   maxScanChars: 65_536,
 } as const;
+
+/**
+ * Whether the whole gate is switched off (design SPEC §24, §26).
+ *
+ * The master switch (`enabled: false`) and the `off` profile are the same
+ * decision spelled twice, and both mean *nothing happens*: no scan, no
+ * classifier call, no audit event, no blocked decision. A surface that is off
+ * therefore returns before it reaches the pipeline — not after the pipeline has
+ * already classified the content and decided to keep quiet about it, which is
+ * what an off gate used to do on every surface but the output stream.
+ */
+export function isGateOff(config: {
+  readonly enabled: boolean;
+  readonly mode: GateMode;
+}): boolean {
+  return !config.enabled || config.mode === "off";
+}
 
 const GATE_MODES = ["off", "audit", "warn", "enforce"] as const;
 const FAILURE_MODES = ["closed", "open", "rules-only", "ask"] as const;

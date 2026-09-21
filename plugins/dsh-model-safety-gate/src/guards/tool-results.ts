@@ -9,7 +9,7 @@
  * unless a hard rule fired.
  */
 
-import type { ResolvedSafetyGateConfig } from "../config.js";
+import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
 import { applyGateMode } from "../rules/policy.js";
 import type { TurnRiskTracker, RiskLevel } from "./risk-state.js";
@@ -67,7 +67,12 @@ export function createPostExecuteGuard(
   deps: PostExecuteGuardDeps,
 ): PostExecuteListener {
   return async (exec, result, next) => {
-    if (!deps.config.toolResults.enabled || result.isError) return next();
+    if (
+      isGateOff(deps.config) ||
+      !deps.config.toolResults.enabled ||
+      result.isError
+    )
+      return next();
 
     const sessionId = exec.agent !== undefined ? String(exec.agent.id) : null;
     const content = extractResultText(result);
