@@ -7,6 +7,7 @@ import {
 import type { QaSourceReference } from "../provenance/types.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 import { boundAnswer } from "./answer.js";
+import { QaIntegrationAttachmentError } from "./attachments.js";
 import {
   QaIntegrationError,
   type QaAskAnswer,
@@ -261,6 +262,20 @@ export class QaIntegrationService {
       }
       if (signal.aborted) {
         throw new QaIntegrationError("unavailable", "the request was dropped");
+      }
+      if (error instanceof QaIntegrationAttachmentError) {
+        // The caller's own fallback signal: repeat the question without the
+        // attachment it sent. Answering anyway would publish an answer to a
+        // question the model never saw the material for.
+        this.deps.logger.warn("integration.attachment-refused", {
+          tokenId: identity.tokenId,
+          chatId,
+          name: error.attachment,
+          reason: error.reason,
+        });
+        throw new QaIntegrationError("unsupported-media", error.message, {
+          cause: error,
+        });
       }
       this.deps.logger.error("integration.failed", {
         tokenId: identity.tokenId,

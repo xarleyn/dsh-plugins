@@ -16,8 +16,12 @@ import type { QaSourceReference } from "../provenance/types.js";
 import type { QaPolicyAdmission } from "../secure-session.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 import { prepareQaUserWorkspace } from "../user-workspace.js";
+import type { DocumentsFace } from "@yadsh/dsh-documents";
 import { answerAfter, lastPromptSeq } from "./answer.js";
+import { attachmentPromptParts } from "./attachments.js";
 import type {
+  QaFileAttachment,
+  QaInlineImageAttachment,
   QaIntegrationAttachment,
   QaIntegrationRunner,
   QaIntegrationTurn,
@@ -47,6 +51,12 @@ export interface QaIntegrationRunnerOptions {
   access: QaAccessService;
   sessionLog: QaSessionLogReader;
   provenance: QaProvenanceHost;
+  /**
+   * The deployment's document pipeline, resolved per call so a provider that
+   * installs later still counts. Absent on a deployment that has none, where
+   * document attachments are refused with the caller's own fallback signal.
+   */
+  documents(): DocumentsFace | undefined;
   logger: PluginLogger;
 }
 
@@ -143,21 +153,60 @@ export function createQaIntegrationRunner(
     return read.events.reduce((max, event) => Math.max(max, event.seq), 0);
   };
 
-  const promptParts = (
+  /**
+   * The prompt of one question: the question, then the attachments.
+   *
+   * Images keep the shape the harness carries them in. Files are read on the
+   * Host — a text file decoded, a document extracted through the deployment's
+   * pipeline — and arrive as text under a heading per file, preceded by one
+   * lead line so the model knows why the question has more than it asked for.
+   * A file that cannot be read throws, which the service turns into the 415
+   * the caller's fallback understands: publishing an answer to a question the
+   * model could not see the attachment for is worse than asking again without
+   * it.
+   */
+  const promptParts = async (
     message: string,
     attachments: readonly QaIntegrationAttachment[],
-  ): readonly PromptContentPart[] => [
-    { type: "text", text: message },
-    ...attachments.map(
-      (attachment) =>
-        ({
-          type: "image",
-          mediaType: attachment.mediaType,
-          data: attachment.data,
-          ...(attachment.name === undefined ? {} : { name: attachment.name }),
-        }) as PromptContentPart,
-    ),
-  ];
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<readonly PromptContentPart[]> => {
+    const images = attachments
+      .filter(
+        (attachment): attachment is QaInlineImageAttachment =>
+          attachment.kind === "image",
+      )
+      .map(
+        (attachment) =>
+          ({
+            type: "image",
+            mediaType: attachment.mediaType,
+            data: attachment.data,
+            ...(attachment.name === undefined
+              ? {}
+              : { name: attachment.name }),
+          }) as PromptContentPart,
+      );
+    const files = attachments.filter(
+      (attachment): attachment is QaFileAttachment =>
+        attachment.kind === "file",
+    );
+    if (files.length === 0) {
+      return [{ type: "text", text: message }, ...images];
+    }
+    const extracted = await attachmentPromptParts(files, {
+      documents: options.documents(),
+      sessionId,
+      signal,
+      logger,
+    });
+    return [
+      { type: "text", text: message },
+      ...images,
+      { type: "text", text: QA_ATTACHMENT_LEAD },
+      ...extracted,
+    ];
+  };
 
   return {
     async run(input: {
@@ -186,6 +235,12 @@ export function createQaIntegrationRunner(
         await options.admission.secureSessionForUser(input.userId, chatId);
       }
       const floor = await floorOf(chatId);
+      const content = await promptParts(
+        input.message,
+        input.attachments,
+        chatId,
+        input.signal,
+      );
       // The client mints this identity; the harness brands it. A plain UUID
       // is exactly what a browser sends, and it is what makes the prompt
       // idempotent if the same question is ever retried.
@@ -195,7 +250,7 @@ export function createQaIntegrationRunner(
           requestId,
           sessionId: SessionId(chatId),
           mode: "queue",
-          content: promptParts(input.message, input.attachments),
+          content,
         },
         input.signal,
       );
@@ -252,6 +307,15 @@ export function createQaIntegrationRunner(
     }
   }
 }
+
+/**
+ * The one line that explains the text parts after the question. It says where
+ * the material came from and nothing about what to do with it: the deployment's
+ * own prompt notes own the instructions, and this block is content.
+ */
+const QA_ATTACHMENT_LEAD =
+  "Вложения к этому вопросу — файлы, пришедшие из внешней системы вместе с " +
+  "обращением. Их содержимое приведено ниже под заголовком с именем файла.";
 
 /** Wait for the agent to reach quiescence, or for the caller to give up. */
 async function whenIdleOrAborted(

@@ -124,7 +124,45 @@ follows carries no token field in any state — a list that could repeat a
 credential would be a list that leaks it. Revocation asks twice, because it is
 not undoable and a live integration may be depending on the token.
 
-### 2.8 The answer is cut here, where a cut can be read
+### 2.8 An attachment is read on the Host, and nothing is stored
+
+The ticket's attachments are the part of the request that cannot simply be
+forwarded. Images ride the prompt inline, because that is what the harness
+carries; a file does not — `PromptContentPart` names one by an opaque receipt
+minted by the harness's own upload service, and that service is what stores the
+copy the model later reads through its file tools. An external caller has no
+browser session, so it cannot mint one.
+
+So the plugin reads the attachment itself and sends text:
+
+| What arrived | What the prompt gets |
+| --- | --- |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image, inline, unchanged |
+| `text/plain`, `text/csv`, `text/markdown` | the decoded content under a heading naming the file |
+| `application/pdf` and the OOXML family | the deployment's document pipeline extracts Markdown (`DocumentsFace.toMarkdown`), and that text is inlined |
+| anything else | `415`, which is the caller's own fallback: it repeats the question without attachments |
+
+Three consequences are deliberate. **Nothing is written into a path the
+deployment shares:** the pipeline takes a path, so the bytes go to a temporary
+directory created for that one extraction, which is also the workspace root the
+conversion is scoped to, and the directory is removed in `finally`, whatever the
+outcome. A deployment that configured its own artifact root for the document
+pipeline keeps the conversion's artifacts under it, where its existing retention
+sweep governs them. **A file that cannot be read refuses the request** with the same
+`415` rather than being skipped: publishing an answer to a question whose
+material never reached the model is worse than asking again without it, and
+that is exactly what the status means in this contract. **The pipeline is the
+deployment's own** — the same runtime, providers and limits the `document_*`
+tools use, reached through the face the documents plugin publishes — so a
+deployment without it answers `415` for PDF and Office rather than growing a
+second converter here, and no new dependency appears in this package.
+
+The text is bounded: 60 000 characters per attachment and 120 000 per question,
+cut at a line or word boundary and marked when cut. Attachments past the budget
+are named in a closing note, so the model knows something was left out instead
+of assuming it saw everything.
+
+### 2.9 The answer is cut here, where a cut can be read
 
 The caller publishes the answer into a ticket comment, and the specification
 names a size for it. The comment is the one place where an over-long answer
@@ -149,12 +187,6 @@ copy, and it is the contract this implementation is tested against.
 
 ## 4. Deliberately not in this delivery
 
-- **Non-image attachments.** `multipart/form-data` is accepted, and images ride
-  the prompt inline as they do from the composer. Text, PDF and Office
-  attachments need a minted upload receipt (`{type: "file", receiptId}`), whose
-  producer is the browser upload path with a session the external caller does
-  not have. Those requests answer `415`, which is exactly the fallback the
-  bridge already implements. This is the first thing to close.
 - **Async ask.** The specification marks `202` + polling as optional and says
   not to implement it preemptively. The synchronous endpoint with an escalation
   path satisfies the stated budget.
@@ -191,6 +223,13 @@ copy, and it is the contract this implementation is tested against.
   escalation paths (empty, interrupted, timed out — the last one keeping the
   chat), a host failure as `503`, the rate and concurrency budgets, health with
   and without a model catalog, and a dropped connection.
+- `tests/integration-attachments.test.ts` — the media-type families the parser
+  accepts; a caller's name reduced to a label (traversal, control characters and
+  length); a text file decoded; bytes labelled as text refused; a document
+  extracted through a fake pipeline that asserts the file exists while it reads
+  it; the temporary directory gone after both a success and a failure; a
+  missing pipeline and a failing one refused with the reason in the log; and
+  every attachment inside the per-file and total text budgets.
 - `tests/integration-answer.test.ts` — the answer is the last prose of *this*
   turn: an intermediate tool-only step is skipped, an earlier turn's answer is
   not republished, an injected context message does not become the prompt, and

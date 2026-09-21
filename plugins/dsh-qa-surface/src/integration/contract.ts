@@ -64,12 +64,62 @@ export class QaIntegrationError extends Error {
 }
 
 /** One image the caller attached, already bounded and decoded to base64. */
-export interface QaIntegrationAttachment {
+export interface QaInlineImageAttachment {
+  readonly kind: "image";
   /** A raster media type; anything else is refused before it gets here. */
   readonly mediaType: string;
   /** base64 bytes, exactly as the harness prompt content carries them. */
   readonly data: string;
   readonly name?: string;
+}
+
+/**
+ * One non-image file the caller attached, still as bytes.
+ *
+ * Files cannot ride a prompt the way images do: the harness carries a file as
+ * an opaque receipt minted by its own upload service, which an external caller
+ * has no session to reach. What the bridge sends instead is read on the Host —
+ * text files decoded, documents extracted through the deployment's document
+ * pipeline — and the resulting text joins the prompt, which is the same
+ * material the model would have read out of the stored copy.
+ */
+export interface QaFileAttachment {
+  readonly kind: "file";
+  readonly mediaType: string;
+  readonly name: string;
+  /** Raw bytes, bounded by the configured per-attachment ceiling. */
+  readonly bytes: Buffer;
+}
+
+/** One attachment of a parsed request, in the order the caller sent it. */
+export type QaIntegrationAttachment =
+  | QaInlineImageAttachment
+  | QaFileAttachment;
+
+/**
+ * Why one attachment could not become prompt content, in the vocabulary the
+ * service maps onto HTTP.
+ *
+ * `unsupported` is the bridge's own fallback signal (415): repeat the question
+ * without attachments. `unavailable` is the same answer for a document the
+ * deployment cannot read right now, and the two are deliberately distinct only
+ * in the log — a caller sees one status either way.
+ */
+export type QaIntegrationAttachmentReason = "unsupported" | "unavailable";
+
+/** One attachment the Host could not turn into prompt content. */
+export class QaIntegrationAttachmentError extends Error {
+  readonly reason: QaIntegrationAttachmentReason;
+
+  constructor(
+    readonly attachment: string,
+    reason: QaIntegrationAttachmentReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = "QaIntegrationAttachmentError";
+    this.reason = reason;
+  }
 }
 
 /** A parsed `POST /qa/api/ask` body, whichever encoding carried it. */

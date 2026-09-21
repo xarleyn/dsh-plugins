@@ -1096,12 +1096,25 @@ owns, and a chat an integration opened keeps its own workspace, subrole and
 capability snapshot like any other QA chat.
 
 `multipart/form-data` is accepted with the same fields (`message`, `version`,
-`session_id`, `context` as a JSON **string**) plus repeated `files` parts.
-Attachments are limited to raster images — they ride the prompt inline, as they
-do from the composer. A non-image attachment is refused with `415`, which is the
-signal the bridge's own fallback waits for: it repeats the question without
-attachments rather than failing the ticket. Text and document attachments over
-API are not implemented yet.
+`session_id`, `context` as a JSON **string**) plus repeated `files` parts (at
+most five, 10 MiB each by default).
+
+| Attachment | What the model receives |
+| --- | --- |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image itself |
+| `text/plain`, `text/csv`, `text/markdown` | its text, under a heading with the file name |
+| `application/pdf`, Word, Excel, PowerPoint | text extracted by the deployment's document pipeline |
+| anything else | `415` — the fallback the bridge already implements |
+
+A file the Host cannot read refuses the whole question with `415` rather than
+being skipped: an answer produced without the material it was asked about is
+worse than asking again without it. Documents need the `documents` plugin
+installed; without it PDF and Office attachments take the same `415` path, and
+images and text keep working. Attachments are read, not stored: the bytes live
+in a temporary directory for the length of one extraction, and the text is
+bounded (60 000 characters per file, 120 000 per question, truncated with a
+marker). Everything the bridge's own filter lets through is accepted; archives,
+executables and media are not.
 
 A `answer` longer than `maxAnswerCharacters` is cut before it is published, at
 the last paragraph break (then the last line, then the last sentence) and marked

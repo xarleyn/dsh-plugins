@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { QaAccounts } from "../src/accounts/store.js";
-import { QaIntegrationError } from "../src/integration/contract.js";
+import {
+  QaIntegrationAttachmentError,
+  QaIntegrationError,
+} from "../src/integration/contract.js";
 import type {
   QaAskRequest,
   QaIntegrationRunner,
@@ -246,6 +249,26 @@ describe("integration service answering", () => {
     expect(answered.answer.length).toBeLessThanOrEqual(512);
     expect(long.startsWith(answered.answer.slice(0, -1))).toBe(true);
     expect(answered.answer.slice(0, -1).endsWith("объяснение.")).toBe(true);
+  });
+
+  it("answers an unreadable attachment with the fallback the caller retries on", async () => {
+    // A document the deployment's pipeline could not read refuses the whole
+    // question: the caller repeats it without the attachment (415) rather than
+    // receiving an answer to a question the model saw no material for.
+    const api = service({
+      accounts,
+      runner: quietRunner(async () => {
+        throw new QaIntegrationAttachmentError(
+          "Договор.pdf",
+          "unsupported",
+          "the document pipeline could not read Договор.pdf",
+        );
+      }),
+    });
+    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toMatchObject({
+      reason: "unsupported-media",
+      status: 415,
+    });
   });
 
   it("escalates instead of publishing an empty or interrupted turn", async () => {
