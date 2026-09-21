@@ -262,6 +262,17 @@ interface ReviewSessionState {
 }
 ```
 
+`reviewRound` and `lastPassedHash` are scoped to the **user turn**: the surface
+seq of the user request the candidate answers. One user request spends several
+agent turns — a steered revision continues the current one, a settlement notice
+opens a new one — so agent turns must never reset the round budget or the PASS
+receipt. Keyed by the agent turn instead, a candidate that had already passed
+was reviewed again on the next boundary and every turn handed out a fresh round
+budget, which is how the reviewer and the primary ended up alternating forever.
+An unknown user turn (no real user message found yet) never resets a known one,
+so an interim boundary without a candidate cannot hand out a fresh budget
+either.
+
 Delegation entry:
 
 ```ts
