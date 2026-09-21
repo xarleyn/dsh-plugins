@@ -39,7 +39,7 @@ interface CapturedSettings {
 
 function wire(
   config?: Record<string, unknown>,
-  options?: { agents?: AgentRegistryFace },
+  options?: { agents?: AgentRegistryFace; approval?: unknown },
 ): { captured: CapturedHost; gate: ModelSafetyGate } {
   const ctx = new Context();
   const shadow = ctx as unknown as Record<string, unknown>;
@@ -138,6 +138,7 @@ function wire(
     },
   };
   if (options?.agents !== undefined) services.agents = options.agents;
+  if (options?.approval !== undefined) services.approval = options.approval;
   shadow.get = (name: string) => services[name];
 
   const logger = {
@@ -367,7 +368,64 @@ describe("ModelSafetyGate service wiring", () => {
     expect(degraded.classifier.active).toBe(false);
     expect(degraded.classifier.reason).toContain("LLM service");
   });
+
+  it("refuses an escalation itself when the host's approval policy cannot ask anyone", async () => {
+    const { captured, gate } = wire(
+      { mode: "warn" },
+      {
+        approval: { config: { policy: "never" }, overrideOf: () => undefined },
+      },
+    );
+    gate.risk.beginTurn("s1", 1);
+    gate.risk.mark("s1", {
+      riskLevel: "high",
+      source: "web_fetch",
+      signalKey: "injection",
+    });
+
+    const decision = await runPreExecute(captured, {
+      name: "read",
+      arguments: { path: "notes.txt" },
+      agent: { id: "s1", session: { id: "s1" } },
+    });
+
+    expect(decision.kind).toBe("deny");
+    expect(decision.reason).toContain("dsh-model-safety-gate");
+    expect(decision.reason).toContain('"never"');
+    expect(decision.reason).not.toContain("user rejected");
+  });
+
+  it("hands the escalation to the seam when no approval service is composed", async () => {
+    const { captured, gate } = wire({ mode: "warn" });
+    gate.risk.beginTurn("s1", 1);
+    gate.risk.mark("s1", {
+      riskLevel: "high",
+      source: "web_fetch",
+      signalKey: "injection",
+    });
+
+    const decision = await runPreExecute(captured, {
+      name: "read",
+      arguments: { path: "notes.txt" },
+      agent: { id: "s1", session: { id: "s1" } },
+    });
+
+    expect(decision.kind).toBe("ask");
+    expect(decision.reason).toContain("Safety gate requests approval");
+  });
 });
+
+/** Drive the registered `tools/pre-execute` listener once. */
+async function runPreExecute(
+  captured: CapturedHost,
+  exec: unknown,
+): Promise<{ kind: string; reason: string }> {
+  const listener = captured.toolListeners.get("tools/pre-execute")?.[0] as (
+    execution: unknown,
+    next: () => Promise<unknown>,
+  ) => Promise<{ kind: string; reason: string }>;
+  return listener(exec, async () => ({ kind: "allow" }));
+}
 
 const JAILBREAK = {
   agent: { id: "session-1" },

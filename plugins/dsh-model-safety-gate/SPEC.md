@@ -58,6 +58,15 @@ Numbered, testable guarantees for version 0.1.0:
     extension points (`agent/pre-step`, `llm/stream`, `tools/pre-execute`,
     `tools/post-execute`) and installs with a plain `dsh plugin add`.
 16. **Peer-only runtime.** All `@deepseek-ai/*` packages are peer dependencies.
+17. **An unanswerable escalation is refused by the gate, not by a human.** The
+    runtime resolves an `ask` through the `approval` service, whose closed
+    outcome vocabulary carries no reason, and a session whose effective policy
+    is `never` is answered with `rejected` before any answerer runs. The gate
+    reads that policy itself (the session's logged override, else the
+    deployment default) and, unless `tools.unanswerableAsk` is `ask`, refuses
+    the call with its own verdict and categories. No policy is inferred: a seam
+    that is absent, unreadable, or outside the published vocabulary leaves the
+    native ask untouched.
 
 ## 2. Data model
 
@@ -152,6 +161,10 @@ guard to the classifier's own traffic.
 6. **Benign traffic.** Security-research-style discussion and quoted malicious
    content pass through without blocks (regression corpus with benign
    fixtures).
+7. **Locked-down escalation.** Turn risk is high and the deployment's approval
+   policy is `never` → the gate refuses the tool call with its own reason and
+   categories → no ask reaches the runtime, so no `approval/asked` event is
+   written and the model is never told the user rejected it.
 
 ## 6. Implementation status
 

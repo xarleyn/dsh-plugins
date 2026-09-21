@@ -109,4 +109,15 @@ describe("resolveSafetyGateConfig", () => {
     expect(SAFETY_GATE_DEFAULTS.temperature).toBe(0);
     expect(SAFETY_GATE_DEFAULTS.timeoutMs).toBe(3_000);
   });
+
+  it("refuses an escalation nobody can answer by default", () => {
+    expect(resolveSafetyGateConfig({}).tools.unanswerableAsk).toBe("deny");
+    expect(
+      resolveSafetyGateConfig({ tools: { unanswerableAsk: "ask" } }).tools
+        .unanswerableAsk,
+    ).toBe("ask");
+    expect(() =>
+      resolveSafetyGateConfig({ tools: { unanswerableAsk: "maybe" as never } }),
+    ).toThrow(SafetyGateError);
+  });
 });
