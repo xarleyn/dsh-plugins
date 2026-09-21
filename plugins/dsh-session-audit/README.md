@@ -24,6 +24,11 @@ view goes back to its empty state.
 - **Nothing to configure.** `trajectory.sessionId` in the analysis decides which
   session an audit belongs to. The directory name is only a fallback, and a
   name that could mean two sessions attaches to neither.
+- **An audit no session can show is still announced.** A directory that names
+  no session — or one whose `analysis.json` cannot be parsed — belongs to no
+  view, so every session's Audit view lists it by name with the reason it is
+  not attached. Copying an audit in and seeing nothing is never the answer you
+  are left with.
 - **It works while DSH runs.** A startup scan, a filesystem watcher and a
   periodic reconciliation: an audit that arrives through a Docker bind mount, a
   network share or a `scp` is picked up even where native events do not reach

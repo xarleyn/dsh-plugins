@@ -42,6 +42,10 @@ Numbered guarantees:
     and gets the same record this plugin's own view shows.
 12. Nothing rendered from an audit can execute: the report renderer has no HTML
     path, and link and image destinations pass a protocol allowlist.
+13. An audit no session can show — one whose binding is unresolved, or one that
+    is not a readable audit — is reported to the view with the reason it is
+    unattached. An audit is never silently absent, and the reason crosses the
+    wire as a stable code rather than as a host path.
 
 ## 2. Data model
 
@@ -81,6 +85,13 @@ rather than a re-architecture.
 | `unresolved` | no | valid artefact, no session to bind it to |
 | `invalid` | no | unreadable, oversized, undecodable or schema-invalid |
 | `ready` | **yes** | valid and bound |
+
+The two statuses a session never shows share a fact: the record is bound to no
+session. They are therefore listed together by the `unattached` remote — the
+audits that exist and are visible nowhere — and the view says so in its empty
+state (§6, scenario 10). Each entry carries the code of the record's blocking
+diagnostic and not its message: the message is written for the host log and
+quotes the artifact's path.
 
 ### 2.4 Damage policy
 
@@ -134,6 +145,8 @@ directory listing in the common case.
 - The audit root, its layout, and the atomic publish protocol for producers
 - Startup scan, filesystem watcher, periodic reconciliation
 - Session binding, including unique-prefix resolution
+- Reporting the audits no session can show, so that an audit invisible in
+  every session is still an audible one
 - The `Audit` conversation view: report, findings and JSON
 - Live add, update and delete, without restart
 - The `sessionAudit` service for other plugins
@@ -202,6 +215,13 @@ directory listing in the common case.
    then the chat list renders exactly as it does without either plugin — no
    badge, no empty state, no error.
 
+10. **An audit no session can show is still reported.**
+    Given an audit directory that names no session, or whose `analysis.json`
+    cannot be parsed,
+    then no session claims it, and every session's Audit view lists its
+    directory name with the reason it is not attached — the reason and never a
+    host path.
+
 ## 7. Implementation status
 
 | Area | Status |
@@ -212,6 +232,7 @@ directory listing in the common case.
 | Watcher, settle, reconciliation | Implemented |
 | `sessionAudit` service and Typert Remote surface | Implemented |
 | `Audit` conversation view (report, findings, JSON) | Implemented |
+| Unattached-audit report (remote `unattached`, notice in the view) | Implemented |
 | `@yadsh/dsh-audit-ui` shared components | Implemented |
 | QA Surface badge and dialog | Implemented |
 | Multi-audit history in the UI | Deferred |

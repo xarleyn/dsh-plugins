@@ -146,6 +146,23 @@ export class AuditRegistry {
     return this.listFor(sessionId).find((record) => record.status === "ready");
   }
 
+  /**
+   * Every audit no session view can show, newest first.
+   *
+   * A record with no bound session is exactly that: an artefact no session
+   * claims (`unresolved`), or a directory that could not be read as an audit
+   * (`invalid`). Both are held in the registry and neither appears in any
+   * session's view (SPEC §2.3), so this is the only list that can tell an
+   * operator the audits exist at all.
+   */
+  unattached(): readonly AuditRecord[] {
+    const records: AuditRecord[] = [];
+    for (const record of this.records.values()) {
+      if (record.sessionId === null) records.push(record);
+    }
+    return records.sort(newerFirst);
+  }
+
   /** Ids of every registered audit. */
   auditIds(): readonly string[] {
     return [...this.records.keys()];
