@@ -25,10 +25,15 @@ describe("source provenance note", () => {
     const session = createSession("session-root");
     const appended = await step(session);
     // One note per concern: provenance, delegation naming, document routing,
-    // source priority.
-    expect(appended.length).toBe(3);
-    expect(noteNames(appended[0])).toEqual([QA_SOURCES_NOTE]);
-    expect(appended.flatMap(noteNames)).toContain(QA_SOURCE_PRIORITY_NOTE);
+    // source priority. Identity needs an owning account, so it is absent here.
+    expect(appended.flatMap(noteNames).sort()).toEqual(
+      [
+        QA_SOURCES_NOTE,
+        QA_DELEGATION_NOTE,
+        QA_DOCUMENTS_NOTE,
+        QA_SOURCE_PRIORITY_NOTE,
+      ].sort(),
+    );
     expect(noteText(appended[0])).toMatch(/manual Sources\/Источники/u);
     expect(noteText(appended[0])).toContain(QA_REPORT_SOURCES_TOOL);
     expect(await step(session)).toEqual([]);
