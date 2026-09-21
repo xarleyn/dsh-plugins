@@ -79,6 +79,11 @@ Desktop.ini
 # ---------------------------------------------------------------------------
 AGENTS.local.md
 
+# Workspace agent configuration. Per-machine wiring (MCP servers and similar)
+# names machine-local paths and private hosts, so it must never be committed.
+.zcode/
+.freebuff/
+
 # Leak-scan local state. The marker dictionary lists real internal values, so
 # it must never be committed; the canonical copy lives outside the repository
 # entirely (~/.dsh-leak-markers.txt). The allowlist extension is machine-local.
