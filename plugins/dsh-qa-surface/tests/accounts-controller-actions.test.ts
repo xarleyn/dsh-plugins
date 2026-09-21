@@ -32,15 +32,63 @@ describe("QA accounts controller", () => {
     expect(accounts.token()).toBeNull();
   });
 
-  it("claims freshly created chats", async () => {
+  it("claims freshly created chats and lists them at once", async () => {
     const api = remote();
     const accounts = controller(api);
     await accounts.start();
     await accounts.login("a@b.co", "password-1");
+    // The owned list is what the sidebar shows, so a chat opened after login
+    // enters it here rather than waiting for the next login.
+    expect(accounts.ownedIds()).toEqual(["s-1"]);
     await accounts.claimNewSession("s-new");
     expect(api.accountsClaimSessions).toHaveBeenLastCalledWith("t-login", [
       "s-new",
     ]);
+    expect(accounts.ownedIds()).toEqual(["s-1", "s-new"]);
+  });
+
+  it("claims idempotently without repeating an id the list already holds", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    await accounts.claimNewSession("s-1");
+    expect(accounts.ownedIds()).toEqual(["s-1"]);
+  });
+
+  it("keeps a chat another account claimed out of the owned list", async () => {
+    const api = remote({
+      accountsClaimSessions: vi.fn(async () => ({
+        ok: true as const,
+        value: { claimed: 0, conflicts: ["s-foreign"] },
+      })),
+    });
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    await accounts.claimNewSession("s-foreign");
+    expect(accounts.ownedIds()).toEqual(["s-1"]);
+  });
+
+  it("lists a chat whose claim never reached the host", async () => {
+    const api = remote({
+      accountsClaimSessions: vi.fn(
+        async (_token: string, ids: readonly string[]) => {
+          if (ids.includes("s-new")) throw new Error("host unreachable");
+          return { ok: true as const, value: { claimed: 0, conflicts: [] } };
+        },
+      ),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    await accounts.claimNewSession("s-new");
+    // The page holds the binding through the attendance boundary, which claims
+    // an unowned chat and refuses another account's: the chat is this
+    // account's either way, so a failed call must not hide it.
+    expect(accounts.ownedIds()).toEqual(["s-1", "s-new"]);
+    warn.mockRestore();
   });
 
   it("maps wire reasons and unknown failures to copy", () => {
