@@ -40,6 +40,22 @@ export interface QaAccountRemotes {
   ): Promise<T>;
   register(email: string, password: string): QaAccountSession;
   login(email: string, password: string): QaAccountSession;
+  /**
+   * Replace the token account's own password. The token is the identity, so a
+   * browser can only ever change its own credential; the returned session
+   * carries the fresh token that keeps this browser signed in.
+   */
+  changePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): QaAccountSession;
+  /**
+   * File a forgotten-password request for the operator queue. The answer is
+   * deliberately the same for every address, so the sign-in screen cannot be
+   * used to learn which accounts exist.
+   */
+  requestPasswordReset(email: string): void;
   /** Identity probe; safe to call with an empty or expired token. */
   whoami(token: string): QaWhoamiResult;
   /**
@@ -156,6 +172,21 @@ export function createQaAccountRemotes(options: {
     login: (email, password) => {
       const store = requireAccounts();
       return run(() => store.login(email, password));
+    },
+    changePassword: (token, currentPassword, nextPassword) => {
+      const store = requireAccounts();
+      const session = run(() =>
+        store.changePassword(token, currentPassword, nextPassword),
+      );
+      // Who changed a password is worth a log line; the password itself never
+      // is. A change signs every other browser out, so a user asking "why was
+      // I logged out?" has an answer in the Host log.
+      logger.info("accounts.password-changed", { userId: session.user.id });
+      return session;
+    },
+    requestPasswordReset: (email) => {
+      const store = requireAccounts();
+      run(() => store.requestPasswordReset(email));
     },
     whoami: (token) => {
       if (!getConfig().accounts.enabled) return { authenticated: false };

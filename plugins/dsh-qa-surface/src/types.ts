@@ -390,6 +390,22 @@ export interface QaAccountSession {
   readonly user: QaAccountUserPublic;
 }
 
+/**
+ * One forgotten-password request waiting for an operator. The address and name
+ * travel with it so the console can show who is locked out without a second
+ * lookup; the count makes repeated taps visible instead of silent.
+ */
+export interface QaPasswordResetRequest {
+  readonly userId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly requestedAt: string;
+  readonly lastRequestedAt: string;
+  readonly requestCount: number;
+  /** True when the account is disabled: a reset will not let it sign in. */
+  readonly disabled: boolean;
+}
+
 export type QaWhoamiResult =
   | { readonly authenticated: false }
   | { readonly authenticated: true; readonly user: QaAccountUserPublic };
@@ -1672,6 +1688,8 @@ export type QaAdminAuditAction =
   | "user.updated"
   | "user.enabled"
   | "user.disabled"
+  /** An operator set a new password for an account that had requested one. */
+  | "user.password-reset"
   | "authorization.changed"
   | "subrole.assignment.changed"
   | "subrole.created"

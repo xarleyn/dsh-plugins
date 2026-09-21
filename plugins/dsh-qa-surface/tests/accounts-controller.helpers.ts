@@ -78,6 +78,11 @@ function remote(
       ok: true as const,
       value: { ...session("t-login").value.user, starters: input },
     })),
+    accountsChangePassword: vi.fn(async () => session("t-changed")),
+    accountsRequestPasswordReset: vi.fn(async () => ({
+      ok: true as const,
+      value: { accepted: true as const },
+    })),
     ...overrides,
   } as QaAccountsApi;
 }

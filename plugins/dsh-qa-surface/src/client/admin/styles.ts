@@ -14,6 +14,8 @@ export const QA_ADMIN_CONSOLE_STYLES = String.raw`
 .dsh-qa-admin__panel h2{margin:0;font-size:15px}
 .dsh-qa-admin__panel h3{margin:14px 0 6px;font-size:13px;color:var(--dsw-alias-label-secondary)}
 .dsh-qa-admin__panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dsh-qa-admin__panel-note{margin:0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px}
+.dsh-qa-admin__notice{margin:0;color:var(--dsh-qa-success);font-size:12px;line-height:17px}
 .dsh-qa-admin__columns{display:grid;grid-template-columns:minmax(0,360px) minmax(0,1fr);gap:18px;align-items:start}
 .dsh-qa-admin__metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .dsh-qa-admin__metric{display:flex;flex-direction:column;gap:2px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3)}

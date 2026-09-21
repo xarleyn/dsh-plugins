@@ -155,4 +155,67 @@ describe("QA accounts controller", () => {
     ).resolves.toContain("Не удалось");
     expect(api.accountsUpdateStarters).not.toHaveBeenCalled();
   });
+
+  it("changes the password and keeps the session on the token it gets back", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    expect(
+      await accounts.changePassword("password-1", "password-2"),
+    ).toBeNull();
+    expect(api.accountsChangePassword).toHaveBeenCalledWith(
+      "t-login",
+      "password-1",
+      "password-2",
+    );
+    // The change bumped the version the old token was minted under, so the
+    // browser keeps its session only by adopting the token from the answer.
+    expect(accounts.token()).toBe("t-changed");
+    expect(accounts.getSnapshot()).toMatchObject({ stage: "authed" });
+  });
+
+  it("reports a wrong current password as refusal copy", async () => {
+    const api = remote({
+      accountsChangePassword: vi.fn(async () => ({
+        ok: false as const,
+        error: new Error("nope (reason: invalid-current-password)"),
+      })),
+    });
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    expect(await accounts.changePassword("password-9", "password-2")).toContain(
+      "Текущий пароль",
+    );
+    // The stored token is untouched by a refusal.
+    expect(accounts.token()).toBe("t-login");
+  });
+
+  it("refuses a password change while anonymous", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await expect(
+      accounts.changePassword("password-1", "password-2"),
+    ).resolves.toContain("Не удалось");
+    expect(api.accountsChangePassword).not.toHaveBeenCalled();
+  });
+
+  it("files a reset request and answers it the same way for every address", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.requestPasswordReset("ghost@b.co");
+    expect(api.accountsRequestPasswordReset).toHaveBeenCalledWith("ghost@b.co");
+    const snapshot = accounts.getSnapshot();
+    expect(snapshot).toMatchObject({
+      stage: "gate",
+      mode: "login",
+      busy: false,
+    });
+    expect(snapshot.stage === "gate" ? snapshot.notice : null).toContain(
+      "Заявка отправлена",
+    );
+  });
 });

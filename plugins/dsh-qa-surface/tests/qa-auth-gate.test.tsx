@@ -34,6 +34,14 @@ describe("QA auth gate", () => {
         ok: true as const,
         value: { ids: [] },
       })),
+      accountsChangePassword: vi.fn(async () => ({
+        ok: false as const,
+        error: new Error("unused"),
+      })),
+      accountsRequestPasswordReset: vi.fn(async () => ({
+        ok: true as const,
+        value: { accepted: true as const },
+      })),
       ...overrides,
     } as QaAccountsApi;
   }
@@ -112,6 +120,35 @@ describe("QA auth gate", () => {
         "Неверный email или пароль",
       );
     });
+  });
+
+  it("files a forgotten-password request from the reset card", async () => {
+    const api = accountsApi();
+    const { accounts } = await mountedGate(api, false);
+    fireEvent.click(screen.getByText("Забыли пароль?"));
+    // The reset card asks for an address only: there is no password to type.
+    expect(screen.queryByLabelText(/Пароль/)).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a@b.co" },
+    });
+    fireEvent.click(screen.getByText("Отправить заявку"));
+    await waitFor(() => {
+      expect(api.accountsRequestPasswordReset).toHaveBeenCalledWith("a@b.co");
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toContain(
+        "Заявка отправлена",
+      );
+    });
+    expect(accounts.getSnapshot()).toMatchObject({
+      stage: "gate",
+      busy: false,
+    });
+    // Returning to the form drops the confirmation: it answered the request,
+    // not the sign-in that follows it.
+    fireEvent.click(screen.getByText("Вернуться ко входу"));
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByLabelText(/Пароль/)).toBeTruthy();
   });
 
   it("renders the account chip with a logout action in the sidebar", () => {

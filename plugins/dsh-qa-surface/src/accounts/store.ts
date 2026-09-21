@@ -17,6 +17,7 @@ import type {
   QaClaimResult,
   QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
+  QaPasswordResetRequest,
   QaSkillActivationRecord,
   QaUserAccess,
   QaWhoamiResult,
@@ -1017,6 +1018,92 @@ export class QaAccounts {
         tokenVersion: (user.tokenVersion ?? 0) + 1,
       })),
     );
+  }
+
+  /**
+   * Self-service password change: verify the caller's current password, then
+   * replace it. The token version bumps, so every other browser holding this
+   * account's token is signed out — that is the point of a change after a leak
+   * — but the caller's own session must not die from its own write, so a fresh
+   * token minted on the bumped version comes back with the account.
+   */
+  changePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): QaAccountSession {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    if (!passwordMatches(currentPassword, user.passwordHash)) {
+      throw new QaAccountsError(
+        "invalid-current-password",
+        "the current password is incorrect",
+      );
+    }
+    // The strength gate runs before any write, so a refused change leaves the
+    // stored hash and the token version as they were.
+    validatePassword(nextPassword);
+    const updated = this.setPassword(user.email, nextPassword);
+    // A forgotten-password request brought this user here; the change answers
+    // it, so the operator no longer has anything to do.
+    this.database.clearPasswordReset(user.id);
+    return { token: this.mintToken(user.id), user: updated };
+  }
+
+  /**
+   * A forgotten-password request from the sign-in screen. The caller learns
+   * nothing: a known address, an unknown one and a disabled account all take
+   * the same path out of here, and only the operator-visible queue records the
+   * one real request. The attempt still spends the authentication budget, so
+   * the screen cannot be used to flood that queue.
+   */
+  requestPasswordReset(email: string): void {
+    this.reloadIfChanged();
+    this.assertAuthBudget();
+    const user = this.userByEmail(email.trim().toLowerCase());
+    if (user === undefined || user.disabled === true) return;
+    this.database.recordPasswordReset(user.id, new Date().toISOString());
+  }
+
+  /**
+   * Pending requests, newest first. A request whose account no longer exists is
+   * dropped rather than listed: the console has no account to act on.
+   */
+  passwordResetRequests(): readonly QaPasswordResetRequest[] {
+    this.reloadIfChanged();
+    const users = new Map(this.file.users.map((user) => [user.id, user]));
+    return this.database.listPasswordResets().flatMap((row) => {
+      const user = users.get(row.user_id);
+      if (user === undefined) return [];
+      return [
+        {
+          userId: user.id,
+          email: user.email,
+          displayName: user.displayName,
+          requestedAt: row.requested_at,
+          lastRequestedAt: row.last_requested_at,
+          requestCount: row.request_count,
+          disabled: user.disabled === true,
+        },
+      ];
+    });
+  }
+
+  /**
+   * Operator write: set a new password for an account addressed by id — the
+   * console works in ids, not addresses — and answer its pending request. Same
+   * token-version bump as {@link setPassword}, so every live session of that
+   * account dies and the user signs in with the new password.
+   */
+  resetUserPassword(userId: string, password: string): QaAccountUserPublic {
+    validatePassword(password);
+    const updated = this.editUserById(userId, (user) => ({
+      ...user,
+      passwordHash: hashPassword(password),
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
+    }));
+    this.database.clearPasswordReset(userId);
+    return toPublic(updated);
   }
 
   /**

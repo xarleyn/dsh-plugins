@@ -78,6 +78,7 @@ import type {
   QaDocumentPreview,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPasswordResetRequest,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
@@ -593,6 +594,30 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /** Identity probe; safe to call with an empty or expired token. */
+  @Remote("accountsChangePassword")
+  accountsChangePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): QaAccountSession {
+    return this.accountRemotes.changePassword(
+      token,
+      currentPassword,
+      nextPassword,
+    );
+  }
+
+  /**
+   * The sign-in screen's "забыли пароль?" path. It answers the same way for
+   * every address: whether an account exists is not something this endpoint
+   * tells a caller.
+   */
+  @Remote("accountsRequestPasswordReset")
+  accountsRequestPasswordReset(email: string): { readonly accepted: true } {
+    this.accountRemotes.requestPasswordReset(email);
+    return { accepted: true };
+  }
+
   @Remote("accountsWhoami")
   accountsWhoami(token: string): QaWhoamiResult {
     return this.accountRemotes.whoami(token);
@@ -907,6 +932,26 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaAdminUserDetail> {
     return this.accountRemotes.runAsync(() =>
       this.admin.updateUser(token, userId, update),
+    );
+  }
+
+  @Remote("adminPasswordResetRequests")
+  adminPasswordResetRequests(
+    token: string,
+  ): Promise<readonly QaPasswordResetRequest[]> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.passwordResetRequests(token),
+    );
+  }
+
+  @Remote("adminResetPassword")
+  adminResetPassword(
+    token: string,
+    userId: string,
+    password: string,
+  ): Promise<QaAdminUserDetail> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.resetUserPassword(token, userId, password),
     );
   }
 

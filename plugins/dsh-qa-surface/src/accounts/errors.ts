@@ -8,6 +8,8 @@ export type QaAccountsErrorReason =
   | "admin-required"
   | "forbidden"
   | "invalid-credentials"
+  /** The signed-in user typed a current password that does not match. */
+  | "invalid-current-password"
   | "account-disabled"
   | "email-taken"
   | "invalid-email"

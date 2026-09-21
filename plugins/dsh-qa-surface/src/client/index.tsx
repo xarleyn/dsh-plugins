@@ -85,6 +85,7 @@ import type {
   QaFeedbackRow,
   QaMessageFeedback,
   QaMessageFeedbackInput,
+  QaPasswordResetRequest,
   QaQualityMetrics,
   QaReviewQueueItem,
   QaReviewQueueRow,
@@ -130,6 +131,14 @@ interface QaAdminRemote {
     token: string,
     userId: string,
     update: QaAdminUserUpdate,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
+  adminPasswordResetRequests(
+    token: string,
+  ): Promise<RemoteResult<readonly QaPasswordResetRequest[]>>;
+  adminResetPassword(
+    token: string,
+    userId: string,
+    password: string,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
   adminConversations(
     token: string,
@@ -540,6 +549,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         user: (token, userId) => policyRemote.adminUser(token, userId),
         updateUser: (token, userId, update) =>
           policyRemote.adminUpdateUser(token, userId, update),
+        passwordResetRequests: (token) =>
+          policyRemote.adminPasswordResetRequests(token),
+        resetPassword: (token, userId, password) =>
+          policyRemote.adminResetPassword(token, userId, password),
         conversations: (token, query, cursor, limit) =>
           policyRemote.adminConversations(token, query, cursor, limit),
         conversation: (token, conversationId) =>

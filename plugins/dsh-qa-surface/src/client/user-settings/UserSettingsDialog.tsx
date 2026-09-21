@@ -9,6 +9,7 @@ import type {
 } from "../../types.js";
 import type { QaBoundSkillApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
+import { QaPasswordSettingsPage } from "./PasswordSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
 import { QaStartersSettingsPage } from "./StartersSettingsPage.js";
@@ -16,7 +17,7 @@ import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
 export type QaSettingsSectionId =
-  "profile" | "starters" | "general" | "skills" | (string & {});
+  "profile" | "password" | "starters" | "general" | "skills" | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -32,6 +33,16 @@ export interface QaUserSettingsDialogProps {
     readonly fields: readonly QaAccountIdentityField[];
     readonly instructionsMaxLength: number;
     readonly onSave: (input: QaAccountProfileInput) => Promise<string | null>;
+  };
+  /**
+   * Self-service password change. Absent only where the surface runs without
+   * accounts at all, in which case this dialog is not shown either.
+   */
+  readonly password?: {
+    readonly onChange: (
+      currentPassword: string,
+      nextPassword: string,
+    ) => Promise<string | null>;
   };
   /** Self-service starter buttons; absent when the deployment turns them off. */
   readonly starters?: {
@@ -81,6 +92,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.profile !== undefined) {
       models.push({ id: "profile", title: "Профиль" });
     }
+    if (props.password !== undefined) {
+      models.push({ id: "password", title: "Пароль" });
+    }
     if (props.starters !== undefined) {
       models.push({ id: "starters", title: "Быстрые сообщения" });
     }
@@ -92,7 +106,13 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
       ...extensionSnapshot.sections.map(({ id, title }) => ({ id, title })),
     );
     return models;
-  }, [props.profile, props.starters, props.skills, extensionSnapshot.sections]);
+  }, [
+    props.profile,
+    props.password,
+    props.starters,
+    props.skills,
+    extensionSnapshot.sections,
+  ]);
   // A section the deployment withdrew while the dialog was open must not leave
   // an empty panel behind.
   const active = sections.some((entry) => entry.id === section)
@@ -144,6 +164,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               instructionsMaxLength={props.profile.instructionsMaxLength}
               onSave={props.profile.onSave}
             />
+          ) : null}
+          {active === "password" && props.password !== undefined ? (
+            <QaPasswordSettingsPage onChange={props.password.onChange} />
           ) : null}
           {active === "starters" && props.starters !== undefined ? (
             <QaStartersSettingsPage
