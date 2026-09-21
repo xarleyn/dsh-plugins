@@ -17,6 +17,7 @@ import type {
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPasswordResetRequest,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
@@ -164,6 +165,22 @@ export interface QaAdminApi {
     token: string,
     userId: string,
     update: QaAdminUserUpdate,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
+  /**
+   * Accounts that asked for a password reset from the sign-in screen, newest
+   * first. Reading takes `users.read`; answering one takes `users.manage`.
+   */
+  passwordResetRequests(
+    token: string,
+  ): Promise<RemoteResult<readonly QaPasswordResetRequest[]>>;
+  /**
+   * Answer one request: set that account's new password and drop its row. The
+   * account's live sessions end with the token-version bump.
+   */
+  resetPassword(
+    token: string,
+    userId: string,
+    password: string,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
   conversations(
     token: string,
@@ -499,6 +516,23 @@ export interface QaAccountsApi {
     token: string,
     input: QaAccountStartersInput,
   ): Promise<RemoteResult<QaAccountUserPublic>>;
+  /**
+   * Replace the caller's own password. The answer carries a fresh token: the
+   * write bumps the account's token version, so without it the browser that
+   * made the change would sign itself out.
+   */
+  accountsChangePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  /**
+   * File a forgotten-password request for the operator queue. The answer is
+   * the same for every address, so it reveals nothing about the account.
+   */
+  accountsRequestPasswordReset(
+    email: string,
+  ): Promise<RemoteResult<{ readonly accepted: true }>>;
 }
 
 /** One button above an empty composer: what it reads and what it sends. */

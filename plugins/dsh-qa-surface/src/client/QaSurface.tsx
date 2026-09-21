@@ -770,6 +770,13 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateProfile(input),
         }
       : undefined;
+    // Not gated by a config key: changing your own password is the one
+    // account action that must never be switched off, since a deployment
+    // without it has no way back in short of an operator.
+    const password = {
+      onChange: (currentPassword: string, nextPassword: string) =>
+        accounts.changePassword(currentPassword, nextPassword),
+    };
     const starters = config.accounts.starters.enabled
       ? {
           starters: accountsSnapshot.user.starters,
@@ -781,7 +788,7 @@ export function QaSurface(props: QaSurfaceProps) {
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    return { profile, starters, skills };
+    return { profile, password, starters, skills };
   }, [accounts, accountsSnapshot, config, boundSkillApi]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
@@ -1029,6 +1036,9 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.profile === undefined
             ? {}
             : { profile: settingsDialog.profile })}
+          {...(settingsDialog.password === undefined
+            ? {}
+            : { password: settingsDialog.password })}
           {...(settingsDialog.starters === undefined
             ? {}
             : { starters: settingsDialog.starters })}

@@ -75,6 +75,22 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    up: `
+      -- One row per account that asked for a password reset from the sign-in
+      -- screen. The row is what makes "забыли пароль?" a path rather than a
+      -- dead end: an operator reads it and sets a new password. Keyed by
+      -- account id, so a second tap updates the row instead of queueing a
+      -- duplicate, and the count keeps the repetition visible.
+      CREATE TABLE qa_password_resets (
+        user_id TEXT PRIMARY KEY,
+        requested_at TEXT NOT NULL,
+        last_requested_at TEXT NOT NULL,
+        request_count INTEGER NOT NULL DEFAULT 1
+      );
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -91,6 +107,13 @@ interface AccountRow {
   readonly profile_json: string | null;
   readonly starters_json: string | null;
   readonly qa_access_json: string | null;
+}
+
+interface PasswordResetRow {
+  readonly user_id: string;
+  readonly requested_at: string;
+  readonly last_requested_at: string;
+  readonly request_count: number;
 }
 
 interface OwnershipRow {
@@ -245,6 +268,48 @@ export class QaAccountsDatabase {
   updateUser(user: StoredUser): void {
     this.storage.transaction(() => {
       this.writeUser(user, { replace: true });
+    });
+  }
+
+  /**
+   * Record one forgotten-password request. A repeat from the same account
+   * moves the row up the queue and counts up, so the console shows "asked
+   * again" rather than an identical-looking pile of rows.
+   */
+  recordPasswordReset(userId: string, at: string): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `INSERT INTO qa_password_resets
+             (user_id, requested_at, last_requested_at, request_count)
+           VALUES (?, ?, ?, 1)
+           ON CONFLICT(user_id) DO UPDATE SET
+             last_requested_at = excluded.last_requested_at,
+             request_count = qa_password_resets.request_count + 1`,
+        )
+        .run(userId, at, at);
+    });
+  }
+
+  /** Every pending request, newest first. */
+  listPasswordResets(): readonly PasswordResetRow[] {
+    return asRows<PasswordResetRow>(
+      this.storage.db
+        .prepare(
+          `SELECT user_id, requested_at, last_requested_at, request_count
+             FROM qa_password_resets
+            ORDER BY last_requested_at DESC, user_id`,
+        )
+        .all(),
+    );
+  }
+
+  /** Drop an account's pending request: it was answered, or it is moot. */
+  clearPasswordReset(userId: string): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare("DELETE FROM qa_password_resets WHERE user_id = ?")
+        .run(userId);
     });
   }
 

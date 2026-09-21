@@ -12,13 +12,23 @@ import type { QaAccountsApi, StorageLike } from "./types.js";
 /** The `(reason: <code>)` marker the Host folds into account wire failures. */
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
 
+/**
+ * What the sign-in card says after a forgotten-password request. It names the
+ * request, never the account: a real address and an unknown one get the same
+ * sentence, which is the whole point of the endpoint.
+ */
+export const QA_RESET_FILED_NOTICE =
+  "Заявка отправлена оператору. Если такой аккаунт есть, пароль сбросят — затем войдите с новым паролем.";
+
 export type QaAccountsSnapshot =
   | { readonly stage: "checking" }
   | {
       readonly stage: "gate";
-      readonly mode: "login" | "register";
+      readonly mode: "login" | "register" | "reset";
       readonly busy: boolean;
       readonly error: string | null;
+      /** Neutral confirmation of a filed reset request; null otherwise. */
+      readonly notice?: string | null;
     }
   | {
       readonly stage: "authed";
@@ -56,6 +66,8 @@ export function accountsErrorMessage(code: string | null): string {
   switch (code) {
     case "invalid-credentials":
       return "Неверный email или пароль.";
+    case "invalid-current-password":
+      return "Текущий пароль неверен.";
     case "admin-required":
       return "Недостаточно прав: действие доступно администратору.";
     case "account-disabled":
@@ -187,9 +199,97 @@ export class QaAccountsController {
     );
   }
 
-  setMode(mode: "login" | "register"): void {
+  setMode(mode: "login" | "register" | "reset"): void {
     if (this.snapshot.stage !== "gate" || this.snapshot.busy) return;
-    this.publish({ ...this.snapshot, mode, error: null });
+    // Switching cards drops the previous answer: "заявка отправлена" must not
+    // survive a return to the sign-in form, where it would read as a result of
+    // the wrong action.
+    this.publish({ ...this.snapshot, mode, error: null, notice: null });
+  }
+
+  /**
+   * File a forgotten-password request for the operator queue. The card says
+   * the same thing whether or not the address exists — the Host refuses to
+   * tell, and so does this controller.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    if (this.snapshot.stage !== "gate" || this.snapshot.busy || this.disposed) {
+      return;
+    }
+    const mode = this.snapshot.mode;
+    this.publish({
+      stage: "gate",
+      mode,
+      busy: true,
+      error: null,
+      notice: null,
+    });
+    try {
+      const result =
+        await this.options.remote.accountsRequestPasswordReset(email);
+      if (this.disposed) return;
+      if (!result.ok) {
+        this.publish({
+          stage: "gate",
+          mode,
+          busy: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+          notice: null,
+        });
+        return;
+      }
+      this.publish({
+        stage: "gate",
+        mode,
+        busy: false,
+        error: null,
+        notice: QA_RESET_FILED_NOTICE,
+      });
+    } catch (error) {
+      if (this.disposed) return;
+      console.warn("dsh-qa-surface: password reset request failed", error);
+      this.publish({
+        stage: "gate",
+        mode,
+        busy: false,
+        error: accountsErrorMessage(null),
+        notice: null,
+      });
+    }
+  }
+
+  /**
+   * Change the signed-in user's own password. The Host answers with a fresh
+   * token, because the write bumps the account's token version — this browser
+   * keeps its session only by storing that token. Resolves to audience-safe
+   * refusal copy, or to null once the snapshot carries the new account.
+   */
+  async changePassword(
+    currentPassword: string,
+    nextPassword: string,
+  ): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsChangePassword(
+        token,
+        currentPassword,
+        nextPassword,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.tokenValue = result.value.token;
+      this.saveStoredToken(result.value.token);
+      this.publish({ ...this.snapshot, user: result.value.user });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: password change failed", error);
+      return accountsErrorMessage(null);
+    }
   }
 
   /** Drop the token and return to the gate (logout or expired identity). */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type {
   QaAccountRole,
   QaAdminUserRow,
+  QaPasswordResetRequest,
   QaUserAccess,
 } from "../../../types.js";
 import type { QaAdminApi, QaAccessApi } from "../../types.js";
@@ -16,6 +17,156 @@ import {
 } from "../shared.js";
 
 const PAGE_SIZE = 25;
+
+/** The Host's floor; the form refuses a shorter password before the round trip. */
+const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * The forgotten-password queue: an account asked for a reset from the sign-in
+ * screen and nobody has answered it yet.
+ *
+ * It renders only while somebody is waiting. A permanently empty panel would
+ * teach operators to ignore it, and this one has to be noticed: answering a row
+ * signs every session of that account out, so the new password must be handed
+ * over deliberately.
+ */
+function PasswordResetQueue(props: {
+  readonly api: QaAdminApi;
+  readonly token: string;
+}) {
+  const { api, token } = props;
+  const [requests, setRequests] = useState<readonly QaPasswordResetRequest[]>(
+    [],
+  );
+  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
+  const [busy, setBusy] = useState<string>();
+  const [error, setError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+
+  const load = useCallback(async (): Promise<void> => {
+    const result = await api.passwordResetRequests(token);
+    if (!result.ok) {
+      setError(adminErrorMessage(result.error));
+      return;
+    }
+    setError(undefined);
+    setRequests(result.value);
+  }, [api, token]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const reset = async (userId: string): Promise<void> => {
+    const password = (drafts[userId] ?? "").trim();
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setNotice(undefined);
+      setError(`Пароль должен быть не короче ${MIN_PASSWORD_LENGTH} символов.`);
+      return;
+    }
+    setBusy(userId);
+    const result = await api.resetPassword(token, userId, password);
+    setBusy(undefined);
+    if (!result.ok) {
+      setNotice(undefined);
+      setError(adminErrorMessage(result.error));
+      return;
+    }
+    setError(undefined);
+    setNotice(
+      `Новый пароль для ${result.value.user.email} установлен — передайте его пользователю. Заявка закрыта, его сессии завершены.`,
+    );
+    // The row is gone on the Host's side; the read is what proves it, and it
+    // also picks up a request that arrived while this one was being answered.
+    setDrafts((current) => ({ ...current, [userId]: "" }));
+    await load();
+  };
+
+  if (requests.length === 0) return null;
+  return (
+    <div className="dsh-qa-admin__panel">
+      <div className="dsh-qa-admin__panel-head">
+        <h2>Заявки на сброс пароля</h2>
+        <Badge tone="warning">
+          {requests.length === 1
+            ? "1 заявка"
+            : `${String(requests.length)} заявок`}
+        </Badge>
+      </div>
+      <p className="dsh-qa-admin__panel-note">
+        Пользователь не может войти и просит новый пароль. Сброс завершает все
+        его сессии: старый пароль и выданные токены перестают действовать.
+      </p>
+      {error === undefined ? null : (
+        <p className="dsh-qa-admin__error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice === undefined ? null : (
+        <p className="dsh-qa-admin__notice" role="status">
+          {notice}
+        </p>
+      )}
+      <table className="dsh-qa-admin__table">
+        <thead>
+          <tr>
+            <th>Пользователь</th>
+            <th>Запрошен</th>
+            <th>Заявок</th>
+            <th>Новый пароль</th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {requests.map((request) => (
+            <tr key={request.userId}>
+              <td>
+                <strong>{request.displayName}</strong>
+                <small>{request.email}</small>
+                {request.disabled ? (
+                  <small>
+                    <Badge tone="negative">Отключён</Badge>
+                  </small>
+                ) : null}
+              </td>
+              <td>
+                <Stamp value={request.lastRequestedAt} />
+                <small>первый запрос: {formatStamp(request.requestedAt)}</small>
+              </td>
+              <td>{formatCount(request.requestCount)}</td>
+              <td>
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={MIN_PASSWORD_LENGTH}
+                  placeholder="не короче 8 символов"
+                  disabled={busy === request.userId}
+                  value={drafts[request.userId] ?? ""}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setDrafts((current) => ({
+                      ...current,
+                      [request.userId]: value,
+                    }));
+                  }}
+                />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  disabled={busy === request.userId}
+                  onClick={() => void reset(request.userId)}
+                >
+                  {busy === request.userId ? "Сбрасываю…" : "Сбросить"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /**
  * Users: the table an administrator triages from, and the detail page that
@@ -83,6 +234,7 @@ export function AdminUsers(props: {
           </p>
         </div>
       </div>
+      <PasswordResetQueue api={props.api} token={props.token} />
       <div className="dsh-qa-admin__filters">
         <FilterField label="Поиск">
           <input

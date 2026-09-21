@@ -30,6 +30,7 @@ import type {
   QaMessageFeedback,
   QaMessageFeedbackInput,
   QaOverviewAlert,
+  QaPasswordResetRequest,
   QaPermission,
   QaQualityMetrics,
   QaReviewQueueItem,
@@ -646,6 +647,52 @@ export class QaAdminService {
       });
     }
     this.options.logger.info("admin.user-updated", { userId, actor: actor.id });
+    return this.user(token, userId);
+  }
+
+  /**
+   * Accounts that asked for a password reset from the sign-in screen. Reading
+   * the list takes `users.read` — a reviewer has no business seeing who is
+   * locked out; answering one takes `users.manage`, since a reset is a write
+   * to a credential.
+   */
+  async passwordResetRequests(
+    token: string,
+  ): Promise<readonly QaPasswordResetRequest[]> {
+    const { accounts } = this.require(token, "users.read");
+    return accounts.passwordResetRequests();
+  }
+
+  /**
+   * Answer one forgotten-password request: set a new password for the account
+   * and clear its queue row. Every live session of that account dies with the
+   * token-version bump, so the user signs in with the password the operator
+   * handed over. Audited, because an operator setting somebody else's
+   * credential must leave a trace.
+   */
+  async resetUserPassword(
+    token: string,
+    userId: string,
+    password: string,
+  ): Promise<QaAdminUserDetail> {
+    const { accounts, actor } = this.require(token, "users.manage");
+    const before = accounts.adminUser(userId, (value) =>
+      normalizeUserAccess(value, this.options.roles().snapshot()),
+    );
+    if (before === undefined) {
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    }
+    accounts.resetUserPassword(userId, password);
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "user.password-reset",
+      targetType: "user",
+      targetId: userId,
+    });
+    this.options.logger.info("admin.password-reset", {
+      userId,
+      actor: actor.id,
+    });
     return this.user(token, userId);
   }
 
