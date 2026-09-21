@@ -78,6 +78,7 @@ export const PROFILE: ResolvedExpertProfile = {
   persona:
     "You are the designated expert for one domain.\n## Scope\n- services/payments/**",
   task: "Investigate the settlement status.",
+  policy: "You are the designated expert for one domain.\n## Scope",
   scope: {
     domainId: "payments",
     filesystem: {

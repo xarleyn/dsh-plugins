@@ -17,7 +17,12 @@ import {
 } from "../types.js";
 import { degradation } from "./errors.js";
 import type { MemoryProviderRegistry } from "./memory/registry.js";
-import { BASE_POLICY, composePersona, composeTask } from "./persona.js";
+import {
+  BASE_POLICY,
+  composePersona,
+  composePolicy,
+  composeTask,
+} from "./persona.js";
 import type { DomainRegistry } from "./registry.js";
 import type { ScopeProviderRegistry } from "./scopes/registry.js";
 import type { WorkerRegistry } from "./workers/registry.js";
@@ -218,6 +223,7 @@ export async function resolveExpert(
     depth: input.depth,
   };
   const persona = composePersona(personaInput);
+  const policy = composePolicy(personaInput);
   const task = composeTask(personaInput);
 
   return {
@@ -228,6 +234,7 @@ export async function resolveExpert(
     basePolicy: BASE_POLICY,
     customInstructions: definition.persona.instructions,
     persona,
+    policy,
     task,
     scope,
     resources,

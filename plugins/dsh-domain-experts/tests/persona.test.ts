@@ -3,6 +3,7 @@ import {
   ANSWER_FORMAT,
   BASE_POLICY,
   composePersona,
+  composePolicy,
 } from "../src/host/persona.js";
 import type { ResolvedExpertProfile } from "../src/types.js";
 import { domainOf } from "./helpers/fakes.js";
@@ -58,6 +59,36 @@ function compose(
   });
 }
 
+/** The same composition as {@link compose}, read as the runtime's system text. */
+function policyOf(overrides: Parameters<typeof domainOf>[1] = {}): string {
+  const { definition } = profileOf(overrides);
+  return composePolicy({
+    definition,
+    resources: [],
+    memory: [
+      {
+        namespace: "domain/payments",
+        access: "read-write",
+        enforcement: "enforced",
+        provider: "namespace",
+        note: "",
+      },
+    ],
+    memorySnippets: [],
+    delegation: {
+      mode: "expert-only",
+      allowCrossDomain: true,
+      targets: [],
+      maxDepth: 3,
+      maxParallel: 3,
+      peers: [],
+    },
+    request: REQUEST,
+    callerDomain: null,
+    depth: 1,
+  });
+}
+
 describe("persona: composition", () => {
   it("always starts from the fixed base policy", () => {
     const persona = compose();
@@ -83,6 +114,17 @@ describe("persona: composition", () => {
     expect(BASE_POLICY).toContain("Read tools take an explicit path");
     expect(BASE_POLICY).toContain("unavailable for this run");
     expect(compose()).toContain("Work the evidence, not the tool in a loop");
+  });
+
+  it("keeps the task out of the policy the runtime installs", () => {
+    const policy = policyOf();
+    expect(policy).toContain("You are the designated expert");
+    expect(policy).toContain("## Answer format");
+    expect(policy).not.toContain("## Task");
+    expect(policy).not.toContain(REQUEST.task);
+    // The preview keeps it: an operator reads the whole document there.
+    expect(compose()).toContain("## Task");
+    expect(compose()).toContain(REQUEST.task);
   });
 
   it("orders the sections the design asks for", () => {

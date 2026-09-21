@@ -201,7 +201,10 @@ export async function runExpert(
     prompt: [{ type: "text", text: profile.task }],
     parent: input.parent,
     signal: input.signal,
-    persona: profile.persona,
+    // The system section is the policy alone: the request — and anything the
+    // caller embedded in it, up to a whole candidate answer — is the child's
+    // first message, never deployment instruction.
+    persona: profile.policy,
     toolFilter: profile.toolFilter,
     maxDepth: definition.delegation.maxDepth,
     ...agentOptionsOf(definition),

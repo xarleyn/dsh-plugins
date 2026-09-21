@@ -53,8 +53,25 @@ export interface PersonaInput {
   readonly depth: number;
 }
 
-/** Compose the child persona: base policy + domain + scope + memory + task. */
+/**
+ * The policy handed to the child as a system section: base policy, domain,
+ * scope, memory, delegation, domain instructions and the answer contract —
+ * everything except the task.
+ *
+ * The task is the caller's request and travels as the child's first message;
+ * keeping it out of the system text keeps a candidate answer, a user request
+ * or any other task material from reading as deployment instruction.
+ */
+export function composePolicy(input: PersonaInput): string {
+  return compose(input, false);
+}
+
+/** Compose the child persona preview: the policy plus its `## Task` section. */
 export function composePersona(input: PersonaInput): string {
+  return compose(input, true);
+}
+
+function compose(input: PersonaInput, includeTask: boolean): string {
   const { definition } = input;
   const sections: string[] = [
     BASE_POLICY,
@@ -79,7 +96,7 @@ export function composePersona(input: PersonaInput): string {
     sections.push("", "## Domain-specific instructions", instructions);
   }
 
-  sections.push("", "## Task", taskSection(input));
+  if (includeTask) sections.push("", "## Task", taskSection(input));
   sections.push("", "## Answer format", ANSWER_FORMAT);
 
   const persona = sections.join("\n");

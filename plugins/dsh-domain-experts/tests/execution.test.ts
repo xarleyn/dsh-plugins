@@ -125,8 +125,13 @@ describe("execution: composition handed to the runtime", () => {
     const started = harness.subagents.started[0];
     expect(started?.provider).toBe("spawn");
     expect(started?.request.label).toBe("domain-expert:payments");
+    // The system section is the policy: no task text, and therefore none of
+    // whatever the caller embedded in it (for the review gate, a candidate
+    // answer) — that material belongs to the child's first message.
     expect(started?.request.persona).toContain("You are the designated expert");
-    expect(started?.request.persona).toContain(
+    expect(started?.request.persona).toContain("## Answer format");
+    expect(started?.request.persona).not.toContain("## Task");
+    expect(started?.request.persona).not.toContain(
       "Investigate the settlement status.",
     );
     expect(started?.request.toolFilter?.allow).toContain("domain_expert");

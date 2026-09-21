@@ -301,8 +301,13 @@ export interface ResolvedExpertProfile {
   readonly enabled: boolean;
   readonly basePolicy: string;
   readonly customInstructions: string;
-  /** The composed policy document, including its own `## Task` copy. */
+  /** The composed preview document: the policy plus its own `## Task` copy. */
   readonly persona: string;
+  /**
+   * What the runtime installs as the child's system section: the same document
+   * without the task, so request material cannot read as instruction.
+   */
+  readonly policy: string;
   /**
    * The caller's request alone: what the child receives as its first user
    * message. The persona is a standing policy and reaches the child as a
