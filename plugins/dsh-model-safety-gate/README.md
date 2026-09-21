@@ -54,10 +54,11 @@ dsh plugin --profile web add @yadsh/dsh-model-safety-gate
 All options are optional; defaults are shown.
 
 ```yaml
-enabled: true # master switch for the whole gate
+enabled: true # master switch: false silences every surface at once
 mode:
   warn # off | audit | warn | enforce — default decision profile
-  # audit records findings but never enforces, including turn-risk escalation
+  # off scans nothing; audit records findings but never enforces, including
+  # turn-risk escalation
 
 classifier:
   backend: none # none | dsh | openai-compatible
@@ -105,6 +106,18 @@ ui:
 
 allowSessionOverride: true # false forbids per-session downgrade of the global mode
 ```
+
+### Switching the gate off
+
+`enabled: false` and `mode: off` are the same decision spelled twice, and both
+mean the gate does nothing at all: no scan, no classifier call, no audit
+record, no blocked decision — on the input, streaming-output, tool-call and
+tool-result surfaces alike. Switching either one at runtime reaches the very
+next check; there is nothing to restart.
+
+Use `mode: off` when the profile is what changes between environments and
+`enabled: false` when the plugin itself should be inert; `audit` is the middle
+setting for a deployment that wants the findings without the enforcement.
 
 ### Deployment presets
 

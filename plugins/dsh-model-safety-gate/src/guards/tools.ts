@@ -8,7 +8,7 @@
  * surface decision by one band (SPEC §18).
  */
 
-import type { ResolvedSafetyGateConfig } from "../config.js";
+import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
 import { applyGateMode } from "../rules/policy.js";
 import type { TurnRiskTracker } from "./risk-state.js";
@@ -56,7 +56,7 @@ export function createPreExecuteGuard(
   deps: PreExecuteGuardDeps,
 ): PreExecuteListener {
   return async (exec, next) => {
-    if (!deps.config.tools.enabled) return next();
+    if (isGateOff(deps.config) || !deps.config.tools.enabled) return next();
 
     const sessionId = exec.agent !== undefined ? String(exec.agent.id) : null;
     const sensitiveOnly = deps.config.tools.sensitiveTools;
