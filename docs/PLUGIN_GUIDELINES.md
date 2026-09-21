@@ -282,9 +282,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `CHANGELOG.md` | авто | Генерируется Nx release, не редактируется руками |
 | `AGENTS.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING.md` | optional | Копируются с существующих плагинов при необходимости |
 
-`plugins/dsh-ui-repair` — легальная форма «spec-only»: директория без
-`package.json`, только спецификация. Пометка «not publishable» должна быть в
-корневом README до появления кода.
+Директория без `package.json` — легальная форма «spec-only», пока плагин
+проектируется: в ней есть только спецификация, а корневой README обязан
+помечать её «not publishable» до появления кода. `plugins/dsh-ui-repair`
+использовал эту форму и с тех пор стал обычным публикуемым пакетом, поэтому
+теперь owes полный контракт §4.1, как и любой другой плагин.
 
 ### 4.2 `package.json` — эталон
 
@@ -749,14 +751,15 @@ docs: add plugin guidelines
    `consistent-type-imports`) — временное послабление: в новых плагинах
    держите уровень корневых правил, где это не блокирует интеграцию.
 
-## Приложение C: статус разбиения крупных файлов (2026-09-05)
+## Приложение C: статус разбиения крупных файлов (обновлено 2026-09-21)
 
-- `dsh-session-scope/src/client.ts` остаётся рукописным module-loader бандлом
-  (`window.__ModuleLoader__.load` с фабрикой-closure, `@ts-nocheck`): перевод
-  на общий tsdown-пайплайн и модульное разбиение — отдельный проект, не
-  быстрый рефакторинг. Плагин при этом полностью покрыт тестами и verify-гейтами.
-- `dsh-session-scope/src/index.ts` (734 строки) — разбиение на scope-patches/
+- `dsh-l10n-overrides/tests/` — **выполнено**: мегатесты разбиты на тематические
+  файлы (`dom-translator-*`, `locale-hook-*`, `registry-*`,
+  `integration-client`), самый крупный тест пакета — 374 строки вместо 1273.
+- `dsh-session-scope/src/client.ts` (1460 строк) остаётся рукописным
+  module-loader бандлом (`window.__ModuleLoader__.load` с фабрикой-closure,
+  `@ts-nocheck`): перевод на общий tsdown-пайплайн и модульное разбиение —
+  отдельный проект, не быстрый рефакторинг. Плагин при этом полностью покрыт
+  тестами и verify-гейтами.
+- `dsh-session-scope/src/index.ts` (907 строк) — разбиение на scope-patches/
   scope-commands/projections отложено вместе с клиентом.
-- Разбивка l10n мегатестов (`tests/dom-translator` 1273, `locale-hook` 920,
-  `registry` 811, `integration` 521) — механическая работа без изменения
-  поведения; выполнить отдельной серией.

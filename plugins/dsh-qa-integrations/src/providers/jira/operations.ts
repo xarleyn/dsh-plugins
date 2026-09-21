@@ -1,5 +1,13 @@
-import { optionalText, requiredText } from "../../coerce.js";
+import { invalid, optionalText, requiredText } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
+import {
+  arrayOf,
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
 import { bodyText } from "./adf.js";
 import type { JiraFlags, JiraSite } from "./config.js";
 import {
@@ -12,10 +20,6 @@ import {
   searchLimit,
 } from "./jql.js";
 import type { JiraQuery } from "./transport.js";
-
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
 
 /** What a search answer carries about every issue it returns. */
 export const SEARCH_FIELDS: readonly string[] = Object.freeze([
@@ -216,54 +220,10 @@ export const JIRA_HANDLERS: Readonly<Record<string, JiraOperationHandler>> =
 /* Response shaping                                                    */
 /* ------------------------------------------------------------------ */
 
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function arrayOf(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : [];
-}
-
 function strings(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
 }
 
 /** The one thing about an issue that is a person's to click. */

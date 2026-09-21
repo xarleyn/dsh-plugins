@@ -32,6 +32,7 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-answer-review-gate` | `@yadsh/dsh-answer-review-gate` | Independent answer review gate enforced at the turn boundary |
 | `plugins/dsh-cas-results` | `@yadsh/dsh-cas-results` | Content-addressed offload store for bulky tool results |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | Deterministic documentation-impact tracking |
+| `plugins/dsh-documents` | `@yadsh/dsh-documents` | Managed document pipeline: Markdown to DOCX/PDF, DOCX/PDF back to Markdown, and online sources as agent tools |
 | `plugins/dsh-domain-experts` | `@yadsh/dsh-domain-experts` | Configurable domain-scoped expert agents with isolated knowledge, memory and tool scope |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | Persistent unsent draft sessions |
 | `plugins/dsh-git-readonly` | `@yadsh/dsh-git-readonly` | Read-only git provenance tools |
@@ -44,6 +45,8 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | Live logging levels and readable file-format settings |
 | `plugins/dsh-preset-persona-editor` | `@yadsh/dsh-preset-persona-editor` | Agent-preset persona editing in the settings UI, written back into the preset's own composition |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt policy, hygiene, and observability |
+| `plugins/dsh-qa-browser` | `@yadsh/dsh-qa-browser` | Session-scoped Playwright browser runtime for harness sessions and QA Surface |
+| `plugins/dsh-qa-integrations` | `@yadsh/dsh-qa-integrations` | Principal-scoped, encrypted user integrations for the QA Surface |
 | `plugins/dsh-qa-surface` | `@yadsh/dsh-qa-surface` | Focused end-user QA surface backed by native sessions |
 | `plugins/dsh-session-audit` | `@yadsh/dsh-session-audit` | Session audit registry and viewer: an Audit view beside Chat and Trajectory |
 | `plugins/dsh-session-scope` | `@yadsh/dsh-session-scope` | Per-session workspace visibility scopes |
@@ -52,9 +55,11 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 | `plugins/dsh-ui-repair` | `@yadsh/dsh-ui-repair` | Reversible DOM diagnostics and scoped UI repairs |
 | `plugins/dsh-user-correction-miner` | `@yadsh/dsh-user-correction-miner` | Mines project-rule candidates from user corrections |
 | `plugins/dsh-web-fetch-authenticated` | `@yadsh/dsh-web-fetch-authenticated` | Authenticated, policy-gated web_fetch provider |
+| `packages/audit-core` | `@yadsh/dsh-audit-core` | Session audit artifact domain layer: schema, parsing, validation, summary and atomic publishing |
+| `packages/audit-ui` | `@yadsh/dsh-audit-ui` | Shared audit presentation components: sanitized report rendering, findings, scorecard and JSON view |
 | `packages/config` | private workspace package | Shared tsconfig and vitest presets |
 | `packages/plugin-log` | `@yadsh/dsh-plugin-log` | Structured file logging and runtime consumer discovery |
-| `packages/plugin-kit` | private workspace package | Shared runtime helpers |
+| `packages/plugin-kit` | `@yadsh/dsh-plugin-kit` | Shared runtime helpers: logging scaffolds, config validation, compatibility checks and SQLite store plumbing |
 | `packages/test-kit` | private workspace package | Shared test helpers |
 
 Runtime plugin IDs remain unscoped (`dsh-*`) because DSH bundle composition and

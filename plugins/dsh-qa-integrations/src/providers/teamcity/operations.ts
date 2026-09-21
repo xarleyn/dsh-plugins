@@ -1,12 +1,20 @@
 import {
   externalUserIdFrom,
+  invalid,
   optionalBoolean,
+  optionalChoice,
   optionalInteger,
   optionalText,
   requiredInteger,
   requiredText,
 } from "../../coerce.js";
-import { IntegrationError } from "../../errors.js";
+import {
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
 import { artifactPath } from "./artifacts.js";
 import type { TeamCityFlags } from "./config.js";
 import {
@@ -81,10 +89,6 @@ const BUILD_FIELDS = [
   "triggered(type,user(username,name))",
 ].join(",");
 
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
-
 /** A TeamCity external id: project id, build configuration id, agent name. */
 function entityId(value: unknown, field: string): string {
   const normalized = requiredText(value, field, 1, 255);
@@ -106,18 +110,6 @@ function branchName(value: unknown, field: string): string {
 
 function optionalBranch(value: unknown, field: string): string | undefined {
   return value === undefined ? undefined : branchName(value, field);
-}
-
-function oneOf(
-  value: unknown,
-  allowed: readonly string[],
-  field: string,
-  maxLength: number,
-): string | undefined {
-  const normalized = optionalText(value, field, 3, maxLength);
-  if (normalized === undefined) return undefined;
-  if (!allowed.includes(normalized)) invalid(field);
-  return normalized;
 }
 
 function optionalDateValue(value: unknown, field: string): string | undefined {
@@ -269,8 +261,8 @@ export const TEAMCITY_HANDLERS: Readonly<
       buildTypeId: optionalEntityId(input["buildTypeId"], "buildTypeId"),
       projectId: optionalEntityId(input["projectId"], "projectId"),
       branch: optionalBranch(input["branch"], "branch"),
-      status: oneOf(input["status"], BUILD_STATUSES, "status", 16),
-      state: oneOf(input["state"], BUILD_STATES, "state", 16),
+      status: optionalChoice(input["status"], BUILD_STATUSES, "status", 3, 16),
+      state: optionalChoice(input["state"], BUILD_STATES, "state", 3, 16),
       personal: optionalBoolean(input["personal"], "personal"),
       since: optionalDateValue(input["since"], "since"),
       until: optionalDateValue(input["until"], "until"),
@@ -353,7 +345,13 @@ export const TEAMCITY_HANDLERS: Readonly<
         : [
             dimension(
               "state",
-              oneOf(input["state"], INVESTIGATION_STATES, "state", 16) ?? "",
+              optionalChoice(
+                input["state"],
+                INVESTIGATION_STATES,
+                "state",
+                3,
+                16,
+              ) ?? "",
             ),
           ]),
       dimension(
@@ -410,50 +408,11 @@ export const TEAMCITY_HANDLERS: Readonly<
 /* Response shaping                                                    */
 /* ------------------------------------------------------------------ */
 
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
 /** TeamCity wraps a collection in a named array; an empty page answers alone. */
 function collectionOf(source: Record<string, unknown>, key: string): unknown[] {
   const held = source[key];
   if (Array.isArray(held)) return held;
   return Object.keys(source).length === 0 ? [] : [source];
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
 }
 
 /** One bounded string field: an unbounded diagnostic would drown the answer. */

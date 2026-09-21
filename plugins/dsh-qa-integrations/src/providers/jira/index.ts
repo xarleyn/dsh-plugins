@@ -18,6 +18,8 @@ import type {
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
+import { healthFromFailure } from "../shared/health.js";
+import { recordOf } from "../shared/payload.js";
 import {
   assertServiceOperationAllowed,
   serviceBoundaryOf,
@@ -767,26 +769,5 @@ function restricted(source: Record<string, unknown>): boolean {
   return level !== null && level !== undefined;
 }
 
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 /** Map an upstream failure of the probe onto a health status. */
-function healthFromFailure(error: unknown): ServiceCredentialHealth {
-  if (!(error instanceof IntegrationError)) {
-    return { status: "unreachable" };
-  }
-  switch (error.code) {
-    case "CredentialExpired":
-      return { status: "expired" };
-    case "CredentialRevoked":
-    case "ProviderPermissionDenied":
-      return { status: "revoked" };
-    default:
-      return { status: "unreachable" };
-  }
-}
-
 export default JiraProvider;

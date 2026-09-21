@@ -222,6 +222,6 @@ rules:
         - pnpm-workspace.yaml
         - tsconfig.base.json
     docs:
-      - dsh-plugins-monorepo-SPEC.md
+      - SPEC.md
     direction: docs-to-code
     relation: specification

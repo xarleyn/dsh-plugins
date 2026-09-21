@@ -1642,3 +1642,25 @@ The MVP is ready when all of the following are true:
 12. Add Alice/Bob concurrent E2E isolation tests.
 13. Only after the above is green, add OAuth flow.
 14. Only after read-only production use is stable, design/enable confirmation-based writes.
+
+---
+
+## 38. Detailed specifications
+
+`SPEC.md` is the entry point; the design documents that carry the per-area
+details live under [`docs/specs/`](./docs/specs/):
+
+- [`docs/specs/managed-service-credentials.md`](./docs/specs/managed-service-credentials.md)
+  — the deployment-managed service-token mode: capability classification, the
+  broker's ceiling, and what a provider must declare to support it.
+- [`docs/specs/providers-confluence.md`](./docs/specs/providers-confluence.md)
+- [`docs/specs/providers-gitlab.md`](./docs/specs/providers-gitlab.md)
+- [`docs/specs/providers-jira.md`](./docs/specs/providers-jira.md)
+- [`docs/specs/providers-teamcity.md`](./docs/specs/providers-teamcity.md)
+- [`docs/specs/providers-testit.md`](./docs/specs/providers-testit.md)
+- [`docs/specs/providers-weblate.md`](./docs/specs/providers-weblate.md)
+
+Each provider document describes its target architecture; the implemented phase
+is read-only for every provider, and the provider README
+([`src/providers/README.md`](./src/providers/README.md)) states what a new
+provider must implement and what the package gate enforces.

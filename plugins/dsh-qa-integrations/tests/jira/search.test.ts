@@ -113,6 +113,29 @@ describe("jira search", () => {
     expect(calls[1]?.url.searchParams.get("maxResults")).toBe("5");
   });
 
+  it("does not surface an empty continuation token as a cursor", async () => {
+    // Jira can answer with the token field present but empty. Passing that on
+    // would be a dead end: the cursor input above refuses an empty value, so
+    // the caller could only fail. An empty token means the page is the last.
+    const { fetcher } = search({
+      json: { issues: [ISSUE], isLast: false, nextPageToken: "" },
+    });
+    const provider = providerFor(fetcher);
+    const answer = (await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      { query: "payment" },
+    )) as Record<string, unknown>;
+    expect(answer["pagination"]).toEqual({ returned: 1, isLast: false });
+    await expect(
+      provider.execute(
+        { credential: credentialFor(provider) },
+        "issues.search",
+        { query: "payment", cursor: "" },
+      ),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+  });
+
   it("passes a cursor back to Jira and refuses a malformed one", async () => {
     const { fetcher, calls } = search();
     const provider = providerFor(fetcher);

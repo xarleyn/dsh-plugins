@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One Weblate deployment the operator allows. A user never types a host: the
@@ -70,9 +71,7 @@ export const WEBLATE_DEFAULTS: WeblateFlags = Object.freeze({
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const MAX_INSTANCES = 16;
 
-function configError(message: string): Error {
-  return new Error(`weblate integration config: ${message}`);
-}
+const configError = scopedConfigError("weblate integration config");
 
 /**
  * Canonicalize one configured instance. Everything here is operator input, so a

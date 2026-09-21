@@ -3,7 +3,7 @@ import {
   type CredentialHelp,
 } from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
-import { IntegrationError } from "../../errors.js";
+import { IntegrationError, recoverableResource } from "../../errors.js";
 import { redactSecrets } from "../../redaction.js";
 import { boundaryHas } from "../../service-credentials/policy.js";
 import { operationCapabilityServiceState } from "../../service-credentials/state.js";
@@ -20,6 +20,7 @@ import type {
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
 import { accountName, objectOf } from "../shared/account.js";
+import { healthFromFailure } from "../shared/health.js";
 import {
   assertServiceOperationAllowed,
   serviceBoundaryOf,
@@ -744,14 +745,6 @@ function withoutConfidential(data: unknown): unknown {
 }
 
 /** A missing project inside a boundary is reported, not fatal to the listing. */
-function recoverableResource(error: unknown): boolean {
-  return (
-    error instanceof IntegrationError &&
-    (error.code === "ResourceNotFound" ||
-      error.code === "ProviderPermissionDenied")
-  );
-}
-
 function safeIdentity(
   data: Record<string, unknown>,
 ): { readonly id: string; readonly label: string } | undefined {
@@ -761,21 +754,6 @@ function safeIdentity(
 }
 
 /** Map an upstream failure of the probe onto a health status. */
-function healthFromFailure(error: unknown): ServiceCredentialHealth {
-  if (!(error instanceof IntegrationError)) {
-    return { status: "unreachable" };
-  }
-  switch (error.code) {
-    case "CredentialExpired":
-      return { status: "expired" };
-    case "CredentialRevoked":
-    case "ProviderPermissionDenied":
-      return { status: "revoked" };
-    default:
-      return { status: "unreachable" };
-  }
-}
-
 function intersectScopes(
   allowed: readonly IntegrationCapability[],
   scopes: readonly string[],
