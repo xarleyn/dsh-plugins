@@ -63,6 +63,15 @@ Numbered, testable guarantees for version 0.1.0:
     audited or blocked on the input, streaming-output, tool-call or tool-result
     surface, and no classifier request is issued. A gate switched off at
     runtime stops the next check without re-registering a listener.
+18. **An unanswerable escalation is refused by the gate, not by a human.** The
+    runtime resolves an `ask` through the `approval` service, whose closed
+    outcome vocabulary carries no reason, and a session whose effective policy
+    is `never` is answered with `rejected` before any answerer runs. The gate
+    reads that policy itself (the session's logged override, else the
+    deployment default) and, unless `tools.unanswerableAsk` is `ask`, refuses
+    the call with its own verdict and categories. No policy is inferred: a seam
+    that is absent, unreadable, or outside the published vocabulary leaves the
+    native ask untouched.
 
 ## 2. Data model
 
@@ -166,6 +175,10 @@ configuration rebuild from a card edit that arrives after the gate is gone.
    scenario 1, the destructive tool call of the tool gate and the injected tool
    result of scenario 5 all pass through untouched, and no scan, classifier
    call or audit record is produced on any surface.
+8. **Locked-down escalation.** Turn risk is high and the deployment's approval
+   policy is `never` → the gate refuses the tool call with its own reason and
+   categories → no ask reaches the runtime, so no `approval/asked` event is
+   written and the model is never told the user rejected it.
 
 ## 6. Implementation status
 

@@ -57,6 +57,7 @@ import {
 import { guardOutputStream } from "./guards/output-stream.js";
 import { TurnRiskTracker } from "./guards/risk-state.js";
 import { createPostExecuteGuard } from "./guards/tool-results.js";
+import type { ApprovalFace } from "./guards/approval-seam.js";
 import { createPreExecuteGuard } from "./guards/tools.js";
 import { CheckPipeline } from "./pipeline.js";
 import { SafetyScanner } from "./rules/scanner.js";
@@ -161,6 +162,7 @@ export class ModelSafetyGate extends TypertRemoteService {
     config: ResolvedSafetyGateConfig;
     pipeline: CheckPipeline;
     readonly risk: TurnRiskTracker;
+    readonly approval: () => ApprovalFace | undefined;
   };
   private disposed = false;
 
@@ -197,6 +199,10 @@ export class ModelSafetyGate extends TypertRemoteService {
       config: this.resolved,
       pipeline: this.pipeline,
       risk: this.risk,
+      // Read per call, like the agent registry: the tool gate asks the seam
+      // only when it is about to escalate, and a host that composes no
+      // approval service simply has none.
+      approval: () => host.get("approval") as ApprovalFace | undefined,
     };
 
     this.registerGuards();
