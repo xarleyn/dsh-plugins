@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One Test IT installation the operator allows. Test IT ships as Cloud
@@ -77,9 +78,7 @@ export const TESTIT_DEFAULTS: TestitFlags = Object.freeze({
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const MAX_INSTANCES = 16;
 
-function configError(message: string): Error {
-  return new Error(`testit integration config: ${message}`);
-}
+const configError = scopedConfigError("testit integration config");
 
 /**
  * Canonicalize one configured installation. Everything here is operator input,

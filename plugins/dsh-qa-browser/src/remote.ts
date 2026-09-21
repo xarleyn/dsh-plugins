@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QA_BROWSER_ERROR_CODES } from "./errors.js";
 import type {
   InvocationDescriptor,
   RemoteResult,
@@ -64,6 +65,19 @@ const sessionSchema = z.strictObject({
   lastActivityAt: z.number(),
 });
 
+const refusalSchema = z.strictObject({
+  code: z.enum(QA_BROWSER_ERROR_CODES),
+  kind: z.enum(["document", "resource"]),
+  host: z.string().max(255),
+  message: z.string().min(1),
+  count: z.number().int().positive(),
+});
+
+/** The Host caps both lists; the wire keeps a bound of its own, so neither a
+ * compromised nor an outdated Host can make the panel render an unbounded
+ * list. */
+const refusalsSchema = z.array(refusalSchema).max(16);
+
 const tabSchema = z.strictObject({
   id: z.string().min(1),
   url: z.string(),
@@ -75,11 +89,13 @@ const tabSchema = z.strictObject({
     back: z.number().int().nonnegative(),
     forward: z.number().int().nonnegative(),
   }),
+  policyRefusals: refusalsSchema,
 });
 
 const stateSchema = z.strictObject({
   session: sessionSchema.nullable(),
   tabs: z.array(tabSchema),
+  policyRefusals: refusalsSchema,
   humanControlEnabled: z.boolean(),
   humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),

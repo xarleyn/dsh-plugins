@@ -6,8 +6,12 @@
  */
 
 import { Context } from "@deepseek-ai/cordis";
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it, vi } from "vitest";
 import QaIntegrations, { name as pluginName } from "../src/index.js";
+import { IntegrationRepository } from "../src/repository.js";
 
 interface InstallCapture {
   namespace: string;
@@ -29,6 +33,8 @@ async function host(
   removed: string[];
   install: InstallCapture | undefined;
   setSource(source: unknown): void;
+  /** The plugin's own fiber: disposing it is what a reload does. */
+  fiber: { dispose(): Promise<void> };
 }> {
   const tools: string[] = [];
   const removed: string[] = [];
@@ -64,7 +70,10 @@ async function host(
       },
     } as never);
   }
-  await ctx.plugin(QaIntegrations, { enabled: false, ...config });
+  const fiber = (await ctx.plugin(QaIntegrations, {
+    enabled: false,
+    ...config,
+  })) as unknown as { dispose(): Promise<void> };
   return {
     ctx,
     tools,
@@ -73,6 +82,7 @@ async function host(
     setSource(next: unknown) {
       source = next;
     },
+    fiber,
   };
 }
 
@@ -117,6 +127,29 @@ describe("integrations plugin entry", () => {
     setSource({ enabled: false });
     install?.hooks.onChange();
     expect(tools).toEqual([]);
+  });
+
+  it("closes the store when the plugin is disposed", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "qa-integrations-dispose-"));
+    // The spy keeps calling through, so the handle is really released and the
+    // temp directory can go away afterwards.
+    const close = vi.spyOn(IntegrationRepository.prototype, "close");
+    try {
+      const { fiber } = await host({
+        enabled: false,
+        dataPath: join(directory, "qa-integrations.db"),
+      });
+      expect(close).not.toHaveBeenCalled();
+
+      await fiber.dispose();
+
+      // The store owns the SQLite handle and its WAL; a reload that does not
+      // close it leaves the files held for the next instance.
+      expect(close).toHaveBeenCalledTimes(1);
+    } finally {
+      close.mockRestore();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("refuses an invalid write at validation time and keeps the running state", async () => {

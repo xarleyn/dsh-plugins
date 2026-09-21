@@ -42,6 +42,12 @@
   services, account/session state, or any UI that must remain available from a
   non-loopback browser. Such a tab may reuse the standard card shell, but its
   `<li>` root must still be rendered inside a plugin-owned `<ul>`.
+- Use `settings.section` for a page that is mounted inside the native settings
+  tree, as `dsh-preset-persona-editor` does. It is a placement choice, not an
+  availability guarantee: a page that must keep working without the native
+  settings surface belongs in `settings.plugins.tab`. A page registered here
+  that reuses the standard card shell keeps its `<li>` root inside a
+  plugin-owned `<ul>`.
 
 - Cards registered in `settings.plugin.item` must use the same outer shell as
   the first-party DSH plugin cards. The root is a direct `<li>` child of the

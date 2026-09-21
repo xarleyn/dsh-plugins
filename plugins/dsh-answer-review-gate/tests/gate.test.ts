@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { AnswerReviewGate, type GateAgent } from "../src/gate.js";
+import {
+  AnswerReviewGate,
+  type BoundaryOutcome,
+  type GateAgent,
+} from "../src/gate.js";
 import type { ReviewAudit } from "../src/audit.js";
 import type { ResolvedAnswerReviewGateConfig } from "../src/config.js";
 import type {
@@ -177,6 +181,58 @@ async function stop(
   return gate.handleTurnStopping(agent, 1, new AbortController().signal);
 }
 
+interface SurfaceEntry {
+  readonly kind: "user" | "assistant";
+  readonly text: string;
+}
+
+function userLine(text: string): SurfaceEntry {
+  return { kind: "user", text };
+}
+
+function assistantLine(text: string): SurfaceEntry {
+  return { kind: "assistant", text };
+}
+
+/**
+ * A surface built from real user requests and the assistant messages that
+ * answered them. A later assistant entry is the next turn — or the next
+ * revision — of the request that precedes it.
+ */
+function surfaceOf(...entries: readonly SurfaceEntry[]): GateAgent["session"] {
+  const events = entries.map((entry) =>
+    entry.kind === "user"
+      ? {
+          type: "user/message",
+          data: {
+            source: { kind: "user" },
+            content: [{ type: "text", text: entry.text }],
+          },
+        }
+      : {
+          type: "assistant/message",
+          data: { message: { content: [{ type: "text", text: entry.text }] } },
+        },
+  );
+  return {
+    header: { origin: "user" },
+    surface: { nodes: events.map((_, seq) => seq) },
+    eventAt: (seq: number) => events[seq],
+  } as unknown as GateAgent["session"];
+}
+
+/** One boundary of a scripted session at an explicit agent turn. */
+async function stopAt(
+  gate: AnswerReviewGate,
+  session: GateAgent["session"],
+  turn: number,
+  sessionId = "session-1",
+): Promise<BoundaryOutcome> {
+  const agent = agentOf(sessionId);
+  (agent as { session: unknown }).session = session;
+  return gate.handleTurnStopping(agent, turn, new AbortController().signal);
+}
+
 describe("AnswerReviewGate lifecycle", () => {
   it("PASS allows the close and the same candidate is not reviewed twice", async () => {
     const face = new ScriptedFace();
@@ -295,6 +351,131 @@ describe("AnswerReviewGate lifecycle", () => {
     expect(await stop(gate, TEXT_B)).toBe("failure");
     expect(steers).toHaveLength(1);
     expect(face.started).toHaveLength(1);
+  });
+});
+
+describe("AnswerReviewGate user-turn scoping", () => {
+  it("keeps a PASS for the user turn, not for the agent turn", async () => {
+    const face = new ScriptedFace();
+    const gate = makeGate(face);
+    const first = stopAt(
+      gate,
+      surfaceOf(userLine("the question"), assistantLine(TEXT_A)),
+      1,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await first).toBe("pass");
+    expect(face.started).toHaveLength(1);
+
+    // The same request reaches a later agent turn with the text unchanged: the
+    // PASS still applies, so no second reviewer runs. `settle` is a no-op here
+    // — it only drains a reviewer the gate should not have started.
+    const second = stopAt(
+      gate,
+      surfaceOf(
+        userLine("the question"),
+        assistantLine(TEXT_A),
+        assistantLine(TEXT_A),
+      ),
+      2,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await second).toBeNull();
+    expect(face.started).toHaveLength(1);
+  });
+
+  it("does not replenish the round budget on the next agent turn", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(
+      face,
+      { maxReviewRounds: 1, failMode: "open" },
+      steers,
+    );
+    const first = stopAt(
+      gate,
+      surfaceOf(userLine("the question"), assistantLine(TEXT_A)),
+      1,
+    );
+    await face.settle(face.resultOf(REVISE));
+    expect(await first).toBe("revise");
+    expect(steers).toHaveLength(1);
+
+    // The revised candidate arrives in the next agent turn of the same user
+    // request. The budget belongs to the request: it is spent, so the gate
+    // neither reviews the candidate nor steers another revision.
+    const second = stopAt(
+      gate,
+      surfaceOf(
+        userLine("the question"),
+        assistantLine(TEXT_A),
+        assistantLine(TEXT_B),
+      ),
+      2,
+    );
+    await face.settle(face.resultOf(REVISE));
+    expect(await second).toBe("failure");
+    expect(face.started).toHaveLength(1);
+    expect(steers).toHaveLength(1);
+  });
+
+  it("reviews the same text again under a new user request", async () => {
+    const face = new ScriptedFace();
+    const gate = makeGate(face);
+    const first = stopAt(
+      gate,
+      surfaceOf(userLine("the question"), assistantLine(TEXT_A)),
+      1,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await first).toBe("pass");
+
+    // A different request owns its own review: the receipt does not leak.
+    const second = stopAt(
+      gate,
+      surfaceOf(
+        userLine("the question"),
+        assistantLine(TEXT_A),
+        userLine("another question"),
+        assistantLine(TEXT_A),
+      ),
+      2,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await second).toBe("pass");
+    expect(face.started).toHaveLength(2);
+  });
+
+  it("ends the reported loop: one more version after PASS is reviewed once", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+    const answered = surfaceOf(
+      userLine("the question"),
+      assistantLine(TEXT_A),
+      assistantLine(TEXT_B),
+    );
+
+    const first = stopAt(
+      gate,
+      surfaceOf(userLine("the question"), assistantLine(TEXT_A)),
+      1,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await first).toBe("pass");
+
+    // The model emits one more version announcing that the review passed. It
+    // is reviewed exactly once, passes, and that is where the exchange ends.
+    const second = stopAt(gate, answered, 2);
+    await face.settle(face.resultOf(PASS));
+    expect(await second).toBe("pass");
+    expect(face.started).toHaveLength(2);
+
+    const third = stopAt(gate, answered, 3);
+    await face.settle(face.resultOf(PASS));
+    expect(await third).toBeNull();
+    expect(face.started).toHaveLength(2);
+    expect(steers).toHaveLength(0);
   });
 });
 

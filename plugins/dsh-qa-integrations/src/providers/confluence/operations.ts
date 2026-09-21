@@ -1,4 +1,5 @@
 import {
+  invalid,
   optionalBoolean,
   optionalInteger,
   optionalText,
@@ -6,6 +7,14 @@ import {
   requiredStringList,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
+import {
+  arrayOf,
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
 import { adfToText, textBudget } from "./adf.js";
 import type { ConfluenceInstance, ConfluenceFlags } from "./config.js";
 import {
@@ -29,10 +38,6 @@ export const DEFAULT_LIMIT = 20;
 const MAX_START = 10_000;
 /** Floor for a requested body budget, so a tiny number is not a silent zero. */
 const MIN_BODY_CHARS = 100;
-
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
 
 /** A page or comment id, accepted as a number or as its decimal digits. */
 export function numericId(value: unknown, field: string): string {
@@ -376,50 +381,6 @@ export const CONFLUENCE_HANDLERS: Readonly<
     },
   }),
 });
-
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function arrayOf(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : [];
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
-}
 
 /**
  * A page URL a person can open. Confluence answers `_links.webui` as an

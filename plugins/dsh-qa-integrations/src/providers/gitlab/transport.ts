@@ -4,6 +4,8 @@ import {
   TLS_FAILURE,
   causeCode,
   fetchWithRetries,
+  numberFrom,
+  readBoundedJson,
   readBoundedText,
   type BoundedText,
 } from "../shared/http.js";
@@ -91,12 +93,6 @@ export interface GitlabJsonResponse<T> {
 
 export type GitlabTextResponse = BoundedText;
 
-function numberFrom(value: string | null): number | undefined {
-  if (value === null || value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 function pageFrom(headers: Headers): GitlabPage | undefined {
   const page = numberFrom(headers.get("x-page"));
   const perPage = numberFrom(headers.get("x-per-page"));
@@ -130,22 +126,11 @@ export class GitlabTransport {
     query: GitlabQuery = {},
   ): Promise<GitlabJsonResponse<T>> {
     const response = await this.request(instance, token, path, query);
-    const body = await readBoundedText(response, this.config.maxResponseBytes);
-    if (body.truncated) {
-      throw new IntegrationError(
-        "ResultTooLarge",
-        "Provider response is too large",
-      );
-    }
-    let data: T;
-    try {
-      data = JSON.parse(body.text) as T;
-    } catch {
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Provider returned invalid JSON",
-      );
-    }
+    const data = await readBoundedJson<T>(
+      response,
+      this.config.maxResponseBytes,
+      "Provider",
+    );
     const page = pageFrom(response.headers);
     return page === undefined ? { data } : { data, page };
   }

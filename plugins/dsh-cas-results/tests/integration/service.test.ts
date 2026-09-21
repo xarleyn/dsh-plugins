@@ -34,12 +34,15 @@ interface Wiring {
   ctx: Context;
   surface: CapturedSurface;
   root: string;
+  /** Run the deferred `tools` injection again, as a late mount would. */
+  mountToolRuntime(): void;
 }
 
 async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
   const root = await tempRoot();
   const ctx = new Context();
   const surface: CapturedSurface = { listeners: [], tools: [] };
+  let mount: (c: unknown) => void = () => undefined;
   const toolCtx = {
     tools: {
       register(definition: {
@@ -47,12 +50,20 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
         execute: (args: unknown, exec: unknown) => Promise<unknown>;
       }) {
         surface.tools.push(definition);
-        return () => undefined;
+        // Removers behave like the real registry's: the mounted set shrinks
+        // when the service walks its disposers.
+        return () => {
+          surface.tools = surface.tools.filter((entry) => entry !== definition);
+        };
       },
     },
     on(event: "tools/post-execute", listener: CasPostExecuteListener) {
       surface.listeners.push(listener);
-      return () => undefined;
+      return () => {
+        surface.listeners = surface.listeners.filter(
+          (entry) => entry !== listener,
+        );
+      };
     },
   };
   // The test harness has no `tools` service; capture the registration
@@ -65,6 +76,7 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
       ) => () => void;
     }
   ).inject = (_services, cb) => {
+    mount = cb;
     cb(toolCtx);
     return () => undefined;
   };
@@ -73,7 +85,13 @@ async function wire(overrides: Record<string, unknown> = {}): Promise<Wiring> {
     { gc: { enabled: false }, ...overrides } as CasResultsConfig,
     { storeRoot: root, logger: silentPluginLogger() },
   );
-  return { service, ctx, surface, root };
+  return {
+    service,
+    ctx,
+    surface,
+    root,
+    mountToolRuntime: () => mount(toolCtx),
+  };
 }
 
 async function dispose(wiring: Wiring): Promise<void> {
@@ -83,6 +101,29 @@ async function dispose(wiring: Wiring): Promise<void> {
 }
 
 describe("CasResultsService wiring", () => {
+  it("unmounts the listener and every tool when the service is disposed", async () => {
+    const wiring = await wire({ exposeGcTool: true });
+    expect(wiring.surface.listeners).toHaveLength(1);
+    expect(wiring.surface.tools).toHaveLength(5);
+
+    await dispose(wiring);
+
+    // A rebuild walks these, so the listener and the five tools must not
+    // answer for a service that is gone (PLUGIN_GUIDELINES §3.4).
+    expect(wiring.surface.listeners).toEqual([]);
+    expect(wiring.surface.tools).toEqual([]);
+  });
+
+  it("mounts nothing when the tool runtime arrives after dispose", async () => {
+    const wiring = await wire();
+    await dispose(wiring);
+
+    wiring.mountToolRuntime();
+
+    expect(wiring.surface.listeners).toEqual([]);
+    expect(wiring.surface.tools).toEqual([]);
+  });
+
   it("registers the post-execute listener and the dsh_cas_* tools", async () => {
     const wiring = await wire({ exposeGcTool: true });
     expect(wiring.surface.listeners).toHaveLength(1);

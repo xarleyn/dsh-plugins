@@ -11,6 +11,7 @@ import {
   requiredText,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
+import { recordOf } from "../shared/payload.js";
 
 /** `chat1489` and `1489` both name the numeric chat id search methods take. */
 function chatIdFromDialog(dialogId: string, field: string): number {
@@ -639,15 +640,9 @@ export const BITRIX_HANDLERS: Readonly<Record<string, BitrixOperationHandler>> =
     }),
   });
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
 /** Id-keyed maps are flattened into an ordered array so the model reads a list. */
 function idKeyedValues(value: unknown): unknown[] {
-  return Object.entries(asRecord(value))
+  return Object.entries(recordOf(value))
     .map(([key, item]) => ({ key: Number(key), item }))
     .sort((left, right) =>
       Number.isFinite(left.key) && Number.isFinite(right.key)
@@ -666,7 +661,7 @@ export type BitrixProjection = (result: unknown) => unknown;
 export const BITRIX_PROJECTIONS: Readonly<Record<string, BitrixProjection>> =
   Object.freeze({
     "chat.messageSearch": (result) => {
-      const source = asRecord(result);
+      const source = recordOf(result);
       return {
         messages: Array.isArray(source["messages"]) ? source["messages"] : [],
         users: Array.isArray(source["users"]) ? source["users"] : [],
@@ -675,7 +670,7 @@ export const BITRIX_PROJECTIONS: Readonly<Record<string, BitrixProjection>> =
     },
 
     "openlines.history": (result) => {
-      const source = asRecord(result);
+      const source = recordOf(result);
       return {
         sessionId: source["sessionId"] ?? null,
         chatId: source["chatId"] ?? null,
@@ -686,7 +681,7 @@ export const BITRIX_PROJECTIONS: Readonly<Record<string, BitrixProjection>> =
     },
 
     "calendar.accessibility": (result) => ({
-      availability: Object.entries(asRecord(result)).map(
+      availability: Object.entries(recordOf(result)).map(
         ([userId, events]) => ({
           userId,
           events: Array.isArray(events) ? events : [],

@@ -123,7 +123,7 @@ describe("QA message", () => {
     });
     fireEvent.change(input);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("текстовые"),
+      expect(screen.getByRole("alert").textContent).toContain(".exe"),
     );
   });
 });

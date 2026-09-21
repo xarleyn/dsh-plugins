@@ -17,9 +17,13 @@ import type {
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPasswordResetRequest,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaIssuedServiceToken,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   QaSessionState,
   QaSkillDocument,
   QaSkillDraftInput,
@@ -43,6 +47,8 @@ import type {
   QaAdminAuditEvent,
   QaAdminOverview,
   QaAdminPage,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaAdminUserDetail,
   QaAdminUserRow,
   QaAdminUserUpdate,
@@ -165,6 +171,22 @@ export interface QaAdminApi {
     userId: string,
     update: QaAdminUserUpdate,
   ): Promise<RemoteResult<QaAdminUserDetail>>;
+  /**
+   * Accounts that asked for a password reset from the sign-in screen, newest
+   * first. Reading takes `users.read`; answering one takes `users.manage`.
+   */
+  passwordResetRequests(
+    token: string,
+  ): Promise<RemoteResult<readonly QaPasswordResetRequest[]>>;
+  /**
+   * Answer one request: set that account's new password and drop its row. The
+   * account's live sessions end with the token-version bump.
+   */
+  resetPassword(
+    token: string,
+    userId: string,
+    password: string,
+  ): Promise<RemoteResult<QaAdminUserDetail>>;
   conversations(
     token: string,
     query: QaConversationQuery,
@@ -217,6 +239,43 @@ export interface QaAdminApi {
     cursor: string | null,
     limit: number | null,
   ): Promise<RemoteResult<QaAdminPage<QaAdminAuditEvent>>>;
+  /**
+   * Skill files an administrator may edit: the deployment's shared store, or
+   * one named account's own. These are the same files the owner edits from
+   * their settings dialog, opened here with the authorization to leave a mark
+   * the owner sees.
+   */
+  skills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<QaAdminSkillsView>>;
+  skill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  saveSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillDocument>>;
+  deleteSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<RemoteResult<QaSkillRemoval>>;
+  validateSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<RemoteResult<QaSkillValidation>>;
+  skillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
 }
 
 /**
@@ -468,6 +527,31 @@ export interface QaBoundSkillApi {
   ): Promise<RemoteResult<QaSkillValidation>>;
 }
 
+/**
+ * Outcome of one integration-token operation as the settings page sees it:
+ * the value, or the audience-safe copy for the refusal. The page renders the
+ * copy and never has to know a reason code.
+ */
+export type QaIntegrationTokenResult<Value> =
+  | { readonly ok: true; readonly value: Value }
+  | { readonly ok: false; readonly error: string };
+
+/** The integration-token section with the account token bound at the call site. */
+export interface QaIntegrationTokenApi {
+  /**
+   * Whether this deployment can mint at all. A token is a credential for the
+   * HTTP API, so when that API is off the page explains the state instead of
+   * offering a button that only ever refuses — while listing and revoking stay
+   * available, because a credential has to remain revocable.
+   */
+  readonly canCreate: boolean;
+  list(): Promise<QaIntegrationTokenResult<readonly QaServiceTokenSummary[]>>;
+  create(
+    input: QaServiceTokenCreateInput,
+  ): Promise<QaIntegrationTokenResult<QaIssuedServiceToken>>;
+  revoke(tokenId: string): Promise<QaIntegrationTokenResult<null>>;
+}
+
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
   accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
@@ -499,6 +583,39 @@ export interface QaAccountsApi {
     token: string,
     input: QaAccountStartersInput,
   ): Promise<RemoteResult<QaAccountUserPublic>>;
+  /**
+   * Replace the caller's own password. The answer carries a fresh token: the
+   * write bumps the account's token version, so without it the browser that
+   * made the change would sign itself out.
+   */
+  accountsChangePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  /**
+   * File a forgotten-password request for the operator queue. The answer is
+   * the same for every address, so it reveals nothing about the account.
+   */
+  accountsRequestPasswordReset(
+    email: string,
+  ): Promise<RemoteResult<{ readonly accepted: true }>>;
+  /** The caller's own integration tokens; never a secret. */
+  accountsListServiceTokens(token: string): Promise<
+    RemoteResult<{
+      readonly tokens: readonly QaServiceTokenSummary[];
+    }>
+  >;
+  /** Mint one integration token for the caller; the plaintext comes back once. */
+  accountsCreateServiceToken(
+    token: string,
+    input: QaServiceTokenCreateInput,
+  ): Promise<RemoteResult<QaIssuedServiceToken>>;
+  /** Revoke one of the caller's own integration tokens. */
+  accountsRevokeServiceToken(
+    token: string,
+    tokenId: string,
+  ): Promise<RemoteResult<{ readonly revoked: boolean }>>;
 }
 
 /** One button above an empty composer: what it reads and what it sends. */

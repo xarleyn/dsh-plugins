@@ -57,6 +57,7 @@ import {
 import { guardOutputStream } from "./guards/output-stream.js";
 import { TurnRiskTracker } from "./guards/risk-state.js";
 import { createPostExecuteGuard } from "./guards/tool-results.js";
+import type { ApprovalFace } from "./guards/approval-seam.js";
 import { createPreExecuteGuard } from "./guards/tools.js";
 import { CheckPipeline } from "./pipeline.js";
 import { SafetyScanner } from "./rules/scanner.js";
@@ -161,6 +162,7 @@ export class ModelSafetyGate extends TypertRemoteService {
     config: ResolvedSafetyGateConfig;
     pipeline: CheckPipeline;
     readonly risk: TurnRiskTracker;
+    readonly approval: () => ApprovalFace | undefined;
   };
   private disposed = false;
 
@@ -197,6 +199,10 @@ export class ModelSafetyGate extends TypertRemoteService {
       config: this.resolved,
       pipeline: this.pipeline,
       risk: this.risk,
+      // Read per call, like the agent registry: the tool gate asks the seam
+      // only when it is about to escalate, and a host that composes no
+      // approval service simply has none.
+      approval: () => host.get("approval") as ApprovalFace | undefined,
     };
 
     this.registerGuards();
@@ -258,6 +264,10 @@ export class ModelSafetyGate extends TypertRemoteService {
    */
   private installSettings(): void {
     this.owner.inject(["settings"], (settingsCtx) => {
+      // A settings provider that appears after disposal must not adopt this
+      // namespace: the card would edit a gate that no longer exists, and the
+      // section would outlive the plugin that owns it.
+      if (this.disposed) return;
       // Structural seam, like the rest of this file: the injected face is read
       // defensively so a host without a mounted settings provider keeps the
       // composition entry as the configuration source.
@@ -296,6 +306,10 @@ export class ModelSafetyGate extends TypertRemoteService {
    * fields is enough for the next check to run on the new policy.
    */
   private reapply(): void {
+    // A committed settings change can land while the plugin is being disposed;
+    // rebuilding a pipeline for a gate that is gone buys nothing and leaves a
+    // logger to close twice.
+    if (this.disposed) return;
     let next: ResolvedSafetyGateConfig;
     try {
       next = resolveSafetyGateConfig(this.configSource());
@@ -558,6 +572,11 @@ export class ModelSafetyGate extends TypertRemoteService {
     );
 
     host.inject(["tools"], (toolCtx) => {
+      // The runtime may arrive while the plugin is being torn down (the
+      // service mounts, the host disposes us, the injection callback runs
+      // last). Registering there would push listeners into an array nobody
+      // walks again, so the gate would keep deciding in a plugin that is gone.
+      if (this.disposed) return;
       this.disposers.push(
         toolCtx.on("tools/pre-execute", createPreExecuteGuard(guards) as never),
       );

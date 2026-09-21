@@ -80,7 +80,7 @@ Initial implementation MUST NOT:
 - use `sudo`, impersonation tokens, or administrator credentials;
 - share one service-account token across all `qa-surface` users, except
   through the managed service credential described in
-  [`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md):
+  [`managed-service-credentials.md`](./managed-service-credentials.md):
   a deployment may publish one administrator-managed read-only credential, and
   only the path that specification defines. Sharing a token any other way — a
   static MCP credential, a per-deployment token handed to every user, an
@@ -387,7 +387,7 @@ PAT scopes should follow the same least-privilege profiles where supported.
 
 A deployment MAY publish one administrator-managed read-only GitLab credential
 for a configured instance, described in
-[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+[`managed-service-credentials.md`](./managed-service-credentials.md).
 It is a third authentication shape next to personal OAuth and personal PAT:
 
 ```text

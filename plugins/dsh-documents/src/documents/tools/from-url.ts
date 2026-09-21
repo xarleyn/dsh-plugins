@@ -19,6 +19,7 @@ import {
   toolWarnings,
   warningsSchema,
   type DocumentToolExec,
+  type DocumentToolOptions,
 } from "./shared.js";
 
 export const DOCUMENT_FROM_URL_TOOL = "document_from_url";
@@ -30,9 +31,7 @@ const DESCRIPTION = [
   "The artifact keeps the fetched text and a manifest naming the source URL.",
 ].join(" ");
 
-export function createDocumentFromUrlTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentFromUrlTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_FROM_URL_TOOL,
     description: DESCRIPTION,
@@ -91,7 +90,7 @@ export function createDocumentFromUrlTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.fromUrl(
         args as unknown as Parameters<DocumentRuntime["fromUrl"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         artifactId: result.artifactId,

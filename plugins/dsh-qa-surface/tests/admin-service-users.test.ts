@@ -175,6 +175,7 @@ describe("admin user management", () => {
     const { service, admin, alice } = harness({
       sessionLog: {
         live: () => false,
+        snapshot: () => undefined,
         list: async () => {
           throw new Error("the detail card must not list the logs");
         },

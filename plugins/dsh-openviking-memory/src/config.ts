@@ -15,6 +15,7 @@ import {
   resolveOpenVikingCredentials,
 } from "./openviking/credentials.js";
 import { resolveEffectivePeerId } from "./openviking/workspace-peer.js";
+import { resolveQaUserSettingsPath } from "./qa/user-settings.js";
 
 /**
  * Version reported in the OpenViking `User-Agent`. Read from the package
@@ -106,6 +107,8 @@ const DEFAULT_CONFIG = Object.freeze({
   captureAssistantTurns: true,
   captureFilters: [] as readonly string[],
   skipSubagentSessions: false,
+  qaUserScoping: true,
+  qaUserSettingsPath: "",
   requestTimeoutMs: 10000,
   mcpToolCallTimeoutMs: 60000,
   recallRewrite: "off" as RecallRewriteMode,
@@ -224,6 +227,25 @@ export interface Config {
   /** Leave sessions whose header origin is `subagent` entirely alone. */
   readonly skipSubagentSessions?: boolean;
 
+  /**
+   * Keep one memory space per QA account.
+   *
+   * With a QA surface mounted, every session is attributed to the account that
+   * owns it (`X-OpenViking-User` becomes that account), so recall, profile and
+   * capture never cross between the users of one deployment. A session that has
+   * not been attributed yet is left entirely alone until its browser half
+   * claims it — it neither reads nor writes memory in the meantime.
+   *
+   * Set it to `false` to fall back to the single deployment-wide identity; a
+   * deployment without a QA surface is unaffected either way.
+   */
+  readonly qaUserScoping?: boolean;
+  /**
+   * Where the per-account overrides live (the file behind the QA settings
+   * page). Blank uses `<$DSH_HOME>/openviking-memory-qa-users.json`.
+   */
+  readonly qaUserSettingsPath?: string;
+
   /** Timeout for one OpenViking HTTP request. */
   readonly requestTimeoutMs?: number;
   /** Timeout for one bridged OpenViking MCP tool call. */
@@ -286,6 +308,9 @@ export const Config: z<Config> = z.object({
 
   skipSubagentSessions: z.boolean().default(false),
 
+  qaUserScoping: z.boolean().default(true),
+  qaUserSettingsPath: z.string().default(""),
+
   requestTimeoutMs: z.number().step(1).min(1000).max(120000).default(10000),
   mcpToolCallTimeoutMs: z.number().step(1).min(1000).max(600000).default(60000),
 });
@@ -334,6 +359,8 @@ export interface ResolvedConfig {
   readonly captureAssistantTurns: boolean;
   readonly captureFilters: readonly string[];
   readonly skipSubagentSessions: boolean;
+  readonly qaUserScoping: boolean;
+  readonly qaUserSettingsPath: string;
   readonly requestTimeoutMs: number;
   readonly mcpToolCallTimeoutMs: number;
   readonly autoInject: boolean;
@@ -410,6 +437,8 @@ export function resolveConfig(
     captureFilters: input.captureFilters ?? [...DEFAULT_CONFIG.captureFilters],
     skipSubagentSessions:
       input.skipSubagentSessions ?? DEFAULT_CONFIG.skipSubagentSessions,
+    qaUserScoping: input.qaUserScoping ?? DEFAULT_CONFIG.qaUserScoping,
+    qaUserSettingsPath: resolveQaUserSettingsPath(input.qaUserSettingsPath),
     requestTimeoutMs: input.requestTimeoutMs ?? DEFAULT_CONFIG.requestTimeoutMs,
     mcpToolCallTimeoutMs:
       input.mcpToolCallTimeoutMs ?? DEFAULT_CONFIG.mcpToolCallTimeoutMs,
@@ -585,6 +614,7 @@ export function resolveConfig(
   config.captureAssistantTurns = config.captureAssistantTurns !== false;
   config.captureToolResults = config.captureToolResults === true;
   config.skipSubagentSessions = config.skipSubagentSessions === true;
+  config.qaUserScoping = config.qaUserScoping !== false;
   config.autoInject = config.autoInject !== false;
   config.injectStartupProfile = config.injectStartupProfile !== false;
   config.injectStepProfile = config.injectStepProfile !== false;

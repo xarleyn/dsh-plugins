@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One Jira Cloud site the operator allows. A user never types a host: the
@@ -89,9 +90,7 @@ const ALIAS = /^[a-z][a-z0-9-]{0,31}$/u;
 const MAX_SITES = 16;
 const MAX_ALIASES = 32;
 
-function configError(message: string): Error {
-  return new Error(`jira integration config: ${message}`);
-}
+const configError = scopedConfigError("jira integration config");
 
 /**
  * Canonicalize one configured site. Everything here is operator input, so a typo

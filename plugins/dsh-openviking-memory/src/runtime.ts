@@ -25,7 +25,7 @@ import {
   OPENVIKING_PLUGIN_SOURCE,
   promptText,
 } from "./capture.js";
-import { traceIdOf, type OpenVikingClient } from "./api-client.js";
+import { OpenVikingClient, traceIdOf } from "./api-client.js";
 import type { InjectionPlan, ResolvedConfig } from "./config.js";
 import { buildProfileBlock } from "./openviking/profile-inject.js";
 import {
@@ -47,13 +47,46 @@ interface RuntimeEvent {
   readonly data?: unknown;
 }
 
+/**
+ * What one session's account changes about its memory: which OpenViking user
+ * space the session reads and writes, and which automatic context additions it
+ * still wants. A runtime built without a resolver keeps the single
+ * deployment-wide identity and the configured plan, which is how a plugin
+ * installed without a QA surface behaves.
+ */
+export interface SessionScoping {
+  /** Whether this session may use memory at all. */
+  readonly allowed: boolean;
+  /** The account's space; absent falls back to the deployment's own user. */
+  readonly user?: string;
+  /** The deployment's plan after this account's overrides narrowed it. */
+  readonly plan: InjectionPlan;
+}
+
+/** The runtime asks this about a session before it touches OpenViking. */
+export type SessionScopingResolver = (session: Session) => SessionScoping;
+
 interface SessionState {
   readonly dshSessionId: string;
   readonly ovSessionId: string;
+  /** The peer this session's workspace resolved to, fixed at creation. */
+  readonly peerId: string;
+  readonly legacyPeerId: string;
+  /**
+   * The configuration this session's requests are built from. Derived on every
+   * {@link OpenVikingRuntime.adoptScoping} rather than frozen at creation, so a
+   * committed settings change reaches sessions that are already running.
+   */
   config: ResolvedConfig;
+  /** The client carrying this session's identity headers. */
+  client: OpenVikingClient;
+  /** What this session's account allows; re-read on every step. */
+  scoping: SessionScoping;
   ready: boolean;
   profileBlock: string;
   profileDelivered: boolean;
+  /** The framed recall block this session's conversation already carries. */
+  lastRecallBlock: string;
   readonly toolNames: Map<string, string>;
   writes: Promise<void>;
   initializationRetryable: boolean;
@@ -64,30 +97,66 @@ interface SessionState {
 }
 
 export class OpenVikingRuntime {
-  private readonly client: OpenVikingClient;
-  private readonly config: ResolvedConfig;
+  private client: OpenVikingClient;
+  private config: ResolvedConfig;
   private readonly logger: PluginLogger;
-  private readonly injection: InjectionPlan;
+  /** The plan a session without an account scoping of its own falls back to. */
+  private injection: InjectionPlan;
+  private readonly scoping: SessionScopingResolver | undefined;
   private readonly states = new Map<string, SessionState>();
+  /**
+   * One client per account space. A client is a config plus a fetch closure, so
+   * the map is cheap; it exists because the identity travels in request headers
+   * that a call site cannot override.
+   */
+  private readonly clients = new Map<string, OpenVikingClient>();
+  /** Which account space a live session's pending writes belong to. */
+  private readonly sessionOwners = new Map<string, string>();
   private drainTimer: NodeJS.Timeout | null = null;
   private drainRunning = false;
   private drainHealth: boolean | null = null;
+  /** Built once; the answer for every session this runtime cannot attribute. */
+  private deployment: SessionScoping | undefined;
 
   constructor(
     client: OpenVikingClient,
     config: ResolvedConfig,
     logger: PluginLogger,
     injection: InjectionPlan,
+    scoping?: SessionScopingResolver,
   ) {
     this.client = client;
     this.config = config;
     this.logger = logger;
     this.injection = injection;
+    this.scoping = scoping;
+  }
+
+  /**
+   * Adopt a re-resolved configuration — what a committed settings change hands
+   * over. The identity clients are keyed by account and built from the config,
+   * so they are dropped rather than kept: the next request any session makes
+   * builds a client for the new endpoint and credentials, and every session's
+   * plan is re-read from its account on that same step.
+   */
+  reconfigure(config: ResolvedConfig, injection: InjectionPlan): void {
+    this.config = config;
+    this.injection = injection;
+    this.clients.clear();
+    this.deployment = undefined;
+    this.client = new OpenVikingClient(config);
   }
 
   stateFor(session: Session): SessionState {
     let state = this.states.get(session.id);
-    if (state) return state;
+    if (state) {
+      // Attribution can land after the session starts: a restarted host
+      // resumes chats before their browser half re-claims them. Re-reading the
+      // scoping here is what lets such a session pick up its account (and its
+      // per-account switches) without being recreated.
+      this.adoptScoping(state, session);
+      return state;
+    }
     const cwd = session.header?.cwd || process.cwd();
     const peer = resolveEffectivePeerId({
       cfg: {
@@ -101,14 +170,15 @@ export class OpenVikingRuntime {
     state = {
       dshSessionId: String(session.id),
       ovSessionId: deriveHarnessSessionId("dsh-", String(session.id)),
-      config: {
-        ...this.config,
-        peerId: peer.peerId,
-        legacyPeerId: peer.legacyPeerId,
-      },
+      peerId: peer.peerId,
+      legacyPeerId: peer.legacyPeerId,
+      config: this.config,
+      client: this.client,
+      scoping: this.deploymentScoping(),
       ready: false,
       profileBlock: "",
       profileDelivered: false,
+      lastRecallBlock: "",
       toolNames: new Map(),
       writes: Promise.resolve(),
       initializationRetryable: false,
@@ -117,8 +187,71 @@ export class OpenVikingRuntime {
       disposing: null,
       initializing: null,
     };
+    this.adoptScoping(state, session);
     this.states.set(session.id, state);
     return state;
+  }
+
+  /**
+   * Bind a state to the account space its session belongs to. The plan and the
+   * client are only ever swapped together: a session whose attribution arrives
+   * late starts reading the account's space on the same step its switches take
+   * effect, and a session whose account is never resolved is left alone.
+   */
+  private adoptScoping(state: SessionState, session: Session): void {
+    const scoping = this.scoping?.(session) ?? this.deploymentScoping();
+    const user = scoping.user ?? this.config.user;
+    state.scoping = scoping;
+    state.config = {
+      ...this.config,
+      peerId: state.peerId,
+      legacyPeerId: state.legacyPeerId,
+      user,
+    };
+    state.client = this.clientFor(user);
+    const owner = scoping.user;
+    if (owner === undefined) this.sessionOwners.delete(state.ovSessionId);
+    else this.sessionOwners.set(state.ovSessionId, owner);
+  }
+
+  /** The scoping of a session nobody has claimed: the configured one. */
+  private deploymentScoping(): SessionScoping {
+    this.deployment ??= Object.freeze({
+      allowed: true,
+      plan: this.injection,
+    });
+    return this.deployment;
+  }
+
+  /** The client that speaks as one OpenViking user, created on first use. */
+  private clientFor(user: string): OpenVikingClient {
+    if (user === "" || user === this.config.user) return this.client;
+    let client = this.clients.get(user);
+    if (client === undefined) {
+      client = new OpenVikingClient({ ...this.config, user });
+      this.clients.set(user, client);
+    }
+    return client;
+  }
+
+  /**
+   * The client a queued write must be replayed with.
+   *
+   * A queue is a file on disk that outlives the process, and the identity is
+   * not part of what gets queued, so an entry is attributed through the session
+   * that wrote it. When that session is not known to this process — a restart
+   * that has not resumed it yet — the replay refuses to send rather than guess:
+   * a write sent as the wrong account is worse than one that waits for its
+   * session to come back. Deployments without per-account scoping keep the
+   * single deployment identity, where nothing can be misattributed.
+   */
+  private clientForQueued(path: string): OpenVikingClient | undefined {
+    if (this.scoping === undefined) return this.client;
+    const sessionId = ovSessionIdFromPath(path);
+    if (sessionId === undefined) return this.client;
+    const user = this.sessionOwners.get(sessionId);
+    if (user === undefined) return undefined;
+    return this.clientFor(user);
   }
 
   async initialize(agent: Agent): Promise<SessionState> {
@@ -137,12 +270,13 @@ export class OpenVikingRuntime {
 
   async initializeState(state: SessionState): Promise<SessionState> {
     state.initializationRetryable = false;
-    const health = await this.client.healthResult();
+    const client = state.client;
+    const health = await client.healthResult();
     if (!health.ok) {
       state.initializationRetryable = isRetryableFailure(health);
       return state;
     }
-    const ensured = await this.client.ensureSessionResult(
+    const ensured = await client.ensureSessionResult(
       state.ovSessionId,
       state.config.peerId,
     );
@@ -163,9 +297,9 @@ export class OpenVikingRuntime {
     // automatic context presentation alone: when both profile paths are off,
     // the read is skipped outright rather than fetched and discarded (SPEC
     // §12). Recall and capture still initialize their session normally.
-    const profile = this.profileWanted()
+    const profile = this.profileWanted(state)
       ? await buildProfileBlock(
-          (path, init, options) => this.client.fetchJSON(path, init, options),
+          (path, init, options) => client.fetchJSON(path, init, options),
           state.config.profileTokenBudget,
           state.config.peerId,
         )
@@ -182,8 +316,8 @@ export class OpenVikingRuntime {
   }
 
   /** Whether an enabled path could still deliver a profile in this session. */
-  private profileWanted(): boolean {
-    return this.injection.startupProfile || this.injection.stepProfile;
+  private profileWanted(state: SessionState): boolean {
+    return state.scoping.plan.startupProfile || state.scoping.plan.stepProfile;
   }
 
   /**
@@ -212,7 +346,7 @@ export class OpenVikingRuntime {
     const query = promptText(messages);
     if (query.length < state.config.minQueryLength) return null;
     const block = await buildRecallBlock(
-      (path, init, options) => this.client.fetchJSON(path, init, options),
+      (path, init, options) => state.client.fetchJSON(path, init, options),
       state.config,
       query,
       {
@@ -222,12 +356,19 @@ export class OpenVikingRuntime {
         log: (stage, data) => this.log(stage, data),
       },
     );
-    return block ? pluginMessage(block, "recall") : null;
+    if (!block) return null;
+    const framed = withRecallFraming(block);
+    // Injected context stays in the conversation, so delivering an identical
+    // block again tells the model nothing it cannot still read above. The
+    // server's own dedup window is counted in turns; this one is the session.
+    if (framed === state.lastRecallBlock) return null;
+    state.lastRecallBlock = framed;
+    return pluginMessage(framed, "recall");
   }
 
   capture(session: Session, event: RuntimeEvent): void {
     const state = this.stateFor(session);
-    if (!state.config.syncTurns) return;
+    if (!state.scoping.allowed || !state.config.syncTurns) return;
     const payload = captureEvent(event, state.config, state.toolNames);
     if (!payload) return;
     this.enqueueWrite(state, async () => {
@@ -245,7 +386,7 @@ export class OpenVikingRuntime {
         await this.enqueuePendingMessage(state, payload);
         return;
       }
-      const response = await this.client.addMessage(
+      const response = await state.client.addMessage(
         state.ovSessionId,
         payload,
         state.config.peerId,
@@ -259,11 +400,11 @@ export class OpenVikingRuntime {
   maybeCommit(session: Session, event: RuntimeEvent): void {
     if (event.type !== "turn/end") return;
     const state = this.stateFor(session);
-    if (!state.config.syncTurns) return;
+    if (!state.scoping.allowed || !state.config.syncTurns) return;
     this.enqueueWrite(state, async () => {
       if (state.hasPendingWrites) return;
       if (!state.ready && !(await this.ensureState(state)).ready) return;
-      const metadata = await this.client.getSession(
+      const metadata = await state.client.getSession(
         state.ovSessionId,
         state.config.peerId,
       );
@@ -272,7 +413,7 @@ export class OpenVikingRuntime {
         state.config.commitTokenThreshold
       )
         return;
-      const response = await this.client.commitSession(
+      const response = await state.client.commitSession(
         state.ovSessionId,
         state.config.peerId,
       );
@@ -310,7 +451,7 @@ export class OpenVikingRuntime {
     if (state.disposing) return state.disposing;
     state.disposing = (async () => {
       this.enqueueWrite(state, async () => {
-        if (!state.config.syncTurns) return;
+        if (!state.scoping.allowed || !state.config.syncTurns) return;
         const commitPayload = {
           keep_recent_count: state.config.commitKeepRecentCount,
         };
@@ -319,7 +460,7 @@ export class OpenVikingRuntime {
           return;
         }
         if (!state.ready && !(await this.ensureState(state)).ready) return;
-        const response = await this.client.commitSession(
+        const response = await state.client.commitSession(
           state.ovSessionId,
           state.config.peerId,
           {
@@ -434,15 +575,30 @@ export class OpenVikingRuntime {
   }
 
   /**
-   * Replay the pending queue through this runtime's client. The session-start
-   * path calls it without options and keeps consuming retries; the drainer
-   * passes consumeRetries:false so transient failures stay retryable.
+   * Replay the pending queue. Each entry is sent through the account space of
+   * the session that queued it ({@link clientForQueued}); the session-start
+   * path calls this without options and keeps consuming retries, while the
+   * drainer passes consumeRetries:false so transient failures stay retryable.
    */
   async replayPendingQueue(
     options: { readonly consumeRetries?: boolean } = {},
   ): Promise<void> {
     await replayPending(
-      (path, init) => this.client.fetchJSON(path, init),
+      (path, init) => {
+        const client = this.clientForQueued(path);
+        if (client !== undefined) return client.fetchJSON(path, init);
+        // Nothing was sent: status 0 reads as a transient failure, so the
+        // entry stays queued instead of landing in the wrong account space.
+        return Promise.resolve({
+          ok: false,
+          result: null,
+          status: 0,
+          error: {
+            message:
+              "the session that queued this write is not attached to an account space yet",
+          },
+        });
+      },
       (stage, data) => this.log(stage, data),
       options,
     );
@@ -520,7 +676,11 @@ export class OpenVikingRuntime {
 
   /** Whether the last health probe reached OpenViking. */
   get connected(): boolean {
-    return this.client.connected;
+    if (this.client.connected) return true;
+    for (const client of this.clients.values()) {
+      if (client.connected) return true;
+    }
+    return false;
   }
 
   /** Number of sessions this runtime currently tracks. */
@@ -542,6 +702,44 @@ export class OpenVikingRuntime {
   private log(stage: string, data: Record<string, unknown> | undefined): void {
     this.logger.debug(stage, data ?? {});
   }
+}
+
+/**
+ * The OpenViking session id inside one queued request path. The queue builds
+ * that path itself, so this reads back exactly the shape it wrote.
+ */
+function ovSessionIdFromPath(path: string): string | undefined {
+  const captured = /\/api\/v1\/sessions\/([^/]+)\//.exec(path)?.[1];
+  if (captured === undefined) return undefined;
+  try {
+    return decodeURIComponent(captured);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a recall block says about itself. The injected memories are background:
+ * the issue behind this line is a model that read a memory miss as "the answer
+ * is not here" and kept querying the store for a document the session already
+ * had. The prompt-side rule lives in the `openviking-memory` skill; this is the
+ * copy that travels with every block, skill or no skill.
+ */
+const RECALL_FRAMING =
+  "Background memory from earlier sessions — supporting context, not the source " +
+  "of record. What the product is, and any file this session already has, comes " +
+  "from the documentation, document and expert tools; a miss here is not " +
+  "evidence that no source exists.";
+
+/**
+ * Put the framing where the model reads first: right under the envelope's
+ * opening tag, ahead of the block's own header line.
+ */
+function withRecallFraming(block: string): string {
+  const opening = /^<openviking-context\b[^>]*>\n?/.exec(block);
+  if (!opening) return `${RECALL_FRAMING}\n${block}`;
+  const rest = block.slice(opening[0].length);
+  return `${opening[0]}${RECALL_FRAMING}\n${rest}`;
 }
 
 function pluginMessage(

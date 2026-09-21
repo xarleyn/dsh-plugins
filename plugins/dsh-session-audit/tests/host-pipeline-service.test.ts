@@ -291,6 +291,46 @@ describe("AuditService refresh", () => {
     expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
   });
 
+  it("lists the audits no session view can show, with the reason for each", async () => {
+    const { service } = testService(root, { sessions: [] });
+    await writeAudit(root, "session-41b4e63f", {
+      analysis: analysis(SESSION_ID),
+      report: REPORT,
+    });
+    // A schema this build does not read: no declared binding, no corpus match.
+    await writeAudit(root, "audit-newer", {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    // A directory whose analysis is not JSON at all: no session can own it.
+    await writeAudit(root, "audit-broken", { analysis: {}, report: REPORT });
+    await writeFile(
+      join(root, "audit-broken", "analysis.json"),
+      "{ not json",
+      "utf8",
+    );
+
+    await service.refresh();
+
+    const unattached = service.registry.unattached();
+    const byId = Object.fromEntries(
+      unattached.map((entry) => [entry.auditId, entry]),
+    );
+    expect(Object.keys(byId).sort()).toEqual(["audit-broken", "audit-newer"]);
+    expect(byId["audit-broken"]?.status).toBe("invalid");
+    expect(byId["audit-broken"]?.errors.map((entry) => entry.code)).toEqual([
+      "INVALID_JSON",
+    ]);
+    expect(byId["audit-newer"]?.status).toBe("unresolved");
+    expect(byId["audit-newer"]?.errors.map((entry) => entry.code)).toContain(
+      "SESSION_NOT_FOUND",
+    );
+    // The bound audit is shown in its own session, so it is not reported here.
+    expect(unattached.map((entry) => entry.auditId)).not.toContain(
+      "session-41b4e63f",
+    );
+  });
+
   it("keeps an unknown schema's report and raw document available", async () => {
     const { service } = testService(root);
     await writeAudit(root, AUDIT_DIRECTORY, {

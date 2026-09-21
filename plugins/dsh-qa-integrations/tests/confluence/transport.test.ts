@@ -5,97 +5,18 @@ import {
   call,
   config,
   credentialFor,
-  EMAIL,
   PAGE,
   siteStub,
-  stub,
   TOKEN,
 } from "./shared.js";
 
-describe("confluence transport", () => {
-  it("spends the secret only in the Basic header", async () => {
-    const { calls, fetcher } = siteStub();
-    await call("connection.get", {}, { fetcher });
-    const init = calls[0]?.init as RequestInit;
-    const headers = new Headers(init.headers);
-    const expected = Buffer.from(`${EMAIL}:${TOKEN}`, "utf8").toString(
-      "base64",
-    );
-    expect(headers.get("authorization")).toBe(`Basic ${expected}`);
-    expect(headers.get("accept")).toBe("application/json");
-    expect(init.method).toBe("GET");
-    expect(init.redirect).toBe("error");
-    const url = calls[0]?.url as URL;
-    expect(url.toString()).not.toContain(TOKEN);
-    expect(url.toString()).not.toContain(EMAIL);
-  });
-
-  it("maps upstream failures onto domain errors", async () => {
-    const cases: readonly (readonly [number, string])[] = [
-      [401, "CredentialRevoked"],
-      [403, "ProviderPermissionDenied"],
-      [404, "ResourceNotFound"],
-      [400, "InvalidRequest"],
-      [422, "InvalidRequest"],
-      [410, "ProviderUnavailable"],
-      [500, "ProviderUnavailable"],
-    ];
-    for (const [status, code] of cases) {
-      const { calls, fetcher } = stub(() => ({
-        status,
-        json: { message: `upstream detail ${TOKEN}` },
-      }));
-      await expect(
-        call("connection.get", {}, { fetcher }),
-      ).rejects.toMatchObject({ code });
-      // An unreachable-looking upstream is retried; the answer never carries
-      // the upstream body back to the model.
-      const retries = status >= 500 ? 3 : 1;
-      expect(calls, String(status)).toHaveLength(retries);
-      await expect(call("connection.get", {}, { fetcher })).rejects.not.toThrow(
-        /upstream detail/u,
-      );
-    }
-  });
-
-  it("honours a rate-limit pause and gives up afterwards", async () => {
-    let attempt = 0;
-    const { calls, fetcher } = stub(() => {
-      attempt += 1;
-      return attempt === 1
-        ? { status: 429, headers: { "retry-after": "0" }, json: {} }
-        : { json: { accountId: "acc-alice" } };
-    });
-    const answer = (await call("connection.get", {}, { fetcher })) as Record<
-      string,
-      unknown
-    >;
-    expect(calls).toHaveLength(2);
-    expect(answer["account"]).toEqual({ accountId: "acc-alice" });
-
-    const always = stub(() => ({
-      status: 429,
-      headers: { "retry-after": "0" },
-      json: {},
-    }));
-    await expect(
-      call("connection.get", {}, { fetcher: always.fetcher }),
-    ).rejects.toMatchObject({ code: "RateLimited" });
-    expect(always.calls).toHaveLength(3);
-  });
-
-  it("refuses a body bigger than the deployment allows", async () => {
-    const { fetcher } = stub(() => ({
-      json: { accountId: "acc-alice" },
-      headers: { "content-length": "4000000" },
-    }));
-    await expect(call("connection.get", {}, { fetcher })).rejects.toMatchObject(
-      {
-        code: "ResultTooLarge",
-      },
-    );
-  });
-
+/**
+ * What `tests/confluence/conformance.test.ts` does not cover: an operation the
+ * catalog refuses before any request. The status model, the retry policy, the
+ * byte cap, the refused redirect and the secret's one carrier live in the
+ * shared suite.
+ */
+describe("confluence catalog boundary", () => {
   it("refuses an operation the catalog does not declare", async () => {
     const { calls, fetcher } = siteStub();
     for (const operation of [

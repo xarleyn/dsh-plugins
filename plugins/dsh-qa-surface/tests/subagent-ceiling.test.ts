@@ -99,7 +99,11 @@ function harness(options: { readonly ceiling?: boolean } = {}) {
         lockdown: { toolPolicy: { allow: ["read", "glob"] } },
       }),
     { debug() {}, info() {}, warn() {}, error() {}, close() {} } as never,
-    { enforceSessionAccess: () => ({ id: "user-1" }), userWorkspace: () => "" },
+    {
+      enforceSessionAccess: () => ({ id: "user-1" }),
+      userWorkspace: () => "",
+      ownerIdOf: () => undefined,
+    },
     () => [],
     options.ceiling === false
       ? undefined

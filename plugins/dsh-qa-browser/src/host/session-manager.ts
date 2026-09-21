@@ -12,6 +12,8 @@ import type {
   BrowserHumanPointerRequest,
   BrowserNavigationRequest,
   BrowserPanelTab,
+  BrowserPolicyRefusal,
+  BrowserRequestKind,
   BrowserSessionInfo,
   BrowserSnapshot,
   BrowserSnapshotOptions,
@@ -68,6 +70,12 @@ interface TabRecord {
   status: BrowserTabInfo["status"];
   revision: number;
   readonly refs: Map<string, ElementRefRecord>;
+  /**
+   * What the policy refused for the page this tab is showing. It lives here
+   * rather than on the session because the panel explains the page in front of
+   * the operator, and a second tab failing silently is its own problem.
+   */
+  policyRefusals: BrowserPolicyRefusal[];
   queue: Promise<void>;
   disposers: (() => void)[];
 }
@@ -81,9 +89,36 @@ interface SessionRecord {
   readonly createdAt: number;
   lastActivityAt: number;
   activeActions: number;
+  /**
+   * Refusals that belong to no tab: a request the context dialled without a
+   * page behind it, such as one a service worker makes. Everything else is
+   * kept on the tab whose page made the request.
+   */
+  policyRefusals: BrowserPolicyRefusal[];
   control:
     | { owner: "agent"; leaseExpiresAt: null }
     | { owner: "human"; clientId: string; leaseExpiresAt: number };
+}
+
+/**
+ * Destinations one page can report before the list stops growing. A page that
+ * fails on more hosts than this is past explaining with a list: the first ones
+ * are the ones the operator would act on anyway, and a stable list beats one
+ * whose entries shuffle as the page keeps failing.
+ */
+const MAX_POLICY_REFUSALS = 8;
+
+/**
+ * The host a refused request aimed at, for the operator's message. A URL the
+ * policy could not parse at all has no host, so the raw string is trimmed to
+ * something a panel can render instead of being dropped.
+ */
+function refusalHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/\.$/u, "");
+  } catch {
+    return url.slice(0, 200);
+  }
 }
 
 export interface QaBrowserSessionManagerOptions {
@@ -140,11 +175,15 @@ export class QaBrowserSessionManager {
     this.assertAvailable();
     const id = this.validSessionId(sessionId);
     const existing = this.sessions.get(id);
-    if (existing !== undefined && existing.status !== "crashed") {
+    if (existing !== undefined && existing.status === "crashed") {
+      this.sessions.delete(id);
+    } else if (existing !== undefined && existing.status !== "starting") {
       this.touch(existing);
       return this.sessionInfo(existing);
     }
-    if (existing?.status === "crashed") this.sessions.delete(id);
+    // A record that is still starting is one a creation is building — it is
+    // registered early so refusals can find it — so this caller joins that
+    // creation instead of answering with a session that has no tab yet.
 
     let pending = this.creating.get(id);
     if (pending === undefined) {
@@ -247,7 +286,10 @@ export class QaBrowserSessionManager {
     return this.enqueueMutation(record, tab, async () => {
       const started = this.now();
       const from = tab.page.url();
-      await this.options.policy.assertAllowed(request.url);
+      // The page is being replaced either way: whatever the policy refused on
+      // the last one stops being the answer to "why is this page broken".
+      this.clearPolicyRefusals(record, tab);
+      await this.assertPolicyAllowed(record, tab, request.url, "document");
       tab.status = "loading";
       try {
         const result = await tab.page.navigate(request);
@@ -256,7 +298,7 @@ export class QaBrowserSessionManager {
         this.recordNavigation(tab, result.url, "new");
         tab.status = "ready";
         this.advanceRevision(tab);
-        await this.options.policy.assertAllowed(result.url);
+        await this.assertPolicyAllowed(record, tab, result.url, "document");
         this.logger.debug("browser.action", {
           sessionId,
           tabId: id,
@@ -542,10 +584,11 @@ export class QaBrowserSessionManager {
     return this.enqueueMutation(record, tab, async () => {
       const from = tab.page.url();
       const result = await tab.page.history(action);
-      await this.options.policy.assertAllowed(result.url);
+      await this.assertPolicyAllowed(record, tab, result.url, "document");
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
+      this.clearPolicyRefusals(record, tab);
       return this.finishMutation(record, tab, `${action} completed.`, {
         from,
         to: result.url,
@@ -654,6 +697,10 @@ export class QaBrowserSessionManager {
     const tab = this.requireTab(record, id);
     return this.enqueueHuman(record, tab, clientId, async () => {
       const from = tab.page.url();
+      // The panel's own navigation answers with the refusal in its error line,
+      // so it is not recorded as a banner too: the banner exists for the
+      // refusals the person in front of the panel never sees.
+      this.clearPolicyRefusals(record, tab);
       await this.options.policy.assertAllowed(request.url);
       const result = await tab.page.navigate(request);
       await this.options.policy.assertAllowed(result.url);
@@ -799,6 +846,7 @@ export class QaBrowserSessionManager {
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
+      this.clearPolicyRefusals(record, tab);
       return this.finishMutation(record, tab, `Human ${action} completed.`, {
         from,
         to: result.url,
@@ -868,9 +916,28 @@ export class QaBrowserSessionManager {
       viewport: this.options.config.viewport,
       actionTimeoutMs: this.options.config.runtime.actionTimeoutMs,
       navigationTimeoutMs: this.options.config.runtime.navigationTimeoutMs,
-      validateRequest: async (url) => {
-        await this.options.policy.assertAllowed(url);
-        await this.options.policy.assertUnchangedResolution(url);
+      validateRequest: async (url, request) => {
+        // The provider asks this before every request it dials — the document,
+        // a redirect, an asset, an API call — so a destination it refuses is
+        // recorded here rather than surfacing only inside Chromium as a
+        // request that never completed. The page it names is the tab the
+        // operator is looking at when it fails.
+        try {
+          await this.options.policy.assertAllowed(url);
+          await this.options.policy.assertUnchangedResolution(url);
+        } catch (error) {
+          const record = this.sessions.get(sessionId);
+          this.notePolicyRefusal(
+            record,
+            record === undefined
+              ? undefined
+              : this.tabForPage(record, request.pageId),
+            url,
+            request.kind,
+            error,
+          );
+          throw error;
+        }
       },
     });
     const record: SessionRecord = {
@@ -882,19 +949,28 @@ export class QaBrowserSessionManager {
       createdAt: now,
       lastActivityAt: now,
       activeActions: 0,
+      policyRefusals: [],
       control: { owner: "agent", leaseExpiresAt: null },
     };
+    // Registered before the first tab exists, because the context is already
+    // dialling: the page this session is about to open can be refused while it
+    // is being built, and a refusal nobody can look up is a refusal the panel
+    // never shows. The window is the same reason the tab is registered before
+    // its title is read.
+    this.sessions.set(sessionId, record);
     try {
       const tab = await this.createTab(record);
       record.selectedTabId = tab.id;
       record.status = "ready";
-      this.sessions.set(sessionId, record);
       this.logger.info("browser.session-created", {
         sessionId,
         contextId: context.id,
       });
       return record;
     } catch (error) {
+      // A session that could not open its first tab is not a session: leaving
+      // it in the map would answer the panel with a dead browser.
+      this.sessions.delete(sessionId);
       await this.options.provider
         .closeContext(context.id)
         .catch(() => undefined);
@@ -911,20 +987,29 @@ export class QaBrowserSessionManager {
       viewport: { ...this.options.config.viewport },
       history: { entries: [url], index: 0 },
       url,
-      title: await page.title(),
+      title: "",
       status: "ready",
       revision: 0,
       refs: new Map(),
+      policyRefusals: [],
       queue: Promise.resolve(),
       disposers: [],
     };
+    // Nothing may await between the page existing and it being findable: a
+    // request the fresh page makes is attributed by looking its page up here,
+    // and a refusal that arrives in between would be filed against no tab at
+    // all. So the record goes in first and the title, which needs a round trip
+    // to the page, is filled after it.
+    record.tabs.set(tab.id, tab);
     tab.disposers.push(
       page.onChanged(() => {
         void this.refreshTab(tab, true);
       }),
       page.onClosed(() => this.onPageClosed(record, tab)),
     );
-    record.tabs.set(tab.id, tab);
+    // A page that cannot report its title is still a page; refusing to create
+    // the tab over it would leave a running page with no way to see it.
+    tab.title = await page.title().catch(() => "");
     return tab;
   }
 
@@ -1139,6 +1224,121 @@ export class QaBrowserSessionManager {
       record.tabs.clear();
     }
     this.logger.error("browser.crashed", { error: error.message });
+  } /**
+   * The refusals that belong to no tab, oldest first.
+   *
+   * A refusal normally travels with the tab whose page made the request and is
+   * read through the panel's tab list; this is the residue — a request the
+   * context dialled with no page behind it — and the panel shows it beside the
+   * selected tab's own entries. A session the manager does not hold (never
+   * started, already evicted) has refused nothing.
+   */
+  policyRefusals(sessionId: string): readonly BrowserPolicyRefusal[] {
+    const refusals = this.sessions.get(sessionId)?.policyRefusals;
+    return refusals === undefined ? [] : [...refusals];
+  }
+
+  /**
+   * The policy gate the agent's own navigation passes, with the refusal kept
+   * when it closes.
+   */
+  private async assertPolicyAllowed(
+    record: SessionRecord,
+    tab: TabRecord,
+    url: string,
+    kind: BrowserRequestKind,
+  ): Promise<void> {
+    try {
+      await this.options.policy.assertAllowed(url);
+    } catch (error) {
+      this.notePolicyRefusal(record, tab, url, kind, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Keep a refusal for the panel and the host log.
+   *
+   * One entry per destination: a page that keeps retrying a blocked endpoint
+   * is one thing to fix, so a repeat raises the count instead of appending
+   * another row. The entry goes to `tab` when the request has a page and to the
+   * session's untabbed list when it has none.
+   *
+   * `record` may be absent only when the session is already gone — a context
+   * that outlives its record while it is being torn down — and what it refused
+   * still belongs in the log. A record that is merely young is registered
+   * before its first tab exists, precisely so this lookup finds it.
+   */
+  private notePolicyRefusal(
+    record: SessionRecord | undefined,
+    tab: TabRecord | undefined,
+    url: string,
+    kind: BrowserRequestKind,
+    error: unknown,
+  ): void {
+    if (!(error instanceof QaBrowserError)) return;
+    const host = refusalHost(url);
+    const refusals = tab?.policyRefusals ?? record?.policyRefusals;
+    if (refusals !== undefined) {
+      const index = refusals.findIndex(
+        (entry) =>
+          entry.code === error.code &&
+          entry.kind === kind &&
+          entry.host === host,
+      );
+      if (index === -1) {
+        if (refusals.length < MAX_POLICY_REFUSALS) {
+          refusals.push({
+            code: error.code,
+            kind,
+            host,
+            message: error.message,
+            count: 1,
+          });
+        }
+      } else {
+        const known = refusals[index]!;
+        refusals[index] = {
+          ...known,
+          message: error.message,
+          count: known.count + 1,
+        };
+      }
+    }
+    this.logger.warn("browser.policy-refused", {
+      sessionId: record?.sessionId ?? null,
+      tabId: tab?.id ?? null,
+      code: error.code,
+      kind,
+      host,
+    });
+  }
+
+  /** The tab whose page dialled a request, or nothing when it has no page. */
+  private tabForPage(
+    record: SessionRecord,
+    pageId: string | undefined,
+  ): TabRecord | undefined {
+    if (pageId === undefined) return undefined;
+    for (const tab of record.tabs.values()) {
+      if (tab.page.id === pageId) return tab;
+    }
+    return undefined;
+  }
+
+  /**
+   * A new page starts with a clean notice: the entries describe how one page
+   * stands with the policy, so carrying the previous page's blocked endpoint
+   * into the next one would explain a page that is no longer on screen.
+   *
+   * Only the navigating tab is cleared — a second tab keeps the explanation of
+   * the page it is still showing — and the untabbed list goes with it, because
+   * a request with no page belongs to the document that was on screen when it
+   * was dialled.
+   */
+  private clearPolicyRefusals(record: SessionRecord, tab?: TabRecord): void {
+    if (tab !== undefined) tab.policyRefusals = [];
+    record.policyRefusals = [];
   }
 
   private requireSession(sessionId: string): SessionRecord {
@@ -1296,6 +1496,7 @@ export class QaBrowserSessionManager {
         back: tab.history.index,
         forward: tab.history.entries.length - 1 - tab.history.index,
       },
+      policyRefusals: [...tab.policyRefusals],
     };
   }
 

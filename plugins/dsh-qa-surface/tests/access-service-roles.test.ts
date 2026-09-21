@@ -262,6 +262,7 @@ describe("QA access service", () => {
     const { service, accounts, user } = harness({
       sessionLog: {
         live: () => false,
+        snapshot: () => undefined,
         list: async () => {
           throw new Error("no query engine");
         },

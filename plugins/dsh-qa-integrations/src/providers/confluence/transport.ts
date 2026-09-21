@@ -1,5 +1,6 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
+import { backoff, readBoundedJson, retryDelay, sleep } from "../shared/http.js";
 import {
   confluenceInstance,
   type ConfluenceFlags,
@@ -100,19 +101,6 @@ export interface ConfluenceJsonResponse<T> {
   readonly page?: ConfluencePage;
 }
 
-const RETRY_CAP_MS = 2_000;
-const BACKOFF_BASE_MS = 250;
-
-function numberFrom(value: string | null): number | undefined {
-  if (value === null || value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /**
  * The cursor a v2 listing points at. Confluence puts the next page in
  * `_links.next` as a URL; only the `cursor` parameter is kept, because every
@@ -154,22 +142,11 @@ export class ConfluenceTransport {
     query: ConfluenceQuery = {},
   ): Promise<ConfluenceJsonResponse<T>> {
     const response = await this.request(instance, credential, path, query);
-    const body = await this.readText(response, this.config.maxResponseBytes);
-    if (body.truncated) {
-      throw new IntegrationError(
-        "ResultTooLarge",
-        "Confluence response is too large",
-      );
-    }
-    let data: T;
-    try {
-      data = JSON.parse(body.text) as T;
-    } catch {
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Confluence returned invalid JSON",
-      );
-    }
+    const data = await readBoundedJson<T>(
+      response,
+      this.config.maxResponseBytes,
+      "Confluence",
+    );
     const nextCursor =
       typeof data === "object" && data !== null
         ? cursorFrom((data as Record<string, unknown>)["_links"])
@@ -235,7 +212,7 @@ export class ConfluenceTransport {
           "Confluence request failed",
         );
         if (attempt >= this.flags.retries) throw lastError;
-        await sleep(this.retryDelay(attempt));
+        await sleep(retryDelay(attempt));
         continue;
       } finally {
         clearTimeout(timer);
@@ -246,23 +223,8 @@ export class ConfluenceTransport {
       // not-found answer will not change by asking again.
       const transient = response.status === 429 || response.status >= 500;
       if (!transient || attempt >= this.flags.retries) throw lastError;
-      await sleep(this.backoff(response, attempt));
+      await sleep(backoff(response, attempt));
     }
-  }
-
-  /** Atlassian asks for a pause through `retry-after`; honour it, but bounded. */
-  private backoff(response: Response, attempt: number): number {
-    const header = response.headers.get("retry-after");
-    const seconds = header === null ? Number.NaN : Number(header.trim());
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1_000, RETRY_CAP_MS);
-    }
-    return this.retryDelay(attempt);
-  }
-
-  private retryDelay(attempt: number): number {
-    const backoff = BACKOFF_BASE_MS * 2 ** attempt;
-    return Math.min(backoff + Math.floor(Math.random() * 100), RETRY_CAP_MS);
   }
 
   /**
@@ -314,43 +276,5 @@ export class ConfluenceTransport {
       "ProviderUnavailable",
       "Confluence request failed",
     );
-  }
-
-  /**
-   * Read a body without letting upstream decide how much memory the broker
-   * spends. A body over the cap is reported as truncated instead of surfacing a
-   * raw `content-length` nobody can verify.
-   */
-  private async readText(
-    response: Response,
-    maxBytes: number,
-  ): Promise<{ readonly text: string; readonly truncated: boolean }> {
-    if (response.body === null) return { text: "", truncated: false };
-    const declared = numberFrom(response.headers.get("content-length"));
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    let truncated = declared !== undefined && declared > maxBytes;
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > maxBytes) {
-        // Keep the prefix that still fits: a bounded preview is what makes a
-        // truncated answer useful, an empty one is not.
-        const room = maxBytes - (bytes - next.value.byteLength);
-        if (room > 0) chunks.push(next.value.subarray(0, room));
-        await reader.cancel();
-        truncated = true;
-        break;
-      }
-      chunks.push(next.value);
-    }
-    return {
-      text: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString(
-        "utf8",
-      ),
-      truncated,
-    };
   }
 }

@@ -24,6 +24,7 @@ export function tab(overrides: Partial<BrowserPanelTab> = {}): BrowserPanelTab {
     revision: 3,
     viewport: { width: 1_440, height: 900, deviceScaleFactor: 1 },
     history: { back: 0, forward: 0 },
+    policyRefusals: [],
     ...overrides,
   };
 }
@@ -52,6 +53,7 @@ export function panelState(
   return {
     session: session(tabs, selectedTabId),
     tabs,
+    policyRefusals: [],
     humanControlEnabled: true,
     humanControlLeaseSeconds: 30,
     autoRevealOnAgentActivity: true,

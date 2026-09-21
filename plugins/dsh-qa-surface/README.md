@@ -52,7 +52,7 @@ Session and Agent Loop.
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
 - gives each account a `Настройки` dialog — profile, starter messages,
-  general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
   directory (`accounts.skills`), edited with a catalog, an invocation-flag
   form, a Markdown body, a tool picker over the deployment's registry, and a
   preview of the exact file a save writes. Skills reach the model through a
@@ -285,12 +285,13 @@ the plugin's catalog is registered into the agent's own scope only after the
 model successfully loads `tools.activationSkill`, and `qa_tools_selfcheck`
 reports the resulting state.
 
-As of catalog version 2 the shipped catalog carries two tools:
-`qa_tools_selfcheck`, the activation diagnostic, and `file_delete`, the one
-destructive capability — it deletes a single regular file strictly inside the
-calling chat's workspace and refuses directories, missing paths and anything
-that escapes the root, symlink escapes included, with an explicit reason that
-never echoes a host path. Every `file_delete` call is answered `ask` by an
+As of catalog version 3 the shipped catalog carries four tools:
+`qa_tools_selfcheck`, the activation diagnostic; `docs_search` and
+`docs_read`, the documentation surface; and `file_delete`, the one destructive
+capability — it deletes a single regular file strictly inside the calling
+chat's workspace and refuses directories, missing paths and anything that
+escapes the root, symlink escapes included, with an explicit reason that never
+echoes a host path. Every `file_delete` call is answered `ask` by an
 inner gate that sits inside the approval flow, so on a deployment with
 `interaction.approvals: interactive` the interactive approval card parks the
 call for the operator, and on `blocked` the call is refused outright: nothing
@@ -298,6 +299,22 @@ is deleted without a person. Like every catalog tool it is admitted as a
 dynamic name at execution time — it needs no `lockdown.toolPolicy` entry —
 and a role-managed deployment grants it through the same Tools baskets as any
 other tool.
+
+`docs_search` and `docs_read` are the documentation surface. Documentation is
+published into the `docs/` directory of the chat's workspace and the tools read
+exactly that tree: `docs_search` matches a phrase inside single lines and
+reports every hit with its path and line number, tagged with the module and
+version parsed out of the layout `docs/<module>/<version>/…`; both names are
+also accepted as filters, so a chat that was told "3.8" stops sweeping every
+edition, and `path` narrows a search to one subtree. `docs_read` opens one file
+at a bounded window of lines. Both stay inside the tree — a path outside it, a
+`docs/` that is missing or is not a real directory, a directory passed to a
+read, a binary file and a link that leaves the tree are refused with an
+explicit reason that never echoes a host path — and both bound what they
+return: `limit` and a byte budget on the reported hits, a line budget on a
+read, and a truncated answer says so instead of quietly dropping matches. The
+tool descriptions carry the routing rule the catalog exists for: documentation
+is looked up here, not in memory and not by sweeping guessed paths.
 
 The trigger is the authoritative result of the built-in `skill` tool, not the
 model's attempt, not a keyword in the transcript, and not a coincidentally
@@ -462,11 +479,15 @@ in. See
 [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md)
 for the limits and the prompt's exact wording.
 
-The wording of that note — and of the source-provenance and delegation-naming
-notes — is editable without touching the source: the «Заметки модели» section
-of the settings card (the `notes` config block) mutes each note and rewords
-its text, keeping the generated parts (`{identity}`, `{instructions}`,
-`{reportTool}`) as placeholders.
+The wording of that note — and of the source-provenance, delegation-naming and
+attached-documents and source-priority notes — is editable without touching
+the source: the «Заметки модели» section of the settings card (the `notes`
+config block) mutes each note and rewords its text, keeping the generated parts
+(`{identity}`, `{instructions}`, `{reportTool}`) as placeholders. The
+attached-documents note is the one that sends a `.docx` or `.pdf` from the chat
+to the document pipeline instead of the plain file reader, which refuses those
+formats as binary. The source-priority note is the one that says an answer
+belongs to the documentation or the expert before it belongs to memory.
 
 ### Starter messages
 
@@ -480,6 +501,26 @@ user hides them with the section's toggle. The list is stored on the account
 is pure UI preference — none of it reaches the agent prompt.
 `accounts.starters.enabled` (default `true`) turns the section off for
 deployments that want the buttons to stay operator-defined.
+
+### Integration tokens
+
+The same `Настройки` dialog carries an «Интеграционные токены» section, so the
+account that runs an integration issues and revokes its own credential instead
+of asking the operator to run the CLI. It lists the tokens that account owns —
+label, scopes, creation and expiry dates, use count and last use — mints a new
+one, shows its secret exactly once (with a copy button and the warning that it
+is never recoverable, because only the digest is stored), and revokes one with
+a second confirming click. A revoked or expired token stays in the list as a
+record, with its revoke button gone.
+
+Creating is offered only where the credential has somewhere to go: with
+`integration.enabled: false` the section explains that the API is off and hides
+the form, while listing and revoking keep working — a credential that already
+exists has to remain revocable. The section is part of the accounts domain, so
+it appears wherever `accounts.enabled` is on, and the same self-service rules
+apply: the token always belongs to the signed-in account, and one account never
+sees another's tokens. The CLI (`qa-accounts token create|list|revoke`) remains
+the operator's path, including issuing a token for somebody else.
 
 Session policies:
 
@@ -994,6 +1035,204 @@ on the call it serves, so a hidden control is convenience rather than the
 boundary. Review material is the most sensitive data the package handles, so
 tool arguments and results are bounded previews with credential shapes masked,
 behind a redactor a deployment can replace.
+
+## Integration API (HTTP)
+
+Another application — a ticket-system bridge, a bot, a script — can ask the same
+assistant questions over HTTP, with its own credential instead of a browser
+session, and read its own conversations back. The endpoints are **off by
+default**.
+
+```yaml
+integration:
+  enabled: true          # requires accounts.enabled: true
+  basePath: /qa/api      # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
+  tokenTtlDays: 90
+  requestTimeoutMs: 90000
+  maxConcurrent: 4
+  requestsPerMinute: 60
+  maxAnswerCharacters: 4096   # the answer the ticket comment can hold
+```
+
+The API needs accounts: a caller is an account, and the credential it presents
+is that account's integration token. Switching it on without
+`accounts.enabled: true` is refused at configuration time rather than served
+without authentication.
+
+### Issuing a token
+
+```bash
+# the secret is printed exactly once and is never recoverable
+qa-accounts token create bridge@example.corp --label "ticket bridge" --scopes ask --days 90
+qa-accounts token list bridge@example.corp     # ids, scopes, expiry, last use
+qa-accounts token revoke bridge@example.corp <token-id>
+```
+
+An integration token is a **separate credential** from the browser token:
+
+- it survives a password change, because a service that is already integrated
+  must not be logged out by a person editing their own profile;
+- it stores only a SHA-256 digest of its secret, so a copied database is not a
+  copied credential;
+- it carries scopes (`ask`, `sessions:read`), an independent expiry and its own
+  revocation;
+- it stops with the account: disabling the account refuses it, and
+  `qa-accounts revoke <email>` revokes it together with every browser session.
+
+Use one token per integration and revoke it when the integration is retired.
+Treat the secret like a password: it is a bearer credential with no second
+factor.
+
+### Asking a question
+
+```bash
+curl -sS https://dsh.example.local/qa/api/ask \
+  -H "Authorization: Bearer qsat.<id>.<secret>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "message": "TEST получения задач для ИИ Агента\n\nКомпоненты: MDC",
+        "version": "3.8",
+        "session_id": null,
+        "context": {
+          "ticket_key": "PROJ-123",
+          "reporter": "user@example.corp",
+          "reporter_name": "Демо-пользователь"
+        }
+      }'
+```
+
+```json
+{
+  "chat_id": "session-1f0c…",
+  "answer": "**Ответ**\n\nТекст ответа в Markdown…",
+  "sources": ["Документация_v3.8.pdf#стр.12"],
+  "confidence": "medium",
+  "escalate": false,
+  "reason": ""
+}
+```
+
+Send `chat_id` back as `session_id` to continue the same conversation. The chat
+belongs to the token's account: a token can only continue chats its own account
+owns, and a chat an integration opened keeps its own workspace, subrole and
+capability snapshot like any other QA chat.
+
+`multipart/form-data` is accepted with the same fields (`message`, `version`,
+`session_id`, `context` as a JSON **string**) plus repeated `files` parts (at
+most five, 10 MiB each by default).
+
+| Attachment | What the model receives |
+| --- | --- |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image itself |
+| `text/plain`, `text/csv`, `text/markdown` | its text, under a heading with the file name |
+| `application/pdf`, Word, Excel, PowerPoint | text extracted by the deployment's document pipeline |
+| anything else | `415` — the fallback the bridge already implements |
+
+A file the Host cannot read refuses the whole question with `415` rather than
+being skipped: an answer produced without the material it was asked about is
+worse than asking again without it. Documents need the `documents` plugin
+installed; without it PDF and Office attachments take the same `415` path, and
+images and text keep working. Attachments are read, not stored: the bytes live
+in a temporary directory for the length of one extraction, and the text is
+bounded (60 000 characters per file, 120 000 per question, truncated with a
+marker). Everything the bridge's own filter lets through is accepted; archives,
+executables and media are not.
+
+A `answer` longer than `maxAnswerCharacters` is cut before it is published, at
+the last paragraph break (then the last line, then the last sentence) and marked
+with an ellipsis, so the ticket shows a readable head instead of a comment the
+ticket system silently truncates mid-sentence. The cut is logged with the chat
+id; it is still a normal answer, not an escalation.
+
+`confidence` is `medium` for a published answer and `low` for an escalated one.
+`high` is deliberately never claimed: nothing in the deployment judges an
+answer, and a field that always said `high` would train the operator to ignore
+it. `escalate: true` means the assistant produced nothing publishable — an
+interrupted turn, an empty answer, or a question that did not finish inside
+`requestTimeoutMs` (the `chat_id` is still returned, so a retry continues the
+same chat instead of starting a second one).
+
+### Reading a conversation back
+
+```bash
+# after=0 reads from the start; limit is clamped to 200
+curl -sS 'https://dsh.example.local/qa/api/session?chat_id=session-1f0c…&after=0&limit=50' \
+  -H "Authorization: Bearer qsat.<id>.<secret>"
+# {"chat_id":"session-1f0c…",
+#  "messages":[{"seq":1,"role":"user","text":"…","at":"2026-09-21T10:00:00.000Z"},
+#              {"seq":2,"role":"assistant","text":"**Ответ**…","at":null}],
+#  "last_seq":2,"truncated":false}
+```
+
+This is what the `sessions:read` scope is for, and it is a separate scope rather
+than part of `ask`: a bridge that escalates a ticket, or opens the question in a
+review screen for a specialist, has to show what was already said. Without the
+endpoint such a bridge could only ask the same question again — spending a turn
+to answer a question that already has an answer.
+
+The read is the same conversation the account owns, in the same words: `text`
+is the flattening the answer itself uses, so a message reads the same whether it
+was received as an answer or fetched here. Only the prompts the person sent and
+the assistant's answers are published — injected context, reasoning and tool
+traffic are not, because those are model input the caller never wrote.
+
+`after` is the caller's own cursor: pass the `last_seq` of the previous read,
+and the next call returns only what was written since. `limit` bounds the page
+(default 50, at most 200) and the window is always the **newest** messages, so a
+long conversation costs one page rather than one transcript per call; when older
+messages were left below the window, `truncated` says so. `at` is the instant
+the log recorded, or `null` when it recorded none — a timestamp is never
+invented.
+
+An unknown `chat_id` and another account's chat answer the same `404`, so an id
+alone never confirms that somebody else's conversation exists.
+
+Reading is cheap enough to poll: the newest messages of a conversation are kept
+warm, and a chat this Host is holding is checked against its own memory, so a
+page costs neither a stored read nor a walk through the whole history — a page
+of a long conversation is a page. The first read of an old chat is the
+expensive one, and a chat this Host does not hold is re-read after 30 seconds at
+the latest, which is the same budget the review console gives its transcripts.
+
+### Health
+
+```bash
+curl -sS https://dsh.example.local/qa/api/health \
+  -H "Authorization: Bearer qsat.<id>.<secret>"
+# {"ok":true,"version":"0.11.0","models":["gpt-4o-mini"],"uptime_s":86400}
+```
+
+### Statuses
+
+| Status | Meaning |
+| --- | --- |
+| 200 | Answered, or escalated with an empty `answer` |
+| 400 | Malformed body (no `message`, broken JSON or `context`), a missing `chat_id`, or a cursor that is not a whole number |
+| 401 | Missing, expired, revoked or unknown token |
+| 403 | Valid token without the scope the call needs (`ask`, `sessions:read`) |
+| 404 | A chat the token's account does not own (or that does not exist); also `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
+| 413 | Body or attachment over the configured limit |
+| 415 | Unsupported content type, or a non-image attachment |
+| 429 | Per-token rate limit or the deployment's concurrency limit |
+| 503 | The QA assistant failed before it could answer; retry |
+
+Response bodies carry `{ "error": "…", "code": "…" }` with the same reason
+vocabulary, so a client can branch on the code instead of parsing prose.
+
+### What to watch
+
+- Every request that reaches a turn is logged on the Host with the token id,
+  the chat id and the ticket key — never the question or the answer. A read is
+  logged the same way, with the cursor it asked from and the number of messages
+  it got.
+- `maxConcurrent` bounds how much of the deployment a bridge can occupy;
+  `requestsPerMinute` bounds one token. Both answer `429`, which retries well.
+- `maxAnswerCharacters` bounds one answer. A question that produced more is
+  logged as truncated, with the chat id and the published length — never the
+  text.
+- The endpoint is a network surface: publish it only where the integration
+  runs, keep TLS in front of it, and remember that the token's scopes are the
+  only limits on what it can ask.
 
 ## Security and deployment
 

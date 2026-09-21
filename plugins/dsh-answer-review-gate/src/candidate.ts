@@ -27,6 +27,16 @@ export interface CollectedCandidate {
   readonly text: string;
   /** Latest real user message before the candidate; null when not found. */
   readonly requestText: string | null;
+  /**
+   * Surface seq of that user request — the identity of the user turn this
+   * candidate belongs to; null when no real user message was found.
+   *
+   * Agent turns are not user turns: one user request spends several agent
+   * turns (a revision steered back to the primary continues the same agent
+   * turn, a settlement notice opens a new one), so the review budget and the
+   * PASS receipt must be keyed by this, never by the agent-turn counter.
+   */
+  readonly requestSeq: number | null;
 }
 
 /** Model-visible text of one content-block list. */
@@ -61,7 +71,12 @@ export function collectCandidate(
     if (data.message === undefined) return null;
     const text = textOfBlocks(data.message.content);
     if (text === "") return null;
-    return { text, requestText: collectUserRequest(session, nodes[i]!) };
+    const request = collectUserRequest(session, nodes[i]!);
+    return {
+      text,
+      requestText: request?.text ?? null,
+      requestSeq: request?.seq ?? null,
+    };
   }
   return null;
 }
@@ -70,7 +85,7 @@ export function collectCandidate(
 function collectUserRequest(
   session: CandidateSession,
   beforeSeq: number,
-): string | null {
+): { readonly text: string; readonly seq: number } | null {
   const nodes = session.surface.nodes;
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
     const seq = nodes[i]!;
@@ -83,7 +98,7 @@ function collectUserRequest(
     };
     if (data.source?.kind !== "user") continue;
     const text = textOfBlocks(data.content ?? []);
-    if (text !== "") return text;
+    if (text !== "") return { text, seq };
   }
   return null;
 }

@@ -55,6 +55,18 @@ const METADATA_KEYS = [
 ];
 
 /**
+ * How one extraction is bounded.
+ *
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): both fields admit an explicit
+ * `undefined`, because the capture path forwards its configured values without
+ * narrowing them first. Type-level only; the emitted parts are unchanged.
+ */
+export interface CaptureExtractOptions {
+  readonly toolMaxChars?: number | undefined;
+  readonly toolNameById?: Record<string, string> | undefined;
+}
+
+/**
  * A structural readonly view of the plugin config: this module only reads the
  * capture keys below and lets every other key through untouched.
  */
@@ -67,11 +79,17 @@ export interface CaptureConfig {
   readonly peerId?: string;
 }
 
-/** A tool call or tool result, as it goes onto the wire. */
+/**
+ * A tool call or tool result, as it goes onto the wire.
+ *
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): `tool_id` and `tool_name` admit
+ * an explicit `undefined`, because the builder writes the narrowed value
+ * straight onto the part. Type-level only; the emitted JSON is unchanged.
+ */
 export interface CapturedToolPart {
   type: "tool";
-  tool_id?: string;
-  tool_name?: string;
+  tool_id?: string | undefined;
+  tool_name?: string | undefined;
   tool_status: "running" | "completed" | "error";
   tool_input?: Record<string, unknown>;
   tool_output?: string;
@@ -276,10 +294,7 @@ function buildToolPart(
   {
     toolMaxChars = DEFAULT_TOOL_MAX_CHARS,
     toolNameById = {},
-  }: {
-    readonly toolMaxChars?: number;
-    readonly toolNameById?: Record<string, string>;
-  } = {},
+  }: CaptureExtractOptions = {},
 ): CapturedToolPart {
   const id = toolId(block);
   const name = toolName(block) || (id ? toolNameById[id] : "");
@@ -315,10 +330,7 @@ function formatToolBlock(
     : `[${label}${name ? ` ${name}` : ""}]`;
 }
 
-function blockToText(
-  block: unknown,
-  options: { readonly toolMaxChars?: number },
-): string {
+function blockToText(block: unknown, options: CaptureExtractOptions): string {
   if (!block) return "";
   if (typeof block === "string") return block;
   if (Array.isArray(block)) return extractTextFromContent(block, options);
@@ -345,7 +357,7 @@ function blockToText(
 
 export function extractTextFromContent(
   content: unknown,
-  options: { readonly toolMaxChars?: number } = {},
+  options: CaptureExtractOptions = {},
 ): string {
   const opts = { toolMaxChars: DEFAULT_TOOL_MAX_CHARS, ...options };
   if (!content) return "";
@@ -366,7 +378,7 @@ export function extractTextFromContent(
 
 export function extractTextFromPayload(
   payload: unknown,
-  options: { readonly toolMaxChars?: number } = {},
+  options: CaptureExtractOptions = {},
 ): string {
   if (!payload || typeof payload !== "object") return "";
   const node = payload as BlockLike;
@@ -420,10 +432,7 @@ export function extractTextFromPayload(
 
 function extractPartsFromContent(
   content: unknown,
-  options: {
-    readonly toolMaxChars?: number;
-    readonly toolNameById?: Record<string, string>;
-  } = {},
+  options: CaptureExtractOptions = {},
 ): CapturedPart[] {
   const opts = {
     toolMaxChars: DEFAULT_TOOL_MAX_CHARS,
@@ -457,10 +466,7 @@ function extractPartsFromContent(
 
 export function extractPartsFromPayload(
   payload: unknown,
-  options: {
-    readonly toolMaxChars?: number;
-    readonly toolNameById?: Record<string, string>;
-  } = {},
+  options: CaptureExtractOptions = {},
 ): CapturedPart[] {
   if (!payload || typeof payload !== "object") return [];
   const node = payload as BlockLike;

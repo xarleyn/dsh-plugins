@@ -3,7 +3,7 @@ import {
   type CredentialHelp,
 } from "@yadsh/dsh-plugin-kit";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
-import { IntegrationError } from "../../errors.js";
+import { IntegrationError, recoverableResource } from "../../errors.js";
 import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type {
   OperationSecurityMetadata,
@@ -17,6 +17,7 @@ import type {
   ProviderValidation,
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
+import { healthFromFailure } from "../shared/health.js";
 import {
   assertServiceOperationAllowed,
   serviceBoundaryOf,
@@ -896,28 +897,5 @@ export class ConfluenceProvider implements IntegrationProvider {
 }
 
 /** A missing or forbidden space inside a boundary is reported, not fatal. */
-function recoverableResource(error: unknown): boolean {
-  return (
-    error instanceof IntegrationError &&
-    (error.code === "ResourceNotFound" ||
-      error.code === "ProviderPermissionDenied")
-  );
-}
-
 /** Map an upstream failure of the probe onto a health status. */
-function healthFromFailure(error: unknown): ServiceCredentialHealth {
-  if (!(error instanceof IntegrationError)) {
-    return { status: "unreachable" };
-  }
-  switch (error.code) {
-    case "CredentialExpired":
-      return { status: "expired" };
-    case "CredentialRevoked":
-    case "ProviderPermissionDenied":
-      return { status: "revoked" };
-    default:
-      return { status: "unreachable" };
-  }
-}
-
 export default ConfluenceProvider;

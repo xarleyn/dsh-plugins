@@ -161,7 +161,7 @@ Markdown. **Include comments** и **Include issue links** лучше включ�
 - снимите **Public IPs**, если имя не должно резолвиться в публичные адреса;
 - не включайте целиком **Private networks (RFC1918)** без необходимости;
 - внесите согласованные подсети в **Allowed CIDRs**, например
-  `10.24.16.0/20`;
+  `10.10.0.0/16`;
 - оставьте **Loopback**, **Link-local**, **Carrier-grade NAT** и
   **IPv6 unique-local** выключенными, если их явно не требует сеть;
 - оставьте **Redirects: Same-origin only** и **Max redirects: 3**.
@@ -195,7 +195,7 @@ Markdown. **Include comments** и **Include issue links** лучше включ�
         networkPolicy:
           allowPublic: false
           allowPrivate: false
-          allowedCidrs: [10.24.16.0/20]
+          allowedCidrs: [10.10.0.0/16]
         redirects:
           mode: same-origin
           maxRedirects: 3
@@ -247,7 +247,7 @@ Markdown. **Include comments** и **Include issue links** лучше включ�
 ```
 
 Адаптер поддерживает страницы по numeric id (`.../pages/123456/...`), ссылки,
-которые отдаёт сам Confluence (`.../pages/viewpage.action?pageId=112996462`, а
+которые отдаёт сам Confluence (`.../pages/viewpage.action?pageId=123456`, а
 также старый вид `?spaceKey=SD&title=...`), и Server/DC display URL
 (`.../display/SPACE/Page+Title`). Он вызывает REST API с
 `body.storage,space,version` и преобразует storage XHTML в Markdown.
@@ -304,7 +304,7 @@ HTML страницы — шапка вики, меню, хлебные крош
 ```markdown
 ## Attachments
 
-- [Регламент v3.docx](https://wiki.example.corp/wiki/download/attachments/483043310/Регламент%20v3.docx?api=v2) — 46.0 KiB, application/…
+- [Демо-регламент v3.docx](https://wiki.example.corp/wiki/download/attachments/123456/Демо-регламент%20v3.docx?api=v2) — 46.0 KiB, application/…
 ```
 
 `adapter.maxAttachments` (по умолчанию 50, `0` — выключить список) ограничивает
@@ -369,7 +369,7 @@ OpenDocument (`.odt`): архив распаковывается в памяти
         networkPolicy:
           allowPublic: false
           allowPrivate: false
-          allowedCidrs: [10.24.32.0/20]
+          allowedCidrs: [10.20.0.0/16]
         redirects:
           mode: same-origin
           maxRedirects: 3

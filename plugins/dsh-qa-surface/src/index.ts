@@ -16,7 +16,7 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema, resolveConfig } from "./config.js";
+import { ConfigSchema, qaSurfaceVersion, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAdminService } from "./admin/service.js";
@@ -43,6 +43,9 @@ import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
+import { registerQaIntegrationRoutes } from "./integration/http.js";
+import { createQaIntegrationRunner } from "./integration/host-runner.js";
+import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
@@ -76,13 +79,19 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaIssuedServiceToken,
   QaLockdownProof,
   QaOwnershipEntry,
+  QaPasswordResetRequest,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaSkillDocument,
   QaSkillDraftInput,
   QaSkillRemoval,
@@ -212,6 +221,14 @@ export class QaSurface extends TypertRemoteService {
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
   /**
+   * The HTTP API an external application asks questions through. Constructed
+   * always — it is cheap and stateless until a request arrives — and exposed
+   * on the network only while the deployment turns it on.
+   */
+  private readonly integration: QaIntegrationService;
+  private disposeIntegrationRoutes: (() => void) | undefined;
+  private integrationRouteKey: string | undefined;
+  /**
    * The quality store opens its file on first use, so a deployment that never
    * opens the admin console never grows one.
    */
@@ -262,6 +279,10 @@ export class QaSurface extends TypertRemoteService {
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
+      // The console writes skills through the same service the owner's editor
+      // uses, so an administrator's save is path-checked, validated and
+      // published to DSH by exactly the one code path that already does it.
+      skills: () => this.personalSkills.service,
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -290,13 +311,18 @@ export class QaSurface extends TypertRemoteService {
         },
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
+        // Read only by the integration API, whose caller proved an account
+        // with a service token instead of a browser one. The ownership
+        // record stays the authority either way.
+        ownerIdOf: (sessionId) =>
+          this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(sessionId),
       },
       // Legacy account-free sessions retain the dynamic catalog behavior;
       // role-managed sessions authorize its known entries through the frozen
       // capability policy instead.
       (agent) => this.tools?.activeToolNames(agent) ?? [],
-      (token, sessionId, agent) =>
-        this.access.policyForSession(token, sessionId, agent),
+      (owner, sessionId, agent) =>
+        this.access.policyForSessionOwner(owner, sessionId, agent),
       () => this.tools?.catalogToolNames() ?? [],
     );
     this.provenance = new QaProvenanceHost(
@@ -314,6 +340,26 @@ export class QaSurface extends TypertRemoteService {
           message: error instanceof Error ? error.message : String(error),
         }),
     );
+    this.integration = new QaIntegrationService({
+      getConfig: () => this.getConfig(),
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
+      runner: createQaIntegrationRunner({
+        ctx,
+        getConfig: () => this.getConfig(),
+        accounts: () => this.accountRemotes.resolve(this.getConfig()),
+        admission: this.admission,
+        access: this.access,
+        sessionLog,
+        provenance: this.provenance,
+        // Resolved per call, like the files panel does it: the document plugin
+        // may install after this one, and a document attachment that arrives
+        // before it did is refused with the caller's own fallback signal.
+        documents: () => ctx.get("documents") as DocumentsFace | undefined,
+        logger: this.logger,
+      }),
+      logger: this.logger,
+      version: qaSurfaceVersion(),
+    });
     // The one place a composed gate's `ask` becomes a decision for an attested
     // chat: refused outright while approvals are blocked, parked for the
     // operator's answer while they are interactive. The question seam shares
@@ -429,6 +475,7 @@ export class QaSurface extends TypertRemoteService {
           onChange: () => {
             const config = this.getConfig();
             this.refreshRoute();
+            this.refreshIntegrationRoutes();
             this.warnDocumentsMoved();
             this.warnLegacySlashDefaults();
             this.logger.info("config.updated", {
@@ -446,11 +493,15 @@ export class QaSurface extends TypertRemoteService {
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
+      this.refreshIntegrationRoutes();
       webContext.effect(
         () => () => {
           this.disposeRoute?.();
           this.disposeRoute = undefined;
           this.routeKey = undefined;
+          this.disposeIntegrationRoutes?.();
+          this.disposeIntegrationRoutes = undefined;
+          this.integrationRouteKey = undefined;
           this.webServer = undefined;
         },
         "dsh-qa-surface.navigation-route",
@@ -593,6 +644,30 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /** Identity probe; safe to call with an empty or expired token. */
+  @Remote("accountsChangePassword")
+  accountsChangePassword(
+    token: string,
+    currentPassword: string,
+    nextPassword: string,
+  ): QaAccountSession {
+    return this.accountRemotes.changePassword(
+      token,
+      currentPassword,
+      nextPassword,
+    );
+  }
+
+  /**
+   * The sign-in screen's "забыли пароль?" path. It answers the same way for
+   * every address: whether an account exists is not something this endpoint
+   * tells a caller.
+   */
+  @Remote("accountsRequestPasswordReset")
+  accountsRequestPasswordReset(email: string): { readonly accepted: true } {
+    this.accountRemotes.requestPasswordReset(email);
+    return { accepted: true };
+  }
+
   @Remote("accountsWhoami")
   accountsWhoami(token: string): QaWhoamiResult {
     return this.accountRemotes.whoami(token);
@@ -656,6 +731,45 @@ export class QaSurface extends TypertRemoteService {
     input: QaAccountStartersInput,
   ): QaAccountUserPublic {
     return this.accountRemotes.updateStarters(token, input);
+  }
+
+  /**
+   * The caller's own integration tokens. The list is the account's own: the
+   * token names it, and a secret is never part of a summary, so reading this
+   * cannot repeat a credential that was already handed over.
+   */
+  @Remote("accountsListServiceTokens")
+  accountsListServiceTokens(token: string): {
+    readonly tokens: readonly QaServiceTokenSummary[];
+  } {
+    return this.accountRemotes.listServiceTokens(token);
+  }
+
+  /**
+   * Mint one integration token for the caller. The answer carries the
+   * plaintext exactly once — nothing stores it, so nothing can repeat it — and
+   * the account is always the authenticated one: there is no owner field on
+   * the wire.
+   */
+  @Remote("accountsCreateServiceToken")
+  accountsCreateServiceToken(
+    token: string,
+    input: QaServiceTokenCreateInput,
+  ): QaIssuedServiceToken {
+    return this.accountRemotes.createServiceToken(token, input);
+  }
+
+  /**
+   * Revoke one of the caller's own integration tokens. This is the immediate
+   * kill switch the profile page offers: the next request that presents the
+   * credential is refused, without waiting for its expiry.
+   */
+  @Remote("accountsRevokeServiceToken")
+  accountsRevokeServiceToken(
+    token: string,
+    tokenId: string,
+  ): { readonly revoked: boolean } {
+    return this.accountRemotes.revokeServiceToken(token, tokenId);
   }
 
   /**
@@ -875,6 +989,85 @@ export class QaSurface extends TypertRemoteService {
   // service; the wire carries a token and never an identity.
   // ---------------------------------------------------------------------------
 
+  /**
+   * The skill catalog of one scope: the deployment's shared skills, or the
+   * personal skills of the account the scope names. Reading another account's
+   * skills is an administrative act, so it needs `skills.manage`.
+   */
+  @Remote("adminSkills")
+  adminSkills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<QaAdminSkillsView> {
+    return this.accountRemotes.runAsync(() => this.admin.skills(token, scope));
+  }
+
+  /** One skill file with the body, revision and administrator mark. */
+  @Remote("adminSkill")
+  adminSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<QaSkillDocument> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.skill(token, scope, name),
+    );
+  }
+
+  /**
+   * Create (`name` null) or replace one skill in place. The write is recorded
+   * as this administrator's, and the owner sees that it was.
+   */
+  @Remote("adminSkillSave")
+  adminSkillSave(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillDocument> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.saveSkill(token, scope, name, input),
+    );
+  }
+
+  /** Remove one skill into the trash beside its own skills root. */
+  @Remote("adminSkillDelete")
+  adminSkillDelete(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<QaSkillRemoval> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.removeSkill(token, scope, name, expectedRevision),
+    );
+  }
+
+  /** The file a save would write, plus every diagnostic for the draft. */
+  @Remote("adminSkillValidate")
+  adminSkillValidate(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillValidation> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.validateSkill(token, scope, name, input),
+    );
+  }
+
+  /** The tool catalog the picker offers for one scope. */
+  @Remote("adminSkillTools")
+  async adminSkillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<{ readonly tools: readonly QaSkillToolDescriptor[] }> {
+    const tools = await this.accountRemotes.runAsync(() =>
+      this.admin.skillTools(token, scope),
+    );
+    return { tools };
+  }
+
   /** Counters, attention lines and the newest quality signals. */
   @Remote("adminOverview")
   adminOverview(token: string): Promise<QaAdminOverview> {
@@ -907,6 +1100,26 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaAdminUserDetail> {
     return this.accountRemotes.runAsync(() =>
       this.admin.updateUser(token, userId, update),
+    );
+  }
+
+  @Remote("adminPasswordResetRequests")
+  adminPasswordResetRequests(
+    token: string,
+  ): Promise<readonly QaPasswordResetRequest[]> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.passwordResetRequests(token),
+    );
+  }
+
+  @Remote("adminResetPassword")
+  adminResetPassword(
+    token: string,
+    userId: string,
+    password: string,
+  ): Promise<QaAdminUserDetail> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.resetUserPassword(token, userId, password),
     );
   }
 
@@ -1427,6 +1640,45 @@ export class QaSurface extends TypertRemoteService {
     attachments: readonly QaSlashSubmitAttachment[],
   ): Promise<QaSlashExecution> {
     return this.slashRemotes.execute(token, sessionId, line, attachments);
+  }
+
+  /**
+   * Register (or drop) the integration API's routes for the current config.
+   *
+   * The key is the whole registration decision — whether the API is on and
+   * where it lives — so a config change that does not move the endpoints
+   * leaves the live routes alone, and turning the API off disposes them
+   * immediately rather than at the next restart.
+   */
+  private refreshIntegrationRoutes(): void {
+    const config = this.getConfig();
+    const key =
+      config.integration.enabled && config.accounts.enabled
+        ? `${config.integration.basePath}:${String(config.integration.maxRequestBytes)}:${String(config.integration.maxAttachmentBytes)}`
+        : undefined;
+    if (key === this.integrationRouteKey) return;
+    this.disposeIntegrationRoutes?.();
+    this.disposeIntegrationRoutes = undefined;
+    this.integrationRouteKey = undefined;
+    if (key === undefined || this.webServer === undefined) return;
+    try {
+      this.disposeIntegrationRoutes = registerQaIntegrationRoutes(
+        this.webServer,
+        { config, service: this.integration, logger: this.logger },
+      );
+      this.integrationRouteKey = key;
+      this.logger.info("integration.routes-registered", {
+        basePath: config.integration.basePath,
+      });
+    } catch (error) {
+      // A collision on (kind, path) means another plugin owns the namespace.
+      // The page and the accounts keep working; only the API stays off, and
+      // the operator sees why.
+      this.logger.error("integration.routes-failed", {
+        basePath: config.integration.basePath,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private refreshRoute(): void {

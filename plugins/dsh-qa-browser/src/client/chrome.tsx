@@ -97,6 +97,20 @@ function GlobeIcon() {
   );
 }
 
+/**
+ * Marks a tab whose page the policy refused something for. It is a small
+ * triangle rather than a color swap because the strip already uses its dot for
+ * loading: this says "this page is missing something", not "this tab is busy".
+ */
+function BlockedIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <path d="M7 2.6 12.4 11.4H1.6z" />
+      <path d="M7 6.1v2.1M7 9.9h.01" />
+    </svg>
+  );
+}
+
 export interface BrowserTabStripProps {
   readonly tabs: readonly PanelTab[];
   readonly selectedId: string | null;
@@ -151,6 +165,15 @@ export function BrowserTabStrip({
               )}
             </span>
             <span className="dsh-qa-browser-panel__tab-label">{label}</span>
+            {tab.policyRefusals.length === 0 ? null : (
+              <span
+                className="dsh-qa-browser-panel__tab-blocked"
+                title={`Заблокировано запросов: ${String(tab.policyRefusals.length)}. Откройте вкладку, чтобы увидеть подробности.`}
+                aria-hidden="true"
+              >
+                <BlockedIcon />
+              </span>
+            )}
             <button
               type="button"
               className="dsh-qa-browser-panel__tab-close"

@@ -7,6 +7,7 @@ import {
   type CrossDomainMode,
   type ExpertMode,
   type DomainExpertFinding,
+  type ExpertAuditEntry,
   type MemoryInspectResult,
   type ResolvedExpertProfile,
   type ValidationIssueView,
@@ -31,6 +32,7 @@ const TABS = [
   "Delegation",
   "Model",
   "Test",
+  "Runs",
 ] as const;
 
 type TabId = (typeof TABS)[number];
@@ -48,6 +50,20 @@ export interface TestView {
   readonly error: string;
 }
 
+/**
+ * The run history of the open domain, newest first.
+ *
+ * The records live in the host's bounded in-memory ring and are mirrored to
+ * the plugin log, so this list is what the running process still holds: it
+ * narrows, rather than being restored, when the deployment restarts. Every run
+ * is there whatever started it, which is what makes an expert opened from a
+ * chat through the agents panel visible on its own domain page.
+ */
+export interface RunsView {
+  readonly entries: readonly ExpertAuditEntry[];
+  readonly error: string;
+}
+
 export interface EditorProps {
   readonly draft: DomainDefinition;
   readonly isNew: boolean;
@@ -59,12 +75,14 @@ export interface EditorProps {
   readonly profileError: string;
   readonly memory: MemoryView;
   readonly test: TestView;
+  readonly runs: RunsView;
   readonly onChange: (next: DomainDefinition) => void;
   readonly onSave: () => void;
   readonly onDelete: () => void;
   readonly onInspectMemory: (namespace: string) => void;
   readonly onClearMemory: () => void;
   readonly onRunTest: (task: string) => void;
+  readonly onRefreshRuns: () => void;
 }
 
 export function DomainEditor(props: EditorProps) {
@@ -571,6 +589,107 @@ export function DomainEditor(props: EditorProps) {
         </Section>
       ) : null}
 
+      {tab === "Runs" ? (
+        <Section
+          title="Run history"
+          note="Every run of this domain the process has recorded, whichever surface started it: a conversation, the agents panel or the Test tab. The host keeps a bounded in-memory ring and mirrors each run to the plugin log, so a restart begins a new list."
+        >
+          <div className="dx-actions">
+            <button
+              type="button"
+              className="dx-button"
+              disabled={props.busy}
+              onClick={props.onRefreshRuns}
+            >
+              Refresh
+            </button>
+            <span className="dx-chip">
+              {String(props.runs.entries.length)} run
+              {props.runs.entries.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          {props.runs.error === "" ? null : (
+            <StatusLine tone="error">{props.runs.error}</StatusLine>
+          )}
+          {props.runs.entries.length === 0 ? (
+            <p className="dx-section-note">
+              No runs recorded for this domain in the current process. An expert
+              opened from a conversation or from the agents panel is listed here
+              as soon as it finishes.
+            </p>
+          ) : (
+            <table className="dx-table">
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Mode</th>
+                  <th>Status</th>
+                  <th>Duration</th>
+                  <th>Started from</th>
+                  <th>Expert session</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.runs.entries.map((entry) => (
+                  <tr key={`${entry.childSessionId}:${String(entry.at)}`}>
+                    <td>{startedAt(entry.at)}</td>
+                    <td>
+                      {entry.mode}
+                      {entry.background ? (
+                        <>
+                          {" "}
+                          <span className="dx-chip">background</span>
+                        </>
+                      ) : null}
+                    </td>
+                    <td>
+                      {entry.status}
+                      {entry.degraded.length === 0 ? null : (
+                        <>
+                          {" "}
+                          <span className="dx-chip dx-chip--advisory">
+                            {String(entry.degraded.length)} degraded
+                          </span>
+                        </>
+                      )}
+                    </td>
+                    <td>{durationOf(entry.durationMs)}</td>
+                    <td>
+                      {/*
+                       * The caller is what ties a run to the place it was
+                       * started, and the session id is the only handle the
+                       * chat side and this page share: the agents panel lists
+                       * the very same id.
+                       */}
+                      <span className="dx-mono" title={entry.callerSessionId}>
+                        {shortId(entry.callerSessionId)}
+                      </span>
+                      {entry.callerDomain === null ? null : (
+                        <>
+                          {" "}
+                          <span className="dx-chip">{entry.callerDomain}</span>
+                        </>
+                      )}
+                      {entry.delegatePath.length > 1 ? (
+                        <>
+                          {" "}
+                          <span className="dx-chip">
+                            {entry.delegatePath.join(" > ")}
+                          </span>
+                        </>
+                      ) : null}
+                    </td>
+                    <td className="dx-mono" title={entry.childSessionId}>
+                      {shortId(entry.childSessionId)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </Section>
+      ) : null}
+
       <div className="dx-actions">
         <button
           type="button"
@@ -787,4 +906,27 @@ function TestTab({
 function toInt(value: string, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+/** Wall-clock start of one run, in the reader's own locale. */
+function startedAt(at: number): string {
+  return new Date(at).toLocaleString();
+}
+
+/** A duration coarse enough for a narrow column, exact below a second. */
+function durationOf(durationMs: number): string {
+  const ms = Math.max(0, durationMs);
+  if (ms < 1000) return `${String(Math.round(ms))} ms`;
+  const seconds = ms / 1000;
+  return seconds < 60
+    ? `${seconds.toFixed(1)} s`
+    : `${String(Math.floor(seconds / 60))} min ${String(Math.round(seconds % 60))} s`;
+}
+
+/**
+ * A session id is long and the column is narrow: enough of it to match against
+ * the agents panel, with the untruncated value kept in the cell's title.
+ */
+function shortId(id: string): string {
+  return id.length <= 12 ? id : `${id.slice(0, 8)}…`;
 }

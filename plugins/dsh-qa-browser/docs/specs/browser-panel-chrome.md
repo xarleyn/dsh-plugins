@@ -53,6 +53,55 @@ The agent's own `browser_tabs` listing deliberately stays free of the depth: a
 tool that never greys a button has no use for it. The panel gets it through
 `listPanelTabs`, and the panel state carries it per tab.
 
+## A refusal is the operator's to answer
+
+The URL and DNS policy is deployment configuration, so a navigation it refuses
+is not something the chat can fix — and until now the refusal reached the model
+alone, as a tool result nobody else reads. The session records the last refusal
+(`{code, host, message}`) and the panel renders it above the status line.
+
+The gates that record are the ones whose refusal nobody sees: the agent's
+`browser_navigate` and history moves, and the provider's pre-dial validation of
+every request Chromium dials — which is how a page that loaded from an allowed
+host but pulls a blocked resource gets an explanation. That gate is told what
+it is gating (`isNavigationRequest()`) and which page dialled it: every page
+handle carries an id, and the provider maps the request's Playwright page back
+to it.
+
+Both lookups that attribution depends on are ordered so that a request cannot
+arrive before they are ready. The identity is minted by a small registry on the
+first question about a page rather than at creation, so the route handler and
+the page handle get the same answer whichever asks first. And the session
+record is registered in the manager before its first tab exists, the tab before
+the page's title is read — the title needs a round trip, and a refusal landing
+in that round trip has to find a tab to belong to. A refused document and a refused subresource stay apart — one means
+nothing opened, the other means the page is quietly missing an asset or an API
+answer — and both belong to the tab whose page asked, which is what the panel
+explains. The panel's own navigation deliberately does not record: its refusal
+appears in the panel's error line already, and a banner repeating it would be
+noise.
+
+The entries travel with the tab, and the panel shows the ones belonging to the
+selected tab plus the residue that has no page behind it (a service worker's
+request). The strip marks a tab that carries entries, so a second page failing
+is visible without the panel pretending it is the one on screen. Each list is
+one entry per refused destination, counted rather than repeated — a page
+retrying a blocked endpoint is one thing to fix. It is capped at eight
+destinations per tab, keeping the first ones, because a banner that keeps
+reshuffling as a page fails reads as noise instead of a cause. A navigation
+empties the notice of the tab that navigates and the untabbed residue; a second
+tab keeps the explanation of the page it is still showing.
+
+The banner leads with which kind of failure the page hit («Политика Browser не
+пускает на …» against «Страница загрузилась не полностью…»), then the
+list, then the refusal text verbatim rather than paraphrased: that text already
+names the host, the class of address and the setting that lifts the block, and
+a second wording would be a second thing to keep true. What the banner adds is
+the part the refusal cannot know — that the choice between one allow-listed host
+and `allowPrivateNetworks` for the whole deployment belongs to the operator, and
+that the two are not equivalent. A session the manager does not hold has
+refused nothing.
+
 ## Taking control starts the browser
 
 Asking for the lease on a chat whose browser has not started yet starts it.
@@ -93,3 +142,14 @@ status line wrap. Verified at 320 px, 460 px and full width.
   address rules.
 - `tests/panel-authorization.test.ts` — every new mutation authorizes against
   QA Surface before it touches the browser.
+- `tests/page-identities.test.ts` — one page, one identity, whoever asks
+  first, and two pages never share one.
+- `tests/session-manager-security.test.ts`, `tests/browser-panel-render.test.tsx`
+  — a refused destination is recorded with its kind, host and the message
+  naming the fix, on the tab whose page dialled it (or on the session when no
+  page did), including a refusal that arrives while that tab's title is still
+  being read; repeats count instead of appending; one tab's list stops at eight;
+  a navigation empties that tab's list and leaves the other tab's alone; the
+  panel words a refused page and a page with refused requests differently,
+  marks the tab that carries entries, shows no banner for the tab that refused
+  nothing, and shows no banner at all while nothing was refused.

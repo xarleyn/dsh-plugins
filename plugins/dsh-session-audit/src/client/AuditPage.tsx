@@ -21,9 +21,14 @@ import {
   AuditStatusBar,
   AuditTabs,
 } from "@yadsh/dsh-audit-ui";
+import { UnattachedAudits } from "./UnattachedAudits.js";
 import type { AuditApi } from "./api.js";
 import { knownAnalysis } from "./analysis.js";
-import { useAuditDetail, useAuditSummary } from "./use-session-audit.js";
+import {
+  useAuditDetail,
+  useAuditSummary,
+  useUnattachedAudits,
+} from "./use-session-audit.js";
 
 /** The three views of one audit (SPEC §38). */
 type AuditTab = "report" | "findings" | "json";
@@ -43,6 +48,7 @@ export function AuditPage(props: AuditPageProps): ReactNode {
   const { api, sessionId } = props;
   const [tab, setTab] = useState<AuditTab>("report");
   const summary = useAuditSummary(api, sessionId);
+  const unattached = useUnattachedAudits(api);
   const modifiedAt = summary.summary?.modifiedAt ?? null;
 
   // The documents are fetched only once there is an audit to fetch, which is
@@ -70,8 +76,16 @@ export function AuditPage(props: AuditPageProps): ReactNode {
     );
   }
   if (summary.status === "empty" || summary.summary === null) {
+    // The notice goes above the empty state, not below it: a reader who sees
+    // "no audit for this session" is exactly the reader who needs to hear that
+    // audits exist elsewhere in the root.
     return (
-      <AuditEmptyState hint="An audit appears here after an auditor writes its analysis and report into the audit root." />
+      <div className="dsh-audit-page dsh-audit-page--empty">
+        <UnattachedAudits items={unattached} />
+        <div className="dsh-audit-page__state">
+          <AuditEmptyState hint="An audit appears here after an auditor writes its analysis and report into the audit root." />
+        </div>
+      </div>
     );
   }
 
@@ -104,6 +118,8 @@ export function AuditPage(props: AuditPageProps): ReactNode {
           ? {}
           : { modifiedAt: value.modifiedAt })}
       />
+
+      <UnattachedAudits items={unattached} />
 
       <AuditTabs
         tabs={TABS}

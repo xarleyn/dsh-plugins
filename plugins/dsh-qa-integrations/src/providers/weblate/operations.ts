@@ -1,10 +1,18 @@
 import {
+  invalid,
   optionalInteger,
   requiredInteger,
   requiredText,
 } from "../../coerce.js";
-import { IntegrationError } from "../../errors.js";
 import { accountName } from "../shared/account.js";
+import {
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
+import { hasTraversal } from "../shared/paths.js";
 import type { WeblateFlags } from "./config.js";
 import {
   COMMENT_CLAUSE,
@@ -34,16 +42,6 @@ export const DEFAULT_PAGE_SIZE = 20;
 export const SUMMARY_TEXT_CHARS = 200;
 /** Unit URLs attached to a screenshot; enough to identify, bounded anyway. */
 const SCREENSHOT_UNIT_LIMIT = 50;
-
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
-
-function hasTraversal(value: string): boolean {
-  return value
-    .split("/")
-    .some((segment) => segment === ".." || segment === ".");
-}
 
 /** A slug, URL-encoded as one path segment. */
 function slug(value: unknown, field: string): string {
@@ -355,45 +353,6 @@ export const WEBLATE_HANDLERS: Readonly<
     query: {},
   }),
 });
-
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
-}
 
 /** Cut a string at a character budget without leaving half a surrogate pair. */
 function clip(text: string, limit: number): string {
