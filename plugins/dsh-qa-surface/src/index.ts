@@ -84,6 +84,8 @@ import type {
   QaQuestionAnswerItem,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaSkillDocument,
   QaSkillDraftInput,
   QaSkillRemoval,
@@ -263,6 +265,10 @@ export class QaSurface extends TypertRemoteService {
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
+      // The console writes skills through the same service the owner's editor
+      // uses, so an administrator's save is path-checked, validated and
+      // published to DSH by exactly the one code path that already does it.
+      skills: () => this.personalSkills.service,
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -899,6 +905,85 @@ export class QaSurface extends TypertRemoteService {
   // Administrative console. Every method names its permission inside the
   // service; the wire carries a token and never an identity.
   // ---------------------------------------------------------------------------
+
+  /**
+   * The skill catalog of one scope: the deployment's shared skills, or the
+   * personal skills of the account the scope names. Reading another account's
+   * skills is an administrative act, so it needs `skills.manage`.
+   */
+  @Remote("adminSkills")
+  adminSkills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<QaAdminSkillsView> {
+    return this.accountRemotes.runAsync(() => this.admin.skills(token, scope));
+  }
+
+  /** One skill file with the body, revision and administrator mark. */
+  @Remote("adminSkill")
+  adminSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<QaSkillDocument> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.skill(token, scope, name),
+    );
+  }
+
+  /**
+   * Create (`name` null) or replace one skill in place. The write is recorded
+   * as this administrator's, and the owner sees that it was.
+   */
+  @Remote("adminSkillSave")
+  adminSkillSave(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillDocument> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.saveSkill(token, scope, name, input),
+    );
+  }
+
+  /** Remove one skill into the trash beside its own skills root. */
+  @Remote("adminSkillDelete")
+  adminSkillDelete(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<QaSkillRemoval> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.removeSkill(token, scope, name, expectedRevision),
+    );
+  }
+
+  /** The file a save would write, plus every diagnostic for the draft. */
+  @Remote("adminSkillValidate")
+  adminSkillValidate(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillValidation> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.validateSkill(token, scope, name, input),
+    );
+  }
+
+  /** The tool catalog the picker offers for one scope. */
+  @Remote("adminSkillTools")
+  async adminSkillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<{ readonly tools: readonly QaSkillToolDescriptor[] }> {
+    const tools = await this.accountRemotes.runAsync(() =>
+      this.admin.skillTools(token, scope),
+    );
+    return { tools };
+  }
 
   /** Counters, attention lines and the newest quality signals. */
   @Remote("adminOverview")

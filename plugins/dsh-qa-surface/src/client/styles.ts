@@ -284,6 +284,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-settings__row-title{color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600;line-height:20px}
 .dsh-qa-settings__row-description{color:var(--dsw-alias-label-secondary);font-size:13px;line-height:19px}
 .dsh-qa-settings__row-meta{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:17px}
+.dsh-qa-settings__row-note{color:var(--dsh-qa-info,var(--dsw-alias-label-secondary));font-size:12px;line-height:17px}
 .dsh-qa-settings__row-warning{color:var(--dsh-qa-warning);font-size:12px;line-height:17px}
 .dsh-qa-settings__row-error{color:var(--dsh-qa-error);font-size:12px;line-height:17px}
 .dsh-qa-settings__chips{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0;list-style:none}

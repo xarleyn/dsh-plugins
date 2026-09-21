@@ -23,6 +23,7 @@ describe("admin console routes", () => {
       ["/qa/admin/users", "users"],
       ["/qa/admin/access/subroles", "subroles"],
       ["/qa/admin/access/skills", "skills"],
+      ["/qa/admin/skills/editor", "skill-files"],
       ["/qa/admin/access/common", "common"],
       ["/qa/admin/conversations", "conversations"],
       ["/qa/admin/review", "review"],
@@ -62,6 +63,7 @@ describe("admin console routes", () => {
       { page: "user", userId: "user-1" },
       { page: "subroles" },
       { page: "skills" },
+      { page: "skill-files" },
       { page: "common" },
       { page: "conversations" },
       { page: "conversation", conversationId: "session-1", messageId: "42" },
@@ -104,6 +106,7 @@ describe("admin console routes", () => {
     );
     expect(adminSectionOf({ page: "common" })).toBe("access");
     expect(adminSectionOf({ page: "skills" })).toBe("access");
+    expect(adminSectionOf({ page: "skill-files" })).toBe("access");
     expect(adminSectionOf({ page: "review" })).toBe("review");
   });
 });

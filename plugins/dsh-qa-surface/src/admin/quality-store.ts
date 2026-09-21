@@ -99,6 +99,9 @@ const AUDIT_ACTIONS: readonly QaAdminAuditAction[] = [
   "review.updated",
   "review.queued",
   "admin.settings.updated",
+  "skill.created",
+  "skill.updated",
+  "skill.deleted",
 ];
 
 /**

@@ -1,4 +1,8 @@
-import type { QaSkillDiagnostic, QaSkillDiagnosticCode } from "../../types.js";
+import type {
+  QaSkillAdminEdit,
+  QaSkillDiagnostic,
+  QaSkillDiagnosticCode,
+} from "../../types.js";
 
 /**
  * Audience-facing copy for the settings dialog. The Host sends stable codes
@@ -76,6 +80,7 @@ const REASON_COPY: Record<string, string> = {
     "Хранилище навыков недоступно. Обратитесь к администратору стенда.",
   "workspace-unavailable":
     "Рабочий каталог вашего аккаунта недоступен. Обратитесь к администратору стенда.",
+  forbidden: "У вашей роли нет прав на это действие.",
 };
 
 const REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
@@ -96,6 +101,25 @@ export function skillFailureCopy(error: unknown): string {
   const reason = REASON_MARKER.exec(message)?.at(1);
   if (reason === undefined) return GENERIC_FAILURE;
   return REASON_COPY[reason] ?? GENERIC_FAILURE;
+}
+
+/**
+ * The badge line for a skill an administrator last wrote.
+ *
+ * It names the role, not the person: the row already carries a date, and who
+ * administers a deployment is not a fact a personal settings page should
+ * depend on. The mark itself comes from the Host, which only reports one while
+ * the stored bytes are still the administrator's.
+ */
+export function adminEditMessage(edit: QaSkillAdminEdit): string {
+  const at = Date.parse(edit.at);
+  if (Number.isNaN(at)) return "Изменено администратором";
+  const day = new Date(at).toLocaleDateString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  return `Изменено администратором ${day}`;
 }
 
 /** Whether a failure is the optimistic-concurrency refusal. */

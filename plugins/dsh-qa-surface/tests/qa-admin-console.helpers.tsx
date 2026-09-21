@@ -222,6 +222,17 @@ export function adminApi(overrides: Partial<QaAdminApi> = {}): QaAdminApi {
       ok: false as const,
       error: new Error("unused"),
     })),
+    // A shared store with nothing in it: the console's skills page renders its
+    // scope picker before any skill exists anywhere.
+    skills: vi.fn(async (_token, scope) => ({
+      ok: true as const,
+      value: { scope, owner: null, skills: [], rootPath: "" },
+    })),
+    skill: vi.fn(),
+    saveSkill: vi.fn(),
+    deleteSkill: vi.fn(),
+    validateSkill: vi.fn(),
+    skillTools: vi.fn(async () => ({ ok: true as const, value: [] })),
     ...overrides,
   };
 }

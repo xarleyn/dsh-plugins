@@ -56,7 +56,9 @@ export type QaPermission =
   | "reviews.write"
   | "analytics.read"
   | "audit.read"
-  | "settings.manage";
+  | "settings.manage"
+  /** Write access to skill files, personal and deployment-wide. */
+  | "skills.manage";
 
 /**
  * Tools split by how they become available. `always` is visible from the first
@@ -479,6 +481,45 @@ export type QaSkillJsonValue =
   | { readonly [key: string]: QaSkillJsonValue };
 
 /** One personal skill as the catalog list renders it. */
+/**
+ * One administrator write to a skill somebody else owns.
+ *
+ * The record exists so a personal skill cannot be changed behind its owner's
+ * back: it is written beside the skill and reported on every read, and the
+ * owner sees the badge in their own catalog.
+ */
+export interface QaSkillAdminEdit {
+  /** Administrator account id; the owner is told a role, not a colleague. */
+  readonly actorId: string;
+  /** ISO timestamp of that write. */
+  readonly at: string;
+}
+
+/**
+ * Which skill store an administrator is editing: the deployment-wide shared
+ * root every account may read, or one account's own directory.
+ */
+export type QaAdminSkillScope =
+  | { readonly kind: "shared" }
+  | { readonly kind: "user"; readonly userId: string };
+
+/** The account a personal skill scope belongs to, for the console's header. */
+export interface QaAdminSkillOwner {
+  readonly userId: string;
+  readonly email: string;
+  readonly displayName: string;
+}
+
+/** One scope's catalog plus the facts the console names it by. */
+export interface QaAdminSkillsView {
+  readonly scope: QaAdminSkillScope;
+  /** The account of a personal scope; null for the shared root. */
+  readonly owner: QaAdminSkillOwner | null;
+  readonly skills: readonly QaSkillSummary[];
+  /** Absolute directory this scope reads and writes, rendered read-only. */
+  readonly rootPath: string;
+}
+
 export interface QaSkillSummary {
   readonly name: string;
   readonly description: string;
@@ -496,6 +537,13 @@ export interface QaSkillSummary {
   readonly updatedAt: string | null;
   /** sha256 of the stored bytes; an update must echo the revision it read. */
   readonly revision: string;
+  /**
+   * The administrator write that produced the stored revision, or null. A
+   * record whose revision no longer matches is stale and reports as null: the
+   * badge answers "did an administrator write what I am looking at", not
+   * "was this skill ever touched by an administrator".
+   */
+  readonly adminEdit: QaSkillAdminEdit | null;
 }
 
 /** One personal skill with everything the editor needs. */
@@ -1700,7 +1748,10 @@ export type QaAdminAuditAction =
   | "conversation.deleted"
   | "review.updated"
   | "review.queued"
-  | "admin.settings.updated";
+  | "admin.settings.updated"
+  | "skill.created"
+  | "skill.updated"
+  | "skill.deleted";
 
 export interface QaAdminAuditEvent {
   readonly id: string;

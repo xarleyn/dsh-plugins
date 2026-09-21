@@ -19,6 +19,7 @@ import {
 } from "./pages/Conversations.js";
 import { AdminReviewQueue } from "./pages/Review.js";
 import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
+import { AdminSkillFiles } from "./pages/SkillFiles.js";
 import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
 
 type Page = QaAdminRoute["page"];
@@ -50,7 +51,8 @@ const NAV: readonly {
     | "conversations.read.all"
     | "reviews.read"
     | "analytics.read"
-    | "audit.read";
+    | "audit.read"
+    | "skills.manage";
 }[] = [
   {
     page: "overview",
@@ -81,6 +83,12 @@ const NAV: readonly {
     label: "Навыки",
     group: "Доступ",
     permission: "roles.read",
+  },
+  {
+    page: "skill-files",
+    label: "Редактор навыков",
+    group: "Доступ",
+    permission: "skills.manage",
   },
   {
     page: "conversations",
@@ -114,6 +122,7 @@ const CONSOLE_PAGES = new Set<Page>([
   "overview",
   "users",
   "user",
+  "skill-files",
   "conversations",
   "conversation",
   "review",
@@ -1355,6 +1364,8 @@ export function QaAdmin(props: {
                 ))}
               </div>
             </>
+          ) : adminApi !== undefined && page === "skill-files" ? (
+            <AdminSkillFiles api={adminApi} token={props.token} />
           ) : page === "skills" ? (
             <>
               <div className="dsh-qa-admin__title-row">

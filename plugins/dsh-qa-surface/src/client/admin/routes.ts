@@ -13,6 +13,7 @@ export type QaAdminRoute =
   | { readonly page: "user"; readonly userId: string }
   | { readonly page: "subroles" }
   | { readonly page: "skills" }
+  | { readonly page: "skill-files" }
   | { readonly page: "common" }
   | { readonly page: "conversations" }
   | {
@@ -81,7 +82,9 @@ export function parseAdminRoute(
     case "subroles":
       return { page: "subroles" };
     case "skills":
-      return { page: "skills" };
+      // The audience table and the file editor share a section name because
+      // they are two views of one thing; the editor is a path below it.
+      return rest[0] === "editor" ? { page: "skill-files" } : { page: "skills" };
     case "common":
       return { page: "common" };
     case "conversations":
@@ -130,6 +133,8 @@ export function adminPath(
         return "/access/subroles";
       case "skills":
         return "/access/skills";
+      case "skill-files":
+        return "/skills/editor";
       case "common":
         return "/access/common";
       case "conversations":
@@ -171,6 +176,7 @@ export function adminSectionOf(
       return "users";
     case "subroles":
     case "skills":
+    case "skill-files":
     case "common":
       return "access";
     case "conversation":

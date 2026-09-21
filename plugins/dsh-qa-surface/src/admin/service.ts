@@ -14,6 +14,9 @@ import type {
   QaAdminAuditEvent,
   QaAdminOverview,
   QaAdminPage,
+  QaAdminSkillOwner,
+  QaAdminSkillScope,
+  QaAdminSkillsView,
   QaAdminUserDetail,
   QaAdminUserRow,
   QaAdminUserUpdate,
@@ -36,10 +39,19 @@ import type {
   QaReviewQueueItem,
   QaReviewQueueRow,
   QaReviewStatus,
+  QaSkillDocument,
+  QaSkillDraftInput,
+  QaSkillRemoval,
+  QaSkillToolDescriptor,
+  QaSkillValidation,
   QaTranscriptUnavailableReason,
   QaUserAccess,
   QaUserQuery,
 } from "../types.js";
+import type {
+  QaPersonalSkills,
+  QaSkillScope,
+} from "../personal-skills/index.js";
 import { allows } from "./permissions.js";
 import { aggregateQuality, type QaConversationFact } from "./metrics.js";
 import { paginate } from "./paging.js";
@@ -111,6 +123,11 @@ export interface QaAdminServiceOptions {
    * pretending it did.
    */
   readonly sessionFiles?: QaStoredSessionEraser;
+  /**
+   * The skill store both scopes read and write, resolved lazily so the console
+   * never constructs storage before someone opens its skills page.
+   */
+  readonly skills: () => QaPersonalSkills;
   /** Drops the sources a conversation collected, when the deployment keeps any. */
   readonly dropSources?: (sessionId: string) => void;
   readonly logger: PluginLogger;
@@ -1355,6 +1372,191 @@ export class QaAdminService {
       severity: review.severity,
     });
     return review;
+  }
+
+  // -------------------------------------------------------------------------
+  // Skill files
+  //
+  // An administrator edits two stores through one console: the deployment's
+  // shared skills, and the personal skills of one named account. Neither is a
+  // second editor — every call lands in the same storage service the owner's
+  // own editor uses, which is what keeps path checks, validation and catalog
+  // invalidation identical. What the console adds is authorization, an audit
+  // row, and the mark that tells the owner who wrote their file.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Resolve one requested scope into what the storage service understands.
+   * The account id arrives from the browser, so an unknown one is refused
+   * here: deriving a directory for it would create storage for nobody.
+   */
+  private skillTarget(
+    accounts: QaAccounts,
+    scope: QaAdminSkillScope,
+  ): {
+    readonly scope: QaSkillScope;
+    readonly owner: QaAdminSkillOwner | null;
+  } {
+    if (scope.kind === "shared") {
+      return { scope: { shared: true }, owner: null };
+    }
+    const account = accounts.directory().find(({ id }) => id === scope.userId);
+    if (account === undefined) {
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    }
+    return {
+      scope: { userId: account.id },
+      owner: {
+        userId: account.id,
+        email: account.email,
+        displayName: account.displayName,
+      },
+    };
+  }
+
+  /**
+   * One audit image of a skill. The body is deliberately not part of it: the
+   * trail records who changed which skill and to what revision, and a stored
+   * transcript of a person's instructions belongs in the skill, not doubled in
+   * every audit row.
+   */
+  private skillImage(
+    target: { readonly owner: QaAdminSkillOwner | null },
+    document: QaSkillDocument,
+  ): Readonly<Record<string, unknown>> {
+    return {
+      scope: target.owner === null ? "shared" : "user",
+      ownerId: target.owner?.userId ?? null,
+      name: document.name,
+      description: document.description,
+      revision: document.revision,
+    };
+  }
+
+  /** The catalog of one scope with the facts the console names it by. */
+  async skills(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<QaAdminSkillsView> {
+    const { accounts } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    const skills = this.options.skills();
+    return {
+      scope,
+      owner: target.owner,
+      skills: skills.list(target.scope),
+      rootPath: skills.rootPath(target.scope),
+    };
+  }
+
+  /** One skill file with its body and the revision a save must echo. */
+  async skill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+  ): Promise<QaSkillDocument> {
+    const { accounts } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    return this.options.skills().get(target.scope, name);
+  }
+
+  /**
+   * Check an unsaved draft against the target scope: the file a save would
+   * write, and every diagnostic for it.
+   */
+  async validateSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillValidation> {
+    const { accounts } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    return this.options.skills().validate(target.scope, name, input);
+  }
+
+  /** The tool catalog the picker offers for one scope. */
+  async skillTools(
+    token: string,
+    scope: QaAdminSkillScope,
+  ): Promise<readonly QaSkillToolDescriptor[]> {
+    const { accounts } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    return this.options.skills().tools(target.scope);
+  }
+
+  /**
+   * Create (`name` null) or replace one skill. The write is marked as this
+   * administrator's, so the owner reads it as an administrator's edit rather
+   * than as a silent substitution, and it is audited with both images.
+   */
+  async saveSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string | null,
+    input: QaSkillDraftInput,
+  ): Promise<QaSkillDocument> {
+    const { accounts, actor } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    const skills = this.options.skills();
+    const before = name === null ? undefined : this.existingSkill(target, name);
+    const document =
+      name === null
+        ? skills.create(target.scope, input, { actorId: actor.id })
+        : skills.update(target.scope, name, input, { actorId: actor.id });
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: name === null ? "skill.created" : "skill.updated",
+      targetType: "skill",
+      targetId: document.name,
+      ...(before === undefined ? {} : { before: this.skillImage(target, before) }),
+      after: this.skillImage(target, document),
+    });
+    this.options.logger.info("admin.skill-saved", {
+      actor: actor.id,
+      scope: target.owner === null ? "shared" : "user",
+      skill: document.name,
+      created: name === null,
+    });
+    return document;
+  }
+
+  /** Remove one skill into the trash beside its own skills root. */
+  async removeSkill(
+    token: string,
+    scope: QaAdminSkillScope,
+    name: string,
+    expectedRevision: string | null,
+  ): Promise<QaSkillRemoval> {
+    const { accounts, actor } = this.require(token, "skills.manage");
+    const target = this.skillTarget(accounts, scope);
+    const before = this.existingSkill(target, name);
+    const removal = this.options.skills().remove(
+      target.scope,
+      name,
+      expectedRevision,
+    );
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "skill.deleted",
+      targetType: "skill",
+      targetId: name,
+      before: this.skillImage(target, before),
+    });
+    this.options.logger.info("admin.skill-removed", {
+      actor: actor.id,
+      scope: target.owner === null ? "shared" : "user",
+      skill: name,
+    });
+    return removal;
+  }
+
+  /** One skill as it exists now; a missing one is the service's refusal. */
+  private existingSkill(
+    target: { readonly scope: QaSkillScope },
+    name: string,
+  ): QaSkillDocument {
+    return this.options.skills().get(target.scope, name);
   }
 
   // -------------------------------------------------------------------------
