@@ -562,9 +562,12 @@ assert.doesNotMatch(
   READS_RESPONSE_STREAM,
 );
 
-for (const provider of await readdir(new URL("src/providers", root))) {
+for (const entry of await readdir(new URL("src/providers", root), {
+  withFileTypes: true,
+})) {
+  const provider = entry.name;
+  if (provider === "shared" || !entry.isDirectory()) continue;
   const dir = new URL(`src/providers/${provider}/`, root);
-  if (provider === "shared" || !(await stat(dir)).isDirectory()) continue;
   for await (const file of providerSources(dir)) {
     const source = await readFile(file.url, "utf8");
     for (const name of SHARED_HELPER_NAMES) {
@@ -586,9 +589,11 @@ for (const provider of await readdir(new URL("src/providers", root))) {
 // ships without its fixture is a provider whose redirects, cap, retries and
 // secret placement nobody checks — and the check is too valuable to be a thing
 // a new integration remembers to copy.
-for (const provider of await readdir(new URL("src/providers", root))) {
-  const dir = new URL(`src/providers/${provider}/`, root);
-  if (provider === "shared" || !(await stat(dir)).isDirectory()) continue;
+for (const entry of await readdir(new URL("src/providers", root), {
+  withFileTypes: true,
+})) {
+  const provider = entry.name;
+  if (provider === "shared" || !entry.isDirectory()) continue;
   const fixture = await readFile(
     new URL(`tests/${provider}/conformance.test.ts`, root),
     "utf8",
