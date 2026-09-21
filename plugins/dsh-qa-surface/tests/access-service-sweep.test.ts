@@ -60,6 +60,7 @@ describe("QA access service: the vanished-chat sweep", () => {
     const { service, accounts, user } = harness({
       sessionLog: {
         live: () => false,
+        snapshot: () => undefined,
         list: async () => ({ headers: [], complete: false }),
         read: async () => ({
           ok: false as const,

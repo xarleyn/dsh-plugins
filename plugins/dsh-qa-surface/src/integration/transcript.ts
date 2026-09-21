@@ -54,6 +54,94 @@ function atOf(event: StoredSessionEvent): string | undefined {
   return new Date(event.time).toISOString();
 }
 
+/** Whether the events already arrive in ascending seq order. */
+function isOrderedBySeq(events: readonly StoredSessionEvent[]): boolean {
+  for (let index = 1; index < events.length; index += 1) {
+    if ((events[index] as StoredSessionEvent).seq < (events[index - 1] as StoredSessionEvent).seq) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** One message's published form, or nothing when the event has none. */
+function messageOf(event: StoredSessionEvent): QaIntegrationMessage | undefined {
+  const role =
+    event.type === "user/message"
+      ? ("user" as const)
+      : event.type === "assistant/message"
+        ? ("assistant" as const)
+        : undefined;
+  if (role === undefined) return undefined;
+  const text = role === "user" ? userTextOf(event) : assistantTextOf(event);
+  if (text === undefined || text === "") return undefined;
+  const at = atOf(event);
+  return Object.freeze({
+    seq: event.seq,
+    role,
+    text,
+    ...(at === undefined ? {} : { at }),
+  });
+}
+
+/**
+ * The newest published messages of a log, and what was left below them.
+ *
+ * This is the primitive both readers are built on, and it walks the events
+ * **newest first**: a page of a hundred-message conversation costs a hundred
+ * messages flattened, not the whole log, which is what makes a long chat's
+ * page cheap. Only the events below the cursor are considered, and the walk
+ * stops as soon as the window is full — the one message after that is enough
+ * to know that more exists, and `below` records its seq.
+ *
+ * @param chatId - the conversation being read; echoed back for correlation.
+ * @param events - the log's events, in any order.
+ * @param query - the cursor (exclusive) and how many messages to cover; the
+ *   cursor is `undefined` for "from the end", which a warm window asks for.
+ * @returns the window, oldest first, and the newest seq left below it.
+ */
+export function integrationMessageWindow(
+  chatId: string,
+  events: readonly StoredSessionEvent[],
+  query: {
+    readonly after: number | undefined;
+    readonly cover: number;
+  },
+): {
+  readonly chatId: string;
+  readonly messages: readonly QaIntegrationMessage[];
+  readonly below: number | undefined;
+} {
+  // The order a log is written in is the order it is stored and read in, so
+  // sorting is the exception: a caller that handed over events from somewhere
+  // else (a test, a fixture) is the only one that pays for it. Checking costs
+  // one pass, and the walk below is the one that allocates.
+  const ordered = isOrderedBySeq(events)
+    ? events
+    : [...events].sort((left, right) => left.seq - right.seq);
+  const messages: QaIntegrationMessage[] = [];
+  let below: number | undefined;
+  for (let index = ordered.length - 1; index >= 0; index -= 1) {
+    const event = ordered[index] as StoredSessionEvent;
+    if (query.after !== undefined && event.seq <= query.after) break;
+    const message = messageOf(event);
+    if (message === undefined) continue;
+    if (messages.length >= query.cover) {
+      // One message past the window is all the cursor needs to say "there is
+      // more below": it is the newest of the messages this window left out.
+      below = message.seq;
+      break;
+    }
+    messages.push(message);
+  }
+  messages.reverse();
+  return Object.freeze({
+    chatId,
+    messages: Object.freeze(messages),
+    below,
+  });
+}
+
 /**
  * Project the log into one page of a caller's transcript.
  *
@@ -70,39 +158,17 @@ export function projectIntegrationTranscript(
     readonly limit: number;
   },
 ): QaIntegrationTranscript {
-  const ordered = [...events].sort((left, right) => left.seq - right.seq);
-  const messages: QaIntegrationMessage[] = [];
-  for (const event of ordered) {
-    if (event.seq <= query.after) continue;
-    const role =
-      event.type === "user/message"
-        ? ("user" as const)
-        : event.type === "assistant/message"
-          ? ("assistant" as const)
-          : undefined;
-    if (role === undefined) continue;
-    const text =
-      role === "user" ? userTextOf(event) : assistantTextOf(event);
-    if (text === undefined || text === "") continue;
-    const at = atOf(event);
-    messages.push(
-      Object.freeze({
-        seq: event.seq,
-        role,
-        text,
-        ...(at === undefined ? {} : { at }),
-      }),
-    );
-  }
   // The window is the newest messages: a caller asking for history wants the
   // end of the conversation, and the page it did not get is reported rather
   // than silently dropped.
-  const window =
-    messages.length > query.limit ? messages.slice(messages.length - query.limit) : messages;
+  const window = integrationMessageWindow(chatId, events, {
+    after: query.after,
+    cover: query.limit,
+  });
   return Object.freeze({
     chatId,
-    messages: Object.freeze(window),
-    lastSeq: messages.at(-1)?.seq ?? query.after,
-    truncated: window.length < messages.length,
+    messages: window.messages,
+    lastSeq: window.messages.at(-1)?.seq ?? query.after,
+    truncated: window.below !== undefined,
   });
 }

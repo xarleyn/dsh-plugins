@@ -27,7 +27,7 @@ import type {
   QaIntegrationTranscript,
   QaIntegrationTurn,
 } from "./contract.js";
-import { projectIntegrationTranscript } from "./transcript.js";
+import { QaIntegrationTranscriptReader } from "./transcript-reader.js";
 
 /**
  * The session half of the integration API: open a chat, send one question,
@@ -67,6 +67,14 @@ export function createQaIntegrationRunner(
   options: QaIntegrationRunnerOptions,
 ): QaIntegrationRunner {
   const { ctx, logger } = options;
+
+  // One reader for the plugin's lifetime: its whole value is the windows it
+  // keeps between calls, so a per-request instance would be a slower copy of
+  // the plain projection.
+  const transcripts = new QaIntegrationTranscriptReader({
+    log: options.sessionLog,
+    logger,
+  });
 
   const requireAccounts = (): QaAccounts => {
     const accounts = options.accounts();
@@ -287,22 +295,7 @@ export function createQaIntegrationRunner(
       readonly after: number;
       readonly limit: number;
     }): Promise<QaIntegrationTranscript> {
-      const read = await options.sessionLog.read(input.chatId);
-      if (!read.ok) {
-        if (read.reason === "not-found") {
-          // The ownership record is written before the first message, so a
-          // chat that exists but has written nothing yet is an empty
-          // conversation rather than a failure.
-          return Object.freeze({
-            chatId: input.chatId,
-            messages: Object.freeze([]),
-            lastSeq: input.after,
-            truncated: false,
-          });
-        }
-        throw new Error(`the session log is unavailable (${read.reason})`);
-      }
-      return projectIntegrationTranscript(input.chatId, read.events, {
+      return await transcripts.page(input.chatId, {
         after: input.after,
         limit: input.limit,
       });

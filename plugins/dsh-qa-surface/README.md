@@ -1166,6 +1166,13 @@ invented.
 An unknown `chat_id` and another account's chat answer the same `404`, so an id
 alone never confirms that somebody else's conversation exists.
 
+Reading is cheap enough to poll: the newest messages of a conversation are kept
+warm, and a chat this Host is holding is checked against its own memory, so a
+page costs neither a stored read nor a walk through the whole history — a page
+of a long conversation is a page. The first read of an old chat is the
+expensive one, and a chat this Host does not hold is re-read after 30 seconds at
+the latest, which is the same budget the review console gives its transcripts.
+
 ### Health
 
 ```bash

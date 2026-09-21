@@ -228,6 +228,53 @@ honest empty conversation. Any other read failure is a `503`, because "the log
 could not be read" is a transient condition and answering it with `messages: []`
 would tell the caller the conversation is empty.
 
+### 2.11 The read is warm, and a page is never the whole chat
+
+Paging was the obvious shape for the endpoint and the wrong one to implement
+naively: the first version read the stored log and flattened every message in it
+to hand back the newest fifty. A bridge polling a year-old ticket that way pays
+for the whole conversation on every poll, and pays for it again on the next one.
+Three changes, smallest first.
+
+**The projection walks backwards and stops.** `integrationMessageWindow` — the
+primitive the page projection is now written on — scans the events newest first
+and stops as soon as the window is full; the one message past it is all the
+cursor needs to say "there is more below", and its seq is recorded. A page of a
+ten-thousand-message chat flattens a page of messages, not ten thousand, and
+the events are only re-sorted when they did not arrive in log order.
+
+**A page is served from a window, not from a log.** `transcript-reader.ts` keeps
+the newest messages per conversation, already flattened, plus the newest seq
+below them — which is exactly the arithmetic a page needs to be exact rather
+than approximated, including the `truncated` flag for a cursor that fell below
+the window. The window is bounded by one maximal page (`maxMessages` = the 200
+the route already clamps to) and a bounded number of conversations keep one, so
+what the reader holds is the pages it has already handed out.
+
+**Trust is decided in two ways.** A chat this process holds is *probed in
+memory*: `sessionLog.snapshot(chatId, { after })` walks the session's in-memory
+events and materializes only those above the cursor, which answers "has anything
+been appended?" with no stored read — and the Harness is the writer, so the
+answer is strictly newer than what storage has flushed. The window is *extended*
+from that probe and never replaced by it: a session that outlived a process
+restart may hold only part of its history in memory. A chat this process does
+not hold is trusted for a bounded time (30 seconds, the same budget the review
+console gives its own transcript cache); nobody in this process can append to
+it, so the only thing that can make it stale is a write from another process
+sharing the same storage — which no read here could distinguish either.
+
+What this does not pretend to fix: the **first** read of a chat is still a
+stored read, and a chat whose log cannot be read is still a failure to the
+caller. Nor is a delta larger than a whole window merged from memory — a chat
+that wrote more than a page between two reads is read again, because by then the
+log holds it, and the merge is bounded by construction rather than by hope.
+
+Measured on a synthetic 20 000-event log (10 000 published messages, short
+texts; the stored read is faked as a parse of the encoded log, since the real
+one is disk I/O and JSON parsing): a page cost 13.4 ms before this, 0.008 ms
+from a warm window, and 0.104 ms for a chat this process holds, where the probe
+— one pass over the session's in-memory event references — is the whole cost.
+
 ## 3. Contract
 
 See the README's "Integration API (HTTP)" section for the request/response
@@ -272,8 +319,20 @@ copy, and it is the contract this implementation is tested against.
   projected from the durable log, the caller's cursor and window honoured, a
   chat that has written nothing yet read as empty (and its cursor left where
   the caller had it), a log that cannot be read refused instead of answered
-  empty, and the model catalog flattened to its routable ids.
-- `tests/integration-transcript.test.ts` — the projection a caller reads: order,
+  empty, the model catalog flattened to its routable ids, one stored read for a
+  caller that pages through a chat, and a turn the session has written but
+  storage has not flushed.
+- `tests/integration-transcript-reader.test.ts` — the warm window: one stored
+  read for two pages, a read again once the window ages out, extension from a
+  partial in-memory snapshot without touching storage, a cursor below the window
+  answered from its tail, agreement with the whole-log projection for every
+  cursor and page size, a bounded number of conversations kept warm, nothing
+  remembered for a chat that has written nothing, the window dropped when its
+  log cannot be read, a delta larger than a window read from the log, the newest
+  page of a 10 000-message chat, and a probe asked from the window's own cursor
+  that materializes only what lies above it.
+- `tests/integration-transcript.test.ts` — the window primitive and the
+  projection a caller reads: order,
   the log's timestamps as ISO instants (and none invented when the log had
   none), injected context, tool traffic and reasoning left out, the same
   flattening the answer uses, `after` as an exclusive cursor, the newest page
@@ -309,6 +368,6 @@ copy, and it is the contract this implementation is tested against.
   `tests/user-workspace-admission.test.ts` — the admission gate's new
   `ownerIdOf` seam.
 
-Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (194 files, 1350 tests at
+Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (195 files, 1364 tests at
 the time of writing — the pre-existing 184 files stay green, which is the
 regression signal that matters most for the admission refactor).
