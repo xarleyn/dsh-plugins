@@ -793,6 +793,42 @@ export interface QaSurfaceConfig {
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
   readonly notes?: QaNotesConfig;
+  readonly integration?: QaIntegrationConfig;
+}
+
+/**
+ * The HTTP API an external application (the ticket bridge) uses to ask questions:
+ * `POST {basePath}/ask` and `GET {basePath}/health`, authenticated with an
+ * account's integration token. Off unless a deployment asks for it.
+ */
+export interface QaIntegrationConfig {
+  /** Serve the API at all. Requires accounts; off by default. */
+  readonly enabled?: boolean;
+  /** Route namespace; the two endpoints hang off it. */
+  readonly basePath?: string;
+  /** Default lifetime of a minted integration token, in days. */
+  readonly tokenTtlDays?: number;
+  /**
+   * Wall-clock budget for one question. The endpoint answers within it — with
+   * an escalation when the turn is still running — because the caller's own
+   * timeout is a fixed part of the contract.
+   */
+  readonly requestTimeoutMs?: number;
+  /** Questions answered at the same time, deployment wide. */
+  readonly maxConcurrent?: number;
+  /** Requests one token may make per rolling minute. */
+  readonly requestsPerMinute?: number;
+  /** Ceiling on one request body, in bytes. */
+  readonly maxRequestBytes?: number;
+  /** Ceiling on one inline image attachment, in bytes. */
+  readonly maxAttachmentBytes?: number;
+  /**
+   * Ceiling on the published answer, in characters. The caller posts it into a
+   * ticket comment, whose own budget is smaller than a model's answer, and a
+   * cut made here at a paragraph boundary is readable where the caller's own
+   * silent truncation is not.
+   */
+  readonly maxAnswerCharacters?: number;
 }
 
 /** What a QA visitor may attach to one message. */
@@ -995,6 +1031,17 @@ export interface ResolvedQaSurfaceConfig {
       readonly enabled: boolean;
       readonly template: string;
     };
+  };
+  readonly integration: {
+    readonly enabled: boolean;
+    readonly basePath: string;
+    readonly tokenTtlDays: number;
+    readonly requestTimeoutMs: number;
+    readonly maxConcurrent: number;
+    readonly requestsPerMinute: number;
+    readonly maxRequestBytes: number;
+    readonly maxAttachmentBytes: number;
+    readonly maxAnswerCharacters: number;
   };
 }
 

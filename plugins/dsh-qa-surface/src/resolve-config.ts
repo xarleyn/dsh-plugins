@@ -5,6 +5,7 @@ import {
   resolveBasics,
 } from "./config-resolvers/basics.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./config-resolvers/defaults.js";
+import { resolveIntegration } from "./config-resolvers/integration.js";
 import { resolveLockdown } from "./config-resolvers/lockdown.js";
 import { resolveNotes } from "./config-resolvers/notes.js";
 import { resolveSession } from "./config-resolvers/session.js";
@@ -61,5 +62,8 @@ export function resolveConfig(
     attachments,
     tools,
     notes: resolveNotes(input.notes),
+    // Last, because it reads the resolved accounts domain: the API cannot be
+    // switched on without an account store to authenticate against.
+    integration: resolveIntegration(input.integration, accounts),
   });
 }

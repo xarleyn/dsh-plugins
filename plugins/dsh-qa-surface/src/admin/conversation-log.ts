@@ -55,11 +55,17 @@ function number(value: unknown): number | undefined {
 }
 
 /**
- * Flatten one message's content blocks into review text. Non-text blocks are
- * named rather than dropped: a reviewer judging "the answer ignored my
- * screenshot" needs to see that an image was attached.
+ * Flatten one message's content blocks into text. Non-text blocks are named
+ * rather than dropped: a reviewer judging "the answer ignored my screenshot"
+ * needs to see that an image was attached.
+ *
+ * Exported because the integration API publishes an assistant message as the
+ * answer to an external application, and the flattening rule (skip reasoning
+ * and tool calls, keep text, name attachments) must be the same one the
+ * transcript shows. Two readers of one message that flatten it differently
+ * would be two answers to the same question.
  */
-function contentText(content: unknown): string {
+export function messageContentText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   const parts: string[] = [];
   for (const block of content) {
@@ -81,7 +87,7 @@ function contentText(content: unknown): string {
       case "tool-call":
         break;
       case "tool-result":
-        parts.push(contentText(entry.content));
+        parts.push(messageContentText(entry.content));
         break;
       default:
         if (text !== undefined) parts.push(text);
@@ -188,7 +194,7 @@ export function projectTranscript(
             id: String(event.seq),
             seq: event.seq,
             role: "user" as const,
-            text: redactor.redactMessage(contentText(data.content)),
+            text: redactor.redactMessage(messageContentText(data.content)),
             time: event.time ?? 0,
           }),
         );
@@ -206,7 +212,7 @@ export function projectTranscript(
             id: String(event.seq),
             seq: event.seq,
             role: "assistant" as const,
-            text: redactor.redactMessage(contentText(message?.content)),
+            text: redactor.redactMessage(messageContentText(message?.content)),
             time: event.time ?? 0,
             ...(messageModel === undefined ? {} : { model: messageModel }),
             ...(messageProvider === undefined
@@ -266,7 +272,9 @@ export function projectTranscript(
         if (callId === undefined) break;
         const owner = callOwner.get(callId);
         if (owner === undefined) break;
-        const result = redactor.redactToolResult(contentText(first?.content));
+        const result = redactor.redactToolResult(
+          messageContentText(first?.content),
+        );
         const error = record(data.error);
         const errorName = string(error?.name);
         const current = messages[owner.message]?.toolCalls?.[owner.call];

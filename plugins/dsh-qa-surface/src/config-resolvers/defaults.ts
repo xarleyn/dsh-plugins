@@ -191,6 +191,25 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       maxPending: 8,
       extensions: DEFAULT_QA_TEXT_EXTENSIONS,
     }),
+    // The integration API is a network surface authenticated by an account's
+    // token: a deployment opts in, and the default must never open it by
+    // accident. The answer budget is the caller's own contract (90 seconds),
+    // so the default matches it rather than leaving the endpoint hanging.
+    integration: Object.freeze({
+      enabled: false,
+      basePath: "/qa/api",
+      tokenTtlDays: 90,
+      requestTimeoutMs: 90_000,
+      maxConcurrent: 4,
+      requestsPerMinute: 60,
+      maxRequestBytes: 33_554_432,
+      maxAttachmentBytes: 10_485_760,
+      // The caller publishes the answer as a ticket comment, and its own
+      // contract names this size. Four thousand characters is a long comment
+      // and a short answer: a longer one is cut at a paragraph boundary rather
+      // than silently by the ticket system.
+      maxAnswerCharacters: 4096,
+    }),
     notes: Object.freeze({
       identity: Object.freeze({ enabled: true, template: "" }),
       sources: Object.freeze({

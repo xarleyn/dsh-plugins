@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import z from "@deepseek-ai/schemastery";
 import {
   QA_MAX_FILE_BYTES_MAX,
@@ -30,6 +31,36 @@ import type { QaSurfaceConfig } from "./types.js";
 // ui.showReset, trip the lockdown cross-check on untouched deployments).
 const D = DEFAULT_QA_SURFACE_CONFIG;
 // Node-free on purpose: this schema reaches the browser bundle.
+
+/**
+ * Version this build reports to the integration API's health endpoint.
+ *
+ * Read from the package manifest rather than written as a constant, so a
+ * release bump cannot drift away from it. Resolved on first use so importing
+ * the module never touches the filesystem, and this module is the right home
+ * for it: it is bundled one level under the package root, which is the depth
+ * `../package.json` resolves at.
+ */
+export function qaSurfaceVersion(): string {
+  cachedVersion ??= readManifestVersion() ?? "0.0.0";
+  return cachedVersion;
+}
+
+let cachedVersion: string | undefined;
+
+function readManifestVersion(): string | undefined {
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
+    );
+    const version = (manifest as { version?: unknown }).version;
+    return typeof version === "string" && version.trim() !== ""
+      ? version.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const nullableString = z.union([z.string(), z.const(null)]);
 
@@ -528,6 +559,37 @@ const configSchema = z.object({
       sources: { ...D.notes.sources },
       delegation: { ...D.notes.delegation },
     }),
+  // The numeric fields are declared without schema-level bounds on purpose:
+  // the resolver owns the range checks and their error messages, and a second
+  // copy here would report a different one for the same mistake.
+  integration: z
+    .object({
+      enabled: z.boolean().default(D.integration.enabled),
+      basePath: z.string().default(D.integration.basePath),
+      tokenTtlDays: z.number().step(1).default(D.integration.tokenTtlDays),
+      requestTimeoutMs: z
+        .number()
+        .step(1)
+        .default(D.integration.requestTimeoutMs),
+      maxConcurrent: z.number().step(1).default(D.integration.maxConcurrent),
+      requestsPerMinute: z
+        .number()
+        .step(1)
+        .default(D.integration.requestsPerMinute),
+      maxRequestBytes: z
+        .number()
+        .step(1)
+        .default(D.integration.maxRequestBytes),
+      maxAttachmentBytes: z
+        .number()
+        .step(1)
+        .default(D.integration.maxAttachmentBytes),
+      maxAnswerCharacters: z
+        .number()
+        .step(1)
+        .default(D.integration.maxAnswerCharacters),
+    })
+    .default({ ...D.integration }),
 });
 
 export const ConfigSchema = configSchema as unknown as z<QaSurfaceConfig>;
