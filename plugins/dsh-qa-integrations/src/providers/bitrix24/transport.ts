@@ -1,7 +1,7 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
-import { readBoundedText } from "../shared/http.js";
+import { readBoundedJson } from "../shared/http.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -146,27 +146,13 @@ export class BitrixTransport {
         );
       }
       // One bounded read for every provider: the deployment's byte cap decides
-      // how much is read, and a capped body is this provider's own
-      // `ResultTooLarge`, not a transport failure.
-      const body = await readBoundedText(
+      // how much is read, and a capped body is `ResultTooLarge`, not a
+      // transport failure.
+      const envelope = await readBoundedJson<BitrixEnvelope | null>(
         response,
         this.config.maxResponseBytes,
+        "Provider",
       );
-      if (body.truncated) {
-        throw new IntegrationError(
-          "ResultTooLarge",
-          "Provider response is too large",
-        );
-      }
-      let envelope: BitrixEnvelope | null;
-      try {
-        envelope = JSON.parse(body.text) as BitrixEnvelope | null;
-      } catch {
-        throw new IntegrationError(
-          "ProviderUnavailable",
-          "Provider returned invalid JSON",
-        );
-      }
       if (envelope?.error !== undefined) {
         throw new IntegrationError(
           "ProviderUnavailable",

@@ -3,7 +3,7 @@ import { IntegrationError } from "../../errors.js";
 import {
   backoff,
   causeCode,
-  readBoundedText,
+  readBoundedJson,
   retryDelay,
   sleep,
   TLS_FAILURE,
@@ -115,21 +115,11 @@ export class JiraTransport {
     query: JiraQuery = {},
   ): Promise<T> {
     const response = await this.request(site, credential, path, query);
-    const body = await readBoundedText(response, this.config.maxResponseBytes);
-    if (body.truncated) {
-      throw new IntegrationError(
-        "ResultTooLarge",
-        "Provider response is too large",
-      );
-    }
-    try {
-      return JSON.parse(body.text) as T;
-    } catch {
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Provider returned invalid JSON",
-      );
-    }
+    return readBoundedJson<T>(
+      response,
+      this.config.maxResponseBytes,
+      "Provider",
+    );
   }
 
   private url(site: JiraSite, path: string, query: JiraQuery): string {

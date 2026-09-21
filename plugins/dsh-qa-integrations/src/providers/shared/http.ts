@@ -120,6 +120,36 @@ export async function readBoundedText(
 }
 
 /**
+ * Read one JSON body under the deployment cap, folding what a capped or
+ * unreadable body means into a domain error. The cap, the prefix-keeping
+ * truncation and the binary classification are the shared policy; a transport
+ * only supplies the label it answers with, so the same limit cannot mean
+ * "narrow the request" in one provider and "try again later" in another, and
+ * no transport can quietly skip the cap.
+ */
+export async function readBoundedJson<T>(
+  response: Response,
+  maxBytes: number,
+  label: string,
+): Promise<T> {
+  const body = await readBoundedText(response, maxBytes);
+  if (body.truncated) {
+    throw new IntegrationError(
+      "ResultTooLarge",
+      `${label} response is too large`,
+    );
+  }
+  try {
+    return JSON.parse(body.text) as T;
+  } catch {
+    throw new IntegrationError(
+      "ProviderUnavailable",
+      `${label} returned invalid JSON`,
+    );
+  }
+}
+
+/**
  * How a provider folds transport outcomes into its own safe domain errors:
  * each transport keeps the wording, the shared loop keeps the mechanics.
  */

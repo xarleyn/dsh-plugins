@@ -2,9 +2,14 @@ import { resolveConfig } from "../../src/config.js";
 import { Bitrix24Provider } from "../../src/providers/bitrix24/index.js";
 import { CREDENTIAL } from "./shared.js";
 
+/**
+ * The provider-level proof that the Bitrix24 transport *uses* the shared
+ * reader: the fine-grained boundary cases of that reader live in
+ * `tests/provider-http.test.ts`, and what matters here is the wiring and the
+ * order of the transport's own decisions.
+ */
 const JSON_HEADERS = { "content-type": "application/json" };
 
-/** A provider whose single webhook call answers with the prepared response. */
 function providerFor(
   response: () => Response,
   maxResponseBytes?: number,
@@ -25,7 +30,7 @@ function readProfile(provider: Bitrix24Provider): Promise<unknown> {
   });
 }
 
-describe("bitrix24 transport body limits", () => {
+describe("bitrix24 transport", () => {
   it("reads one bounded body through the shared reader", async () => {
     const provider = providerFor(
       () =>
@@ -37,35 +42,12 @@ describe("bitrix24 transport body limits", () => {
     await expect(readProfile(provider)).resolves.toMatchObject({ ID: "7" });
   });
 
-  it("parses a body that is exactly the deployment limit", async () => {
-    const payload = JSON.stringify({ result: { ID: "7" } });
-    const provider = providerFor(
-      () => new Response(payload, { status: 200, headers: JSON_HEADERS }),
-      Buffer.byteLength(payload, "utf8"),
-    );
-    await expect(readProfile(provider)).resolves.toMatchObject({ ID: "7" });
-  });
-
-  it("folds a body over the limit into ResultTooLarge", async () => {
+  it("folds a body over the deployment limit into ResultTooLarge", async () => {
     const provider = providerFor(
       () =>
         new Response(JSON.stringify({ result: { ID: "7".repeat(64) } }), {
           status: 200,
           headers: JSON_HEADERS,
-        }),
-      64,
-    );
-    await expect(readProfile(provider)).rejects.toMatchObject({
-      code: "ResultTooLarge",
-    });
-  });
-
-  it("treats a declared size over the limit as too large without reading it", async () => {
-    const provider = providerFor(
-      () =>
-        new Response(JSON.stringify({ result: { ID: "7" } }), {
-          status: 200,
-          headers: { ...JSON_HEADERS, "content-length": "4000000" },
         }),
       64,
     );
@@ -85,15 +67,6 @@ describe("bitrix24 transport body limits", () => {
     );
     await expect(readProfile(provider)).rejects.toMatchObject({
       code: "ProviderPermissionDenied",
-    });
-  });
-
-  it("answers with invalid JSON when the body is not an envelope", async () => {
-    const provider = providerFor(
-      () => new Response("", { status: 200, headers: JSON_HEADERS }),
-    );
-    await expect(readProfile(provider)).rejects.toMatchObject({
-      code: "ProviderUnavailable",
     });
   });
 });

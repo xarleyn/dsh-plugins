@@ -1,6 +1,6 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
-import { backoff, readBoundedText, retryDelay, sleep } from "../shared/http.js";
+import { backoff, readBoundedJson, retryDelay, sleep } from "../shared/http.js";
 import {
   confluenceInstance,
   type ConfluenceFlags,
@@ -142,22 +142,11 @@ export class ConfluenceTransport {
     query: ConfluenceQuery = {},
   ): Promise<ConfluenceJsonResponse<T>> {
     const response = await this.request(instance, credential, path, query);
-    const body = await readBoundedText(response, this.config.maxResponseBytes);
-    if (body.truncated) {
-      throw new IntegrationError(
-        "ResultTooLarge",
-        "Confluence response is too large",
-      );
-    }
-    let data: T;
-    try {
-      data = JSON.parse(body.text) as T;
-    } catch {
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Confluence returned invalid JSON",
-      );
-    }
+    const data = await readBoundedJson<T>(
+      response,
+      this.config.maxResponseBytes,
+      "Confluence",
+    );
     const nextCursor =
       typeof data === "object" && data !== null
         ? cursorFrom((data as Record<string, unknown>)["_links"])
