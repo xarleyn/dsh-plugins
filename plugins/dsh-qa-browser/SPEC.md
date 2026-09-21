@@ -906,6 +906,18 @@ Default off.
 
 When enabled, it should be separately permission-gated.
 
+### 15.8 Evidence layer
+
+The screenshot and capture layer behind the `vision`, `devtools`, `network` and
+`trace` groups is specified in
+[`docs/specs/evidence.md`](./docs/specs/evidence.md) (Status: Draft). Only its
+first slice ships today: the viewport `browser_screenshot` of §14, saved as a
+durable DSH attachment and handed to the model as an image. The rest of the
+draft — the full-page and element capture modes (§6), console and network
+capture (§13, §15), tracing (§18), automatic evidence on failure (§20),
+evidence bundles (§10) and visual comparison (§23) — has no implementation yet,
+which is why those groups default to off above.
+
 ---
 
 ## 16. Page content trust boundary
