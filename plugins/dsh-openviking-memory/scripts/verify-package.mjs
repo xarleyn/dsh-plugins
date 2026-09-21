@@ -15,12 +15,22 @@ await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
   packageName: "@yadsh/dsh-openviking-memory",
   license: "Apache-2.0",
-  exports: [".", "./client", "./package.json"],
+  exports: [
+    ".",
+    "./client",
+    "./types",
+    "./remote",
+    "./typert",
+    "./package.json",
+  ],
   client: {
     platform: "web",
     injectEquals: [
       "@deepseek-ai/dsh-client-ui-settings",
       "@deepseek-ai/dsh-client-ui-settings-plugins",
+      // The account-scoped page mounts into the QA settings dialog, so the QA
+      // client half has to be in the page before this bundle registers it.
+      "@yadsh/dsh-qa-surface",
     ],
   },
   files: [
@@ -94,12 +104,62 @@ await runVerifyPackage({
       );
     }
 
-    // The card is config-only: no Remote namespace may appear in the client
-    // inject list.
+    // Only the slot registry is provided by the page; every other dependency
+    // travels inside this bundle.
     assert.deepEqual(
       manifest.dsh.client.external,
       ["@deepseek-ai/dsh-client-ui-slots"],
       "the card keeps the slot registry external",
+    );
+
+    // The account-scoped page is a Remote client: its artifact ships in the
+    // tarball, and the package publishes the subpath it is reached by. A
+    // published subpath with no built file is caught by the shared gate.
+    for (const entry of [
+      "lib/typert.host.js",
+      "lib/typert.remote-client.js",
+      "lib/types.js",
+    ]) {
+      assert.ok(
+        manifest.files.includes("lib"),
+        `${entry} needs the lib directory published`,
+      );
+    }
+
+    // The generated Remote artifacts are the account-scoped page's whole
+    // contract: a missing method there is a page that silently cannot save.
+    const remoteClient = await readFile("lib/typert.remote-client.js");
+    const hostArtifact = await readFile("lib/typert.host.js");
+    for (const method of [
+      "userMemorySettings",
+      "setUserMemorySettings",
+      "resetUserMemorySettings",
+    ]) {
+      assert.match(
+        remoteClient,
+        new RegExp(`openvikingMemory/${method}`, "u"),
+        `the Remote client artifact carries ${method}`,
+      );
+      assert.match(
+        hostArtifact,
+        new RegExp(`openvikingMemory/${method}`, "u"),
+        `the Host artifact describes ${method}`,
+      );
+    }
+    // The boundary types the page exchanges must stay reachable from ./types.
+    const types = await readFile("lib/types.js");
+    assert.ok(types !== undefined, "./types is built");
+
+    const clientBundle = await readFile("lib/client.js");
+    assert.match(
+      clientBundle,
+      /qaUserSettingsSections/u,
+      "the account-scoped page mounts into the QA settings dialog",
+    );
+    assert.match(
+      clientBundle,
+      /"openviking-memory"/u,
+      "the page registers under its own section id",
     );
 
     const proxy = await readFile("lib/servers/mcp-proxy.js");

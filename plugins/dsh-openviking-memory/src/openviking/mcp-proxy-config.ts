@@ -67,22 +67,27 @@ export interface McpProxyConfig {
   readonly watchedPaths: string[];
 }
 
-/** Everything a harness may contribute to `buildMcpProxyConfig`. */
+/**
+ * Everything a harness may contribute to `buildMcpProxyConfig`. Each field
+ * admits an explicit `undefined` for the same reason as everywhere else in this
+ * bundle: a harness forwards what it resolved, without narrowing first, and an
+ * absent field and an undefined one are the same contribution.
+ */
 export interface BuildMcpProxyConfigInput {
-  readonly baseUrl?: string;
-  readonly mcpUrl?: string;
-  readonly apiKey?: string;
-  readonly account?: string;
-  readonly user?: string;
-  readonly peerId?: string;
-  readonly userAgent?: string;
-  readonly timeoutMs?: number;
-  readonly debug?: boolean;
-  readonly debugLogPath?: string;
-  readonly credentialSource?: string;
-  readonly credentialPath?: string;
-  readonly watchedPaths?: readonly string[];
-  readonly env?: NodeJS.ProcessEnv;
+  readonly baseUrl?: string | undefined;
+  readonly mcpUrl?: string | undefined;
+  readonly apiKey?: string | undefined;
+  readonly account?: string | undefined;
+  readonly user?: string | undefined;
+  readonly peerId?: string | undefined;
+  readonly userAgent?: string | undefined;
+  readonly timeoutMs?: number | undefined;
+  readonly debug?: boolean | undefined;
+  readonly debugLogPath?: string | undefined;
+  readonly credentialSource?: string | undefined;
+  readonly credentialPath?: string | undefined;
+  readonly watchedPaths?: readonly string[] | undefined;
+  readonly env?: NodeJS.ProcessEnv | undefined;
 }
 
 function uniq(values: readonly string[]): string[] {

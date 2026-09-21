@@ -1167,6 +1167,9 @@ importers:
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
@@ -1210,6 +1213,12 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(3d1f7388b5ad3ebe6299c7cfa1d9c23a)
+      '@deepseek-ai/dsh-typert-generator':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-typert-protocol':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.2
@@ -1231,6 +1240,9 @@ importers:
       '@yadsh/dsh-plugin-scripts':
         specifier: workspace:^
         version: link:../../packages/plugin-scripts
+      '@yadsh/dsh-qa-surface':
+        specifier: workspace:^
+        version: link:../dsh-qa-surface
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../../packages/test-kit

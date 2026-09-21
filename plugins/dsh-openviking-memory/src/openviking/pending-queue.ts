@@ -108,7 +108,13 @@ export interface ReplayLog {
   (stage: string, data: Record<string, unknown>): void;
 }
 
-/** Injected HTTP transport, i.e. the configured `fetchJSON`. */
+/**
+ * Injected HTTP transport, i.e. the configured `fetchJSON`.
+ *
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): `traceId` admits an explicit
+ * `undefined`, because the transport reports "the server sent no trace id"
+ * that way. Type-level only; the wire values are unchanged.
+ */
 export type PendingFetchJSON = (
   path: string,
   init?: { readonly method?: string; readonly body?: string },
@@ -117,7 +123,7 @@ export type PendingFetchJSON = (
   readonly status?: number;
   readonly result?: unknown;
   readonly error?: { readonly message?: string; readonly code?: string } | null;
-  readonly traceId?: string;
+  readonly traceId?: string | undefined;
 }>;
 
 /**
