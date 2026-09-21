@@ -4,6 +4,7 @@ import {
   TLS_FAILURE,
   causeCode,
   fetchWithRetries,
+  numberFrom,
   readBoundedText,
   type BoundedText,
 } from "../shared/http.js";
@@ -92,12 +93,6 @@ export interface TestitJsonResponse<T> {
 }
 
 export type TestitTextResponse = BoundedText;
-
-function numberFrom(value: string | null): number | undefined {
-  if (value === null || value.trim() === "") return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
 
 /**
  * The `Pagination-*` headers Test IT puts on a paged answer. They are the only

@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One Confluence site the operator allows. A user never types a host: the
@@ -80,9 +81,7 @@ const SPACE_KEY = /^[A-Z0-9][A-Z0-9_-]{0,254}$/u;
 const MAX_INSTANCES = 16;
 const MAX_ALLOWED_SPACES = 64;
 
-function configError(message: string): Error {
-  return new Error(`confluence integration config: ${message}`);
-}
+const configError = scopedConfigError("confluence integration config");
 
 /**
  * Canonicalize one configured site. Everything here is operator input, so a

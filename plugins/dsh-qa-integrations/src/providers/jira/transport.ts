@@ -1,5 +1,13 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
+import {
+  backoff,
+  causeCode,
+  readBoundedText,
+  retryDelay,
+  sleep,
+  TLS_FAILURE,
+} from "../shared/http.js";
 import { jiraSite, type JiraFlags, type JiraSite } from "./config.js";
 
 /**
@@ -75,29 +83,6 @@ export type JiraQuery = Readonly<
   Record<string, string | number | boolean | undefined>
 >;
 
-const RETRY_CAP_MS = 2_000;
-const BACKOFF_BASE_MS = 250;
-
-/** Upstream codes that mean "the TLS handshake did not succeed". */
-const TLS_FAILURE =
-  /CERT|TLS|SSL|UNABLE_TO_VERIFY|SELF_SIGNED|DEPTH_ZERO|ERR_TLS/u;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** The first upstream error code in a fetch failure chain, if any. */
-function causeCode(error: unknown): string {
-  let current: unknown = error;
-  for (let depth = 0; depth < 4; depth += 1) {
-    if (typeof current !== "object" || current === null) break;
-    const code = (current as { code?: unknown }).code;
-    if (typeof code === "string") return code;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return "";
-}
-
 /** Jira Cloud authenticates an API token with HTTP Basic over `email:token`. */
 export function basicAuthorization(credential: JiraCredential): string {
   const pair = Buffer.from(
@@ -130,7 +115,7 @@ export class JiraTransport {
     query: JiraQuery = {},
   ): Promise<T> {
     const response = await this.request(site, credential, path, query);
-    const body = await this.readText(response, this.config.maxResponseBytes);
+    const body = await readBoundedText(response, this.config.maxResponseBytes);
     if (body.truncated) {
       throw new IntegrationError(
         "ResultTooLarge",
@@ -192,7 +177,7 @@ export class JiraTransport {
                 "Jira request failed",
               );
         if (attempt >= this.flags.retries) throw lastError;
-        await sleep(this.retryDelay(attempt));
+        await sleep(retryDelay(attempt));
         continue;
       } finally {
         clearTimeout(timer);
@@ -205,23 +190,8 @@ export class JiraTransport {
       // its permission meaning and is left to the user.
       const transient = response.status === 429 || response.status >= 500;
       if (!transient || attempt >= this.flags.retries) throw lastError;
-      await sleep(this.backoff(response, attempt));
+      await sleep(backoff(response, attempt));
     }
-  }
-
-  /** Jira asks for a pause through `retry-after`; honour it, but bounded. */
-  private backoff(response: Response, attempt: number): number {
-    const header = response.headers.get("retry-after");
-    const seconds = header === null ? Number.NaN : Number(header.trim());
-    if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1_000, RETRY_CAP_MS);
-    }
-    return this.retryDelay(attempt);
-  }
-
-  private retryDelay(attempt: number): number {
-    const backoff = BACKOFF_BASE_MS * 2 ** attempt;
-    return Math.min(backoff + Math.floor(Math.random() * 100), RETRY_CAP_MS);
   }
 
   /**
@@ -261,37 +231,5 @@ export class JiraTransport {
       );
     }
     return new IntegrationError("ProviderUnavailable", "Jira request failed");
-  }
-
-  /**
-   * Read a body without letting upstream decide how much memory the broker
-   * spends. A body over the cap is reported as truncated instead of surfacing a
-   * raw `content-length` nobody can verify.
-   */
-  private async readText(
-    response: Response,
-    maxBytes: number,
-  ): Promise<{ text: string; truncated: boolean }> {
-    if (response.body === null) return { text: "", truncated: false };
-    const declared = Number(response.headers.get("content-length"));
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    let truncated = Number.isFinite(declared) && declared > maxBytes;
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      bytes += next.value.byteLength;
-      if (bytes > maxBytes) {
-        const room = maxBytes - (bytes - next.value.byteLength);
-        if (room > 0) chunks.push(next.value.subarray(0, room));
-        await reader.cancel();
-        truncated = true;
-        break;
-      }
-      chunks.push(next.value);
-    }
-    const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
-    return { text: body.toString("utf8"), truncated };
   }
 }

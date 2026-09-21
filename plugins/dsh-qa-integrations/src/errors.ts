@@ -61,3 +61,29 @@ export function publicIntegrationError(error: unknown): Error {
     error instanceof IntegrationError ? error.code : "ProviderUnavailable";
   return new Error(`Integration request failed (reason: ${code})`);
 }
+
+/**
+ * Whether a listing may pass over one resource instead of failing whole. A
+ * resource that is missing, or that the connected identity may not see, is
+ * worth reporting as unavailable: the caller asked for a set, and the rest of
+ * it is still an answer. Any other failure is about the connection itself
+ * (unreachable host, rejected credential) or the call itself, and must not be
+ * swallowed by a loop over resources.
+ */
+export function recoverableResource(error: unknown): boolean {
+  return (
+    error instanceof IntegrationError &&
+    (error.code === "ResourceNotFound" ||
+      error.code === "ProviderPermissionDenied")
+  );
+}
+
+/**
+ * A configuration-loading failure. The scope names the configuration an
+ * operator has to fix — "jira integration config", "qa-integrations managed
+ * service credentials" — and is bound once per configuration module, so every
+ * failure of that module reads alike and no message carries a secret value.
+ */
+export function scopedConfigError(scope: string): (message: string) => Error {
+  return (message) => new Error(`${scope}: ${message}`);
+}

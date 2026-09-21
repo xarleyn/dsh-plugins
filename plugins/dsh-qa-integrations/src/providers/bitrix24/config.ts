@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One operator-declared Bitrix24 portal. A personal connection names its
@@ -57,9 +58,7 @@ export const BITRIX24_DEFAULTS: Bitrix24Flags = Object.freeze({
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const MAX_INSTANCES = 16;
 
-function configError(message: string): Error {
-  return new Error(`bitrix24 integration config: ${message}`);
-}
+const configError = scopedConfigError("bitrix24 integration config");
 
 /**
  * Accept either a bare hostname or a full portal URL and keep the lowercase

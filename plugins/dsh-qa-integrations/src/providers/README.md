@@ -8,6 +8,12 @@ src/
   broker.ts            граница доверия: principal → запись интеграции → расшифровка
   tool-kit.ts          общая обвязка тулов: сессия → principal → broker.call
   tools.ts             композиция тулов всех включённых провайдеров
+  coerce.ts            аргументы модели: negative-путь (`invalid`) и валидаторы
+                       (requiredText/optionalChoice/…); значение от модели либо
+                       нормализуется, либо отказ с именем поля
+  errors.ts            коды IntegrationError, publicIntegrationError,
+                       recoverableResource (что список вправе пропустить),
+                       scopedConfigError (префикс ошибки конфига)
   config.ts            композиция конфига: общие ручки + срез на провайдера
   repository.ts        персистентность (owner + provider)
   secrets/             шифрование и master key
@@ -15,6 +21,18 @@ src/
   providers/
     contract.ts        IntegrationProvider
     registry.ts        реестр провайдеров
+    shared/            общий слой: механика, одинаковая для всех провайдеров
+      http.ts          fetchWithRetries (GET, `redirect: "error"`, таймаут на попытку,
+                       backoff с `Retry-After`), readBoundedText, looksBinary,
+                       causeCode, numberFrom, sleep, retryDelay, backoff
+      health.ts        healthFromFailure: безопасный код ошибки → состояние credential в карточке
+      payload.ts       чтение полей ответа сервиса: recordOf/stringOf/numberOf/
+                       booleanOf/arrayOf/compact. Здесь же — правило пустоты:
+                       пустая строка считается отсутствующим полем, а не значением
+      paths.ts         hasTraversal: ни один сегмент пути не выходит наружу
+      account.ts       извлечение внешнего пользователя из ответа сервиса
+      host.ts          сопоставление хоста с объявленным суффиксом
+      service-boundary.ts  сервисный потолок и граница читаемого ресурса
     bitrix24/
       index.ts         Bitrix24Provider: validate / execute / parseCredential
       catalog.ts       возможности (capability ↔ scope) и операции (operation ↔ метод)
@@ -83,6 +101,32 @@ src/
       credential-help.ts — что карточка говорит рядом с полем секрета
 ```
 
+## Общий слой (`providers/shared/`)
+
+Всё, что не зависит от конкретного внешнего сервиса, живёт здесь и не копируется
+в провайдер: одна HTTP-петля, одно ограничение размера тела, одна классификация
+ошибки в состояние credential, одни правила допуска адресов. Провайдер
+подключает общий модуль и передаёт ему свои данные, а не свою реализацию.
+
+- Различие между провайдерами выражается **параметром** (policy-объект, флаг,
+  callback), а не второй копией функции. Транспорт, который переписал себе
+  `readBoundedText`, цикл повторов или `healthFromFailure`, — это дефект: две
+  копии одной политики расходятся при первой же правке одной из них (у копии
+  «ограниченного чтения» уже отсутствовал `looksBinary`, а копия чтения строк
+  считала `""` значением — так наружу уходил пустой курсор, который приём
+  курсора тут же отказывался принимать).
+- Одно имя — одна семантика. Читатель поля (`stringOf(source, key)`) и
+  читатель значения (`fileText(value)`, `asArray(value)`) называются по-разному
+  уже потому, что по-разному отвечают на пустое значение: первый считает поле
+  отсутствующим, второй отдаёт пустую строку, когда она для рендера значит
+  «атрибута нет». Одинаковые имена с разными ответами — это и есть место, где
+  расходятся копии, поэтому гейт пакета запрещает объявлять в провайдере
+  `recordOf`/`stringOf`/`invalid`/`recoverableResource`/`configError` и прочие
+  имена общего слоя (список — в `scripts/verify-package.mjs`).
+- Правило о том, что в общих модулях нет имён интеграций (см. ниже),
+  распространяется и на этот каталог: имя сервиса допустимо только в его
+  собственном `providers/<id>/`.
+
 ## Что должен реализовать новый провайдер (bitrix24, confluence, gitlab, jira, teamcity, testit, weblate, …)
 
 1. `providers/<id>/catalog.ts` — список возможностей и операций. Это
@@ -93,7 +137,7 @@ src/
    (`normal`/`sensitive`/`secret`), `serviceCredential` (`allow`/`deny`) и, если
    операция читает ресурс, `requiresResourceBoundary: true`. Классификация — не
    документация: по ней брокер решает, пускать ли операцию через сервисный
-   токен развёртывания (`docs/SPEC-managed-service-credentials.md`). `allow`
+   токен развёртывания (`docs/specs/managed-service-credentials.md`). `allow`
    имеет смысл только у обычного чтения (`read` + `normal`), всё остальное —
    `deny`, а операция без классификации недостижима через сервисный токен по
    умолчанию: обновление провайдера, добавившее тул, не открывает его само. Всё,
