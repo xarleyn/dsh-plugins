@@ -92,7 +92,10 @@ background / startup / dsh_cas_gc
 Plugin load resolves config (loud failure on impossible config), opens the
 filesystem store, registers the listener and retrieval tools through the
 `tools` service, runs one best-effort GC pass, and starts the interval timer
-when `gc.enabled`. Dispose clears the timer and closes the plugin logger.
+when `gc.enabled`. Dispose clears the timer, walks the undo actions of the tool
+mount (the `tools/post-execute` listener and every retrieval tool), and closes
+the plugin logger — so a rebuild starts from an empty mount rather than a second
+copy of it.
 
 ## 4. Scope
 
