@@ -52,6 +52,12 @@ export interface BrowserPanelTabHistory {
 /** A tab as the QA panel sees it: tab state plus the depth its chrome shows. */
 export interface BrowserPanelTab extends BrowserTabInfo {
   readonly history: BrowserPanelTabHistory;
+  /**
+   * What the policy refused for this tab, oldest first. It travels with the
+   * tab and not with the session so the banner explains the page the operator
+   * opened, while the strip can mark the others.
+   */
+  readonly policyRefusals: readonly BrowserPolicyRefusal[];
 }
 
 export interface BrowserNavigationRequest {
@@ -197,10 +203,9 @@ export interface BrowserPanelState {
   readonly session: BrowserSessionInfo | null;
   readonly tabs: readonly BrowserPanelTab[];
   /**
-   * What the policy refused for the page the session is on, in the order the
-   * refusals happened and capped by the Host. Empty while it has refused
-   * nothing, and reset by the next navigation — these describe one page, not
-   * the session's history.
+   * Refusals that belong to no tab — a request the context dialled without a
+   * page behind it — so the panel can show them beside the selected tab's own
+   * entries. Per-tab refusals travel with their tab instead.
    */
   readonly policyRefusals: readonly BrowserPolicyRefusal[];
   readonly humanControlEnabled: boolean;

@@ -8,6 +8,7 @@ import type {
   LaunchOptions,
   Locator,
   Page,
+  Request,
 } from "playwright";
 
 import { browserErrorMessage, QaBrowserError } from "../../errors.js";
@@ -35,6 +36,14 @@ interface PolicyBlockState {
   sequence: number;
   lastError?: unknown;
 }
+
+/**
+ * The page identities one context handed out, keyed by the Playwright page.
+ * The route handler sees a request's page and nothing else about the Host's
+ * tabs, so this map is what lets a refusal carry the page it belongs to back
+ * to the caller.
+ */
+type PageIdentityRegistry = Map<Page, string>;
 
 function systemBrowserCandidates(): readonly string[] {
   if (process.platform === "win32") {
@@ -105,6 +114,7 @@ function launchCandidates(
 
 class PlaywrightPageHandle implements BrowserPageHandle {
   constructor(
+    readonly id: string,
     private readonly page: Page,
     private readonly blockedRequests: PolicyBlockState,
   ) {}
@@ -555,6 +565,7 @@ class PlaywrightContextHandle implements BrowserContextHandle {
   constructor(
     private readonly context: BrowserContext,
     private readonly blockedRequests: PolicyBlockState,
+    private readonly pageIds: PageIdentityRegistry,
   ) {}
 
   async newPage(): Promise<BrowserPageHandle> {
@@ -564,10 +575,10 @@ class PlaywrightContextHandle implements BrowserContextHandle {
         "Browser context is closed.",
       );
     }
-    return new PlaywrightPageHandle(
-      await this.context.newPage(),
-      this.blockedRequests,
-    );
+    const page = await this.context.newPage();
+    const id = `page_${randomUUID().replaceAll("-", "")}`;
+    this.pageIds.set(page, id);
+    return new PlaywrightPageHandle(id, page, this.blockedRequests);
   }
 
   async close(): Promise<void> {
@@ -651,13 +662,25 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       byPage: new WeakMap<Page, unknown>(),
       sequence: 0,
     };
+    const pageIds: PageIdentityRegistry = new Map();
+    /** The page a request belongs to, or none for a request without a frame. */
+    const pageOf = (request: Request): Page | undefined => {
+      try {
+        return request.frame().page();
+      } catch {
+        // A service-worker request has no frame.
+        return undefined;
+      }
+    };
     await context.route("**/*", async (route) => {
       try {
         // A navigation request is the page being replaced; everything else is
-        // something a page asked for. The gate records which, and the panel
-        // says it differently: one did not open, the other opened incomplete.
+        // something a page asked for. Both go to the gate: the kind is what the
+        // panel words, and the page is the tab it words it for.
+        const page = pageOf(route.request());
         await options.validateRequest(route.request().url(), {
           kind: route.request().isNavigationRequest() ? "document" : "resource",
+          ...(page === undefined ? {} : { pageId: pageIds.get(page) }),
         });
         await route.continue();
       } catch (error) {
@@ -680,7 +703,11 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
         await route.abort("blockedbyclient");
       }
     });
-    const handle = new PlaywrightContextHandle(context, blockedRequests);
+    const handle = new PlaywrightContextHandle(
+      context,
+      blockedRequests,
+      pageIds,
+    );
     this.contexts.set(handle.id, handle);
     return handle;
   }

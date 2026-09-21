@@ -70,6 +70,12 @@ interface TabRecord {
   status: BrowserTabInfo["status"];
   revision: number;
   readonly refs: Map<string, ElementRefRecord>;
+  /**
+   * What the policy refused for the page this tab is showing. It lives here
+   * rather than on the session because the panel explains the page in front of
+   * the operator, and a second tab failing silently is its own problem.
+   */
+  policyRefusals: BrowserPolicyRefusal[];
   queue: Promise<void>;
   disposers: (() => void)[];
 }
@@ -84,10 +90,9 @@ interface SessionRecord {
   lastActivityAt: number;
   activeActions: number;
   /**
-   * What the URL and DNS policy refused for the page this session is on, kept
-   * so the panel can show the operator what to change: one entry per refused
-   * destination, in the order they were refused, with a count. Reset when the
-   * next navigation starts, because the entries describe one page.
+   * Refusals that belong to no tab: a request the context dialled without a
+   * page behind it, such as one a service worker makes. Everything else is
+   * kept on the tab whose page made the request.
    */
   policyRefusals: BrowserPolicyRefusal[];
   control:
@@ -279,8 +284,8 @@ export class QaBrowserSessionManager {
       const from = tab.page.url();
       // The page is being replaced either way: whatever the policy refused on
       // the last one stops being the answer to "why is this page broken".
-      this.clearPolicyRefusals(record);
-      await this.assertPolicyAllowed(record, request.url, "document");
+      this.clearPolicyRefusals(record, tab);
+      await this.assertPolicyAllowed(record, tab, request.url, "document");
       tab.status = "loading";
       try {
         const result = await tab.page.navigate(request);
@@ -289,7 +294,7 @@ export class QaBrowserSessionManager {
         this.recordNavigation(tab, result.url, "new");
         tab.status = "ready";
         this.advanceRevision(tab);
-        await this.assertPolicyAllowed(record, result.url, "document");
+        await this.assertPolicyAllowed(record, tab, result.url, "document");
         this.logger.debug("browser.action", {
           sessionId,
           tabId: id,
@@ -575,11 +580,11 @@ export class QaBrowserSessionManager {
     return this.enqueueMutation(record, tab, async () => {
       const from = tab.page.url();
       const result = await tab.page.history(action);
-      await this.assertPolicyAllowed(record, result.url, "document");
+      await this.assertPolicyAllowed(record, tab, result.url, "document");
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
-      this.clearPolicyRefusals(record);
+      this.clearPolicyRefusals(record, tab);
       return this.finishMutation(record, tab, `${action} completed.`, {
         from,
         to: result.url,
@@ -691,7 +696,7 @@ export class QaBrowserSessionManager {
       // The panel's own navigation answers with the refusal in its error line,
       // so it is not recorded as a banner too: the banner exists for the
       // refusals the person in front of the panel never sees.
-      this.clearPolicyRefusals(record);
+      this.clearPolicyRefusals(record, tab);
       await this.options.policy.assertAllowed(request.url);
       const result = await tab.page.navigate(request);
       await this.options.policy.assertAllowed(result.url);
@@ -837,7 +842,7 @@ export class QaBrowserSessionManager {
       tab.url = result.url;
       tab.title = result.title;
       this.recordNavigation(tab, result.url, action);
-      this.clearPolicyRefusals(record);
+      this.clearPolicyRefusals(record, tab);
       return this.finishMutation(record, tab, `Human ${action} completed.`, {
         from,
         to: result.url,
@@ -911,13 +916,18 @@ export class QaBrowserSessionManager {
         // The provider asks this before every request it dials — the document,
         // a redirect, an asset, an API call — so a destination it refuses is
         // recorded here rather than surfacing only inside Chromium as a
-        // request that never completed.
+        // request that never completed. The page it names is the tab the
+        // operator is looking at when it fails.
         try {
           await this.options.policy.assertAllowed(url);
           await this.options.policy.assertUnchangedResolution(url);
         } catch (error) {
+          const record = this.sessions.get(sessionId);
           this.notePolicyRefusal(
-            this.sessions.get(sessionId),
+            record,
+            record === undefined
+              ? undefined
+              : this.tabForPage(record, request.pageId),
             url,
             request.kind,
             error,
@@ -969,6 +979,7 @@ export class QaBrowserSessionManager {
       status: "ready",
       revision: 0,
       refs: new Map(),
+      policyRefusals: [],
       queue: Promise.resolve(),
       disposers: [],
     };
@@ -1193,14 +1204,13 @@ export class QaBrowserSessionManager {
       record.tabs.clear();
     }
     this.logger.error("browser.crashed", { error: error.message });
-  }
-
-  /**
-   * What the policy refused for the page this session is on, oldest first.
+  } /**
+   * The refusals that belong to no tab, oldest first.
    *
-   * The panel asks for it rather than the model: a refusal is answered by an
-   * operator changing `security.network`, and the panel is the surface that
-   * operator is looking at. A session the manager does not hold (never
+   * A refusal normally travels with the tab whose page made the request and is
+   * read through the panel's tab list; this is the residue — a request the
+   * context dialled with no page behind it — and the panel shows it beside the
+   * selected tab's own entries. A session the manager does not hold (never
    * started, already evicted) has refused nothing.
    */
   policyRefusals(sessionId: string): readonly BrowserPolicyRefusal[] {
@@ -1214,13 +1224,14 @@ export class QaBrowserSessionManager {
    */
   private async assertPolicyAllowed(
     record: SessionRecord,
+    tab: TabRecord,
     url: string,
     kind: BrowserRequestKind,
   ): Promise<void> {
     try {
       await this.options.policy.assertAllowed(url);
     } catch (error) {
-      this.notePolicyRefusal(record, url, kind, error);
+      this.notePolicyRefusal(record, tab, url, kind, error);
       throw error;
     }
   }
@@ -1230,30 +1241,33 @@ export class QaBrowserSessionManager {
    *
    * One entry per destination: a page that keeps retrying a blocked endpoint
    * is one thing to fix, so a repeat raises the count instead of appending
-   * another row.
+   * another row. The entry goes to `tab` when the request has a page and to the
+   * session's untabbed list when it has none.
    *
-   * `record` may be absent: the provider's pre-dial gate runs for requests of
-   * a context whose session record is not registered yet (or is already gone),
+   * `record` may be absent: the provider's pre-dial gate runs for requests of a
+   * context whose session record is not registered yet (or is already gone),
    * and those still belong in the log.
    */
   private notePolicyRefusal(
     record: SessionRecord | undefined,
+    tab: TabRecord | undefined,
     url: string,
     kind: BrowserRequestKind,
     error: unknown,
   ): void {
     if (!(error instanceof QaBrowserError)) return;
     const host = refusalHost(url);
-    if (record !== undefined) {
-      const index = record.policyRefusals.findIndex(
+    const refusals = tab?.policyRefusals ?? record?.policyRefusals;
+    if (refusals !== undefined) {
+      const index = refusals.findIndex(
         (entry) =>
           entry.code === error.code &&
           entry.kind === kind &&
           entry.host === host,
       );
       if (index === -1) {
-        if (record.policyRefusals.length < MAX_POLICY_REFUSALS) {
-          record.policyRefusals.push({
+        if (refusals.length < MAX_POLICY_REFUSALS) {
+          refusals.push({
             code: error.code,
             kind,
             host,
@@ -1262,8 +1276,8 @@ export class QaBrowserSessionManager {
           });
         }
       } else {
-        const known = record.policyRefusals[index]!;
-        record.policyRefusals[index] = {
+        const known = refusals[index]!;
+        refusals[index] = {
           ...known,
           message: error.message,
           count: known.count + 1,
@@ -1272,18 +1286,37 @@ export class QaBrowserSessionManager {
     }
     this.logger.warn("browser.policy-refused", {
       sessionId: record?.sessionId ?? null,
+      tabId: tab?.id ?? null,
       code: error.code,
       kind,
       host,
     });
   }
 
+  /** The tab whose page dialled a request, or nothing when it has no page. */
+  private tabForPage(
+    record: SessionRecord,
+    pageId: string | undefined,
+  ): TabRecord | undefined {
+    if (pageId === undefined) return undefined;
+    for (const tab of record.tabs.values()) {
+      if (tab.page.id === pageId) return tab;
+    }
+    return undefined;
+  }
+
   /**
-   * A new page starts with a clean notice. The entries describe how one page
-   * stands with the policy, so carrying a previous page's blocked endpoint
+   * A new page starts with a clean notice: the entries describe how one page
+   * stands with the policy, so carrying the previous page's blocked endpoint
    * into the next one would explain a page that is no longer on screen.
+   *
+   * Only the navigating tab is cleared — a second tab keeps the explanation of
+   * the page it is still showing — and the untabbed list goes with it, because
+   * a request with no page belongs to the document that was on screen when it
+   * was dialled.
    */
-  private clearPolicyRefusals(record: SessionRecord): void {
+  private clearPolicyRefusals(record: SessionRecord, tab?: TabRecord): void {
+    if (tab !== undefined) tab.policyRefusals = [];
     record.policyRefusals = [];
   }
 
@@ -1442,6 +1475,7 @@ export class QaBrowserSessionManager {
         back: tab.history.index,
         forward: tab.history.entries.length - 1 - tab.history.index,
       },
+      policyRefusals: [...tab.policyRefusals],
     };
   }
 

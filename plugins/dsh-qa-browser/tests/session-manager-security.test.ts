@@ -92,11 +92,30 @@ describe("policy refusals the panel can show", () => {
     return gate;
   }
 
-  it("remembers a refused navigation and forgets it on the next page", async () => {
+  /** The identity the provider gave the page a session's tab is showing. */
+  function pageId(provider: FakeProvider, index = 0): string {
+    const page = [...provider.contexts.values()][0]?.pages[index];
+    if (page === undefined) throw new Error("the session has no such page");
+    return page.id;
+  }
+
+  /** What the panel would show for one tab. */
+  async function tabRefusals(
+    manager: QaBrowserSessionManager,
+    sessionId: string,
+    tabId: string,
+  ) {
+    const tabs = await manager.listPanelTabs(sessionId);
+    return (
+      tabs.find((candidate) => candidate.id === tabId)?.policyRefusals ?? []
+    );
+  }
+
+  it("keeps a refused navigation on its tab and forgets it on the next page", async () => {
     const { manager } = refusalHarness();
     await manager.ensureSession("panel");
     const [tab] = await manager.listTabs("panel");
-    expect(manager.policyRefusals("panel")).toEqual([]);
+    expect(await tabRefusals(manager, "panel", tab!.id)).toEqual([]);
 
     await expect(
       manager.navigate("panel", tab!.id, {
@@ -106,7 +125,7 @@ describe("policy refusals the panel can show", () => {
 
     // The panel needs the two facts it can act on: which host, and which
     // setting lifts the block. The refusal text carries the second one.
-    const [refusal] = manager.policyRefusals("panel");
+    const [refusal] = await tabRefusals(manager, "panel", tab!.id);
     expect(refusal).toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
       kind: "document",
@@ -115,19 +134,23 @@ describe("policy refusals the panel can show", () => {
     });
     expect(refusal?.message).toContain("security.network.allowHosts");
     expect(refusal?.host).not.toContain("/");
+    // The tab's own entries do not spill into the untabbed list, which stays
+    // for requests with no page behind them.
+    expect(manager.policyRefusals("panel")).toEqual([]);
 
     await manager.navigate("panel", tab!.id, {
       url: "https://public.example/docs",
     });
-    expect(manager.policyRefusals("panel")).toEqual([]);
+    expect(await tabRefusals(manager, "panel", tab!.id)).toEqual([]);
     await manager.dispose();
   });
 
   it("separates a refused request from a refused page and counts repeats", async () => {
     const { manager, provider } = refusalHarness();
     await manager.ensureSession("partial");
+    const [tab] = await manager.listTabs("partial");
     const gate = requestGate(provider);
-    const resource = { kind: "resource" } as const;
+    const resource = { kind: "resource", pageId: pageId(provider) } as const;
 
     await expect(
       gate("https://api.intranet.example.corp/items", resource),
@@ -141,35 +164,83 @@ describe("policy refusals the panel can show", () => {
     } satisfies Partial<QaBrowserError>);
     // The page itself loaded from an allowed host, so the entry a reader must
     // not confuse with it is a request; a retried endpoint stays one entry.
-    expect(manager.policyRefusals("partial")).toMatchObject([
-      {
-        kind: "resource",
-        host: "api.intranet.example.corp",
-        count: 2,
-      },
+    expect(await tabRefusals(manager, "partial", tab!.id)).toMatchObject([
+      { kind: "resource", host: "api.intranet.example.corp", count: 2 },
     ]);
 
     await expect(
-      gate("https://intranet.example.corp/report", { kind: "document" }),
+      gate("https://intranet.example.corp/report", {
+        kind: "document",
+        pageId: pageId(provider),
+      }),
     ).rejects.toMatchObject({
       code: "BROWSER_HOST_BLOCKED",
     } satisfies Partial<QaBrowserError>);
-    expect(manager.policyRefusals("partial")).toMatchObject([
+    expect(await tabRefusals(manager, "partial", tab!.id)).toMatchObject([
       { kind: "resource", host: "api.intranet.example.corp", count: 2 },
       { kind: "document", host: "intranet.example.corp", count: 1 },
     ]);
     await manager.dispose();
   });
 
-  it("stops growing the notice at a bounded number of hosts", async () => {
+  it("files a request with no page in the session's own list", async () => {
+    const { manager, provider } = refusalHarness();
+    await manager.ensureSession("worker");
+    const [tab] = await manager.listTabs("worker");
+
+    // A service-worker request reaches the gate with no page id; it is still a
+    // refusal the operator should see, so it lands beside the tabs.
+    await expect(
+      requestGate(provider)("https://intranet.example.corp/worker.js", {
+        kind: "resource",
+      }),
+    ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
+
+    expect(await tabRefusals(manager, "worker", tab!.id)).toEqual([]);
+    expect(manager.policyRefusals("worker")).toMatchObject([
+      { kind: "resource", host: "intranet.example.corp", count: 1 },
+    ]);
+    await manager.dispose();
+  });
+
+  it("leaves another tab's notice alone when this one navigates", async () => {
+    const { manager, provider } = refusalHarness();
+    await manager.ensureSession("pair");
+    const [first] = await manager.listTabs("pair");
+    const second = await manager.newTab("pair");
+    const gate = requestGate(provider);
+
+    await expect(
+      gate("https://api.intranet.example.corp/items", {
+        kind: "resource",
+        pageId: pageId(provider, 0),
+      }),
+    ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
+    expect(await tabRefusals(manager, "pair", first!.id)).toHaveLength(1);
+
+    // The second tab moving on is about the second tab: the first one is still
+    // showing the page whose request was refused.
+    await manager.navigate("pair", second.id, {
+      url: "https://public.example/other",
+    });
+    expect(await tabRefusals(manager, "pair", first!.id)).toMatchObject([
+      { host: "api.intranet.example.corp" },
+    ]);
+    expect(await tabRefusals(manager, "pair", second.id)).toEqual([]);
+    await manager.dispose();
+  });
+
+  it("stops growing one tab's notice at a bounded number of hosts", async () => {
     const { manager, provider } = refusalHarness();
     await manager.ensureSession("many");
+    const [tab] = await manager.listTabs("many");
     const gate = requestGate(provider);
 
     for (let index = 0; index < 12; index += 1) {
       await expect(
         gate(`https://host-${String(index)}.intranet.example.corp/app.js`, {
           kind: "resource",
+          pageId: pageId(provider),
         }),
       ).rejects.toMatchObject({
         code: "BROWSER_HOST_BLOCKED",
@@ -180,7 +251,7 @@ describe("policy refusals the panel can show", () => {
     // first eight: the earliest failures are the ones worth an operator's
     // attention, and a list that keeps reshuffling as the page fails reads as
     // noise instead of a cause.
-    const refusals = manager.policyRefusals("many");
+    const refusals = await tabRefusals(manager, "many", tab!.id);
     expect(refusals).toHaveLength(8);
     expect(refusals[0]).toMatchObject({ host: "host-0.intranet.example.corp" });
     expect(refusals[7]).toMatchObject({ host: "host-7.intranet.example.corp" });

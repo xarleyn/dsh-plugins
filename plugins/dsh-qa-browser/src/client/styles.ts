@@ -16,6 +16,9 @@ export const BROWSER_PANEL_STYLES = `
 .dsh-qa-browser-panel__tab-dot{width:8px;height:8px;border-radius:50%;background:var(--dsw-alias-label-dimmed)}
 .dsh-qa-browser-panel__tab-spinner{width:12px;height:12px;border:1.5px solid var(--dsw-alias-border-l2);border-top-color:var(--dsw-alias-brand-primary);border-radius:50%;animation:dsh-qa-browser-spin 800ms linear infinite}
 .dsh-qa-browser-panel__tab-label{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.dsh-qa-browser-panel__tab-blocked{display:grid;place-items:center;flex:none;width:12px;height:12px;color:var(--dsw-alias-label-tertiary)}
+.dsh-qa-browser-panel__tab-blocked svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-browser-panel__tab[aria-selected=true] .dsh-qa-browser-panel__tab-blocked{color:var(--dsw-alias-label-secondary)}
 .dsh-qa-browser-panel__tab-close{appearance:none;display:grid;place-items:center;flex:none;width:18px;height:18px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:0;transition:opacity 120ms ease}
 .dsh-qa-browser-panel__tab:hover .dsh-qa-browser-panel__tab-close,.dsh-qa-browser-panel__tab[aria-selected=true] .dsh-qa-browser-panel__tab-close,.dsh-qa-browser-panel__tab-close:focus-visible{opacity:1}
 .dsh-qa-browser-panel__tab-close:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}

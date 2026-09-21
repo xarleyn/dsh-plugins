@@ -96,9 +96,14 @@ answer, which is a page that looks broken rather than one that was blocked. The
 panel names both ways out — an `allowHosts` entry for one host, or
 `allowPrivateNetworks` for the whole deployment — because they are not
 equivalent: the first opens one intranet service, the second opens every
-private range to whatever the model asks for. The list describes the page the
-session is on: the next navigation starts it empty, one entry per destination,
-at most eight of them.
+private range to whatever the model asks for.
+
+The notice belongs to a tab, because that is the page the operator is looking
+at: the banner explains the selected tab, the strip marks the other tabs the
+policy refused something for, and a refusal with no page behind it — a request
+a service worker dialled — is shown beside the selected tab's own entries. One
+entry per destination, at most eight of them, counted rather than repeated, and
+the next navigation of that tab starts it empty.
 
 `denyDshOrigin` automatically covers the active Harness listener on localhost,
 the machine hostname and its network interfaces. Add reverse-proxy/public

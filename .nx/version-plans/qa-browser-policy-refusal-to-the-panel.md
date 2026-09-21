@@ -29,8 +29,13 @@ pre-dial validation of every request Chromium dials, told what it is gating so
 the two kinds stay distinct. The panel's own navigation keeps answering in its
 error line, where the person who typed the address is already looking.
 
-The notice is a list for the current page: one entry per destination, repeats
-counted instead of appended, at most eight destinations, and a new navigation
-starts it empty. A page that keeps retrying a blocked endpoint is one thing to
-fix, and a list that reshuffles as the page fails reads as noise rather than a
-cause.
+The notice belongs to the tab whose page dialled the request, because that is
+the page the operator is looking at: the banner explains the selected tab, the
+strip marks the other tabs that carry entries, and a refusal with no page
+behind it — a service worker's request — is shown beside the selected tab's own
+entries. Per tab it is a list: one entry per destination, repeats counted
+instead of appended, at most eight destinations, and a navigation empties the
+notice of the tab that navigates without touching a second tab's explanation of
+the page it is still showing. A page that keeps retrying a blocked endpoint is
+one thing to fix, and a list that reshuffles as the page fails reads as noise
+rather than a cause.

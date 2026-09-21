@@ -16,20 +16,32 @@ export interface BrowserProviderStartOptions {
   readonly chromiumSandbox: boolean;
 }
 
+/**
+ * What the context is about to dial, as far as the gate can tell.
+ *
+ * Both fields exist for the operator's sake: a refused document and a refused
+ * subresource mean different things, and a refusal belongs to the page that
+ * made the request — which is how the panel explains the tab in front of the
+ * person rather than the session as a whole.
+ */
+export interface BrowserRequestInfo {
+  readonly kind: BrowserRequestKind;
+  /**
+   * The page that made the request, i.e. `BrowserPageHandle.id`. Absent for a
+   * request with no page behind it, such as one a service worker dials.
+   */
+  readonly pageId?: string;
+}
+
 export interface BrowserContextOptions {
   readonly sessionId: string;
   readonly viewport: BrowserViewport;
   readonly actionTimeoutMs: number;
   readonly navigationTimeoutMs: number;
-  /**
-   * The pre-dial gate for every request the context makes. The kind is passed
-   * along because the caller records what it refuses, and a refused document
-   * and a refused subresource mean different things to the operator watching
-   * the page.
-   */
+  /** The pre-dial gate for every request the context makes. */
   readonly validateRequest: (
     url: string,
-    request: { readonly kind: BrowserRequestKind },
+    request: BrowserRequestInfo,
   ) => Promise<void>;
 }
 
@@ -48,6 +60,11 @@ export interface ProviderSnapshotNode {
 }
 
 export interface BrowserPageHandle {
+  /**
+   * Identity of this page inside its context. A request the gate refuses
+   * carries it back, which is how the Host knows which tab to blame.
+   */
+  readonly id: string;
   url(): string;
   title(): Promise<string>;
   navigate(

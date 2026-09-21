@@ -166,7 +166,13 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const ownsControl =
     session?.control.owner === "human" && session.control.clientId === clientId;
   const coordinateInputEnabled = state?.coordinateInputEnabled === true;
-  const refusals = state?.policyRefusals ?? [];
+  // The selected tab explains the page the operator is looking at; the
+  // session's untabbed entries ride along because they belong to no page at
+  // all. A refusal in another tab stays there, marked in the strip.
+  const refusals = [
+    ...(selected?.policyRefusals ?? []),
+    ...(state?.policyRefusals ?? []),
+  ];
   // The refusal text is shown once, verbatim. It is the same shape for every
   // entry — class of address plus the setting that lifts the block — so the
   // page's own refusal explains the list whenever there is one.
@@ -731,10 +737,10 @@ export function BrowserPanel(props: BrowserPanelProps) {
             {refusalTitle(refusals)}
           </p>
           <ul className="dsh-qa-browser-panel__refusal-list">
-            {refusals.map((entry) => (
+            {refusals.map((entry, index) => (
               <li
                 className="dsh-qa-browser-panel__refusal-item"
-                key={`${entry.kind}:${entry.code}:${entry.host}`}
+                key={`${String(index)}:${entry.kind}:${entry.code}:${entry.host}`}
               >
                 <span className="dsh-qa-browser-panel__refusal-host">
                   {entry.host}

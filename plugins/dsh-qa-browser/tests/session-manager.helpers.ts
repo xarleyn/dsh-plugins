@@ -16,7 +16,12 @@ import type {
   LocatorPlan,
 } from "../src/types.js";
 
+/** Page identities stay unique across the fakes one test file builds. */
+const PAGE_SEQUENCE = { pages: 0 };
+
 export class FakePage implements BrowserPageHandle {
+  constructor(readonly id: string) {}
+
   currentUrl = "about:blank";
   currentTitle = "";
   closed = false;
@@ -192,7 +197,8 @@ export class FakeContext implements BrowserContextHandle {
   ) {}
 
   async newPage(): Promise<FakePage> {
-    const page = new FakePage();
+    PAGE_SEQUENCE.pages += 1;
+    const page = new FakePage(`page_${String(PAGE_SEQUENCE.pages)}`);
     this.pages.push(page);
     return page;
   }
