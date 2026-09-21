@@ -8,6 +8,7 @@ import type {
   LaunchOptions,
   Locator,
   Page,
+  Request,
 } from "playwright";
 
 import { browserErrorMessage, QaBrowserError } from "../../errors.js";
@@ -26,6 +27,7 @@ import type {
   ProviderNavigationResult,
   ProviderSnapshotNode,
 } from "./contract.js";
+import { PageIdentities } from "./page-identities.js";
 
 type PlaywrightModule = typeof import("playwright");
 type PlaywrightLoader = () => Promise<PlaywrightModule>;
@@ -105,6 +107,7 @@ function launchCandidates(
 
 class PlaywrightPageHandle implements BrowserPageHandle {
   constructor(
+    readonly id: string,
     private readonly page: Page,
     private readonly blockedRequests: PolicyBlockState,
   ) {}
@@ -555,6 +558,7 @@ class PlaywrightContextHandle implements BrowserContextHandle {
   constructor(
     private readonly context: BrowserContext,
     private readonly blockedRequests: PolicyBlockState,
+    private readonly pageIds: PageIdentities<Page>,
   ) {}
 
   async newPage(): Promise<BrowserPageHandle> {
@@ -564,8 +568,13 @@ class PlaywrightContextHandle implements BrowserContextHandle {
         "Browser context is closed.",
       );
     }
+    const page = await this.context.newPage();
+    // Asking the registry rather than minting here: a request this page made
+    // before this line ran already asked it, and both answers must be the same
+    // identity or the refusal would belong to no tab.
     return new PlaywrightPageHandle(
-      await this.context.newPage(),
+      this.pageIds.idOf(page),
+      page,
       this.blockedRequests,
     );
   }
@@ -651,9 +660,26 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       byPage: new WeakMap<Page, unknown>(),
       sequence: 0,
     };
+    const pageIds = new PageIdentities<Page>();
+    /** The page a request belongs to, or none for a request without a frame. */
+    const pageOf = (request: Request): Page | undefined => {
+      try {
+        return request.frame().page();
+      } catch {
+        // A service-worker request has no frame.
+        return undefined;
+      }
+    };
     await context.route("**/*", async (route) => {
       try {
-        await options.validateRequest(route.request().url());
+        // A navigation request is the page being replaced; everything else is
+        // something a page asked for. Both go to the gate: the kind is what the
+        // panel words, and the page is the tab it words it for.
+        const page = pageOf(route.request());
+        await options.validateRequest(route.request().url(), {
+          kind: route.request().isNavigationRequest() ? "document" : "resource",
+          ...(page === undefined ? {} : { pageId: pageIds.idOf(page) }),
+        });
         await route.continue();
       } catch (error) {
         blockedRequests.sequence += 1;
@@ -675,7 +701,11 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
         await route.abort("blockedbyclient");
       }
     });
-    const handle = new PlaywrightContextHandle(context, blockedRequests);
+    const handle = new PlaywrightContextHandle(
+      context,
+      blockedRequests,
+      pageIds,
+    );
     this.contexts.set(handle.id, handle);
     return handle;
   }
