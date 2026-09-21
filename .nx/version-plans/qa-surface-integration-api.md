@@ -21,6 +21,13 @@ paragraph break and marked, not silently truncated by the ticket system).
 Passing the returned `chat_id` back as `session_id` continues the same
 conversation.
 
+The account issues that credential itself, in a «Интеграционные токены» section
+of the `Настройки` dialog: it lists its own tokens with their scopes, expiry and
+last use, mints one (the secret is shown once and is never recoverable), and
+revokes one with a confirming click. Minting is offered only while the endpoint
+is switched on, while revoking keeps working either way, and the token always
+belongs to the account that asked — one account never sees another's tokens.
+
 Requests authenticate with an integration token, a second credential that is
 deliberately not the browser token: it survives a password change, it carries
 scopes, it expires on its own schedule, it is stored only as a SHA-256 digest,

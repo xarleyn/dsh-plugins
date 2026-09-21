@@ -52,7 +52,7 @@ Session and Agent Loop.
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
 - gives each account a `Настройки` dialog — profile, starter messages,
-  general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
   directory (`accounts.skills`), edited with a catalog, an invocation-flag
   form, a Markdown body, a tool picker over the deployment's registry, and a
   preview of the exact file a save writes. Skills reach the model through a
@@ -480,6 +480,26 @@ user hides them with the section's toggle. The list is stored on the account
 is pure UI preference — none of it reaches the agent prompt.
 `accounts.starters.enabled` (default `true`) turns the section off for
 deployments that want the buttons to stay operator-defined.
+
+### Integration tokens
+
+The same `Настройки` dialog carries an «Интеграционные токены» section, so the
+account that runs an integration issues and revokes its own credential instead
+of asking the operator to run the CLI. It lists the tokens that account owns —
+label, scopes, creation and expiry dates, use count and last use — mints a new
+one, shows its secret exactly once (with a copy button and the warning that it
+is never recoverable, because only the digest is stored), and revokes one with
+a second confirming click. A revoked or expired token stays in the list as a
+record, with its revoke button gone.
+
+Creating is offered only where the credential has somewhere to go: with
+`integration.enabled: false` the section explains that the API is off and hides
+the form, while listing and revoking keep working — a credential that already
+exists has to remain revocable. The section is part of the accounts domain, so
+it appears wherever `accounts.enabled` is on, and the same self-service rules
+apply: the token always belongs to the signed-in account, and one account never
+sees another's tokens. The CLI (`qa-accounts token create|list|revoke`) remains
+the operator's path, including issuing a token for somebody else.
 
 Session policies:
 

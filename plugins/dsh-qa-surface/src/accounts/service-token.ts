@@ -4,6 +4,26 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
+import {
+  QA_SERVICE_TOKEN_DEFAULT_SCOPES,
+  QA_SERVICE_TOKEN_LABEL_MAX,
+  QA_SERVICE_TOKEN_SCOPES,
+  QA_SERVICE_TOKEN_TTL_DAYS_MAX,
+  QA_SERVICE_TOKEN_TTL_DAYS_MIN,
+} from "../shared/integration-tokens.js";
+import type { QaServiceTokenScope } from "../types.js";
+
+// The scope list and the limits are declared in `shared`, because the profile
+// page enforces the same ones and must not import this module's crypto. They
+// are re-exported here so the Host's own callers keep one import site.
+export {
+  QA_SERVICE_TOKEN_DEFAULT_SCOPES,
+  QA_SERVICE_TOKEN_LABEL_MAX,
+  QA_SERVICE_TOKEN_SCOPES,
+  QA_SERVICE_TOKEN_TTL_DAYS_MAX,
+  QA_SERVICE_TOKEN_TTL_DAYS_MIN,
+};
+export type { QaServiceTokenScope };
 
 /**
  * Integration tokens: the credential a non-browser application presents to the
@@ -26,26 +46,6 @@ import {
 
 /** Marks a credential as an integration token in a log line, a paste or a grep. */
 export const QA_SERVICE_TOKEN_PREFIX = "qsat";
-
-/**
- * What an integration token may do. Scopes are checked per request rather than
- * per deployment: the same bridge token that asks questions carries no
- * permission to read back a conversation catalog it was not given.
- */
-export const QA_SERVICE_TOKEN_SCOPES = ["ask", "sessions:read"] as const;
-
-export type QaServiceTokenScope = (typeof QA_SERVICE_TOKEN_SCOPES)[number];
-
-/** A token that carries no scope is useless; `ask` is what the API is for. */
-export const QA_SERVICE_TOKEN_DEFAULT_SCOPES: readonly QaServiceTokenScope[] =
-  Object.freeze(["ask"]);
-
-/** Bounds the caller's label; it is a note to the operator, not a document. */
-export const QA_SERVICE_TOKEN_LABEL_MAX = 80;
-
-/** Bounds on a token's life; zero or a negative TTL would mint a dead token. */
-export const QA_SERVICE_TOKEN_TTL_DAYS_MIN = 1;
-export const QA_SERVICE_TOKEN_TTL_DAYS_MAX = 3650;
 
 const SECRET_BYTES = 32;
 
