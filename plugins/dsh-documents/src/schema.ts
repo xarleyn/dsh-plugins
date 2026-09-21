@@ -115,6 +115,29 @@ const configSchema = z
         ...DD.storage,
         allowedInputRoots: [...DD.storage.allowedInputRoots],
       }),
+    cache: z
+      .object({
+        enabled: z.boolean().default(DD.cache.enabled),
+        maxAgeDays: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(3_650)
+          .default(DD.cache.maxAgeDays),
+        maxEntries: z
+          .number()
+          .step(1)
+          .min(1)
+          .max(100_000)
+          .default(DD.cache.maxEntries),
+        maxBytes: z
+          .number()
+          .step(1)
+          .min(1_024)
+          .max(1_099_511_627_776)
+          .default(DD.cache.maxBytes),
+      })
+      .default({ ...DD.cache }),
     templates: z
       .object({
         root: nullableString.default(DD.templates.root),
@@ -322,6 +345,7 @@ const configSchema = z
       allowedInputRoots: [...DD.storage.allowedInputRoots],
     },
     templates: { ...DD.templates },
+    cache: { ...DD.cache },
     create: {
       ...DD.create,
       allowFormats: [...DD.create.allowFormats],

@@ -119,6 +119,13 @@ function adminApi(): QaAdminApi {
       error: new Error("unused"),
     })),
     updateUser: vi.fn(),
+    // Nobody is waiting for a password reset in this fixture; the users page
+    // still asks, because an empty queue is a normal answer.
+    passwordResetRequests: vi.fn(async () => ({
+      ok: true as const,
+      value: [],
+    })),
+    resetPassword: vi.fn(),
     conversations: vi.fn(async () => page([SUMMARY])),
     conversation: vi.fn(async () => ({
       ok: false as const,

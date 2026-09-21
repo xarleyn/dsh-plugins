@@ -10,7 +10,6 @@
 
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 
-import type { DocumentRuntime } from "../runtime.js";
 import { createDocumentCompareTool, DOCUMENT_COMPARE_TOOL } from "./compare.js";
 import { createDocumentConvertTool, DOCUMENT_CONVERT_TOOL } from "./convert.js";
 import { createDocumentCreateTool, DOCUMENT_CREATE_TOOL } from "./create.js";
@@ -23,10 +22,13 @@ import {
   DOCUMENT_FROM_URL_TOOL,
 } from "./from-url.js";
 import { createDocumentInspectTool, DOCUMENT_INSPECT_TOOL } from "./inspect.js";
+import type { DocumentToolOptions } from "./shared.js";
 import {
   createDocumentToMarkdownTool,
   DOCUMENT_TO_MARKDOWN_TOOL,
 } from "./to-markdown.js";
+
+export type { DocumentToolOptions } from "./shared.js";
 
 /** Exact names of the tools this subsystem always registers. */
 export const DOCUMENT_TOOL_NAMES: readonly string[] = [
@@ -72,9 +74,9 @@ export function documentToolNames(config: {
     : [...DOCUMENT_TOOL_NAMES];
 }
 
-export function createDocumentTools(options: {
-  readonly runtime: DocumentRuntime;
-}): ToolDefinition[] {
+export function createDocumentTools(
+  options: DocumentToolOptions,
+): ToolDefinition[] {
   return [
     createDocumentCreateTool(options),
     createDocumentToMarkdownTool(options),
@@ -101,7 +103,7 @@ export interface DocumentToolRegistry {
  */
 export function registerDocumentTools(
   registry: DocumentToolRegistry,
-  options: { readonly runtime: DocumentRuntime },
+  options: DocumentToolOptions,
 ): () => void {
   const disposers = createDocumentTools(options).map((definition) =>
     registry.register(definition),

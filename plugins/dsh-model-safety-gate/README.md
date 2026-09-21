@@ -54,10 +54,11 @@ dsh plugin --profile web add @yadsh/dsh-model-safety-gate
 All options are optional; defaults are shown.
 
 ```yaml
-enabled: true # master switch for the whole gate
+enabled: true # master switch: false silences every surface at once
 mode:
   warn # off | audit | warn | enforce — default decision profile
-  # audit records findings but never enforces, including turn-risk escalation
+  # off scans nothing; audit records findings but never enforces, including
+  # turn-risk escalation
 
 classifier:
   backend: none # none | dsh | openai-compatible
@@ -90,6 +91,7 @@ output:
 tools:
   enabled: true # gate tool calls on tools/pre-execute
   semanticClassifier: true
+  unanswerableAsk: deny # deny | ask — an escalation the session's approval policy refuses before asking anyone
 
 toolResults:
   enabled: true # scan tool results on tools/post-execute
@@ -105,6 +107,48 @@ ui:
 
 allowSessionOverride: true # false forbids per-session downgrade of the global mode
 ```
+
+### Switching the gate off
+
+`enabled: false` and `mode: off` are the same decision spelled twice, and both
+mean the gate does nothing at all: no scan, no classifier call, no audit
+record, no blocked decision — on the input, streaming-output, tool-call and
+tool-result surfaces alike. Switching either one at runtime reaches the very
+next check; there is nothing to restart.
+
+Use `mode: off` when the profile is what changes between environments and
+`enabled: false` when the plugin itself should be inert; `audit` is the middle
+setting for a deployment that wants the findings without the enforcement.
+
+### Escalations the deployment cannot answer
+
+A tool call the gate escalates is resolved by DSH, not by the gate: the call
+becomes an `ask` decision, the tool runtime passes it to the `approval`
+service, and the outcome carries no reason — the runtime turns it into its own
+sentence. So the refusal a model sees is `the user rejected tool "X"`, even
+when nobody was asked, and the rule that actually fired is lost.
+
+That is exactly what a session whose effective approval policy is `never`
+produces: the service returns the refusal *before dispatching to any
+answerer*, deterministically. A QA lockdown pins that policy, so every
+escalation there reached the model as a human "no".
+
+`tools.unanswerableAsk: deny` (default) refuses such an escalation with the
+gate's own verdict instead, categories included:
+
+```text
+Blocked by dsh-model-safety-gate (unsafe_tool_intent): this call needs
+confirmation, but the session's approval policy is "never", so the request
+could only ever be refused without asking anyone
+```
+
+The gate reads the policy the same way the approval service does — the
+session's logged override first, else the deployment default — and only
+refuses when that read completes: a host composing no approval service, or a
+policy the gate cannot read, keeps the native ask, which the runtime still
+resolves through the real seam. Set `ask` for a deployment whose own gate
+answers asks ahead of that policy (for example a QA surface with
+`interaction.approvals: interactive`, where the operator decides).
 
 ### Deployment presets
 

@@ -5,7 +5,7 @@
  * for a setting that is active.
  */
 
-import { DEFAULT_QA_TEXT_EXTENSIONS } from "../../../attachment-rules.js";
+import { DEFAULT_QA_ATTACHMENT_EXTENSIONS } from "../../../attachment-rules.js";
 import { ListField, Notice, NumberField, Section, Toggle } from "../fields.js";
 import { parseCommaList } from "../format.js";
 import {
@@ -37,7 +37,8 @@ export function AttachmentsSection(props: ConfigProps) {
   const extensions =
     stored !== undefined && stored.length > 0
       ? stored
-      : (props.effective?.attachments.extensions ?? DEFAULT_QA_TEXT_EXTENSIONS);
+      : (props.effective?.attachments.extensions ??
+        DEFAULT_QA_ATTACHMENT_EXTENSIONS);
   return (
     <Section
       title="Вложения"
@@ -48,8 +49,8 @@ export function AttachmentsSection(props: ConfigProps) {
         <Toggle
           checked={textFiles}
           disabled={disabled}
-          label="Текстовые файлы"
-          hint="К изображениям можно прикладывать md, txt, log и другие текстовые файлы. Выключено — только изображения."
+          label="Файловые вложения"
+          hint="К изображениям можно прикладывать файлы из списка расширений ниже — текстовые и документы. Выключено — только изображения."
           onChange={(value) => {
             props.write(["attachments", "textFiles"], value);
           }}
@@ -89,11 +90,11 @@ export function AttachmentsSection(props: ConfigProps) {
         />
       </div>
       <ListField
-        label="Расширения текстовых файлов"
+        label="Разрешённые расширения файлов"
         value={extensions}
         disabled={disabled || !textFiles}
-        placeholder="md\ntxt\nlog"
-        hint="По одному расширению на строку, без точки. Дополнительно принимается всё, что браузер помечает как text/*."
+        placeholder="md\ntxt\ndocx"
+        hint="По одному расширению на строку, без точки: текстовые файлы и документы, которые стенд умеет читать (docx, pdf). Дополнительно принимается всё, что браузер помечает как text/*."
         parse={parseCommaList}
         onCommit={(values) => {
           props.write(["attachments", "extensions"], values);
@@ -101,9 +102,10 @@ export function AttachmentsSection(props: ConfigProps) {
       />
       <Notice tone="info">
         Файл сохраняется на сервере как есть, а в подсказке модели указывается
-        путь к копии: содержимое читает инструмент чтения. Держите «read» в
-        списке разрешённых инструментов, иначе вложение останется недоступным
-        для модели.
+        путь к копии: текст читает инструмент чтения, документ — инструменты
+        конвейера документов. Держите «read» (а для документов — инструменты
+        документов) в списке разрешённых инструментов, иначе вложение останется
+        недоступным для модели.
       </Notice>
     </Section>
   );

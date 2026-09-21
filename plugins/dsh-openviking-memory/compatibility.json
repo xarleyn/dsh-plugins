@@ -3,6 +3,16 @@
     "channel": "next",
     "range": ">=0.1.5-rc.2 <0.2.0",
     "testedReleases": ["0.1.5-rc.2"],
+    "requiredHostFeatures": [
+      "settings",
+      "skills/provider",
+      "agent/session-start",
+      "agent/pre-step",
+      "session/created",
+      "session/event",
+      "session/flush",
+      "tools/pre-execute"
+    ],
     "requiredClientFeatures": ["settings.plugin.item"]
   },
   "node": "^22.19.0 || >=24.0.0"

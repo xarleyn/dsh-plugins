@@ -13,6 +13,7 @@ import {
   requireDocumentScope,
   toolWarnings,
   type DocumentToolExec,
+  type DocumentToolOptions,
   warningsSchema,
 } from "./shared.js";
 
@@ -31,9 +32,7 @@ function structureLines(value: DocumentInspectResult): string[] {
     .map(([name, count]) => `${name}: ${String(count)}`);
 }
 
-export function createDocumentInspectTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentInspectTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_INSPECT_TOOL,
     description: DESCRIPTION,
@@ -99,7 +98,7 @@ export function createDocumentInspectTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.inspect(
         args as unknown as Parameters<DocumentRuntime["inspect"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         filename: result.filename,

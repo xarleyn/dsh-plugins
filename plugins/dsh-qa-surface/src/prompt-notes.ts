@@ -22,6 +22,10 @@ export const QA_IDENTITY_NOTE = "dsh-qa-surface:user-identity";
 export const QA_SOURCES_NOTE = "dsh-qa-surface:structured-sources";
 /** Note name asking the model to name its delegations. */
 export const QA_DELEGATION_NOTE = "dsh-qa-surface:delegation-naming";
+/** Note name routing an attached office document to the document pipeline. */
+export const QA_DOCUMENTS_NOTE = "dsh-qa-surface:attached-documents";
+/** Note name carrying the deployment's rule about where an answer comes from. */
+export const QA_SOURCE_PRIORITY_NOTE = "dsh-qa-surface:source-priority";
 
 /**
  * Built-in note texts. Each is the fallback for its settings template
@@ -35,6 +39,10 @@ export const QA_SOURCES_FALLBACK_TEMPLATE =
   "A delegated run whose provider cannot expose tool events must call {reportTool} before finishing.";
 export const QA_DELEGATION_NOTE_TEMPLATE =
   "When you start a background subagent, give the delegation a short vivid name in its description field: two or three words in the user's language that say what the run is for («Сверка отчётов», \"Log triage\"). The QA surface shows that description as the subagent's display name in the operator's panel and completion notices.";
+export const QA_DOCUMENTS_NOTE_TEMPLATE =
+  "A document a chat user attached is a path on disk, not text: read it with the deployment's document pipeline — `document_inspect` says what a DOCX or PDF is, `document_to_markdown` extracts its text, `document_from_url` stores the text of an attachment that only exists behind a URL. The plain file reader refuses those formats as binary, so that refusal is expected and is not a hint to go looking for the file somewhere else. When the pipeline itself refuses a path, report the refusal and the path it named instead of trying another reader.";
+export const QA_SOURCE_PRIORITY_NOTE_TEMPLATE =
+  "Answer from the source that owns the question: read what the conversation and its attachments already carry, then search the product documentation and ask the domain expert, and only then look in memory. Recalled memory is background from earlier sessions — a miss there is not evidence that no source exists, and it is not where a document, a page or a product fact should be looked up.";
 
 /** Substitute `{name}` placeholders; a placeholder without a value drops out. */
 function renderTemplate(
@@ -194,6 +202,8 @@ export class QaPromptNotes {
       ...this.identityNotes(root, config),
       ...this.sourcesNotes(root, config),
       ...this.delegationNotes(root),
+      ...this.documentsNotes(root),
+      ...this.sourcePriorityNotes(root),
     ].filter((note) => this.carriedText(agent, note.name) !== note.text);
     if (pending.length === 0) return decision;
     return {
@@ -293,6 +303,56 @@ export class QaPromptNotes {
         text:
           template === ""
             ? QA_DELEGATION_NOTE_TEMPLATE
+            : renderTemplate(template, {}).trim(),
+      },
+    ];
+  }
+
+  /**
+   * Which reader an attached document belongs to.
+   *
+   * A chat user's `.docx` or `.pdf` arrives as a path into the attachment
+   * store, and the reader the model reaches for by habit answers `binary file`
+   * for it. That answer is a fact about the format, not about the file being
+   * missing, and a run that reads it as the second one searches the workspace
+   * for a document it was already handed. The note names the pipeline and both
+   * halves of the trap: the plain reader's refusal is expected, and the
+   * pipeline's own refusal is a report to make, not a reason to try a third
+   * reader.
+   */
+  private documentsNotes(rootSessionId: string): readonly QaPromptNote[] {
+    if (!this.options.isQaSession(rootSessionId)) return [];
+    if (!this.options.config().notes.documents.enabled) return [];
+    const template = this.options.config().notes.documents.template;
+    return [
+      {
+        name: QA_DOCUMENTS_NOTE,
+        text:
+          template === ""
+            ? QA_DOCUMENTS_NOTE_TEMPLATE
+            : renderTemplate(template, {}).trim(),
+      },
+    ];
+  }
+
+  /**
+   * Where an answer comes from, in this deployment's terms.
+   *
+   * The memory plugin's own skill says the same thing in its own words, but a
+   * persona may be the entire system prompt and a skill is read only once the
+   * model decides to reach for it: the rule that outlives both is the one
+   * delivered as a note, ahead of the first tool call that would break it.
+   */
+  private sourcePriorityNotes(rootSessionId: string): readonly QaPromptNote[] {
+    if (!this.options.isQaSession(rootSessionId)) return [];
+    if (!this.options.config().notes.sourcePriority.enabled) return [];
+    const template = this.options.config().notes.sourcePriority.template;
+    return [
+      {
+        name: QA_SOURCE_PRIORITY_NOTE,
+        text:
+          template === ""
+            ? QA_SOURCE_PRIORITY_NOTE_TEMPLATE
             : renderTemplate(template, {}).trim(),
       },
     ];

@@ -5,8 +5,11 @@ const MAX_INT = 2_147_483_647;
 /**
  * The message a rejected argument carries. `explain` appends what a correct
  * value looks like, so a model can repair the call instead of retrying it.
+ *
+ * Providers use it for the values that only they can judge — a project path, a
+ * branch name, a page id — so the refusal is phrased exactly once.
  */
-function invalid(field: string, explain?: string): never {
+export function invalid(field: string, explain?: string): never {
   throw new IntegrationError(
     "InvalidRequest",
     explain === undefined
@@ -72,6 +75,24 @@ export function optionalBoolean(
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") invalid(field);
   return value;
+}
+
+/**
+ * A choice out of a fixed set, in the vocabulary the provider itself declares.
+ * The length window belongs to the caller: a short value must not pass as a
+ * real one, and the maximum is that field's own limit.
+ */
+export function optionalChoice(
+  value: unknown,
+  allowed: readonly string[],
+  field: string,
+  min: number,
+  max: number,
+): string | undefined {
+  const normalized = optionalText(value, field, min, max);
+  if (normalized === undefined) return undefined;
+  if (!allowed.includes(normalized)) invalid(field);
+  return normalized;
 }
 
 /** Date-only fields, as most REST APIs declare them. */

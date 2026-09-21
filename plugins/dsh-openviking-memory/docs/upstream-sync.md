@@ -45,13 +45,19 @@ those helpers does not look like a regression.
    specifiers.
 5. **Never overwrite the `@yadsh`-specific behaviour**: the four injection
    controls, `resolveInjectionPlan` and the `profileWanted()` gate in
-   `src/runtime.ts`, the fail-loud config schema, and the `Service`-based entry.
-   If an upstream change touches the same code path, merge it into the fork's
-   shape rather than replacing it.
-6. **Add the dropped-helper policy to the diff review**: if upstream starts
+   `src/runtime.ts`, the per-account scoping (`src/qa/`, and the `SessionScoping`
+   seam it plugs into the runtime), the fail-loud config schema, the
+   `TypertRemoteService` entry with its three `openvikingMemory` remotes, and the
+   generated Remote artifacts. If an upstream change touches the same code path,
+   merge it into the fork's shape rather than replacing it.
+6. **Re-apply the type-level edits inside generated files** (see below): they are
+   invisible to the JS output, so a `diff` of the compiled modules does not show
+   them, but the Typert generator compiles the whole host face with
+   `exactOptionalPropertyTypes` and rejects the tree without them.
+7. **Add the dropped-helper policy to the diff review**: if upstream starts
    using a helper this port dropped (for example `extractCaptureTurns`), port
    that helper too.
-7. **Run the parity and injection suites**:
+8. **Run the parity and injection suites**:
 
    ```bash
    pnpm nx run @yadsh/dsh-openviking-memory:test
@@ -62,11 +68,29 @@ those helpers does not look like a regression.
    The injection matrix (`tests/injection.test.ts`) is the gate that catches an
    upstream change which would reintroduce an unconditional profile or recall
    request.
-8. **Update `UPSTREAM.md`** with the new SHA, version and date, and extend the
+9. **Update `UPSTREAM.md`** with the new SHA, version and date, and extend the
    "Local modifications" list if the port needed new edits.
-9. **Add a changelog entry** through the normal Nx Version Plan, naming the
+10. **Add a changelog entry** through the normal Nx Version Plan, naming the
    upstream revision that was synced, so a future reader can tell a fork feature
    from an upstream fix.
+
+## Type-level edits inside generated files
+
+These carry no runtime change: each widens an optional property or parameter so
+it admits an explicit `undefined`, which this repository's `tsconfig.json` allows
+and the Typert generator's stricter `exactOptionalPropertyTypes` does not. They
+are marked `FORK LOCAL EDIT` at the site, and a sync has to put them back —
+replacing a whole module with upstream's copy silently reintroduces them:
+
+| File | What was widened |
+| --- | --- |
+| `src/openviking/capture-utils.ts` | `CaptureExtractOptions` (the alias every extractor takes) and `CapturedToolPart.tool_id` / `.tool_name` |
+| `src/openviking/recall-core.ts` | `FetchJSONResult.traceId`, plus both override fields of the injected `FetchJSON` |
+| `src/openviking/pending-queue.ts` | `traceId` of `PendingFetchJSON` |
+
+The same widening in the fork's own modules needs no note here: `src/api-client.ts`
+(`FetchJSONOptions`, `OpenVikingResult.traceId`) and
+`src/openviking/mcp-proxy-config.ts` (`BuildMcpProxyConfigInput`).
 
 ## What not to do
 

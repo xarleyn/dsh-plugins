@@ -53,20 +53,38 @@ describe("per-user workspace admission", () => {
       return undefined;
     };
     let childCreated: ((session: never) => void) | undefined;
+    let agentDisposed: ((event: never) => void) | undefined;
+    // The mounted attachment store; the exemption semantics themselves are
+    // covered in user-workspace.test.ts.
+    const attachmentRoot = path.join(workspace, "attachments");
+    // The hand-over the document pipeline needs: the root the fence above
+    // opens is granted to the session's own `document_*` calls (#174).
+    const grants: { sessionId: string; roots: readonly string[] }[] = [];
+    const revoked: string[] = [];
     const context = {
       on: (name: string, listener: (event: never) => void) => {
         if (name === "session/created") childCreated = listener;
+        if (name === "agent/disposed") agentDisposed = listener;
         return () => undefined;
       },
       agents: { get: () => agent },
       agentPresets: { composedPreset: () => undefined },
       workspaceRegistry: { get: () => ({ path: workspace }) },
-      // The mounted attachment store; the exemption semantics themselves are
-      // covered in user-workspace.test.ts.
-      get: (name: string) =>
-        name === "attachments"
-          ? { root: path.join(workspace, "attachments") }
-          : undefined,
+      get: (name: string) => {
+        if (name === "attachments") return { root: attachmentRoot };
+        if (name === "documents") {
+          return {
+            registerInputRoots: (
+              sessionId: string,
+              roots: readonly string[],
+            ) => {
+              grants.push({ sessionId, roots });
+              return () => revoked.push(sessionId);
+            },
+          };
+        }
+        return undefined;
+      },
       permissionPresets: {
         resolve: () => ({ sandbox: "workspace-write", approval: "never" }),
         current: () => "qa-workspace-write",
@@ -98,6 +116,7 @@ describe("per-user workspace admission", () => {
       {
         enforceSessionAccess: () => ({ id: USER_ID }),
         userWorkspace: () => userRoot,
+        ownerIdOf: () => USER_ID,
       },
     );
 
@@ -107,6 +126,9 @@ describe("per-user workspace admission", () => {
       workspaceMatches: true,
       sandboxModeMatches: true,
     });
+    expect(grants).toEqual([
+      { sessionId: "session-parent", roots: [attachmentRoot] },
+    ]);
     expect(
       globalGuard({
         name: "read",
@@ -145,6 +167,12 @@ describe("per-user workspace admission", () => {
       },
     };
     childCreated?.(child as never);
+    // A delegated child runs the same tools against the same store, so it
+    // inherits the grant the way it inherits the fence.
+    expect(grants).toEqual([
+      { sessionId: "session-parent", roots: [attachmentRoot] },
+      { sessionId: "session-child", roots: [attachmentRoot] },
+    ]);
     expect(
       globalGuard({
         name: "write",
@@ -176,7 +204,14 @@ describe("per-user workspace admission", () => {
         agent: { session: child },
       }),
     ).toBeUndefined();
+    // A re-attestation refreshes the fence rather than stacking a second grant
+    // on top of the first.
+    expect(grants).toHaveLength(2);
+
+    agentDisposed?.({ agent: { session: child } } as never);
+    expect(revoked).toEqual(["session-child"]);
     admission.dispose();
+    expect(revoked).toEqual(["session-child", "session-parent"]);
   });
 
   it("rejects a mismatched writable permission preset before resolving an agent", async () => {

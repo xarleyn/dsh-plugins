@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 import {
   PRIVATE_CIDRS,
   canonicalServerUrl,
@@ -96,9 +97,7 @@ const NETWORK_MODES: readonly TeamCityNetworkMode[] = [
 /** One log answer is a window, so its line count and byte budget are both small. */
 export const DEFAULT_LOG_LINES = 200;
 
-function configError(message: string): Error {
-  return new Error(`teamcity integration config: ${message}`);
-}
+const configError = scopedConfigError("teamcity integration config");
 
 function stringList(input: unknown, field: string): readonly string[] {
   if (input === undefined || input === null) return [];

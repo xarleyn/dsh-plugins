@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { AuditRegistry } from "../src/host/audit-registry.js";
 import type { AuditRecord, AuditRegistryEvent } from "@yadsh/dsh-audit-core";
 import "./host-pipeline.helpers.js";
-import { SESSION_ID } from "./helpers/fixtures.js";
+import { OTHER_SESSION_ID, SESSION_ID } from "./helpers/fixtures.js";
 
 describe("AuditRegistry", () => {
   const record = (
@@ -63,6 +63,44 @@ describe("AuditRegistry", () => {
     );
 
     expect(registry.activeFor(SESSION_ID)?.auditId).toBe("good");
+  });
+
+  it("lists the audits no session view can show, newest first", () => {
+    const registry = new AuditRegistry();
+    registry.upsert(record({ auditId: "bound" }));
+    registry.upsert(
+      record({
+        auditId: "loose",
+        sessionId: null,
+        status: "unresolved",
+        modifiedAt: "2026-09-16T00:00:00.000Z",
+      }),
+    );
+    registry.upsert(
+      record({
+        auditId: "broken",
+        sessionId: null,
+        status: "invalid",
+        modifiedAt: "2026-09-17T00:00:00.000Z",
+      }),
+    );
+
+    expect(registry.unattached().map((entry) => entry.auditId)).toEqual([
+      "broken",
+      "loose",
+    ]);
+    expect(registry.unattached().map((entry) => entry.status)).toEqual([
+      "invalid",
+      "unresolved",
+    ]);
+  });
+
+  it("has nothing to report when every audit is attached", () => {
+    const registry = new AuditRegistry();
+    registry.upsert(record({ auditId: "a" }));
+    registry.upsert(record({ auditId: "b", sessionId: OTHER_SESSION_ID }));
+
+    expect(registry.unattached()).toEqual([]);
   });
 
   it("publishes created, updated and deleted", () => {

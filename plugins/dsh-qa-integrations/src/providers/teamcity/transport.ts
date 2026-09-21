@@ -4,6 +4,7 @@ import {
   TLS_FAILURE,
   causeCode,
   fetchWithRetries,
+  readBoundedJson,
   readBoundedText,
   type BoundedText,
 } from "../shared/http.js";
@@ -105,21 +106,11 @@ export class TeamCityTransport {
       this.config.timeoutMs,
       "application/json",
     );
-    const body = await readBoundedText(response, this.config.maxResponseBytes);
-    if (body.truncated) {
-      throw new IntegrationError(
-        "ResultTooLarge",
-        "TeamCity response is too large",
-      );
-    }
-    try {
-      return JSON.parse(body.text) as T;
-    } catch {
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "TeamCity returned invalid JSON",
-      );
-    }
+    return readBoundedJson<T>(
+      response,
+      this.config.maxResponseBytes,
+      "TeamCity",
+    );
   }
 
   /** Plain-text read: the build log, and an artifact read as text. */

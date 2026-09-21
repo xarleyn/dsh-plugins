@@ -46,7 +46,12 @@ function attrs(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function stringOf(source: Record<string, unknown>, key: string): string {
+/**
+ * A field of an ADF node as text. Rendering reads many optional attributes, so
+ * an absent one is the empty string here: the markup reads `shortName === ""`
+ * to decide what to write, and a projection is not the caller of this reader.
+ */
+function fieldText(source: Record<string, unknown>, key: string): string {
   const value = source[key];
   return typeof value === "string" ? value : "";
 }
@@ -74,12 +79,12 @@ function inline(value: unknown): string {
   if (type === "hardBreak") return "\n";
   if (type === "mention") {
     const source = attrs(current);
-    return `@${stringOf(source, "text") || stringOf(source, "id")}`;
+    return `@${fieldText(source, "text") || fieldText(source, "id")}`;
   }
   if (type === "emoji") {
     const source = attrs(current);
-    const shortName = stringOf(source, "shortName");
-    return shortName === "" ? stringOf(source, "text") : `:${shortName}:`;
+    const shortName = fieldText(source, "shortName");
+    return shortName === "" ? fieldText(source, "text") : `:${shortName}:`;
   }
   if (type === "date") {
     const stamp = attrs(current)["timestamp"];
@@ -88,10 +93,10 @@ function inline(value: unknown): string {
       ? "[date]"
       : parsed.toISOString().slice(0, 10);
   }
-  if (type === "status") return `\`${stringOf(attrs(current), "text")}\``;
+  if (type === "status") return `\`${fieldText(attrs(current), "text")}\``;
   if (type === "inlineCard" || type === "blockCard" || type === "embedCard") {
     // The URL is shown as text; nothing here is ever fetched.
-    return `<${stringOf(attrs(current), "url")}>`;
+    return `<${fieldText(attrs(current), "url")}>`;
   }
   if (
     type === "media" ||
@@ -100,19 +105,19 @@ function inline(value: unknown): string {
     type === "mediaGroup"
   ) {
     const source = attrs(current);
-    const label = stringOf(source, "alt") || stringOf(source, "id");
+    const label = fieldText(source, "alt") || fieldText(source, "id");
     const marker = `[media: ${label === "" ? "without name" : label}]`;
     return `${marker}${inline(current.content)}`;
   }
   if (type === "placeholder") {
-    return `[placeholder: ${stringOf(attrs(current), "text")}]`;
+    return `[placeholder: ${fieldText(attrs(current), "text")}]`;
   }
   if (
     type === "inlineExtension" ||
     type === "extension" ||
     type === "bodiedExtension"
   ) {
-    return `[app: ${stringOf(attrs(current), "extensionKey") || "unknown"}]`;
+    return `[app: ${fieldText(attrs(current), "extensionKey") || "unknown"}]`;
   }
   // A node nothing here knows: keep its inline content, and stop on a leaf
   // rather than walking into an empty body forever.
@@ -130,7 +135,7 @@ function marked(text: string, marks: unknown): string {
     else if (type === "em") rendered = `_${rendered}_`;
     else if (type === "strike") rendered = `~~${rendered}~~`;
     else if (type === "link") {
-      const href = stringOf(attrs(mark), "href");
+      const href = fieldText(attrs(mark), "href");
       rendered = href === "" ? rendered : `[${rendered}](${href})`;
     }
   }
@@ -169,7 +174,7 @@ function blocks(value: unknown): string[] {
     return [`${hashes} ${inline(current.content)}`];
   }
   if (type === "codeBlock") {
-    const language = stringOf(attrs(current), "language");
+    const language = fieldText(attrs(current), "language");
     return [
       `\`\`\`${LANGUAGE.test(language) ? language : ""}`,
       inline(current.content),
@@ -178,7 +183,7 @@ function blocks(value: unknown): string[] {
   }
   if (type === "rule") return ["---"];
   if (type === "panel") {
-    const panel = stringOf(attrs(current), "panelType");
+    const panel = fieldText(attrs(current), "panelType");
     const body = indent(
       children(current).flatMap((child) => blocks(child)),
       "> ",
@@ -213,7 +218,7 @@ function blocks(value: unknown): string[] {
     return children(current).flatMap((child) => blocks(child));
   if (type === "taskList") {
     return children(current).flatMap((item) => {
-      const done = stringOf(attrs(item), "state") === "DONE";
+      const done = fieldText(attrs(item), "state") === "DONE";
       return [`- [${done ? "x" : " "}] ${inline(node(item).content)}`];
     });
   }
@@ -236,7 +241,7 @@ function blocks(value: unknown): string[] {
   }
   if (type === "expand" || type === "nestedExpand") {
     return [
-      `[expand: ${stringOf(attrs(current), "title") || "without title"}]`,
+      `[expand: ${fieldText(attrs(current), "title") || "without title"}]`,
       ...indent(
         children(current).flatMap((child) => blocks(child)),
         "> ",

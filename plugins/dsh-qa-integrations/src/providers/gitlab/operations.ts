@@ -1,4 +1,5 @@
 import {
+  invalid,
   optionalBoolean,
   optionalInteger,
   optionalText,
@@ -7,6 +8,16 @@ import {
   requiredText,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
+import { looksBinary } from "../shared/http.js";
+import {
+  arrayOf,
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
+import { hasTraversal } from "../shared/paths.js";
 import type { GitlabFlags } from "./config.js";
 import type { GitlabQuery } from "./transport.js";
 
@@ -20,16 +31,6 @@ const PROJECT_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const GROUP_PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
 const REF_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/u;
 const COMMIT_SHA = /^[0-9a-fA-F]{7,40}$/u;
-
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
-
-function hasTraversal(value: string): boolean {
-  return value
-    .split("/")
-    .some((segment) => segment === ".." || segment === ".");
-}
 
 /** A project id or path, canonicalized into one URL path segment. */
 export function projectRef(value: unknown, field = "project"): string {
@@ -611,58 +612,6 @@ export const GITLAB_HANDLERS: Readonly<Record<string, GitlabOperationHandler>> =
 /* Response shaping                                                    */
 /* ------------------------------------------------------------------ */
 
-/** A NUL byte in the head of a body is the classic text/binary split. */
-function looksBinary(bytes: Uint8Array): boolean {
-  for (const byte of bytes.subarray(0, 8_192)) {
-    if (byte === 0) return true;
-  }
-  return false;
-}
-
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-function arrayOf(source: Record<string, unknown>, key: string): unknown[] {
-  const value = source[key];
-  return Array.isArray(value) ? value : [];
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
-}
-
 function userSummary(value: unknown): Record<string, unknown> | undefined {
   const source = recordOf(value);
   const id = numberOf(source, "id");
@@ -946,7 +895,9 @@ export const GITLAB_PROJECTIONS: Readonly<Record<string, GitlabProjection>> =
       const encoding = stringOf(source, "encoding") ?? "base64";
       const raw = stringOf(source, "content") ?? "";
       const bytes = Buffer.from(raw, encoding === "base64" ? "base64" : "utf8");
-      const binary = looksBinary(bytes);
+      // The answer carries no content type, so the shared verdict rests on the
+      // bytes alone — exactly what this provider needs here.
+      const binary = looksBinary(null, bytes);
       // The body is what makes a file read useful and what makes it huge: keep
       // a bounded prefix and say so rather than dropping the answer entirely.
       const limit = context.byteLimit ?? bytes.byteLength;

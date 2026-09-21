@@ -16,6 +16,7 @@ import { boundaryHas } from "../../service-credentials/policy.js";
 import { operationCapabilityServiceState } from "../../service-credentials/state.js";
 import type { OperationSecurityMetadata } from "../../service-credentials/types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
+import { healthFromFailure } from "../shared/health.js";
 import {
   assertServiceOperationAllowed,
   serviceBoundaryOf,
@@ -328,19 +329,4 @@ export class Bitrix24Provider implements IntegrationProvider {
 }
 
 /** Map an upstream failure of the probe onto a health status. */
-function healthFromFailure(error: unknown): ServiceCredentialHealth {
-  if (!(error instanceof IntegrationError)) {
-    return { status: "unreachable" };
-  }
-  switch (error.code) {
-    case "CredentialExpired":
-      return { status: "expired" };
-    case "CredentialRevoked":
-    case "ProviderPermissionDenied":
-      return { status: "revoked" };
-    default:
-      return { status: "unreachable" };
-  }
-}
-
 export default Bitrix24Provider;

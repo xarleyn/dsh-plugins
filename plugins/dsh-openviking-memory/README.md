@@ -56,6 +56,10 @@ recall HTTP request (not "the request is made and the result dropped").
 - **A settings card in the web UI.** The plugin ships a browser bundle, so its
   configuration is editable from **Settings → Plugins** without touching a
   patch file. See [Settings card](#settings-card).
+- **Memory per QA account.** On a deployment with QA Surface mounted, each
+  account gets its own OpenViking space, and each account can switch automatic
+  context off for itself from its QA settings dialog. See
+  [Per-account memory](#per-account-memory-on-a-qa-deployment).
 - **Repository-conventional package layout.** The upstream `.mjs` sources are
   ported to TypeScript under `src/`, with a Cordis service, a `@yadsh`
   structured log file under `<$DSH_HOME>/logs/dsh-openviking-memory/`, and the
@@ -149,6 +153,75 @@ config:
   autoRecall: true
 ```
 
+## Per-account memory on a QA deployment
+
+One plugin serves every chat, so on a multi-user deployment the OpenViking space
+has to be split per account — otherwise recall hands one user another user's
+memories, and capture files one user's conversation where the next user's recall
+finds it.
+
+With QA Surface (`@yadsh/dsh-qa-surface`) mounted, the plugin asks it who owns
+the session and sends that account as `X-OpenViking-User`:
+
+- A chat root resolves to the account that attested it; a delegated child
+  inherits the chat that created it.
+- A session nobody has claimed yet is left **entirely alone** — no profile, no
+  recall, no capture — until the account's browser half claims it. A
+  conversation never reads from, or writes into, a space it does not belong to.
+- An admin viewing somebody else's chat resolves to nobody (QA Surface fails
+  closed there), so that view neither reads nor writes memory.
+- Without a QA Surface, or with `qaUserScoping: false`, the plugin keeps the
+  single deployment-wide identity it always had.
+
+Each account also owns its own switches. The signed-in user's QA settings
+dialog gets a **Память** page (backed by the `openvikingMemory` Remote
+namespace, stored per account in `openviking-memory-qa-users.json` under
+`$DSH_HOME`):
+
+| Switch | Effect for that account |
+| --- | --- |
+| Автоматическая память (`autoInject`) | Silences the profile and the recall at once |
+| Профиль (`profile`) | No profile injection, at session start or per step |
+| Автоматический поиск (`recall`) | No automatic recall before a step |
+
+A switch narrows the deployment's plan and never widens it, and one reset hands
+every knob back. Capture, commit and the `mcp__openviking__*` tools keep working
+with every switch off — which is why the QA page says so.
+
+```yaml
+# A deployment that prefers the old shared space, or a local install that
+# mounts a QA surface for other reasons:
+config:
+  qaUserScoping: false
+```
+
+> **Where the settings live.** The Host's own "Plugin configuration" card is
+> discovered from the Host settings directory, which a browser reaching the
+> deployment over the network never gets (and a QA overlay does not render the
+> native settings tree at all). That card stays the operator's surface on a
+> local installation; on a QA deployment the per-account page above is the one
+> a user can actually open.
+>
+> The card needs its namespace registered in that directory to be served at
+> all — which is what `src/settings.ts` does. A plugin that only declares its
+> configuration schema publishes no namespace, and its card renders nowhere,
+> loopback included.
+
+> **Switching scoping on moves the memory.** The space is chosen by the
+> `X-OpenViking-User` header, so turning `qaUserScoping` on means the memories
+> written before it were filed under the deployment-wide user and will not show
+> up in any account's space. Turn it on from the start of a deployment, or
+> re-file what matters to you by hand.
+
+**What is still deployment-wide.** The bridged `mcp__openviking__*` tools are
+one MCP server for the whole process, and DSH's MCP client carries a single
+identity for it — so a *model-initiated* `search` or `read` is issued as the
+deployment identity, not as the account that asked for it. Automatic context
+(profile and recall) and everything the plugin writes are per account; a tool
+call the model makes on its own is not. Closing that gap needs either a
+per-session MCP identity in DSH's MCP client or native tool implementations in
+this plugin.
+
 ## Behaviour matrix
 
 | Configuration | Startup profile | Per-step profile | Automatic recall |
@@ -183,7 +256,10 @@ The package ships a browser bundle, so the plugin gets a card under
   number fields commit on blur or Enter. Emptying a field clears the override,
   so the value falls back to the profile's composition layer — and for the
   connection fields that means the `OPENVIKING_*` environment variables and
-  credential files stay in charge.
+  credential files stay in charge. A committed change is re-resolved and handed
+  to the running runtime, so an edited switch reaches sessions that are already
+  open; the bridged `mcp__openviking__*` tools follow on the next reload,
+  because they are a child process whose transport is fixed when it starts.
 - **Overrides are visible.** A field the profile's user layer carries is
   marked, and a reset action clears every override in one step.
 - **The badge is configuration, not status.** It shows `Auto-inject` or
@@ -244,6 +320,13 @@ The package ships a browser bundle, so the plugin gets a card under
 | `skipSubagentSessions` | boolean | `false` | Leave delegated subagent sessions entirely alone |
 | `commitTokenThreshold` | integer 1000–1000000 | `20000` | Commit once the session's pending tokens reach this |
 | `commitKeepRecentCount` | integer 0–1000 | `10` | Recent turns a commit keeps unsummarized |
+
+### Multi-user deployments
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `qaUserScoping` | boolean | `true` | With a QA Surface mounted, keep one memory space per account; an unattributed session is left alone entirely |
+| `qaUserSettingsPath` | string | `<$DSH_HOME>/openviking-memory-qa-users.json` | Where the per-account switches live |
 
 ### Transport
 

@@ -13,6 +13,7 @@ import path from "node:path";
 import { DocumentError, asDocumentError } from "../errors.js";
 import type {
   BackendInfo,
+  DocumentCacheRecord,
   DocumentFileResult,
   DocumentFormat,
   DocumentManifest,
@@ -34,6 +35,8 @@ export interface BuildManifestInput {
   readonly backends: Readonly<Record<string, BackendInfo>>;
   readonly warnings: readonly DocumentWarning[];
   readonly scope: DocumentManifest["scope"];
+  /** Set when the outputs were materialized from a cache entry. */
+  readonly cache?: DocumentCacheRecord;
 }
 
 export function buildManifest(input: BuildManifestInput): DocumentManifest {
@@ -51,6 +54,7 @@ export function buildManifest(input: BuildManifestInput): DocumentManifest {
     backends: input.backends,
     warnings: input.warnings,
     scope: input.scope,
+    ...(input.cache === undefined ? {} : { cache: input.cache }),
   };
 }
 

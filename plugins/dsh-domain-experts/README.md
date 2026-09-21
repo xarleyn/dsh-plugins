@@ -57,7 +57,12 @@ Then open `Settings → Plugins → Domain Experts`.
 The tab lists every domain with its scope counts and degradations. `Edit` — or
 the card itself — opens one in the same pane: identity and status, persona,
 filesystem and knowledge scope, memory namespaces, tool policy, cross-domain
-delegation, model route and the test screen. `All domains` goes back to the list,
+delegation, model route, the test screen and the run history. The history lists
+every execution of the domain whichever surface started it — a conversation,
+the agents panel or the test screen — with the caller session, the delegation
+path and the outcome. It is read from the host's bounded in-memory audit ring
+(mirrored to the plugin log), so it covers the running process. `All domains`
+goes back to the list,
 asking first when the form holds unsaved edits, and `Save` writes the record in
 place. Every domain is an ordinary record in the plugin's storage, no matter who
 created it: there is no built-in expert the UI refuses to change.

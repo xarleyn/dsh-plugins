@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import type { QaSkillSummary } from "../../types.js";
 import { QaSettingsButton, QaSettingsNotice } from "./fields.js";
-import { SKILLS_EMPTY_COPY, diagnosticMessage } from "./copy.js";
+import {
+  SKILLS_EMPTY_COPY,
+  adminEditMessage,
+  diagnosticMessage,
+} from "./copy.js";
 import { skillMatchesQuery, skillMetaLine, skillToolWarning } from "./draft.js";
 
 export interface QaSkillCatalogProps {
@@ -98,6 +102,11 @@ export function QaSkillCatalog(props: QaSkillCatalogProps) {
                   <span className="dsh-qa-settings__row-meta">
                     {skillMetaLine(skill)}
                   </span>
+                  {skill.adminEdit === null ? null : (
+                    <span className="dsh-qa-settings__row-note">
+                      {adminEditMessage(skill.adminEdit)}
+                    </span>
+                  )}
                   {skillToolWarning(skill) === null ? null : (
                     <span className="dsh-qa-settings__row-warning">
                       {skillToolWarning(skill)}

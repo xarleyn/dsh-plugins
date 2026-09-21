@@ -16,13 +16,17 @@ export interface OpenVikingError {
   readonly [key: string]: unknown;
 }
 
-/** The envelope every client request resolves to. */
+/**
+ * The envelope every client request resolves to. `traceId` admits an explicit
+ * `undefined` because the transport forwards whatever the server sent without
+ * narrowing it first.
+ */
 export interface OpenVikingResult<T = unknown> {
   readonly ok: boolean;
   readonly result: T | null;
   readonly status: number;
   readonly error?: OpenVikingError;
-  readonly traceId?: string;
+  readonly traceId?: string | undefined;
   readonly [key: string]: unknown;
 }
 
@@ -56,10 +60,15 @@ export interface OpenVikingFindEntry {
   readonly overview: string | null;
 }
 
-/** Per-call overrides accepted by `fetchJSON` and every method above it. */
+/**
+ * Per-call overrides accepted by `fetchJSON` and every method above it. Both
+ * fields admit an explicit `undefined`: a caller forwards an optional value it
+ * read off its own options, and here an absent key and an undefined one mean
+ * the same thing — no override.
+ */
 export interface FetchJSONOptions {
-  readonly actorPeerId?: string;
-  readonly timeoutMs?: number;
+  readonly actorPeerId?: string | undefined;
+  readonly timeoutMs?: number | undefined;
 }
 
 /** The `fetchJSON` closure shape the recall and pending modules call. */

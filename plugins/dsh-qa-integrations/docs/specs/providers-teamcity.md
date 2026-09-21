@@ -169,7 +169,7 @@ The initial provider MUST NOT:
 
 Shared credentials are forbidden except for explicitly configured Managed
 Service Credentials, as described in
-[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+[`managed-service-credentials.md`](./managed-service-credentials.md).
 There is never an implicit fallback to them: the credential source is chosen
 before the call and stored with the connection.
 
@@ -249,7 +249,7 @@ If a future TeamCity version introduces a breaking change:
 
 A deployment MAY publish one administrator-managed read-only TeamCity access
 token for its server, described in
-[`SPEC-managed-service-credentials.md`](./SPEC-managed-service-credentials.md).
+[`managed-service-credentials.md`](./managed-service-credentials.md).
 A user chooses between their own token and the managed one at connect time and
 can switch later; nothing switches on its own, and neither mode falls back to
 the other. The managed token is expected to be minted for a dedicated service

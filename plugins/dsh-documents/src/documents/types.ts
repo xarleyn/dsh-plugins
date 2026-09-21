@@ -316,6 +316,17 @@ export interface DocumentConverter {
   convert(input: ConvertPdfInput): Promise<ConvertedDocument>;
 }
 
+/**
+ * Where a cached result came from, when one was reused instead of converted.
+ * Absent on every freshly produced artifact; a reader that ignores this field
+ * still sees a complete, self-contained manifest.
+ */
+export interface DocumentCacheRecord {
+  readonly hit: true;
+  /** Bundle whose file was copied and re-hashed to produce this artifact. */
+  readonly sourceArtifactId?: string;
+}
+
 /** Manifest document, written beside every artifact (§19). */
 export interface DocumentManifest {
   readonly schemaVersion: 1;
@@ -358,6 +369,8 @@ export interface DocumentManifest {
    */
   readonly kind?: "document-comparison";
   readonly comparison?: DocumentComparisonRecord;
+  /** Provenance of a reused conversion; absent when the backend really ran. */
+  readonly cache?: DocumentCacheRecord;
 }
 
 /**

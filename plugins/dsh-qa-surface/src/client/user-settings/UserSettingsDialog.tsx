@@ -7,8 +7,10 @@ import type {
   QaAccountStarters,
   QaAccountStartersInput,
 } from "../../types.js";
-import type { QaBoundSkillApi } from "../types.js";
+import type { QaBoundSkillApi, QaIntegrationTokenApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
+import { QaIntegrationTokensPage } from "./IntegrationTokensPage.js";
+import { QaPasswordSettingsPage } from "./PasswordSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
 import { QaStartersSettingsPage } from "./StartersSettingsPage.js";
@@ -16,7 +18,13 @@ import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
 export type QaSettingsSectionId =
-  "profile" | "starters" | "general" | "skills" | (string & {});
+  | "profile"
+  | "password"
+  | "starters"
+  | "tokens"
+  | "general"
+  | "skills"
+  | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -33,11 +41,23 @@ export interface QaUserSettingsDialogProps {
     readonly instructionsMaxLength: number;
     readonly onSave: (input: QaAccountProfileInput) => Promise<string | null>;
   };
+  /**
+   * Self-service password change. Absent only where the surface runs without
+   * accounts at all, in which case this dialog is not shown either.
+   */
+  readonly password?: {
+    readonly onChange: (
+      currentPassword: string,
+      nextPassword: string,
+    ) => Promise<string | null>;
+  };
   /** Self-service starter buttons; absent when the deployment turns them off. */
   readonly starters?: {
     readonly starters: QaAccountStarters;
     readonly onSave: (input: QaAccountStartersInput) => Promise<string | null>;
   };
+  /** Integration tokens; absent when accounts are off altogether. */
+  readonly integrationTokens?: QaIntegrationTokenApi;
   /** Personal skills; absent when the deployment cannot host them. */
   readonly skills?: QaBoundSkillApi;
   /** Additive pages contributed by separately shipped QA plugins. */
@@ -81,8 +101,14 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.profile !== undefined) {
       models.push({ id: "profile", title: "Профиль" });
     }
+    if (props.password !== undefined) {
+      models.push({ id: "password", title: "Пароль" });
+    }
     if (props.starters !== undefined) {
       models.push({ id: "starters", title: "Быстрые сообщения" });
+    }
+    if (props.integrationTokens !== undefined) {
+      models.push({ id: "tokens", title: "Интеграционные токены" });
     }
     models.push({ id: "general", title: "Общие" });
     if (props.skills !== undefined) {
@@ -92,7 +118,14 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
       ...extensionSnapshot.sections.map(({ id, title }) => ({ id, title })),
     );
     return models;
-  }, [props.profile, props.starters, props.skills, extensionSnapshot.sections]);
+  }, [
+    props.profile,
+    props.password,
+    props.starters,
+    props.integrationTokens,
+    props.skills,
+    extensionSnapshot.sections,
+  ]);
   // A section the deployment withdrew while the dialog was open must not leave
   // an empty panel behind.
   const active = sections.some((entry) => entry.id === section)
@@ -145,11 +178,17 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               onSave={props.profile.onSave}
             />
           ) : null}
+          {active === "password" && props.password !== undefined ? (
+            <QaPasswordSettingsPage onChange={props.password.onChange} />
+          ) : null}
           {active === "starters" && props.starters !== undefined ? (
             <QaStartersSettingsPage
               starters={props.starters.starters}
               onSave={props.starters.onSave}
             />
+          ) : null}
+          {active === "tokens" && props.integrationTokens !== undefined ? (
+            <QaIntegrationTokensPage api={props.integrationTokens} />
           ) : null}
           {active === "general" ? (
             <QaGeneralSettingsPage

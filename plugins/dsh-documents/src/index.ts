@@ -104,6 +104,23 @@ export interface DocumentsFace {
     input: DocumentInspectInput,
     scope: DocumentScope,
   ): Promise<DocumentInspectResult>;
+  /**
+   * Grant the document tools of one session the extra readable input roots its
+   * own read fence allows (§26.2).
+   *
+   * The fence that admits a session for a user is the only thing that knows
+   * which out-of-workspace roots that session may read — the attachment store
+   * is the one that matters today, and it sits outside every workspace by
+   * design. Without this the model is told the stored path of an upload, is
+   * allowed to read it with the file tools, and is refused by `document_*`,
+   * which is the disagreement this method closes.
+   *
+   * The grant is per session and read-only: it widens what `document_*` may
+   * open, never where anything is written. A second call for the same session
+   * replaces the previous grant, and the returned remover drops the grant only
+   * if it is still the one it handed out.
+   */
+  registerInputRoots(sessionId: string, roots: readonly string[]): () => void;
 }
 
 /**
@@ -124,6 +141,12 @@ export class DocumentsPlugin {
   private documentsFace: (() => void) | undefined;
   /** Identity of the installed subsystem, so unchanged config is a no-op. */
   private documentsKey: string | undefined;
+  /**
+   * Extra readable input roots per session, as granted by the deployment's
+   * read fence. Read at call time by the installed tools, so a grant made (or
+   * revoked) long after startup takes effect on the next document call.
+   */
+  private readonly inputRoots = new Map<string, readonly string[]>();
   /** Resolved per call: a provider that arrives late is still picked up. */
   private web: WebFetchSeam | undefined;
 
@@ -221,6 +244,7 @@ export class DocumentsPlugin {
       config: withEnv,
       logger: this.logger,
       register: (definition) => this.hostCtx.tools.register(definition),
+      extraInputRoots: (sessionId) => this.grantedInputRoots(sessionId),
       fetchSource: async (url, signal) => {
         const web = this.web;
         if (web === undefined)
@@ -248,7 +272,40 @@ export class DocumentsPlugin {
       toMarkdown: (input, scope) => this.runtime().toMarkdown(input, scope),
       convert: (input, scope) => this.runtime().convert(input, scope),
       inspect: (input, scope) => this.runtime().inspect(input, scope),
+      registerInputRoots: (sessionId, roots) =>
+        this.registerInputRoots(sessionId, roots),
     } satisfies DocumentsFace);
+  }
+
+  /** The roots granted to one session, empty when the fence granted none. */
+  private grantedInputRoots(sessionId?: string): readonly string[] {
+    if (sessionId === undefined) return [];
+    return this.inputRoots.get(sessionId) ?? [];
+  }
+
+  /**
+   * Record one session's granted input roots and hand back the remover. An
+   * empty grant is a revocation, and a later grant for the same session
+   * replaces the earlier one rather than accumulating roots that a
+   * re-attestation has already withdrawn.
+   */
+  private registerInputRoots(
+    sessionId: string,
+    roots: readonly string[],
+  ): () => void {
+    const id = sessionId.trim();
+    if (id === "") return () => {};
+    const granted = Object.freeze(
+      roots.filter((root) => typeof root === "string" && root.trim() !== ""),
+    );
+    if (granted.length === 0) {
+      this.inputRoots.delete(id);
+      return () => {};
+    }
+    this.inputRoots.set(id, granted);
+    return () => {
+      if (this.inputRoots.get(id) === granted) this.inputRoots.delete(id);
+    };
   }
 
   /** The live subsystem, or a refusal when no configuration enabled it. */

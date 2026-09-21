@@ -1,6 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createFileDeleteTool } from "./file-delete.js";
+import { createDocsReadTool, createDocsSearchTool } from "./docs-tools.js";
 import type { QaToolDescriptor } from "./types.js";
 
 /**
@@ -11,7 +12,7 @@ import type { QaToolDescriptor } from "./types.js";
  *
  * Bump it whenever the catalog's tool set or their schemas change.
  */
-export const QA_TOOL_CATALOG_VERSION = "2";
+export const QA_TOOL_CATALOG_VERSION = "3";
 
 /** One QA tool reports the activation state of whichever agent calls it. */
 export interface QaToolsSelfcheckDeps {
@@ -103,6 +104,16 @@ export function createQaToolCatalog(
       definition: createSelfcheckTool(deps),
       group: "diagnostics",
       tags: ["activation", "diagnostics"],
+    },
+    {
+      definition: createDocsSearchTool(),
+      group: "documentation",
+      tags: ["docs", "search"],
+    },
+    {
+      definition: createDocsReadTool(),
+      group: "documentation",
+      tags: ["docs", "read"],
     },
     {
       definition: createFileDeleteTool(),

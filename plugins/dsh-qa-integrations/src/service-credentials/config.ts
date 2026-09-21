@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../errors.js";
 
 /**
  * One deployment-managed credential, as it appears under
@@ -84,9 +85,9 @@ const SECRET_ENV = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const MAX_PROFILES = 64;
 const MAX_RESOURCES_PER_KIND = 512;
 
-function configError(message: string): Error {
-  return new Error(`qa-integrations managed service credentials: ${message}`);
-}
+const configError = scopedConfigError(
+  "qa-integrations managed service credentials",
+);
 
 function nonEmpty(value: unknown, what: string, index: number): string {
   const text = typeof value === "string" ? value.trim() : "";

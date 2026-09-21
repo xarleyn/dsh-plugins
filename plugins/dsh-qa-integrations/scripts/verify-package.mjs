@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
 const root = new URL("../", import.meta.url);
@@ -490,6 +490,132 @@ for (const file of [
     `${file} must stay provider-agnostic`,
   );
 }
+
+// One owner per shared policy: a reader of upstream fields, a refusal, a path
+// check, a health verdict. A provider that declares one of them again is where
+// two copies of a single rule start to drift apart — the copies that used to
+// live in this package already disagreed about whether an empty string is a
+// value. Providers import the shared module instead of re-declaring it.
+const SHARED_HELPER_NAMES = [
+  "recordOf",
+  "asRecord",
+  "stringOf",
+  "numberOf",
+  "booleanOf",
+  "arrayOf",
+  "compact",
+  "invalid",
+  "hasTraversal",
+  "recoverableResource",
+  "configError",
+  // The HTTP and health policies of `shared/` are the same kind of one-owner
+  // module: a second copy of the retry loop or of the binary heuristic is a
+  // second answer to a question that has one.
+  "looksBinary",
+  "readBoundedText",
+  "fetchWithRetries",
+  "healthFromFailure",
+  "numberFrom",
+  "causeCode",
+  "retryDelay",
+  "backoff",
+  "sleep",
+];
+// A declaration is what the rule bans; a local binding of a shared factory
+// (`const configError = scopedConfigError("…")`) is the intended way to use one.
+const redeclaresHelper = (name) =>
+  new RegExp(
+    `(?:^|\\n)\\s*(?:export\\s+)?(?:async\\s+)?function\\s+${name}\\s*\\(` +
+      `|(?:^|\\n)\\s*(?:export\\s+)?const\\s+${name}\\s*=\\s*(?:\\(|function|async)`,
+    "u",
+  );
+assert.match(
+  "function stringOf(source: Record<string, unknown>): string {}",
+  redeclaresHelper("stringOf"),
+);
+assert.doesNotMatch(
+  'const configError = scopedConfigError("jira integration config");',
+  redeclaresHelper("configError"),
+);
+
+async function* providerSources(dir) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      yield* providerSources(new URL(`${entry.name}/`, dir));
+    } else if (entry.name.endsWith(".ts")) {
+      yield { url: new URL(entry.name, dir), path: entry.name };
+    }
+  }
+}
+
+// Names are not enough to keep that ownership. The body reader this rule is
+// meant to catch went by `readBounded`, so it was never a re-declaration of
+// `readBoundedText` — it was a second answer to "what may an upstream body
+// cost us". Whoever touches the response stream or its declared size *is* the
+// body reader, whatever it is called.
+const READS_RESPONSE_STREAM =
+  /\.getReader\(\)|headers\.get\(\s*["']content-length["']\s*\)/u;
+assert.match("response.body.getReader();", READS_RESPONSE_STREAM);
+assert.match('response.headers.get("content-length");', READS_RESPONSE_STREAM);
+assert.doesNotMatch(
+  "await readBoundedText(response, this.config.maxResponseBytes);",
+  READS_RESPONSE_STREAM,
+);
+
+for (const entry of await readdir(new URL("src/providers", root), {
+  withFileTypes: true,
+})) {
+  const provider = entry.name;
+  if (provider === "shared" || !entry.isDirectory()) continue;
+  const dir = new URL(`src/providers/${provider}/`, root);
+  for await (const file of providerSources(dir)) {
+    const source = await readFile(file.url, "utf8");
+    for (const name of SHARED_HELPER_NAMES) {
+      assert.doesNotMatch(
+        source,
+        redeclaresHelper(name),
+        `src/providers/${provider}/${file.path} re-declares ${name}, which the shared layer owns`,
+      );
+    }
+    assert.doesNotMatch(
+      source,
+      READS_RESPONSE_STREAM,
+      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/shared/http.ts owns that policy`,
+    );
+  }
+}
+
+// Every provider proves those boundaries with the shared suite. A provider that
+// ships without its fixture is a provider whose redirects, cap, retries and
+// secret placement nobody checks — and the check is too valuable to be a thing
+// a new integration remembers to copy.
+for (const entry of await readdir(new URL("src/providers", root), {
+  withFileTypes: true,
+})) {
+  const provider = entry.name;
+  if (provider === "shared" || !entry.isDirectory()) continue;
+  const fixture = await readFile(
+    new URL(`tests/${provider}/conformance.test.ts`, root),
+    "utf8",
+  ).catch(() => undefined);
+  assert.ok(
+    fixture !== undefined,
+    `tests/${provider}/conformance.test.ts is missing; every provider runs the shared conformance suite`,
+  );
+  assert.match(
+    fixture,
+    /describeProviderConformance\(/u,
+    `tests/${provider}/conformance.test.ts must run the shared conformance suite`,
+  );
+}
+
+// The emptiness rule is the reason that policy has one owner: an empty string
+// field is absent, never a value a caller could pass back.
+const sharedPayload = await readFile(
+  new URL("src/providers/shared/payload.ts", root),
+  "utf8",
+);
+assert.match(sharedPayload, /typeof value === "string" && value !== ""/u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of every catalog.

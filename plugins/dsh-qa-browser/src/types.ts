@@ -1,3 +1,5 @@
+import type { QaBrowserErrorCode } from "./errors.js";
+
 export type BrowserSessionStatus =
   "starting" | "ready" | "idle" | "crashed" | "closed";
 
@@ -50,6 +52,12 @@ export interface BrowserPanelTabHistory {
 /** A tab as the QA panel sees it: tab state plus the depth its chrome shows. */
 export interface BrowserPanelTab extends BrowserTabInfo {
   readonly history: BrowserPanelTabHistory;
+  /**
+   * What the policy refused for this tab, oldest first. It travels with the
+   * tab and not with the session so the banner explains the page the operator
+   * opened, while the strip can mark the others.
+   */
+  readonly policyRefusals: readonly BrowserPolicyRefusal[];
 }
 
 export interface BrowserNavigationRequest {
@@ -154,10 +162,52 @@ export interface BrowserWaitRequest {
   readonly timeoutMs?: number;
 }
 
+/**
+ * What the policy was gating when it refused: the page itself, or something
+ * the page asked for.
+ *
+ * The difference is what the operator does about it. A refused document means
+ * nothing opened — the agent is staring at an unchanged tab. A refused
+ * resource means the page did open and is quietly missing an asset or an API
+ * answer, which is a broken-looking page rather than a blocked one.
+ */
+export type BrowserRequestKind = "document" | "resource";
+
+/**
+ * One destination the URL and DNS policy refused in this session.
+ *
+ * A refusal is a deployment question — an intranet host the policy will not
+ * reach until an operator changes a setting — and the model is not the party
+ * who can answer it. The message already names the class of address and the
+ * setting that lifts the block, so the panel carries it to the person who owns
+ * the configuration instead of leaving it in the chat's tool result.
+ */
+export interface BrowserPolicyRefusal {
+  /** The policy code, e.g. `BROWSER_HOST_BLOCKED`. */
+  readonly code: QaBrowserErrorCode;
+  /** Whether the refused request was the page itself or something it pulled. */
+  readonly kind: BrowserRequestKind;
+  /**
+   * The refused destination host. It stays a host and not a full URL: the fix
+   * is a host allow-list entry, and a path or query adds nothing to it.
+   */
+  readonly host: string;
+  /** The refusal text, which names the address class and the setting. */
+  readonly message: string;
+  /** How many requests to this destination the policy refused so far. */
+  readonly count: number;
+}
+
 /** Read-only state exposed to the authenticated QA Surface panel. */
 export interface BrowserPanelState {
   readonly session: BrowserSessionInfo | null;
   readonly tabs: readonly BrowserPanelTab[];
+  /**
+   * Refusals that belong to no tab — a request the context dialled without a
+   * page behind it — so the panel can show them beside the selected tab's own
+   * entries. Per-tab refusals travel with their tab instead.
+   */
+  readonly policyRefusals: readonly BrowserPolicyRefusal[];
   readonly humanControlEnabled: boolean;
   readonly humanControlLeaseSeconds: number;
   readonly autoRevealOnAgentActivity: boolean;

@@ -1,4 +1,5 @@
 import z from "@deepseek-ai/schemastery";
+import { scopedConfigError } from "../../errors.js";
 
 /**
  * One GitLab deployment the operator allows. A user never types a host: the
@@ -73,9 +74,7 @@ export type GitlabConfigInput = Partial<GitlabFlags> & {
 const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const MAX_INSTANCES = 16;
 
-function configError(message: string): Error {
-  return new Error(`gitlab integration config: ${message}`);
-}
+const configError = scopedConfigError("gitlab integration config");
 
 /**
  * Canonicalize one configured instance. Everything here is operator input, so a

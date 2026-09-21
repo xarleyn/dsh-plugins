@@ -31,16 +31,22 @@ function Logo({ logoUrl }: { readonly logoUrl: string | null }) {
  */
 export function QaAuthGate(props: QaAuthGateProps) {
   const { snapshot, accounts } = props;
-  const mode = snapshot.stage === "gate" ? snapshot.mode : "login";
-  const busy = snapshot.stage === "gate" ? snapshot.busy : false;
+  const gate = snapshot.stage === "gate" ? snapshot : undefined;
+  const mode = gate?.mode ?? "login";
+  const busy = gate?.busy ?? false;
+  const notice = gate?.notice ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const showRegister = props.allowRegistration;
+  // The reset card is the same card with one field: the request only needs an
+  // address, and asking for a password the user does not have would be absurd.
+  const reset = mode === "reset";
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (busy) return;
-    const operation =
-      mode === "register"
+    const operation = reset
+      ? accounts.requestPasswordReset(email)
+      : mode === "register"
         ? accounts.register(email, password)
         : accounts.login(email, password);
     void operation;
@@ -52,7 +58,13 @@ export function QaAuthGate(props: QaAuthGateProps) {
           <Logo logoUrl={props.logoUrl} />
           <h1>{props.title}</h1>
         </div>
-        {showRegister ? (
+        {reset ? (
+          <p className="dsh-qa-auth__lead">
+            Укажите email: заявку увидит оператор и сбросит пароль. Почта с
+            ссылкой на этом стенде не настроена.
+          </p>
+        ) : null}
+        {showRegister && !reset ? (
           <div
             className="dsh-qa-auth__tabs"
             role="tablist"
@@ -98,32 +110,49 @@ export function QaAuthGate(props: QaAuthGateProps) {
             onChange={(event) => setEmail(event.currentTarget.value)}
           />
         </label>
-        <label className="dsh-qa-auth__field">
-          <span>Пароль</span>
-          <input
-            type="password"
-            name="password"
-            autoComplete={
-              mode === "register" ? "new-password" : "current-password"
-            }
-            required
-            minLength={8}
-            disabled={busy}
-            value={password}
-            onChange={(event) => setPassword(event.currentTarget.value)}
-          />
-        </label>
-        {snapshot.stage === "gate" && snapshot.error !== null ? (
+        {reset ? null : (
+          <label className="dsh-qa-auth__field">
+            <span>Пароль</span>
+            <input
+              type="password"
+              name="password"
+              autoComplete={
+                mode === "register" ? "new-password" : "current-password"
+              }
+              required
+              minLength={8}
+              disabled={busy}
+              value={password}
+              onChange={(event) => setPassword(event.currentTarget.value)}
+            />
+          </label>
+        )}
+        {gate !== undefined && gate.error !== null ? (
           <p className="dsh-qa-auth__error" role="alert">
-            {snapshot.error}
+            {gate.error}
           </p>
         ) : null}
+        {notice === null ? null : (
+          <p className="dsh-qa-auth__notice" role="status">
+            {notice}
+          </p>
+        )}
         <button type="submit" className="dsh-qa-auth__submit" disabled={busy}>
           {busy
             ? "Подождите…"
-            : mode === "register"
-              ? "Зарегистрироваться"
-              : "Войти"}
+            : reset
+              ? "Отправить заявку"
+              : mode === "register"
+                ? "Зарегистрироваться"
+                : "Войти"}
+        </button>
+        <button
+          type="button"
+          className="dsh-qa-auth__link"
+          disabled={busy}
+          onClick={() => accounts.setMode(reset ? "login" : "reset")}
+        >
+          {reset ? "Вернуться ко входу" : "Забыли пароль?"}
         </button>
       </form>
     </main>

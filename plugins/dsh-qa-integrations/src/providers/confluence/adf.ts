@@ -49,18 +49,23 @@ function attrs(node: Node): Node {
   return isNode(value) ? value : {};
 }
 
-function textOf(value: unknown): string {
+/**
+ * A node field as text. Rendering reads many optional attributes, so an absent
+ * one is the empty string here — the same default the Jira renderer keeps.
+ */
+function fieldText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function numberOf(value: unknown): number | undefined {
+/** A node field as a finite number, only when the document carried one. */
+function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value)
     ? value
     : undefined;
 }
 
 function typeOf(node: Node): string {
-  return textOf(node["type"]);
+  return fieldText(node["type"]);
 }
 
 /**
@@ -84,9 +89,9 @@ function flatten(value: string): string {
 function macroPlaceholder(node: Node): string {
   const marks = attrs(node);
   const key =
-    textOf(marks["extensionKey"]) ||
-    textOf(marks["extensionType"]) ||
-    textOf(node["type"]);
+    fieldText(marks["extensionKey"]) ||
+    fieldText(marks["extensionType"]) ||
+    fieldText(node["type"]);
   return `[Confluence macro: ${flatten(key)}]`;
 }
 
@@ -95,16 +100,16 @@ function marks(text: string, node: Node): string {
   const value = node["marks"];
   if (!Array.isArray(value)) return text;
   const list = value.filter(isNode);
-  const kinds = new Set(list.map((mark) => textOf(mark["type"])));
+  const kinds = new Set(list.map((mark) => fieldText(mark["type"])));
   let result = text;
   if (kinds.has("code")) result = `\`${result}\``;
   if (kinds.has("strong")) result = `**${result}**`;
   if (kinds.has("em")) result = `*${result}*`;
   if (kinds.has("strike")) result = `~~${result}~~`;
   if (kinds.has("underline")) result = `_${result}_`;
-  const link = list.find((mark) => textOf(mark["type"]) === "link");
+  const link = list.find((mark) => fieldText(mark["type"]) === "link");
   if (link !== undefined) {
-    const href = flatten(textOf(attrs(link)["href"]));
+    const href = flatten(fieldText(attrs(link)["href"]));
     if (href !== "") return `[${result}](${href})`;
   }
   return result;
@@ -120,31 +125,31 @@ function inlineNode(node: Node, depth: number): string {
 function inline(node: Node, depth: number): string {
   if (depth > MAX_DEPTH) return "";
   const type = typeOf(node);
-  if (type === "text") return flatten(textOf(node["text"]));
+  if (type === "text") return flatten(fieldText(node["text"]));
   if (type === "hardBreak") return "\n";
   if (type === "mention") {
     const marks_ = attrs(node);
-    return textOf(marks_["text"]) || `@${textOf(marks_["id"])}`;
+    return fieldText(marks_["text"]) || `@${fieldText(marks_["id"])}`;
   }
   if (type === "emoji") {
     const marks_ = attrs(node);
-    return textOf(marks_["text"]) || textOf(marks_["shortName"]);
+    return fieldText(marks_["text"]) || fieldText(marks_["shortName"]);
   }
   if (type === "status") {
-    return `[status: ${flatten(textOf(attrs(node)["text"]))}]`;
+    return `[status: ${flatten(fieldText(attrs(node)["text"]))}]`;
   }
   if (type === "inlineCard" || type === "blockCard" || type === "embedCard") {
-    return flatten(textOf(attrs(node)["url"]));
+    return flatten(fieldText(attrs(node)["url"]));
   }
   if (type === "media") {
     const marks_ = attrs(node);
-    const label = textOf(marks_["alt"]) || textOf(marks_["id"]);
+    const label = fieldText(marks_["alt"]) || fieldText(marks_["id"]);
     return `[media: ${flatten(label)}]`;
   }
   if (type === "inlineExtension" || type === "extension") {
     return macroPlaceholder(node);
   }
-  if (type === "date") return textOf(attrs(node)["timestamp"]);
+  if (type === "date") return fieldText(attrs(node)["timestamp"]);
   // Everything else at text level is either unknown or a block that ended up
   // here; rendering its children keeps the words and loses only the wrapper.
   return inlineChildren(node, depth);
@@ -159,7 +164,7 @@ function inlineChildren(node: Node, depth: number): string {
 
 /** List items, with the text aligned under the marker of each item. */
 function listItems(node: Node, depth: number, ordered: boolean): string {
-  const start = numberOf(attrs(node)["order"]) ?? 1;
+  const start = asNumber(attrs(node)["order"]) ?? 1;
   const indent = "  ".repeat(depth);
   return childNodes(node)
     .map((item, index) => {
@@ -194,7 +199,7 @@ function tasks(node: Node, depth: number): string {
   const indent = "  ".repeat(depth);
   return childNodes(node)
     .map((item) => {
-      const done = textOf(attrs(item)["state"]) === "DONE";
+      const done = fieldText(attrs(item)["state"]) === "DONE";
       return `${indent}- [${done ? "x" : " "}] ${inlineChildren(item, depth + 1)}`;
     })
     .join("\n");
@@ -247,7 +252,7 @@ function block(node: Node, depth: number): string {
     case "paragraph":
       return inlineChildren(node, depth);
     case "heading": {
-      const level = numberOf(attrs(node)["level"]) ?? 1;
+      const level = asNumber(attrs(node)["level"]) ?? 1;
       const hashes = "#".repeat(Math.min(Math.max(level, 1), 6));
       return `${hashes} ${inlineChildren(node, depth)}`;
     }
@@ -265,9 +270,11 @@ function block(node: Node, depth: number): string {
         )
         .join("\n");
     case "codeBlock": {
-      const language = flatten(textOf(attrs(node)["language"]));
+      const language = flatten(fieldText(attrs(node)["language"]));
       const code = childNodes(node)
-        .map((child) => (typeOf(child) === "text" ? textOf(child["text"]) : ""))
+        .map((child) =>
+          typeOf(child) === "text" ? fieldText(child["text"]) : "",
+        )
         .join("")
         .replace(/\n+$/u, "");
       return `\`\`\`${language}\n${flatten(code)}\n\`\`\``;
@@ -281,13 +288,13 @@ function block(node: Node, depth: number): string {
     case "rule":
       return "---";
     case "panel": {
-      const kind = flatten(textOf(attrs(node)["panelType"]));
+      const kind = flatten(fieldText(attrs(node)["panelType"]));
       const inner = blocks(childNodes(node), depth + 1).join("\n\n");
       return inner === "" ? `[panel: ${kind}]` : `[panel: ${kind}]\n${inner}`;
     }
     case "expand":
     case "nestedExpand": {
-      const title = flatten(textOf(attrs(node)["title"]));
+      const title = flatten(fieldText(attrs(node)["title"]));
       const inner = blocks(childNodes(node), depth + 1).join("\n\n");
       const head = title === "" ? "[expand]" : `[expand: ${title}]`;
       return inner === "" ? head : `${head}\n${inner}`;

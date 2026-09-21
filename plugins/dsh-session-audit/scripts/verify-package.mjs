@@ -44,6 +44,10 @@ await runVerifyPackage({
       "dsh-audit-json__tree",
       "dsh-audit-md__table",
       "dsh-audit-page__body",
+      // The notice about the audits no session can show: an audit that is
+      // invisible everywhere is exactly the bug this ships for.
+      "dsh-audit-unattached__item",
+      "not shown in any session",
     ],
     notMatches: [
       // A Node builtin in a browser bundle is a load error, not a fallback.
@@ -69,6 +73,7 @@ await runVerifyPackage({
     for (const file of [
       "src/client/index.tsx",
       "src/client/AuditPage.tsx",
+      "src/client/UnattachedAudits.tsx",
       "src/client/styles.ts",
     ]) {
       const source = await readFile(file);

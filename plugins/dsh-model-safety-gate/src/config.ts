@@ -26,11 +26,18 @@ export type GateMode = "off" | "audit" | "warn" | "enforce";
 /** Streaming enforcement mode (design SPEC §11). */
 export type StreamMode = "observe" | "interrupt" | "buffered";
 
+/**
+ * How the tool gate surfaces an escalation that cannot reach a human
+ * (SPEC §17). The escalation is resolved by the runtime through the
+ * `approval` service, and that outcome vocabulary carries no reason.
+ */
+export type UnanswerableAsk = "deny" | "ask";
+
 /** Raw user-facing configuration. */
 export interface ModelSafetyGateConfig {
   /** Master switch; when false nothing is scanned or blocked. */
   readonly enabled?: boolean;
-  /** off | audit | warn | enforce (design SPEC §24). */
+  /** off | audit | warn | enforce (design SPEC §24); `off` scans nothing. */
   readonly mode?: GateMode;
 
   readonly classifier?: {
@@ -81,6 +88,22 @@ export interface ModelSafetyGateConfig {
     readonly semanticClassifier?: boolean;
     /** Scan only calls touching these tool names (empty = all). */
     readonly sensitiveTools?: readonly string[];
+    /**
+     * What to do with an escalation a session's approval policy answers with a
+     * refusal before anyone is asked.
+     *
+     * The runtime resolves `ask` through the `approval` service, whose closed
+     * outcome vocabulary carries no reason: it turns the outcome into its own
+     * sentence, so a `rejected` outcome reads `the user rejected tool "X"` and
+     * the gate's own reason is dropped. Under a `never` policy the service
+     * returns that outcome deterministically, without dispatching to any
+     * answerer — a refusal that names a person who was never asked.
+     *
+     * `deny` (default) refuses such an escalation with the gate's own verdict
+     * instead. `ask` keeps the native approval flow for a deployment whose own
+     * gate answers asks ahead of that policy.
+     */
+    readonly unanswerableAsk?: UnanswerableAsk;
   };
 
   readonly toolResults?: {
@@ -145,6 +168,7 @@ export interface ResolvedSafetyGateConfig {
     readonly enabled: boolean;
     readonly semanticClassifier: boolean;
     readonly sensitiveTools: readonly string[];
+    readonly unanswerableAsk: UnanswerableAsk;
   };
   readonly toolResults: {
     readonly enabled: boolean;
@@ -191,6 +215,7 @@ export const SAFETY_GATE_DEFAULTS = {
   toolsEnabled: true,
   semanticClassifier: true,
   sensitiveTools: [] as string[],
+  unanswerableAsk: "deny",
   toolResultsEnabled: true,
   classifyUntrustedSources: true,
   auditEnabled: true,
@@ -201,11 +226,29 @@ export const SAFETY_GATE_DEFAULTS = {
   maxScanChars: 65_536,
 } as const;
 
+/**
+ * Whether the whole gate is switched off (design SPEC §24, §26).
+ *
+ * The master switch (`enabled: false`) and the `off` profile are the same
+ * decision spelled twice, and both mean *nothing happens*: no scan, no
+ * classifier call, no audit event, no blocked decision. A surface that is off
+ * therefore returns before it reaches the pipeline — not after the pipeline has
+ * already classified the content and decided to keep quiet about it, which is
+ * what an off gate used to do on every surface but the output stream.
+ */
+export function isGateOff(config: {
+  readonly enabled: boolean;
+  readonly mode: GateMode;
+}): boolean {
+  return !config.enabled || config.mode === "off";
+}
+
 const GATE_MODES = ["off", "audit", "warn", "enforce"] as const;
 const FAILURE_MODES = ["closed", "open", "rules-only", "ask"] as const;
 const STREAM_MODES = ["observe", "interrupt", "buffered"] as const;
 const BACKENDS = ["none", "dsh", "openai-compatible"] as const;
 const ACTION_MODES = ["allow", "warn", "block"] as const;
+const UNANSWERABLE_ASKS = ["deny", "ask"] as const;
 
 function enumOr<T extends readonly string[]>(
   values: T,
@@ -342,11 +385,15 @@ export const ModelSafetyGateConfigSchema = z.object({
       sensitiveTools: z
         .array(z.string())
         .default([...SAFETY_GATE_DEFAULTS.sensitiveTools]),
+      unanswerableAsk: z
+        .union([...UNANSWERABLE_ASKS.map((value) => z.const(value))])
+        .default(SAFETY_GATE_DEFAULTS.unanswerableAsk),
     })
     .default({
       enabled: SAFETY_GATE_DEFAULTS.toolsEnabled,
       semanticClassifier: SAFETY_GATE_DEFAULTS.semanticClassifier,
       sensitiveTools: [...SAFETY_GATE_DEFAULTS.sensitiveTools],
+      unanswerableAsk: SAFETY_GATE_DEFAULTS.unanswerableAsk,
     }),
   toolResults: z
     .object({
@@ -547,6 +594,12 @@ export function resolveSafetyGateConfig(
       sensitiveTools: [
         ...(tools.sensitiveTools ?? SAFETY_GATE_DEFAULTS.sensitiveTools),
       ],
+      unanswerableAsk: enumOr(
+        UNANSWERABLE_ASKS,
+        "tools.unanswerableAsk",
+        tools.unanswerableAsk,
+        SAFETY_GATE_DEFAULTS.unanswerableAsk,
+      ),
     },
     toolResults: {
       enabled: toolResults.enabled ?? SAFETY_GATE_DEFAULTS.toolResultsEnabled,

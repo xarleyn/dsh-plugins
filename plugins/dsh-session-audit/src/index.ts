@@ -20,11 +20,13 @@ import {
 import type { AuditSummary } from "@yadsh/dsh-audit-core";
 import { Config, resolveConfig, type SessionAuditConfig } from "./config.js";
 import { AuditService } from "./host/audit-service.js";
+import { toUnattachedValue } from "./host/unattached.js";
 import {
   emptyAuditValue,
   emptySummaryValue,
   type AuditSummaryValue,
   type SessionAuditValue,
+  type UnattachedAuditValue,
 } from "./types.js";
 
 export const name = "session-audit";
@@ -146,6 +148,20 @@ export class SessionAuditService extends TypertRemoteService {
       values.push(toSummaryValue(record.summary, false));
     }
     return values;
+  }
+
+  /**
+   * The audits no session view can show, newest first.
+   *
+   * This is the one answer to "the audit is in the root and nothing shows it":
+   * an artefact no session claims, or a directory that is not a readable audit
+   * yet, is listed here instead of being silently absent everywhere (SPEC
+   * §2.3). It carries codes rather than messages, because the messages name
+   * paths on the host.
+   */
+  @Remote("unattached")
+  unattached(): UnattachedAuditValue[] {
+    return this.service.registry.unattached().map(toUnattachedValue);
   }
 
   /** The full audit: summary, raw analysis text and report text (SPEC §33). */

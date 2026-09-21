@@ -51,6 +51,7 @@ export function summary(
     diagnostics: [],
     updatedAt: "2026-09-14T10:00:00.000Z",
     revision: "rev-1",
+    adminEdit: null,
     ...overrides,
   };
 }

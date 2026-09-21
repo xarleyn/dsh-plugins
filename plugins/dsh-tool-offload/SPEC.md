@@ -71,7 +71,8 @@ tools/post-execute fires
                       └─ any failure ─────────────────── fallback mode
 ```
 
-Dispose: the `tools/post-execute` listener is unregistered and the logger
+Dispose: the `tools/post-execute` listener is unregistered — the mount collects
+its undo action for exactly that — and the logger
 closed; in-flight workers settle through their own runs.
 
 ## 4. Scope

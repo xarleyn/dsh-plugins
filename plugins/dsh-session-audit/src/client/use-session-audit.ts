@@ -5,13 +5,19 @@
  * — one map lookup on the host — until the reader opens the Audit view, and
  * only then fetches the documents. The summary is re-read on a timer because
  * an audit can appear while a session is open, and polling a materialised
- * summary is the affordable way to notice.
+ * summary is the affordable way to notice. The unattached list rides the same
+ * timer, because it is the same registry and the same question: what is there
+ * now that was not there a moment ago.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { startVisibilityAwarePolling } from "@yadsh/dsh-plugin-kit/client";
 import type { AuditApi } from "./api.js";
 import { parseAnalysis, type ParsedAnalysis } from "./analysis.js";
-import type { AuditSummaryValue, SessionAuditValue } from "../types.js";
+import type {
+  AuditSummaryValue,
+  SessionAuditValue,
+  UnattachedAuditValue,
+} from "../types.js";
 
 /** How often an open session re-reads its summary. */
 export const SUMMARY_POLL_MS = 15_000;
@@ -94,6 +100,53 @@ export function useAuditSummary(
   }, [refresh, intervalMs]);
 
   return state;
+}
+
+/**
+ * Track the audits no session view can show, refreshable while visible.
+ *
+ * A failure here is deliberately swallowed. This list is an advisory beside
+ * the audit the reader actually asked for, and a notice that cannot be fetched
+ * must not turn a working audit into an error page: the last good list stays,
+ * and a list that never resolved renders as nothing at all — the silence this
+ * feature exists to break is still better than breaking the page.
+ *
+ * @param api - the Remote facade.
+ * @param intervalMs - poll interval; `0` disables polling.
+ */
+export function useUnattachedAudits(
+  api: AuditApi,
+  intervalMs: number = SUMMARY_POLL_MS,
+): readonly UnattachedAuditValue[] {
+  const [items, setItems] = useState<readonly UnattachedAuditValue[]>([]);
+  const alive = useRef(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const value = await api.unattached();
+      if (!alive.current) return;
+      setItems(value);
+    } catch {
+      // Keep the last good list; see the note above.
+    }
+  }, [api]);
+
+  useEffect(() => {
+    alive.current = true;
+    void refresh();
+    if (intervalMs <= 0) {
+      return () => {
+        alive.current = false;
+      };
+    }
+    const stop = startVisibilityAwarePolling(() => refresh(), intervalMs);
+    return () => {
+      alive.current = false;
+      stop();
+    };
+  }, [refresh, intervalMs]);
+
+  return items;
 }
 
 /**

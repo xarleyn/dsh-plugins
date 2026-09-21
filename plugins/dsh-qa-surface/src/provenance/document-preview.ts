@@ -41,6 +41,10 @@ function toPreview(bytes: Buffer, name: string): QaDocumentPreview {
  * refuses with `unsupported` rather than growing a second converter here. The
  * input path passes the same containment check the panel's other reads use, so
  * a preview cannot read what a listing could not reach.
+ *
+ * The resolved root the check opened is handed to the pipeline as well (§26.2):
+ * an uploaded Word file lives in the attachment store, and a pipeline that is
+ * not told about that root refuses the file this check just accepted.
  */
 export async function previewConvertibleDocument({
   documents,
@@ -54,11 +58,17 @@ export async function previewConvertibleDocument({
   if (!isConvertibleDocument(mediaTypeOf(resolved.canonical))) {
     throw new QaSourcePreviewError("unsupported");
   }
+  const extraInputRoots =
+    file.attachmentRoot === undefined ? [] : [file.attachmentRoot];
   let rendered: string;
   try {
     const converted = await face.convert(
       { file: resolved.canonical, targetFormat: "pdf" },
-      { workspaceRoot: file.cwd, sessionId },
+      {
+        workspaceRoot: file.cwd,
+        sessionId,
+        ...(extraInputRoots.length === 0 ? {} : { extraInputRoots }),
+      },
     );
     const pdf = converted.files.find(
       (output) => output.format === "pdf" && output.status === "created",

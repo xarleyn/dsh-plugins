@@ -14,8 +14,11 @@ import type { QaPersonalSkills, QaStoredSkill } from "./service.js";
  * through the nearest `.git`, which for a personal QA directory inside a larger
  * checkout would climb above the account and mix users together. This provider
  * reads exactly one place — `<cwd>/.dsh/skills` where the cwd is a provisioned
- * `.qa-users/<uuid>` directory — and replaces the filesystem layer inside the
- * QA scope rather than adding a second one beside it.
+ * `.qa-users/<uuid>` directory — and the deployment's shared root beside the
+ * registered workspace, replacing the filesystem layer inside the QA scope
+ * rather than adding a second one beside it. A shared skill is labelled and
+ * ranked distinctly, so a load can tell the deployment's own instructions from
+ * the account's.
  */
 
 export const QA_USER_SKILLS_PROVIDER = "qa-user-skills";
@@ -26,6 +29,15 @@ export const QA_USER_SKILLS_SOURCE = "qa-user";
  * QA scope a personal skill wins a same-named duplicate from any other layer.
  */
 export const QA_USER_SKILLS_RANK = 50;
+/** Prompt-visible provenance label for a deployment-wide shared skill. */
+export const QA_SHARED_SKILLS_SOURCE = "qa-shared";
+/**
+ * Rank between the personal layer (50) and the project layer (100). A shared
+ * skill is curated for the whole deployment, so it outranks what a checkout
+ * happens to carry — but one account's own copy of the same name still wins,
+ * because that is the layer a person deliberately edited about themselves.
+ */
+export const QA_SHARED_SKILLS_RANK = 60;
 
 /** The opaque handle a candidate carries back into {@link SkillProvider.get}. */
 interface QaSkillLocator {
@@ -68,10 +80,10 @@ function candidateOf(stored: QaStoredSkill): SkillCandidate | undefined {
       modelInvocable: contents.modelInvocable,
       userInvocable: contents.userInvocable,
     },
-    source: QA_USER_SKILLS_SOURCE,
+    source: stored.shared ? QA_SHARED_SKILLS_SOURCE : QA_USER_SKILLS_SOURCE,
     provider: QA_USER_SKILLS_PROVIDER,
     resourceBase: { kind: "directory", path: stored.directory },
-    rank: QA_USER_SKILLS_RANK,
+    rank: stored.shared ? QA_SHARED_SKILLS_RANK : QA_USER_SKILLS_RANK,
     locator: { directory: stored.directoryName } satisfies QaSkillLocator,
     path: stored.filePath,
     // The registry drops metadata from its summaries, so `allowed-tools` is

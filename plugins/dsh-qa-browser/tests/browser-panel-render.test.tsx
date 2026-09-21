@@ -10,6 +10,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { BrowserPanel } from "../src/client/BrowserPanel.js";
+import type { BrowserPolicyRefusal } from "../src/types.js";
 
 import {
   host,
@@ -22,6 +23,35 @@ import {
 
 afterEach(cleanup);
 
+/** The refusal text the policy produces for a host that resolves privately. */
+const PRIVATE_NETWORK_REFUSAL =
+  'Private-network destinations are blocked by Browser policy: "intranet.example.corp" resolves to a RFC1918 (10/8, 172.16/12, 192.168/16) address. Allow the host in security.network.allowHosts (or set security.network.allowPrivateNetworks) to reach it.';
+
+/** A request the page made and the policy refused. */
+function resourceRefusal(
+  overrides: Partial<BrowserPolicyRefusal> = {},
+): BrowserPolicyRefusal {
+  return {
+    code: "BROWSER_HOST_BLOCKED",
+    kind: "resource",
+    host: "api.intranet.example.corp",
+    message: PRIVATE_NETWORK_REFUSAL,
+    count: 1,
+    ...overrides,
+  };
+}
+
+/** A navigation the policy refused, i.e. the page itself never opened. */
+function documentRefusal(
+  overrides: Partial<BrowserPolicyRefusal> = {},
+): BrowserPolicyRefusal {
+  return resourceRefusal({
+    kind: "document",
+    host: "intranet.example.corp",
+    ...overrides,
+  });
+}
+
 describe("BrowserPanel", () => {
   it("renders the active tab and its bounded on-demand frame", async () => {
     const { remote, mocks } = host(panelState([tab()], "tab-a"));
@@ -31,9 +61,13 @@ describe("BrowserPanel", () => {
       name: /Example App/u,
     })) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe("data:image/png;base64,AA==");
-    expect(
-      screen.getByRole("textbox", { name: "Адрес Browser" }),
-    ).toHaveProperty("value", "https://example.test/app");
+    // The address field is a draft synced from the selected tab in an effect,
+    // so it settles one flush after the frame appears (raced on CI).
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Адрес Browser" }),
+      ).toHaveProperty("value", "https://example.test/app"),
+    );
     expect(screen.getByText("1440×900")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Example App/u })).toBeTruthy();
     expect(mocks.panelState).toHaveBeenCalledWith(TOKEN, SESSION);
@@ -125,5 +159,103 @@ describe("BrowserPanel", () => {
     await waitFor(() =>
       expect(screen.getByRole("img", { name: /Example App/u })).toBeTruthy(),
     );
+  });
+
+  it("shows a refused navigation to the operator, not only to the model", async () => {
+    const { remote } = host(
+      panelState([tab({ policyRefusals: [documentRefusal()] })], "tab-a"),
+    );
+    render(<BrowserPanel {...owner(remote)} />);
+
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toContain("не пускает на intranet.example.corp");
+    expect(banner.textContent).toContain("security.network.allowHosts");
+  });
+
+  it("explains a page that opened without its blocked requests", async () => {
+    const { remote } = host(
+      panelState(
+        [
+          tab({
+            policyRefusals: [
+              resourceRefusal({ host: "api.intranet.example.corp", count: 3 }),
+              resourceRefusal({ host: "cdn.intranet.example.corp" }),
+            ],
+          }),
+        ],
+        "tab-a",
+      ),
+    );
+    render(<BrowserPanel {...owner(remote)} />);
+
+    const banner = await screen.findByRole("alert");
+    // Nothing about the page failing to open: it opened, and that is the
+    // difference the operator needs to read before choosing what to allow.
+    expect(banner.textContent).toContain("загрузилась не полностью");
+    expect(banner.textContent).toContain("api.intranet.example.corp");
+    expect(banner.textContent).toContain("cdn.intranet.example.corp");
+    // A retried endpoint is one thing to fix, so it is counted, not repeated.
+    expect(banner.textContent).toContain("запросы страницы ×3");
+  });
+
+  it("does not explain one tab with another tab's refusals", async () => {
+    const refused = tab({
+      id: "tab-a",
+      title: "Broken",
+      policyRefusals: [resourceRefusal({ host: "api.intranet.example.corp" })],
+    });
+    const clean = tab({
+      id: "tab-b",
+      url: "https://second.test/",
+      title: "Second",
+    });
+    const { remote } = host(panelState([refused, clean], "tab-b"));
+    render(<BrowserPanel {...owner(remote)} />);
+
+    // The tab in front of the operator is the one being explained, and the
+    // page on screen was not the one refused anything.
+    await screen.findByRole("img", { name: /Second/u });
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The strip still says which tab is the broken one.
+    expect(screen.getByTitle(/Заблокировано запросов/u)).toBeTruthy();
+  });
+
+  it("heads a mixed notice with the page's own refusal", async () => {
+    const { remote } = host(
+      panelState(
+        [
+          tab({
+            policyRefusals: [
+              resourceRefusal({ host: "api.intranet.example.corp", count: 2 }),
+              documentRefusal({ host: "docs.example.corp" }),
+            ],
+          }),
+        ],
+        "tab-a",
+        // A refusal with no page behind it rides along with the tab's own.
+        {
+          policyRefusals: [
+            resourceRefusal({ host: "cdn.intranet.example.corp" }),
+          ],
+        },
+      ),
+    );
+    render(<BrowserPanel {...owner(remote)} />);
+
+    const banner = await screen.findByRole("alert");
+    expect(banner.textContent).toContain("не пускает на docs.example.corp");
+    // The refused requests stay visible: the page did load its shell from an
+    // allowed host, and that is where the missing data came from.
+    expect(banner.textContent).toContain("api.intranet.example.corp");
+    expect(banner.textContent).toContain("cdn.intranet.example.corp");
+  });
+
+  it("keeps the banner out of the panel while nothing was refused", async () => {
+    const { remote } = host(panelState([tab()], "tab-a"));
+    render(<BrowserPanel {...owner(remote)} />);
+    await screen.findByRole("img", { name: /Example App/u });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTitle(/Заблокировано запросов/u)).toBeNull();
   });
 });

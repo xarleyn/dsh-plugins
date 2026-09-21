@@ -1,10 +1,18 @@
 import {
+  invalid,
   optionalBoolean,
+  optionalChoice,
   optionalInteger,
   optionalText,
   requiredText,
 } from "../../coerce.js";
-import { IntegrationError } from "../../errors.js";
+import {
+  booleanOf,
+  compact,
+  numberOf,
+  recordOf,
+  stringOf,
+} from "../shared/payload.js";
 import type { TestitFlags } from "./config.js";
 import type { TestitPage } from "./transport.js";
 
@@ -82,10 +90,6 @@ const DETAILS_CHARS = 1_000;
 const TEXT_CHARS = 2_000;
 const CONFIG_TEXT_CHARS = 200;
 
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
-
 /** One Test IT identifier: a project, work item, run, result or attachment id. */
 function entityId(value: unknown, field: string): string {
   const normalized = requiredText(value, field, 1, 64);
@@ -95,18 +99,6 @@ function entityId(value: unknown, field: string): string {
 
 function optionalEntityId(value: unknown, field: string): string | undefined {
   return value === undefined ? undefined : entityId(value, field);
-}
-
-function oneOf(
-  value: unknown,
-  allowed: readonly string[],
-  field: string,
-  maxLength: number,
-): string | undefined {
-  const normalized = optionalText(value, field, 1, maxLength);
-  if (normalized === undefined) return undefined;
-  if (!allowed.includes(normalized)) invalid(field);
-  return normalized;
 }
 
 /**
@@ -132,7 +124,7 @@ function runStateFlags(value: unknown): readonly string[] {
     invalid("states");
   }
   return value.map((item) => {
-    const state = oneOf(item, TEST_RUN_STATES, "states", 16);
+    const state = optionalChoice(item, TEST_RUN_STATES, "states", 1, 16);
     if (state === undefined) invalid("states");
     return state;
   });
@@ -357,55 +349,21 @@ export const TESTIT_HANDLERS: Readonly<Record<string, TestitOperationHandler>> =
 /* Response shaping                                                    */
 /* ------------------------------------------------------------------ */
 
-function recordOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function arrayOf(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
-function stringOf(
-  source: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  const value = source[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
-}
-
-function numberOf(
-  source: Record<string, unknown>,
-  key: string,
-): number | undefined {
-  const value = source[key];
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function booleanOf(
-  source: Record<string, unknown>,
-  key: string,
-): boolean | undefined {
-  const value = source[key];
-  return typeof value === "boolean" ? value : undefined;
-}
-
-/** Drop unset keys so a projection never answers with `undefined` holes. */
-function compact(source: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(source).filter(([, value]) => value !== undefined),
-  );
-}
-
 /** External text a projection collected; omitted entirely when there is none. */
 function contentOf(
   entries: Readonly<Record<string, unknown>>,
 ): Record<string, unknown> | undefined {
   const block = compact(entries);
   return Object.keys(block).length === 0 ? undefined : block;
+}
+
+/**
+ * A value that holds zero or more items. Unlike the shared `arrayOf`, which
+ * reads a named field of a payload, this one reads a value the projection
+ * already picked up, so the caller names the field.
+ */
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function itemsOf(value: unknown): unknown[] {
@@ -471,7 +429,7 @@ function mapObject(
 }
 
 function compactList(value: unknown): Record<string, unknown>[] | undefined {
-  const items = arrayOf(value)
+  const items = asArray(value)
     .map((item) => compact(recordOf(item)))
     .filter((item) => Object.keys(item).length > 0);
   return items.length === 0 ? undefined : items;
@@ -502,7 +460,7 @@ function attachmentSummary(value: unknown): Record<string, unknown> {
 }
 
 function attachmentsOf(value: unknown): Record<string, unknown>[] | undefined {
-  const items = arrayOf(value).map(attachmentSummary);
+  const items = asArray(value).map(attachmentSummary);
   return items.length === 0 ? undefined : items;
 }
 
@@ -517,12 +475,12 @@ function linkSummary(value: unknown): Record<string, unknown> {
 }
 
 function linksOf(value: unknown): Record<string, unknown>[] | undefined {
-  const items = arrayOf(value).map(linkSummary);
+  const items = asArray(value).map(linkSummary);
   return items.length === 0 ? undefined : items;
 }
 
 function tagNames(value: unknown): string[] | undefined {
-  const items = arrayOf(value)
+  const items = asArray(value)
     .map((item) =>
       typeof item === "string" ? item : stringOf(recordOf(item), "name"),
     )
@@ -532,7 +490,7 @@ function tagNames(value: unknown): string[] | undefined {
 
 function iterationSummary(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
-  const parameters = arrayOf(source["parameters"])
+  const parameters = asArray(source["parameters"])
     .map((item) => {
       const parameter = recordOf(item);
       return compact({
@@ -548,7 +506,7 @@ function iterationSummary(value: unknown): Record<string, unknown> {
 }
 
 function iterationsOf(value: unknown): Record<string, unknown>[] | undefined {
-  const items = arrayOf(value).map(iterationSummary);
+  const items = asArray(value).map(iterationSummary);
   return items.length === 0 ? undefined : items;
 }
 
@@ -572,7 +530,7 @@ function stepSummary(value: unknown): Record<string, unknown> {
 }
 
 function stepsOf(value: unknown): Record<string, unknown>[] | undefined {
-  const items = arrayOf(value).map(stepSummary);
+  const items = asArray(value).map(stepSummary);
   return items.length === 0 ? undefined : items;
 }
 
@@ -584,7 +542,7 @@ function attributeSummary(value: unknown): Record<string, unknown> {
     type: stringOf(source, "type"),
     isRequired: booleanOf(source, "isRequired"),
     isEnabled: booleanOf(source, "isEnabled"),
-    options: arrayOf(source["options"])
+    options: asArray(source["options"])
       .map((item) => {
         const option = recordOf(item);
         return bounded(stringOf(option, "value"), CONFIG_TEXT_CHARS);
@@ -713,7 +671,7 @@ function workItemSummary(value: unknown): Record<string, unknown> {
 function workItemDetail(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
   const attributes = mapObject(source["attributes"], CONFIG_TEXT_CHARS);
-  const parameters = arrayOf(source["parameters"])
+  const parameters = asArray(source["parameters"])
     .map((item) => {
       const parameter = recordOf(item);
       return compact({
@@ -739,7 +697,7 @@ function workItemDetail(value: unknown): Record<string, unknown> {
     autoTests: compactList(source["autoTests"]),
     attachments: attachmentsOf(source["attachments"]),
     links: linksOf(source["links"]),
-    externalIssues: arrayOf(source["externalIssues"])
+    externalIssues: asArray(source["externalIssues"])
       .map((item) => {
         const issue = recordOf(item);
         return compact({
@@ -930,7 +888,7 @@ function testResultShort(value: unknown): Record<string, unknown> {
 
 function testPointResult(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
-  const results = arrayOf(source["testResults"]).map(testResultShort);
+  const results = asArray(source["testResults"]).map(testResultShort);
   return compact({
     testPointId: stringOf(source, "testPointId"),
     workItemGlobalId: numberOf(source, "workItemGlobalId"),
@@ -944,7 +902,7 @@ function testPointResult(value: unknown): Record<string, unknown> {
 
 function testResultDetail(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
-  const stepResults = arrayOf(source["stepResults"]).map((item) => {
+  const stepResults = asArray(source["stepResults"]).map((item) => {
     const step = recordOf(item);
     return compact({
       stepId: stringOf(step, "stepId"),
@@ -968,7 +926,7 @@ function testResultDetail(value: unknown): Record<string, unknown> {
     outcome: stringOf(source, "outcome"),
     status: statusOf(source["status"]),
     failureType: stringOf(source, "failureType"),
-    failureClassIds: arrayOf(source["failureClassIds"]).filter(
+    failureClassIds: asArray(source["failureClassIds"]).filter(
       (item): item is string => typeof item === "string",
     ),
     durationMs: numberOf(source, "durationInMs"),
@@ -1028,7 +986,7 @@ function autoTestSummary(value: unknown): Record<string, unknown> {
 /** One automatic-test step, nested the way Test IT nests them. */
 function autoTestStep(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
-  const nested = arrayOf(source["steps"]).map(autoTestStep);
+  const nested = asArray(source["steps"]).map(autoTestStep);
   return compact({
     title: bounded(stringOf(source, "title"), 512),
     description: contentBlock(stringOf(source, "description"), TEXT_CHARS),
@@ -1043,9 +1001,9 @@ function autoTestDetail(value: unknown): Record<string, unknown> {
     untrustedContent: contentOf({
       description: contentBlock(stringOf(source, "description"), TEXT_CHARS),
     }),
-    steps: arrayOf(source["steps"]).map(autoTestStep),
-    setup: arrayOf(source["setup"]).map(autoTestStep),
-    teardown: arrayOf(source["teardown"]).map(autoTestStep),
+    steps: asArray(source["steps"]).map(autoTestStep),
+    setup: asArray(source["setup"]).map(autoTestStep),
+    teardown: asArray(source["teardown"]).map(autoTestStep),
     links: linksOf(source["links"]),
   });
 }
@@ -1165,7 +1123,7 @@ export const TESTIT_PROJECTIONS: Readonly<Record<string, TestitProjection>> =
           ),
         }),
         workflowId: stringOf(source, "workflowId"),
-        attributesScheme: arrayOf(source["attributesScheme"])
+        attributesScheme: asArray(source["attributesScheme"])
           .map(attributeSummary)
           .filter((item) => Object.keys(item).length > 0),
       });
@@ -1196,22 +1154,25 @@ export const TESTIT_PROJECTIONS: Readonly<Record<string, TestitProjection>> =
         context.flags,
       );
       const offset = listOffset(context.input["offset"]);
-      const entityType = oneOf(
+      const entityType = optionalChoice(
         context.input["entityType"],
         WORK_ITEM_ENTITY_TYPES,
         "entityType",
+        1,
         32,
       );
-      const state = oneOf(
+      const state = optionalChoice(
         context.input["state"],
         WORK_ITEM_STATES,
         "state",
+        1,
         32,
       );
-      const priority = oneOf(
+      const priority = optionalChoice(
         context.input["priority"],
         WORK_ITEM_PRIORITIES,
         "priority",
+        1,
         16,
       );
       const tag = optionalText(context.input["tag"], "tag", 1, 128);
@@ -1269,10 +1230,11 @@ export const TESTIT_PROJECTIONS: Readonly<Record<string, TestitProjection>> =
         context.flags,
       );
       const offset = listOffset(context.input["offset"]);
-      const outcome = oneOf(
+      const outcome = optionalChoice(
         context.input["outcome"],
         RESULT_OUTCOMES,
         "outcome",
+        1,
         16,
       );
       const items = itemsOf(data)
@@ -1336,10 +1298,11 @@ export const TESTIT_PROJECTIONS: Readonly<Record<string, TestitProjection>> =
         TESTIT_LIMITS.testResults,
         context.flags,
       );
-      const outcome = oneOf(
+      const outcome = optionalChoice(
         context.input["outcome"],
         RESULT_OUTCOMES,
         "outcome",
+        1,
         16,
       );
       const items = itemsOf(data)

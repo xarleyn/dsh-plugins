@@ -81,6 +81,14 @@ export class ToolOffloadService extends Service {
   private readonly globalGate: Semaphore;
   private readonly agentGate: KeyedLimiter;
   private disposed = false;
+  /**
+   * Undo actions for the tool mount, collected so `dispose()` can walk them.
+   * The list has to live on the instance for that to ever happen: a local
+   * array is unreachable from `dispose()`, which is how the
+   * `tools/post-execute` listener used to survive a service rebuild
+   * (PLUGIN_GUIDELINES §3.4).
+   */
+  private readonly disposers: (() => void)[] = [];
 
   constructor(
     ctx: Context,
@@ -101,8 +109,11 @@ export class ToolOffloadService extends Service {
         consoleSink: createHostLoggerSink(ctx.logger),
       }) as PluginLogger & PluginLoggerLike);
 
-    const disposers: (() => void)[] = [];
+    const disposers = this.disposers;
     ctx.inject(["tools", "subagents"], (host: OffloadHostContextLike) => {
+      // The runtime can arrive while the plugin is being torn down; mounting
+      // there would collect undo actions nobody will ever walk.
+      if (this.disposed) return;
       const runner = deps.runner ?? createSubagentRunner(host.subagents);
       disposers.push(
         host.on(
@@ -154,6 +165,14 @@ export class ToolOffloadService extends Service {
   private dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    for (const dispose of this.disposers.splice(0)) {
+      try {
+        dispose();
+      } catch {
+        // Disposal stays idempotent and contained: one broken remover must not
+        // leave the rest of the mount dangling.
+      }
+    }
     void this.logger.close?.();
   }
 }

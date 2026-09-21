@@ -103,6 +103,14 @@ describe("applyGateMode", () => {
     expect(applyGateMode("block", "audit")).toBe("allow");
   });
 
+  it("off mode never enforces either", () => {
+    // The surfaces stop before the mapping when the gate is off; this is the
+    // second line of defence for a caller that reaches it anyway.
+    expect(applyGateMode("block", "off")).toBe("allow");
+    expect(applyGateMode("warn", "off")).toBe("allow");
+    expect(applyGateMode("allow", "off")).toBe("allow");
+  });
+
   it("warn mode caps blocks at warn", () => {
     expect(applyGateMode("block", "warn")).toBe("warn");
     expect(applyGateMode("warn", "warn")).toBe("warn");

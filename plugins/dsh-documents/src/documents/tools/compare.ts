@@ -16,6 +16,7 @@ import {
   renderWarning,
   requireDocumentScope,
   type DocumentToolExec,
+  type DocumentToolOptions,
   warningsSchema,
 } from "./shared.js";
 
@@ -99,9 +100,7 @@ export const CHANGE_SCHEMA = {
   },
 } as const;
 
-export function createDocumentCompareTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentCompareTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_COMPARE_TOOL,
     description: DESCRIPTION,
@@ -251,7 +250,7 @@ export function createDocumentCompareTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.compare(
         args as unknown as Parameters<DocumentRuntime["compare"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         comparisonId: result.comparisonId,

@@ -6,11 +6,17 @@
  * `allow` → next(), `ask`/`review` → `{ kind: "ask" }` (native approval
  * popup), `block` → `{ kind: "deny", reason }`. High turn risk escalates the
  * surface decision by one band (SPEC §18).
+ *
+ * An escalation the session's approval policy would answer with a refusal
+ * before asking anyone is refused here instead, with the gate's own reason:
+ * the runtime's sentence for that outcome names a human who was never asked
+ * (see `./approval-seam.js`).
  */
 
-import type { ResolvedSafetyGateConfig } from "../config.js";
+import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
 import { applyGateMode } from "../rules/policy.js";
+import { askIsAutoRejected, type ApprovalFace } from "./approval-seam.js";
 import type { TurnRiskTracker } from "./risk-state.js";
 import type { SafetyDecision } from "../types.js";
 
@@ -18,7 +24,11 @@ import type { SafetyDecision } from "../types.js";
 export interface GuardToolExecution {
   readonly name: string;
   readonly arguments: unknown;
-  readonly agent?: { readonly id: string | { toString(): string } };
+  readonly agent?: {
+    readonly id: string | { toString(): string };
+    /** The agent's session: the approval policy is read from it. */
+    readonly session?: unknown;
+  };
 }
 
 export type PreToolDecisionStruct =
@@ -50,13 +60,28 @@ export interface PreExecuteGuardDeps {
   readonly config: ResolvedSafetyGateConfig;
   readonly pipeline: CheckPipeline;
   readonly risk: TurnRiskTracker;
+  /**
+   * The host's approval seam, read per call so a service mounted after this
+   * guard is found and one unmounted mid-session simply disappears. Absent
+   * when the deployment composes no approval service.
+   */
+  readonly approval?: () => ApprovalFace | undefined;
+}
+
+/**
+ * The reason an escalation carries when it is handed to the approval seam.
+ * Under a policy that cannot reach a human the same text becomes the refusal,
+ * so the model learns the rule either way.
+ */
+function escalationReason(categories: string): string {
+  return `Safety gate requests approval (${categories})`;
 }
 
 export function createPreExecuteGuard(
   deps: PreExecuteGuardDeps,
 ): PreExecuteListener {
   return async (exec, next) => {
-    if (!deps.config.tools.enabled) return next();
+    if (isGateOff(deps.config) || !deps.config.tools.enabled) return next();
 
     const sessionId = exec.agent !== undefined ? String(exec.agent.id) : null;
     const sensitiveOnly = deps.config.tools.sensitiveTools;
@@ -89,20 +114,32 @@ export function createPreExecuteGuard(
     const riskLevel =
       sessionId !== null ? deps.risk.get(sessionId)?.riskLevel : undefined;
     const surface = deps.risk.escalate(decision, riskLevel);
+    const categories = result.verdict.categories.join(", ") || "policy";
 
     if (surface === "deny") {
       // Deny without echoing matched content (sanitized audit carries the
       // verdict; the model only sees the policy reason).
       return {
         kind: "deny",
-        reason: `Blocked by dsh-model-safety-gate (${result.verdict.categories.join(", ") || "policy"})`,
+        reason: `Blocked by dsh-model-safety-gate (${categories})`,
       };
     }
     if (surface === "ask") {
-      return {
-        kind: "ask",
-        reason: `Safety gate requests approval (${result.verdict.categories.join(", ") || "policy"})`,
-      };
+      // An ask is resolved by the runtime, not here, and its outcome carries no
+      // reason: under a `never` policy the runtime refuses with a sentence that
+      // blames the user, so the rule that fired is lost and the model is told
+      // no human asked. Refuse with our own verdict when the policy is known to
+      // answer that way; anything unreadable keeps the native flow.
+      if (
+        deps.config.tools.unanswerableAsk === "deny" &&
+        askIsAutoRejected(deps.approval?.(), exec.agent?.session)
+      ) {
+        return {
+          kind: "deny",
+          reason: `Blocked by dsh-model-safety-gate (${categories}): this call needs confirmation, but the session's approval policy is "never", so the request could only ever be refused without asking anyone`,
+        };
+      }
+      return { kind: "ask", reason: escalationReason(categories) };
     }
     return next();
   };

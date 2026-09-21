@@ -69,7 +69,13 @@ describe("personal skill service", () => {
     const cwd = prepareQaUserWorkspace(workspace, USER_B);
     expect(service.discover(cwd)).toEqual([]);
     expect(existsSync(path.join(cwd, ".dsh", "skills"))).toBe(true);
-    expect(observed()).toEqual([path.join(cwd, ".dsh", "skills")]);
+    // Two roots, in the order the read reports them: the account's own, then
+    // the deployment's shared one beside the registered workspace. Both are
+    // reported so a manual edit in either is what invalidates the catalog.
+    expect(observed()).toEqual([
+      path.join(cwd, ".dsh", "skills"),
+      path.join(workspace, ".dsh", "skills"),
+    ]);
   });
 
   it("refuses a duplicate name and keeps a bad draft off the disk", () => {

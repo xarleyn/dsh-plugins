@@ -55,6 +55,30 @@ export const DEFAULT_QA_TEXT_EXTENSIONS: readonly string[] = Object.freeze([
   "diff",
 ]);
 
+/**
+ * Document extensions the stand's document pipeline can read, accepted on top
+ * of the text files. A visitor who has the spec in Word should be able to hand
+ * it over instead of retyping it, and a deployment that renders and converts
+ * those formats is the one that can answer for them: this list is what stops
+ * `attachments.extensions` from being text-only by construction.
+ */
+export const DEFAULT_QA_DOCUMENT_EXTENSIONS: readonly string[] = Object.freeze([
+  "docx",
+  "pdf",
+]);
+
+/**
+ * What a visitor may attach to one message out of the box: the text files plus
+ * the documents the pipeline reads. An operator names whatever their stand can
+ * actually work with — the list is a ceiling, not a guarantee that the model
+ * has a tool for every entry.
+ */
+export const DEFAULT_QA_ATTACHMENT_EXTENSIONS: readonly string[] =
+  Object.freeze([
+    ...DEFAULT_QA_TEXT_EXTENSIONS,
+    ...DEFAULT_QA_DOCUMENT_EXTENSIONS,
+  ]);
+
 /** Bounds the resolver and the settings card agree on. */
 export const QA_PASTED_TEXT_LINES_MIN = 0;
 export const QA_PASTED_TEXT_LINES_MAX = 10_000;
@@ -74,7 +98,7 @@ const EXTENSION_PATTERN = /^[a-z0-9][a-z0-9_-]{0,15}$/u;
  * @param values - raw extension tokens from configuration.
  * @returns the normalized token list.
  */
-export function normalizeTextExtensions(
+export function normalizeAcceptedExtensions(
   values: readonly string[],
 ): readonly string[] {
   const seen = new Set<string>();
@@ -89,22 +113,34 @@ export function normalizeTextExtensions(
 }
 
 /**
- * Whether one file name carries an accepted text extension. The comparison is
+ * The extension one file name carries, lowercase and without the dot. A name
+ * without a dot, or with a hidden-file dot only (`.gitignore`), reports the
+ * whole leaf, which no configured extension can match.
+ * @param name - display file name.
+ * @returns the extension token, or the leaf when there is none.
+ */
+export function fileExtensionOf(name: string): string {
+  const leaf = name.trim().toLowerCase();
+  if (leaf === "") return "";
+  const dot = leaf.lastIndexOf(".");
+  return dot <= 0 ? leaf : leaf.slice(dot + 1);
+}
+
+/**
+ * Whether one file name carries an accepted extension. The comparison is
  * case-insensitive; a name without a dot, or with a hidden-file dot only
  * (`.gitignore`), is matched against the whole leaf.
  * @param name - display file name.
  * @param extensions - normalized accepted extensions.
  * @returns whether the name matches one accepted extension.
  */
-export function hasTextExtension(
+export function hasAcceptedExtension(
   name: string,
   extensions: readonly string[],
 ): boolean {
   const leaf = name.trim().toLowerCase();
   if (leaf === "") return false;
-  const dot = leaf.lastIndexOf(".");
-  const suffix = dot <= 0 ? leaf : leaf.slice(dot + 1);
-  return extensions.includes(suffix);
+  return extensions.includes(fileExtensionOf(name));
 }
 
 /**

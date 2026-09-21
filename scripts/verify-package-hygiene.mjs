@@ -1,7 +1,12 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { findManifestDrift } from "./generate-plugins-manifest.mjs";
+import {
+  collectPluginEntries,
+  findManifestDrift,
+  findManifestSchemaErrors,
+  findReadmeDrift,
+} from "./generate-plugins-manifest.mjs";
 
 const REQUIRED_FILES = [
   "compatibility.json",
@@ -421,6 +426,27 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
   return errors;
 }
 
+/**
+ * The root README is the human entry point to the published set, so its package
+ * table is a second catalog beside `plugins.json`: a package missing from it is
+ * invisible to a reader who never opens the JSON, and a row that still calls a
+ * published package "private" misstates which npm names `dsh plugin add` can
+ * install. The gate keeps both catalogs listing the same package set.
+ */
+export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
+  const readmePath = path.join(repoRoot, "README.md");
+  if (!existsSync(readmePath)) {
+    return ["README.md is missing; it must list every publishable package"];
+  }
+  const readme = readFileSync(readmePath, "utf8");
+  return collectPluginEntries(repoRoot)
+    .filter((entry) => !readme.includes(`\`${entry.npm}\``))
+    .map(
+      (entry) =>
+        `${entry.npm} is missing from the root README package table (${entry.path})`,
+    );
+}
+
 export function verifyPublishablePlugins(repoRoot = process.cwd()) {
   const failures = [];
   let verified = 0;
@@ -457,7 +483,16 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
     }
   }
 
-  for (const error of findManifestDrift(repoRoot)) {
+  const catalogErrors = [
+    ...findManifestDrift(repoRoot),
+    ...findReadmeDrift(repoRoot),
+    ...findManifestSchemaErrors(repoRoot),
+  ];
+  for (const error of catalogErrors) {
+    failures.push(`catalog: ${error}`);
+  }
+
+  for (const error of findReadmeCatalogGaps(repoRoot)) {
     failures.push(`catalog: ${error}`);
   }
 

@@ -152,14 +152,6 @@ export function artifactBinaryProblem(path: string): string | undefined {
   return `artifact type .${extension} is never inlined`;
 }
 
-/** A NUL byte in the head of a body is the classic text/binary split. */
-export function looksBinary(bytes: Uint8Array): boolean {
-  for (const byte of bytes.subarray(0, 8_192)) {
-    if (byte === 0) return true;
-  }
-  return false;
-}
-
 export interface TextArtifactAnswer {
   readonly path: string;
   /** Bytes of the body that was downloaded, not the artifact's full size. */

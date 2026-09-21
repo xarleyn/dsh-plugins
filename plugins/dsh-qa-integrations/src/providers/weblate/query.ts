@@ -7,7 +7,7 @@
  * against; only the operators and fields used below are listed, so an agent
  * cannot reach a lookup this provider has not thought about.
  */
-import { IntegrationError } from "../../errors.js";
+import { invalid } from "../../coerce.js";
 
 /**
  * Values of Weblate's `is:` lookup this provider exposes. `needs-editing` and
@@ -40,10 +40,6 @@ export const FAILING_CHECK_CLAUSE = "has:check";
 export const SUGGESTION_CLAUSE = "has:suggestion";
 export const COMMENT_CLAUSE = "has:comment";
 
-function invalid(): never {
-  throw new IntegrationError("InvalidRequest", "Search text is invalid");
-}
-
 /**
  * One grammar value, always double-quoted with `\` and `"` escaped: the parser
  * accepts quoted strings for every field this provider uses, and a bare word
@@ -52,7 +48,8 @@ function invalid(): never {
  */
 export function quoteQueryValue(value: string): string {
   // eslint-disable-next-line no-control-regex
-  if (value === "" || /[\u0000-\u001f\u007f]/u.test(value)) invalid();
+  if (value === "" || /[\u0000-\u001f\u007f]/u.test(value))
+    invalid("Search text");
   return `"${value.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"')}"`;
 }
 
@@ -71,7 +68,7 @@ export function textClause(field: UnitTextField, value: string): string {
 
 /** Weblate's `is:` state lookup, so the vocabulary stays upstream's own. */
 export function stateClause(state: UnitStateFilter): string {
-  if (!UNIT_STATE_FILTERS.includes(state)) invalid();
+  if (!UNIT_STATE_FILTERS.includes(state)) invalid("Search text");
   return `is:${state}`;
 }
 

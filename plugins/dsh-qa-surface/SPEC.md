@@ -2820,6 +2820,7 @@ rest of the plugin: reuse the native mechanism and add no second runtime.
 ```text
 <registered workspace>/.qa-users/<account UUID>/.dsh/skills/<name>/SKILL.md
 <registered workspace>/.qa-users/<account UUID>/.dsh/skills-trash/<name>-<stamp>/
+<registered workspace>/.dsh/skills/<name>/SKILL.md          (shared, §48)
 ```
 
 - The root is derived, never accepted from the browser: the account token
@@ -2896,7 +2897,9 @@ enforce anything.
   refuses a stale one.
 - `src/personal-skills/provider.ts` — the `qa-user-skills` provider
   (`ctx.skills.registerProvider`), rank 50 so a personal skill wins a
-  same-named duplicate inside the QA scope, `source: "qa-user"`.
+  same-named duplicate inside the QA scope, `source: "qa-user"`; the
+  deployment's shared store is offered by the same provider at rank 60 with
+  `source: "qa-shared"` (§48).
 - `src/personal-skills/host.ts` — registers the provider through
   `ctx.inject(["skills"])`, so a deployment without the skills service keeps
   the editor working and publishes nothing.
@@ -2911,9 +2914,10 @@ enforce anything.
   `skillsValidate`. Each takes the account token as its first argument and
   answers with the shared `(reason: <code>)` marker on refusal.
 - Audit lines: `skill.create`, `skill.update`, `skill.delete`,
-  `skill.validation-failed`, `skill.provider.invalidate-failed`. The account
-  id is hashed and skill bodies never reach the log; a storage success whose
-  catalog refresh failed is logged as its own event.
+  `skill.validation-failed`, `skill.provider.invalidate-failed`,
+  `skill.admin-edit-record-failed`. The account id is hashed — the shared
+  scope is logged as `scope: "shared"` — and skill bodies never reach the log;
+  a storage success whose catalog refresh failed is logged as its own event.
 
 ### 47.6 Settings dialog
 
@@ -2950,3 +2954,91 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   `ctx.inject(["skills"])` registration, the storage primitives in the built
   service, the dialog classes in the built bundle, and the absence of the old
   profile shell.
+
+---
+
+## 48. Shared skills and administrator editing
+
+### 48.1 Motivation
+
+§47 gave a person a skill they own; nothing owned the skills a deployment wants
+in every chat. Two things were missing: a store that is not tied to one
+account, and a way for an administrator to repair a skill somebody else wrote
+without reaching into their directory from outside the product. The card asked
+for both, and for the one thing a product must never lose while granting it —
+the owner has to be able to tell that the file changed under them.
+
+### 48.2 Storage and discovery
+
+The shared store is the same geometry against a different owner:
+`<registered workspace>` + `accounts.skills.relativeRoot`. It reuses
+`resolveSkillRoots` wholesale, so its path checks, symlink refusal, trash and
+sidecar limits are the account case's own, and `QaSkillScope` is the only place
+that says which owner a call is about (`{ userId }` or `{ shared: true }`).
+
+The discovery provider reports both roots for one cwd: the account's own first,
+then the deployment's. A shared skill is labelled `source: "qa-shared"` at rank
+60 — above the project layer (100) and the bundled layer (600), because it is
+curated for the deployment, but below a personal skill (50), because that is
+the layer a person edited about themselves. `discover` reports both roots to
+the watcher, so a hand edit in either invalidates the catalog.
+
+### 48.3 The administrator's mark
+
+An administrator's write leaves a record beside the skills it describes, in
+`<skills root>/.admin-edits.json`: a dot entry, so nothing that enumerates
+skills can mistake it for one. Each entry is keyed by directory name and
+carries the actor and the revision it produced.
+
+- The mark is reported on `QaSkillSummary.adminEdit` only while the stored
+  revision still matches. It answers "did an administrator write what I am
+  looking at", not "was this file ever touched".
+- The owner's own save deletes the entry, so the badge disappears with it; a
+  rename by an administrator moves the entry to the new name.
+- The sidecar never fails a save: a mark that cannot be read or written is a
+  warning (`skill.admin-edit-record-failed`), because losing a badge is smaller
+  than losing an edit.
+- The owner reads it in their own catalog as "Изменено администратором" with the
+  date. The copy names the role, not the account id.
+
+### 48.4 Authorization, audit and the console page
+
+- Permission `skills.manage`, held by the `admin` role and kept separate from
+  `settings.manage` so a future curator role can hold one without the other.
+  Every entry point checks it through `QaAdminService.require`; a plain account
+  is refused for its own skills too, because the console is not the personal
+  skills surface.
+- Remotes on the `qaSurface` namespace: `adminSkills`, `adminSkill`,
+  `adminSkillSave`, `adminSkillDelete`, `adminSkillValidate`,
+  `adminSkillTools`. `scope` is `{ kind: "shared" }` or
+  `{ kind: "user", userId }`; an id that names no account is refused rather
+  than used to derive a directory.
+- Writes go through the same `QaPersonalSkills` the owner's editor uses, so
+  validation, revision conflicts, rename, trash and catalog invalidation are
+  one code path and the shared editor cannot drift from the owner's.
+- Audit rows `skill.created`, `skill.updated`, `skill.deleted` carry the actor,
+  the skill name as the target, and before/after images of `{ scope, ownerId,
+  name, description, revision }` — never the body: the trail records who
+  changed which instructions, not a second copy of them.
+- `src/client/admin/pages/SkillFiles.tsx` is a scope picker around
+  `QaSkillsSettingsPage`, driven by a `QaBoundSkillApi` built from the console's
+  remotes: there is no second editor. The header names the store's owner and
+  its absolute path and doubles as the authorization probe — a refusal renders
+  as one line and the editor is never mounted. Route `/admin/skills/editor`,
+  nav label «Редактор навыков» next to the audience table.
+
+### 48.5 Verification
+
+- `tests/admin-skill-files.test.ts`: refusals for a role without the
+  permission, the shared store's path and discovery label, the mark on the
+  owner's catalog and its clearing by the owner's save, the audit rows and
+  their images, a refused save writing no row, removal into the trash, an
+  unknown account, draft validation, and the sidecar sitting beside (not among)
+  the skills.
+- `tests/qa-admin-console-skill-files.test.tsx`: the shared catalog, the user
+  picker gating a personal store, the owner and path header, the refusal copy
+  with no editor, and the nav entry staying out of a reviewer's console.
+- `tests/qa-skills-page.test.tsx`: the owner sees the mark, and sees none on a
+  skill they wrote.
+- `tests/admin-routes.test.ts` and `tests/personal-skills-service.test.ts`: the
+  new route round-trips, and discovery reports both roots.

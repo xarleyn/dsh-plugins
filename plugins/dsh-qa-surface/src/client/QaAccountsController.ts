@@ -3,22 +3,39 @@ import type {
   QaAccountSession,
   QaAccountStartersInput,
   QaAccountUserPublic,
+  QaIssuedServiceToken,
   QaOwnershipEntry,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import type { QaAccountsApi, StorageLike } from "./types.js";
+import type {
+  QaAccountsApi,
+  QaIntegrationTokenResult,
+  StorageLike,
+} from "./types.js";
 
 /** The `(reason: <code>)` marker the Host folds into account wire failures. */
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
+
+/**
+ * What the sign-in card says after a forgotten-password request. It names the
+ * request, never the account: a real address and an unknown one get the same
+ * sentence, which is the whole point of the endpoint.
+ */
+export const QA_RESET_FILED_NOTICE =
+  "Заявка отправлена оператору. Если такой аккаунт есть, пароль сбросят — затем войдите с новым паролем.";
 
 export type QaAccountsSnapshot =
   | { readonly stage: "checking" }
   | {
       readonly stage: "gate";
-      readonly mode: "login" | "register";
+      readonly mode: "login" | "register" | "reset";
       readonly busy: boolean;
       readonly error: string | null;
+      /** Neutral confirmation of a filed reset request; null otherwise. */
+      readonly notice?: string | null;
     }
   | {
       readonly stage: "authed";
@@ -56,6 +73,8 @@ export function accountsErrorMessage(code: string | null): string {
   switch (code) {
     case "invalid-credentials":
       return "Неверный email или пароль.";
+    case "invalid-current-password":
+      return "Текущий пароль неверен.";
     case "admin-required":
       return "Недостаточно прав: действие доступно администратору.";
     case "account-disabled":
@@ -76,6 +95,12 @@ export function accountsErrorMessage(code: string | null): string {
       return "Проверьте подсказки: заполните название и промпт, текст не слишком длинный.";
     case "starters-disabled":
       return "Свои подсказки отключены на этом сервере.";
+    case "integration-disabled":
+      return "Интеграционный API выключен на этом стенде: такому токену некуда обращаться. Включите его в настройках стенда.";
+    case "auth-required":
+      return "Сессия истекла. Войдите заново.";
+    case "forbidden":
+      return "Этот токен принадлежит другой учётной записи или уже удалён.";
     case "registration-disabled":
       return "Регистрация на этом сервере отключена.";
     case "rate-limited":
@@ -187,9 +212,97 @@ export class QaAccountsController {
     );
   }
 
-  setMode(mode: "login" | "register"): void {
+  setMode(mode: "login" | "register" | "reset"): void {
     if (this.snapshot.stage !== "gate" || this.snapshot.busy) return;
-    this.publish({ ...this.snapshot, mode, error: null });
+    // Switching cards drops the previous answer: "заявка отправлена" must not
+    // survive a return to the sign-in form, where it would read as a result of
+    // the wrong action.
+    this.publish({ ...this.snapshot, mode, error: null, notice: null });
+  }
+
+  /**
+   * File a forgotten-password request for the operator queue. The card says
+   * the same thing whether or not the address exists — the Host refuses to
+   * tell, and so does this controller.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    if (this.snapshot.stage !== "gate" || this.snapshot.busy || this.disposed) {
+      return;
+    }
+    const mode = this.snapshot.mode;
+    this.publish({
+      stage: "gate",
+      mode,
+      busy: true,
+      error: null,
+      notice: null,
+    });
+    try {
+      const result =
+        await this.options.remote.accountsRequestPasswordReset(email);
+      if (this.disposed) return;
+      if (!result.ok) {
+        this.publish({
+          stage: "gate",
+          mode,
+          busy: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+          notice: null,
+        });
+        return;
+      }
+      this.publish({
+        stage: "gate",
+        mode,
+        busy: false,
+        error: null,
+        notice: QA_RESET_FILED_NOTICE,
+      });
+    } catch (error) {
+      if (this.disposed) return;
+      console.warn("dsh-qa-surface: password reset request failed", error);
+      this.publish({
+        stage: "gate",
+        mode,
+        busy: false,
+        error: accountsErrorMessage(null),
+        notice: null,
+      });
+    }
+  }
+
+  /**
+   * Change the signed-in user's own password. The Host answers with a fresh
+   * token, because the write bumps the account's token version — this browser
+   * keeps its session only by storing that token. Resolves to audience-safe
+   * refusal copy, or to null once the snapshot carries the new account.
+   */
+  async changePassword(
+    currentPassword: string,
+    nextPassword: string,
+  ): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsChangePassword(
+        token,
+        currentPassword,
+        nextPassword,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.tokenValue = result.value.token;
+      this.saveStoredToken(result.value.token);
+      this.publish({ ...this.snapshot, user: result.value.user });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: password change failed", error);
+      return accountsErrorMessage(null);
+    }
   }
 
   /** Drop the token and return to the gate (logout or expired identity). */
@@ -199,16 +312,55 @@ export class QaAccountsController {
     this.publish({ stage: "gate", mode: "login", busy: false, error: null });
   }
 
-  /** Claim one freshly created chat so the ownership map stays current. */
+  /**
+   * Claim one freshly created chat so the ownership map stays current, and
+   * remember it in the owned list the sidebar shows.
+   *
+   * The claim runs on every bind — a chat created now and one reopened later
+   * both take this path. A chat the Host reports as taken by another account
+   * stays out of the list: the page then holds a binding whose ownership
+   * belongs to someone else, and showing it is exactly what the list must not
+   * do. A claim that never reached the Host still records the id, because the
+   * page opened this chat through the attendance boundary, which claims an
+   * unowned chat for whoever asks first and refuses another account's — so the
+   * binding is this account's either way, and hiding a chat the visitor is
+   * looking at would be the greater lie.
+   */
   async claimNewSession(sessionId: string): Promise<void> {
-    if (this.tokenValue === null || this.disposed) return;
+    const token = this.tokenValue;
+    if (token === null || this.disposed || this.snapshot.stage !== "authed") {
+      return;
+    }
+    let conflict = false;
     try {
-      await this.options.remote.accountsClaimSessions(this.tokenValue, [
+      const claimed = await this.options.remote.accountsClaimSessions(token, [
         sessionId,
       ]);
+      conflict = claimed.ok && claimed.value.conflicts.includes(sessionId);
     } catch (error) {
       console.warn("dsh-qa-surface: session claim failed", error);
     }
+    if (this.disposed || conflict) return;
+    this.noteOwnedSession(sessionId);
+  }
+
+  /**
+   * Add one chat this page holds to the owned list. The list is what the
+   * sidebar shows and what every cross-chat projection is scoped by, so a chat
+   * created or opened after login enters it here — the next login is not a
+   * reasonable price for a chat the visitor is looking at. Ids already known,
+   * and the ones an admin's cross-user view contributed, are left as they are.
+   */
+  private noteOwnedSession(sessionId: string): void {
+    const snapshot = this.snapshot;
+    if (snapshot.stage !== "authed" || snapshot.ownedIds.includes(sessionId)) {
+      return;
+    }
+    this.publish({
+      ...snapshot,
+      ownedIds: [...snapshot.ownedIds, sessionId],
+      ownedRevision: snapshot.ownedRevision + 1,
+    });
   }
 
   /**
@@ -263,6 +415,92 @@ export class QaAccountsController {
     } catch (error) {
       console.warn("dsh-qa-surface: starters update failed", error);
       return accountsErrorMessage(null);
+    }
+  }
+
+  /**
+   * The signed-in user's integration tokens. Resolves to the list, or to the
+   * copy the page renders when the Host refused the read; the tokens are not
+   * part of the account snapshot, because they are not part of the account.
+   */
+  async serviceTokens(): Promise<
+    QaIntegrationTokenResult<readonly QaServiceTokenSummary[]>
+  > {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsListServiceTokens(token);
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: result.value.tokens };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token list failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
+  /**
+   * Mint one integration token for the signed-in user. The plaintext is in the
+   * answer and nowhere else — the caller has to hand it over now, because
+   * nothing can show it again.
+   */
+  async createServiceToken(
+    input: QaServiceTokenCreateInput,
+  ): Promise<QaIntegrationTokenResult<QaIssuedServiceToken>> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsCreateServiceToken(
+        token,
+        input,
+      );
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: result.value };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token create failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
+  /**
+   * Revoke one of the signed-in user's integration tokens. The Host is the
+   * authority on whose token it is; a refusal is shown as it arrives.
+   */
+  async revokeServiceToken(
+    tokenId: string,
+  ): Promise<QaIntegrationTokenResult<null>> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsRevokeServiceToken(
+        token,
+        tokenId,
+      );
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: null };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token revoke failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
     }
   }
 

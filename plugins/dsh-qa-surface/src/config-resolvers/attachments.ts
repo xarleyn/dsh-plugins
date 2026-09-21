@@ -5,7 +5,7 @@ import {
   QA_MAX_PENDING_MIN,
   QA_PASTED_TEXT_LINES_MAX,
   QA_PASTED_TEXT_LINES_MIN,
-  normalizeTextExtensions,
+  normalizeAcceptedExtensions,
 } from "../attachment-rules.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
@@ -49,10 +49,11 @@ export function resolveAttachments(input: QaSurfaceConfig): AttachmentsSlice {
     pastedTextLines,
     maxFileBytes,
     maxPending,
-    // An operator names extensions; anything the browser reports as
-    // `text/*` still passes the composer's own check, so an empty list is a
-    // narrowing, not a lockout.
-    extensions: normalizeTextExtensions(
+    // An operator names extensions, and the list is not text-only: it is
+    // whatever the stand can read, documents included. Anything the browser
+    // reports as `text/*` still passes the composer's own check, so an empty
+    // list is a narrowing, not a lockout.
+    extensions: normalizeAcceptedExtensions(
       input.attachments?.extensions ??
         DEFAULT_QA_SURFACE_CONFIG.attachments.extensions,
     ),

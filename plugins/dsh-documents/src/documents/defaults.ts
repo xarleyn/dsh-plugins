@@ -26,6 +26,17 @@ export interface QaDocumentsStorageConfig {
   readonly allowedInputRoots?: readonly string[];
 }
 
+export interface QaDocumentsCacheConfig {
+  /** Master switch; `false` makes every conversion run its backend again. */
+  readonly enabled?: boolean;
+  /** Entries older than this are dropped, together with their files. */
+  readonly maxAgeDays?: number;
+  /** Upper bound on entries an artifact root keeps. */
+  readonly maxEntries?: number;
+  /** Upper bound on the bytes all cached files may occupy. */
+  readonly maxBytes?: number;
+}
+
 export interface QaDocumentsTemplatesConfig {
   /** Absolute template root; `null` probes the session workspace. */
   readonly root?: string | null;
@@ -118,6 +129,7 @@ export interface DocumentsConfig {
   readonly enabled?: boolean;
   readonly comparison?: QaDocumentsComparisonConfig;
   readonly storage?: QaDocumentsStorageConfig;
+  readonly cache?: QaDocumentsCacheConfig;
   readonly templates?: QaDocumentsTemplatesConfig;
   readonly create?: QaDocumentsCreateConfig;
   readonly extraction?: QaDocumentsExtractionConfig;
@@ -163,6 +175,12 @@ export interface ResolvedDocumentsConfig {
     readonly retainSource: boolean;
     readonly retainInputs: boolean;
     readonly allowedInputRoots: readonly string[];
+  };
+  readonly cache: {
+    readonly enabled: boolean;
+    readonly maxAgeDays: number;
+    readonly maxEntries: number;
+    readonly maxBytes: number;
   };
   readonly templates: {
     readonly root: string | null;
@@ -255,6 +273,12 @@ export const DEFAULT_DOCUMENTS_CONFIG: ResolvedDocumentsConfig = Object.freeze({
     retainSource: true,
     retainInputs: true,
     allowedInputRoots: Object.freeze([]),
+  }),
+  cache: Object.freeze({
+    enabled: true,
+    maxAgeDays: 7,
+    maxEntries: 512,
+    maxBytes: 1_073_741_824,
   }),
   templates: Object.freeze({ root: null, default: "default" }),
   create: Object.freeze({

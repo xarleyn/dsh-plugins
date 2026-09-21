@@ -64,6 +64,28 @@ export interface QaSessionLogReader {
    * next flush would put its log back.
    */
   live(sessionId: string): boolean;
+  /**
+   * The events of a session this process is holding, without touching storage.
+   *
+   * This is a *probe*, not a read: it never fails and never waits, and
+   * `undefined` means only that this process does not hold the session — not
+   * that the session has no log. What it is good for is the one question a
+   * warm reader has to ask on every page: has anything been appended since the
+   * seq I already projected? A session the Harness holds is appended in this
+   * process, so its in-memory events answer that without a stored read, and
+   * the answer is strictly *newer* than what storage has flushed.
+   *
+   * `after` is that cursor: events at or below it are not materialized, so a
+   * reader that already knows a prefix pays for the pass over the session's
+   * event references and not for the events it has already seen. The snapshot
+   * can still be partial (a session that existed in an earlier run of the
+   * process, or a long one), which is why a caller may use it to extend what it
+   * already knows and never to replace it.
+   */
+  snapshot(
+    sessionId: string,
+    options?: { readonly after?: number | undefined },
+  ): readonly StoredSessionEvent[] | undefined;
 }
 
 /** What one storage-removal call did, id by id. */
@@ -189,18 +211,37 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
       );
   };
 
-  const liveRead = (sessionId: string): QaSessionReadResult | undefined => {
+  /**
+   * The holding session's events, materialized only above `after`.
+   *
+   * The raw events are opaque here, so the cursor is tested on the raw `seq`
+   * before an event is turned into the shape a projector consumes: a probe that
+   * is asked for what was appended after a seq allocates for that suffix and
+   * not for the conversation.
+   */
+  const snapshotOf = (
+    sessionId: string,
+    after: number | undefined,
+  ): readonly StoredSessionEvent[] | undefined => {
     const store = sessions();
     if (store === undefined) return undefined;
     const session = store.get(sessionId as SessionId);
     if (session === undefined) return undefined;
-    return {
-      ok: true,
-      events: session
-        .snapshotEvents()
-        .map(eventOf)
-        .filter((event): event is StoredSessionEvent => event !== undefined),
-    };
+    const events: StoredSessionEvent[] = [];
+    for (const value of session.snapshotEvents()) {
+      const seq = record(value)?.seq;
+      if (typeof seq !== "number") continue;
+      if (after !== undefined && seq <= after) continue;
+      const event = eventOf(value);
+      if (event !== undefined) events.push(event);
+    }
+    return events;
+  };
+
+  const liveRead = (sessionId: string): QaSessionReadResult | undefined => {
+    if (sessions() === undefined) return undefined;
+    const events = snapshotOf(sessionId, undefined);
+    return events === undefined ? undefined : { ok: true, events };
   };
 
   return {
@@ -233,6 +274,13 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
         // list is not a complete view, and the caller must be told that.
         return { headers: liveList(), complete: false };
       }
+    },
+
+    snapshot(
+      sessionId: string,
+      options?: { readonly after?: number | undefined },
+    ): readonly StoredSessionEvent[] | undefined {
+      return snapshotOf(sessionId, options?.after);
     },
 
     async read(sessionId: string): Promise<QaSessionReadResult> {
@@ -276,6 +324,17 @@ export function staticSessionLogReader(input: {
   return {
     live(sessionId: string) {
       return held.has(sessionId);
+    },
+    snapshot(
+      sessionId: string,
+      options?: { readonly after?: number | undefined },
+    ) {
+      if (!held.has(sessionId)) return undefined;
+      const events = input.events?.[sessionId] ?? [];
+      const after = options?.after;
+      return after === undefined
+        ? events
+        : events.filter((event) => event.seq > after);
     },
     async list() {
       return {

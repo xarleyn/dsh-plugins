@@ -25,6 +25,11 @@ const PERMISSIONS: Readonly<Record<QaAccountRole, readonly QaPermission[]>> = {
     "analytics.read",
     "audit.read",
     "settings.manage",
+    // Skill files are the deployment's own instructions to every assistant, and
+    // editing them reaches other people's accounts. That is the same weight
+    // `settings.manage` already carries, but it is kept separate so a future
+    // "skill curator" role can hold it without also holding deployment config.
+    "skills.manage",
   ],
   // A reviewer reads every conversation and answers them; accounts, role
   // configuration and deployment settings stay out of reach.

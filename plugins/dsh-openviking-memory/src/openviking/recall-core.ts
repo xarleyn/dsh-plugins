@@ -108,18 +108,27 @@ export interface FetchJSONResult {
   readonly result?: unknown;
   readonly status?: number;
   readonly error?: unknown;
-  readonly traceId?: string;
+  // FORK LOCAL EDIT (see docs/upstream-sync.md): the harness transport reports
+  // "no trace id" as an explicit `undefined`. Type-level only.
+  readonly traceId?: string | undefined;
   readonly [key: string]: unknown;
 }
 
 /**
  * The `makeFetchJSON` closure the runtime hands these helpers: a path, an
  * optional request init, and an optional per-call actor/timeout override.
+ *
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): both override fields admit an
+ * explicit `undefined`, because the caller forwards the values it read off its
+ * own options. Type-level only; the requests are unchanged.
  */
 export type FetchJSON = (
   path: string,
   init?: { readonly method?: string; readonly body?: string },
-  options?: { readonly actorPeerId?: string; readonly timeoutMs?: number },
+  options?: {
+    readonly actorPeerId?: string | undefined;
+    readonly timeoutMs?: number | undefined;
+  },
 ) => Promise<FetchJSONResult>;
 
 /**

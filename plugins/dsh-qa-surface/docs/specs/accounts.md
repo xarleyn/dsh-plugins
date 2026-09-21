@@ -141,9 +141,14 @@ redirects when the plugin is disabled or the flag is off.
   enabled and the user is anonymous; the session controller is not created
   until `authed`, so nothing attests or sends before login.
 - `QaSessionController` threads the token into `secureSession`/`sources`/
-  `readSourceFile` calls and merges the owned-session list into the chat
-  index; newly created chats are claimed at creation time. When accounts are
-  disabled the controller behaves exactly as before.
+  `readSourceFile` calls; newly created chats are claimed at creation time,
+  and the claim enters the owned list (`claimNewSession`) so the chat is
+  listed without a reload. The owned list *is* the chat list while accounts
+  are on: the browser-local index is a claim source, never a display source,
+  because it accumulates per browser rather than per account. Every other read
+  of the Host session list is scoped the same way — the delegation names a
+  settlement notice may use come only from the chats this page lists. When
+  accounts are disabled the controller behaves exactly as before.
 - An attestation refusal with reason `auth-required` re-opens the gate
   (token expired/rotated) instead of surfacing the generic configuration
   error.

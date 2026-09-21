@@ -645,9 +645,13 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
             <p className="ovm-footer-note">
               Writes land in the current profile's{" "}
               <span className="ovm-mono">dsh-openviking-memory</span> settings
-              layer; the harness applies them by reloading the plugin, which
-              re-runs connection, capture and injection with the new values.
-              Out-of-range values are rejected by the schema, never clamped.
+              layer and take effect immediately: the plugin re-resolves its
+              configuration and hands it to the running runtime. The bridged{" "}
+              <span className="ovm-mono">mcp__openviking__*</span> tools are the
+              exception — they are a child process whose transport is fixed at
+              start, so an endpoint or credential change reaches them on the
+              next reload. Out-of-range values are rejected by the schema, never
+              clamped.
             </p>
             {overrides.length > 0 ? (
               <button

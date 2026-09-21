@@ -6,6 +6,7 @@ import type {
   QaAdminOverview,
   QaConversationDetail,
   QaConversationSummary,
+  QaPasswordResetRequest,
   QaReviewQueueRow,
 } from "../src/types.js";
 
@@ -211,6 +212,27 @@ export function adminApi(overrides: Partial<QaAdminApi> = {}): QaAdminApi {
       value: OVERVIEW.metrics,
     })),
     audit: vi.fn(async () => page([])),
+    // An empty work queue is the default: the console shows the reset panel
+    // only while somebody is waiting for one.
+    passwordResetRequests: vi.fn(async () => ({
+      ok: true as const,
+      value: [] as readonly QaPasswordResetRequest[],
+    })),
+    resetPassword: vi.fn(async () => ({
+      ok: false as const,
+      error: new Error("unused"),
+    })),
+    // A shared store with nothing in it: the console's skills page renders its
+    // scope picker before any skill exists anywhere.
+    skills: vi.fn(async (_token, scope) => ({
+      ok: true as const,
+      value: { scope, owner: null, skills: [], rootPath: "" },
+    })),
+    skill: vi.fn(),
+    saveSkill: vi.fn(),
+    deleteSkill: vi.fn(),
+    validateSkill: vi.fn(),
+    skillTools: vi.fn(async () => ({ ok: true as const, value: [] })),
     ...overrides,
   };
 }

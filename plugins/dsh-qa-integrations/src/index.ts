@@ -181,6 +181,16 @@ export class QaIntegrations extends TypertRemoteService {
       () => async () => this.logger.close(),
       "dsh-qa-integrations.logger",
     );
+    // The store owns the SQLite handle and its WAL. A plugin that reloads
+    // without closing it leaves the files held for the next instance (the
+    // observations that prompted this are the stray `qa-integrations.db*` a
+    // local run leaves in the plugin directory).
+    ctx.effect(
+      () => () => {
+        repository.close();
+      },
+      "dsh-qa-integrations.repository",
+    );
   }
 
   /**

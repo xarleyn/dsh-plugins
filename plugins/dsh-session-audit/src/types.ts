@@ -61,6 +61,23 @@ export interface SessionAuditValue {
   report: string;
 }
 
+/**
+ * One registered audit that no session view can show (SPEC §2.3).
+ *
+ * The record behind this carries an `AuditError` whose message is written for
+ * the host log and names filesystem paths, so only the stable `code` crosses
+ * the wire: the browser is told *why*, never *where*.
+ */
+export interface UnattachedAuditValue {
+  /** The audit directory's name, which is the only handle a reader has on it. */
+  auditId: string;
+  /** `unresolved` for an artefact no session claims, `invalid` for an unreadable one. */
+  status: string;
+  /** The blocking diagnostic's code, or `""` when the record carries none. */
+  code: string;
+  modifiedAt: string;
+}
+
 /** An empty summary, for a session with no audit. */
 export function emptySummaryValue(sessionId: string): AuditSummaryValue {
   return {

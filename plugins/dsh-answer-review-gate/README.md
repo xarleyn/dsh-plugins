@@ -26,8 +26,12 @@ User → primary agent → research / tools / background subagents
   participate in this decision.
 - A review PASS applies to the exact candidate content (SHA-256 over the
   normalized text). Any later edit invalidates the PASS and the new candidate
-  is reviewed again.
-- Review rounds are bounded per user turn (`maxReviewRounds`, default 3).
+  is reviewed again; the receipt follows the user request, so an unchanged
+  candidate is never reviewed twice.
+- Review rounds are bounded per user turn (`maxReviewRounds`, default 3). The
+  budget belongs to the user request the candidate answers — the agent turns
+  and revisions that request takes share one budget, and no agent turn hands
+  out a fresh one.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
@@ -67,7 +71,7 @@ verdict, or rounds exhausted:
   unverified-answer notice; the answer is never presented as verified.
 
 A reviewer failure is **never converted into a PASS**. At most one failure
-steer is issued per turn, so the loop cannot livelock. Note the honest bound:
+steer is issued per user turn, so the loop cannot livelock. Note the honest bound:
 a plugin cannot hard-block a turn at this seam — `closed` mode forces a
 revision-or-disclaim step rather than silently dropping the answer.
 

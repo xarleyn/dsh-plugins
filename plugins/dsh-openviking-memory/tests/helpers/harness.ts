@@ -29,6 +29,8 @@ export interface RecordedRequest {
   readonly search: string;
   readonly method: string;
   readonly body: unknown;
+  /** Request headers, as the client built them. */
+  readonly headers: Record<string, string>;
 }
 
 export interface HarnessOptions {
@@ -41,11 +43,43 @@ export interface HarnessOptions {
   ) => Promise<Response>;
   /** Skip the environment isolation (for the config tests that set it themselves). */
   readonly isolateEnv?: boolean;
+  /**
+   * Mount a QA surface under `qaSurface` before the plugin starts. Attribution
+   * is what the per-account scoping is built on, so the tests that exercise it
+   * provide the surface the way a QA deployment does.
+   */
+  readonly qaSurface?: {
+    principalForSession(
+      sessionId: string,
+    ): { readonly userId: string } | undefined;
+    principalForToken(token: string): { readonly userId: string } | undefined;
+  };
+  /** Directory the per-account settings file lives in; a temp one by default. */
+  readonly qaSettingsDir?: string;
+  /**
+   * Mount a host settings service under `settings`. The plugin registers its
+   * namespace there, which is what makes its card discoverable; a test supplies
+   * the service to observe that registration and to drive committed changes.
+   */
+  readonly settings?: {
+    installSection(
+      owner: unknown,
+      namespace: string,
+      schema: unknown,
+      entry: unknown,
+      hooks: {
+        setSource(current: () => unknown): void;
+        onChange(): void;
+      },
+    ): void;
+  };
 }
 
 export interface Harness {
   readonly ctx: Context;
   readonly plugin: OpenVikingMemory;
+  /** The isolated per-account settings file this instance reads and writes. */
+  readonly settingsPath: string;
   readonly listeners: Map<string, RecordedListener>;
   readonly disposers: {
     readonly name: string;
@@ -156,6 +190,7 @@ export async function createHarness(
       method: init?.method ?? "GET",
       body:
         init?.body === undefined ? undefined : JSON.parse(String(init.body)),
+      headers: (init?.headers ?? {}) as Record<string, string>,
     });
     if (options.fetchImpl) return options.fetchImpl(url.pathname, init);
     if (!Object.hasOwn(responses, url.pathname)) {
@@ -168,6 +203,12 @@ export async function createHarness(
   }) as typeof globalThis.fetch;
 
   const ctx = new Context();
+  if (options.qaSurface !== undefined) {
+    ctx.provide("qaSurface", options.qaSurface);
+  }
+  if (options.settings !== undefined) {
+    ctx.provide("settings", options.settings);
+  }
   const listeners = new Map<string, RecordedListener>();
   const disposers: {
     readonly name: string;
@@ -215,11 +256,22 @@ export async function createHarness(
     },
   });
 
-  const plugin = new OpenVikingMemory(ctx, config);
+  // The per-account settings file is redirected into the temporary state
+  // directory: a test that runs in the repository must never read — or worse,
+  // write — the file a developer's own installation keeps.
+  const settingsPath =
+    options.qaSettingsDir === undefined
+      ? join(stateDir, "qa-users.json")
+      : join(options.qaSettingsDir, "qa-users.json");
+  const plugin = new OpenVikingMemory(ctx, {
+    qaUserSettingsPath: settingsPath,
+    ...config,
+  });
 
   return {
     ctx,
     plugin,
+    settingsPath,
     listeners,
     disposers,
     requests,

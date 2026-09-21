@@ -81,6 +81,19 @@ Cordis plugin id. The package ships a browser client bundle that registers as
 `settings.plugin.item` slot, so the plugin appears in **Settings → Plugins**
 like every first-party plugin.
 
+Two halves have to meet for that card to be rendered, and only one of them is
+the bundle: the Host serves a card only for a namespace that a *live* plugin
+registered in its settings directory, so `src/settings.ts` calls
+`installSection` for this namespace (a `static Config` declaration does not
+register anything). The section is also the plugin's configuration source: the
+service hands over a reader over the merged layers and reports every committed
+change, and `reapplySettings()` re-resolves the configuration and hands it to
+the running runtime. Everything the plugin decides per request follows
+immediately; the bridged MCP tools are a child process with a transport fixed at
+start and follow on the next reload, which is logged as
+`settings_applied.connectionChanged`. A profile without a settings provider
+keeps running on its composition entry.
+
 The card is an editor over that namespace, nothing more:
 
 - Sections mirror the contract: automatic context presentation (the four
@@ -101,6 +114,41 @@ The card is an editor over that namespace, nothing more:
 - The card is config-only: it has no Remote face, and the header badge
   projects the master switch (`Auto-inject` / `Manual recall`), not live
   runtime state.
+
+### 2.2 Per-account scoping and the account-scoped page
+
+One plugin instance serves every chat on a deployment, so a multi-user
+deployment has to split the OpenViking space per account. Two mechanisms do it,
+and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
+
+- **Attribution.** With a QA surface mounted and `qaUserScoping` on (the
+  default), every session is attributed through
+  `ctx.qaSurface.principalForSession`: a chat root resolves to the account that
+  attested it, a delegated child inherits the chat it descends from (recorded
+  from `session/created`), and a session nobody has claimed resolves to
+  *nothing*. The runtime sends `X-OpenViking-User: <account>` on every request
+  the session issues, so recall, profile and capture all live in that account's
+  space. A session that resolves to nothing is skipped entirely — no profile, no
+  recall, no capture — which is what keeps a conversation out of a space it does
+  not belong to. Without a QA surface, or with `qaUserScoping: false`, the
+  deployment-wide identity of §2 is unchanged.
+- **The account-scoped page.** The card of §2.1 is discovered from the Host
+  settings directory, which a browser reaching the deployment over the network
+  never gets, and a QA overlay does not render the native settings tree at all.
+  The account-scoped switches therefore ship as a `qaUserSettingsSections`
+  registration in the signed-in user's QA settings dialog, backed by three
+  `@Remote` methods of the `openvikingMemory` namespace
+  (`userMemorySettings`, `setUserMemorySettings`, `resetUserMemorySettings`).
+  Callers are resolved from a bearer token (`principalForToken`); no method
+  accepts an account id. The answer is stored per account in
+  `openviking-memory-qa-users.json` under `$DSH_HOME`
+  (`qaUserSettingsPath` overrides it).
+- **Narrowing only.** `effectiveInjectionPlan` intersects the account's
+  switches with the deployment's plan, so `autoInject: false` silences the
+  profile and the recall for one account, a granular switch never widens the
+  master one, and no account can switch on a path its deployment disabled.
+  Capture, commit, the MCP tools and the skills are untouched by these
+  switches, exactly as with the deployment-level knobs of §2.
 
 ## 3. Lifecycle
 
@@ -204,6 +252,26 @@ official plugin; any change to the MCP tool contracts.
 7. **Invalid configuration.** Set `scoreThreshold: 2`.
    → DSH refuses to load the plugin and reports a validation error for that
    field.
+8. **Two accounts, one deployment.** With a QA surface mounted, start a chat as
+   account A and one as account B.
+   → Every request of each chat carries its own `X-OpenViking-User`, and no
+   request carries an account that does not own its session.
+9. **Unclaimed session.** Start a session the QA surface does not attribute.
+   → Zero requests: no profile read, no recall search, no capture, no commit.
+10. **Account switches.** Through the `openvikingMemory` remotes, set
+    `recall: false` for account A, then run a step in each account.
+    → A's step issues no recall request; B's is unchanged; capture keeps working
+    for both. `resetUserMemorySettings` hands A back to the deployment's plan.
+11. **Refused credential.** Call any of the three remotes with no account
+    behind the token.
+    → The call is refused and no file is written.
+12. **Committed settings change.** With a chat open, switch `autoRecall` off in
+    the card and start a turn.
+    → The next step of that session issues no recall request; the log records
+    `settings_applied`. A connection change is applied to the plugin's own
+    requests on the same step and logged with `connectionChanged`, while the
+    bridged MCP tools keep the endpoint they were mounted with until the plugin
+    reloads.
 
 ## 7. Implementation status
 
@@ -214,7 +282,9 @@ official plugin; any change to the MCP tool contracts.
 | Injection controls (`autoInject`, `injectStartupProfile`, `injectStepProfile`, `autoRecall`) with zero-work semantics | Implemented |
 | Structured file logging | Implemented |
 | Injection matrix / manual-only / capture / config / guard / runtime / queue / proxy tests | Implemented |
-| Settings card in the Web GUI | Implemented |
+| Settings card in the Web GUI | Implemented (the namespace is registered by `src/settings.ts`; a card without that registration renders nowhere) |
+| Live re-apply of a committed settings change | Implemented (the bridged MCP tool surface follows on reload) |
+| Per-account scoping and the account-scoped QA settings page | Implemented (unit + request-level tests; no live multi-account run yet) |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
 | Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet) |

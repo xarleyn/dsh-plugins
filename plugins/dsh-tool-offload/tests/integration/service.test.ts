@@ -26,11 +26,14 @@ interface Wiring {
   listeners: ToolOffloadListener[];
   runner: FakeRunner;
   logger: CapturingLogger;
+  /** Run the deferred injection again, as a late mount would. */
+  mountToolRuntime(): void;
 }
 
 function wire(overrides: ToolOffloadConfig = {}): Wiring {
   const ctx = new Context();
   const listeners: ToolOffloadListener[] = [];
+  let mount: (c: unknown) => void = () => undefined;
   const host = {
     subagents: {
       start: async () => undefined as never,
@@ -38,7 +41,11 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
     },
     on(event: "tools/post-execute", listener: ToolOffloadListener) {
       listeners.push(listener);
-      return () => undefined;
+      // The remover behaves like the real registry's: the mounted set shrinks
+      // when the service walks its disposers.
+      return () => {
+        listeners.splice(listeners.indexOf(listener), 1);
+      };
     },
   };
   // The test harness has no `tools`/`subagents` services; capture the
@@ -52,6 +59,7 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
     }
   ).inject = (services, cb) => {
     expect(services).toEqual(["tools", "subagents"]);
+    mount = cb;
     cb(host);
     return () => undefined;
   };
@@ -65,7 +73,14 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
     },
     { logger, runner },
   );
-  return { service, ctx, listeners, runner, logger };
+  return {
+    service,
+    ctx,
+    listeners,
+    runner,
+    logger,
+    mountToolRuntime: () => mount(host),
+  };
 }
 
 describe("ToolOffloadService wiring", () => {
@@ -73,6 +88,27 @@ describe("ToolOffloadService wiring", () => {
     const { service, listeners } = wire();
     expect(listeners).toHaveLength(1);
     (service as unknown as { dispose(): void }).dispose();
+  });
+
+  it("unmounts the listener when the service is disposed", () => {
+    const { service, listeners } = wire();
+    expect(listeners).toHaveLength(1);
+
+    (service as unknown as { dispose(): void }).dispose();
+
+    // A rebuild walks these, so the closed-over listener must not keep
+    // offloading for a service that is gone (PLUGIN_GUIDELINES §3.4).
+    expect(listeners).toEqual([]);
+  });
+
+  it("mounts nothing when the runtime arrives after dispose", () => {
+    const wiring = wire();
+    (wiring.service as unknown as { dispose(): void }).dispose();
+    expect(wiring.listeners).toEqual([]);
+
+    wiring.mountToolRuntime();
+
+    expect(wiring.listeners).toEqual([]);
   });
 
   it("offloads through the service-built listener and counts telemetry", async () => {

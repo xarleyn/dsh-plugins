@@ -175,6 +175,7 @@ export function resolveDocumentsConfig(
 ): ResolvedDocumentsConfig {
   const D = DEFAULT_DOCUMENTS_CONFIG;
   const storage = input.storage ?? {};
+  const cache = input.cache ?? {};
   const templates = input.templates ?? {};
   const create = input.create ?? {};
   const extraction = input.extraction ?? {};
@@ -307,6 +308,36 @@ export function resolveDocumentsConfig(
           storage.allowedInputRoots,
           "documents.storage.allowedInputRoots",
         ),
+      ),
+    }),
+    cache: Object.freeze({
+      enabled: readBoolean(cache.enabled, D.cache.enabled),
+      maxAgeDays: readInteger(
+        cache.maxAgeDays,
+        D.cache.maxAgeDays,
+        {
+          min: 1,
+          max: 3_650,
+        },
+        "documents.cache.maxAgeDays",
+      ),
+      maxEntries: readInteger(
+        cache.maxEntries,
+        D.cache.maxEntries,
+        {
+          min: 1,
+          max: 100_000,
+        },
+        "documents.cache.maxEntries",
+      ),
+      maxBytes: readInteger(
+        cache.maxBytes,
+        D.cache.maxBytes,
+        {
+          min: 1_024,
+          max: 1_099_511_627_776,
+        },
+        "documents.cache.maxBytes",
       ),
     }),
     templates: Object.freeze({

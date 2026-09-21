@@ -15,6 +15,7 @@ import type {
 
 import { DocumentError } from "../errors.js";
 import type { DocumentScope } from "../orchestrator/scope.js";
+import type { DocumentRuntime } from "../runtime.js";
 import type { DocumentFileResult, DocumentWarning } from "../types.js";
 
 /**
@@ -87,10 +88,33 @@ export interface DocumentToolExec {
 }
 
 /**
+ * The options every document tool is created with.
+ */
+export interface DocumentToolOptions {
+  readonly runtime: DocumentRuntime;
+  /**
+   * Extra readable input roots for the session a call comes from, resolved per
+   * execution — a grant that appears (or is revoked) after the tool was
+   * registered is honoured on the next call rather than at install time.
+   *
+   * The source is the deployment's own read fence: the plugin that fences a
+   * session for a user (and therefore knows which out-of-workspace roots that
+   * session may read) registers the roots here, and the document scope then
+   * agrees with the fence instead of contradicting it. Absent means the
+   * pipeline reads the session workspace and the configured roots only.
+   */
+  readonly extraInputRoots?: (sessionId?: string) => readonly string[];
+}
+
+/**
  * Resolve the session scope, failing closed: a session without a working
  * directory gets no document access rather than the host process's cwd.
- */ export function requireDocumentScope(
+ */
+export function requireDocumentScope(
   exec: DocumentToolExec,
+  options?: {
+    readonly extraInputRoots?: (sessionId?: string) => readonly string[];
+  },
 ): DocumentScope {
   const header = exec.agent?.session.header;
   const cwd = header?.cwd;
@@ -101,10 +125,12 @@ export interface DocumentToolExec {
     );
   }
   const sessionId = header?.id === undefined ? undefined : String(header.id);
+  const extraInputRoots = options?.extraInputRoots?.(sessionId) ?? [];
   return {
     workspaceRoot: cwd,
     ...(sessionId === undefined ? {} : { sessionId }),
     ...(exec.signal === undefined ? {} : { signal: exec.signal }),
+    ...(extraInputRoots.length === 0 ? {} : { extraInputRoots }),
   };
 }
 

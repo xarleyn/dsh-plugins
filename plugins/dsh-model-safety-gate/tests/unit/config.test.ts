@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  isGateOff,
   ModelSafetyGateConfigSchema,
   resolveSafetyGateConfig,
   SAFETY_GATE_DEFAULTS,
@@ -108,5 +109,41 @@ describe("resolveSafetyGateConfig", () => {
     expect(SAFETY_GATE_DEFAULTS.maxTokens).toBe(128);
     expect(SAFETY_GATE_DEFAULTS.temperature).toBe(0);
     expect(SAFETY_GATE_DEFAULTS.timeoutMs).toBe(3_000);
+  });
+
+  it("refuses an escalation nobody can answer by default", () => {
+    expect(resolveSafetyGateConfig({}).tools.unanswerableAsk).toBe("deny");
+    expect(
+      resolveSafetyGateConfig({ tools: { unanswerableAsk: "ask" } }).tools
+        .unanswerableAsk,
+    ).toBe("ask");
+    expect(() =>
+      resolveSafetyGateConfig({ tools: { unanswerableAsk: "maybe" as never } }),
+    ).toThrow(SafetyGateError);
+  });
+});
+
+describe("isGateOff", () => {
+  it("stays on for the defaults", () => {
+    expect(isGateOff(resolveSafetyGateConfig({}))).toBe(false);
+  });
+
+  it("reads the master switch", () => {
+    expect(isGateOff(resolveSafetyGateConfig({ enabled: false }))).toBe(true);
+  });
+
+  it("reads the off profile", () => {
+    expect(isGateOff(resolveSafetyGateConfig({ mode: "off" }))).toBe(true);
+  });
+
+  it("keeps an enforcing gate on", () => {
+    expect(isGateOff(resolveSafetyGateConfig({ mode: "enforce" }))).toBe(false);
+  });
+
+  it("treats the master switch as the stronger signal", () => {
+    // `mode: "off"` is the profile, `enabled: false` the switch; a config that
+    // sets both plus enforce can only read as off.
+    const config = resolveSafetyGateConfig({ enabled: false, mode: "enforce" });
+    expect(isGateOff(config)).toBe(true);
   });
 });

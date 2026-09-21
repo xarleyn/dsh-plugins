@@ -68,4 +68,59 @@ describe("client activation", () => {
     expect(dispose).toBeTypeOf("function");
     expect(() => dispose()).not.toThrow();
   });
+
+  it("registers the account-scoped page once QA Surface is up", async () => {
+    const scope = {};
+    const registered: { id: string; title: string }[] = [];
+    const effects: (() => void)[] = [];
+    const style = {
+      dataset: {} as Record<string, string>,
+      textContent: "",
+      remove: vi.fn(),
+    };
+    vi.stubGlobal("document", {
+      createElement: vi.fn(() => style),
+      head: { append: vi.fn(), appendChild: vi.fn() },
+      querySelector: vi.fn(() => null),
+    });
+
+    const ctx = {
+      settingsScope: { bind: vi.fn(() => scope) },
+      slots: {
+        inject: vi.fn((_name: string, callback: () => unknown) => callback()),
+        register: vi.fn(() => vi.fn()),
+      },
+      remote: { $mount: vi.fn(async () => async () => undefined) },
+      qaUserSettingsSections: {
+        register: vi.fn((section: { id: string; title: string }) => {
+          registered.push(section);
+          return vi.fn();
+        }),
+      },
+      inject: vi.fn(
+        (_names: string[], callback: (injected: unknown) => void) => {
+          callback({
+            effect: (execute: () => () => void) => {
+              effects.push(execute());
+              return () => undefined;
+            },
+            qaUserSettingsSections: ctx.qaUserSettingsSections,
+            remote: { openvikingMemory: {} },
+          });
+          return () => undefined;
+        },
+      ),
+    };
+
+    apply(ctx as never);
+    await vi.waitFor(() => {
+      expect(registered).toHaveLength(1);
+    });
+
+    expect(registered[0]?.id).toBe("openviking-memory");
+    expect(registered[0]?.title).toBe("Память");
+    expect(ctx.remote.$mount).toHaveBeenCalledOnce();
+    expect(style.textContent).toContain(".ovm-qa__toggle");
+    for (const disposeEffect of effects) disposeEffect();
+  });
 });

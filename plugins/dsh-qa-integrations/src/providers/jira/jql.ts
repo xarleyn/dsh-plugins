@@ -1,4 +1,5 @@
 import {
+  invalid,
   optionalBoolean,
   optionalInteger,
   requiredStringList,
@@ -43,10 +44,6 @@ const STATUS_CATEGORIES = ["To Do", "In Progress", "Done"] as const;
 const TEXT_TERMS = 12;
 /** How many custom-field clauses one search may carry. */
 const CUSTOM_FIELD_CLAUSES = 5;
-
-function invalid(field: string): never {
-  throw new IntegrationError("InvalidRequest", `${field} is invalid`);
-}
 
 /** One JQL string literal: quoted, with the quote and the backslash escaped. */
 export function jqlLiteral(value: string, field: string): string {

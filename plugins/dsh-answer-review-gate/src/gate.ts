@@ -60,9 +60,19 @@ export interface GateLogSink {
 interface GateSessionState {
   /** Completed review attempts in the current user turn. */
   round: number;
-  /** Turn number the round counter belongs to. */
-  turn: number;
-  /** One failure-policy steer per turn — failure steers must not loop. */
+  /**
+   * Identity of the user turn the round counter, the failure steer and the
+   * PASS receipt belong to: the surface seq of the user request the candidate
+   * answers (`CollectedCandidate.requestSeq`). `null` means no real user
+   * message was located, and then one budget covers the whole session.
+   */
+  userTurn: number | null;
+  /**
+   * Latest observed `agent/turn-stopping` turn. Informational, for delegation
+   * bookkeeping only — agent turns never own review state.
+   */
+  lastTurn: number;
+  /** One failure-policy steer per user turn — failure steers must not loop. */
   failureSteered: boolean;
   /** A review of this session is awaited; no second reviewer may start. */
   reviewing: boolean;
@@ -108,7 +118,7 @@ export class AnswerReviewGate {
 
   /** Turn number of the session's latest observed boundary (best effort, informational). */
   lastSeenTurnOf(sessionId: string): number {
-    return this.states.get(sessionId)?.turn ?? 0;
+    return this.states.get(sessionId)?.lastTurn ?? 0;
   }
 
   /**
@@ -137,8 +147,19 @@ export class AnswerReviewGate {
     if (!this.shouldReview(agent)) return null;
     const sessionId = String(agent.id);
 
-    const state = this.stateFor(sessionId, turn);
-    if (state.reviewing) return null;
+    // The in-flight latch is checked before the session is read: a reentrant
+    // boundary must not start a second reviewer, and it needs no candidate.
+    if (this.states.get(sessionId)?.reviewing === true) return null;
+
+    // The candidate names the turn that owns the review budget. The boundary's
+    // `turn` is an agent turn and cannot: a REVISE steer continues the current
+    // agent turn, while the model's next version — or a settlement notice — may
+    // reopen the boundary as a new one. Keyed by the agent turn, a PASS receipt
+    // and the round counter died on every such change, so a candidate that had
+    // already passed was reviewed again and each turn handed out a fresh round
+    // budget — the reported loop.
+    const collected = collectCandidate(agent.session);
+    const state = this.stateFor(sessionId, collected?.requestSeq ?? null, turn);
     if (
       config.trackBackgroundDelegations &&
       this.delegation.pendingCount(sessionId) > 0
@@ -151,11 +172,18 @@ export class AnswerReviewGate {
       return "suppressed-pending-work";
     }
 
-    const collected = collectCandidate(agent.session);
     if (collected === null || collected.text.length < config.minCandidateChars)
       return null;
     const hash = candidateHash(collected.text);
-    if (state.lastPassedHash === hash) return null;
+    if (state.lastPassedHash === hash) {
+      this.deps.logger.info("gate.candidate-already-passed", {
+        sessionId,
+        turn,
+        userTurn: state.userTurn,
+        candidateHash: hash,
+      });
+      return null;
+    }
     if (state.round >= config.maxReviewRounds) {
       return this.applyFailurePolicy(
         agent,
@@ -363,17 +391,38 @@ export class AnswerReviewGate {
     });
   }
 
-  private stateFor(sessionId: string, turn: number): GateSessionState {
+  /**
+   * Session state, re-scoped when the user request changes. Agent turns only
+   * refresh `lastTurn`: a new agent turn inside the same user turn keeps both
+   * the round budget and the PASS receipt, which is what bounds the loop. An
+   * unknown user turn (`null`) never resets a known one — an interim boundary
+   * without a candidate must not hand the gate a fresh budget.
+   */
+  private stateFor(
+    sessionId: string,
+    userTurn: number | null,
+    turn: number,
+  ): GateSessionState {
     const existing = this.states.get(sessionId);
-    if (existing !== undefined && existing.turn === turn) return existing;
-    const fresh: GateSessionState = {
-      round: 0,
-      turn,
-      failureSteered: false,
-      reviewing: false,
-    };
-    this.states.set(sessionId, fresh);
-    return fresh;
+    if (existing === undefined) {
+      const fresh: GateSessionState = {
+        round: 0,
+        userTurn,
+        lastTurn: turn,
+        failureSteered: false,
+        reviewing: false,
+      };
+      this.states.set(sessionId, fresh);
+      return fresh;
+    }
+    existing.lastTurn = turn;
+    if (userTurn !== null && existing.userTurn !== userTurn) {
+      existing.userTurn = userTurn;
+      existing.round = 0;
+      existing.failureSteered = false;
+      existing.lastPassedHash = undefined;
+    }
+    return existing;
   }
 
   private matchesExcluded(

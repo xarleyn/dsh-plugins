@@ -29,12 +29,20 @@ export function mergeDecisions(
   return merged;
 }
 
-/** Cap a decision for non-enforcing modes (SPEC §24). */
+/**
+ * Cap a decision for non-enforcing modes (SPEC §24).
+ *
+ * `off` caps at `allow` like `audit` does, so the table is total over
+ * {@link GateMode}: whatever a caller hands in, an off gate can never carry a
+ * blocking decision out of this function. The surfaces stop earlier than this
+ * — an off gate does not scan at all — and this is the second line of defence
+ * for a caller that reaches the mapping anyway.
+ */
 export function applyGateMode(
   decision: SafetyDecision,
   mode: GateMode,
 ): SafetyDecision {
-  if (mode === "audit") return "allow";
+  if (mode === "off" || mode === "audit") return "allow";
   if (mode === "warn" && decision === "block") return "warn";
   return decision;
 }

@@ -56,7 +56,9 @@ export type QaPermission =
   | "reviews.write"
   | "analytics.read"
   | "audit.read"
-  | "settings.manage";
+  | "settings.manage"
+  /** Write access to skill files, personal and deployment-wide. */
+  | "skills.manage";
 
 /**
  * Tools split by how they become available. `always` is visible from the first
@@ -390,6 +392,22 @@ export interface QaAccountSession {
   readonly user: QaAccountUserPublic;
 }
 
+/**
+ * One forgotten-password request waiting for an operator. The address and name
+ * travel with it so the console can show who is locked out without a second
+ * lookup; the count makes repeated taps visible instead of silent.
+ */
+export interface QaPasswordResetRequest {
+  readonly userId: string;
+  readonly email: string;
+  readonly displayName: string;
+  readonly requestedAt: string;
+  readonly lastRequestedAt: string;
+  readonly requestCount: number;
+  /** True when the account is disabled: a reset will not let it sign in. */
+  readonly disabled: boolean;
+}
+
 export type QaWhoamiResult =
   | { readonly authenticated: false }
   | { readonly authenticated: true; readonly user: QaAccountUserPublic };
@@ -399,6 +417,49 @@ export interface QaClaimResult {
   readonly claimed: number;
   /** Ids already owned by a different user; the browser drops them. */
   readonly conflicts: readonly string[];
+}
+
+/**
+ * What an integration token may do. The credential a non-browser application
+ * presents to the QA HTTP API carries its own scopes, so a bridge that asks
+ * questions cannot read back conversations it was never given.
+ */
+export type QaServiceTokenScope = "ask" | "sessions:read";
+
+/**
+ * What an account asks a new integration token to be. The credential is always
+ * issued to the caller: nothing a browser sends may name another account, so
+ * this shape has no owner field and the administrative path keeps its own.
+ */
+export interface QaServiceTokenCreateInput {
+  /** A note the operator's list shows; empty becomes a generic label. */
+  readonly label?: string;
+  /** Requested scopes; unknown ones are dropped, empty falls back to `ask`. */
+  readonly scopes?: readonly string[];
+  /** How long the token lives, in days; bounded server-side. */
+  readonly ttlDays?: number;
+}
+
+/**
+ * One integration token as a list shows it. The plaintext is deliberately not
+ * part of this shape: a secret is shown once, when it is minted, and a list
+ * that could repeat it would be a list that leaks it.
+ */
+export interface QaServiceTokenSummary {
+  readonly id: string;
+  readonly label: string;
+  readonly scopes: readonly QaServiceTokenScope[];
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly lastUsedAt: string | null;
+  readonly revokedAt: string | null;
+  readonly useCount: number;
+}
+
+/** One freshly minted token: the plaintext is here and nowhere else, ever. */
+export interface QaIssuedServiceToken extends QaServiceTokenSummary {
+  /** The credential to hand to the integration. Never recoverable later. */
+  readonly token: string;
 }
 
 /**
@@ -463,6 +524,45 @@ export type QaSkillJsonValue =
   | { readonly [key: string]: QaSkillJsonValue };
 
 /** One personal skill as the catalog list renders it. */
+/**
+ * One administrator write to a skill somebody else owns.
+ *
+ * The record exists so a personal skill cannot be changed behind its owner's
+ * back: it is written beside the skill and reported on every read, and the
+ * owner sees the badge in their own catalog.
+ */
+export interface QaSkillAdminEdit {
+  /** Administrator account id; the owner is told a role, not a colleague. */
+  readonly actorId: string;
+  /** ISO timestamp of that write. */
+  readonly at: string;
+}
+
+/**
+ * Which skill store an administrator is editing: the deployment-wide shared
+ * root every account may read, or one account's own directory.
+ */
+export type QaAdminSkillScope =
+  | { readonly kind: "shared" }
+  | { readonly kind: "user"; readonly userId: string };
+
+/** The account a personal skill scope belongs to, for the console's header. */
+export interface QaAdminSkillOwner {
+  readonly userId: string;
+  readonly email: string;
+  readonly displayName: string;
+}
+
+/** One scope's catalog plus the facts the console names it by. */
+export interface QaAdminSkillsView {
+  readonly scope: QaAdminSkillScope;
+  /** The account of a personal scope; null for the shared root. */
+  readonly owner: QaAdminSkillOwner | null;
+  readonly skills: readonly QaSkillSummary[];
+  /** Absolute directory this scope reads and writes, rendered read-only. */
+  readonly rootPath: string;
+}
+
 export interface QaSkillSummary {
   readonly name: string;
   readonly description: string;
@@ -480,6 +580,13 @@ export interface QaSkillSummary {
   readonly updatedAt: string | null;
   /** sha256 of the stored bytes; an update must echo the revision it read. */
   readonly revision: string;
+  /**
+   * The administrator write that produced the stored revision, or null. A
+   * record whose revision no longer matches is stale and reports as null: the
+   * badge answers "did an administrator write what I am looking at", not
+   * "was this skill ever touched by an administrator".
+   */
+  readonly adminEdit: QaSkillAdminEdit | null;
 }
 
 /** One personal skill with everything the editor needs. */
@@ -607,6 +714,16 @@ export interface QaNotesConfig {
   };
   /** How to label background delegations; no placeholders. */
   readonly delegation?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
+  /** Which reader an attached office document belongs to; no placeholders. */
+  readonly documents?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
+  /** Where an answer should come from; no placeholders. */
+  readonly sourcePriority?: {
     readonly enabled?: boolean;
     readonly template?: string;
   };
@@ -793,6 +910,43 @@ export interface QaSurfaceConfig {
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
   readonly notes?: QaNotesConfig;
+  readonly integration?: QaIntegrationConfig;
+}
+
+/**
+ * The HTTP API an external application (the ticket bridge) uses to ask
+ * questions and read its own conversations back: `POST {basePath}/ask`,
+ * `GET {basePath}/session` and `GET {basePath}/health`, authenticated with an
+ * account's integration token. Off unless a deployment asks for it.
+ */
+export interface QaIntegrationConfig {
+  /** Serve the API at all. Requires accounts; off by default. */
+  readonly enabled?: boolean;
+  /** Route namespace; the endpoints all hang off it. */
+  readonly basePath?: string;
+  /** Default lifetime of a minted integration token, in days. */
+  readonly tokenTtlDays?: number;
+  /**
+   * Wall-clock budget for one question. The endpoint answers within it — with
+   * an escalation when the turn is still running — because the caller's own
+   * timeout is a fixed part of the contract.
+   */
+  readonly requestTimeoutMs?: number;
+  /** Questions answered at the same time, deployment wide. */
+  readonly maxConcurrent?: number;
+  /** Requests one token may make per rolling minute. */
+  readonly requestsPerMinute?: number;
+  /** Ceiling on one request body, in bytes. */
+  readonly maxRequestBytes?: number;
+  /** Ceiling on one inline image attachment, in bytes. */
+  readonly maxAttachmentBytes?: number;
+  /**
+   * Ceiling on the published answer, in characters. The caller posts it into a
+   * ticket comment, whose own budget is smaller than a model's answer, and a
+   * cut made here at a paragraph boundary is readable where the caller's own
+   * silent truncation is not.
+   */
+  readonly maxAnswerCharacters?: number;
 }
 
 /** What a QA visitor may attach to one message. */
@@ -995,6 +1149,25 @@ export interface ResolvedQaSurfaceConfig {
       readonly enabled: boolean;
       readonly template: string;
     };
+    readonly documents: {
+      readonly enabled: boolean;
+      readonly template: string;
+    };
+    readonly sourcePriority: {
+      readonly enabled: boolean;
+      readonly template: string;
+    };
+  };
+  readonly integration: {
+    readonly enabled: boolean;
+    readonly basePath: string;
+    readonly tokenTtlDays: number;
+    readonly requestTimeoutMs: number;
+    readonly maxConcurrent: number;
+    readonly requestsPerMinute: number;
+    readonly maxRequestBytes: number;
+    readonly maxAttachmentBytes: number;
+    readonly maxAnswerCharacters: number;
   };
 }
 
@@ -1663,6 +1836,8 @@ export type QaAdminAuditAction =
   | "user.updated"
   | "user.enabled"
   | "user.disabled"
+  /** An operator set a new password for an account that had requested one. */
+  | "user.password-reset"
   | "authorization.changed"
   | "subrole.assignment.changed"
   | "subrole.created"
@@ -1673,7 +1848,10 @@ export type QaAdminAuditAction =
   | "conversation.deleted"
   | "review.updated"
   | "review.queued"
-  | "admin.settings.updated";
+  | "admin.settings.updated"
+  | "skill.created"
+  | "skill.updated"
+  | "skill.deleted";
 
 export interface QaAdminAuditEvent {
   readonly id: string;

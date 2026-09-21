@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
@@ -15,6 +15,7 @@ import {
   type QaStoredSessionHeader,
 } from "../src/admin/session-log.js";
 import type { StoredSessionEvent } from "../src/admin/conversation-log.js";
+import { QaPersonalSkills } from "../src/personal-skills/index.js";
 import { resolveConfig } from "../src/resolve-config.js";
 
 /**
@@ -234,6 +235,31 @@ export function harness(
     repository: roles,
   });
   const quality = new QaQualityStore(path.join(root, "quality.json"));
+  // The skill store the console writes through. It is the real service rather
+  // than a double: the console's contract is that it adds authorization and an
+  // audit row around exactly the storage the owner's own editor uses, so a fake
+  // would test the wiring and not that claim.
+  const workspace = path.join(root, "workspace");
+  mkdirSync(workspace, { recursive: true });
+  // A deployment that can host per-account storage at all: the resolver
+  // refuses a per-user workspace without the lockdown that confines it.
+  const skillConfig = () =>
+    resolveConfig({
+      session: { workspaceId: "workspace-1" },
+      accounts: { enabled: true, perUserWorkspace: true },
+      lockdown: {
+        sandboxMode: "workspace-write",
+        permissionPreset: "qa-workspace-write",
+        toolPolicy: { allow: ["read", "grep"] },
+      },
+      sources: { enabled: false },
+    });
+  const skills = new QaPersonalSkills(ctx, {
+    getConfig: skillConfig,
+    logger,
+    workspacePath: () => workspace,
+    invalidate() {},
+  });
   const conversations: Record<string, StoredSessionEvent[]> = {
     "session-alice": logFor(
       "Release report",
@@ -247,6 +273,7 @@ export function harness(
     quality: () => quality,
     roles: () => roles,
     access: () => access,
+    skills: () => skills,
     sessionLog:
       catalog.sessionLog ??
       staticSessionLogReader({
@@ -283,6 +310,9 @@ export function harness(
     accounts,
     quality,
     roles,
+    skills,
+    skillConfig,
+    workspace,
     admin,
     reviewer,
     alice,

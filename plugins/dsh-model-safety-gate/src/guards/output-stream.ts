@@ -15,7 +15,7 @@
  * emitted; `usage`/`finish` flush pending content through a final check.
  */
 
-import type { ResolvedSafetyGateConfig } from "../config.js";
+import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
 import {
   isDeltaChunk,
@@ -61,7 +61,9 @@ export function guardOutputStream(
 ): AsyncIterable<StreamChunk> {
   const { config, pipeline } = options;
   const mode = config.output.mode;
-  if (!config.output.enabled) return upstream;
+  // The guard is exported on its own, so it answers for its own switch instead
+  // of trusting the host entry to have checked the master switch first.
+  if (isGateOff(config) || !config.output.enabled) return upstream;
   const quarantining = mode === "buffered";
 
   return (async function* () {

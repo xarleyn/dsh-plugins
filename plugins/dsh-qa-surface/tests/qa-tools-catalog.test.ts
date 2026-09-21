@@ -20,7 +20,12 @@ function catalog() {
 describe("QA tool catalog", () => {
   it("exposes unique, known names in catalog order", () => {
     const names = qaToolNames(catalog());
-    expect(names).toEqual(["qa_tools_selfcheck", "file_delete"]);
+    expect(names).toEqual([
+      "qa_tools_selfcheck",
+      "docs_search",
+      "docs_read",
+      "file_delete",
+    ]);
   });
 
   it("lists file_delete exactly once", () => {
@@ -29,7 +34,7 @@ describe("QA tool catalog", () => {
   });
 
   it("carries a stable, non-empty catalog version", () => {
-    expect(QA_TOOL_CATALOG_VERSION).toBe("2");
+    expect(QA_TOOL_CATALOG_VERSION).toBe("3");
   });
 
   it("builds without registering anything", () => {

@@ -91,6 +91,32 @@ describe("workspace document preview", () => {
     );
   });
 
+  it("hands the pipeline the attachment root the preview itself accepted", async () => {
+    const cwd = await scratch("qa-docpreview-attach-cwd-");
+    const store = await scratch("qa-docpreview-attach-store-");
+    // An uploaded Word file lives in the shared store, outside every
+    // workspace: readable by the preview's own policy, unknown to the pipeline
+    // unless the root travels with the call.
+    await mkdir(join(store, "files", "2f9c"), { recursive: true });
+    const stored = join(store, "files", "2f9c", "report.docx");
+    await writeFile(stored, Buffer.from([0x50, 0x4b, 0x03, 0x04]));
+    const pdfPath = join(store, "files", "2f9c", "report.pdf");
+    await writeFile(pdfPath, "%PDF-1.4", "utf8");
+    const face = faceWriting(pdfPath);
+    await previewConvertibleDocument({
+      filePath: stored,
+      cwd,
+      attachmentRoot: store,
+      documents: () => face,
+      sessionId: "session-1",
+      maxBytes: 10_000,
+    });
+    expect(face.convert).toHaveBeenCalledWith(
+      expect.objectContaining({ targetFormat: "pdf" }),
+      { workspaceRoot: cwd, sessionId: "session-1", extraInputRoots: [store] },
+    );
+  });
+
   it("refuses when the deployment has no document pipeline", async () => {
     const cwd = await scratch("qa-docpreview-none-");
     await writeFile(

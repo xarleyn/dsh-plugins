@@ -1,8 +1,10 @@
 /**
  * Model notes: the ambient plugin messages the injector writes into a QA chat
- * (who the user is, the source-provenance rules, delegation naming). Each note
- * has a switch and an optional wording override; an empty template keeps the
- * built-in text, so the fields double as a wording editor and a mute switch.
+ * (who the user is, the source-provenance rules, delegation naming, which
+ * reader an attached document belongs to, where an answer should come from).
+ * Each note has a switch and an optional wording override; an empty template
+ * keeps the built-in text, so the fields double as a wording editor and a mute
+ * switch.
  */
 
 import { Notice, Section, TextField, Toggle } from "../fields.js";
@@ -21,6 +23,10 @@ const NOTE_PATHS: SectionPaths = [
   ["notes", "sources", "fallbackTemplate"],
   ["notes", "delegation", "enabled"],
   ["notes", "delegation", "template"],
+  ["notes", "documents", "enabled"],
+  ["notes", "documents", "template"],
+  ["notes", "sourcePriority", "enabled"],
+  ["notes", "sourcePriority", "template"],
 ];
 
 /** The ambient notes the Host writes into QA chats as hidden user messages. */
@@ -30,6 +36,8 @@ export function NotesSection(props: ConfigProps) {
   const identity = config?.notes?.identity;
   const sources = config?.notes?.sources;
   const delegation = config?.notes?.delegation;
+  const documents = config?.notes?.documents;
+  const sourcePriority = config?.notes?.sourcePriority;
   const paths: SectionPaths = NOTE_PATHS;
   const modified = overriddenAny(props, paths);
   return (
@@ -114,12 +122,55 @@ export function NotesSection(props: ConfigProps) {
           props.write(["notes", "delegation", "template"], value);
         }}
       />
+      <Toggle
+        label="Документы во вложениях"
+        hint="Напоминание читать приложенный документ Word или PDF конвейером документов (document_inspect, document_to_markdown), а не универсальным чтением файла: оно отказывает таким форматам как бинарным, и отказ читается как «файла нет»."
+        checked={documents?.enabled ?? true}
+        disabled={disabled}
+        onChange={(checked) => {
+          props.write(["notes", "documents", "enabled"], checked);
+        }}
+      />
+      <TextField
+        label="Формулировка заметки о документах"
+        value={documents?.template ?? ""}
+        disabled={disabled}
+        multiline
+        rows={4}
+        hint="Пусто — встроенный текст. Выключите заметку, если на стенде нет конвейера документов."
+        onChange={(value) => {
+          props.write(["notes", "documents", "template"], value);
+        }}
+      />
+      <Toggle
+        label="Приоритет источников"
+        hint="Напоминание отвечать из того источника, который владеет вопросом: вложения и документация раньше памяти. Срабатывает там, где скилл плагина памяти не активировался."
+        checked={sourcePriority?.enabled ?? true}
+        disabled={disabled}
+        onChange={(checked) => {
+          props.write(["notes", "sourcePriority", "enabled"], checked);
+        }}
+      />
+      <TextField
+        label="Формулировка заметки о приоритете источников"
+        value={sourcePriority?.template ?? ""}
+        disabled={disabled}
+        multiline
+        rows={4}
+        hint="Пусто — встроенный текст."
+        onChange={(value) => {
+          props.write(["notes", "sourcePriority", "template"], value);
+        }}
+      />
       {identity?.enabled === false &&
       sources?.enabled === false &&
-      delegation?.enabled === false ? (
+      delegation?.enabled === false &&
+      documents?.enabled === false &&
+      sourcePriority?.enabled === false ? (
         <Notice tone="warn">
           Все заметки выключены: новые чаты не получат ни контекста о
-          пользователе, ни правил источников, ни имён делегаций.
+          пользователе, ни правил источников, ни имён делегаций, ни
+          маршрутизации документов, ни напоминания о приоритете источников.
         </Notice>
       ) : null}
     </Section>

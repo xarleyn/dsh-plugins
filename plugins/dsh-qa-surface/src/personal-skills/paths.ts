@@ -34,6 +34,12 @@ export interface QaSkillRoots {
   readonly skills: string;
   /** The canonical directory a removed skill directory is moved into. */
   readonly trash: string;
+  /**
+   * Whether these roots are the deployment-wide store rather than one
+   * account's. The geometry is identical, so the flag travels with the roots
+   * instead of being re-derived from them at every use.
+   */
+  readonly shared: boolean;
 }
 
 function samePath(left: string, right: string): boolean {
@@ -77,6 +83,12 @@ function canonicalInside(
 export function resolveSkillRoots(
   personalRoot: string,
   relativeRoot: string,
+  /**
+   * What the boundary refuses to leave, for the message an operator reads.
+   * The same resolution serves an account directory and the deployment-wide
+   * shared root, which have different owners but identical geometry.
+   */
+  boundary = "this account's",
 ): QaSkillRoots {
   const segments = [...skillRelativeRootSegments(relativeRoot)];
   const last = segments.pop();
@@ -91,21 +103,25 @@ export function resolveSkillRoots(
     canonicalPersonal,
     path.join(...segments, last),
     "storage-unavailable",
-    "the configured personal-skills root escapes this account's directory",
+    `the configured skills root escapes ${boundary} directory`,
     false,
   );
   const trash = canonicalInside(
     canonicalPersonal,
     path.join(...segments, `${last}${QA_SKILL_TRASH_SUFFIX}`),
     "storage-unavailable",
-    "the personal-skills trash directory escapes this account's directory",
+    `the skills trash directory escapes ${boundary} directory`,
     false,
   );
-  return { personalRoot: canonicalPersonal, skills, trash };
+  return { personalRoot: canonicalPersonal, skills, trash, shared: false };
 }
 
-/** The directory of one skill, validated against the account's skills root. */
-export function skillDirectory(roots: QaSkillRoots, name: string): string {
+/** The directory of one skill, validated against the scope's skills root. */
+export function skillDirectory(
+  roots: QaSkillRoots,
+  name: string,
+  boundary = "this account's",
+): string {
   const problem = skillNameProblem(name);
   if (problem !== null) {
     throw new QaPersonalSkillError(
@@ -117,7 +133,7 @@ export function skillDirectory(roots: QaSkillRoots, name: string): string {
     roots.skills,
     name,
     "skill-name-invalid",
-    "the skill directory escapes this account's skills root",
+    `the skill directory escapes ${boundary} skills root`,
     true,
   );
 }
@@ -172,7 +188,7 @@ export function ensureSkillRoots(roots: QaSkillRoots): void {
   if (!pathIsInside(verified, roots.personalRoot)) {
     throw new QaPersonalSkillError(
       "storage-unavailable",
-      "personal skill storage escapes this account's directory",
+      "skill storage escapes the directory it was resolved against",
     );
   }
 }
