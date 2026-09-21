@@ -1,3 +1,14 @@
+## 0.2.4 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the output-stream quarantine integration test is split into a ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  domain file with shared helpers. No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.3 (2026-09-17)
 
 ### 🩹 Fixes

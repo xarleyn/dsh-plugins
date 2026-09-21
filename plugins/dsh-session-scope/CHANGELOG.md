@@ -1,3 +1,14 @@
+## 0.7.4 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the package's oversized test files are split into core and ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  tool-guard domains with shared helpers. No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.3 (2026-09-17)
 
 ### 🩹 Fixes

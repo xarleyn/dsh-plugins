@@ -1,3 +1,15 @@
+## 0.1.1 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the package's oversized test files are split into per-domain ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  files with shared helpers (`prompt-sections`, `composition`, `client-store`,
+  `preset-files`). No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.0 (2026-09-18)
 
 ### 🚀 Features

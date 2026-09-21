@@ -1,3 +1,15 @@
+## 0.1.7 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the package's oversized test files are split into per-domain ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  files with shared helpers (`registry`, `dom-translator`, `locale-hook`,
+  `integration`). No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.6 (2026-09-17)
 
 ### 🩹 Fixes

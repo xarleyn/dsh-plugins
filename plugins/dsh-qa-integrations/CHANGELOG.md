@@ -1,3 +1,106 @@
+## 0.7.0 (2026-09-21)
+
+### 🚀 Features
+
+- Give `bitrix_search_crm` the filters the audit kept reaching for, and pin the page order so offset paging stops repeating rows. ([20eea44](https://github.com/xarleyn/dsh-plugins/commit/20eea44))
+
+  The tool could only narrow by title substring and assignment, so typical questions ("open deals in this funnel", "what moved recently") degenerated into paging through the archive from the first page of ten thousand. The schema now carries `stageId`, `categoryId`, `openOnly` (deals only — the universal item API exposes `closed` for deals), `createdSince`, `updatedSince`, `orderBy` (`id`/`createdTime`/`updatedTime`) and `orderDir`. Every search now sends an explicit deterministic order: offset paging over an unspecified order is what produced identical pages at different offsets. An empty `query` now fails with the repair named in the message — `query is invalid: a non-empty title substring …` — instead of a bare `query is invalid` that one session retried verbatim; the tool description also points at `bitrix_get_crm_stage_history` for the "sitting in a stage too long" question the search could not express.
+
+- Add `bitrix_add_crm_timeline_comment`, the provider's first write tool, behind an operator switch that defaults to off. ([609d60d](https://github.com/xarleyn/dsh-plugins/commit/609d60d))
+
+  QA tasks kept asking the agent to "add a note to the deal", and the agent — holding only read tools — promised a write it could not perform. The new tool adds exactly one comment to the timeline of a lead, deal, contact or company (`crm.timeline.comment.add`); smart processes and every other mutation stay out of the surface. It mounts only when the deployment sets `bitrix24.crmCommentWrite: true`, rides the new `crm.comment.write` capability, and even then starts policy-denied until the capability is explicitly allowed for the integration. Three gates, because Bitrix24 has no read-only webhook scope: a `crm`-scoped webhook can write on its own, so the flag — not the scope probe — is what bounds the deployment, and the policy is what bounds the user. The read catalog of thirty-nine tools is unchanged and stays mounted whatever the flag says.
+
+- An operator card for the deployment configuration, live in "Plugins → Plugin ([1a921b5](https://github.com/xarleyn/dsh-plugins/commit/1a921b5))
+  configuration".
+
+  Until now every deployment knob — provider switches, instance and site lists,
+  the TeamCity address with its network policy, managed service credentials —
+  lived only in the profile's composition row, and the Host settings page showed
+  a card that asked for a QA sign-in, because connections belong to accounts. An
+  operator who just wanted to flip a capability had to edit yaml and restart.
+
+  The plugin now installs its configuration as a real settings namespace and
+  mounts an operator card on it, beside the user surfaces. The card covers the
+  whole resolved configuration: the general knobs (enabled, timeouts, response
+  and audit budgets, the Bitrix24 portal suffixes), every provider's capability
+  switches and limits, the instance and site lists with id/label/address rows,
+  the TeamCity server address and its address policy, managed service credential
+  profiles with their resource boundaries and deny policy, and the per-provider
+  credential-help overrides. Every field shows whether the user layer overrides
+  the composition row, one button clears the layer back to yaml, and a refused
+  value is reported on the card instead of stored.
+
+  Edits apply to the running service as they are committed: the broker is
+  re-pointed at the freshly resolved provider set, and the tool mount follows the
+  enabled flag and the one write capability. The connection store and its master
+  key are the deliberate exception — connections and wrapped secrets belong to
+  the boot path, so re-pointing them warns and waits for a Host restart instead
+  of reopening the store under running connections. A deployment without a
+  settings provider behaves exactly as before, booting on the composition row.
+
+- Managed service credentials for every provider, not just GitLab and TeamCity. ([aaa1420](https://github.com/xarleyn/dsh-plugins/commit/aaa1420))
+
+  The deployment-managed shared read-only account existed for two of the seven
+  integrations: a contractor without a corporate GitLab account, or an intern no
+  one issued a TeamCity token, could not connect at all. The provider contract
+  was already generic — the broker resolved the mode and the boundary for anyone
+  — but only two providers classified their operations, so only two offered the
+  checkbox.
+
+  Bitrix24, Jira, Confluence, Test IT and Weblate now implement the full
+  provider side: per-operation security classification (effect, sensitivity,
+  service-safety, resource boundary), capability service states, instance
+  portal resolution, a probe-only credential health check, and execute-time
+  enforcement that runs the ceiling first, then the boundary, then the
+  provider-specific filters. Each provider names its own boundary vocabulary:
+  `projects` for Jira (project keys), Test IT (project ids) and Weblate (project
+  slugs), `spaces` (space keys) for Confluence, and `portals` for Bitrix24,
+  which has no project tree at all — a service webhook must answer on the portal
+  the profile names, and the profile's secret there is a full incoming-webhook
+  URL whose host the broker derives itself. The connect cards gained the shared
+  service UI: the pre-checked "use the service token" box when the deployment
+  defaults to it, a connect form without a secret field, the mode row with the
+  switch buttons, and the seven service error explanations.
+
+  Sensitive reads stay personal everywhere: CI logs and artifact bodies on
+  GitLab/TeamCity as before, and now the Bitrix24 people directory, chats,
+  open lines, call transcripts, calendars and Drive files, the Test IT
+  attachments (metadata included — a global attachment id cannot be mapped to a
+  boundary project, so it fails closed), and Jira attachment listings. Catalogs
+  without a log-like read (Confluence, Weblate) report no sensitive capability.
+  Everything a provider update adds without an explicit classification stays
+  denied, as before.
+
+
+### 🩹 Fixes
+
+- The operator card reads as grouped blocks instead of one flat run of fields. ([945ac51](https://github.com/xarleyn/dsh-plugins/commit/945ac51))
+
+  Every provider section used to be a single grid of fourteen to twenty-three
+  controls in source order: the provider switch, the instance editor, the
+  capability toggles and the numeric limits all carried the same weight, so a two
+  column layout could put an instance row next to "Профиль: чтение" and the
+  knobs a reader rarely touches sat between the ones they came for. Each section
+  now has four labelled blocks — «Провайдер», «Подключение» (connection editors
+  own the full width), «Что доступно агенту» as a checklist whose box leads the
+  label, and «Ограничения и повторы» folded away until someone asks for it.
+  Capability keys and their defaults are unchanged, only the headings that say
+  what belongs with what are new.
+
+  A collapsed section also says what it holds: `включён · 1 инстанс · доступно
+  7 из 7`, computed from the same values the toggles show, so a reader can see
+  which provider is off or half-open without expanding seven sections. Field
+  captions are now real `<label>`s tied to their inputs, which makes a caption
+  click land in the field and lets assistive technology name it.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.10.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.0 (2026-09-18)
 
 ### 🚀 Features

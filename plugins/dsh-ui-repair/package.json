@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-ui-repair",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Reversible DOM diagnostics and scoped UI repairs for DeepSeek Harness plugins",
   "repository": {
     "type": "git",

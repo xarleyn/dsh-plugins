@@ -1,3 +1,14 @@
+## 0.5.1 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the package's oversized test files are split into adapter, ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  provider and security domains with shared helpers. No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.0 (2026-09-18)
 
 ### 🚀 Features

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-documents",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Managed document pipeline for the DeepSeek Harness: Markdown to DOCX/PDF, DOCX/PDF back to Markdown, and online sources as agent tools",
   "keywords": [
     "deepseek",

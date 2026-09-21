@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-qa-browser",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Session-scoped Playwright browser runtime for DeepSeek Harness and QA Surface",
   "repository": {
     "type": "git",

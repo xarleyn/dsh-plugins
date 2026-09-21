@@ -1,3 +1,14 @@
+## 0.2.1 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the client test monolith is split into read, write and error ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  domains with shared helpers. No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.0 (2026-09-18)
 
 ### 🚀 Features

@@ -1,3 +1,15 @@
+## 0.1.1 (2026-09-21)
+
+### 🩹 Fixes
+
+- Internal cleanup: the host pipeline test monolith is split into registry, ([b342ea0](https://github.com/xarleyn/dsh-plugins/commit/b342ea0))
+  scanner, security and service domains with shared helpers, and the package gains
+  a design note for its QA-surface integration. No runtime behavior changed.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.0 (2026-09-18)
 
 ### 🚀 Features

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-jev-compaction",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Jev/System-One semantic pruning of stale tool results for DeepSeek Harness; keeps conversation text verbatim and forgets stale tool output before summary compaction is needed",
   "repository": {
     "type": "git",

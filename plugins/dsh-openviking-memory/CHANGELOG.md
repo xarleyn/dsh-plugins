@@ -1,3 +1,43 @@
+## 0.2.0 (2026-09-21)
+
+### 🚀 Features
+
+- The plugin gets a settings card, so its configuration is editable from ([80e928f](https://github.com/xarleyn/dsh-plugins/commit/80e928f))
+  **Settings → Plugins** in the DSH web UI instead of a patch file.
+
+  The card edits the plugin's `dsh-openviking-memory` settings namespace
+  directly. Sections follow the configuration contract: the four automatic
+  context presentation knobs with the master-switch semantics spelled out, the
+  connection fields, peer identity, the recall knobs, capture and commit, and an
+  advanced group for `skipSubagentSessions`, the two timeouts and the deprecated
+  `captureMode`.
+
+  Writes are immediate scalar sets, and clearing a field drops the user-layer
+  override so the value re-inherits the composition layer — which for the
+  connection fields means the `OPENVIKING_*` environment variables and credential
+  files stay in charge. Fields marked as overridden by the profile's user layer
+  carry an override marker, and one reset action clears all of them. The four
+  knobs the schema deliberately leaves without a default render their upstream
+  fallback as a placeholder and write only when a value is named, so the
+  "configured" and "defaulted" cases stay distinguishable.
+
+  The card is configuration-only: the header badge projects the master switch
+  (`Auto-inject` / `Manual recall`), not live runtime state — diagnostics remain
+  in the plugin log.
+
+
+### 🩹 Fixes
+
+- Reject an empty `grep` pattern or `search`/`find` query as invalid parameters instead of forwarding it to the OpenViking server. ([9c78405](https://github.com/xarleyn/dsh-plugins/commit/9c78405))
+
+  The upstream server answers a retrieval call whose free-text parameter carries no non-whitespace character with a plain "no matches" result. That reads as a real, negative answer, so a model that sent an empty argument once kept resending it — one audited QA-stand session logged seventeen byte-identical empty `grep` calls in a row, each answered the same way. The stdio proxy now answers such calls itself with a JSON-RPC invalid-params error naming the parameter, and rewrites the upstream `tools/list` schemas so `grep.pattern`, `search.query` and `find.query` are advertised as required with a minimum length — the contract is visible before the model's first call, and `grep`'s list form of `pattern` gets `minItems` instead. `grep` keeps accepting either a single pattern or a list; only the all-empty shapes are refused.
+
+  Both checks ride on two new proxy-core seams (`requestGuard`, `adjustUpstreamTool`) supplied by the harness entrypoint, so the vendored core stays free of OpenViking tool knowledge; see UPSTREAM.md.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.2 (2026-09-18)
 
 ### 🩹 Fixes

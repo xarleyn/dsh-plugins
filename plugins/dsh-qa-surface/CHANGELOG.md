@@ -1,3 +1,275 @@
+## 0.10.0 (2026-09-21)
+
+### 🚀 Features
+
+- Let an administrator delete a conversation for real, and keep the sidebar's ([b9b12bf](https://github.com/xarleyn/dsh-plugins/commit/b9b12bf))
+  delete what it always was — a per-browser row.
+
+  The console could read, review and rate a conversation but not remove one: the
+  only delete anywhere in the surface was the sidebar's, which forgets a chat in
+  one browser and nothing else, so a chat that should not exist (a broken
+  navigation, a conversation that never belonged, a user's request) stayed on the
+  stand forever.
+
+  The deletion is the console's, admin-only (`conversations.delete`) and audited
+  (`conversation.deleted`), and it removes what the deployment kept rather than a
+  row in a list: the stored logs of the chat and of every session delegated from
+  it, the ownership record that is its authorization boundary, its ratings,
+  reviews and queue entries, and the sources it collected. The Harness offers no
+  deletion seam to lean on — `sessionPersistence` has create/open/flush/stat/list,
+  and a live session leaves memory only with the fiber that owns it — so the
+  deployment's own storage artifacts are what gets removed, and the console says
+  so when a deployment keeps sessions somewhere directories cannot express.
+
+  Refusals come before anything is touched, so a chat is never half-deleted: a
+  conversation the Harness still holds open would have its log written back by
+  the next flush, and one it never had is not a conversation at all. Both say
+  which of the two they are.
+
+- The QA tool catalog gains its first destructive capability: `file_delete`, ([b6f0e71](https://github.com/xarleyn/dsh-plugins/commit/b6f0e71))
+  deleting one workspace file with a mandatory operator confirmation.
+
+  The catalog (version 2) ships `file_delete` next to `qa_tools_selfcheck`.
+  It removes a single regular file strictly inside the calling chat's own
+  workspace root — relative or absolute-inside paths both work — and refuses
+  everything else with an explicit reason: paths outside the workspace,
+  symlink escapes (the deepest existing ancestor is resolved with realpath and
+  verified for containment), directories and missing files. A missing or
+  blank session cwd is a typed refusal, never a fallback to the process
+  working directory, and refusals never echo absolute host paths.
+
+  Every call is gated: a `tools/pre-execute` listener answers `ask` for
+  `file_delete` from an attested session, so the interactive approval card
+  parks the request over the composer and nothing is deleted until the
+  operator allows it once. Other tool names pass through untouched, and the
+  existing allow-list, workspace fence and sandbox still apply to the
+  resolved call. No allow-list entry is needed: the dynamic catalog
+  admission already admits names the activation manager registered.
+
+  The chat client also drops the machine-scent: the question form's status
+  strip and pager are separate elements without the middle-dot separator,
+  question headers no longer uppercase with letter-spacing, punctuation-only
+  option descriptions and details («?», «...») produced by small models are
+  no longer rendered, the approval card marks a delegated request with its
+  own span instead of a dot-glued suffix, and the subagent drawer renders
+  settlement meta as separate parts instead of a dot-joined string.
+
+- The service mode badge is gone from the chat header. ([28c44c0](https://github.com/xarleyn/dsh-plugins/commit/28c44c0))
+
+  The title row carried a caption reading «Режим …» — the name of the
+  deployment's agent preset, prettified. It labelled nothing a reader could
+  act on, revealed plumbing a QA audience has no use for, and took title-row
+  width away from the conversation title itself. The badge, its icon and its
+  stylesheet are removed; the row now shows the title, the role selector and
+  the controls, and the subagent return control still appears in the same
+  spot while a subagent transcript is open. The preset itself keeps driving
+  the session exactly as before — only the label is gone.
+
+- Assistant Markdown renders TeX math and footnotes the way the DSH transcript ([dc0d160](https://github.com/xarleyn/dsh-plugins/commit/dc0d160))
+  does.
+
+  The chat renderer stopped at the GFM grammar: answers that write formulas in
+  TeX — inline `$x^2$`, display blocks between `$$` fences, ```math fences —
+  showed up as raw source with backslashes and braces, and a footnote reference
+  `[^1]` stayed visible bracket text while its definition rendered as an
+  ordinary paragraph.
+
+  Math now renders through the same library the transcript uses (KaTeX, display
+  and inline mode), so fractions, subscripts, Greek letters and integrals read
+  as formulas. The delimiter shapes follow the transcript's settled grammar
+  exactly — maximal-munch dollar runs, equal-length opener and closer, padding
+  stripped only when both ends carry it, unpaired dollars (prices) staying
+  literal — and the `\(…\)` / `\[…\]` delimiters stay literal text there too,
+  so both surfaces agree on what is a formula. Footnotes follow GitHub's
+  dialect: a defined `[^label]` renders as a numbered superscript and the
+  definitions collect into a trailing section with per-reference back-markers,
+  while an undefined label stays literal text.
+
+  KaTeX joins the self-contained client bundle deliberately: the stylesheet and
+  all twenty woff2 faces travel inside the bundle as data URIs, so math looks
+  right whatever the Host page loads, and the generated
+  `src/client/markdown/katex-css.ts` is refreshed by
+  `scripts/generate-katex-css.mjs` on dependency bumps.
+
+- The ambient model notes are configurable: each can be muted and reworded from ([474a7f5](https://github.com/xarleyn/dsh-plugins/commit/474a7f5))
+  the settings card.
+
+  The plugin writes three hidden user messages into a QA chat: who the user is
+  (name, email, handles, their own instructions), the source-provenance rules,
+  and the request to give background subagents short vivid names. The texts were
+  literal in the source, and the only switches were the feature switches around
+  them (`accounts.profile.inject` gated the identity note; the sources note
+  disappeared only together with provenance collection itself; the delegation
+  note had no switch at all).
+
+  The new `notes` config block — surfaced as the «Заметки модели» section of the
+  settings card — gives each note an on/off switch and a wording override:
+  `notes.identity.template` with `{identity}` and `{instructions}`,
+  `notes.sources.template` plus a separate `fallbackTemplate` with
+  `{reportTool}`, and `notes.delegation.template`. An empty template keeps the
+  built-in text; a template that drops its required placeholder falls back to
+  the built-in wording instead of silently anonymizing the note. Muting stops
+  future notes only — one already delivered stays in the conversation it
+  reached — and notes remain advisory text: the lockdown and tool policy hold
+  whatever the conversation says.
+
+- The chat-list sidebar is resizable, and both widths survive a reload. ([a0a75f0](https://github.com/xarleyn/dsh-plugins/commit/a0a75f0))
+
+  The sidebar has been a fixed 264 pixels since it first shipped: on a wide
+  monitor the conversation swallowed the difference, and a reader with long chat
+  titles — or long owner names in the admin grouping — had no way to trade
+  conversation width for list width.
+
+  The sidebar now drags like the Host frame's own. An invisible 8px strip
+  straddles the sidebar's right border, the cursor alone advertises it, and a
+  pointer-captured, rAF-throttled drag moves the edge live. The clamp copies the
+  frame's constants: the old fixed width is the floor (264), the frame's ceiling
+  the max (420), with integer rounding and no snapping. The collapsed rail keeps
+  its fixed width and renders no strip, and expanding restores the last dragged
+  width.
+
+  The chosen width is remembered per browser, in the deployment's localStorage
+  namespace next to the collapsed flag and the transcript width, so a reload, a
+  re-login or a reopened tab comes back at the dragged width. During the drag
+  the width travels through a CSS custom property on the nav element rather than
+  React state, so the memoized sidebar does not re-render per frame; the
+  conversation column follows through the ResizeObserver that already
+  republishes the content width, and that width's existing floor keeps the
+  transcript readable. Below 600px the sidebar is hidden, as before, and the
+  strip hides with it.
+
+- The files rail browses the chat's own working directory and opens what it finds. ([dccd31f](https://github.com/xarleyn/dsh-plugins/commit/dccd31f))
+
+  The panel could already list what a visitor attached and reopen the files an
+  answer cited as sources, but everything the conversation *produced* — the
+  document a `document_create` call wrote, the notes an agent left behind, the
+  manifest beside an artifact — stayed invisible: the rail said "there are no
+  attachments in this chat", and the only way to reach those files was a shell on
+  the host. Two new Host methods close that gap (`listWorkspaceFiles`,
+  `readWorkspaceFile`), and the «Файлы» tab renders them as a directory browser:
+  crumbs from the chat's root, one directory at a time, folders first.
+
+  Browsing is deliberately narrower than the source preview it sits beside. The
+  listing is confined to the attested chat's own directory — the realpath- and
+  containment-checked request refuses everything else with the shared
+  `outside-roots` reason, symlinked children are omitted rather than followed,
+  and the single listing cap (`sources.filePreview.maxListingEntries`, default
+  500) reports the cut instead of hiding it. Reading reuses the source preview's
+  root policy unchanged — the chat's cwd, the deployment's shared read-only
+  roots, and the attachment store — so a file the model itself may read stays
+  readable in the panel, and nothing else does. Unlike the source preview it does
+  not require the file to be recorded evidence, because the visitor is browsing a
+  tree rather than reopening a cited source; the switch that opens file reading
+  at all (`sources.filePreview.enabled`) governs both and is now also rendered
+  with the new cap in the settings card.
+
+  A text file opens inline — Markdown with the same rendered/raw toggle the
+  source detail uses, anything else as monospaced text — while a binary file
+  reports that it does not read as text and offers the whole file as a download.
+  The download happens in the page: the bytes arrive base64 in the read answer and
+  become an object URL, so no unfenced byte-serving route is exposed to the
+  audience.
+
+  Word documents are previewed rather than described: the panel asks the Host for
+  a renderable copy (`previewWorkspaceDocument`), which converts the file through
+  the document pipeline's own runtime — the service `@yadsh/dsh-documents`
+  publishes for its host siblings — and hands back the produced PDF, drawn by the
+  browser's viewer inside a blob frame. A deployment without that pipeline, a
+  format it cannot render, or a conversion that fails all end in the same honest
+  sentence and a working download, never in a guess. PDFs already in the
+  workspace preview the same way from their own bytes. Any open file — text,
+  image, PDF — can be expanded out of the rail into a dialog-sized view
+  (`Развернуть файл`), which shows the same body with more room and closes back to
+  the directory.
+
+
+### 🩹 Fixes
+
+- Remove a chat's QA record when the Harness has actually lost it — and only then. ([e8ccefd](https://github.com/xarleyn/dsh-plugins/commit/e8ccefd))
+
+  The sweep that reclaims ownership records of deleted chats asked the live
+  session store what exists, and that store answers only for the sessions this
+  process has open. A chat nobody had opened since the last restart was therefore
+  absent from the answer without being gone: once its claim passed the grace
+  period, the record — the chat's authorization boundary — was reclaimed, and the
+  chat left its owner's list, the console and the counters while the conversation
+  itself was still on disk. The sweep now asks both halves of what the Harness
+  knows, the live sessions and the durable listing, and treats an incomplete
+  listing (a deployment that serves no durable query engine, or one that failed
+  this read) as a question it cannot answer: it reclaims nothing rather than
+  guessing.
+
+  Dropping a chat takes the rest of what the deployment kept about it. Ratings,
+  reviews and queue entries are keyed by conversation and outlived it, so a chat
+  deleted in the Harness left its verdicts behind, still counted by the metrics
+  and still pointing at a conversation the console could not open. The sweep
+  hands the ids it reclaimed to the deployment, which drops those rows; the audit
+  trail stays, because it records what administrators did rather than what a
+  conversation held.
+
+  The review reads run the sweep before listing conversations, so the console
+  reflects what exists when it is opened instead of waiting for the next chat
+  creation to trigger housekeeping.
+
+- Document where a per-user QA deployment puts its chats in the host UI, and give ([71ee354](https://github.com/xarleyn/dsh-plugins/commit/71ee354))
+  the operator a way to repair the stragglers that are still adoptable.
+
+  `accounts.perUserWorkspace` hands every QA chat a private
+  `<workspace>/.qa-users/<account UUID>` root and deliberately does not register
+  it as a DSH Workspace. DSH grants Workspace membership only to a session whose
+  stored cwd IS the Workspace path (`Workspace.attachSession` compares the two
+  after `realpath`, and the workspace browser derives its groups from
+  `workspace.sessionIds` alone), so those chats appear under `Ungrouped` in the
+  host's sidebar. The mode is not misconfigured and nothing can move them
+  afterwards: the contract has no attach or membership request for an existing
+  session, `insertSessionBefore` reorders only sessions a Workspace already
+  accounts, and dragging a session never crosses groups. Registering one Workspace
+  per account directory is the one mechanism that would group them, and it would
+  put every visitor's scratch root into the operator's global workspace registry.
+  README, `docs/CONFIGURATION.md` and SPEC.md now state that consequence instead
+  of leaving an operator to rediscover it.
+
+  The second straggler family is repairable and now has a command. A chat created
+  while the deployment pinned `session.cwd` - or through `workspaceId` with the
+  same directory spelled differently (`E:/base` against `E:\base`) - never calls
+  `attachSession` at all, so it lands in `Ungrouped` even though its cwd IS the
+  Workspace path. `qa-attach-sessions`
+  (`scripts/attach-workspace-sessions.mjs`) adopts exactly those: it reads the
+  session store and the workspace registry, matches the stored cwd to a workspace
+  path after `realpath`, and writes the membership the host itself would have
+  written. Dry run by default; `--write` requires DSH to be stopped, keeps an
+  exclusive `*.pre-workspace-attach.bak` copy, replaces the registry atomically
+  and re-reads it before reporting success. Sessions below a workspace path are
+  reported and refused, because the host re-applies the same comparison on every
+  read and would drop them again; subagent sessions and archived sessions stay
+  untouched unless asked for. The command changes no plugin runtime behavior.
+
+- The administrative user card opens fast again, and saving an edit confirms ([c7cbaf1](https://github.com/xarleyn/dsh-plugins/commit/c7cbaf1))
+  itself on the spot.
+
+  The card used to fill its «Сообщения» activity counter by reading every
+  conversation the account owns, and reading one conversation on the Harness
+  costs a full persistence listing of the deployment's sessions before it
+  reaches the one log it asks for. On a real store that made the card wait
+  minutes — and because a write returned the recomputed detail, every save (a
+  role, a status, a profile assignment) paid for the same scan again, which
+  looked like an edit that silently refused to apply.
+
+  The card now answers from the account stores and the feedback store alone;
+  the messages counter reports "unknown" and is counted where the transcripts
+  are read anyway — the conversations page, whose rows already carry a
+  per-conversation message count. A save applies the update response directly
+  instead of re-requesting the user, so the checkbox reflects the change as
+  soon as the server accepts it.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.4.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.9.0 (2026-09-18)
 
 ### 🚀 Features
