@@ -141,6 +141,30 @@ export {
 } from "./providers/registry.js";
 export { documentCapabilities, documentHealth } from "./capabilities.js";
 export { ArtifactStore, sha256Hex, sha256OfFile } from "./artifacts/store.js";
+export {
+  CACHE_DIRECTORY,
+  CACHE_ENTRY_VERSION,
+  CacheStore,
+  ConversionCache,
+  cacheKey,
+  canonicalJson,
+  conversionCacheKey,
+  extractionCacheKey,
+  pipelineFingerprint,
+  probeProviderVersion,
+  type CacheHandle,
+  type CacheProviderRef,
+  type CachePruneReport,
+  type ConversionRequest,
+  type ConversionCacheOptions,
+  type DocumentCacheEntry,
+  type DocumentCacheOperation,
+  type DocumentCacheOutput,
+  type DocumentCacheProvider,
+  type ExtractionRequest,
+  type StoreOutputSpec,
+} from "./cache/index.js";
+export type { DocumentCacheRecord } from "./types.js";
 export { createArtifactId, createUlid, isArtifactId } from "./artifacts/ids.js";
 export { fromUrl, normalizeSourceUrl } from "./orchestrator/fetch-document.js";
 export {

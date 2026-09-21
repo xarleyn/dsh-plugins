@@ -12,6 +12,12 @@
  * Anything else answers `UNSUPPORTED_CONVERSION` — the pipeline never falls
  * back to "run some shell pipeline and hope", because a conversion the service
  * does not model is a conversion it cannot bound, observe or secure.
+ *
+ * Provider-backed routes consult the conversion cache (§44 of the plan in
+ * `cache/`): the same input with the same options is converted once, and every
+ * later request materializes a fresh artifact from the recorded result. A cache
+ * hit never invents a bundle — the bytes are copied and re-hashed, so callers
+ * see the same manifest shape either way.
  */
 
 import { stat } from "node:fs/promises";
@@ -23,6 +29,7 @@ import {
   outputRecord,
   writeManifest,
 } from "../artifacts/manifest.js";
+import { ConversionCache, type ConversionRequest } from "../cache/index.js";
 import { DocumentError, asDocumentError } from "../errors.js";
 import {
   describeUnsupported,
@@ -40,6 +47,7 @@ import type {
 } from "../types.js";
 import { createDocument } from "./create-document.js";
 import { extractToMarkdown } from "./extract-document.js";
+import type { CacheSpec } from "./cache-spec.js";
 import {
   ensureArtifactRoot,
   readInputBytes,
@@ -124,6 +132,10 @@ export async function convertDocument(
         ...(scope.signal === undefined ? {} : { signal: scope.signal }),
       },
       "document_convert",
+      {
+        inputSha256: sha256Hex(bytes),
+        inputFilename: path.basename(inputPath),
+      },
     );
     return {
       artifactId: extracted.artifactId,
@@ -203,6 +215,62 @@ async function convertDocxToPdf(
   const { artifactId, dir: artifactDir } = await scope.store.create(
     deps.now().getTime(),
   );
+  const stem = (
+    input.filename ?? path.basename(inputPath).replace(/\.[^.]+$/u, "")
+  )
+    .replace(/[^A-Za-z0-9._-]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
+  const outputFile = `${stem === "" ? "document" : stem}.pdf`;
+  const spec: CacheSpec = {
+    inputSha256: sha256Hex(bytes),
+    inputFilename: path.basename(inputPath),
+  };
+  const cache = await createCache(deps, scope.store, {
+    sourceFormat: "docx",
+    targetFormat: "pdf",
+    inputSha256: spec.inputSha256,
+    inputFilename: spec.inputFilename,
+    providers: [
+      {
+        role: "convert",
+        name: deps.providers.converter.name,
+        instance: deps.providers.converter,
+      },
+    ],
+  });
+  const cached = await cache?.lookup(artifactId, () => outputFile);
+  if (cached !== undefined) {
+    const files = cached.outputs.map((output) => ({
+      format: "pdf" as const,
+      path: output.path,
+      mediaType: output.mediaType,
+      size: output.size,
+      sha256: output.sha256,
+      status: "created" as const,
+    }));
+    const manifestPath = await writeCacheManifest({
+      deps,
+      scope,
+      artifactId,
+      operation: "document_convert",
+      inputPath,
+      bytes,
+      files,
+      warnings: cached.warnings,
+      backends: Object.fromEntries(
+        cached.backends.map((backend) => [backend.role, backend]),
+      ),
+      sourceArtifactId: cached.sourceArtifactId,
+    });
+    return {
+      artifactId,
+      files,
+      source: { path: inputPath, format: "docx" },
+      warnings: cached.warnings,
+      manifestPath,
+    };
+  }
+
   const workDir = await scope.store.createWorkDir(artifactId);
   const warnings: DocumentWarning[] = [];
   try {
@@ -212,15 +280,7 @@ async function convertDocxToPdf(
         bytes,
       );
     }
-    const stem = (
-      input.filename ?? path.basename(inputPath).replace(/\.[^.]+$/u, "")
-    )
-      .replace(/[^A-Za-z0-9._-]+/gu, "-")
-      .replace(/^-+|-+$/gu, "");
-    const outputPath = path.join(
-      artifactDir,
-      `${stem === "" ? "document" : stem}.pdf`,
-    );
+    const outputPath = path.join(artifactDir, outputFile);
     const converted = await withRenderSlot(
       deps,
       scope.signal,
@@ -248,7 +308,7 @@ async function convertDocxToPdf(
       createdAt: deps.now().toISOString(),
       input: {
         format: "docx",
-        sha256: sha256Hex(bytes),
+        sha256: spec.inputSha256,
         filename: path.basename(inputPath),
         bytes: bytes.length,
       },
@@ -275,6 +335,21 @@ async function convertDocxToPdf(
       status: "ok",
     });
 
+    await cache?.remember({
+      outputs: [
+        {
+          role: "convert",
+          artifactId,
+          outputName: path.basename(converted.path),
+          format: "pdf",
+          path: converted.path,
+          mediaType: mediaTypeFor("pdf"),
+          sha256: converted.sha256,
+        },
+      ],
+      warnings,
+      backends: { convert: converted.backend },
+    });
     return {
       artifactId,
       files: [file],
@@ -286,4 +361,65 @@ async function convertDocxToPdf(
     await scope.store.removeWorkDir(workDir);
     throw asDocumentError(error, "CONVERSION_FAILED");
   }
+}
+
+/** A cache handle for one request, or `undefined` when caching is off. */
+async function createCache(
+  deps: DocumentRuntimeDeps,
+  store: Awaited<ReturnType<typeof resolveDocumentScope>>["store"],
+  request: ConversionRequest,
+): Promise<
+  Awaited<ReturnType<ConversionCache["beginConversion"]>> | undefined
+> {
+  if (!deps.config.cache.enabled) return undefined;
+  const cache = new ConversionCache({
+    config: deps.config,
+    store,
+    logger: deps.logger,
+    now: deps.now,
+  });
+  return await cache.beginConversion(request);
+}
+
+async function writeCacheManifest(options: {
+  readonly deps: DocumentRuntimeDeps;
+  readonly scope: Awaited<ReturnType<typeof resolveDocumentScope>>;
+  readonly artifactId: string;
+  readonly operation: "document_convert";
+  readonly inputPath: string;
+  readonly bytes: Buffer;
+  readonly files: readonly DocumentFileResult[];
+  readonly warnings: readonly DocumentWarning[];
+  readonly backends: Readonly<
+    Record<string, { readonly provider: string; readonly version?: string }>
+  >;
+  readonly sourceArtifactId: string | undefined;
+}): Promise<string> {
+  const manifest = buildManifest({
+    artifactId: options.artifactId,
+    operation: options.operation,
+    createdAt: options.deps.now().toISOString(),
+    input: {
+      format: "docx",
+      sha256: sha256Hex(options.bytes),
+      filename: path.basename(options.inputPath),
+      bytes: options.bytes.length,
+    },
+    outputs: options.files.map(outputRecord),
+    backends: options.backends,
+    warnings: options.warnings,
+    scope: {
+      ...(options.scope.sessionId === undefined
+        ? {}
+        : { sessionId: options.scope.sessionId }),
+      workspace: options.scope.workspaceRoot,
+    },
+    cache: {
+      hit: true,
+      ...(options.sourceArtifactId === undefined
+        ? {}
+        : { sourceArtifactId: options.sourceArtifactId }),
+    },
+  });
+  return await writeManifest(options.scope.store, options.artifactId, manifest);
 }
