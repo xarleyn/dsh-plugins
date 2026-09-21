@@ -63,6 +63,20 @@ manual-only OpenViking operation:
   `adjustUpstreamTool` hook that rewrites those tools' `tools/list` schemas to
   advertise the parameter as required.
 
+- The injected recall envelope carries a framing line the fork adds in
+  `src/runtime.ts` (`RECALL_FRAMING`, applied by `withRecallFraming`): recalled
+  memories announce themselves as background context rather than the source of
+  record, and name the sources that outrank them. The same session also stops
+  re-injecting a block whose text it already carries — the conversation still
+  holds the first copy — while the server-side `dedup_turns` window stays a
+  matter of turns. Upstream injects the assembled block unframed and once per
+  step.
+- The vendored `skills/openviking-memory/SKILL.md` is scoped to questions about
+  memory itself and states the order of sources (the conversation and its
+  attachments, the product documentation, the domain expert, then memory).
+  Upstream's trigger claimed the skill for any task that lacked context, which
+  read as a reason to query the store whenever a document could not be read.
+
 This document is the record of *what* changed; `docs/upstream-sync.md` describes
 how to bring later upstream revisions in.
 
