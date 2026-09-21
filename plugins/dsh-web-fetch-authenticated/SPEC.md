@@ -203,7 +203,7 @@ Suggested rule table columns:
 | Field | Example |
 |---|---|
 | Name | Corporate Jira |
-| Origin | `https://jira.example.corp` |
+| Origin | `https://jira.example.corp` (`http(s)://jira.example.corp` when the rule accepts either scheme) |
 | Paths | `/browse/**`, `/rest/api/**` |
 | Auth | Bearer token |
 | Credential | `jira-prod-token` |
