@@ -14,6 +14,7 @@ import {
   type QaAskRequest,
   type QaHealth,
   type QaIntegrationRunner,
+  type QaIntegrationTranscript,
 } from "./contract.js";
 
 /**
@@ -291,6 +292,57 @@ export class QaIntegrationService {
       clearTimeout(timer);
       this.inFlight -= 1;
     }
+  }
+
+  /**
+   * Read one conversation back for the application that started it.
+   *
+   * This is what `sessions:read` is for. A bridge that escalated a question,
+   * or that has to show a specialist what was already said, reads the chat it
+   * owns instead of asking the same question again — which would spend a turn
+   * and produce a second answer to a question that already has one.
+   *
+   * The ownership rule is the same one `ask` applies when it continues a chat:
+   * the account the token belongs to has to own the conversation. A chat that
+   * does not exist and a chat that belongs to somebody else get one answer, so
+   * an id alone never confirms that another account's conversation exists.
+   *
+   * @param authorization - the raw `Authorization` header value.
+   * @param query - the chat, the caller's cursor and the page size.
+   * @returns the window of messages, with the caller's new cursor.
+   */
+  async session(
+    authorization: string | undefined,
+    query: {
+      readonly chatId: string;
+      readonly after: number;
+      readonly limit: number;
+    },
+  ): Promise<QaIntegrationTranscript> {
+    const config = this.deps.getConfig();
+    if (!config.integration.enabled) {
+      throw new QaIntegrationError(
+        "unavailable",
+        "the QA integration API is disabled on this deployment",
+      );
+    }
+    const identity = this.authenticate(authorization, "sessions:read");
+    this.assertRate(identity.tokenId);
+    const owner = this.deps.accounts()?.ownerIdOf(query.chatId);
+    if (owner === undefined || owner !== identity.userId) {
+      throw new QaIntegrationError(
+        "not-found",
+        "this account has no such conversation",
+      );
+    }
+    const transcript = await this.deps.runner.transcript(query);
+    this.deps.logger.info("integration.transcript-read", {
+      tokenId: identity.tokenId,
+      chatId: query.chatId,
+      after: query.after,
+      messages: transcript.messages.length,
+    });
+    return transcript;
   }
 
   /**

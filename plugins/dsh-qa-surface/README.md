@@ -1019,12 +1019,13 @@ behind a redactor a deployment can replace.
 
 Another application — a ticket-system bridge, a bot, a script — can ask the same
 assistant questions over HTTP, with its own credential instead of a browser
-session. The endpoint is **off by default**.
+session, and read its own conversations back. The endpoints are **off by
+default**.
 
 ```yaml
 integration:
   enabled: true          # requires accounts.enabled: true
-  basePath: /qa/api      # POST {basePath}/ask, GET {basePath}/health
+  basePath: /qa/api      # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
   tokenTtlDays: 90
   requestTimeoutMs: 90000
   maxConcurrent: 4
@@ -1130,6 +1131,41 @@ interrupted turn, an empty answer, or a question that did not finish inside
 `requestTimeoutMs` (the `chat_id` is still returned, so a retry continues the
 same chat instead of starting a second one).
 
+### Reading a conversation back
+
+```bash
+# after=0 reads from the start; limit is clamped to 200
+curl -sS 'https://dsh.example.local/qa/api/session?chat_id=session-1f0c…&after=0&limit=50' \
+  -H "Authorization: Bearer qsat.<id>.<secret>"
+# {"chat_id":"session-1f0c…",
+#  "messages":[{"seq":1,"role":"user","text":"…","at":"2026-09-21T10:00:00.000Z"},
+#              {"seq":2,"role":"assistant","text":"**Ответ**…","at":null}],
+#  "last_seq":2,"truncated":false}
+```
+
+This is what the `sessions:read` scope is for, and it is a separate scope rather
+than part of `ask`: a bridge that escalates a ticket, or opens the question in a
+review screen for a specialist, has to show what was already said. Without the
+endpoint such a bridge could only ask the same question again — spending a turn
+to answer a question that already has an answer.
+
+The read is the same conversation the account owns, in the same words: `text`
+is the flattening the answer itself uses, so a message reads the same whether it
+was received as an answer or fetched here. Only the prompts the person sent and
+the assistant's answers are published — injected context, reasoning and tool
+traffic are not, because those are model input the caller never wrote.
+
+`after` is the caller's own cursor: pass the `last_seq` of the previous read,
+and the next call returns only what was written since. `limit` bounds the page
+(default 50, at most 200) and the window is always the **newest** messages, so a
+long conversation costs one page rather than one transcript per call; when older
+messages were left below the window, `truncated` says so. `at` is the instant
+the log recorded, or `null` when it recorded none — a timestamp is never
+invented.
+
+An unknown `chat_id` and another account's chat answer the same `404`, so an id
+alone never confirms that somebody else's conversation exists.
+
 ### Health
 
 ```bash
@@ -1143,10 +1179,10 @@ curl -sS https://dsh.example.local/qa/api/health \
 | Status | Meaning |
 | --- | --- |
 | 200 | Answered, or escalated with an empty `answer` |
-| 400 | Malformed body (no `message`, broken JSON or `context`) |
+| 400 | Malformed body (no `message`, broken JSON or `context`), a missing `chat_id`, or a cursor that is not a whole number |
 | 401 | Missing, expired, revoked or unknown token |
-| 403 | Valid token without the `ask` scope |
-| 404 | `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
+| 403 | Valid token without the scope the call needs (`ask`, `sessions:read`) |
+| 404 | A chat the token's account does not own (or that does not exist); also `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
 | 413 | Body or attachment over the configured limit |
 | 415 | Unsupported content type, or a non-image attachment |
 | 429 | Per-token rate limit or the deployment's concurrency limit |
@@ -1158,7 +1194,9 @@ vocabulary, so a client can branch on the code instead of parsing prose.
 ### What to watch
 
 - Every request that reaches a turn is logged on the Host with the token id,
-  the chat id and the ticket key — never the question or the answer.
+  the chat id and the ticket key — never the question or the answer. A read is
+  logged the same way, with the cursor it asked from and the number of messages
+  it got.
 - `maxConcurrent` bounds how much of the deployment a bridge can occupy;
   `requestsPerMinute` bounds one token. Both answer `429`, which retries well.
 - `maxAnswerCharacters` bounds one answer. A question that produced more is

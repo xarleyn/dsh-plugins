@@ -87,8 +87,23 @@ function service(options: {
   });
 }
 
-function quietRunner(run: QaIntegrationRunner["run"]): QaIntegrationRunner {
-  return { run, models: async () => [] };
+function quietRunner(
+  run: QaIntegrationRunner["run"],
+  transcript?: QaIntegrationRunner["transcript"],
+  models?: QaIntegrationRunner["models"],
+): QaIntegrationRunner {
+  return {
+    run,
+    models: models ?? (async () => []),
+    transcript:
+      transcript ??
+      (async (input) => ({
+        chatId: input.chatId,
+        messages: [],
+        lastSeq: input.after,
+        truncated: false,
+      })),
+  };
 }
 
 describe("integration service credentials", () => {
@@ -176,6 +191,106 @@ describe("integration service credentials", () => {
     await expect(
       api.ask(`Bearer ${token}`, QUESTION, new AbortController().signal),
     ).rejects.toMatchObject({ reason: "unauthorized" });
+  });
+});
+
+describe("integration service reading a conversation", () => {
+  let accounts: QaAccounts;
+  let token: string;
+  let chatId: string;
+
+  beforeEach(() => {
+    accounts = store();
+    const admin = accounts.register("op@example.com", "password-1");
+    token = accounts.mintServiceToken(admin.token, {
+      scopes: ["ask", "sessions:read"],
+    }).token;
+    chatId = "session-1";
+    accounts.reserveSession(admin.token, chatId);
+  });
+
+  const headerOf = () => `Bearer ${token}`;
+  const query = { chatId: "session-1", after: 0, limit: 50 };
+
+  it("reads the account's own conversation through its own scope", async () => {
+    const read = vi.fn(async () => ({
+      chatId,
+      messages: [{ seq: 2, role: "assistant" as const, text: "Ответ" }],
+      lastSeq: 2,
+      truncated: false,
+    }));
+    const api = service({ accounts, runner: quietRunner(vi.fn(), read) });
+    await expect(api.session(headerOf(), query)).resolves.toMatchObject({
+      chatId,
+      lastSeq: 2,
+    });
+    expect(read).toHaveBeenCalledWith(query);
+  });
+
+  it("refuses a token that may ask but not read", async () => {
+    const askOnly = accounts.mintServiceToken(
+      accounts.login("op@example.com", "password-1").token,
+      { scopes: ["ask"] },
+    );
+    const read = vi.fn();
+    const api = service({ accounts, runner: quietRunner(vi.fn(), read) });
+    await expect(
+      api.session(`Bearer ${askOnly.token}`, query),
+    ).rejects.toMatchObject({ reason: "forbidden", status: 403 });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("answers an unknown chat and another account's chat the same way", async () => {
+    const read = vi.fn();
+    const api = service({ accounts, runner: quietRunner(vi.fn(), read) });
+    await expect(
+      api.session(headerOf(), { ...query, chatId: "session-unknown" }),
+    ).rejects.toMatchObject({ reason: "not-found", status: 404 });
+
+    // A second account's chat is not distinguishable from one that does not
+    // exist: the id alone must not confirm that it is somebody's.
+    const other = accounts.register("other@example.com", "password-2");
+    const otherToken = accounts.mintServiceToken(other.token, {
+      scopes: ["sessions:read"],
+    }).token;
+    await expect(
+      api.session(`Bearer ${otherToken}`, query),
+    ).rejects.toMatchObject({ reason: "not-found", status: 404 });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("refuses a missing credential and a disabled deployment", async () => {
+    const api = service({ accounts, runner: quietRunner(vi.fn()) });
+    await expect(api.session(undefined, query)).rejects.toMatchObject({
+      reason: "unauthorized",
+      status: 401,
+    });
+    const off = new QaIntegrationService({
+      getConfig: () =>
+        resolveConfig({
+          accounts: { enabled: true },
+          integration: { enabled: false },
+        }),
+      accounts: () => accounts,
+      runner: quietRunner(vi.fn()),
+      logger: logger(),
+      version: "0.10.0",
+    });
+    await expect(off.session(headerOf(), query)).rejects.toMatchObject({
+      reason: "unavailable",
+    });
+  });
+
+  it("reports a log the Host cannot read as a failed read, not an empty chat", async () => {
+    const api = service({
+      accounts,
+      runner: quietRunner(vi.fn(), async () => {
+        throw new Error("the session log is unavailable (unreadable)");
+      }),
+    });
+    await expect(api.session(headerOf(), query)).rejects.toThrow(
+      /session log is unavailable/u,
+    );
   });
 });
 
@@ -384,10 +499,11 @@ describe("integration service answering", () => {
     let clock = Date.now();
     const api = service({
       accounts,
-      runner: {
-        run: async () => turn(),
-        models: async () => ["gpt-4o-mini", "local-llm-v3"],
-      },
+      runner: quietRunner(
+        async () => turn(),
+        undefined,
+        async () => ["gpt-4o-mini", "local-llm-v3"],
+      ),
       now: () => clock,
     });
     expect((await api.health(headerOf())).uptimeS).toBe(0);
@@ -402,12 +518,9 @@ describe("integration service answering", () => {
   it("answers health even when no provider can be listed", async () => {
     const api = service({
       accounts,
-      runner: {
-        run: async () => turn(),
-        models: async () => {
-          throw new Error("no provider is configured");
-        },
-      },
+      runner: quietRunner(async () => turn(), undefined, async () => {
+        throw new Error("no provider is configured");
+      }),
     });
     await expect(api.health(headerOf())).resolves.toMatchObject({
       ok: true,
