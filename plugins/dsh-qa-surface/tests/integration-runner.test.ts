@@ -37,6 +37,7 @@ function events(): StoredSessionEvent[] {
 
 function runner(options: {
   readonly read: QaSessionLogReader["read"];
+  readonly snapshot?: QaSessionLogReader["snapshot"];
   readonly modelCatalog?: () => Promise<unknown>;
 }) {
   return createQaIntegrationRunner({
@@ -51,7 +52,12 @@ function runner(options: {
     accounts: () => undefined,
     admission: {} as never,
     access: {} as never,
-    sessionLog: { list: vi.fn(), read: options.read } as never,
+    sessionLog: {
+      list: vi.fn(),
+      live: () => options.snapshot !== undefined,
+      snapshot: options.snapshot ?? (() => undefined),
+      read: options.read,
+    } as never,
     provenance: {} as never,
     documents: () => undefined,
     logger: {
@@ -118,6 +124,36 @@ describe("integration runner reads", () => {
     await expect(
       api.transcript({ chatId: "session-1", after: 0, limit: 50 }),
     ).rejects.toThrow(/session log is unavailable \(unreadable\)/u);
+  });
+
+  it("reads the log once for a caller that pages through a chat", async () => {
+    const read = vi.fn(async () => ({ ok: true as const, events: events() }));
+    const api = runner({ read });
+    await api.transcript({ chatId: "session-1", after: 0, limit: 1 });
+    await api.transcript({ chatId: "session-1", after: 1, limit: 1 });
+    // The runner keeps its windows for the plugin's lifetime, so the second
+    // page of the same chat is not a second stored read.
+    expect(read).toHaveBeenCalledTimes(1);
+  });
+
+  it("sees a turn the session has written but storage has not flushed", async () => {
+    const held: StoredSessionEvent[] = [];
+    const read = vi.fn(async () => ({ ok: true as const, events: events() }));
+    const api = runner({ read, snapshot: () => held });
+    await api.transcript({ chatId: "session-1", after: 0, limit: 50 });
+
+    held.push({
+      seq: 3,
+      type: "assistant/message",
+      data: { message: { content: [{ type: "text", text: "ответ 2" }] } },
+    });
+    const page = await api.transcript({
+      chatId: "session-1",
+      after: 2,
+      limit: 50,
+    });
+    expect(page.messages.map((message) => message.text)).toEqual(["ответ 2"]);
+    expect(read).toHaveBeenCalledTimes(1);
   });
 
   it("lists the routable models by their own ids", async () => {

@@ -53,7 +53,10 @@ a turn to ask it again, and a read-only integration can be granted that scope
 without the right to spend inference. Injected context, reasoning and tool
 traffic are never published: they are model input the caller did not write.
 Ownership is the rule `ask` already applies, so an unknown chat id and another
-account's chat answer one `404`.
+account's chat answer one `404`. Reading stays cheap on a long conversation: the
+newest messages are kept warm and a chat this Host holds is checked against its
+own memory, so a page costs neither a stored read nor a walk through the history
+behind it — a page of a ten-thousand-message chat is a page.
 
 The endpoints run questions through the same admission path as the browser —
 deployment preflight, the per-user workspace, the capability snapshot, the QA
