@@ -30,7 +30,7 @@ const CSS = `
 .dsd-actions{position:relative;flex:none}
 .dsd-menu-button{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:0;border-radius:4px;padding:0;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .dsd-menu-button:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}
-.dsd-menu{position:fixed;z-index:2147483001;min-width:132px;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-elevated,var(--dsw-alias-button-elevated-fill));box-shadow:var(--dsw-shadow-l2,0 8px 24px rgba(0,0,0,.18))}
+.dsd-menu{position:fixed;z-index:2147483001;min-width:132px;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-elevated,var(--dsw-alias-button-elevated-fill));box-shadow:var(--dsw-shadow-lv2,0 8px 24px rgba(0,0,0,.18))}
 .dsd-menu-item{display:block;width:100%;border:0;border-radius:5px;padding:6px 8px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}
 .dsd-menu-item:hover,.dsd-menu-item:focus-visible{background:var(--dsw-alias-interactive-bg-hover);outline:none}
 .dsd-menu-item[data-danger=true]{color:var(--dsw-alias-state-error-primary,#d84c4c)}
