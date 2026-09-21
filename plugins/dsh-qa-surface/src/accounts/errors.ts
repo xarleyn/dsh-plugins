@@ -18,6 +18,8 @@ export type QaAccountsErrorReason =
   | "profile-disabled"
   | "invalid-starters"
   | "starters-disabled"
+  /** The endpoint this credential is for is switched off on this deployment. */
+  | "integration-disabled"
   | "invalid-role"
   | "weak-password"
   | "registration-disabled"

@@ -9,7 +9,10 @@ import type {
   QaAccountSession,
   QaAccountStartersInput,
   QaAccountUserPublic,
+  QaIssuedServiceToken,
   QaOwnershipEntry,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   QaWhoamiResult,
   ResolvedQaSurfaceConfig,
 } from "./types.js";
@@ -84,6 +87,24 @@ export interface QaAccountRemotes {
     token: string,
     input: QaAccountStartersInput,
   ): QaAccountUserPublic;
+  /**
+   * The caller's own integration tokens, newest last. Never a secret: the
+   * plaintext exists only in the answer that minted it.
+   */
+  listServiceTokens(token: string): {
+    readonly tokens: readonly QaServiceTokenSummary[];
+  };
+  /**
+   * Mint one integration token for the caller. Refused while the integration
+   * API is off: a credential that authenticates nothing is a credential that
+   * only leaks.
+   */
+  createServiceToken(
+    token: string,
+    input: QaServiceTokenCreateInput,
+  ): QaIssuedServiceToken;
+  /** Revoke one of the caller's own integration tokens, by id. */
+  revokeServiceToken(token: string, tokenId: string): { readonly revoked: boolean };
 }
 
 /** Build the account-remotes context for one `QaSurface` service instance. */
@@ -228,6 +249,37 @@ export function createQaAccountRemotes(options: {
         }
         return store.updateOwnStarters(token, input);
       });
+    },
+    listServiceTokens: (token) => {
+      const store = requireAccounts();
+      return run(() => ({ tokens: store.listServiceTokens(token) }));
+    },
+    createServiceToken: (token, input) => {
+      const config = getConfig();
+      const store = requireAccounts();
+      return run(() => {
+        if (!config.integration.enabled) {
+          throw new QaAccountsError(
+            "integration-disabled",
+            "the QA integration API is disabled on this deployment",
+          );
+        }
+        // The owner is never taken from the request: an integration token is
+        // minted for the account that authenticated, which is also why the
+        // admin path (`mintServiceToken` with a `userId`) is not reachable
+        // from here.
+        return store.mintServiceToken(token, {
+          ...(input.label === undefined ? {} : { label: input.label }),
+          ...(input.scopes === undefined ? {} : { scopes: input.scopes }),
+          ...(input.ttlDays === undefined ? {} : { ttlDays: input.ttlDays }),
+        });
+      });
+    },
+    revokeServiceToken: (token, tokenId) => {
+      const store = requireAccounts();
+      return run(() => ({
+        revoked: store.revokeServiceToken(token, tokenId),
+      }));
     },
   };
 }

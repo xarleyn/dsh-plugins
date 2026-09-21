@@ -7,8 +7,9 @@ import type {
   QaAccountStarters,
   QaAccountStartersInput,
 } from "../../types.js";
-import type { QaBoundSkillApi } from "../types.js";
+import type { QaBoundSkillApi, QaIntegrationTokenApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
+import { QaIntegrationTokensPage } from "./IntegrationTokensPage.js";
 import { QaPasswordSettingsPage } from "./PasswordSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
@@ -17,7 +18,7 @@ import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
 export type QaSettingsSectionId =
-  "profile" | "password" | "starters" | "general" | "skills" | (string & {});
+  "profile" | "password" | "starters" | "tokens" | "general" | "skills" | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;
@@ -49,6 +50,8 @@ export interface QaUserSettingsDialogProps {
     readonly starters: QaAccountStarters;
     readonly onSave: (input: QaAccountStartersInput) => Promise<string | null>;
   };
+  /** Integration tokens; absent when accounts are off altogether. */
+  readonly integrationTokens?: QaIntegrationTokenApi;
   /** Personal skills; absent when the deployment cannot host them. */
   readonly skills?: QaBoundSkillApi;
   /** Additive pages contributed by separately shipped QA plugins. */
@@ -98,6 +101,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.starters !== undefined) {
       models.push({ id: "starters", title: "Быстрые сообщения" });
     }
+    if (props.integrationTokens !== undefined) {
+      models.push({ id: "tokens", title: "Интеграционные токены" });
+    }
     models.push({ id: "general", title: "Общие" });
     if (props.skills !== undefined) {
       models.push({ id: "skills", title: "Навыки" });
@@ -110,6 +116,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     props.profile,
     props.password,
     props.starters,
+    props.integrationTokens,
     props.skills,
     extensionSnapshot.sections,
   ]);
@@ -173,6 +180,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               starters={props.starters.starters}
               onSave={props.starters.onSave}
             />
+          ) : null}
+          {active === "tokens" && props.integrationTokens !== undefined ? (
+            <QaIntegrationTokensPage api={props.integrationTokens} />
           ) : null}
           {active === "general" ? (
             <QaGeneralSettingsPage

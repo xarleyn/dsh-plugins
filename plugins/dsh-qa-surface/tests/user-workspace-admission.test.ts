@@ -116,6 +116,7 @@ describe("per-user workspace admission", () => {
       {
         enforceSessionAccess: () => ({ id: USER_ID }),
         userWorkspace: () => userRoot,
+        ownerIdOf: () => USER_ID,
       },
     );
 
