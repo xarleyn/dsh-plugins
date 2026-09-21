@@ -15,6 +15,7 @@ import {
   requireDocumentScope,
   toolWarnings,
   type DocumentToolExec,
+  type DocumentToolOptions,
   warningsSchema,
 } from "./shared.js";
 
@@ -26,9 +27,7 @@ const DESCRIPTION = [
   "Returns the Markdown plus the path of the extracted file inside its artifact bundle.",
 ].join(" ");
 
-export function createDocumentToMarkdownTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_TO_MARKDOWN_TOOL,
     description: DESCRIPTION,
@@ -125,7 +124,7 @@ export function createDocumentToMarkdownTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.toMarkdown(
         args as unknown as Parameters<DocumentRuntime["toMarkdown"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         artifactId: result.artifactId,

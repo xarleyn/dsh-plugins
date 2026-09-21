@@ -6,7 +6,8 @@
  * deployment's per-user workspaces isolate document bundles for free (§40).
  * A deployment may pin `documents.storage.root` to a shared volume instead, in
  * which case the session workspace stays the only place inputs are read from.
- * Inputs may additionally come from explicitly configured roots (§26.2).
+ * Inputs may additionally come from explicitly configured roots, or from the
+ * roots a caller grants for one call (§26.2).
  */
 
 import { readFile, stat } from "node:fs/promises";
@@ -31,6 +32,21 @@ export interface DocumentScope {
   readonly workspaceRoot: string;
   readonly sessionId?: string;
   readonly signal?: AbortSignal;
+  /**
+   * Roots this call may additionally read a single file from, granted by
+   * whoever owns the deployment's read fence for the session (§26.2).
+   *
+   * The harness mounts resources that deliberately sit outside every session
+   * workspace — the attachment store is the one that matters today: an upload
+   * becomes an immutable file there and the prompt hands the model exactly
+   * that path, so a pipeline that does not know the root refuses a file the
+   * session is already allowed to read.
+   *
+   * An extra root is read-only and single-file: resolution still refuses
+   * directories, traversal and symlinks out of the root, and nothing here
+   * reaches the artifact root, which is what writes go through.
+   */
+  readonly extraInputRoots?: readonly string[];
 }
 
 export interface ResolvedDocumentScope {
@@ -38,6 +54,8 @@ export interface ResolvedDocumentScope {
   readonly artifactRoot: string;
   readonly sessionId?: string;
   readonly signal?: AbortSignal;
+  /** Canonicalized {@link DocumentScope.extraInputRoots}, empty by default. */
+  readonly extraInputRoots: readonly string[];
   readonly store: ArtifactStore;
   readonly templates: TemplateRegistry;
 }
@@ -112,9 +130,38 @@ export async function resolveDocumentScope(
     artifactRoot,
     ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }),
     ...(scope.signal === undefined ? {} : { signal: scope.signal }),
+    extraInputRoots: await canonicalizeInputRoots(
+      scope.extraInputRoots ?? [],
+      workspaceRoot,
+      artifactRoot,
+    ),
     store: new ArtifactStore({ root: artifactRoot }),
     templates: await loadScopeTemplates(config, workspaceRoot),
   };
+}
+
+/**
+ * Canonicalize the roots a caller granted, dropping the ones that would not
+ * add anything: a blank entry, a duplicate, or a root the scope already reads
+ * from. Canonicalization is the same containment pass the workspace and the
+ * artifact root went through, so a symlinked grant is fenced against the path
+ * it really points at rather than the name it was given.
+ */
+async function canonicalizeInputRoots(
+  roots: readonly string[],
+  workspaceRoot: string,
+  artifactRoot: string,
+): Promise<readonly string[]> {
+  const known = new Set([workspaceRoot, artifactRoot]);
+  const canonical: string[] = [];
+  for (const root of roots) {
+    if (typeof root !== "string" || root.trim() === "") continue;
+    const resolved = await canonicalizeForContainment(root);
+    if (known.has(resolved)) continue;
+    known.add(resolved);
+    canonical.push(resolved);
+  }
+  return Object.freeze(canonical);
 }
 
 /** Roots an input file may be read from, most specific first. */
@@ -126,6 +173,7 @@ export function allowedInputRoots(
     scope.workspaceRoot,
     scope.artifactRoot,
     ...config.storage.allowedInputRoots,
+    ...scope.extraInputRoots,
   ];
 }
 

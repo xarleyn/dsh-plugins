@@ -46,6 +46,7 @@ export {
   DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_INSPECT_TOOL,
   DOCUMENT_TO_MARKDOWN_TOOL,
+  type DocumentToolOptions,
   type DocumentToolRegistry,
 } from "./tools/index.js";
 export {
@@ -251,6 +252,14 @@ export interface InstallDocumentSubsystemOptions {
   readonly register: DocumentToolRegistry["register"];
   readonly seams?: ProviderSeams;
   /**
+   * Extra readable input roots for one session, resolved per tool call (§26.2).
+   * The deployment's read fence knows which out-of-workspace roots a session
+   * may read (the attachment store, typically) and answers here, so the
+   * pipeline agrees with that fence instead of refusing a file the session was
+   * already granted.
+   */
+  readonly extraInputRoots?: (sessionId?: string) => readonly string[];
+  /**
    * Retrieval for `document_from_url`, resolving the web provider at call time.
    * Omitted when the deployment has no web provider; that tool then answers
    * BACKEND_UNAVAILABLE instead of pretending the source is unreachable.
@@ -291,7 +300,12 @@ export function installDocumentSubsystem(
   });
   const disposeTools = registerDocumentTools(
     { register: options.register },
-    { runtime },
+    {
+      runtime,
+      ...(options.extraInputRoots === undefined
+        ? {}
+        : { extraInputRoots: options.extraInputRoots }),
+    },
   );
 
   if (config.retention.enabled && config.storage.root !== null) {

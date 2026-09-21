@@ -18,7 +18,11 @@ import {
   type DocumentDiffReadResult,
 } from "../comparison/types.js";
 import { CHANGE_SCHEMA } from "./compare.js";
-import { requireDocumentScope, type DocumentToolExec } from "./shared.js";
+import {
+  requireDocumentScope,
+  type DocumentToolExec,
+  type DocumentToolOptions,
+} from "./shared.js";
 
 export const DOCUMENT_DIFF_READ_TOOL = "document_diff_read";
 
@@ -115,9 +119,7 @@ function locationShape(location: {
   };
 }
 
-export function createDocumentDiffReadTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentDiffReadTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_DIFF_READ_TOOL,
     description: DESCRIPTION,
@@ -190,7 +192,7 @@ export function createDocumentDiffReadTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.readDiff(
         args as unknown as Parameters<DocumentRuntime["readDiff"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         comparisonId: result.comparisonId,

@@ -16,6 +16,7 @@ import {
   toolFiles,
   toolWarnings,
   type DocumentToolExec,
+  type DocumentToolOptions,
   warningsSchema,
 } from "./shared.js";
 
@@ -25,9 +26,7 @@ function describeRoutes(): string {
   return CONVERSION_ROUTES.map(([from, to]) => `${from} → ${to}`).join(", ");
 }
 
-export function createDocumentConvertTool(options: {
-  readonly runtime: DocumentRuntime;
-}) {
+export function createDocumentConvertTool(options: DocumentToolOptions) {
   return defineTool({
     name: DOCUMENT_CONVERT_TOOL,
     description: [
@@ -134,7 +133,7 @@ export function createDocumentConvertTool(options: {
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const result = await options.runtime.convert(
         args as unknown as Parameters<DocumentRuntime["convert"]>[0],
-        requireDocumentScope(exec),
+        requireDocumentScope(exec, options),
       );
       return {
         artifactId: result.artifactId,
