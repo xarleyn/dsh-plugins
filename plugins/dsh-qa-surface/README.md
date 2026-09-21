@@ -480,13 +480,14 @@ in. See
 for the limits and the prompt's exact wording.
 
 The wording of that note — and of the source-provenance, delegation-naming and
-attached-documents notes — is editable without touching the source: the
-«Заметки модели» section of the settings card (the `notes` config block) mutes
-each note and rewords its text, keeping the generated parts (`{identity}`,
-`{instructions}`, `{reportTool}`) as placeholders. The attached-documents note
-is the one that sends a `.docx` or `.pdf` from the chat to the document
-pipeline instead of the plain file reader, which refuses those formats as
-binary.
+attached-documents and source-priority notes — is editable without touching
+the source: the «Заметки модели» section of the settings card (the `notes`
+config block) mutes each note and rewords its text, keeping the generated parts
+(`{identity}`, `{instructions}`, `{reportTool}`) as placeholders. The
+attached-documents note is the one that sends a `.docx` or `.pdf` from the chat
+to the document pipeline instead of the plain file reader, which refuses those
+formats as binary. The source-priority note is the one that says an answer
+belongs to the documentation or the expert before it belongs to memory.
 
 ### Starter messages
 

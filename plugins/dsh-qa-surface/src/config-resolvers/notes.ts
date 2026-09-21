@@ -29,5 +29,6 @@ export function resolveNotes(input: QaNotesConfig | undefined): ResolvedNotes {
     },
     delegation: one(raw.delegation ?? {}),
     documents: one(raw.documents ?? {}),
+    sourcePriority: one(raw.sourcePriority ?? {}),
   };
 }

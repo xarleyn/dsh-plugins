@@ -105,6 +105,25 @@ describe("the vendored skill", () => {
     );
   });
 
+  it("scopes its trigger to memory and names the sources that outrank it", async () => {
+    const text = await readFile(SKILL_FILE, "utf8");
+    const description = frontMatterValue(frontMatterOf(text), "description");
+
+    // The defect this guards: the description claimed the skill for any task
+    // that lacked context, so a model that could not read an attached document
+    // read that gap as a reason to go to memory. A trigger that owns every gap
+    // is a trigger the model cannot decline.
+    expect(description).not.toContain("even if nobody says the word");
+    expect(description).not.toMatch(/task needs\s+context/i);
+    expect(description).toContain("not the default");
+
+    // The order, and the habits that follow from it, are in the body: the
+    // skill has to say what to read instead, not only what not to.
+    expect(text).toContain("## Memory is not the first source");
+    expect(text).toContain("Product documentation and the domain expert");
+    expect(text).toContain("A memory miss is not an answer");
+  });
+
   it("stays readable outside a restricted workspace filesystem", async () => {
     // A plain package read rather than a walk through the workspace filesystem
     // service, which refuses paths outside the project.

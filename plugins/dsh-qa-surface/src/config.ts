@@ -559,12 +559,19 @@ const configSchema = z.object({
           template: z.string().default(D.notes.documents.template),
         })
         .default({ ...D.notes.documents }),
+      sourcePriority: z
+        .object({
+          enabled: z.boolean().default(D.notes.sourcePriority.enabled),
+          template: z.string().default(D.notes.sourcePriority.template),
+        })
+        .default({ ...D.notes.sourcePriority }),
     })
     .default({
       identity: { ...D.notes.identity },
       sources: { ...D.notes.sources },
       delegation: { ...D.notes.delegation },
       documents: { ...D.notes.documents },
+      sourcePriority: { ...D.notes.sourcePriority },
     }),
   // The numeric fields are declared without schema-level bounds on purpose:
   // the resolver owns the range checks and their error messages, and a second

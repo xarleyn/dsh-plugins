@@ -722,6 +722,11 @@ export interface QaNotesConfig {
     readonly enabled?: boolean;
     readonly template?: string;
   };
+  /** Where an answer should come from; no placeholders. */
+  readonly sourcePriority?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
 }
 
 export interface QaSurfaceConfig {
@@ -1145,6 +1150,10 @@ export interface ResolvedQaSurfaceConfig {
       readonly template: string;
     };
     readonly documents: {
+      readonly enabled: boolean;
+      readonly template: string;
+    };
+    readonly sourcePriority: {
       readonly enabled: boolean;
       readonly template: string;
     };

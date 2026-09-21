@@ -85,6 +85,8 @@ interface SessionState {
   ready: boolean;
   profileBlock: string;
   profileDelivered: boolean;
+  /** The framed recall block this session's conversation already carries. */
+  lastRecallBlock: string;
   readonly toolNames: Map<string, string>;
   writes: Promise<void>;
   initializationRetryable: boolean;
@@ -176,6 +178,7 @@ export class OpenVikingRuntime {
       ready: false,
       profileBlock: "",
       profileDelivered: false,
+      lastRecallBlock: "",
       toolNames: new Map(),
       writes: Promise.resolve(),
       initializationRetryable: false,
@@ -353,7 +356,14 @@ export class OpenVikingRuntime {
         log: (stage, data) => this.log(stage, data),
       },
     );
-    return block ? pluginMessage(block, "recall") : null;
+    if (!block) return null;
+    const framed = withRecallFraming(block);
+    // Injected context stays in the conversation, so delivering an identical
+    // block again tells the model nothing it cannot still read above. The
+    // server's own dedup window is counted in turns; this one is the session.
+    if (framed === state.lastRecallBlock) return null;
+    state.lastRecallBlock = framed;
+    return pluginMessage(framed, "recall");
   }
 
   capture(session: Session, event: RuntimeEvent): void {
@@ -699,13 +709,36 @@ export class OpenVikingRuntime {
  * that path itself, so this reads back exactly the shape it wrote.
  */
 function ovSessionIdFromPath(path: string): string | undefined {
-  const captured = /^\/api\/v1\/sessions\/([^/]+)\//.exec(path)?.[1];
+  const captured = /\/api\/v1\/sessions\/([^/]+)\//.exec(path)?.[1];
   if (captured === undefined) return undefined;
   try {
     return decodeURIComponent(captured);
   } catch {
     return undefined;
   }
+}
+
+ * What a recall block says about itself. The injected memories are background:
+ * the issue behind this line is a model that read a memory miss as "the answer
+ * is not here" and kept querying the store for a document the session already
+ * had. The prompt-side rule lives in the `openviking-memory` skill; this is the
+ * copy that travels with every block, skill or no skill.
+ */
+const RECALL_FRAMING =
+  "Background memory from earlier sessions — supporting context, not the source " +
+  "of record. What the product is, and any file this session already has, comes " +
+  "from the documentation, document and expert tools; a miss here is not " +
+  "evidence that no source exists.";
+
+/**
+ * Put the framing where the model reads first: right under the envelope's
+ * opening tag, ahead of the block's own header line.
+ */
+function withRecallFraming(block: string): string {
+  const opening = /^<openviking-context\b[^>]*>\n?/.exec(block);
+  if (!opening) return `${RECALL_FRAMING}\n${block}`;
+  const rest = block.slice(opening[0].length);
+  return `${opening[0]}${RECALL_FRAMING}\n${rest}`;
 }
 
 function pluginMessage(

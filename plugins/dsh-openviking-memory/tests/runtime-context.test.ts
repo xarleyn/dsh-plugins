@@ -12,7 +12,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import type { Agent } from "@deepseek-ai/dsh-agent";
+import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { Config } from "../src/index.js";
@@ -93,6 +94,96 @@ describe("workspace peer", () => {
       workspacePeer: true,
     });
     expect("X-OpenViking-Actor-Peer" in disabled).toBe(false);
+  });
+});
+
+/**
+ * A context face that answers with the query it was asked, so two different
+ * questions produce two different blocks and one repeated question produces the
+ * same block again.
+ */
+function echoingContextFace() {
+  return transport({
+    "/api/v1/search/search": (init) => {
+      const body = JSON.parse(String(init?.body)) as { query?: unknown };
+      return ok({
+        rendered: `- decided earlier: ${String(body.query ?? "")}`,
+        entries: [],
+        digest: "",
+        stats: {},
+      });
+    },
+  });
+}
+
+/** Run one `pre-step` and report the messages the plugin appended. */
+async function recallStep(
+  target: Harness,
+  agent: Agent,
+  messages: readonly UserMessage[],
+): Promise<UserMessage[]> {
+  const decision = (await emit(
+    target,
+    "agent/pre-step",
+    preStepPayload(agent, messages),
+    async () => enterDecision(messages),
+  )) as { kind: string; messages: UserMessage[] };
+  return decision.messages.filter((message) => !messages.includes(message));
+}
+
+/** The text one injected message carries. */
+function messageText(message: UserMessage): string {
+  return message.content
+    .flatMap((block) => (block.type === "text" ? [block.text] : []))
+    .join("\n");
+}
+
+describe("recall injection", () => {
+  it("frames the block as background memory above the block's own header", async () => {
+    harness = await createHarness({}, { fetchImpl: echoingContextFace() });
+    const fake = createFakeAgent({ sessionId: "recall-framed" });
+
+    const appended = await recallStep(harness, fake.agent, [
+      userMessage("what did we decide about the recall budget last time?"),
+    ]);
+
+    expect(appended).toHaveLength(1);
+    const recall = appended[0]!;
+    expect(recall.source).toMatchObject({
+      kind: "plugin",
+      plugin: "openviking-memory",
+      form: "recall",
+    });
+    const text = messageText(recall);
+    expect(text).toContain("Background memory from earlier sessions");
+    expect(text).toContain("not the source of record");
+    // The framing is the first thing under the envelope, ahead of the assembled
+    // body: a model that stops after one line still reads it.
+    expect(text).toContain(
+      "decided earlier: what did we decide about the recall budget last time?",
+    );
+    expect(text.indexOf("Background memory")).toBeLessThan(
+      text.indexOf("Relevant memory from OpenViking"),
+    );
+  });
+
+  it("delivers an identical block once per session and a new one after it changes", async () => {
+    harness = await createHarness({}, { fetchImpl: echoingContextFace() });
+    const fake = createFakeAgent({ sessionId: "recall-repeat" });
+    const question = [
+      userMessage("what did we decide about the recall budget last time?"),
+    ];
+
+    expect(await recallStep(harness, fake.agent, question)).toHaveLength(1);
+    // Same question, same assembled block: the conversation still carries the
+    // first copy, so the second step must add nothing.
+    expect(await recallStep(harness, fake.agent, question)).toEqual([]);
+    // A different question is a different block and is delivered.
+    expect(
+      await recallStep(harness, fake.agent, [
+        userMessage("where does the pending-queue drainer live?"),
+      ]),
+    ).toHaveLength(1);
   });
 });
 
