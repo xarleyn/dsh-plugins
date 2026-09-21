@@ -53,10 +53,11 @@
   ],
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build:client": "tsdown",
+    "build": "pnpm run clean && pnpm run build:client && tsc -p tsconfig.build.json",
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsdown && vitest run",
-    "build": "pnpm run clean && tsdown && tsc -p tsconfig.build.json",
+    "test": "pnpm run build:client && vitest run",
     "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
