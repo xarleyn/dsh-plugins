@@ -96,6 +96,10 @@
    `scope-editor.tsx`, `scope-button.tsx`, `index.tsx` (~100 строк bootstrap);
    хелпер `withTimeout` против 4× копипасты settled-флага; снять `@ts-nocheck`;
    убрать игнор из `eslint.config.js`; согласовать client-path-хелперы с `core.ts`.
+   **Выполнено частично (2026-09-22):** клиент собирается tsdown
+   (`tsdown.config.ts`, файл исключён из `tsc`), `@ts-nocheck` снят, eslint-игнор
+   убран, файл типизирован и проходит lint/typecheck. Модульное разбиение по
+   списку файлов, `withTimeout` и общие с `core.ts` path-хелперы — остаются.
 2. `dsh-session-scope/src/index.ts` (734) → `scope-patches.ts`,
    `scope-commands.ts`, `scope-commands.legacy.ts` (handleWorkspaceScope),
    `scope-projections.ts`; `apply()` сокращается до связки (~120 строк);
