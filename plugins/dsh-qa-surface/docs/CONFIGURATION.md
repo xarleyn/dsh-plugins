@@ -264,10 +264,11 @@ older prompt-authored bibliography convention.
 The `notes` block governs the ambient plugin messages themselves: the four
 notes the injector writes into a QA chat as hidden user messages — who the
 user is (`identity`), the source-provenance rules (`sources`), how to
-label background delegations (`delegation`), and which reader an attached
-document belongs to (`documents`). Each can be muted and reworded without
-touching the plugin source, from the «Заметки модели» section of the settings
-card or the deployment config:
+label background delegations (`delegation`), which reader an attached document
+belongs to (`documents`), and where an answer should come from
+(`sourcePriority`). Each can be muted and reworded without touching the plugin
+source, from the «Заметки модели» section of the settings card or the
+deployment config:
 
 ```yaml
 notes:
@@ -284,6 +285,9 @@ notes:
     enabled: true
     template: ""
   documents:
+    enabled: true
+    template: ""
+  sourcePriority:
     enabled: true
     template: ""
 ```
@@ -305,6 +309,14 @@ notes:
   a path — report the refusal and the path it named. A stand with no document
   pipeline, or one whose prompt already carries this rule, mutes the note; it is
   the only note whose subject is another plugin's tools.
+- `notes.sourcePriority` is the rule that memory is not the first source: the
+  conversation and its attachments, the product documentation and the domain
+  expert own the question; recalled memory is background. It states in the
+  deployment the same order the memory plugin's own skill states for the model
+  that reads it, which matters because a QA persona can be the whole system
+  prompt and a skill is only read once the model reaches for it. In a stand
+  that has no memory plugin at all the note is harmless — it names sources the
+  model simply does not have.
 - Muting stops future notes only. A note already delivered stays in the
   conversation it reached; the injector writes again as soon as the text
   changes, so rewording an existing note updates on the next step rather than

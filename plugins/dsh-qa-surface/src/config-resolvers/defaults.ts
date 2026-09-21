@@ -219,6 +219,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       }),
       delegation: Object.freeze({ enabled: true, template: "" }),
       documents: Object.freeze({ enabled: true, template: "" }),
+      sourcePriority: Object.freeze({ enabled: true, template: "" }),
     }),
   },
 );

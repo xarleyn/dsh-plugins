@@ -4,6 +4,7 @@ import {
   QA_DELEGATION_NOTE,
   QA_DOCUMENTS_NOTE,
   QA_IDENTITY_NOTE,
+  QA_SOURCE_PRIORITY_NOTE,
   QA_SOURCES_NOTE,
 } from "../src/prompt-notes.js";
 import { resolveConfig } from "../src/resolve-config.js";
@@ -23,8 +24,11 @@ describe("source provenance note", () => {
     });
     const session = createSession("session-root");
     const appended = await step(session);
+    // One note per concern: provenance, delegation naming, document routing,
+    // source priority.
     expect(appended.length).toBe(3);
     expect(noteNames(appended[0])).toEqual([QA_SOURCES_NOTE]);
+    expect(appended.flatMap(noteNames)).toContain(QA_SOURCE_PRIORITY_NOTE);
     expect(noteText(appended[0])).toMatch(/manual Sources\/Источники/u);
     expect(noteText(appended[0])).toContain(QA_REPORT_SOURCES_TOOL);
     expect(await step(session)).toEqual([]);
@@ -43,11 +47,13 @@ describe("source provenance note", () => {
     const silenced = await noSources.step(
       noSources.createSession("session-root"),
     );
-    // Sources fall silent with the switch; the delegation and documents
-    // notes do not depend on them and still reach an attested chat.
+    // Sources fall silent with the switch; the delegation, documents and
+    // source-priority notes do not depend on them and still reach an attested
+    // chat.
     expect(silenced.map(noteNames)).toEqual([
       [QA_DELEGATION_NOTE],
       [QA_DOCUMENTS_NOTE],
+      [QA_SOURCE_PRIORITY_NOTE],
     ]);
 
     const noFallback = harness({
@@ -73,7 +79,7 @@ describe("source provenance note", () => {
     expect(noteNames((await step(child))[0])).toEqual([QA_SOURCES_NOTE]);
   });
 
-  it("carries both notes in one step for an owned QA chat", async () => {
+  it("carries every note in one step for an owned QA chat", async () => {
     const { accounts } = owningStore();
     const { createSession, step } = harness({
       accounts,
@@ -88,6 +94,7 @@ describe("source provenance note", () => {
         QA_IDENTITY_NOTE,
         QA_DELEGATION_NOTE,
         QA_DOCUMENTS_NOTE,
+        QA_SOURCE_PRIORITY_NOTE,
       ].sort(),
     );
     expect(await step(session)).toEqual([]);

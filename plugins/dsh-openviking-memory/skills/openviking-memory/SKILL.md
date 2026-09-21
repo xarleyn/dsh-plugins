@@ -4,12 +4,13 @@ description: >
   Work with OpenViking, the persistent context database behind this agent's
   memory. Use it whenever the user refers to earlier sessions or shared history
   ("like last time", "what did we decide"), asks to remember or forget
-  something, shares files, URLs, or repos worth keeping, or when the task needs
-  context this session does not have — even if nobody says the word "memory".
-  Also use it when the user asks where memories are stored: per project, per folder, or shared between repositories.
-  Covers choosing between context search, find, list search, and grep, reading viking://
-  URIs, and when (not) to write.
-version: 2026.8.7
+  something, shares files, URLs, or repos worth keeping, or asks where memories
+  are stored: per project, per folder, or shared between repositories. Product
+  documentation, the workspace and its attachments, and a domain expert come
+  first for product questions — memory is supporting context, not the default
+  source. Covers choosing between context search, find, list search, and grep,
+  reading viking:// URIs, and when (not) to write.
+version: 2026.9.21
 ---
 
 # OpenViking Memory
@@ -19,13 +20,41 @@ decisions), resources (imported documents, sites, repos), and skills — and
 serves them back across sessions. The tools may appear under a harness prefix
 such as `mcp__openviking__find` or `openviking_find`; they are the same tools.
 
+## Memory is not the first source
+
+Answer from the source that owns the question, and only then from memory:
+
+1. **The conversation and this workspace.** An attached file, a path the user
+   names, a page the task is about. Read it with the tools for that kind of
+   file — `document_*` for office documents and PDFs, the ordinary read and
+   search tools inside the workspace — instead of looking for it in memory.
+2. **Product documentation and the domain expert.** What the product does, how
+   a feature is configured, why something behaves the way it does. Search the
+   documentation first; delegate to the domain expert when the answer needs
+   judgement rather than a page.
+3. **Memory.** What was decided, tried or agreed earlier, across sessions. It
+   reports the past; it is not the record of the product and not a substitute
+   for the two sources above.
+
+Two habits follow from that order:
+
+- **A memory miss is not an answer.** "Nothing found" only means nothing was
+  recorded there, so do not chain `find` → `search` → `read` → `glob` hoping a
+  document turns up. If the session already has the file, open the file; if the
+  question is about the product, ask the documentation or the expert.
+- **One memory round per question.** Search once, read the hits worth reading,
+  then go back to the task. Re-running the same question with reworded phrasing
+  spends turns and returns what the first round already returned.
+
 ## A session's lifecycle
 
 1. **Start** — the OpenViking plugin has usually already injected recalled
    context into the conversation (look for an `<openviking-context>` block).
    Check it before searching: if it already answers the question, use it and
    skip the tool call.
-2. **During the task** — when injected context is not enough, retrieve (below).
+2. **During the task** — when injected context is not enough, retrieve (below),
+   but only for the questions memory owns: documentation, the workspace and the
+   domain expert outrank it (see "Memory is not the first source" above).
    Expand promising hits with `read` before relying on them; an abstract can be
    staler or thinner than its source.
 3. **Data in** — when durable information appears, write it (below). Be
