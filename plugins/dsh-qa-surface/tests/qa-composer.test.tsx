@@ -206,7 +206,7 @@ describe("QA composer", () => {
     expect(onAttachmentsChange).not.toHaveBeenCalled();
   });
 
-  it("refuses text files once the deployment turns them off", async () => {
+  it("refuses file attachments once the deployment turns them off", async () => {
     const { onAttachmentsChange } = mount({
       limits: { ...DEFAULT_ATTACHMENT_LIMITS, textFiles: false },
     });
@@ -218,7 +218,9 @@ describe("QA composer", () => {
     });
     fireEvent.change(input);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toContain("PNG"),
+      expect(screen.getByRole("alert").textContent).toContain(
+        "только изображения",
+      ),
     );
     expect(onAttachmentsChange).not.toHaveBeenCalled();
   });

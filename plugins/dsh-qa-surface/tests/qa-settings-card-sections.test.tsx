@@ -183,7 +183,7 @@ describe("QA Surface card", () => {
     openCard();
 
     const attachments = section("Вложения");
-    fireEvent.click(within(attachments).getByLabelText(/Текстовые файлы/u));
+    fireEvent.click(within(attachments).getByLabelText(/Файловые вложения/u));
     await settle();
     expect(mutate).toHaveBeenCalledWith([
       { op: "set", path: ["attachments", "textFiles"], value: false },
@@ -204,7 +204,7 @@ describe("QA Surface card", () => {
     openCard();
 
     const field = within(section("Вложения")).getByLabelText(
-      /Расширения текстовых файлов/u,
+      /Разрешённые расширения файлов/u,
     ) as HTMLTextAreaElement;
     // What matters is that the field shows the resolved list, not an empty
     // box for a setting that is doing something.

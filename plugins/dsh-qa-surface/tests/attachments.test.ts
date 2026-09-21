@@ -3,17 +3,20 @@
 import { describe, expect, it } from "vitest";
 import {
   attachmentAccept,
-  acceptsTextFile,
+  acceptsFileAttachment,
   attachmentLimits,
   draftFromFile,
   draftFromPaste,
+  fileAttachmentRefusal,
   formatFileSize,
   type QaAttachmentLimits,
 } from "../src/client/attachments.js";
 import {
   countTextLines,
-  hasTextExtension,
-  normalizeTextExtensions,
+  DEFAULT_QA_ATTACHMENT_EXTENSIONS,
+  fileExtensionOf,
+  hasAcceptedExtension,
+  normalizeAcceptedExtensions,
 } from "../src/attachment-rules.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import { DEFAULT_ATTACHMENT_LIMITS } from "./helpers/attachments.js";
@@ -35,16 +38,31 @@ describe("attachment rules", () => {
   });
 
   it("matches extensions case-insensitively and tolerates dotfiles", () => {
-    expect(hasTextExtension("NOTES.MD", LIMITS.extensions)).toBe(true);
-    expect(hasTextExtension(".gitignore", LIMITS.extensions)).toBe(false);
-    expect(hasTextExtension("archive.tar.gz", LIMITS.extensions)).toBe(false);
-    expect(hasTextExtension("noextension", LIMITS.extensions)).toBe(false);
+    expect(hasAcceptedExtension("NOTES.MD", LIMITS.extensions)).toBe(true);
+    expect(hasAcceptedExtension(".gitignore", LIMITS.extensions)).toBe(false);
+    expect(hasAcceptedExtension("archive.tar.gz", LIMITS.extensions)).toBe(
+      false,
+    );
+    expect(hasAcceptedExtension("noextension", LIMITS.extensions)).toBe(false);
+  });
+
+  it("reads the extension off a file name", () => {
+    expect(fileExtensionOf("spec.DOCX")).toBe("docx");
+    expect(fileExtensionOf("archive.tar.gz")).toBe("gz");
+    expect(fileExtensionOf("noextension")).toBe("noextension");
+    expect(fileExtensionOf(".gitignore")).toBe(".gitignore");
   });
 
   it("normalizes an operator extension list", () => {
     expect(
-      normalizeTextExtensions([".MD", "TXT", "md", "", "a b", "x!"]),
+      normalizeAcceptedExtensions([".MD", "TXT", "md", "", "a b", "x!"]),
     ).toEqual(["md", "txt"]);
+  });
+
+  it("accepts the documents the stand can read, not only text files", () => {
+    expect(DEFAULT_QA_ATTACHMENT_EXTENSIONS).toContain("docx");
+    expect(DEFAULT_QA_ATTACHMENT_EXTENSIONS).toContain("pdf");
+    expect(DEFAULT_QA_ATTACHMENT_EXTENSIONS).toContain("md");
   });
 });
 
@@ -72,12 +90,65 @@ describe("composer attachment intake", () => {
     );
   });
 
+  it("offers a configured document in the picker", () => {
+    const accept = attachmentAccept(limits({ extensions: ["md", "docx"] }));
+    expect(accept).toContain(".docx");
+  });
+
   it("accepts a listed extension or a browser-reported text type", () => {
-    expect(acceptsTextFile("notes.md", "", LIMITS)).toBe(true);
-    expect(acceptsTextFile("weird.bin", "text/plain", LIMITS)).toBe(true);
-    expect(acceptsTextFile("weird.bin", "application/zip", LIMITS)).toBe(false);
-    expect(acceptsTextFile("notes.md", "", limits({ textFiles: false }))).toBe(
+    expect(acceptsFileAttachment("notes.md", "", LIMITS)).toBe(true);
+    expect(acceptsFileAttachment("weird.bin", "text/plain", LIMITS)).toBe(true);
+    expect(acceptsFileAttachment("weird.bin", "application/zip", LIMITS)).toBe(
       false,
+    );
+    expect(
+      acceptsFileAttachment("notes.md", "", limits({ textFiles: false })),
+    ).toBe(false);
+  });
+
+  const DOCX_MIME =
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+  it("takes a Word document whose extension the stand allows", async () => {
+    const spec = new File(["docx-bytes"], "spec.docx", { type: DOCX_MIME });
+    const draft = await draftFromFile(
+      spec,
+      limits({ extensions: ["md", "docx"] }),
+    );
+    expect(draft).toMatchObject({ kind: "file", name: "spec.docx" });
+    expect(
+      fileAttachmentRefusal(
+        "spec.docx",
+        DOCX_MIME,
+        limits({ extensions: ["docx"] }),
+      ),
+    ).toBeNull();
+  });
+
+  it("names the refused extension instead of a fixed list", async () => {
+    const spec = new File(["docx-bytes"], "spec.docx", { type: DOCX_MIME });
+    const message = await draftFromFile(
+      spec,
+      limits({ extensions: ["md", "txt"] }),
+    );
+    expect(message).toContain(".docx");
+    expect(message).toContain("оператор");
+    expect(message).not.toContain("md, txt, log");
+  });
+
+  it("says so when file attachments are off", () => {
+    expect(
+      fileAttachmentRefusal(
+        "spec.docx",
+        DOCX_MIME,
+        limits({ textFiles: false }),
+      ),
+    ).toContain("выключены");
+  });
+
+  it("refuses a file without an extension on its own terms", () => {
+    expect(fileAttachmentRefusal("noextension", "", LIMITS)).toContain(
+      "нет расширения",
     );
   });
 
