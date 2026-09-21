@@ -16,7 +16,7 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema, resolveConfig } from "./config.js";
+import { ConfigSchema, qaSurfaceVersion, resolveConfig } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAdminService } from "./admin/service.js";
@@ -43,6 +43,9 @@ import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
+import { registerQaIntegrationRoutes } from "./integration/http.js";
+import { createQaIntegrationRunner } from "./integration/host-runner.js";
+import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
@@ -212,6 +215,14 @@ export class QaSurface extends TypertRemoteService {
   private disposeRoute: (() => void) | undefined;
   private routeKey: string | undefined;
   /**
+   * The HTTP API an external application asks questions through. Constructed
+   * always — it is cheap and stateless until a request arrives — and exposed
+   * on the network only while the deployment turns it on.
+   */
+  private readonly integration: QaIntegrationService;
+  private disposeIntegrationRoutes: (() => void) | undefined;
+  private integrationRouteKey: string | undefined;
+  /**
    * The quality store opens its file on first use, so a deployment that never
    * opens the admin console never grows one.
    */
@@ -290,13 +301,18 @@ export class QaSurface extends TypertRemoteService {
         },
         userWorkspace: (userId, registeredWorkspacePath) =>
           existingQaUserWorkspace(registeredWorkspacePath, userId),
+        // Read only by the integration API, whose caller proved an account
+        // with a service token instead of a browser one. The ownership
+        // record stays the authority either way.
+        ownerIdOf: (sessionId) =>
+          this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(sessionId),
       },
       // Legacy account-free sessions retain the dynamic catalog behavior;
       // role-managed sessions authorize its known entries through the frozen
       // capability policy instead.
       (agent) => this.tools?.activeToolNames(agent) ?? [],
-      (token, sessionId, agent) =>
-        this.access.policyForSession(token, sessionId, agent),
+      (owner, sessionId, agent) =>
+        this.access.policyForSessionOwner(owner, sessionId, agent),
       () => this.tools?.catalogToolNames() ?? [],
     );
     this.provenance = new QaProvenanceHost(
@@ -314,6 +330,22 @@ export class QaSurface extends TypertRemoteService {
           message: error instanceof Error ? error.message : String(error),
         }),
     );
+    this.integration = new QaIntegrationService({
+      getConfig: () => this.getConfig(),
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
+      runner: createQaIntegrationRunner({
+        ctx,
+        getConfig: () => this.getConfig(),
+        accounts: () => this.accountRemotes.resolve(this.getConfig()),
+        admission: this.admission,
+        access: this.access,
+        sessionLog,
+        provenance: this.provenance,
+        logger: this.logger,
+      }),
+      logger: this.logger,
+      version: qaSurfaceVersion(),
+    });
     // The one place a composed gate's `ask` becomes a decision for an attested
     // chat: refused outright while approvals are blocked, parked for the
     // operator's answer while they are interactive. The question seam shares
@@ -429,6 +461,7 @@ export class QaSurface extends TypertRemoteService {
           onChange: () => {
             const config = this.getConfig();
             this.refreshRoute();
+            this.refreshIntegrationRoutes();
             this.warnDocumentsMoved();
             this.warnLegacySlashDefaults();
             this.logger.info("config.updated", {
@@ -446,11 +479,15 @@ export class QaSurface extends TypertRemoteService {
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
+      this.refreshIntegrationRoutes();
       webContext.effect(
         () => () => {
           this.disposeRoute?.();
           this.disposeRoute = undefined;
           this.routeKey = undefined;
+          this.disposeIntegrationRoutes?.();
+          this.disposeIntegrationRoutes = undefined;
+          this.integrationRouteKey = undefined;
           this.webServer = undefined;
         },
         "dsh-qa-surface.navigation-route",
@@ -1427,6 +1464,45 @@ export class QaSurface extends TypertRemoteService {
     attachments: readonly QaSlashSubmitAttachment[],
   ): Promise<QaSlashExecution> {
     return this.slashRemotes.execute(token, sessionId, line, attachments);
+  }
+
+  /**
+   * Register (or drop) the integration API's routes for the current config.
+   *
+   * The key is the whole registration decision — whether the API is on and
+   * where it lives — so a config change that does not move the endpoints
+   * leaves the live routes alone, and turning the API off disposes them
+   * immediately rather than at the next restart.
+   */
+  private refreshIntegrationRoutes(): void {
+    const config = this.getConfig();
+    const key =
+      config.integration.enabled && config.accounts.enabled
+        ? `${config.integration.basePath}:${String(config.integration.maxRequestBytes)}:${String(config.integration.maxAttachmentBytes)}`
+        : undefined;
+    if (key === this.integrationRouteKey) return;
+    this.disposeIntegrationRoutes?.();
+    this.disposeIntegrationRoutes = undefined;
+    this.integrationRouteKey = undefined;
+    if (key === undefined || this.webServer === undefined) return;
+    try {
+      this.disposeIntegrationRoutes = registerQaIntegrationRoutes(
+        this.webServer,
+        { config, service: this.integration, logger: this.logger },
+      );
+      this.integrationRouteKey = key;
+      this.logger.info("integration.routes-registered", {
+        basePath: config.integration.basePath,
+      });
+    } catch (error) {
+      // A collision on (kind, path) means another plugin owns the namespace.
+      // The page and the accounts keep working; only the API stays off, and
+      // the operator sees why.
+      this.logger.error("integration.routes-failed", {
+        basePath: config.integration.basePath,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   private refreshRoute(): void {

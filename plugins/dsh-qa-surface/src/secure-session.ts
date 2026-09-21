@@ -54,6 +54,13 @@ export interface QaAccountsGate {
     facts?: QaSessionFacts,
   ): { readonly id: string } | undefined;
   userWorkspace(userId: string, registeredWorkspacePath: string): string;
+  /**
+   * The account an ownership record names, for callers that authenticated by
+   * another credential (the integration API's service token). Absent records
+   * and a changed owner both resolve to undefined. Only read by that path: the
+   * token-shaped entry above remains the browser's only door.
+   */
+  ownerIdOf(sessionId: string): string | undefined;
 }
 
 /**
@@ -126,7 +133,7 @@ export class QaPolicyAdmission {
     ) => readonly string[] = () => [],
     /** Resolve and freeze the session's subrole policy after its agent exists. */
     private readonly capabilityPolicy?: (
-      token: string,
+      owner: { readonly id: string } | undefined,
       sessionId: string,
       agent: Agent,
     ) => Promise<QaResolvedSessionPolicy | undefined>,
@@ -326,9 +333,61 @@ export class QaPolicyAdmission {
     token: string,
     sessionId: string,
   ): Promise<QaLockdownProof> {
+    return this.secureSessionAs((id) => this.accessOwner(token, id), sessionId);
+  }
+
+  /**
+   * The same admission for a caller whose account was already authenticated by
+   * another credential — the integration API, which has a service token and no
+   * browser session.
+   *
+   * Everything after identity is shared with {@link secureSession}: the
+   * policy pins, the tool allow-list, the QA tool attachment and the
+   * attestation record are one code path, because a second copy of admission
+   * would be a second place for a QA chat to be admitted without them.
+   *
+   * @param userId - the account the credential resolved to.
+   * @param sessionId - the session to attest.
+   * @returns the sanitized proof, as the browser path receives it.
+   */
+  async secureSessionForUser(
+    userId: string,
+    sessionId: string,
+  ): Promise<QaLockdownProof> {
+    return this.secureSessionAs(
+      () => this.ownerById(userId, sessionId),
+      sessionId,
+    );
+  }
+
+  /**
+   * The account behind one session, taken from the ownership record rather
+   * than from a token. The record is the same authority the token path reads:
+   * a chat belongs to exactly one account, and a service token may only ever
+   * reach the chats of its own.
+   */
+  private ownerById(
+    userId: string,
+    sessionId: string,
+  ): { readonly id: string } | undefined {
+    if (this.accounts === undefined) return undefined;
+    const ownerId = this.accounts.ownerIdOf(sessionId);
+    if (ownerId !== userId) {
+      throw new QaAttestationError(
+        "session-owned-elsewhere",
+        "this session is not owned by the authenticated account",
+      );
+    }
+    return { id: ownerId };
+  }
+
+  private async secureSessionAs(
+    resolveOwner: (sessionId: string) => { readonly id: string } | undefined,
+    sessionId: string,
+  ): Promise<QaLockdownProof> {
     const config = this.config();
     const lockdown = config.lockdown;
-    let sessionOwner = this.accessOwner(token, sessionId);
+    let sessionOwner = resolveOwner(sessionId);
     const agent = await this.liveAgent(sessionId);
     // A delegated subagent session is an implementation detail of one answer
     // of its parent chat: it has no QA owner, and its sources reach the
@@ -349,7 +408,7 @@ export class QaPolicyAdmission {
       // to leave the ownership claim deferred. Re-run it now that the
       // header is known, so ownership is recorded only for a session that
       // survived the refusal above.
-      sessionOwner = this.accessOwner(token, sessionId);
+      sessionOwner = resolveOwner(sessionId);
     }
     const pins = this.deploymentPins(config);
     if (!lockdown.enabled) {
@@ -452,7 +511,11 @@ export class QaPolicyAdmission {
     // composition and adoption check passed. A browser cannot make a
     // foreign/non-QA agent leave behind a trusted capability record by merely
     // asking to attest it.
-    const capability = await this.capabilityPolicy?.(token, sessionId, agent);
+    const capability = await this.capabilityPolicy?.(
+      sessionOwner,
+      sessionId,
+      agent,
+    );
 
     const basePolicyAllow =
       capability?.policy.tools ?? lockdown.toolPolicy.allow;

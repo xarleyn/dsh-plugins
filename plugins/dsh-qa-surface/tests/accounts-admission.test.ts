@@ -25,6 +25,7 @@ describe("QA accounts store", () => {
         return accounts.ensureSessionAccess(token, sessionId);
       },
       userWorkspace: () => "D:/qa-user",
+      ownerIdOf: () => undefined,
     };
     const admission = new QaPolicyAdmission(
       // The fake context cannot resolve agents on purpose: the account gate
@@ -89,6 +90,7 @@ describe("QA accounts store", () => {
       enforceSessionAccess: (token, sessionId, facts) =>
         accounts.ensureSessionAccess(token, sessionId, facts),
       userWorkspace: () => "D:/qa-user",
+      ownerIdOf: () => undefined,
     };
     // The Host registry knows the session is a delegated child; the agent
     // resolves fine, so the refusal must come from the parent check itself.
@@ -146,6 +148,7 @@ describe("QA accounts store", () => {
       enforceSessionAccess: (token, sessionId, facts) =>
         accounts.ensureSessionAccess(token, sessionId, facts),
       userWorkspace: () => "D:/qa-user",
+      ownerIdOf: () => undefined,
     };
     // The child session comes from a previous Host run: it is not in the
     // registry yet, so the ownership facts are unknown and the claim is

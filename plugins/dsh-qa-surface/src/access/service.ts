@@ -12,6 +12,7 @@ import type { QaAgentToolGrants } from "../enforcement/tool-grants.js";
 import { QaAgentToolGrants as Grants } from "../enforcement/tool-grants.js";
 import type {
   QaAccessAdminSnapshot,
+  QaAccountUserPublic,
   QaCapabilityConfig,
   QaCapabilityDescriptor,
   QaCapabilitySelection,
@@ -522,7 +523,39 @@ export class QaAccessService {
     adminPreview: boolean,
   ) {
     const accounts = this.requireAccounts();
-    const user = accounts.currentUser(token);
+    return this.reserveForUser(
+      accounts.currentUser(token),
+      sessionId,
+      requestedSubrole,
+      adminPreview,
+    );
+  }
+
+  /**
+   * The same reservation for a chat opened by an already-authenticated
+   * account — the integration API's path. The subrole is the account's own
+   * default: an external caller is never offered a choice of capabilities,
+   * and an administrator's preview flag stays a browser-only affordance.
+   *
+   * @param user - the account the chat belongs to.
+   * @param sessionId - the Host-generated session id to reserve.
+   * @returns the account, as the browser path returns it.
+   */
+  reserveSessionForUser(
+    user: QaAccountUserPublic,
+    sessionId: string,
+  ): QaAccountUserPublic {
+    this.requireAccounts();
+    return this.reserveForUser(user, sessionId, null, false);
+  }
+
+  private reserveForUser(
+    user: QaAccountUserPublic,
+    sessionId: string,
+    requestedSubrole: string | null,
+    adminPreview: boolean,
+  ) {
+    const accounts = this.requireAccounts();
     const config = this.roles.snapshot();
     const assignment = normalizeUserAccess(accounts.accessOf(user.id), config);
     const selected = requestedSubrole ?? assignment.defaultSubrole;
@@ -543,7 +576,7 @@ export class QaAccessService {
         "this QA subrole is not assigned to the account",
       );
     }
-    const owner = accounts.reserveSession(token, sessionId, {
+    const owner = accounts.reserveSessionForUser(user, sessionId, {
       subroleId: selected,
       ...(adminPreview ? { adminPreview: true } : {}),
     });
@@ -555,19 +588,28 @@ export class QaAccessService {
     return owner;
   }
 
-  async policyForSession(
-    token: string,
+  /**
+   * The policy of one session, addressed by its authenticated account.
+   *
+   * Split from {@link policyForSession} so the integration API — whose caller
+   * proved an account with a service token instead of a browser one — freezes
+   * exactly the same capability snapshot. What the two entry points share is
+   * everything after identity; the identity check itself is the only part that
+   * differs, and it stays with whoever holds the credential.
+   *
+   * @param owner - the account that owns the session, or undefined when the
+   *   deployment has no accounts service at all.
+   * @param sessionId - the session being admitted.
+   * @param agent - its live agent, for the tool catalog the policy resolves against.
+   * @returns the policy, or undefined without an accounts service.
+   */
+  async policyForSessionOwner(
+    owner: { readonly id: string } | undefined,
     sessionId: string,
     agent: Agent,
   ): Promise<QaResolvedSessionPolicy | undefined> {
     const accounts = this.options.accounts();
-    if (accounts === undefined) return undefined;
-    const owner = accounts.ensureSessionAccess(token, sessionId, {
-      createdAt: agent.session.header.createdAt,
-      ...(agent.session.header.parentSession === undefined
-        ? {}
-        : { hasParent: true }),
-    });
+    if (accounts === undefined || owner === undefined) return undefined;
     let record = accounts.sessionAccess(sessionId);
     const config = this.roles.snapshot();
     const assignment = normalizeUserAccess(accounts.accessOf(owner.id), config);
@@ -625,6 +667,23 @@ export class QaAccessService {
           record: (entry) => this.recordSkillActivation(sessionId, entry),
         }),
     };
+  }
+
+  /** The browser's entry point: the token resolves the owning account. */
+  async policyForSession(
+    token: string,
+    sessionId: string,
+    agent: Agent,
+  ): Promise<QaResolvedSessionPolicy | undefined> {
+    const accounts = this.options.accounts();
+    if (accounts === undefined) return undefined;
+    const owner = accounts.ensureSessionAccess(token, sessionId, {
+      createdAt: agent.session.header.createdAt,
+      ...(agent.session.header.parentSession === undefined
+        ? {}
+        : { hasParent: true }),
+    });
+    return this.policyForSessionOwner(owner, sessionId, agent);
   }
 
   /** Activation history of one session, for review and quality analysis. */

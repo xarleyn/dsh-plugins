@@ -30,6 +30,10 @@ const USAGE = `Usage:
   qa-accounts [--file <path>] profile <email> [--full-name <name>]
       [--identity <key>=<value>]... [--clear-identity <key>]...
       [--instructions-file <path|->] [--clear-full-name] [--clear-instructions]
+  qa-accounts [--file <path>] token create <email> [--label <text>]
+      [--scopes ask,sessions:read] [--days <n>]   # prints the secret once
+  qa-accounts [--file <path>] token list <email>
+  qa-accounts [--file <path>] token revoke <email> <token-id>
 
 The accounts database defaults to \\$DSH_HOME/qa-accounts.db; a pre-0.8.0
 qa-accounts.json beside it is imported on first use. Passwords are read
@@ -96,6 +100,9 @@ const VALUE_OPTIONS = new Set([
   "--identity",
   "--clear-identity",
   "--instructions-file",
+  "--label",
+  "--scopes",
+  "--days",
 ]);
 
 /** Options that stand alone. */
@@ -146,7 +153,7 @@ export function run(
     positional.push(arg);
   }
   const file = options.get("file") ?? defaultAccountsFilePath();
-  const [command, first, second] = positional;
+  const [command, first, second, third] = positional;
   if (command === undefined || command === "help" || command === "--help") {
     io.out(USAGE);
     return command === undefined ? 1 : 0;
@@ -281,6 +288,89 @@ export function run(
       io.out(`profile updated for ${user.email}`);
       printProfile(io, user);
       return 0;
+    }
+    // Integration tokens: the credential the external application presents to
+    // the QA HTTP API. Issued here rather than from a browser profile because
+    // an operator hands a service credential to a system — the terminal is
+    // where that decision is made and recorded, and the secret is printed
+    // exactly once.
+    case "token": {
+      const action = first;
+      const email = second;
+      if (action === undefined) {
+        throw new Error(
+          "the token command requires an action: create, list or revoke",
+        );
+      }
+      if (email === undefined) {
+        throw new Error(
+          `the token ${action} command requires an account email`,
+        );
+      }
+      const user = accounts.findUser(email);
+      if (user === undefined) {
+        throw new Error(`no account for ${email}`);
+      }
+      if (action === "create") {
+        const scopes = options.get("scopes");
+        const days = options.get("days");
+        const ttlDays = days === undefined ? undefined : Number(days);
+        if (ttlDays !== undefined && !Number.isFinite(ttlDays)) {
+          throw new Error("--days expects a number of days");
+        }
+        const label = options.get("label");
+        const issued = accounts.mintServiceTokenFor(user, {
+          ...(label === undefined ? {} : { label }),
+          ...(scopes === undefined
+            ? {}
+            : {
+                scopes: scopes
+                  .split(",")
+                  .map((value) => value.trim())
+                  .filter((value) => value !== ""),
+              }),
+          ...(ttlDays === undefined ? {} : { ttlDays }),
+        });
+        io.out(`created integration token ${issued.id} for ${user.email}`);
+        io.out(`label: ${issued.label}`);
+        io.out(`scopes: ${issued.scopes.join(",") || "(none)"}`);
+        io.out(`expires: ${issued.expiresAt}`);
+        // The only time the plaintext is ever visible. Everything after this
+        // line is a digest, so a lost token is re-minted, not recovered.
+        io.out(`token: ${issued.token}`);
+        io.out("store it now: the secret is not recoverable");
+        return 0;
+      }
+      if (action === "list") {
+        const tokens = accounts.listServiceTokensFor(user);
+        if (tokens.length === 0) {
+          io.out(`no integration tokens for ${user.email}`);
+          return 0;
+        }
+        for (const token of tokens) {
+          io.out(
+            `${token.id}\t${token.label}\t${token.scopes.join(",") || "(none)"}` +
+              `\tcreated ${token.createdAt}\texpires ${token.expiresAt}` +
+              `\tused ${String(token.useCount)}` +
+              `${token.lastUsedAt === null ? "" : `\tlast ${token.lastUsedAt}`}` +
+              `${token.revokedAt === null ? "" : `\trevoked ${token.revokedAt}`}`,
+          );
+        }
+        return 0;
+      }
+      if (action === "revoke") {
+        if (third === undefined) {
+          throw new Error("the token revoke command requires a token id");
+        }
+        const revoked = accounts.revokeServiceTokenFor(user, third);
+        io.out(
+          revoked
+            ? `revoked ${third} (${user.email})`
+            : `${third} was already revoked`,
+        );
+        return 0;
+      }
+      throw new Error(`unknown token action ${JSON.stringify(action)}`);
     }
     default:
       throw new Error(`unknown command ${JSON.stringify(command)}`);

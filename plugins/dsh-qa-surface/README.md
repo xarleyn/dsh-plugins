@@ -995,6 +995,146 @@ boundary. Review material is the most sensitive data the package handles, so
 tool arguments and results are bounded previews with credential shapes masked,
 behind a redactor a deployment can replace.
 
+## Integration API (HTTP)
+
+Another application — a ticket-system bridge, a bot, a script — can ask the same
+assistant questions over HTTP, with its own credential instead of a browser
+session. The endpoint is **off by default**.
+
+```yaml
+integration:
+  enabled: true          # requires accounts.enabled: true
+  basePath: /qa/api      # POST {basePath}/ask, GET {basePath}/health
+  tokenTtlDays: 90
+  requestTimeoutMs: 90000
+  maxConcurrent: 4
+  requestsPerMinute: 60
+  maxAnswerCharacters: 4096   # the answer the ticket comment can hold
+```
+
+The API needs accounts: a caller is an account, and the credential it presents
+is that account's integration token. Switching it on without
+`accounts.enabled: true` is refused at configuration time rather than served
+without authentication.
+
+### Issuing a token
+
+```bash
+# the secret is printed exactly once and is never recoverable
+qa-accounts token create bridge@example.corp --label "ticket bridge" --scopes ask --days 90
+qa-accounts token list bridge@example.corp     # ids, scopes, expiry, last use
+qa-accounts token revoke bridge@example.corp <token-id>
+```
+
+An integration token is a **separate credential** from the browser token:
+
+- it survives a password change, because a service that is already integrated
+  must not be logged out by a person editing their own profile;
+- it stores only a SHA-256 digest of its secret, so a copied database is not a
+  copied credential;
+- it carries scopes (`ask`, `sessions:read`), an independent expiry and its own
+  revocation;
+- it stops with the account: disabling the account refuses it, and
+  `qa-accounts revoke <email>` revokes it together with every browser session.
+
+Use one token per integration and revoke it when the integration is retired.
+Treat the secret like a password: it is a bearer credential with no second
+factor.
+
+### Asking a question
+
+```bash
+curl -sS https://dsh.example.local/qa/api/ask \
+  -H "Authorization: Bearer qsat.<id>.<secret>" \
+  -H "Content-Type: application/json" \
+  -d '{
+        "message": "TEST получения задач для ИИ Агента\n\nКомпоненты: MDC",
+        "version": "3.8",
+        "session_id": null,
+        "context": {
+          "ticket_key": "PROJ-123",
+          "reporter": "user@example.corp",
+          "reporter_name": "Демо-пользователь"
+        }
+      }'
+```
+
+```json
+{
+  "chat_id": "session-1f0c…",
+  "answer": "**Ответ**\n\nТекст ответа в Markdown…",
+  "sources": ["Документация_v3.8.pdf#стр.12"],
+  "confidence": "medium",
+  "escalate": false,
+  "reason": ""
+}
+```
+
+Send `chat_id` back as `session_id` to continue the same conversation. The chat
+belongs to the token's account: a token can only continue chats its own account
+owns, and a chat an integration opened keeps its own workspace, subrole and
+capability snapshot like any other QA chat.
+
+`multipart/form-data` is accepted with the same fields (`message`, `version`,
+`session_id`, `context` as a JSON **string**) plus repeated `files` parts.
+Attachments are limited to raster images — they ride the prompt inline, as they
+do from the composer. A non-image attachment is refused with `415`, which is the
+signal the bridge's own fallback waits for: it repeats the question without
+attachments rather than failing the ticket. Text and document attachments over
+API are not implemented yet.
+
+A `answer` longer than `maxAnswerCharacters` is cut before it is published, at
+the last paragraph break (then the last line, then the last sentence) and marked
+with an ellipsis, so the ticket shows a readable head instead of a comment the
+ticket system silently truncates mid-sentence. The cut is logged with the chat
+id; it is still a normal answer, not an escalation.
+
+`confidence` is `medium` for a published answer and `low` for an escalated one.
+`high` is deliberately never claimed: nothing in the deployment judges an
+answer, and a field that always said `high` would train the operator to ignore
+it. `escalate: true` means the assistant produced nothing publishable — an
+interrupted turn, an empty answer, or a question that did not finish inside
+`requestTimeoutMs` (the `chat_id` is still returned, so a retry continues the
+same chat instead of starting a second one).
+
+### Health
+
+```bash
+curl -sS https://dsh.example.local/qa/api/health \
+  -H "Authorization: Bearer qsat.<id>.<secret>"
+# {"ok":true,"version":"0.11.0","models":["gpt-4o-mini"],"uptime_s":86400}
+```
+
+### Statuses
+
+| Status | Meaning |
+| --- | --- |
+| 200 | Answered, or escalated with an empty `answer` |
+| 400 | Malformed body (no `message`, broken JSON or `context`) |
+| 401 | Missing, expired, revoked or unknown token |
+| 403 | Valid token without the `ask` scope |
+| 404 | `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
+| 413 | Body or attachment over the configured limit |
+| 415 | Unsupported content type, or a non-image attachment |
+| 429 | Per-token rate limit or the deployment's concurrency limit |
+| 503 | The QA assistant failed before it could answer; retry |
+
+Response bodies carry `{ "error": "…", "code": "…" }` with the same reason
+vocabulary, so a client can branch on the code instead of parsing prose.
+
+### What to watch
+
+- Every request that reaches a turn is logged on the Host with the token id,
+  the chat id and the ticket key — never the question or the answer.
+- `maxConcurrent` bounds how much of the deployment a bridge can occupy;
+  `requestsPerMinute` bounds one token. Both answer `429`, which retries well.
+- `maxAnswerCharacters` bounds one answer. A question that produced more is
+  logged as truncated, with the chat id and the published length — never the
+  text.
+- The endpoint is a network surface: publish it only where the integration
+  runs, keep TLS in front of it, and remember that the token's scopes are the
+  only limits on what it can ask.
+
 ## Security and deployment
 
 `/qa` is a presentation boundary, not an authentication boundary. Protect it
