@@ -42,12 +42,12 @@ function registrationsFor(
     createElement: () => ({ textContent: "", parentNode: null }),
     head: { appendChild: () => {} },
   };
-  const source = readFileSync(
-    new URL("../src/client.ts", import.meta.url),
+  const bundle = readFileSync(
+    new URL("../lib/client.js", import.meta.url),
     "utf8",
   );
   const loader = createModuleLoaderStub();
-  runInNewContext(source, {
+  runInNewContext(bundle, {
     window: loader.window,
     document,
     navigator: { language: "en" },
@@ -77,17 +77,18 @@ function registrationsFor(
 
 describe("client scope placement", () => {
   test("uses projection and host RPC reads instead of durable scope commands", () => {
-    const source = readFileSync(
-      new URL("../src/client.ts", import.meta.url),
+    const bundle = readFileSync(
+      new URL("../lib/client.js", import.meta.url),
       "utf8",
     );
 
-    // Quote style and line breaks belong to the formatter, so the contract is
-    // asserted on the shape of the calls rather than on exact source text.
-    expect(source).toMatch(/useProjection\(["']session-scope["']\)/);
-    expect(source).toMatch(/ctx\.inject\(\s*\[["']remote\.sessionScope["']\]/);
-    expect(source).toMatch(/scopeRemoteFace\.list\(\s*sessionId,\s*path\s*\)/);
-    expect(source).not.toMatch(/\/scope (?:capabilities|show|list)/);
+    // The built bundle is the contract (the source is a module that `tsdown`
+    // wraps), and quote style and line breaks belong to the bundler, so the
+    // shape of the calls is asserted rather than exact artifact text.
+    expect(bundle).toMatch(/useProjection\(["']session-scope["']\)/);
+    expect(bundle).toMatch(/ctx\.inject\(\s*\[["']remote\.sessionScope["']\]/);
+    expect(bundle).toMatch(/scopeRemoteFace\.list\(\s*sessionId,\s*path\s*\)/);
+    expect(bundle).not.toMatch(/\/scope (?:capabilities|show|list)/);
   });
 
   test("mounts a dedicated non-durable sessionScope/list Remote", () => {
