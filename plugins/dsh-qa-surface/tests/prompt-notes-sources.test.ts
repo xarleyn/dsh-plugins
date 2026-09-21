@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { QA_REPORT_SOURCES_TOOL } from "../src/provenance/host-store.js";
 import {
   QA_DELEGATION_NOTE,
+  QA_DOCUMENTS_NOTE,
   QA_IDENTITY_NOTE,
   QA_SOURCES_NOTE,
 } from "../src/prompt-notes.js";
@@ -22,7 +23,7 @@ describe("source provenance note", () => {
     });
     const session = createSession("session-root");
     const appended = await step(session);
-    expect(appended.length).toBe(2);
+    expect(appended.length).toBe(3);
     expect(noteNames(appended[0])).toEqual([QA_SOURCES_NOTE]);
     expect(noteText(appended[0])).toMatch(/manual Sources\/Источники/u);
     expect(noteText(appended[0])).toContain(QA_REPORT_SOURCES_TOOL);
@@ -42,9 +43,12 @@ describe("source provenance note", () => {
     const silenced = await noSources.step(
       noSources.createSession("session-root"),
     );
-    // Sources fall silent with the switch; the delegation note does not
-    // depend on them and still reaches an attested chat.
-    expect(silenced.map(noteNames)).toEqual([[QA_DELEGATION_NOTE]]);
+    // Sources fall silent with the switch; the delegation and documents
+    // notes do not depend on them and still reach an attested chat.
+    expect(silenced.map(noteNames)).toEqual([
+      [QA_DELEGATION_NOTE],
+      [QA_DOCUMENTS_NOTE],
+    ]);
 
     const noFallback = harness({
       config: resolveConfig({
@@ -79,7 +83,12 @@ describe("source provenance note", () => {
     const session = createSession("session-root");
     const appended = await step(session);
     expect([...appended.flatMap(noteNames)].sort()).toEqual(
-      [QA_SOURCES_NOTE, QA_IDENTITY_NOTE, QA_DELEGATION_NOTE].sort(),
+      [
+        QA_SOURCES_NOTE,
+        QA_IDENTITY_NOTE,
+        QA_DELEGATION_NOTE,
+        QA_DOCUMENTS_NOTE,
+      ].sort(),
     );
     expect(await step(session)).toEqual([]);
   });

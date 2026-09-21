@@ -261,12 +261,13 @@ older prompt-authored bibliography convention.
 
 ## Model notes
 
-The `notes` block governs the ambient plugin messages themselves: the three
+The `notes` block governs the ambient plugin messages themselves: the four
 notes the injector writes into a QA chat as hidden user messages — who the
-user is (`identity`), the source-provenance rules (`sources`), and how to
-label background delegations (`delegation`). Each can be muted and reworded
-without touching the plugin source, from the «Заметки модели» section of the
-settings card or the deployment config:
+user is (`identity`), the source-provenance rules (`sources`), how to
+label background delegations (`delegation`), and which reader an attached
+document belongs to (`documents`). Each can be muted and reworded without
+touching the plugin source, from the «Заметки модели» section of the settings
+card or the deployment config:
 
 ```yaml
 notes:
@@ -282,6 +283,9 @@ notes:
   delegation:
     enabled: true
     template: ""
+  documents:
+    enabled: true
+    template: ""
 ```
 
 - An empty template always resolves to the built-in text, so a deployment can
@@ -293,6 +297,14 @@ notes:
 - `notes.sources.fallbackTemplate` must keep `{reportTool}`; the fallback
   sentence exists to name the tool, so one without the placeholder falls back
   to the built-in sentence.
+- `notes.documents` is the rule that an attached office document is not text:
+  a `.docx` or `.pdf` a user hands the chat is read with the document pipeline
+  (`document_inspect`, `document_to_markdown`), and the plain file reader's
+  `binary file` answer for those formats is expected rather than evidence that
+  the file is missing. It also says what to do when the pipeline itself refuses
+  a path — report the refusal and the path it named. A stand with no document
+  pipeline, or one whose prompt already carries this rule, mutes the note; it is
+  the only note whose subject is another plugin's tools.
 - Muting stops future notes only. A note already delivered stays in the
   conversation it reached; the injector writes again as soon as the text
   changes, so rewording an existing note updates on the next step rather than

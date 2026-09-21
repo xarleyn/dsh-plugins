@@ -610,6 +610,11 @@ export interface QaNotesConfig {
     readonly enabled?: boolean;
     readonly template?: string;
   };
+  /** Which reader an attached office document belongs to; no placeholders. */
+  readonly documents?: {
+    readonly enabled?: boolean;
+    readonly template?: string;
+  };
 }
 
 export interface QaSurfaceConfig {
@@ -992,6 +997,10 @@ export interface ResolvedQaSurfaceConfig {
       readonly fallbackTemplate: string;
     };
     readonly delegation: {
+      readonly enabled: boolean;
+      readonly template: string;
+    };
+    readonly documents: {
       readonly enabled: boolean;
       readonly template: string;
     };
