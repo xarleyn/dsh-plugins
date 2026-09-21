@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import {
   collectPluginEntries,
   findManifestDrift,
+  findManifestSchemaErrors,
+  findReadmeDrift,
 } from "./generate-plugins-manifest.mjs";
 
 const REQUIRED_FILES = [
@@ -481,7 +483,12 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
     }
   }
 
-  for (const error of findManifestDrift(repoRoot)) {
+  const catalogErrors = [
+    ...findManifestDrift(repoRoot),
+    ...findReadmeDrift(repoRoot),
+    ...findManifestSchemaErrors(repoRoot),
+  ];
+  for (const error of catalogErrors) {
     failures.push(`catalog: ${error}`);
   }
 

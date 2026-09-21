@@ -364,11 +364,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `repository.directory` и `homepage`: индексатор, который не может связать
   npm-пакет с его директорией в монорепе, показывает пакет как «без публичного
   репозитория». Генератор нового плагина сразу ставит весь канонический набор.
-- **Каталог `plugins.json` в корне.** Он генерируется из манифестов
-  (`pnpm plugins:manifest`) и связывает npm-имя, директорию, описание, keywords,
-  команду установки и homepage; `pnpm verify:packages` падает, пока файл
-  устарел. После генератора, изменения описания/keywords или появления нового
-  пакета его нужно перегенерировать — руками не редактировать.
+- **Каталоги в корне: `plugins.json` и таблица пакетов в `README.md`.** Оба
+  генерируются из манифестов (`pnpm plugins:manifest`): `plugins.json`
+  связывает npm-имя, директорию, описание, keywords, команду установки и
+  homepage, а таблица в README описывает весь лэйаут — публичные пакеты
+  с npm-именем, приватная сборка как `private workspace package`.
+  `pnpm verify:packages` падает, пока устарел любой из них, а `plugins.json`
+  дополнительно валидируется по `docs/plugins.schema.json`. После изменения
+  описания/keywords или появления нового пакета их нужно перегенерировать —
+  руками не редактировать. Расширяя схему новым ключевым словом, добавь его в
+  `scripts/json-schema-validate.mjs`: незнакомое ключевое слово там не
+  игнорируется, а роняет проверку.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
   — внутреннее (проверяется гейтом §27.10). Каждый вход: `types` + `default`.
   Всегда включайте `./package.json`.
@@ -683,8 +689,9 @@ docs: add plugin guidelines
 - [ ] README (+переводы), ROADMAP (опц.), scripts/verify-*.mjs (§8.1).
 - [ ] Локально: `affected:check`, `verify`, `deps:check`, `tarball:verify`.
 - [ ] Version Plan включён в PR.
-- [ ] Корневой `README.md` (таблица пакетов) и `docs/COMPATIBILITY.md`
-      (матрица пиров) обновлены.
+- [ ] `pnpm plugins:manifest` выполнен (таблица пакетов в корневом `README.md`
+      и `plugins.json` перегенерены), `docs/COMPATIBILITY.md` (матрица пиров)
+      обновлён.
 
 ### 10.2 Перед каждым PR
 
