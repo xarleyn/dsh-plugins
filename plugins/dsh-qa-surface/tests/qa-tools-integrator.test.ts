@@ -98,6 +98,8 @@ describe("QaTools integrator", () => {
     );
     expect(tools.activeToolNames(agent)).toEqual([
       "qa_tools_selfcheck",
+      "docs_search",
+      "docs_read",
       "file_delete",
     ]);
   });
@@ -125,6 +127,8 @@ describe("QaTools integrator", () => {
     w.emit("agent/created", { agent });
     expect(tools.activeToolNames(agent)).toEqual([
       "qa_tools_selfcheck",
+      "docs_search",
+      "docs_read",
       "file_delete",
     ]);
   });
@@ -143,6 +147,8 @@ describe("QaTools integrator", () => {
     );
     expect(tools.activeToolNames(agent)).toEqual([
       "qa_tools_selfcheck",
+      "docs_search",
+      "docs_read",
       "file_delete",
     ]);
     tools.dispose();
