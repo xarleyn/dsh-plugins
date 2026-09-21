@@ -17,7 +17,9 @@ import type {
   QaClaimResult,
   QaEffectiveCapabilityPolicy,
   QaOwnershipEntry,
+  QaIssuedServiceToken,
   QaPasswordResetRequest,
+  QaServiceTokenSummary,
   QaSkillActivationRecord,
   QaUserAccess,
   QaWhoamiResult,
@@ -37,11 +39,28 @@ import {
   type StoredOwnership,
   type StoredUser,
 } from "./file.js";
+import {
+  mintServiceToken,
+  normalizeServiceTokenScopes,
+  parseServiceToken,
+  QA_SERVICE_TOKEN_DEFAULT_SCOPES,
+  QA_SERVICE_TOKEN_LABEL_MAX,
+  QA_SERVICE_TOKEN_TTL_DAYS_MAX,
+  QA_SERVICE_TOKEN_TTL_DAYS_MIN,
+  serviceTokenMatches,
+  type QaServiceTokenScope,
+} from "./service-token.js";
 import { mintToken, verifyToken } from "./token.js";
 
 export { QaAccountsError } from "./errors.js";
 export type { QaAccountsErrorReason } from "./errors.js";
 export { defaultAccountsFilePath } from "./file.js";
+// The read shapes are declared with the other wire types, because the client
+// bundle renders them too; they stay re-exported here for the operator CLI.
+export type {
+  QaIssuedServiceToken,
+  QaServiceTokenSummary,
+} from "../types.js";
 
 export interface QaAccountsOptions {
   readonly sessionTtlDays: number;
@@ -61,6 +80,15 @@ export interface QaAccountsOptions {
    * somewhere else.
    */
   readonly legacyFilePath?: string;
+}
+
+/** Keep a requested lifetime inside the supported range. */
+function clampServiceTokenTtl(days: number): number {
+  if (!Number.isFinite(days)) return QA_SERVICE_TOKEN_TTL_DAYS_MIN;
+  return Math.min(
+    QA_SERVICE_TOKEN_TTL_DAYS_MAX,
+    Math.max(QA_SERVICE_TOKEN_TTL_DAYS_MIN, Math.round(days)),
+  );
 }
 
 /** The `.json` sibling of a `.db` path: what a deployment upgraded from. */
@@ -111,6 +139,29 @@ export interface QaSessionFacts {
 const SCRYPT_KEY_LENGTH = 32;
 const MAX_CLAIM_BATCH = 50;
 const MAX_SESSION_ID_LENGTH = 200;
+
+/** What a caller asks for when it mints an integration token. */
+export interface QaServiceTokenIssueInput {
+  /** A note for the operator's token list; empty becomes a generic label. */
+  readonly label?: string;
+  /** Requested scopes; unknown ones are dropped, empty falls back to `ask`. */
+  readonly scopes?: readonly string[];
+  /** How long the token lives; bounded, and the session TTL when omitted. */
+  readonly ttlDays?: number;
+  /**
+   * The account the token belongs to. An administrator may name somebody
+   * else; everybody else is refused, so an integration credential is always
+   * issued with an explicit owner.
+   */
+  readonly userId?: string;
+}
+
+/** What a presented integration token resolved to. */
+export interface QaVerifiedServiceToken {
+  readonly tokenId: string;
+  readonly userId: string;
+  readonly scopes: readonly QaServiceTokenScope[];
+}
 
 /**
  * How long an unowned session stays claimable at access time. Mirrors the
@@ -463,7 +514,32 @@ export class QaAccounts {
     access?: { readonly subroleId: string; readonly adminPreview?: boolean },
   ): QaAccountUserPublic {
     this.reloadIfChanged();
-    const user = this.requireUser(token);
+    return this.reserveSessionForUser(
+      toPublic(this.requireUser(token)),
+      sessionId,
+      access,
+    );
+  }
+
+  /**
+   * The same reservation for an account resolved by another credential.
+   *
+   * The caller has authenticated the account already — the integration API
+   * checks its service token before it gets here — so this entry point takes
+   * the account rather than a token. It is deliberately not reachable from a
+   * remote: nothing a browser can send may name somebody else's account.
+   *
+   * @param user - the authenticated account the chat belongs to.
+   * @param sessionId - the Host-generated session id to reserve.
+   * @param access - the pinned subrole and preview flag, when the path has them.
+   * @returns the account, as the token-shaped entry returns it.
+   */
+  reserveSessionForUser(
+    user: QaAccountUserPublic,
+    sessionId: string,
+    access?: { readonly subroleId: string; readonly adminPreview?: boolean },
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
     if (
       sessionId.trim() === "" ||
       sessionId.length > MAX_SESSION_ID_LENGTH ||
@@ -485,7 +561,7 @@ export class QaAccounts {
       ...this.file,
       ownership: { ...this.file.ownership, [sessionId]: reserved },
     };
-    return toPublic(user);
+    return user;
   }
 
   /** Roll back a reservation if Host creation failed before a chat existed. */
@@ -1128,12 +1204,218 @@ export class QaAccounts {
 
   /** Invalidate every token of the account (password-leak response). */
   revokeTokens(email: string): QaAccountUserPublic {
-    return toPublic(
-      this.editUser(email, (user) => ({
-        ...user,
-        tokenVersion: (user.tokenVersion ?? 0) + 1,
-      })),
+    const user = this.editUser(email, (candidate) => ({
+      ...candidate,
+      tokenVersion: (candidate.tokenVersion ?? 0) + 1,
+    }));
+    // "Revoke every token" has to include the integration ones. A browser
+    // token answer cannot cover them — they carry no token version on purpose,
+    // so that a human changing their password does not log out a service —
+    // and leaving them live would make the operator's leak response a lie.
+    this.database.revokeServiceTokensOf(user.id, new Date().toISOString());
+    return toPublic(user);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Integration tokens: a second, long-lived credential for the QA HTTP API.
+  //
+  // They are read straight from the database rather than from the in-memory
+  // `AccountsFile` model. Two reasons: the model is the accounts document and
+  // growing it with a table of its own would make every chat claim carry token
+  // digests, and a token is looked up by primary key, which the database does
+  // without loading anything else. Cross-process revocations therefore take
+  // effect on the next request, not on the next model reload.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Mint one integration token for an account.
+   *
+   * The caller may mint for itself; naming somebody else is an administrative
+   * act and carries the same check as every other cross-account operation.
+   *
+   * @param token - the caller's browser token.
+   * @param input - label, scopes, lifetime and the optional target account.
+   * @returns the token with the scopes and expiry that were actually granted.
+   */
+  mintServiceToken(
+    token: string,
+    input: QaServiceTokenIssueInput = {},
+  ): QaIssuedServiceToken {
+    this.reloadIfChanged();
+    const caller = this.requireUser(token);
+    let target = caller;
+    if (input.userId !== undefined && input.userId !== caller.id) {
+      this.requireAdmin(
+        caller,
+        "mint an integration token for another account",
+      );
+      const named = this.file.users.find(
+        (candidate) => candidate.id === input.userId,
+      );
+      if (named === undefined || named.disabled === true) {
+        throw new QaAccountsError(
+          "forbidden",
+          "the named account does not exist",
+        );
+      }
+      target = named;
+    }
+    return this.mintServiceTokenFor(toPublic(target), input);
+  }
+
+  /**
+   * Mint one integration token for an account the caller has established.
+   *
+   * The operator CLI takes this path: it runs in its own process, against the
+   * accounts database, with the deployment's file access as its only
+   * authority — there is no browser token to present. The browser path above
+   * keeps its own check, so nothing a page can send reaches this entry point.
+   *
+   * @param target - the account the credential belongs to.
+   * @param input - label, scopes and lifetime.
+   * @returns the token, with the plaintext shown exactly once.
+   */
+  mintServiceTokenFor(
+    target: QaAccountUserPublic,
+    input: QaServiceTokenIssueInput = {},
+  ): QaIssuedServiceToken {
+    this.reloadIfChanged();
+    const scopes = normalizeServiceTokenScopes(
+      input.scopes ?? QA_SERVICE_TOKEN_DEFAULT_SCOPES,
     );
+    const ttlDays = clampServiceTokenTtl(input.ttlDays ?? this.sessionTtlDays);
+    const minted = mintServiceToken();
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + ttlDays * 86_400_000).toISOString();
+    const label = (input.label ?? "")
+      .trim()
+      .slice(0, QA_SERVICE_TOKEN_LABEL_MAX);
+    this.database.insertServiceToken({
+      id: minted.tokenId,
+      userId: target.id,
+      label: label === "" ? "integration" : label,
+      hash: minted.hash,
+      scopes,
+      createdAt,
+      expiresAt,
+      lastUsedAt: null,
+      revokedAt: null,
+      useCount: 0,
+    });
+    return Object.freeze({
+      id: minted.tokenId,
+      token: minted.token,
+      label: label === "" ? "integration" : label,
+      scopes,
+      createdAt,
+      expiresAt,
+      lastUsedAt: null,
+      revokedAt: null,
+      useCount: 0,
+    });
+  }
+
+  /**
+   * Verify a presented integration token.
+   *
+   * Every refusal is the same null: unknown id, bad secret, expired, revoked,
+   * disabled account. An unauthenticated caller must not learn which of those
+   * it hit, and a caller holding a stale token does not need to.
+   *
+   * @param presented - the raw credential from the request.
+   * @returns the token's identity, or null.
+   */
+  verifyServiceToken(presented: string): QaVerifiedServiceToken | null {
+    const parsed = parseServiceToken(presented);
+    if (parsed === null) return null;
+    const record = this.database.serviceToken(parsed.tokenId);
+    if (record === undefined) return null;
+    if (!serviceTokenMatches(parsed.secret, record.hash)) return null;
+    if (record.revokedAt !== null) return null;
+    if (Date.parse(record.expiresAt) <= Date.now()) return null;
+    this.reloadIfChanged();
+    const user = this.file.users.find(
+      (candidate) => candidate.id === record.userId,
+    );
+    if (user === undefined || user.disabled === true) return null;
+    // Usage is what makes an unused credential visible in the operator's
+    // list; the write is one indexed row, and the timestamp is also what the
+    // audit trail needs when a question is traced back to a caller.
+    this.database.touchServiceToken(record.id, new Date().toISOString());
+    return Object.freeze({
+      tokenId: record.id,
+      userId: record.userId,
+      scopes: normalizeServiceTokenScopes(record.scopes),
+    });
+  }
+
+  /**
+   * The caller's own integration tokens, newest last.
+   * @param token - the caller's browser token.
+   * @returns summaries; the secrets are not recoverable and are not listed.
+   */
+  listServiceTokens(token: string): readonly QaServiceTokenSummary[] {
+    this.reloadIfChanged();
+    return this.listServiceTokensFor(toPublic(this.requireUser(token)));
+  }
+
+  /** The integration tokens of an account the caller has established. */
+  listServiceTokensFor(
+    user: QaAccountUserPublic,
+  ): readonly QaServiceTokenSummary[] {
+    return Object.freeze(
+      this.database.serviceTokensOf(user.id).map((record) =>
+        Object.freeze({
+          id: record.id,
+          label: record.label,
+          scopes: normalizeServiceTokenScopes(record.scopes),
+          createdAt: record.createdAt,
+          expiresAt: record.expiresAt,
+          lastUsedAt: record.lastUsedAt,
+          revokedAt: record.revokedAt,
+          useCount: record.useCount,
+        }),
+      ),
+    );
+  }
+
+  /**
+   * Revoke one of the caller's own integration tokens.
+   * @param token - the caller's browser token.
+   * @param tokenId - the token to revoke.
+   * @returns true when a live token was revoked.
+   */
+  revokeServiceToken(token: string, tokenId: string): boolean {
+    this.reloadIfChanged();
+    return this.revokeServiceTokenFor(
+      toPublic(this.requireUser(token)),
+      tokenId,
+    );
+  }
+
+  /** Revoke one integration token of an account the caller has established. */
+  revokeServiceTokenFor(user: QaAccountUserPublic, tokenId: string): boolean {
+    const record = this.database.serviceToken(tokenId);
+    if (record === undefined || record.userId !== user.id) {
+      // Same answer for "no such token" and "not yours": the id alone must
+      // not confirm that another account's credential exists.
+      throw new QaAccountsError(
+        "forbidden",
+        "the integration token does not belong to this account",
+      );
+    }
+    return this.database.revokeServiceToken(tokenId, new Date().toISOString());
+  }
+
+  /** The caller if it administers the deployment, or a refusal. */
+  private requireAdmin(user: StoredUser, action: string): StoredUser {
+    if (user.role !== "admin") {
+      throw new QaAccountsError(
+        "admin-required",
+        `an administrator is required to ${action}`,
+      );
+    }
+    return user;
   }
 
   // ---------------------------------------------------------------------------
@@ -1166,6 +1448,21 @@ export class QaAccounts {
   }
 
   /** One account in its public shape; undefined when the address is unknown. */
+  /**
+   * One account's public identity by id.
+   *
+   * Host paths that authenticated the account themselves — the integration
+   * API, which resolves its own service token — need the public shape the
+   * token-shaped entries return, without a browser token to hand.
+   */
+  accountById(userId: string): QaAccountUserPublic | undefined {
+    this.reloadIfChanged();
+    const user = this.file.users.find((candidate) => candidate.id === userId);
+    return user === undefined || user.disabled === true
+      ? undefined
+      : toPublic(user);
+  }
+
   findUser(email: string): QaAccountUserPublic | undefined {
     this.reloadIfChanged();
     const user = this.userByEmail(email.trim().toLowerCase());

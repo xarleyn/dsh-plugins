@@ -269,4 +269,76 @@ describe("qa-accounts CLI", () => {
     expect(main([...argv, "show", "ghost@b.co"], ghost)).toBe(1);
     expect(ghost.errors[0]).toContain("no account for ghost@b.co");
   });
+
+  it("issues, lists and revokes integration tokens for one account", () => {
+    const path = file();
+    const argv = ["--file", path];
+    spawn([...argv, "add", "a@b.co", "--password-stdin"], "password-1");
+
+    const created = spawn([
+      ...argv,
+      "token",
+      "create",
+      "a@b.co",
+      "--label",
+      "ticket bridge",
+      "--scopes",
+      "ask",
+      "--days",
+      "30",
+    ]);
+    expect(created.code).toBe(0);
+    const tokenLine = created.lines.find((line) => line.startsWith("token: "));
+    const token = tokenLine?.slice("token: ".length) ?? "";
+    expect(token.startsWith("qsat.")).toBe(true);
+    expect(created.lines[0]).toMatch(/created integration token/u);
+    const id = created.lines[0]?.split(" ")[3] ?? "";
+
+    // A second process sees the token: the store is the database, not a cache.
+    const reloaded = new QaAccounts(path, {
+      sessionTtlDays: 30,
+      allowRegistration: false,
+    });
+    expect(reloaded.verifyServiceToken(token)).toMatchObject({
+      tokenId: id,
+      scopes: ["ask"],
+    });
+
+    const listed = spawn([...argv, "token", "list", "a@b.co"]);
+    expect(listed.code).toBe(0);
+    expect(listed.lines[0]).toContain("ticket bridge");
+    expect(listed.lines[0]).not.toContain(token);
+
+    expect(spawn([...argv, "token", "revoke", "a@b.co", id])).toMatchObject({
+      code: 0,
+    });
+    expect(reloaded.verifyServiceToken(token)).toBeNull();
+    expect(
+      spawn([...argv, "token", "revoke", "a@b.co", id]).lines[0],
+    ).toContain("already revoked");
+
+    const empty = spawn([...argv, "token", "list", "a@b.co"]);
+    expect(empty.lines[0]).toContain("revoked");
+  });
+
+  it("refuses malformed token commands", () => {
+    const path = file();
+    const argv = ["--file", path];
+    spawn([...argv, "add", "a@b.co", "--password-stdin"], "password-1");
+    expect(main([...argv, "token"], io())).toBe(1);
+    const noEmail = io();
+    expect(main([...argv, "token", "create"], noEmail)).toBe(1);
+    expect(noEmail.errors[0]).toMatch(/requires an account email/u);
+    const noId = io();
+    expect(main([...argv, "token", "revoke", "a@b.co"], noId)).toBe(1);
+    expect(noId.errors[0]).toMatch(/requires a token id/u);
+    const badDays = io();
+    expect(
+      main([...argv, "token", "create", "a@b.co", "--days", "soon"], badDays),
+    ).toBe(1);
+    expect(badDays.errors[0]).toMatch(/--days expects/u);
+    const ghost = io();
+    expect(main([...argv, "token", "list", "ghost@b.co"], ghost)).toBe(1);
+    expect(ghost.errors[0]).toContain("no account for ghost@b.co");
+  });
 });

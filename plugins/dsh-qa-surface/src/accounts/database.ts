@@ -89,6 +89,25 @@ const MIGRATIONS: readonly SqliteMigration[] = [
         last_requested_at TEXT NOT NULL,
         request_count INTEGER NOT NULL DEFAULT 1
       );
+      -- Integration tokens: the credentials a non-browser application
+      -- presents to the QA HTTP API. The row keeps a digest of the secret and
+      -- never the secret itself, so a copied database is not a copied
+      -- credential; scopes, expiry and the revocation column are what make one
+      -- token revocable without touching the account's browser sessions.
+      CREATE TABLE qa_service_tokens (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        label TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT,
+        use_count INTEGER NOT NULL DEFAULT 0
+      );
+      CREATE INDEX qa_service_tokens_user
+        ON qa_service_tokens (user_id, created_at);
     `,
   },
 ];
@@ -123,6 +142,53 @@ interface OwnershipRow {
   readonly subrole_id: string | null;
   readonly admin_preview: number;
   readonly snapshot_json: string | null;
+}
+
+interface ServiceTokenRow {
+  readonly id: string;
+  readonly user_id: string;
+  readonly label: string;
+  readonly token_hash: string;
+  readonly scopes_json: string;
+  readonly created_at: string;
+  readonly expires_at: string;
+  readonly last_used_at: string | null;
+  readonly revoked_at: string | null;
+  readonly use_count: number;
+}
+
+/**
+ * One integration token as it is written. The digest is the only form of the
+ * credential storage ever holds; the plaintext exists in the mint call and
+ * nowhere else.
+ */
+export interface StoredServiceToken {
+  readonly id: string;
+  readonly userId: string;
+  readonly label: string;
+  /** SHA-256 of the token's secret, hex encoded. */
+  readonly hash: string;
+  readonly scopes: readonly string[];
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly lastUsedAt: string | null;
+  readonly revokedAt: string | null;
+  readonly useCount: number;
+}
+
+function toServiceToken(row: ServiceTokenRow): StoredServiceToken {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    label: row.label,
+    hash: row.token_hash,
+    scopes: JSON.parse(row.scopes_json) as readonly string[],
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    lastUsedAt: row.last_used_at,
+    revokedAt: row.revoked_at,
+    useCount: row.use_count,
+  };
 }
 
 /** One ownership record as it is written, before it becomes a row. */
@@ -358,6 +424,93 @@ export class QaAccountsDatabase {
           .run(sessionId);
       }
       this.gcSnapshots();
+    });
+  }
+
+  /** Record one freshly minted integration token (digest only, never a secret). */
+  insertServiceToken(token: StoredServiceToken): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `INSERT INTO qa_service_tokens
+             (id, user_id, label, token_hash, scopes_json, created_at,
+              expires_at, last_used_at, revoked_at, use_count)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          token.id,
+          token.userId,
+          token.label,
+          token.hash,
+          JSON.stringify(token.scopes),
+          token.createdAt,
+          token.expiresAt,
+          token.lastUsedAt,
+          token.revokedAt,
+          token.useCount,
+        );
+    });
+  }
+
+  /**
+   * One integration token by id, revoked and expired ones included.
+   *
+   * The caller needs the revoked ones: presenting a revoked token must be a
+   * refusal, not a lookup miss, and the two are only distinguishable when the
+   * row still answers.
+   */
+  serviceToken(tokenId: string): StoredServiceToken | undefined {
+    const row = this.storage.db
+      .prepare("SELECT * FROM qa_service_tokens WHERE id = ?")
+      .get(tokenId) as ServiceTokenRow | undefined;
+    return row === undefined ? undefined : toServiceToken(row);
+  }
+
+  /** Every integration token of one account, oldest first. */
+  serviceTokensOf(userId: string): readonly StoredServiceToken[] {
+    return asRows<ServiceTokenRow>(
+      this.storage.db
+        .prepare(
+          "SELECT * FROM qa_service_tokens WHERE user_id = ? ORDER BY created_at, id",
+        )
+        .all(userId),
+    ).map(toServiceToken);
+  }
+
+  /** Record that one token was used, without rewriting its row. */
+  touchServiceToken(tokenId: string, at: string): void {
+    this.storage.transaction(() => {
+      this.storage.db
+        .prepare(
+          `UPDATE qa_service_tokens
+              SET last_used_at = ?, use_count = use_count + 1
+            WHERE id = ?`,
+        )
+        .run(at, tokenId);
+    });
+  }
+
+  /** Revoke one token; already-revoked tokens keep their first timestamp. */
+  revokeServiceToken(tokenId: string, at: string): boolean {
+    return this.storage.transaction(() => {
+      const result = this.storage.db
+        .prepare(
+          "UPDATE qa_service_tokens SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+        )
+        .run(at, tokenId);
+      return result.changes > 0;
+    });
+  }
+
+  /** Revoke every token of one account; returns how many were still live. */
+  revokeServiceTokensOf(userId: string, at: string): number {
+    return this.storage.transaction(() => {
+      const result = this.storage.db
+        .prepare(
+          "UPDATE qa_service_tokens SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL",
+        )
+        .run(at, userId);
+      return Number(result.changes);
     });
   }
 

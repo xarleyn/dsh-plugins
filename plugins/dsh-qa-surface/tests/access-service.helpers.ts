@@ -165,6 +165,7 @@ function reader(
 ): QaSessionLogReader {
   return {
     live: () => false,
+    snapshot: () => undefined,
     list: async () => ({ headers, complete: true }),
     read: async () => ({ ok: false as const, reason: "storage-unavailable" }),
   };

@@ -184,6 +184,7 @@ describe("admin conversation reads", () => {
       skills: () => skills,
       sessionLog: {
         live: () => false,
+        snapshot: () => undefined,
         async list() {
           return {
             headers: [{ id: "session-alice", createdAt: 1 }],

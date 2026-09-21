@@ -3,11 +3,18 @@ import type {
   QaAccountSession,
   QaAccountStartersInput,
   QaAccountUserPublic,
+  QaIssuedServiceToken,
   QaOwnershipEntry,
+  QaServiceTokenCreateInput,
+  QaServiceTokenSummary,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import type { QaAccountsApi, StorageLike } from "./types.js";
+import type {
+  QaAccountsApi,
+  QaIntegrationTokenResult,
+  StorageLike,
+} from "./types.js";
 
 /** The `(reason: <code>)` marker the Host folds into account wire failures. */
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
@@ -88,6 +95,12 @@ export function accountsErrorMessage(code: string | null): string {
       return "Проверьте подсказки: заполните название и промпт, текст не слишком длинный.";
     case "starters-disabled":
       return "Свои подсказки отключены на этом сервере.";
+    case "integration-disabled":
+      return "Интеграционный API выключен на этом стенде: такому токену некуда обращаться. Включите его в настройках стенда.";
+    case "auth-required":
+      return "Сессия истекла. Войдите заново.";
+    case "forbidden":
+      return "Этот токен принадлежит другой учётной записи или уже удалён.";
     case "registration-disabled":
       return "Регистрация на этом сервере отключена.";
     case "rate-limited":
@@ -402,6 +415,92 @@ export class QaAccountsController {
     } catch (error) {
       console.warn("dsh-qa-surface: starters update failed", error);
       return accountsErrorMessage(null);
+    }
+  }
+
+  /**
+   * The signed-in user's integration tokens. Resolves to the list, or to the
+   * copy the page renders when the Host refused the read; the tokens are not
+   * part of the account snapshot, because they are not part of the account.
+   */
+  async serviceTokens(): Promise<
+    QaIntegrationTokenResult<readonly QaServiceTokenSummary[]>
+  > {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsListServiceTokens(token);
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: result.value.tokens };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token list failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
+  /**
+   * Mint one integration token for the signed-in user. The plaintext is in the
+   * answer and nowhere else — the caller has to hand it over now, because
+   * nothing can show it again.
+   */
+  async createServiceToken(
+    input: QaServiceTokenCreateInput,
+  ): Promise<QaIntegrationTokenResult<QaIssuedServiceToken>> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsCreateServiceToken(
+        token,
+        input,
+      );
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: result.value };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token create failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
+  /**
+   * Revoke one of the signed-in user's integration tokens. The Host is the
+   * authority on whose token it is; a refusal is shown as it arrives.
+   */
+  async revokeServiceToken(
+    tokenId: string,
+  ): Promise<QaIntegrationTokenResult<null>> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+    try {
+      const result = await this.options.remote.accountsRevokeServiceToken(
+        token,
+        tokenId,
+      );
+      if (!result.ok) {
+        return {
+          ok: false,
+          error: accountsErrorMessage(accountsReasonOf(result.error)),
+        };
+      }
+      return { ok: true, value: null };
+    } catch (error) {
+      console.warn("dsh-qa-surface: integration token revoke failed", error);
+      return { ok: false, error: accountsErrorMessage(null) };
     }
   }
 
