@@ -6,12 +6,17 @@
  * `.ok` would render an empty audit as if it were real.
  */
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import type { AuditSummaryValue, SessionAuditValue } from "../types.js";
+import type {
+  AuditSummaryValue,
+  SessionAuditValue,
+  UnattachedAuditValue,
+} from "../types.js";
 
 /** The `sessionAudit` namespace as the client sees it. */
 export interface SessionAuditRemote {
   summary(sessionId: string): Promise<RemoteResult<AuditSummaryValue>>;
   audits(sessionId: string): Promise<RemoteResult<AuditSummaryValue[]>>;
+  unattached(): Promise<RemoteResult<UnattachedAuditValue[]>>;
   audit(sessionId: string): Promise<RemoteResult<SessionAuditValue>>;
   report(auditId: string): Promise<RemoteResult<string>>;
   analysis(auditId: string): Promise<RemoteResult<string>>;
@@ -23,6 +28,8 @@ export interface AuditApi {
   summary(sessionId: string): Promise<AuditSummaryValue>;
   /** The full audit for one session. */
   audit(sessionId: string): Promise<SessionAuditValue>;
+  /** The registered audits no session view can show. */
+  unattached(): Promise<readonly UnattachedAuditValue[]>;
 }
 
 /** Unwrap a Remote result, turning a failure into an exception. */
@@ -44,5 +51,7 @@ export function createAuditApi(remote: SessionAuditRemote): AuditApi {
       unwrap(() => remote.summary(sessionId), "sessionAudit/summary"),
     audit: (sessionId) =>
       unwrap(() => remote.audit(sessionId), "sessionAudit/audit"),
+    unattached: () =>
+      unwrap(() => remote.unattached(), "sessionAudit/unattached"),
   };
 }
