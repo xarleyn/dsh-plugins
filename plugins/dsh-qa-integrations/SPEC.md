@@ -462,6 +462,10 @@ created_at
 
 Do not store raw chat bodies/CRM payloads in audit logs by default. Prefer metadata such as operation, resource type/id and result.
 
+The SQLite file is opened once at boot (Prolog plus WAL sidecars) and closed when
+the plugin is disposed: a reload re-opens it for the next instance instead of
+leaving the handle — and the file locks that come with it — behind.
+
 ---
 
 ## 11. Secret storage

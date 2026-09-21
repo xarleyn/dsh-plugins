@@ -115,6 +115,13 @@ export class CasResultsService extends Service {
   private readonly logger: PluginLoggerLike & { close?(): Promise<void> };
   private gcTimer: NodeJS.Timeout | undefined;
   private disposed = false;
+  /**
+   * Undo actions for the tool mount, collected so `dispose()` can walk them.
+   * The list has to live on the instance for that to ever happen: a local
+   * array is unreachable from `dispose()`, which is how the listener and the
+   * five tools used to survive a service rebuild (PLUGIN_GUIDELINES §3.4).
+   */
+  private readonly disposers: (() => void)[] = [];
 
   constructor(
     ctx: Context,
@@ -136,8 +143,11 @@ export class CasResultsService extends Service {
         compression: this.config.storage.compression,
       });
 
-    const disposers: (() => void)[] = [];
+    const disposers = this.disposers;
     ctx.inject(["tools"], (toolCtx: ToolHostContextLike) => {
+      // The runtime can arrive while the plugin is being torn down; mounting
+      // there would collect undo actions nobody will ever walk.
+      if (this.disposed) return;
       disposers.push(
         toolCtx.on(
           "tools/post-execute",
@@ -263,6 +273,14 @@ export class CasResultsService extends Service {
     if (this.gcTimer !== undefined) {
       clearInterval(this.gcTimer);
       this.gcTimer = undefined;
+    }
+    for (const dispose of this.disposers.splice(0)) {
+      try {
+        dispose();
+      } catch {
+        // Disposal stays idempotent and contained: one broken remover must not
+        // leave the rest of the mount dangling.
+      }
     }
     void this.logger.close?.();
   }
