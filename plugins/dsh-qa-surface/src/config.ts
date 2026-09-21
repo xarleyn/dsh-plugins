@@ -522,11 +522,18 @@ const configSchema = z.object({
           template: z.string().default(D.notes.delegation.template),
         })
         .default({ ...D.notes.delegation }),
+      sourcePriority: z
+        .object({
+          enabled: z.boolean().default(D.notes.sourcePriority.enabled),
+          template: z.string().default(D.notes.sourcePriority.template),
+        })
+        .default({ ...D.notes.sourcePriority }),
     })
     .default({
       identity: { ...D.notes.identity },
       sources: { ...D.notes.sources },
       delegation: { ...D.notes.delegation },
+      sourcePriority: { ...D.notes.sourcePriority },
     }),
 });
 

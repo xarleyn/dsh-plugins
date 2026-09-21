@@ -199,6 +199,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
         fallbackTemplate: "",
       }),
       delegation: Object.freeze({ enabled: true, template: "" }),
+      sourcePriority: Object.freeze({ enabled: true, template: "" }),
     }),
   },
 );
