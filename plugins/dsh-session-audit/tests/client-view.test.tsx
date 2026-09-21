@@ -12,7 +12,11 @@ import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { AuditPage } from "../src/client/AuditPage.js";
 import { createAuditApi, type SessionAuditRemote } from "../src/client/api.js";
 import { parseAnalysis } from "../src/client/analysis.js";
-import type { AuditSummaryValue, SessionAuditValue } from "../src/types.js";
+import type {
+  AuditSummaryValue,
+  SessionAuditValue,
+  UnattachedAuditValue,
+} from "../src/types.js";
 
 const SESSION = "session-41b4e63f-9e35-4406-927b-25a60b7be2c2";
 
@@ -72,9 +76,21 @@ const auditValue = (
   ...overrides,
 });
 
+/** One unattached audit, as the host projects it onto the wire. */
+const unattachedValue = (
+  overrides: Partial<UnattachedAuditValue> = {},
+): UnattachedAuditValue => ({
+  auditId: "session-unknown",
+  status: "unresolved",
+  code: "SESSION_NOT_FOUND",
+  modifiedAt: "2026-09-19T08:26:00.000Z",
+  ...overrides,
+});
+
 function remoteOf(
   summary: AuditSummaryValue = summaryValue(),
   audit: SessionAuditValue = auditValue(),
+  unattached: readonly UnattachedAuditValue[] = [],
 ): SessionAuditRemote {
   return {
     summary: vi.fn(
@@ -84,6 +100,12 @@ function remoteOf(
     audits: vi.fn(
       async () =>
         ({ ok: true, value: [summary] }) as RemoteResult<AuditSummaryValue[]>,
+    ),
+    unattached: vi.fn(
+      async () =>
+        ({ ok: true, value: [...unattached] }) as RemoteResult<
+          UnattachedAuditValue[]
+        >,
     ),
     audit: vi.fn(
       async () =>
@@ -167,6 +189,83 @@ describe("AuditPage", () => {
     expect(
       await findByText("No audit available for this session"),
     ).toBeDefined();
+  });
+
+  it("tells a session with no audit that the root holds audits it cannot show", async () => {
+    const api = createAuditApi(
+      remoteOf(summaryValue({ available: false }), auditValue(), [
+        unattachedValue(),
+        unattachedValue({
+          auditId: "audit-broken",
+          status: "invalid",
+          code: "INVALID_JSON",
+        }),
+      ]),
+    );
+    const { findByText, getByText } = render(
+      <AuditPage sessionId={SESSION} api={api} />,
+    );
+
+    expect(
+      await findByText("No audit available for this session"),
+    ).toBeDefined();
+    expect(
+      await findByText("2 audits are not shown in any session"),
+    ).toBeDefined();
+    expect(
+      getByText(
+        "no session matches its directory name, and its analysis names none",
+      ),
+    ).toBeDefined();
+    expect(getByText("analysis.json is not valid JSON")).toBeDefined();
+  });
+
+  it("says nothing about unattached audits when none exist", async () => {
+    const api = createAuditApi(remoteOf(summaryValue({ available: false })));
+    const { findByText, queryByText } = render(
+      <AuditPage sessionId={SESSION} api={api} />,
+    );
+
+    await findByText("No audit available for this session");
+    expect(queryByText(/not shown in any session/u)).toBeNull();
+  });
+
+  it("counts one unattached audit in the singular", async () => {
+    const api = createAuditApi(
+      remoteOf(summaryValue({ available: false }), auditValue(), [
+        unattachedValue(),
+      ]),
+    );
+    const { findByText } = render(<AuditPage sessionId={SESSION} api={api} />);
+
+    expect(
+      await findByText("1 audit is not shown in any session"),
+    ).toBeDefined();
+  });
+
+  it("notes unattached audits beside a session's own audit", async () => {
+    const api = createAuditApi(
+      remoteOf(summaryValue(), auditValue(), [unattachedValue()]),
+    );
+    const { findByText } = render(<AuditPage sessionId={SESSION} api={api} />);
+
+    // The reader who has an audit still learns that others are stranded.
+    expect(
+      await findByText("1 audit is not shown in any session"),
+    ).toBeDefined();
+    expect(await findByText("Mixed")).toBeDefined();
+  });
+
+  it("keeps a working audit on screen when the notice cannot be fetched", async () => {
+    const failing = remoteOf();
+    failing.unattached = () => failed("boom");
+    const api = createAuditApi(failing);
+    const { findByText, queryByText } = render(
+      <AuditPage sessionId={SESSION} api={api} />,
+    );
+
+    expect(await findByText("Mixed")).toBeDefined();
+    expect(queryByText(/not shown in any session/u)).toBeNull();
   });
 
   it("renders the status bar and the report once loaded", async () => {
