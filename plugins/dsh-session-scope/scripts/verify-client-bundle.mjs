@@ -8,8 +8,19 @@
  * literals rather than imported identifiers, because the bundler is free to
  * rename what the module imported (`react` is emitted as an interop namespace)
  * while the call shapes are the contract.
+ *
+ * Text alone cannot show that the factory still hands the shell a working
+ * plugin, so the gate ends by running the built registration against a
+ * ModuleLoader stub and checking the exports themselves.
  */
 import { readFile } from "node:fs/promises";
+import { runInNewContext } from "node:vm";
+
+import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
+
+const MODULE_ID = "@yadsh/dsh-session-scope";
+/** What the client plugin declares for the shell to resolve before `apply`. */
+const EXPECTED_INJECT = ["slots", "remote", "remote.commands", "sessions"];
 
 const client = await readFile(
   new URL("../lib/client.js", import.meta.url),
@@ -79,9 +90,48 @@ if (/\/scope (?:capabilities|show|list)/.test(client)) {
 }
 
 const registrations =
-  client.match(/id: ['"]@yadsh\/dsh-session-scope['"]/g) ?? [];
+  client.match(/id: ["']@yadsh\/dsh-session-scope["']/g) ?? [];
 if (registrations.length !== 1) {
   throw new Error(
     `expected one client factory registration, found ${registrations.length}`,
+  );
+}
+
+// The text above proves the bundle is shaped right; running it proves the
+// factory still hands the shell a working plugin.
+const loader = createModuleLoaderStub();
+runInNewContext(
+  client,
+  {
+    window: loader.window,
+    navigator: { language: "en" },
+    console,
+  },
+  { filename: "client.js" },
+);
+
+if (loader.registrations.length !== 1) {
+  throw new Error(
+    `expected the bundle to register one module, registered ${loader.registrations.length}`,
+  );
+}
+const registration = loader.registrations[0];
+if (registration.id !== MODULE_ID) {
+  throw new Error(
+    `client bundle registered as ${JSON.stringify(registration.id)}, expected ${JSON.stringify(MODULE_ID)}`,
+  );
+}
+
+const plugin = registration.factory((moduleName) => {
+  if (moduleName === "react" || moduleName === "react-dom") return {};
+  throw new Error(`client bundle required unexpected module ${moduleName}`);
+});
+
+if (typeof plugin?.apply !== "function") {
+  throw new Error("client bundle factory must export an apply function");
+}
+if (JSON.stringify(plugin.inject) !== JSON.stringify(EXPECTED_INJECT)) {
+  throw new Error(
+    `client bundle must inject ${JSON.stringify(EXPECTED_INJECT)}, got ${JSON.stringify(plugin.inject)}`,
   );
 }
