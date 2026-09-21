@@ -96,6 +96,11 @@ Classifier calls run inside a process-local bypass marker
 (`AsyncLocalStorage`), so the host `llm/stream` wrapper never re-applies the
 guard to the classifier's own traffic.
 
+Disposal is a one-way door. Once the service is disposed, an injection that
+resolves later — the tool runtime or the settings provider mounting during
+teardown — registers nothing: no tool listener, no settings section, and no
+configuration rebuild from a card edit that arrives after the gate is gone.
+
 ## 4. Scope
 
 ### Included (0.1)

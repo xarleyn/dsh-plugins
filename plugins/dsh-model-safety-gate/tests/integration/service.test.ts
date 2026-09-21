@@ -21,6 +21,8 @@ interface CapturedHost {
   listeners: Map<string, Array<(...args: never[]) => unknown>>;
   toolListeners: Map<string, Array<(...args: never[]) => unknown>>;
   effects: Array<() => void>;
+  /** Injection callbacks the host has not resolved yet (`deferInject`). */
+  pendingInjects: Array<() => void>;
   appended: Array<{ type: string; data: unknown }>;
   auditLogs: Array<{ message: string; fields: unknown }>;
   /** The settings seam the service installs, when it reaches one. */
@@ -39,7 +41,7 @@ interface CapturedSettings {
 
 function wire(
   config?: Record<string, unknown>,
-  options?: { agents?: AgentRegistryFace },
+  options?: { agents?: AgentRegistryFace; deferInject?: boolean },
 ): { captured: CapturedHost; gate: ModelSafetyGate } {
   const ctx = new Context();
   const shadow = ctx as unknown as Record<string, unknown>;
@@ -47,6 +49,7 @@ function wire(
     listeners: new Map(),
     toolListeners: new Map(),
     effects: [],
+    pendingInjects: [],
     appended: [],
     auditLogs: [],
     settings: null,
@@ -86,42 +89,49 @@ function wire(
   shadow.inject = (services: readonly string[], fn: (c: unknown) => void) => {
     // A settings provider hands the consumer an install face; the tool runtime
     // hands a listener context. The service asks for both.
-    if (services.includes("settings")) {
-      fn({
-        settings: {
-          installSection: (
-            _owner: unknown,
-            namespace: string,
-            _schema: unknown,
-            entry: unknown,
-            hooks: {
-              setSource(current: () => unknown): void;
-              onChange(): void;
-              validate?(value: unknown): void;
+    const resolve = () => {
+      if (services.includes("settings")) {
+        fn({
+          settings: {
+            installSection: (
+              _owner: unknown,
+              namespace: string,
+              _schema: unknown,
+              entry: unknown,
+              hooks: {
+                setSource(current: () => unknown): void;
+                onChange(): void;
+                validate?(value: unknown): void;
+              },
+            ) => {
+              let source: () => unknown = () => entry;
+              captured.settings = {
+                namespace,
+                entry,
+                source: () => source(),
+                setSource: (next) => {
+                  source = next;
+                },
+                onChange: () => {
+                  hooks.onChange();
+                },
+                validate: (value) => {
+                  hooks.validate?.(value);
+                },
+              };
+              hooks.setSource(() => source());
             },
-          ) => {
-            let source: () => unknown = () => entry;
-            captured.settings = {
-              namespace,
-              entry,
-              source: () => source(),
-              setSource: (next) => {
-                source = next;
-              },
-              onChange: () => {
-                hooks.onChange();
-              },
-              validate: (value) => {
-                hooks.validate?.(value);
-              },
-            };
-            hooks.setSource(() => source());
           },
-        },
-      });
-      return () => undefined;
-    }
-    fn(toolCtx);
+        });
+        return;
+      }
+      fn(toolCtx);
+    };
+    // `deferInject` models the host resolving the service during teardown: the
+    // callback is handed over, the plugin is disposed, and only then does the
+    // injection run.
+    if (options?.deferInject === true) captured.pendingInjects.push(resolve);
+    else resolve();
     return () => undefined;
   };
   shadow.effect = (factory: () => () => void) => {
@@ -366,6 +376,40 @@ describe("ModelSafetyGate service wiring", () => {
     }).gate.inspect();
     expect(degraded.classifier.active).toBe(false);
     expect(degraded.classifier.reason).toContain("LLM service");
+  });
+
+  it("registers nothing when the tool runtime arrives after dispose", () => {
+    const { captured } = wire({}, { deferInject: true });
+    expect(captured.toolListeners.size).toBe(0);
+
+    for (const dispose of captured.effects) dispose();
+    for (const resolve of captured.pendingInjects) resolve();
+
+    // Both tool listeners would have been pushed into a disposer list nobody
+    // walks again, leaving a gate deciding in a plugin that is gone.
+    expect(captured.toolListeners.size).toBe(0);
+  });
+
+  it("installs no settings section when the settings service arrives after dispose", () => {
+    const { captured } = wire({}, { deferInject: true });
+    expect(captured.settings).toBeNull();
+
+    for (const dispose of captured.effects) dispose();
+    for (const resolve of captured.pendingInjects) resolve();
+
+    expect(captured.settings).toBeNull();
+  });
+
+  it("ignores a settings change that arrives after dispose", () => {
+    const { captured, gate } = wire({ mode: "enforce" });
+    for (const dispose of captured.effects) dispose();
+
+    captured.settings?.setSource(() => ({ mode: "audit" }));
+    captured.settings?.onChange();
+
+    // The rebuild belongs to a live gate; a disposed one keeps the policy it
+    // last ran on instead of re-resolving behind the host's back.
+    expect(gate.config.mode).toBe("enforce");
   });
 });
 
