@@ -95,8 +95,7 @@ export interface QaFileAttachment {
 
 /** One attachment of a parsed request, in the order the caller sent it. */
 export type QaIntegrationAttachment =
-  | QaInlineImageAttachment
-  | QaFileAttachment;
+  QaInlineImageAttachment | QaFileAttachment;
 
 /**
  * Why one attachment could not become prompt content, in the vocabulary the

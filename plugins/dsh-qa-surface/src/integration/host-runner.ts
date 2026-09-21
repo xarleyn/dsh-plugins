@@ -192,9 +192,7 @@ export function createQaIntegrationRunner(
             type: "image",
             mediaType: attachment.mediaType,
             data: attachment.data,
-            ...(attachment.name === undefined
-              ? {}
-              : { name: attachment.name }),
+            ...(attachment.name === undefined ? {} : { name: attachment.name }),
           }) as PromptContentPart,
       );
     const files = attachments.filter(

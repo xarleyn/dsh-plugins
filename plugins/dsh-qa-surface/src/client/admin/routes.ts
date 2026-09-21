@@ -84,7 +84,9 @@ export function parseAdminRoute(
     case "skills":
       // The audience table and the file editor share a section name because
       // they are two views of one thing; the editor is a path below it.
-      return rest[0] === "editor" ? { page: "skill-files" } : { page: "skills" };
+      return rest[0] === "editor"
+        ? { page: "skill-files" }
+        : { page: "skills" };
     case "common":
       return { page: "common" };
     case "conversations":

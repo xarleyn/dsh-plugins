@@ -10,7 +10,11 @@ import { projectIntegrationTranscript } from "../src/integration/transcript.js";
  * plumbing whose result is already in the answer.
  */
 
-function userMessage(seq: number, text: string, kind = "user"): StoredSessionEvent {
+function userMessage(
+  seq: number,
+  text: string,
+  kind = "user",
+): StoredSessionEvent {
   return {
     seq,
     time: 1_700_000_000_000 + seq * 1000,
@@ -29,7 +33,9 @@ function assistantMessage(
 ): StoredSessionEvent {
   return {
     seq,
-    ...(options.time === undefined ? { time: 1_700_000_000_000 + seq * 1000 } : { time: options.time }),
+    ...(options.time === undefined
+      ? { time: 1_700_000_000_000 + seq * 1000 }
+      : { time: options.time }),
     type: "assistant/message",
     data: {
       message: { content: [{ type: "text", text }] },
@@ -54,7 +60,9 @@ describe("integration transcript projection", () => {
   it("publishes the caller's prompts and the assistant's answers in order", () => {
     const read = projectIntegrationTranscript("session-1", LOG, PAGE);
     expect(read.chatId).toBe("session-1");
-    expect(read.messages.map((message) => [message.role, message.text])).toEqual([
+    expect(
+      read.messages.map((message) => [message.role, message.text]),
+    ).toEqual([
       ["user", "Что нового в версии 3.8?"],
       ["assistant", "**Ответ** по версии 3.8."],
       ["user", "А вложения?"],

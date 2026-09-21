@@ -18,7 +18,13 @@ import type { QaUserSettingsSections } from "../settings-extensions/index.js";
 
 /** Sections of the user-facing settings dialog. */
 export type QaSettingsSectionId =
-  "profile" | "password" | "starters" | "tokens" | "general" | "skills" | (string & {});
+  | "profile"
+  | "password"
+  | "starters"
+  | "tokens"
+  | "general"
+  | "skills"
+  | (string & {});
 
 export interface QaUserSettingsDialogProps {
   readonly open: boolean;

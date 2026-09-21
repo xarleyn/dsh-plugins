@@ -38,9 +38,7 @@ describe("admin skill files", () => {
       await refusal(() => service.skill(alice.token, user, "release-notes")),
     ).toMatchObject({ reason: "forbidden" });
     expect(
-      await refusal(() =>
-        service.saveSkill(alice.token, user, null, draft()),
-      ),
+      await refusal(() => service.saveSkill(alice.token, user, null, draft())),
     ).toMatchObject({ reason: "forbidden" });
     expect(
       await refusal(() =>
@@ -125,15 +123,11 @@ describe("admin skill files", () => {
     const written = await service.saveSkill(admin.token, scope, null, draft());
     expect(written.adminEdit).not.toBeNull();
 
-    skills.update(
-      { userId: alice.user.id },
-      written.name,
-      {
-        ...draft(),
-        description: "Пишет заметки о релизе по-своему",
-        expectedRevision: written.revision,
-      },
-    );
+    skills.update({ userId: alice.user.id }, written.name, {
+      ...draft(),
+      description: "Пишет заметки о релизе по-своему",
+      expectedRevision: written.revision,
+    });
     const owned = skills
       .list({ userId: alice.user.id })
       .find(({ name }) => name === written.name);

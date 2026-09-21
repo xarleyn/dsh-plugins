@@ -32,9 +32,10 @@ function logger() {
   } as never;
 }
 
-function context(
-  config: ResolvedQaSurfaceConfig,
-): { readonly remotes: QaAccountRemotes; readonly store: QaAccounts } {
+function context(config: ResolvedQaSurfaceConfig): {
+  readonly remotes: QaAccountRemotes;
+  readonly store: QaAccounts;
+} {
   const remotes = createQaAccountRemotes({
     getConfig: () => config,
     logger: logger(),
@@ -128,9 +129,9 @@ describe("integration token remotes", () => {
     open = store;
     const admin = remotes.register("op@example.com", "password-1");
 
-    expect(refusalReason(() => remotes.createServiceToken(admin.token, {}))).toBe(
-      "integration-disabled",
-    );
+    expect(
+      refusalReason(() => remotes.createServiceToken(admin.token, {})),
+    ).toBe("integration-disabled");
     // A credential that already exists has to stay revocable even with the
     // endpoint off, so the read path is not gated the same way.
     expect(remotes.listServiceTokens(admin.token).tokens).toEqual([]);

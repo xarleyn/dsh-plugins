@@ -24,7 +24,10 @@ function events(): StoredSessionEvent[] {
       seq: 1,
       time: 1_700_000_001_000,
       type: "user/message",
-      data: { source: { kind: "user" }, content: [{ type: "text", text: "вопрос" }] },
+      data: {
+        source: { kind: "user" },
+        content: [{ type: "text", text: "вопрос" }],
+      },
     },
     {
       seq: 2,
@@ -43,9 +46,7 @@ function runner(options: {
   return createQaIntegrationRunner({
     ctx: {
       sessionController: {
-        modelCatalog:
-          options.modelCatalog ??
-          (async () => ({ groups: [] })),
+        modelCatalog: options.modelCatalog ?? (async () => ({ groups: [] })),
       },
     } as never,
     getConfig: () => config,
@@ -106,7 +107,9 @@ describe("integration runner reads", () => {
   it("treats a chat that has written nothing yet as an empty conversation", async () => {
     // The ownership record is written before the first message, so a chat
     // whose log is not there yet has said nothing rather than gone missing.
-    const api = runner({ read: async () => ({ ok: false, reason: "not-found" }) });
+    const api = runner({
+      read: async () => ({ ok: false, reason: "not-found" }),
+    });
     await expect(
       api.transcript({ chatId: "session-1", after: 7, limit: 50 }),
     ).resolves.toEqual({

@@ -517,7 +517,9 @@ export class QaPersonalSkills {
     const personal = this.readFrom(roots, directoryName);
     if (personal !== undefined) return personal;
     const shared = this.sharedRootsForDiscovery(roots);
-    return shared === undefined ? undefined : this.readFrom(shared, directoryName);
+    return shared === undefined
+      ? undefined
+      : this.readFrom(shared, directoryName);
   }
 
   private readFrom(

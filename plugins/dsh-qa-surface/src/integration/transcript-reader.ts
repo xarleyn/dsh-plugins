@@ -140,7 +140,9 @@ export class QaIntegrationTranscriptReader {
     query: { readonly after: number; readonly limit: number },
   ): QaIntegrationTranscript {
     const limit = Math.min(query.limit, this.maxMessages);
-    const inside = window.messages.filter((message) => message.seq > query.after);
+    const inside = window.messages.filter(
+      (message) => message.seq > query.after,
+    );
     const messages =
       inside.length > limit ? inside.slice(inside.length - limit) : inside;
     // A caller whose cursor fell below the window still gets the newest page —

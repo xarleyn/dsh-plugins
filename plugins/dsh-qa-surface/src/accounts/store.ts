@@ -57,10 +57,7 @@ export type { QaAccountsErrorReason } from "./errors.js";
 export { defaultAccountsFilePath } from "./file.js";
 // The read shapes are declared with the other wire types, because the client
 // bundle renders them too; they stay re-exported here for the operator CLI.
-export type {
-  QaIssuedServiceToken,
-  QaServiceTokenSummary,
-} from "../types.js";
+export type { QaIssuedServiceToken, QaServiceTokenSummary } from "../types.js";
 
 export interface QaAccountsOptions {
   readonly sessionTtlDays: number;

@@ -166,10 +166,10 @@ export function QaIntegrationTokensPage(props: {
     <div className="dsh-qa-settings__page">
       <h3 className="dsh-qa-settings__page-title">Интеграционные токены</h3>
       <p className="dsh-qa-settings__lead">
-        Токен — это ключ для другой программы: она задаёт вопросы от имени
-        вашей учётной записи, не открывая браузер. Выдавайте отдельный токен
-        каждой интеграции и отзывайте его, когда она больше не нужна. Токен
-        переживает смену вашего пароля, поэтому отзывается отдельно.
+        Токен — это ключ для другой программы: она задаёт вопросы от имени вашей
+        учётной записи, не открывая браузер. Выдавайте отдельный токен каждой
+        интеграции и отзывайте его, когда она больше не нужна. Токен переживает
+        смену вашего пароля, поэтому отзывается отдельно.
       </p>
       {issued === null ? null : (
         <QaSettingsSection title="Токен создан">
@@ -244,9 +244,7 @@ export function QaIntegrationTokensPage(props: {
             >
               <select
                 value={days}
-                onChange={(event) =>
-                  setDays(Number(event.currentTarget.value))
-                }
+                onChange={(event) => setDays(Number(event.currentTarget.value))}
               >
                 {TTL_CHOICES.map((choice) => (
                   <option key={choice} value={choice}>
@@ -297,8 +295,8 @@ export function QaIntegrationTokensPage(props: {
                       {scopeLabels(token.scopes)}
                     </span>
                     <span className="dsh-qa-settings__row-meta">
-                      создан {day(token.createdAt)} · до {day(token.expiresAt)} ·
-                      использований: {token.useCount}
+                      создан {day(token.createdAt)} · до {day(token.expiresAt)}{" "}
+                      · использований: {token.useCount}
                       {token.lastUsedAt === null
                         ? ""
                         : ` · последний раз ${day(token.lastUsedAt)}`}

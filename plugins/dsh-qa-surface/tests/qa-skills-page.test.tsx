@@ -88,9 +88,7 @@ describe("skills settings page", () => {
     render(<QaSkillsSettingsPage api={rig.api} />);
     // The person whose skill it is reads the role that changed it, not the
     // account id: a personal page names nobody's administrator.
-    expect(
-      await screen.findByText(/Изменено администратором/u),
-    ).toBeTruthy();
+    expect(await screen.findByText(/Изменено администратором/u)).toBeTruthy();
   });
 
   it("shows no mark on a skill its owner wrote", async () => {

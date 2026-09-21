@@ -4,10 +4,7 @@ import path from "node:path";
 import type { PromptContentPart } from "@deepseek-ai/dsh-api-session-controller";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import {
-  QA_PDF_MEDIA_TYPE,
-  QA_WORD_MEDIA_TYPE,
-} from "../shared/documents.js";
+import { QA_PDF_MEDIA_TYPE, QA_WORD_MEDIA_TYPE } from "../shared/documents.js";
 import {
   QaIntegrationAttachmentError,
   type QaFileAttachment,
@@ -151,7 +148,9 @@ function attachmentBlock(input: {
   readonly truncated: boolean;
 }): PromptContentPart {
   const heading = `--- ${input.name} (${input.mediaType}, ${formatBytes(input.bytes)}) ---`;
-  const note = input.truncated ? "\n\n[…текст сокращён, показано начало файла]" : "";
+  const note = input.truncated
+    ? "\n\n[…текст сокращён, показано начало файла]"
+    : "";
   return {
     type: "text",
     text:
@@ -223,7 +222,7 @@ async function extractDocumentText(
       name,
       "unsupported",
       `the document pipeline could not read ${name}`,
-      );
+    );
   } finally {
     await rm(directory, { recursive: true, force: true }).catch(
       () => undefined,

@@ -161,10 +161,7 @@ async function handleSession(
     const query = queryOf(request);
     const chatId = (query.get("chat_id") ?? "").trim();
     if (chatId === "") {
-      throw new QaIntegrationError(
-        "invalid-request",
-        "chat_id is required",
-      );
+      throw new QaIntegrationError("invalid-request", "chat_id is required");
     }
     const after = integerParameter(query, "after", 0);
     if (after < 0) {
@@ -182,10 +179,7 @@ async function handleSession(
       QA_INTEGRATION_DEFAULT_TRANSCRIPT_LIMIT,
     );
     if (requested <= 0) {
-      throw new QaIntegrationError(
-        "invalid-request",
-        "limit must be positive",
-      );
+      throw new QaIntegrationError("invalid-request", "limit must be positive");
     }
     const transcript = await options.service.session(
       headerOf(request, "authorization"),

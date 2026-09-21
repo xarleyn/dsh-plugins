@@ -808,13 +808,7 @@ export function QaSurface(props: QaSurfaceProps) {
         ? boundSkillApi
         : undefined;
     return { profile, password, starters, skills, integrationTokens };
-  }, [
-    accounts,
-    accountsSnapshot,
-    config,
-    boundSkillApi,
-    integrationTokens,
-  ]);
+  }, [accounts, accountsSnapshot, config, boundSkillApi, integrationTokens]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
   // Projected even while the sidebar is hidden: the account settings report

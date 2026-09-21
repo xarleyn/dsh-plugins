@@ -380,10 +380,12 @@ describe("integration service answering", () => {
         );
       }),
     });
-    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toMatchObject({
-      reason: "unsupported-media",
-      status: 415,
-    });
+    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toMatchObject(
+      {
+        reason: "unsupported-media",
+        status: 415,
+      },
+    );
   });
 
   it("escalates instead of publishing an empty or interrupted turn", async () => {
@@ -518,9 +520,13 @@ describe("integration service answering", () => {
   it("answers health even when no provider can be listed", async () => {
     const api = service({
       accounts,
-      runner: quietRunner(async () => turn(), undefined, async () => {
-        throw new Error("no provider is configured");
-      }),
+      runner: quietRunner(
+        async () => turn(),
+        undefined,
+        async () => {
+          throw new Error("no provider is configured");
+        },
+      ),
     });
     await expect(api.health(headerOf())).resolves.toMatchObject({
       ok: true,
