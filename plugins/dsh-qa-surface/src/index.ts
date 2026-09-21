@@ -344,6 +344,10 @@ export class QaSurface extends TypertRemoteService {
         access: this.access,
         sessionLog,
         provenance: this.provenance,
+        // Resolved per call, like the files panel does it: the document plugin
+        // may install after this one, and a document attachment that arrives
+        // before it did is refused with the caller's own fallback signal.
+        documents: () => ctx.get("documents") as DocumentsFace | undefined,
         logger: this.logger,
       }),
       logger: this.logger,

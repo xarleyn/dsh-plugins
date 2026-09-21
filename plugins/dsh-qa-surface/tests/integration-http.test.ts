@@ -161,33 +161,82 @@ describe("integration multipart parsing", () => {
     expect(parsed.sessionId).toBeNull();
     expect(parsed.context.ticketKey).toBe("PROJ-123");
     expect(parsed.attachments).toHaveLength(1);
-    expect(parsed.attachments[0]?.mediaType).toBe("image/png");
-    expect(parsed.attachments[0]?.name).toBe("screen.png");
+    expect(parsed.attachments[0]).toMatchObject({
+      kind: "image",
+      mediaType: "image/png",
+      name: "screen.png",
+    });
+    const image = parsed.attachments[0];
     expect(
-      Buffer.from(parsed.attachments[0]?.data ?? "", "base64").toString(
-        "binary",
-      ),
+      Buffer.from(
+        image?.kind === "image" ? image.data : "",
+        "base64",
+      ).toString("binary"),
     ).toBe("\u0089PNG");
   });
 
-  it("refuses a non-image attachment with the fallback the bridge waits for", () => {
-    const refusal = expectRefusal(() =>
-      parseAskBody(
-        multipart([
-          { name: "message", value: "см. вложение" },
-          {
-            name: "files",
-            value: "%PDF-1.4",
-            filename: "doc.pdf",
-            contentType: "application/pdf",
-          },
-        ]),
-        `multipart/form-data; boundary=${boundary}`,
-        config,
-      ),
+  it("carries a document as bytes for the Host to read", () => {
+    const parsed = parseAskBody(
+      multipart([
+        { name: "message", value: "см. вложение" },
+        {
+          name: "files",
+          value: "%PDF-1.4",
+          filename: "Договор.pdf",
+          contentType: "application/pdf",
+        },
+        {
+          name: "files",
+          value: "a;b\n1;2",
+          filename: "table.csv",
+          contentType: "text/csv",
+        },
+      ]),
+      `multipart/form-data; boundary=${boundary}`,
+      config,
     );
-    expect(refusal.reason).toBe("unsupported-media");
-    expect(refusal.status).toBe(415);
+    expect(parsed.attachments).toHaveLength(2);
+    const [document, table] = parsed.attachments;
+    expect(document).toMatchObject({
+      kind: "file",
+      mediaType: "application/pdf",
+      name: "Договор.pdf",
+    });
+    expect(document?.kind === "file" ? document.bytes.toString() : "").toBe(
+      "%PDF-1.4",
+    );
+    expect(table).toMatchObject({
+      kind: "file",
+      mediaType: "text/csv",
+      name: "table.csv",
+    });
+  });
+
+  it("refuses a format no reader can open with the bridge's own fallback", () => {
+    for (const [filename, contentType] of [
+      ["dump.zip", "application/zip"],
+      ["tool.exe", "application/octet-stream"],
+      ["clip.mp4", "video/mp4"],
+      ["logo.svg", "image/svg+xml"],
+    ]) {
+      const refusal = expectRefusal(() =>
+        parseAskBody(
+          multipart([
+            { name: "message", value: "см. вложение" },
+            {
+              name: "files",
+              value: "binary",
+              filename: filename ?? "x",
+              contentType: contentType ?? "application/octet-stream",
+            },
+          ]),
+          `multipart/form-data; boundary=${boundary}`,
+          config,
+        ),
+      );
+      expect(refusal.reason).toBe("unsupported-media");
+      expect(refusal.status).toBe(415);
+    }
   });
 
   it("refuses a multipart request without a boundary and a malformed one", () => {

@@ -3,6 +3,10 @@ import type { WebServer } from "@deepseek-ai/dsh-host-webserver";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 import {
+  isIntegrationDocumentMediaType,
+  isIntegrationTextMediaType,
+} from "./attachments.js";
+import {
   QaIntegrationError,
   type QaAskAnswer,
   type QaAskContext,
@@ -231,25 +235,53 @@ function parseMultipartAsk(
   const attachments: QaIntegrationAttachment[] = [];
   for (const file of multipart.files) {
     const media = file.mediaType.split(";")[0]?.trim().toLowerCase() ?? "";
-    if (!INLINE_IMAGE_MEDIA_TYPES.includes(media)) {
-      // Deliberate 415: it makes the bridge send the question again without
-      // attachments, publishing an answer instead of failing the ticket.
-      throw new QaIntegrationError(
-        "unsupported-media",
-        "only images can be attached inline; repeat the request without attachments",
-      );
-    }
     if (file.bytes.length > config.integration.maxAttachmentBytes) {
       throw new QaIntegrationError(
         "payload-too-large",
         `attachment ${file.filename} exceeds the configured limit`,
       );
     }
+    if (INLINE_IMAGE_MEDIA_TYPES.includes(media)) {
+      // An image is the one attachment the prompt carries as bytes.
+      attachments.push(
+        Object.freeze({
+          kind: "image" as const,
+          mediaType: media,
+          data: file.bytes.toString("base64"),
+          ...(file.filename === "" ? {} : { name: file.filename }),
+        }),
+      );
+      continue;
+    }
+    if (
+      !isIntegrationTextMediaType(media) &&
+      !isIntegrationDocumentMediaType(media)
+    ) {
+      // Deliberate 415: it makes the bridge send the question again without
+      // attachments, publishing an answer instead of failing the ticket. The
+      // accepted families are the caller's own filter (text, PDF, OOXML);
+      // archives, executables and media never get here from the bridge, and a
+      // caller that sends them gets the fallback rather than a prompt full of
+      // bytes the model cannot read.
+      throw new QaIntegrationError(
+        "unsupported-media",
+        `unsupported attachment type ${media}; repeat the request without attachments`,
+      );
+    }
+    // A document is read on the Host — decoded when its bytes are the content,
+    // extracted through the document pipeline otherwise — and joins the prompt
+    // as text. Nothing is stored, so the bytes are all this layer keeps.
     attachments.push(
       Object.freeze({
+        kind: "file" as const,
         mediaType: media,
-        data: file.bytes.toString("base64"),
-        ...(file.filename === "" ? {} : { name: file.filename }),
+        // A file name has to survive being a file name: a media type carries a
+        // slash, which a temporary file on Windows cannot.
+        name:
+          file.filename === ""
+            ? `attachment.${media.replace("/", ".")}`
+            : file.filename,
+        bytes: file.bytes,
       }),
     );
   }

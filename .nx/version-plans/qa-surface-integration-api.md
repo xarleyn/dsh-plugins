@@ -13,7 +13,14 @@ send its questions.
 The deployment can now serve `POST {integration.basePath}/ask` and
 `GET {integration.basePath}/health` (off by default, `/qa/api` when switched on).
 `/ask` takes the same request the bridge already sends — `application/json`, or
-`multipart/form-data` with the attachment images — and answers with
+`multipart/form-data` with the ticket's attachments: an image rides the prompt
+inline, a text file is decoded, and a PDF or Office document is extracted to
+Markdown through the deployment's own document pipeline, so the question is
+answered with the attachment in hand. A file the Host cannot read refuses the
+request with `415`, which is the fallback the bridge implements — it repeats the
+question without attachments rather than receiving an answer nobody could base
+on the material. Nothing is stored: the bytes live in a temporary directory for
+one extraction, and the inlined text is bounded. It answers with
 `chat_id`, a Markdown `answer`, `sources`, `confidence`, `escalate` and `reason`,
 within a configurable budget (90 seconds by default, and `maxAnswerCharacters`
 for the answer the ticket comment can hold — an over-long answer is cut at a
