@@ -12,7 +12,6 @@ await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
   packageName: "@yadsh/dsh-session-scope",
   versionPattern: /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u,
-  exportDefaults: { "./client": "./lib/client.js" },
   client: { injectIncludes: ["@deepseek-ai/dsh-api-gateway"] },
   files: [
     "lib",
@@ -23,6 +22,11 @@ await runVerifyPackage({
   ],
   patch: { id: "dsh-session-scope" },
   extra: async ({ packageRoot, manifest, patch }) => {
+    if (manifest.exports?.["./client"] !== "./lib/client.js") {
+      throw new Error(
+        "the ./client export must be the built browser bundle ./lib/client.js",
+      );
+    }
     if (manifest.author !== "xarleyn") {
       throw new Error(
         `unexpected package author ${JSON.stringify(manifest.author)}`,
@@ -49,6 +53,17 @@ await runVerifyPackage({
       manifest.exports ?? {},
     )) {
       if (subpath === "./package.json") continue;
+      // The client half is the browser bundle: the shell fetches it and
+      // registers it through the module loader, so it is not an importable
+      // module and carries no declarations to point `types` at. Every other
+      // subpath is a Node entry point and keeps the typed descriptor.
+      if (subpath === "./client") {
+        if (typeof descriptor !== "string") {
+          throw new Error("./client must be declared as its bundle path");
+        }
+        await access(new URL(descriptor.replace(/^\.\//, ""), packageRoot));
+        continue;
+      }
       for (const field of ["types", "import"]) {
         const target = descriptor?.[field];
         if (typeof target !== "string") {

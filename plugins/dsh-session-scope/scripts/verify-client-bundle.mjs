@@ -1,3 +1,14 @@
+/**
+ * Client-bundle gate for @yadsh/dsh-session-scope.
+ *
+ * The bundle is an artifact now: `tsdown` wraps `src/client.ts` in the shell's
+ * classic `window.__ModuleLoader__` factory, so this gate reads the built file
+ * and asserts the contract the shell sees — the registration id, the composer
+ * seat it claims, the non-durable RPC read it uses. Fragments name calls and
+ * literals rather than imported identifiers, because the bundler is free to
+ * rename what the module imported (`react` is emitted as an interop namespace)
+ * while the call shapes are the contract.
+ */
 import { readFile } from "node:fs/promises";
 
 const client = await readFile(
@@ -11,7 +22,7 @@ const requiredFragments = [
   "slots.inject('conversation.input.left'",
   "data-session-scope-hero-mount",
   'button[aria-haspopup="menu"]',
-  "ReactDOM.createPortal(button, heroMount)",
+  "createPortal(button, heroMount)",
   "id: 'session-scope'",
   "useProjection('session-scope')",
   "ctx.inject(['remote.sessionScope']",
@@ -19,18 +30,33 @@ const requiredFragments = [
   "scope.capabilities",
   "sameRoots(effectiveRoots, currentRoots)",
   "rem.commands.execute(sessionId, line, [])",
-  "exports.inject = ['slots', 'remote', 'remote.commands', 'sessions']",
+  "exports.apply = apply;",
 ];
 
-// `tsc` keeps the quote style of every literal it emits, so the bundle carries
-// whatever quotation the source uses; compare fragments with quotation
-// normalized away.
-const normalizedClient = client.replaceAll("'", '"');
+// Quotation belongs to the bundler: it emits double quotes and escapes the
+// inner ones, while the source may use either. Compare fragments and bundle in
+// one canonical form.
+const normalizedClient = client.replaceAll("'", '"').replaceAll('\\"', '"');
 
 for (const fragment of requiredFragments) {
   if (!normalizedClient.includes(fragment.replaceAll("'", '"'))) {
     throw new Error(`client bundle is missing ${JSON.stringify(fragment)}`);
   }
+}
+
+// The injection list is the shell's service contract for this plugin, and the
+// bundler hoists it into a local the factory exports at the end.
+if (!/exports\.inject = inject;/u.test(client)) {
+  throw new Error("client bundle must export the injection list");
+}
+if (
+  !/inject = \[\s*"slots",\s*"remote",\s*"remote\.commands",\s*"sessions"\s*\]/su.test(
+    normalizedClient,
+  )
+) {
+  throw new Error(
+    "client bundle must inject slots, remote, remote.commands and sessions",
+  );
 }
 
 if (/^\s*export\s/m.test(client)) {
