@@ -69,7 +69,8 @@ export function renderSubagentReviewerTask(input: {
     }),
     "```",
     'Use "verdict": "revise" when at least one issue requires a correction, and "pass" only when no issue does. ' +
-      "Do not rewrite the answer yourself.",
+      "A pass is final for this candidate: it ships as written and asks for no further version, so never call " +
+      "for another revision in a passing verdict. Do not rewrite the answer yourself.",
   ].join("\n");
 }
 
@@ -100,7 +101,8 @@ export function renderExpertReviewTask(input: {
     "</candidate_answer>",
     "",
     "Report every objection as a finding (claim, evidence, confidence); record contradicting sources as conflicts. " +
-      "An answer with no findings and no conflicts passes. Do not rewrite the answer yourself.",
+      "An answer with no findings and no conflicts passes — a pass is final for this candidate and asks for no " +
+      "further version. Do not rewrite the answer yourself.",
   ].join("\n");
 }
 

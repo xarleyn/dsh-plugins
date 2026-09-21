@@ -53,6 +53,31 @@ describe("collectCandidate", () => {
     expect(collectCandidate(session)).toEqual({
       text: "The runtime uses file locks around journal writes.",
       requestText: "What locks does the runtime use?",
+      requestSeq: 0,
+    });
+  });
+
+  it("reports the surface seq of the user request that owns the candidate", () => {
+    const session = makeSession([
+      userMessage("first question"),
+      assistantMessage("An answer to the first question."),
+      userMessage("second question"),
+      assistantMessage("An answer to the second question."),
+    ]);
+    expect(collectCandidate(session)).toMatchObject({
+      requestText: "second question",
+      requestSeq: 2,
+    });
+  });
+
+  it("reports no request seq when no real user message was found", () => {
+    const session = makeSession([
+      userMessage("injected context", "plugin"),
+      assistantMessage("A candidate answer of sufficient length."),
+    ]);
+    expect(collectCandidate(session)).toMatchObject({
+      requestText: null,
+      requestSeq: null,
     });
   });
 
