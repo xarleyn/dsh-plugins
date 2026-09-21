@@ -373,6 +373,8 @@ export class QaBrowserService extends TypertRemoteService {
     return {
       session,
       tabs: session === null ? [] : await this.manager.listPanelTabs(sessionId),
+      policyRefusals:
+        session === null ? [] : this.manager.policyRefusals(sessionId),
       humanControlEnabled: this.config.humanControl.enabled,
       humanControlLeaseSeconds: this.config.humanControl.leaseSeconds,
       autoRevealOnAgentActivity: this.config.ui.autoRevealOnAgentActivity,
