@@ -97,6 +97,8 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
       toOutcome(await namespace.clearMemory(id, memoryNamespace)),
     testExpert: async (id, task, parentSessionId) =>
       toOutcome(await namespace.testExpert(id, task, parentSessionId)),
+    recentAudits: async (limit) =>
+      toOutcome(await namespace.recentAudits(limit)),
   };
 }
 

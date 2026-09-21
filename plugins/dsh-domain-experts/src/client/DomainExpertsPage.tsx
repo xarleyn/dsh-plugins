@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   emptyDomainDraft,
+  type AuditListResult,
   type CatalogInfo,
   type DomainDefinition,
   type DomainExpertFinding,
@@ -14,6 +15,7 @@ import type { ApiOutcome } from "./remote.js";
 import {
   DomainEditor,
   type MemoryView,
+  type RunsView,
   type TestView,
 } from "./DomainEditor.js";
 import { StatusLine } from "./components.js";
@@ -69,7 +71,22 @@ export interface DomainExpertsApi {
       } | null;
     }>
   >;
+  /**
+   * Runs the host still remembers, newest first. The page filters them by the
+   * domain it is showing, so one answer serves every domain.
+   */
+  recentAudits(limit: number): Promise<ApiOutcome<AuditListResult>>;
 }
+
+/**
+ * How much of the host's audit ring one request asks for.
+ *
+ * The ring is capped by the plugin's `auditLimit` and holds entries of every
+ * domain, so the page asks for more than it could ever need: a smaller limit
+ * would answer with the newest page of the ring and quietly hide this domain's
+ * older runs.
+ */
+const RUNS_LIMIT = 500;
 
 const EMPTY_CATALOG: CatalogInfo = {
   scopeProviders: [],
@@ -133,6 +150,7 @@ export function DomainExpertsPage({
     findings: [],
     error: "",
   });
+  const [runs, setRuns] = useState<RunsView>({ entries: [], error: "" });
   const editing = draft !== null;
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -177,6 +195,30 @@ export function DomainExpertsPage({
     [api],
   );
 
+  /**
+   * The run history of one domain, read from the host's audit ring.
+   *
+   * The host records every run whatever started it, so an expert opened from a
+   * conversation through the agents panel is listed here exactly like one the
+   * Test tab started — that equality is the point of the list.
+   */
+  const loadRuns = useCallback(
+    async (domainId: string): Promise<void> => {
+      const outcome = await api.recentAudits(RUNS_LIMIT);
+      if (!outcome.ok) {
+        setRuns({ entries: [], error: `${outcome.code}: ${outcome.message}` });
+        return;
+      }
+      setRuns({
+        entries: outcome.data.entries.filter(
+          (entry) => entry.domainId === domainId,
+        ),
+        error: "",
+      });
+    },
+    [api],
+  );
+
   const openDomain = useCallback(
     async (domainId: string): Promise<void> => {
       setIsNew(false);
@@ -185,6 +227,7 @@ export function DomainExpertsPage({
       setProfile(null);
       setProfileError("");
       setMemory({ result: null, error: "" });
+      setRuns({ entries: [], error: "" });
       setTest({
         running: false,
         summary: "",
@@ -207,9 +250,9 @@ export function DomainExpertsPage({
       setDraft(loaded.data.domain);
       setBaseline(JSON.stringify(loaded.data.domain));
       setIssues([]);
-      await loadProfile(domainId);
+      await Promise.all([loadProfile(domainId), loadRuns(domainId)]);
     },
-    [api, loadProfile],
+    [api, loadProfile, loadRuns],
   );
 
   /**
@@ -230,6 +273,7 @@ export function DomainExpertsPage({
     setBaseline("");
     setProfile(null);
     setProfileError("");
+    setRuns({ entries: [], error: "" });
     setStatus(QUIET);
   }, [confirmDiscard]);
 
@@ -247,6 +291,8 @@ export function DomainExpertsPage({
     setIssues([]);
     setProfile(null);
     setProfileError("");
+    setMemory({ result: null, error: "" });
+    setRuns({ entries: [], error: "" });
     setStatus(QUIET);
     setPageStatus(QUIET);
     setNewId("");
@@ -409,9 +455,11 @@ export function DomainExpertsPage({
         findings: result?.findings ?? [],
         error: "",
       });
-      await refresh();
+      // The test run is a run like any other, so it lands in the history the
+      // moment it is over.
+      await Promise.all([refresh(), loadRuns(domainId)]);
     },
-    [api, currentSessionId, draft, refresh],
+    [api, currentSessionId, draft, loadRuns, refresh],
   );
 
   const sorted = useMemo(
@@ -560,7 +608,7 @@ export function DomainExpertsPage({
         <div className="dx-detail" ref={detailRef} tabIndex={-1}>
           {/*
            * The way back sits above the form rather than at its foot: the
-           * editor is eight tabs long, so a control that only exists next to
+           * editor runs to nine tabs, so a control that only exists next to
            * Save is a control nobody finds.
            */}
           <button
@@ -593,6 +641,7 @@ export function DomainExpertsPage({
             profileError={profileError}
             memory={memory}
             test={test}
+            runs={runs}
             onChange={change}
             onSave={() => {
               void save();
@@ -608,6 +657,10 @@ export function DomainExpertsPage({
             }}
             onRunTest={(task) => {
               void runTest(task);
+            }}
+            onRefreshRuns={() => {
+              if (draft === null) return;
+              void loadRuns(draft.id);
             }}
           />
         </div>
