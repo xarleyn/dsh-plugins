@@ -206,6 +206,8 @@ export function apiOf(
           },
         }),
       ),
+    recentAudits: () =>
+      Promise.resolve(ok({ ok: true, code: "", message: "", entries: [] })),
     ...overrides,
   };
 }
