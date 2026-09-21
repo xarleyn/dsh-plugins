@@ -61,9 +61,13 @@ describe("BrowserPanel", () => {
       name: /Example App/u,
     })) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe("data:image/png;base64,AA==");
-    expect(
-      screen.getByRole("textbox", { name: "Адрес Browser" }),
-    ).toHaveProperty("value", "https://example.test/app");
+    // The address field is a draft synced from the selected tab in an effect,
+    // so it settles one flush after the frame appears (raced on CI).
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Адрес Browser" }),
+      ).toHaveProperty("value", "https://example.test/app"),
+    );
     expect(screen.getByText("1440×900")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Example App/u })).toBeTruthy();
     expect(mocks.panelState).toHaveBeenCalledWith(TOKEN, SESSION);
