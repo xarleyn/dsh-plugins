@@ -285,12 +285,13 @@ the plugin's catalog is registered into the agent's own scope only after the
 model successfully loads `tools.activationSkill`, and `qa_tools_selfcheck`
 reports the resulting state.
 
-As of catalog version 2 the shipped catalog carries two tools:
-`qa_tools_selfcheck`, the activation diagnostic, and `file_delete`, the one
-destructive capability — it deletes a single regular file strictly inside the
-calling chat's workspace and refuses directories, missing paths and anything
-that escapes the root, symlink escapes included, with an explicit reason that
-never echoes a host path. Every `file_delete` call is answered `ask` by an
+As of catalog version 3 the shipped catalog carries four tools:
+`qa_tools_selfcheck`, the activation diagnostic; `docs_search` and
+`docs_read`, the documentation surface; and `file_delete`, the one destructive
+capability — it deletes a single regular file strictly inside the calling
+chat's workspace and refuses directories, missing paths and anything that
+escapes the root, symlink escapes included, with an explicit reason that never
+echoes a host path. Every `file_delete` call is answered `ask` by an
 inner gate that sits inside the approval flow, so on a deployment with
 `interaction.approvals: interactive` the interactive approval card parks the
 call for the operator, and on `blocked` the call is refused outright: nothing
@@ -298,6 +299,22 @@ is deleted without a person. Like every catalog tool it is admitted as a
 dynamic name at execution time — it needs no `lockdown.toolPolicy` entry —
 and a role-managed deployment grants it through the same Tools baskets as any
 other tool.
+
+`docs_search` and `docs_read` are the documentation surface. Documentation is
+published into the `docs/` directory of the chat's workspace and the tools read
+exactly that tree: `docs_search` matches a phrase inside single lines and
+reports every hit with its path and line number, tagged with the module and
+version parsed out of the layout `docs/<module>/<version>/…`; both names are
+also accepted as filters, so a chat that was told "3.8" stops sweeping every
+edition, and `path` narrows a search to one subtree. `docs_read` opens one file
+at a bounded window of lines. Both stay inside the tree — a path outside it, a
+`docs/` that is missing or is not a real directory, a directory passed to a
+read, a binary file and a link that leaves the tree are refused with an
+explicit reason that never echoes a host path — and both bound what they
+return: `limit` and a byte budget on the reported hits, a line budget on a
+read, and a truncated answer says so instead of quietly dropping matches. The
+tool descriptions carry the routing rule the catalog exists for: documentation
+is looked up here, not in memory and not by sweeping guessed paths.
 
 The trigger is the authoritative result of the built-in `skill` tool, not the
 model's attempt, not a keyword in the transcript, and not a coincidentally
