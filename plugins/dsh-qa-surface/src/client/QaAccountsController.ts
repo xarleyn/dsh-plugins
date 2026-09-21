@@ -299,16 +299,55 @@ export class QaAccountsController {
     this.publish({ stage: "gate", mode: "login", busy: false, error: null });
   }
 
-  /** Claim one freshly created chat so the ownership map stays current. */
+  /**
+   * Claim one freshly created chat so the ownership map stays current, and
+   * remember it in the owned list the sidebar shows.
+   *
+   * The claim runs on every bind — a chat created now and one reopened later
+   * both take this path. A chat the Host reports as taken by another account
+   * stays out of the list: the page then holds a binding whose ownership
+   * belongs to someone else, and showing it is exactly what the list must not
+   * do. A claim that never reached the Host still records the id, because the
+   * page opened this chat through the attendance boundary, which claims an
+   * unowned chat for whoever asks first and refuses another account's — so the
+   * binding is this account's either way, and hiding a chat the visitor is
+   * looking at would be the greater lie.
+   */
   async claimNewSession(sessionId: string): Promise<void> {
-    if (this.tokenValue === null || this.disposed) return;
+    const token = this.tokenValue;
+    if (token === null || this.disposed || this.snapshot.stage !== "authed") {
+      return;
+    }
+    let conflict = false;
     try {
-      await this.options.remote.accountsClaimSessions(this.tokenValue, [
+      const claimed = await this.options.remote.accountsClaimSessions(token, [
         sessionId,
       ]);
+      conflict = claimed.ok && claimed.value.conflicts.includes(sessionId);
     } catch (error) {
       console.warn("dsh-qa-surface: session claim failed", error);
     }
+    if (this.disposed || conflict) return;
+    this.noteOwnedSession(sessionId);
+  }
+
+  /**
+   * Add one chat this page holds to the owned list. The list is what the
+   * sidebar shows and what every cross-chat projection is scoped by, so a chat
+   * created or opened after login enters it here — the next login is not a
+   * reasonable price for a chat the visitor is looking at. Ids already known,
+   * and the ones an admin's cross-user view contributed, are left as they are.
+   */
+  private noteOwnedSession(sessionId: string): void {
+    const snapshot = this.snapshot;
+    if (snapshot.stage !== "authed" || snapshot.ownedIds.includes(sessionId)) {
+      return;
+    }
+    this.publish({
+      ...snapshot,
+      ownedIds: [...snapshot.ownedIds, sessionId],
+      ownedRevision: snapshot.ownedRevision + 1,
+    });
   }
 
   /**

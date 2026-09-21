@@ -32,7 +32,11 @@ import {
   QaPolicyAttestationError,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
-import { isDelegatedSession } from "./lineage.js";
+import {
+  isDelegatedSession,
+  visibleSubagentCandidates,
+  type SubagentCatalogs,
+} from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
 import {
@@ -956,13 +960,22 @@ export class QaSessionController {
     await this.switchTo(chat);
   }
 
-  /** This browser's chat ids: the owned list when accounts are on, else the
-   * local index. Both intersect the host session list at projection time. */
+  /**
+   * This browser's chat ids: the account's owned chats while accounts are on,
+   * else the browser-local index. Either way they intersect the host session
+   * list at projection time.
+   *
+   * The local index is what this browser accumulated, not an identity: with
+   * accounts on it is the set the page *claims* at login, never one it lists.
+   * Unioning it in would show a chat another account started — its title, its
+   * timestamp, its live activity — on a shared browser, and a chat this page
+   * has yet to claim is added to the owned list by the claim itself, so the
+   * index has nothing left to supply.
+   */
   chatIds(): readonly string[] {
-    const owned = this.accounts?.ownedIds() ?? [];
-    if (owned.length === 0) return this.chats.chatIds();
-    const local = this.chats.chatIds();
-    return [...new Set([...owned, ...local])];
+    const accounts = this.accounts;
+    if (accounts === undefined) return this.chats.chatIds();
+    return accounts.ownedIds();
   }
 
   /** The bound session id, or null while no chat is bound. */
@@ -1456,24 +1469,37 @@ export class QaSessionController {
    * delegation's description verbatim; a child the host listed without a
    * catalog falls back to its own list title. Tolerates a host bundle older
    * than either field: an absent snapshot piece just contributes no names.
+   *
+   * Only the chats this page lists contribute: the host list is the whole
+   * deployment's, so an unfiltered read would hand another account's
+   * delegation into this browser — and a notice signed with a name that is
+   * not the chat's own is exactly the leak the chat list itself is scoped
+   * against.
    */
   private subagentNames(): Record<string, string> {
     const names: Record<string, string> = {};
     const list = this.sessions.list.getSnapshot();
-    for (const catalog of Object.values(list.subagentsByParent ?? {})) {
-      for (const entry of catalog?.entries ?? []) {
-        if (entry.kind !== "child") continue;
-        const name = readableSubagentName(entry.label, entry.id);
-        if (name !== undefined) names[entry.id] = name;
-      }
-    }
-    for (const summary of Object.values(list.byId ?? {})) {
-      if (summary.origin !== "subagent" || names[summary.id] !== undefined)
-        continue;
-      const name = readableSubagentName(summary.displayTitle, summary.id);
-      if (name !== undefined) names[summary.id] = name;
+    const chats = this.visibleChatIds();
+    const candidates = visibleSubagentCandidates(
+      list.byId ?? {},
+      (list.subagentsByParent ?? {}) as SubagentCatalogs,
+      chats,
+    );
+    for (const candidate of candidates) {
+      const name = readableSubagentName(candidate.label, candidate.id);
+      if (name !== undefined) names[candidate.id] = name;
     }
     return names;
+  }
+
+  /**
+   * The chats this page may show and name: the account's owned list while
+   * accounts are on, and `undefined` — every chat on the Host — for a
+   * deployment without accounts, where the list is the browser's own.
+   */
+  private visibleChatIds(): ReadonlySet<string> | undefined {
+    if (this.accounts === undefined) return undefined;
+    return new Set(this.accounts.ownedIds());
   }
 
   private fail(message: string, error: unknown): void {
