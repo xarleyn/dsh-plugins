@@ -12,6 +12,7 @@ import {
 import {
   compareVersions,
   curatedChangelogVersions,
+  findReadmeCatalogGaps,
   globToRegExp,
   incrementVersion,
   isPublishedFile,
@@ -528,6 +529,54 @@ test("fails on a catalog entry for a package that no longer exists", async () =>
     assert.ok(
       findManifestDrift(root).some((error) => error.includes("out of date")),
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("keeps the root README table listing every publishable package", async () => {
+  const root = await workspaceFixture({
+    plugins: { "dsh-a": packageManifest("dsh-a") },
+    packages: { "dsh-plugin-kit": packageManifest("dsh-plugin-kit") },
+  });
+  try {
+    assert.ok(
+      findReadmeCatalogGaps(root).some((error) =>
+        error.includes("README.md is missing"),
+      ),
+    );
+
+    // A row for one package leaves the other unlisted: a package absent from
+    // the table is invisible to a reader who never opens plugins.json.
+    writeFileSync(
+      path.join(root, "README.md"),
+      "| Directory | npm package | Purpose |\n" +
+        "| --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n",
+    );
+    assert.deepEqual(findReadmeCatalogGaps(root), [
+      "@yadsh/dsh-plugin-kit is missing from the root README package table (packages/dsh-plugin-kit)",
+    ]);
+
+    // A published package mislabelled "private" leaves its npm name out of the
+    // table just as effectively, so the gate keys on the npm name.
+    writeFileSync(
+      path.join(root, "README.md"),
+      "| Directory | npm package | Purpose |\n" +
+        "| --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
+        "| `packages/dsh-plugin-kit` | private workspace package | kit |\n",
+    );
+    assert.equal(findReadmeCatalogGaps(root).length, 1);
+
+    writeFileSync(
+      path.join(root, "README.md"),
+      "| Directory | npm package | Purpose |\n" +
+        "| --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
+        "| `packages/dsh-plugin-kit` | `@yadsh/dsh-plugin-kit` | kit |\n",
+    );
+    assert.deepEqual(findReadmeCatalogGaps(root), []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
