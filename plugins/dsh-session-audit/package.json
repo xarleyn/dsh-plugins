@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-session-audit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Session audit registry and viewer for DeepSeek Harness: an Audit tab in every session, driven by audit artifacts on disk",
   "repository": {
     "type": "git",

@@ -1,3 +1,74 @@
+## 0.8.0 (2026-09-22)
+
+### 🚀 Features
+
+- Jira и Confluence теперь работают не только с Atlassian Cloud, но и с ([c10fd19](https://github.com/xarleyn/dsh-plugins/commit/c10fd19))
+  самохостящимися Server / Data Center. Тип развёртывания объявляет оператор в
+  конфиге сайта (`jira.sites[].deploymentType`, `confluence.instances[].deploymentType`:
+  `cloud`, `server` или `data-center`); значение по умолчанию — `cloud`, поэтому
+  существующие конфиги продолжают работать без правок.
+
+  Для Jira Server / Data Center провайдер ходит по `/rest/api/2` с личным токеном
+  доступа (Personal Access Token) в заголовке `Bearer`, без почты аккаунта; поиск
+  задач идёт через классический `/search` с пагинацией по offset, а справочник
+  людей — через `username=`, потому что эта Jira фильтрует по логину, а не по
+  accountId. Для Confluence Server / Data Center — свой v1 API под `/rest/api` (в том
+  числе если вики живёт за контекстным путём: он задаётся в `baseUrl`), тела страниц
+  приходят в storage-разметке и рендерятся в текст, комментарии обоих видов лежат в
+  одной коллекции и различаются по маркеру места.
+
+  Конфигурация, которая объявила сайт одним продуктом, а он отвечает другим,
+  отклоняется на подключении с подсказкой, какое значение поставить, — вместо
+  прежнего отказа «Data Center не поддерживается». В карточке подключения для
+  такого сайта спрашивают личный токен доступа и не спрашивают почту, а в
+  операторском редакторе у каждого сайта появился выбор типа развёртывания.
+
+
+### 🩹 Fixes
+
+- The integration store is closed when the plugin goes away. ([e03a44b](https://github.com/xarleyn/dsh-plugins/commit/e03a44b))
+
+  `IntegrationRepository.close()` existed and nothing called it: the plugin's
+  teardown removed the tools and closed the logger, leaving the SQLite handle and
+  its WAL open for whatever ran next. A reload therefore handed the new instance
+  a database that was still held — the stray `qa-integrations.db`, `-shm` and
+  `-wal` files a local run leaves in the plugin directory are what that looks
+  like from the outside.
+
+  Disposal now closes the store, so a reload re-opens the file instead of
+  inheriting the previous instance's lock.
+
+- One owner per shared provider policy, and no empty continuation cursor. ([06d6635](https://github.com/xarleyn/dsh-plugins/commit/06d6635))
+
+  The seven integrations used to carry their own copy of the same helpers: reading
+  a field out of an upstream answer, refusing a malformed argument, the retry loop
+  and bounded read of a transport, classifying a failure, naming a configuration
+  error. The copies had already drifted — the ones that read a string field
+  disagreed about an empty one — so the same question now has a single answer per
+  policy, in `providers/shared/` for upstream payloads, paths, HTTP and health,
+  and in `coerce.ts`/`errors.ts` for arguments and errors. Integrations that
+  genuinely differ pass a parameter or keep their own named helper; the package
+  gate refuses a provider that declares a shared policy again.
+
+  The behaviour a caller sees: an empty continuation token from Jira is no longer
+  answered as a cursor. Jira can send `nextPageToken` present but empty, and the
+  cursor a tool accepts is validated as non-empty, so an answer carrying `""` handed
+  a caller a value whose only possible use was an `InvalidRequest`; the page is
+  simply the last one now. The same emptiness rule covers every provider.
+
+  While the policies were moving, the integration's specifications moved from
+  `docs/SPEC-<topic>.md` to `docs/specs/<topic>.md`, and `SPEC.md` — the document
+  meant to be the single entry point — now links all of them.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.11.0
+
+### ❤️ Thank You
+
+- Codebuff
+- xarleyn @xarleyn
+
 ## 0.7.0 (2026-09-21)
 
 ### 🚀 Features

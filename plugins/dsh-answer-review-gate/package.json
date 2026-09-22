@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-answer-review-gate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Independent answer review gate for DeepSeek Harness agent responses",
   "repository": {
     "type": "git",

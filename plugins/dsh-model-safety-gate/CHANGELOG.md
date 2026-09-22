@@ -1,3 +1,77 @@
+## 0.2.5 (2026-09-22)
+
+### 🩹 Fixes
+
+- A disposed gate stays disposed, even when its services resolve late. ([a3294a6](https://github.com/xarleyn/dsh-plugins/commit/a3294a6))
+
+  `ctx.inject` resolves whenever the service appears — and a service can appear
+  while the host is tearing the plugin down. Both injections ignored that: the
+  tool runtime's callback pushed its two listeners into a disposer list that had
+  already been emptied, so a reload left a gate deciding behind a plugin that no
+  longer existed, and the settings provider's callback installed a namespace whose
+  card would edit a gate that was gone. The same shape sat in `reapply`: a
+  committed settings change arriving after disposal rebuilt the pipeline and
+  re-opened a logger that had already been closed.
+
+  Disposal is now a one-way door: the tool injection, the settings installation
+  and the configuration rebuild each answer a disposed service by doing nothing.
+
+- `enabled: false` and `mode: off` now silence the whole gate, not three surfaces ([38a8214](https://github.com/xarleyn/dsh-plugins/commit/38a8214))
+  out of four.
+
+  The master switch and the `off` profile were honoured on the streaming-output
+  surface alone. An off gate still scanned every user prompt, every tool call and
+  every tool result, still ran the classifier when one was configured (one model
+  request per prompt, since the input surface asks for a classifier call on every
+  check), and still wrote its audit records — it only declined to act on what it
+  found. A deployment that had turned the gate off paid the cost and kept the log
+  of a running gate, and `mode: off` could still reject a prompt through the input
+  surface, because the mode cap table did not know the value and passed a `block`
+  straight through.
+
+  Every surface now asks the same question — is this gate off? — before it does
+  anything else, and returns the call untouched when it is. The input surface also
+  honours its own `input.enabled` switch, which the schema accepted and the guard
+  ignored, and a gate switched off at runtime through the settings card stops the
+  very next check, without re-registering a listener.
+
+- A blocked call no longer claims the user rejected it when nobody was asked. ([ce28d32](https://github.com/xarleyn/dsh-plugins/commit/ce28d32))
+
+  The gate's tool-call guard escalates a call to `ask` when the turn's accumulated
+  risk demands confirmation. That decision is not the gate's to keep: the tool
+  runtime resolves it through the `approval` service, and the outcome vocabulary
+  carries no reason — the runtime writes its own sentence, so a refusal reads
+  `the user rejected tool "X"` and the categories the gate reported are dropped.
+  On a session whose effective approval policy is `never` that is the only
+  possible outcome, decided before any answerer runs.
+
+  A locked-down deployment therefore turned every escalation into a phantom human
+  refusal: the model learned that an operator said no, and never learned which
+  rule fired. The gate now reads the same policy the approval service reads — the
+  session's logged override first, else the deployment default — and refuses the
+  call itself:
+
+  ```text
+  Blocked by dsh-model-safety-gate (unsafe_tool_intent): this call needs
+  confirmation, but the session's approval policy is "never", so the request
+  could only ever be refused without asking anyone
+  ```
+
+  Nothing about the outcome changes: under that policy the runtime's own answer
+  was the same refusal, decided before any answerer could run. Only the sentence
+  changes — it now attributes the refusal to the gate and keeps the categories.
+
+  The read is deliberately narrow: only a policy the gate actually read can turn
+  an ask into a refusal, so a host that composes no approval service, a session it
+  cannot read, and a value outside the published vocabulary all keep the native
+  ask. `tools.unanswerableAsk: ask` restores that flow for a deployment whose own
+  gate answers asks ahead of the policy.
+
+### ❤️ Thank You
+
+- Codebuff
+- xarleyn @xarleyn
+
 ## 0.2.4 (2026-09-21)
 
 ### 🩹 Fixes
