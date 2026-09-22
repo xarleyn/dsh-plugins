@@ -1,7 +1,24 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
-import { projectSources } from "../src/client/turn-sources.js";
+import {
+  projectSources,
+  sourceAnchorRoot,
+} from "../src/client/turn-sources.js";
 import { legacy, snapshot } from "./helpers/conversation-fakes.js";
+
+describe("source anchor", () => {
+  it("anchors on the chat's own cwd, with the configured pin as the fallback", () => {
+    // The Host records evidence against the chat's cwd, so that directory is
+    // the anchor whenever the browser knows it.
+    expect(
+      sourceAnchorRoot("D:/qa-work/.qa-users/account-1", "D:/qa-work"),
+    ).toBe("D:/qa-work/.qa-users/account-1");
+    // A chat the list does not carry yet falls back to the deployment's pin.
+    expect(sourceAnchorRoot(undefined, "D:/qa-work")).toBe("D:/qa-work");
+    expect(sourceAnchorRoot("", null)).toBeUndefined();
+    expect(sourceAnchorRoot(undefined, null)).toBeUndefined();
+  });
+});
 
 describe("turn sources projection", () => {
   it("projects fetched pages, searches and files as deduplicated sources", () => {
