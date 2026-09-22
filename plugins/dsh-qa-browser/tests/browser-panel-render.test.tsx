@@ -61,17 +61,44 @@ describe("BrowserPanel", () => {
       name: /Example App/u,
     })) as HTMLImageElement;
     expect(image.getAttribute("src")).toBe("data:image/png;base64,AA==");
-    // The address field is a draft synced from the selected tab in an effect,
-    // so it settles one flush after the frame appears (raced on CI).
-    await waitFor(() =>
-      expect(
-        screen.getByRole("textbox", { name: "Адрес Browser" }),
-      ).toHaveProperty("value", "https://example.test/app"),
-    );
+    // The field derives its value from the selected tab during the render, so
+    // the flush that drew the frame already shows the tab's address. This
+    // assertion needed `waitFor` while the value arrived from a sync effect —
+    // it settled one flush late and raced on CI.
+    expect(
+      screen.getByRole("textbox", { name: "Адрес Browser" }),
+    ).toHaveProperty("value", "https://example.test/app");
     expect(screen.getByText("1440×900")).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Example App/u })).toBeTruthy();
     expect(mocks.panelState).toHaveBeenCalledWith(TOKEN, SESSION);
     expect(mocks.panelFrame).toHaveBeenCalledWith(TOKEN, SESSION, "tab-a");
+  });
+
+  it("moves the address with the selection, in the flush that draws its frame", async () => {
+    const tabs = [
+      tab(),
+      tab({
+        id: "tab-b",
+        url: "https://second.test/page",
+        title: "Second",
+        revision: 4,
+      }),
+    ];
+    const { remote, mocks, setState } = host(panelState(tabs, "tab-a"));
+    render(<BrowserPanel {...owner(remote)} />);
+    await screen.findByRole("img", { name: /Example App/u });
+
+    setState(panelState(tabs, "tab-b"));
+    fireEvent.click(screen.getByRole("button", { name: "Действия Browser" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Обновить изображение" }),
+    );
+
+    await screen.findByRole("img", { name: /Second/u });
+    expect(
+      screen.getByRole("textbox", { name: "Адрес Browser" }),
+    ).toHaveProperty("value", "https://second.test/page");
+    expect(mocks.panelFrame).toHaveBeenLastCalledWith(TOKEN, SESSION, "tab-b");
   });
 
   it("does not call Host remotes without a QA session", async () => {
