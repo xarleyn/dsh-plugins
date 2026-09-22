@@ -51,6 +51,17 @@ describe("integration config", () => {
     ).not.toThrow();
   });
 
+  it("has no ceiling on how long an ask may wait", () => {
+    // The wait is not a budget the deployment spends: an integration asking a
+    // long question must be able to allow it, and a ceiling here only ever cut
+    // a legitimate answer off.
+    const config = resolveConfig({
+      accounts: { enabled: true },
+      integration: { enabled: true, requestTimeoutMs: 1_800_000 },
+    });
+    expect(config.integration.requestTimeoutMs).toBe(1_800_000);
+  });
+
   it("bounds every operator-tuned limit", () => {
     const config = resolveConfig({
       accounts: { enabled: true },

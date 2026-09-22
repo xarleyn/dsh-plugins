@@ -1,14 +1,20 @@
 import type { QaIntegrationConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
-import { assertIntInRange } from "./shared.js";
+import { assertIntAtLeast, assertIntInRange } from "./shared.js";
 
 type ResolvedIntegration = ResolvedQaSurfaceConfig["integration"];
 
 /** Operator-tunable bounds; the values the settings card shows as hard limits. */
 export const QA_INTEGRATION_TTL_DAYS_MIN = 1;
 export const QA_INTEGRATION_TTL_DAYS_MAX = 3650;
+/**
+ * Floor only: how long an integration may wait for its answer is the operator's
+ * call. The deployment spends no budget of its own by waiting, and the ceiling
+ * this constant used to carry (10 minutes) truncated exactly the long questions
+ * an integration exists for — a nineteen-minute analysis came back as
+ * "escalate" while the answer was still being written.
+ */
 export const QA_INTEGRATION_TIMEOUT_MS_MIN = 5_000;
-export const QA_INTEGRATION_TIMEOUT_MS_MAX = 600_000;
 export const QA_INTEGRATION_CONCURRENCY_MIN = 1;
 export const QA_INTEGRATION_CONCURRENCY_MAX = 16;
 export const QA_INTEGRATION_RATE_MIN = 1;
@@ -98,11 +104,10 @@ export function resolveIntegration(
     QA_INTEGRATION_TTL_DAYS_MIN,
     QA_INTEGRATION_TTL_DAYS_MAX,
   );
-  assertIntInRange(
+  assertIntAtLeast(
     "integration.requestTimeoutMs",
     requestTimeoutMs,
     QA_INTEGRATION_TIMEOUT_MS_MIN,
-    QA_INTEGRATION_TIMEOUT_MS_MAX,
   );
   assertIntInRange(
     "integration.maxConcurrent",
