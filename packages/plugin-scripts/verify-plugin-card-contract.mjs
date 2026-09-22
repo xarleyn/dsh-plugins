@@ -24,6 +24,27 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   }
 
   assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+
+  /*
+   * The rules above prove the shell is *styled*; they say nothing about the
+   * bundle rendering it. A card that injects the canonical stylesheet and then
+   * draws its own outer shell — a `<div>` root, a header that is not a toggle —
+   * satisfies every one of them, which is exactly the drift the shell contract
+   * exists to prevent. These two assertions read the half a stylesheet cannot
+   * describe: the open-state class pair occurs only in the code that renders the
+   * shell, and `aria-expanded` only on the header button that toggles it.
+   */
+  assert.match(
+    client,
+    /dsh-plugin-card dsh-plugin-card--open/u,
+    "client bundle must render the shell's open state (the `dsh-plugin-card dsh-plugin-card--open` class pair)",
+  );
+  assert.match(
+    client,
+    /aria-expanded/u,
+    "client bundle's card header must toggle: no `aria-expanded` anywhere in the bundle",
+  );
+
   assert.doesNotMatch(
     client,
     /[\u2304\u25be]/u,
