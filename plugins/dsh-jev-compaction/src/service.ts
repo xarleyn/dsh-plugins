@@ -272,7 +272,8 @@ export class JevCompactionService extends Service {
       process.env,
     );
     if (missing === undefined) return;
-    const key = `${missing.provider} ${missing.apiKeyEnv}`;
+    // NUL written as an escape: a literal one makes git treat this file as binary.
+    const key = `${missing.provider}\u0000${missing.apiKeyEnv}`;
     if (this.warnedCredentials.has(key)) return;
     this.warnedCredentials.add(key);
     jevLogger.warn(JEV_EVENTS.credentialMissing, {
