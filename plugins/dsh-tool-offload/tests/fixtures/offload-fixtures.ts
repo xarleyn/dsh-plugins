@@ -170,5 +170,3 @@ export function testConfig(
     },
   });
 }
-
-export const acceptNext = async () => ({ kind: "accept" }) as const;
