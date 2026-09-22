@@ -17,13 +17,14 @@ import {
 } from "../shared/payload.js";
 import { adfToText, textBudget } from "./adf.js";
 import type { ConfluenceInstance, ConfluenceFlags } from "./config.js";
+import type { ConfluenceDialect, ConfluenceQuery } from "./dialect.js";
 import {
   CONTENT_TYPES,
   ORDER_BY,
   buildCql,
   type ConfluenceOrder,
 } from "./cql.js";
-import type { ConfluenceQuery } from "./transport.js";
+import { storageToText } from "./storage.js";
 
 /** Confluence page and comment ids are decimal, and only that. */
 const NUMERIC_ID = /^\d{1,20}$/u;
@@ -127,6 +128,20 @@ export function offsetCursor(value: unknown): number {
   return offset;
 }
 
+/**
+ * v2 pagination is cursor-based and a v1 listing is offset-based, so the shape
+ * of a continuation token depends on the product that issued it. Both are
+ * shape-checked before they are spent, and neither is ever a URL.
+ */
+export function listingCursor(
+  value: unknown,
+  dialect: ConfluenceDialect,
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (dialect.deployment === "server") return String(offsetCursor(value));
+  return upstreamCursor(value);
+}
+
 /** v2 pagination is cursor-based; the token is shape-checked before it is spent. */
 export function upstreamCursor(value: unknown): string | undefined {
   const text = optionalText(value, "cursor", 1, 400);
@@ -199,17 +214,26 @@ export function commentCollections(
   return kind === "all" ? ["footer", "inline"] : [kind];
 }
 
-/** The page-relative collection path of one comment kind. */
-export function commentPath(pageId: string, kind: "footer" | "inline"): string {
-  return `/wiki/api/v2/pages/${pageId}/${kind}-comments`;
+/** The page-relative collection path of one comment kind, on this product. */
+export function commentPath(
+  dialect: ConfluenceDialect,
+  pageId: string,
+  kind: "footer" | "inline",
+  cursor: string | undefined,
+  limit: number,
+): ConfluenceRequest {
+  return dialect.commentPath({ pageId, kind, cursor, limit });
 }
 
 /** The replies of one comment; the collection decides which endpoint owns them. */
 export function commentChildrenPath(
+  dialect: ConfluenceDialect,
   kind: "footer" | "inline",
   commentId: string,
-): string {
-  return `/wiki/api/v2/${kind}-comments/${commentId}/children`;
+  cursor: string | undefined,
+  limit: number,
+): ConfluenceRequest {
+  return dialect.commentChildrenPath({ commentId, kind, cursor, limit });
 }
 
 export const SPACE_TYPES: readonly string[] = Object.freeze([
@@ -228,6 +252,8 @@ export interface OperationContext {
    */
   readonly externalUserId?: string | undefined;
   readonly flags: ConfluenceFlags;
+  /** The product this instance is, which decides endpoints and paging. */
+  readonly dialect: ConfluenceDialect;
 }
 
 export interface ConfluenceRequest {
@@ -248,8 +274,8 @@ export type ConfluenceOperationHandler = (
 export const CONFLUENCE_HANDLERS: Readonly<
   Record<string, ConfluenceOperationHandler>
 > = Object.freeze({
-  "connection.get": () => ({
-    path: "/wiki/rest/api/user/current",
+  "connection.get": (_input, context) => ({
+    path: context.dialect.currentUserPath,
     query: {},
   }),
 
@@ -283,19 +309,17 @@ export const CONFLUENCE_HANDLERS: Readonly<
       modifiedAfter: modifiedAfterDate(input["modifiedAfter"]),
       orderBy: ordering(input["orderBy"]),
     });
-    const includeArchived = optionalBoolean(
-      input["includeArchived"],
-      "includeArchived",
-    );
-    return {
-      path: "/wiki/rest/api/search",
-      query: {
-        cql,
-        limit: pageLimit(input["limit"], context.flags),
-        start: offsetCursor(input["cursor"]),
-        includeArchivedSpaces: includeArchived === true ? "true" : undefined,
-      },
-    };
+    // A CQL search is offset-paged on both products, so its cursor is the row
+    // offset the previous answer ended at.
+    return context.dialect.searchPath({
+      cql,
+      start: offsetCursor(input["cursor"]),
+      limit: pageLimit(input["limit"], context.flags),
+      includeArchived: optionalBoolean(
+        input["includeArchived"],
+        "includeArchived",
+      ),
+    });
   },
 
   "spaces.list": (input, context) => {
@@ -312,83 +336,61 @@ export const CONFLUENCE_HANDLERS: Readonly<
     const keys = requested.length > 0 ? requested : allowed;
     const type = optionalText(input["type"], "type", 3, 32);
     if (type !== undefined && !SPACE_TYPES.includes(type)) invalid("type");
-    return {
-      path: "/wiki/api/v2/spaces",
-      query: {
-        keys: keys.length === 0 ? undefined : keys.join(","),
-        type,
-        limit: pageLimit(input["limit"], context.flags),
-        cursor: upstreamCursor(input["cursor"]),
-      },
-    };
+    return context.dialect.spaceList({
+      keys,
+      type,
+      cursor: listingCursor(input["cursor"], context.dialect),
+      limit: pageLimit(input["limit"], context.flags),
+    });
   },
 
-  "spaces.get": (input) => {
-    const ref = spaceRef(input["space"]);
-    // v2 addresses a space by numeric id only. A key is looked up through the
-    // listing endpoint here, so the model still gets to speak in keys without
-    // the request ever holding a caller-shaped path.
-    if (!isNumericSpace(ref)) {
-      return {
-        path: "/wiki/api/v2/spaces",
-        query: { keys: ref, limit: 2, "description-format": "plain" },
-      };
-    }
-    return {
-      path: `/wiki/api/v2/spaces/${ref}`,
-      query: { "description-format": "plain" },
-    };
-  },
+  "spaces.get": (input, context) =>
+    // A key is looked up through the listing endpoint, so the model still gets
+    // to speak in keys without the request ever holding a caller-shaped path.
+    context.dialect.spacePath(spaceRef(input["space"])),
 
-  "pages.get": (input) => ({
-    path: `/wiki/api/v2/pages/${numericId(input["pageId"], "pageId")}`,
-    query: {
-      "body-format": "atlas_doc_format",
-      "include-labels": "true",
-    },
-  }),
+  "pages.get": (input, context) =>
+    context.dialect.pagePath(numericId(input["pageId"], "pageId")),
 
   "pages.comments": (input, context) => {
-    // The catalog declares the footer collection; `kind` picks between the two
-    // fixed paths, and `all` is answered by the provider as two reads.
+    // Cloud declares the footer collection and `kind` picks between the two
+    // fixed paths; a Server / Data Center installation keeps both kinds in one
+    // collection and marks each comment, so the kind travels as a query the
+    // provider filters on after the read.
     const kind = commentKind(input["kind"]);
     const pageId = numericId(input["pageId"], "pageId");
-    return {
-      path: commentPath(pageId, commentCollections(kind)[0] ?? "footer"),
-      query: {
-        "body-format": "atlas_doc_format",
-        limit: pageLimit(input["limit"], context.flags),
-        cursor: upstreamCursor(input["cursor"]),
-        sort: "created-date",
-      },
-    };
+    const requested = commentCollections(kind)[0] ?? "footer";
+    return context.dialect.commentPath({
+      pageId,
+      kind: requested,
+      cursor: listingCursor(input["cursor"], context.dialect),
+      limit: pageLimit(input["limit"], context.flags),
+    });
   },
 
-  "pages.attachments": (input, context) => ({
-    path: `/wiki/api/v2/pages/${numericId(input["pageId"], "pageId")}/attachments`,
-    query: {
+  "pages.attachments": (input, context) =>
+    context.dialect.attachmentPath({
+      pageId: numericId(input["pageId"], "pageId"),
+      cursor: listingCursor(input["cursor"], context.dialect),
       limit: pageLimit(input["limit"], context.flags),
-      cursor: upstreamCursor(input["cursor"]),
-      sort: "created-date",
-    },
-  }),
+    }),
 
-  "pages.versions": (input, context) => ({
-    path: `/wiki/api/v2/pages/${numericId(input["pageId"], "pageId")}/versions`,
-    query: {
+  "pages.versions": (input, context) =>
+    context.dialect.versionPath({
+      pageId: numericId(input["pageId"], "pageId"),
+      cursor: listingCursor(input["cursor"], context.dialect),
       limit: pageLimit(input["limit"], context.flags),
-      cursor: upstreamCursor(input["cursor"]),
-    },
-  }),
+    }),
 });
 
 /**
  * A page URL a person can open. Confluence answers `_links.webui` as an
- * absolute *path* under the site's `/wiki` root, so the two are concatenated —
- * resolving it against the origin would drop `/wiki` and hand the model a link
- * that 404s. A deployment configured with the Atlassian gateway base has no
- * site origin to name, and answering with a gateway URL would be worse than
- * answering with none.
+ * absolute *path* relative to the product's own root: under the site's `/wiki`
+ * on Cloud, under the installation's own context path — which its `baseUrl`
+ * already names — on Server / Data Center. Resolving that path the wrong way
+ * would hand the model a link that 404s. A deployment configured with the
+ * Atlassian gateway base has no site origin to name, and answering with a
+ * gateway URL would be worse than answering with none.
  */
 function humanUrl(
   relative: string | undefined,
@@ -408,15 +410,19 @@ function humanUrl(
     new URL(instance.baseUrl).host === "api.atlassian.com"
       ? undefined
       : instance.baseUrl;
+  const root =
+    site === undefined
+      ? undefined
+      : instance.deploymentType === "server"
+        ? site
+        : `${site}/wiki`;
   const base = declaredIsSite
     ? declared
     : declared !== undefined && !/^https?:\/\//u.test(declared)
       ? site === undefined
         ? undefined
         : `${site}${declared}`
-      : site === undefined
-        ? undefined
-        : `${site}/wiki`;
+      : root;
   if (base === undefined) return undefined;
   return relative.startsWith("/")
     ? `${base.replace(/\/+$/u, "")}${relative}`
@@ -436,13 +442,75 @@ function contentBlock(
   return { format, ...textBudget(text, limit) };
 }
 
-/** Labels arrive as a `results` collection in v2 and as a bare list nowhere. */
+/**
+ * A page body of either product, as text. Cloud answers Atlassian Document
+ * Format, a Server / Data Center installation answers storage markup, and both
+ * arrive under `body`: the two are rendered by their own reader so an answer
+ * reads the same whichever product produced it.
+ */
+function bodyOf(source: Record<string, unknown>): string {
+  const body = recordOf(source["body"]);
+  const storage = recordOf(body["storage"]);
+  const storageValue = storage["value"];
+  if (storageValue !== undefined) return storageToText(storageValue);
+  const adf = recordOf(body["atlas_doc_format"]);
+  return adfToText(adf["value"]);
+}
+
+/**
+ * One person of either product. Cloud names an account id, a Server / Data
+ * Center installation the user name and key its directory uses, so both are
+ * carried and whichever the product did not send stays absent.
+ */
+function personRef(value: unknown): Record<string, unknown> | undefined {
+  const source = recordOf(value);
+  if (Object.keys(source).length === 0) return undefined;
+  const picked = compact({
+    accountId: stringOf(source, "accountId"),
+    name: stringOf(source, "username") ?? stringOf(source, "name"),
+    userKey: stringOf(source, "userKey") ?? stringOf(source, "key"),
+    displayName: stringOf(source, "displayName"),
+  });
+  return Object.keys(picked).length === 0 ? undefined : picked;
+}
+
+/** The version of one page or comment, as either product spells it. */
+function versionOf(value: unknown): Record<string, unknown> {
+  const version = recordOf(value);
+  return compact({
+    number: numberOf(version, "number"),
+    // Cloud dates a version when it was made; a v1 version dates it `when`,
+    // which is also the only date a self-hosted page carries at all.
+    createdAt: stringOf(version, "createdAt") ?? stringOf(version, "when"),
+    message: stringOf(version, "message"),
+    authorId: stringOf(version, "authorId"),
+    author: personRef(version["by"]),
+    minorEdit: booleanOf(version, "minorEdit"),
+  });
+}
+
+/** Labels arrive as a `results` collection under `labels` or `metadata.labels`. */
 function labelNames(value: unknown): string[] | undefined {
   const results = arrayOf(recordOf(value), "results");
   const names = results
     .map((item) => stringOf(recordOf(item), "name"))
     .filter((name): name is string => name !== undefined);
   return names.length === 0 ? undefined : names;
+}
+
+/** A numeric identifier as the decimal string every path addresses it by. */
+function numberId(value: unknown): string | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? String(value)
+    : undefined;
+}
+
+/** The labels of a page on either product: v2 lists them, v1 nests them. */
+function pageLabels(source: Record<string, unknown>): string[] | undefined {
+  return (
+    labelNames(source["labels"]) ??
+    labelNames(recordOf(source["metadata"])["labels"])
+  );
 }
 
 /**
@@ -512,17 +580,25 @@ function searchItem(
   const source = recordOf(item);
   const content = recordOf(source["content"]);
   const space = resultSpace(source);
-  const id = stringOf(content, "id");
+  const id = stringOf(content, "id") ?? stringOf(source, "id");
   const excerpt = stringOf(source, "excerpt");
   return compact({
     id,
-    type: stringOf(content, "type") ?? stringOf(source, "entityType"),
+    type:
+      stringOf(content, "type") ??
+      stringOf(source, "type") ??
+      stringOf(source, "entityType"),
     title: stringOf(content, "title") ?? stringOf(source, "title"),
     space: compact({ key: space.key, name: space.name }),
     modifiedAt:
       stringOf(source, "lastModified") ??
-      stringOf(recordOf(content["version"]), "when"),
-    url: humanUrl(stringOf(source, "url"), undefined, context.instance),
+      stringOf(recordOf(content["version"]), "when") ??
+      stringOf(recordOf(source["version"]), "when"),
+    url: humanUrl(
+      stringOf(source, "url") ?? stringOf(recordOf(source["_links"]), "webui"),
+      stringOf(recordOf(source["_links"]), "base"),
+      context.instance,
+    ),
     untrustedContent:
       excerpt === undefined
         ? undefined
@@ -533,7 +609,9 @@ function searchItem(
 /**
  * One comment as the model reads it. The list endpoints carry no author name
  * and no date of their own: Confluence keeps both on the comment's version, so
- * that is where they are read from.
+ * that is where they are read from. Which collection a comment came from is the
+ * endpoint on Cloud and the comment's own location marker on a Server / Data
+ * Center installation, which keeps both kinds in one collection.
  */
 function commentItem(
   item: unknown,
@@ -541,23 +619,20 @@ function commentItem(
   context: ConfluenceProjectionContext,
 ): Record<string, unknown> {
   const source = recordOf(item);
-  const version = recordOf(source["version"]);
-  const body = recordOf(recordOf(source["body"])["atlas_doc_format"]);
-  const text = adfToText(body["value"]);
+  const extensions = recordOf(source["extensions"]);
+  const marker = stringOf(extensions, "location");
+  const text = bodyOf(source);
   return compact({
     id: stringOf(source, "id"),
-    kind,
-    parentCommentId: stringOf(source, "parentCommentId"),
+    kind: marker === "inline" || marker === "footer" ? marker : kind,
+    parentCommentId:
+      stringOf(source, "parentCommentId") ??
+      parentCommentIdOf(source["ancestors"]),
     resolutionStatus: stringOf(source, "resolutionStatus"),
-    version: compact({
-      number: numberOf(version, "number"),
-      createdAt: stringOf(version, "createdAt"),
-      authorId: stringOf(version, "authorId"),
-      minorEdit: booleanOf(version, "minorEdit"),
-    }),
+    version: versionOf(source["version"]),
     url: humanUrl(
       stringOf(recordOf(source["_links"]), "webui"),
-      undefined,
+      stringOf(recordOf(source["_links"]), "base"),
       context.instance,
     ),
     untrustedContent: contentBlock(
@@ -566,6 +641,23 @@ function commentItem(
       "markdown-like",
     ),
   });
+}
+
+/**
+ * The comment one reply answers, as a v1 listing reports it: the reply's
+ * ancestors are its parent chain, starting at the page. A product that names
+ * the parent outright does not need this, and a chain that holds nothing but
+ * pages has no comment to name.
+ */
+function parentCommentIdOf(value: unknown): string | undefined {
+  const ancestors = arrayOf({ ancestors: value }, "ancestors");
+  for (let index = ancestors.length - 1; index >= 0; index -= 1) {
+    const ancestor = recordOf(ancestors[index]);
+    if (stringOf(ancestor, "type") === "page") break;
+    const id = stringOf(ancestor, "id");
+    if (id !== undefined) return id;
+  }
+  return undefined;
 }
 
 /** The replies of one comment, from a children read of its own. */
@@ -580,7 +672,9 @@ export function commentReplies(
 function spaceSummary(value: unknown): Record<string, unknown> {
   const source = recordOf(value);
   return compact({
-    id: stringOf(source, "id"),
+    // Cloud spells a space id as a string, a v1 listing as a number; both name
+    // the same space and both are handed over as the string it is addressed by.
+    id: stringOf(source, "id") ?? numberId(source["id"]),
     key: stringOf(source, "key"),
     name: stringOf(source, "name"),
     type: stringOf(source, "type"),
@@ -630,6 +724,10 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
       source: confluenceSource(context.instance),
       account: compact({
         accountId: stringOf(source, "accountId"),
+        name:
+          stringOf(source, "username") ??
+          stringOf(source, "publicName") ??
+          stringOf(source, "userKey"),
         displayName: stringOf(source, "displayName"),
         publicName: stringOf(source, "publicName"),
         email: stringOf(source, "email"),
@@ -696,9 +794,8 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
   "pages.get": (data, context) => {
     const source = recordOf(data);
     const links = recordOf(source["_links"]);
-    const version = recordOf(source["version"]);
-    const body = recordOf(recordOf(source["body"])["atlas_doc_format"]);
-    const text = adfToText(body["value"]);
+    const ancestors = arrayOf(source, "ancestors");
+    const text = bodyOf(source);
     const budgetLimit = context.bodyLimit ?? text.length;
     const space = context.space ?? {};
     return {
@@ -718,18 +815,19 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
           key: stringOf(space, "key"),
           name: stringOf(space, "name"),
         }),
-        parentId: stringOf(source, "parentId"),
+        parentId:
+          stringOf(source, "parentId") ??
+          (ancestors.length === 0
+            ? undefined
+            : stringOf(recordOf(ancestors[ancestors.length - 1]), "id")),
+        // Cloud names the creator outright; a v1 page carries only the version
+        // it is at, whose author is the last editor — so the field stays absent
+        // rather than claiming the editor created it.
         author: compact({ accountId: stringOf(source, "authorId") }),
         owner: compact({ accountId: stringOf(source, "ownerId") }),
         createdAt: stringOf(source, "createdAt"),
-        version: compact({
-          number: numberOf(version, "number"),
-          createdAt: stringOf(version, "createdAt"),
-          message: stringOf(version, "message"),
-          authorId: stringOf(version, "authorId"),
-          minorEdit: booleanOf(version, "minorEdit"),
-        }),
-        labels: labelNames(source["labels"]),
+        version: versionOf(source["version"]),
+        labels: pageLabels(source),
       }),
       untrustedContent: contentBlock(text, budgetLimit, "markdown-like"),
     };
@@ -753,23 +851,46 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
       const attachment = recordOf(item);
       const version = recordOf(attachment["version"]);
       const links = recordOf(attachment["_links"]);
+      // A v2 attachment carries its type and size at the top level; a v1 one
+      // keeps them under `extensions` and its media type under `metadata`.
+      const extensions = recordOf(attachment["extensions"]);
+      const metadata = recordOf(attachment["metadata"]);
       return compact({
         id: stringOf(attachment, "id"),
         title: stringOf(attachment, "title"),
-        mediaType: stringOf(attachment, "mediaType"),
-        fileSize: numberOf(attachment, "fileSize"),
+        mediaType:
+          stringOf(attachment, "mediaType") ??
+          stringOf(metadata, "mediaType") ??
+          stringOf(extensions, "mediaType"),
+        fileSize:
+          numberOf(attachment, "fileSize") ?? numberOf(extensions, "fileSize"),
         status: stringOf(attachment, "status"),
         versionNumber: numberOf(version, "number"),
-        createdAt: stringOf(attachment, "createdAt"),
-        authorId: stringOf(version, "authorId"),
+        createdAt:
+          stringOf(attachment, "createdAt") ?? stringOf(version, "when"),
+        authorId:
+          stringOf(version, "authorId") ??
+          stringOf(recordOf(version["by"]), "username"),
         pageId: stringOf(attachment, "pageId"),
         // Metadata only: a download link is handed over, the bytes are not
         // fetched — whether an attachment body may ever leave Confluence is a
         // deployment decision this read-only provider does not take.
+        // v2 hands these over as absolute links; a v1 attachment reports paths
+        // relative to the installation's context, so those are resolved here.
         webuiLink:
-          stringOf(attachment, "webuiLink") ?? stringOf(links, "webui"),
+          stringOf(attachment, "webuiLink") ??
+          humanUrl(
+            stringOf(links, "webui"),
+            stringOf(links, "base"),
+            context.instance,
+          ),
         downloadLink:
-          stringOf(attachment, "downloadLink") ?? stringOf(links, "download"),
+          stringOf(attachment, "downloadLink") ??
+          humanUrl(
+            stringOf(links, "download"),
+            stringOf(links, "base"),
+            context.instance,
+          ),
       });
     }),
   }),
@@ -778,12 +899,17 @@ export const CONFLUENCE_PROJECTIONS: Readonly<
     source: confluenceSource(context.instance, { pageId: context.pageId }),
     items: unwrapResults(data).map((item) => {
       const version = recordOf(item);
-      const page = recordOf(version["page"]);
+      // Only Cloud nests the page inside its version; a v1 version names its
+      // content through the expansion this provider asks for.
+      const page = recordOf(version["page"] ?? version["content"]);
       return compact({
         number: numberOf(version, "number"),
         message: stringOf(version, "message"),
-        createdAt: stringOf(version, "createdAt"),
-        authorId: stringOf(version, "authorId"),
+        createdAt: stringOf(version, "createdAt") ?? stringOf(version, "when"),
+        authorId:
+          stringOf(version, "authorId") ??
+          stringOf(recordOf(version["by"]), "username"),
+        author: personRef(version["by"]),
         minorEdit: booleanOf(version, "minorEdit"),
         pageId: stringOf(page, "id") ?? context.pageId,
         title: stringOf(page, "title"),

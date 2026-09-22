@@ -5,7 +5,10 @@ import {
   JIRA_COMPANION_PATHS,
   JIRA_OPERATIONS,
   JIRA_READ_PATHS,
+  JIRA_SERVER_READ_PATHS,
   enabledCapabilities,
+  jiraOperationPath,
+  mirrorToServer,
 } from "../src/providers/jira/catalog.js";
 import {
   ISSUE_INCLUDES,
@@ -30,10 +33,27 @@ const TRANSPORT_SOURCE = readFileSync(
   new URL("../src/providers/jira/transport.ts", import.meta.url),
   "utf8",
 );
+const DIALECT_SOURCE = readFileSync(
+  new URL("../src/providers/jira/dialect.ts", import.meta.url),
+  "utf8",
+);
 
 /** Endpoints that must never appear: writes, JQL execution, raw passthrough. */
 const FORBIDDEN_PATH =
   /\/search"|\/search\/id|expression|issueLinkType|\/worklog|\/watchers|\/votes|attachment\/\d|raw|graphql/u;
+
+/**
+ * The same ban for a Server / Data Center instance, which is exactly where the
+ * classic `/search` endpoint is *not* forbidden: Data Center has no
+ * `/search/jql`, and its own search is the one the provider must use there.
+ */
+const FORBIDDEN_SERVER_PATH =
+  /expression|issueLinkType|\/worklog|\/watchers|\/votes|attachment\/\d|raw|graphql/u;
+
+/** Operations whose two products genuinely do not share one endpoint. */
+const SEARCH_DIFFERENCES: Readonly<Record<string, string>> = Object.freeze({
+  "/rest/api/3/search/jql": "/rest/api/2/search",
+});
 
 function tools() {
   return createIntegrationTools({
@@ -92,6 +112,42 @@ describe("Jira capability catalog", () => {
       "attachments.download",
     ]) {
       expect(Object.keys(JIRA_OPERATIONS)).not.toContain(forbidden);
+    }
+  });
+
+  it("reaches the same read surface on a Server / Data Center instance", () => {
+    const used = new Set<string>();
+    for (const [operation, definition] of Object.entries(JIRA_OPERATIONS)) {
+      const server = jiraOperationPath(operation, "server");
+      expect(server, operation).toBeDefined();
+      expect(String(server).startsWith("/rest/api/2/"), operation).toBe(true);
+      expect(FORBIDDEN_SERVER_PATH.test(String(server)), operation).toBe(false);
+      expect(JIRA_SERVER_READ_PATHS, operation).toContain(server);
+      used.add(String(server));
+      // Cloud is untouched by the second product's paths, and stays the
+      // declared one.
+      expect(jiraOperationPath(operation, "cloud"), operation).toBe(
+        definition.path,
+      );
+    }
+    const companions = JIRA_COMPANION_PATHS.map((path) => mirrorToServer(path));
+    expect([...new Set([...used, ...companions])].sort()).toEqual(
+      [...JIRA_SERVER_READ_PATHS].sort(),
+    );
+  });
+
+  it("keeps the two allow-lists in step, apart from the search endpoint", () => {
+    // Both products are read through the same catalog, so the two lists differ
+    // only where the products genuinely do: a Data Center instance has no
+    // `/search/jql`, and the classic `/search` it has was removed from Cloud.
+    expect(JIRA_SERVER_READ_PATHS).toHaveLength(JIRA_READ_PATHS.length);
+    const differences = JIRA_READ_PATHS.filter(
+      (path, index) => JIRA_SERVER_READ_PATHS[index] !== mirrorToServer(path),
+    );
+    expect(differences).toEqual(Object.keys(SEARCH_DIFFERENCES));
+    for (const [cloud, server] of Object.entries(SEARCH_DIFFERENCES)) {
+      expect(JIRA_READ_PATHS).toContain(cloud);
+      expect(JIRA_SERVER_READ_PATHS).toContain(server);
     }
   });
 
@@ -181,8 +237,18 @@ describe("Jira capability catalog", () => {
   it("sends the token in the Authorization header of a GET and nowhere else", () => {
     expect(TRANSPORT_SOURCE).toMatch(/method: "GET"/u);
     expect(TRANSPORT_SOURCE).toMatch(/redirect: "error"/u);
-    expect(TRANSPORT_SOURCE).toMatch(/authorization: basicAuthorization/u);
-    expect(TRANSPORT_SOURCE).toMatch(/Basic \$\{pair\}/u);
+    expect(TRANSPORT_SOURCE).toMatch(
+      /authorizationFor\(dialect, credential\)/u,
+    );
+    // Both products are authenticated, each by the scheme it accepts, and the
+    // choice is the site's declared deployment type — never a fallback tried
+    // after a refusal.
+    expect(DIALECT_SOURCE).toMatch(/Basic \$\{pair\}/u);
+    expect(DIALECT_SOURCE).toMatch(/Bearer \$\{credential\.token\}/u);
+    expect(DIALECT_SOURCE).toMatch(/dialect\.deployment === "server"/u);
+    // The HTTP boundary builds no scheme of its own: whichever product answers,
+    // the header comes from the dialect.
+    expect(TRANSPORT_SOURCE).not.toMatch(/toString\("base64"\)/u);
   });
 });
 

@@ -15,6 +15,15 @@ const SANDBOX = {
   id: "sandbox",
   label: "Sandbox",
   baseUrl: "https://sandbox.atlassian.net",
+  deploymentType: "cloud" as const,
+  service: null,
+};
+/** A self-hosted instance: it accepts a personal access token, no account. */
+const WIKI = {
+  id: "wiki",
+  label: "Корпоративная вики",
+  baseUrl: "https://wiki.example.corp",
+  deploymentType: "server" as const,
   service: null,
 };
 const SITES = [
@@ -22,6 +31,7 @@ const SITES = [
     id: "company",
     label: "Company",
     baseUrl: "https://company.atlassian.net",
+    deploymentType: "cloud" as const,
     service: null,
   },
   SANDBOX,
@@ -76,7 +86,7 @@ function remote(overrides: Partial<ConfluenceRemote> = {}): ConfluenceRemote {
 
 describe("Integrations Confluence card", () => {
   it("keeps the account e-mail and the API token write-only", async () => {
-    const writes: { instanceId: string; email: string; token: string }[] = [];
+    const writes: { instanceId: string; email?: string; token: string }[] = [];
     const Card = createConfluenceCard(
       remote({
         putConfluenceCredential: async (_token, input) => {
@@ -206,6 +216,49 @@ describe("Integrations Confluence card", () => {
     const { container } = render(<Card token="qa-account-token" />);
     await screen.findByText(/Оператор не настроил ни одного сайта Confluence/u);
     expect(container.textContent).not.toContain("Atlassian API token");
+  });
+
+  it("switches to the personal access token of the site the user picks", async () => {
+    const writes: { instanceId: string; email?: string; token: string }[] = [];
+    const Card = createConfluenceCard(
+      remote({
+        confluenceSites: async () => ({ ok: true, value: [SANDBOX, WIKI] }),
+        putConfluenceCredential: async (_token, input) => {
+          writes.push(input);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const select = await screen.findByLabelText("Сайт Confluence");
+    // A Cloud site keeps the account field and both of the original labels.
+    fireEvent.change(select, { target: { value: "sandbox" } });
+    expect(screen.getByLabelText("Почта аккаунта Atlassian")).toBeDefined();
+    expect(screen.getByLabelText("Atlassian API token")).toBeDefined();
+    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
+    // The self-hosted instance asks for a personal access token and no account.
+    fireEvent.change(select, { target: { value: "wiki" } });
+    expect(screen.queryByLabelText("Почта аккаунта Atlassian")).toBeNull();
+    expect(screen.queryByLabelText("Atlassian API token")).toBeNull();
+    expect(screen.getByLabelText("Личный токен доступа (PAT)")).toBeDefined();
+    expect(
+      screen.getByText("Развёртывание: Server / Data Center"),
+    ).toBeDefined();
+    const connect = screen.getByRole("button", {
+      name: "Сохранить и проверить",
+    });
+    expect(connect).toHaveProperty("disabled", true);
+    const pat = "Mzc4OTk0NDg3MTkwOnN5bnRoZXRpYy1wYXQ";
+    fireEvent.change(screen.getByLabelText("Личный токен доступа (PAT)"), {
+      target: { value: pat },
+    });
+    // The token alone unlocks the submit: a server instance needs no account.
+    expect(connect).toHaveProperty("disabled", false);
+    fireEvent.click(connect);
+    await waitFor(() =>
+      expect(writes).toEqual([{ instanceId: "wiki", token: pat }]),
+    );
+    expect(container.textContent).not.toContain(pat);
   });
 
   it("confirms before disconnecting and dropping the credential", async () => {

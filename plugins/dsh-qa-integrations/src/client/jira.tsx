@@ -19,7 +19,11 @@ export interface JiraRemote {
     token: string,
     input: {
       readonly siteId: string;
-      readonly email: string;
+      /**
+       * Absent on a Server / Data Center connect: such a site accepts a
+       * personal access token and needs no account at all.
+       */
+      readonly email?: string | undefined;
       readonly token: string;
       readonly useServiceCredential?: boolean | undefined;
     },
@@ -126,15 +130,21 @@ export function createJiraCard(remote: JiraRemote) {
       accept(await remote.getJira(token));
     },
     calls: {
-      save: (token, credential, extra, options) =>
-        remote.putJiraCredential(token, {
+      save: (token, credential, extra, options) => {
+        // A Server / Data Center site takes a personal access token and no
+        // account, so the e-mail travels only when the form collected one —
+        // the shape the deployment-managed path already sends. A Cloud save
+        // carries the field exactly as this form always did.
+        const email = extra.email;
+        return remote.putJiraCredential(token, {
           siteId: extra.siteId,
-          email: extra.email,
+          ...(email.trim() === "" ? {} : { email }),
           token: credential,
           // The host spends the flag with the service connect; leaving it
           // undefined keeps a personal save's payload exactly what it was.
           useServiceCredential: options.useServiceCredential || undefined,
-        }),
+        });
+      },
       test: (token) => remote.testJira(token),
       patch: (token, patch) => remote.patchJiraPolicy(token, patch),
       disconnect: (token) => remote.disconnectJira(token),
@@ -183,6 +193,18 @@ export function createJiraCard(remote: JiraRemote) {
       if (!configured) return null;
       const needsChoice = sites.length > 1;
       const service = serviceConnectOption(state);
+      // The site the form would connect is what decides which fields it asks
+      // for: Atlassian Cloud needs the account e-mail beside the API token, a
+      // Server / Data Center site needs a personal access token and no account.
+      // Until a site is picked the form keeps the Cloud shape, which is the
+      // resolver's own default for a site that names no deployment.
+      const selected =
+        siteId === ""
+          ? sites.length === 1
+            ? sites[0]
+            : undefined
+          : sites.find((site) => site.id === siteId);
+      const server = selected?.deploymentType === "server";
       const sitePicker = needsChoice ? (
         <label className="dsh-qa-integrations__field">
           Сайт Jira
@@ -207,6 +229,11 @@ export function createJiraCard(remote: JiraRemote) {
           Сайт: {sites[0]?.label ?? ""} — задан оператором стенда
         </span>
       );
+      const deployment = (
+        <span className="dsh-qa-integrations__muted">
+          Развёртывание: {server ? "Server / Data Center" : "Atlassian Cloud"}
+        </span>
+      );
       // With a managed credential there is nothing to paste: the host spends the
       // deployment's token, so the form keeps the site picker and the checkbox
       // and drops the e-mail and secret fields entirely.
@@ -214,6 +241,7 @@ export function createJiraCard(remote: JiraRemote) {
         return (
           <div className="dsh-qa-integrations__section">
             {sitePicker}
+            {deployment}
             {service}
             <div className="dsh-qa-integrations__actions">
               <button
@@ -242,22 +270,25 @@ export function createJiraCard(remote: JiraRemote) {
         <div className="dsh-qa-integrations__section">
           {service}
           {sitePicker}
+          {deployment}
+          {server ? null : (
+            <label className="dsh-qa-integrations__field">
+              Аккаунт Atlassian (e-mail)
+              <input
+                className="dsh-qa-integrations__input"
+                type="email"
+                autoComplete="off"
+                value={email}
+                disabled={state.busy}
+                onChange={(event) =>
+                  state.extra.setEmail(event.currentTarget.value)
+                }
+                placeholder="ivan@example.com"
+              />
+            </label>
+          )}
           <label className="dsh-qa-integrations__field">
-            Аккаунт Atlassian (e-mail)
-            <input
-              className="dsh-qa-integrations__input"
-              type="email"
-              autoComplete="off"
-              value={email}
-              disabled={state.busy}
-              onChange={(event) =>
-                state.extra.setEmail(event.currentTarget.value)
-              }
-              placeholder="ivan@example.com"
-            />
-          </label>
-          <label className="dsh-qa-integrations__field">
-            API-токен Jira
+            {server ? "Личный токен доступа (PAT)" : "API-токен Jira"}
             <input
               className="dsh-qa-integrations__input"
               type="password"
@@ -267,13 +298,14 @@ export function createJiraCard(remote: JiraRemote) {
               onChange={(event) =>
                 state.setCredential(event.currentTarget.value)
               }
-              placeholder="ATATT…"
+              placeholder={server ? "Вставьте личный токен доступа" : "ATATT…"}
             />
           </label>
           <CredentialHelpNote help={help} />
           <p className="dsh-qa-integrations__hint">
-            Токен и e-mail хранятся в зашифрованном виде и после сохранения не
-            отображаются.
+            {server
+              ? "Токен хранится в зашифрованном виде и после сохранения не отображается."
+              : "Токен и e-mail хранятся в зашифрованном виде и после сохранения не отображаются."}
           </p>
           <div className="dsh-qa-integrations__actions">
             <button
@@ -282,7 +314,7 @@ export function createJiraCard(remote: JiraRemote) {
               disabled={
                 state.busy ||
                 state.credential.trim() === "" ||
-                email.trim() === "" ||
+                (!server && email.trim() === "") ||
                 (needsChoice && siteId === "")
               }
               onClick={state.save}

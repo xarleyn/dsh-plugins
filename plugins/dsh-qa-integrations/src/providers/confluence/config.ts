@@ -2,21 +2,58 @@ import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../../errors.js";
 
 /**
+ * Which Confluence this instance is: Atlassian Cloud, or a self-hosted Server /
+ * Data Center installation. The two are different products behind one name —
+ * Cloud answers the v2 API under `/wiki` with page bodies as Atlassian Document
+ * Format, while a Server / Data Center installation answers its own v1 API
+ * under `/rest/api` with page bodies as storage format — so the deployment type
+ * is a property of the instance the operator declares, never a guess this
+ * provider makes at run time.
+ *
+ * Server and Data Center are one value on purpose: Data Center is Server with
+ * clustering, and the REST surface they answer is the same one.
+ */
+export type ConfluenceDeployment = "cloud" | "server";
+
+/**
  * One Confluence site the operator allows. A user never types a host: the
  * connect form only picks from this list, so the broker cannot be pointed at an
  * arbitrary origin.
  *
- * The address is the site origin a Confluence Cloud deployment answers on
- * (`https://company.atlassian.net`). Deployments that reach Confluence through
- * the Atlassian gateway for scoped API tokens configure that base instead
- * (`https://api.atlassian.com/ex/confluence/<cloudId>`); both spell the same
- * relative `/wiki/...` paths, so the provider needs no mode switch.
+ * The address is the base every relative path of the product hangs under. Cloud
+ * answers on the site origin (`https://company.atlassian.net`, with `/wiki` as
+ * part of the path) or, for scoped API tokens, on the gateway
+ * (`https://api.atlassian.com/ex/confluence/<cloudId>`). A Server / Data Center
+ * installation is named by its own address, and an installation behind a context
+ * path spells that path here (`https://wiki.example.corp/confluence`).
  */
 export interface ConfluenceInstance {
   readonly id: string;
   readonly label: string;
   /** Canonical `<origin><path>`, without a trailing slash. */
   readonly baseUrl: string;
+  /** Which product answers at `baseUrl`; see {@link ConfluenceDeployment}. */
+  readonly deploymentType: ConfluenceDeployment;
+}
+
+/**
+ * One instance as the operator writes it. `deploymentType` is spelled as a
+ * plain string here and resolved below, so a config written before the field
+ * existed keeps loading as the Cloud site it always was, and a typo is refused
+ * with the accepted values instead of quietly becoming a default.
+ */
+export interface ConfluenceInstanceInput {
+  readonly id: string;
+  readonly label?: string;
+  readonly baseUrl: string;
+  readonly deploymentType?: string;
+}
+
+/** Config slice as YAML writes it: every member is optional there. */
+export interface ConfluenceConfigInput extends Partial<
+  Omit<ConfluenceFlags, "instances">
+> {
+  readonly instances?: readonly ConfluenceInstanceInput[] | undefined;
 }
 
 /**
@@ -84,6 +121,36 @@ const MAX_ALLOWED_SPACES = 64;
 const configError = scopedConfigError("confluence integration config");
 
 /**
+ * Deployment types as an operator may spell them. `data-center` and
+ * `datacenter` are accepted because that is what an administrator calls the
+ * product on the stand; both name the same API as `server`.
+ */
+const DEPLOYMENT_TYPES: Readonly<Record<string, ConfluenceDeployment>> =
+  Object.freeze({
+    cloud: "cloud",
+    server: "server",
+    "data-center": "server",
+    datacenter: "server",
+  });
+
+/** The deployment type of one configured instance; Cloud when undeclared. */
+function normalizeDeployment(
+  input: unknown,
+  index: number,
+): ConfluenceDeployment {
+  if (input === undefined || input === null) return "cloud";
+  const raw = typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (raw === "") return "cloud";
+  const deployment = DEPLOYMENT_TYPES[raw];
+  if (deployment === undefined) {
+    throw configError(
+      `instances[${index}].deploymentType must be cloud, server or data-center`,
+    );
+  }
+  return deployment;
+}
+
+/**
  * Canonicalize one configured site. Everything here is operator input, so a
  * typo must fail loudly at load: a silently dropped instance would leave users
  * with a provider they cannot connect to and no explanation.
@@ -135,6 +202,7 @@ function normalizeInstance(
     id,
     label: label === "" ? url.host : label,
     baseUrl: `${url.origin}${path}`,
+    deploymentType: normalizeDeployment(record["deploymentType"], index),
   });
 }
 
@@ -192,6 +260,7 @@ export const confluenceConfigSchema = z.object({
         id: z.string(),
         label: z.string(),
         baseUrl: z.string(),
+        deploymentType: z.string(),
       }),
     )
     .default([]),
@@ -233,10 +302,10 @@ export const confluenceConfigSchema = z.object({
     .min(0)
     .max(5)
     .default(CONFLUENCE_DEFAULTS.retries),
-}) as unknown as z<Partial<ConfluenceFlags>>;
+}) as unknown as z<ConfluenceConfigInput>;
 
 export function resolveConfluenceConfig(
-  input: Partial<ConfluenceFlags> = {},
+  input: ConfluenceConfigInput = {},
 ): ConfluenceFlags {
   const allowInsecureHttp =
     input.allowInsecureHttp ?? CONFLUENCE_DEFAULTS.allowInsecureHttp;

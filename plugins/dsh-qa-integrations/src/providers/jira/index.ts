@@ -29,8 +29,10 @@ import {
   JIRA_OPERATIONS,
   JIRA_RESOURCE_KIND,
   enabledCapabilities,
+  jiraCompanionPath,
   jiraOperationCapability,
   jiraOperationMetadata,
+  jiraOperationPath,
 } from "./catalog.js";
 import {
   CUSTOM_FIELD_ID,
@@ -38,7 +40,17 @@ import {
   type JiraFlags,
   type JiraSite,
 } from "./config.js";
-import { issueKey as issueKeyOf, needsUserLookup } from "./jql.js";
+import {
+  assertDeployment,
+  dialectOf,
+  identityOf,
+  type JiraDialect,
+} from "./dialect.js";
+import {
+  identifierName,
+  issueKey as issueKeyOf,
+  needsUserLookup,
+} from "./jql.js";
 import {
   JIRA_HANDLERS,
   JIRA_PROJECTIONS,
@@ -60,25 +72,28 @@ export {
 } from "./transport.js";
 
 /**
- * Jira Cloud API tokens are either the classic 24-character form or the newer
- * prefixed one (`ATATT…`, base64url-ish and long). A pasted URL, a YAML snippet
- * or a token with whitespace is refused before anything is sent upstream. The
- * one `email:token` shape that exists is the deployment-managed secret, which
- * `parseCredential` splits — the connect form never accepts it.
+ * Jira API tokens are opaque; the shape a site accepts is the dialect's own.
+ * Cloud tokens are either the classic 24-character form or the newer prefixed
+ * one (`ATATT…`, base64url-ish and long), while a Server / Data Center personal
+ * access token is base64 and may carry the characters url-safe base64 forbids.
+ * A pasted URL, a YAML snippet or a token with whitespace is refused before
+ * anything is sent upstream. The one `email:token` shape that exists is the
+ * deployment-managed secret, which `parseCredential` splits — the connect form
+ * never accepts it.
  */
-const TOKEN_SHAPE = /^[A-Za-z0-9_-]{20,512}$/u;
-/** The Atlassian account an API token is spent as. Not a secret; not a host. */
 const EMAIL_SHAPE = /^[^\s@]{1,128}@[^\s@]{1,190}$/u;
 
 const NO_INCLUDES: readonly string[] = Object.freeze([]);
 
-/** Deployment types this provider speaks to. Data Center is a different API. */
-const CLOUD_DEPLOYMENT = "Cloud";
-
-function accountName(displayName: string | undefined, email: string): string {
-  return displayName === undefined || displayName === ""
-    ? email
-    : `${displayName} (${email})`;
+function accountName(
+  displayName: string | undefined,
+  email: string,
+  fallback = "Jira",
+): string {
+  if (displayName === undefined || displayName === "") {
+    return email === "" ? fallback : email;
+  }
+  return email === "" ? displayName : `${displayName} (${email})`;
 }
 
 /**
@@ -106,11 +121,15 @@ const ISSUE_SCOPED_READS: readonly string[] = Object.freeze([
 ]);
 
 /**
- * Jira Cloud provider: operator-configured sites over an Atlassian API token.
+ * Jira provider: operator-configured sites over an Atlassian API token (Cloud)
+ * or a personal access token (Server / Data Center).
  *
  * The token is spent against the site the credential names, and that site is
  * re-resolved from operator config on every call, so a site the deployment
- * removed or repointed closes the connection instead of redirecting it.
+ * removed or repointed closes the connection instead of redirecting it. Which
+ * product answers there — and so which API root, which authentication scheme
+ * and which shape of answer this provider speaks — is the site's own declared
+ * deployment type, never a guess made at connect or at run time.
  */
 export class JiraProvider implements IntegrationProvider {
   readonly id = "jira";
@@ -148,38 +167,41 @@ export class JiraProvider implements IntegrationProvider {
    * host the caller names.
    *
    * The same method turns a deployment-managed secret into this credential
-   * shape. That secret is the whole Basic pair (`email:token`), because Jira
-   * cannot spend the token without the account and the pair must not be split
-   * across two records; the form path instead supplies the e-mail separately,
-   * and keeps refusing a pasted pair.
+   * shape. On Cloud that secret is the whole Basic pair (`email:token`), because
+   * Jira cannot spend the token without the account and the pair must not be
+   * split across two records; the form path instead supplies the e-mail
+   * separately, and keeps refusing a pasted pair. A Server / Data Center
+   * personal access token needs no account at all, so its connection stores an
+   * empty e-mail and authenticates as the token's own bearer.
    */
   parseCredential(
     raw: string,
     options?: Readonly<Record<string, string>>,
   ): { readonly credential: string; readonly portal: string } {
+    // The site decides what this connection is allowed to look like, so it is
+    // resolved before the secret is judged.
+    const site = this.resolveSite(
+      options?.["siteId"] ?? options?.["instanceId"],
+    );
+    const dialect = dialectOf(site);
     const provided = raw.trim();
     const pair =
       options?.["email"] === undefined ? splitBasicPair(provided) : undefined;
     const token = pair === undefined ? provided : pair.token;
-    if (!TOKEN_SHAPE.test(token)) {
+    if (!dialect.tokenShape.test(token)) {
       throw new IntegrationError(
         "InvalidCredential",
-        "Use an Atlassian API token",
+        `Use a Jira ${dialect.credentialLabel}`,
       );
     }
     const email =
       (pair === undefined ? options?.["email"] : pair.email)?.trim() ?? "";
-    if (!EMAIL_SHAPE.test(email)) {
+    if (dialect.requiresEmail && !EMAIL_SHAPE.test(email)) {
       throw new IntegrationError(
         "InvalidCredential",
         "Use the e-mail of the Atlassian account the token belongs to",
       );
     }
-    // The connect form names the site; the broker's service path names it
-    // `instanceId`, as it does for every provider.
-    const site = this.resolveSite(
-      options?.["siteId"] ?? options?.["instanceId"],
-    );
     return {
       credential: JSON.stringify({
         siteId: site.id,
@@ -237,19 +259,20 @@ export class JiraProvider implements IntegrationProvider {
   ): Promise<ServiceCredentialHealth> {
     const credential = credentialFromPlaintext(context.credential);
     const site = credentialSite(this.config.jira, credential);
+    const dialect = dialectOf(site);
     let myself: Record<string, unknown>;
     try {
       myself = await this.transport.getJson<Record<string, unknown>>(
         site,
         credential,
-        "/rest/api/3/myself",
+        this.identityPath(site),
       );
     } catch (error) {
       return healthFromFailure(error);
     }
-    const accountId = myself["accountId"];
+    const accountId = identityOf(dialect, myself);
     const identity =
-      typeof accountId === "string" && accountId !== ""
+      accountId !== undefined
         ? {
             id: accountId,
             label: accountName(
@@ -275,19 +298,23 @@ export class JiraProvider implements IntegrationProvider {
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
     const site = credentialSite(this.config.jira, credential);
+    const dialect = dialectOf(site);
     const myself = await this.transport.getJson<Record<string, unknown>>(
       site,
       credential,
-      "/rest/api/3/myself",
+      this.identityPath(site),
     );
-    const accountId = myself["accountId"];
-    if (typeof accountId !== "string" || accountId === "") {
+    // The product is checked before the identity is read as one: a site that
+    // answers the other Jira has a different shape of identity, and "set
+    // deploymentType: …" is the diagnosis that fixes it, not "no identity".
+    await this.requireDeployment(site, credential, dialect);
+    const externalUserId = identityOf(dialect, myself);
+    if (externalUserId === undefined) {
       throw new IntegrationError(
         "ProviderUnavailable",
         "Provider identity is unavailable",
       );
     }
-    await this.requireCloud(site, credential);
     const email =
       typeof myself["emailAddress"] === "string" &&
       myself["emailAddress"] !== ""
@@ -297,13 +324,25 @@ export class JiraProvider implements IntegrationProvider {
       typeof myself["displayName"] === "string" ? myself["displayName"] : "";
     return {
       tenantId: site.baseUrl,
-      externalUserId: accountId,
-      displayName: accountName(displayName, email),
+      externalUserId,
+      displayName: accountName(displayName, email, dialect.productName),
       // Jira reports no granted scopes for an API token, so the deployment
       // switches are the whole local boundary and the site's own permissions
       // decide upstream.
       capabilities: this.capabilities,
     };
+  }
+
+  /** The identity read of this site's product: the one connect proves itself with. */
+  private identityPath(site: JiraSite): string {
+    const path = jiraOperationPath("connection.get", site.deploymentType);
+    if (path === undefined) {
+      throw new IntegrationError(
+        "ProviderUnavailable",
+        "Jira identity endpoint is unavailable",
+      );
+    }
+    return path;
   }
 
   async execute(
@@ -336,18 +375,21 @@ export class JiraProvider implements IntegrationProvider {
     ) {
       this.assertInsideBoundary(operation, input, boundary);
     }
+    const dialect = dialectOf(site);
     if (
       boundary !== undefined &&
       operation === "issues.search" &&
-      (needsUserLookup(input["assignee"]) || needsUserLookup(input["reporter"]))
+      (needsUserLookup(input["assignee"], dialect.deployment) ||
+        needsUserLookup(input["reporter"], dialect.deployment))
     ) {
       // A person filter becomes JQL only after the site's directory resolves
-      // the name into an accountId, and that directory read is held inside no
-      // project boundary. A shared account is refused it: the question needs
-      // the accountId an issue reported, or a personal credential.
+      // the name into the identifier this product filters on, and that
+      // directory read is held inside no project boundary. A shared account is
+      // refused it: the question needs the identifier an issue reported, or a
+      // personal credential.
       throw new IntegrationError(
         "ServiceResourceNotAllowed",
-        'Resolving a person by name reads the site directory, which service mode does not read; pass the accountId an issue reported or "me"',
+        `Resolving a person by name reads the site directory, which service mode does not read; pass the ${identifierName(dialect.deployment)} an issue reported or "me"`,
       );
     }
     const flags = this.config.jira;
@@ -361,11 +403,13 @@ export class JiraProvider implements IntegrationProvider {
             site,
             credential,
             this.applyFieldAliases(input, flags),
+            dialect,
           )
         : input;
     const request = handler(prepared, {
       externalUserId: context.externalUserId,
       flags,
+      dialect,
     });
     // In service mode a search also asks for every hit's security level, so the
     // answer can be held inside the boundary with restricted issues dropped.
@@ -469,10 +513,11 @@ export class JiraProvider implements IntegrationProvider {
     requested: string,
   ): Promise<void> {
     const issue = issueKeyOf(requested);
+    const path = jiraOperationPath("issues.get", site.deploymentType);
     const answer = await this.transport.getJson<Record<string, unknown>>(
       site,
       credential,
-      `/rest/api/3/issue/${issue}`,
+      (path ?? "").replace(":issueKey", issue),
       { fields: "security" },
     );
     if (restricted(recordOf(answer))) {
@@ -523,28 +568,30 @@ export class JiraProvider implements IntegrationProvider {
   }
 
   /**
-   * Replace a person's name with the account id Jira filters on, for the two
-   * filters that can carry one. `me` and an account id are already what Jira
-   * wants and cost no call.
+   * Replace a person's name with the identifier this product filters on, for
+   * the two filters that can carry one. `me` and an identifier already in the
+   * product's own shape are what Jira wants and cost no call.
    *
    * The directory is a read of the site's own user list, bounded to ten hits,
-   * and its answer is never handed to the model: it only decides the id the
-   * query is built from. A name nobody matches, or a name several people share,
-   * is refused with what to do next — an account id from an issue — because the
-   * alternative is a query that quietly answers "no such issues".
+   * and its answer is never handed to the model: it only decides the identifier
+   * the query is built from. A name nobody matches, or a name several people
+   * share, is refused with what to do next — the identifier an issue reported —
+   * because the alternative is a query that quietly answers "no such issues".
    */
   private async resolvePeople(
     site: JiraSite,
     credential: JiraCredential,
     input: Readonly<Record<string, unknown>>,
+    dialect: JiraDialect,
   ): Promise<Readonly<Record<string, unknown>>> {
     const resolved: Record<string, unknown> = { ...input };
     for (const field of ["assignee", "reporter"] as const) {
       const value = input[field];
-      if (!needsUserLookup(value)) continue;
-      resolved[field] = await this.accountIdFor(
+      if (!needsUserLookup(value, dialect.deployment)) continue;
+      resolved[field] = await this.identityFor(
         site,
         credential,
+        dialect,
         field,
         String(value).trim(),
       );
@@ -552,37 +599,38 @@ export class JiraProvider implements IntegrationProvider {
     return resolved;
   }
 
-  private async accountIdFor(
+  private async identityFor(
     site: JiraSite,
     credential: JiraCredential,
+    dialect: JiraDialect,
     field: string,
     query: string,
   ): Promise<string> {
     const users = await this.transport.getJson<unknown>(
       site,
       credential,
-      "/rest/api/3/user/search",
-      { query, maxResults: 10 },
+      jiraCompanionPath("userSearch", site.deploymentType),
+      { [dialect.userSearchParam]: query, maxResults: 10 },
     );
     const byId = new Map<string, string>();
     for (const entry of Array.isArray(users) ? users : []) {
       if (typeof entry !== "object" || entry === null) continue;
       const record = entry as Record<string, unknown>;
-      const accountId = record["accountId"];
-      if (typeof accountId !== "string" || accountId === "") continue;
+      const identity = identityOf(dialect, record);
+      if (identity === undefined) continue;
       if (record["active"] === false) continue;
       const displayName =
         typeof record["displayName"] === "string"
           ? record["displayName"]
-          : accountId;
-      byId.set(accountId, displayName);
+          : identity;
+      byId.set(identity, displayName);
     }
     const matches = [...byId.entries()];
     if (matches.length === 1 && matches[0] !== undefined) return matches[0][0];
     if (matches.length === 0) {
       throw new IntegrationError(
         "InvalidRequest",
-        `${field} matches no Jira user named "${query}"; pass the accountId an issue reported, or "me"`,
+        `${field} matches no Jira user named "${query}"; pass the ${identifierName(dialect.deployment)} an issue reported, or "me"`,
       );
     }
     const names = matches
@@ -591,7 +639,7 @@ export class JiraProvider implements IntegrationProvider {
       .join(", ");
     throw new IntegrationError(
       "InvalidRequest",
-      `${field} "${query}" matches ${matches.length} Jira users (${names}); pass the accountId an issue reported`,
+      `${field} "${query}" matches ${matches.length} Jira users (${names}); pass the ${identifierName(dialect.deployment)} an issue reported`,
     );
   }
 
@@ -608,7 +656,7 @@ export class JiraProvider implements IntegrationProvider {
     const fields = await this.transport.getJson<unknown>(
       site,
       credential,
-      "/rest/api/3/field",
+      jiraOperationPath("fields.list", site.deploymentType) ?? "",
     );
     const names = new Map<string, string>();
     if (!Array.isArray(fields)) return names;
@@ -625,24 +673,26 @@ export class JiraProvider implements IntegrationProvider {
   }
 
   /**
-   * The provider speaks the Cloud-only `/rest/api/3` surface. A Data Center
-   * instance answers a different API, and the specification forbids treating it
-   * as silently compatible, so the deployment type is checked once, at connect:
-   * a site that names a type other than Cloud is refused. A site that does not
-   * serve the endpoint at all — an older tenant, a proxy that hides it — is left
-   * to the identity call that already succeeded instead of failing on a probe
-   * that proves nothing either way.
+   * The provider speaks the deployment type the operator declared, and a site
+   * that answers the other product is refused instead of being read as if it
+   * were compatible. The two Jiras are different APIs — different roots,
+   * different authentication, different answers for the same read — so a probe
+   * happens once, at connect, and the message tells the operator which value to
+   * set. A site that does not serve the endpoint at all — an older tenant, a
+   * proxy that hides it — is left to the identity call that already succeeded
+   * instead of failing on a probe that proves nothing either way.
    */
-  private async requireCloud(
+  private async requireDeployment(
     site: JiraSite,
     credential: JiraCredential,
+    dialect: JiraDialect,
   ): Promise<void> {
     let info: Record<string, unknown>;
     try {
       info = await this.transport.getJson<Record<string, unknown>>(
         site,
         credential,
-        "/rest/api/3/serverInfo",
+        jiraCompanionPath("serverInfo", site.deploymentType),
       );
     } catch (error) {
       if (
@@ -655,13 +705,7 @@ export class JiraProvider implements IntegrationProvider {
       throw error;
     }
     const deployment = info["deploymentType"];
-    if (typeof deployment !== "string" || deployment === "") return;
-    if (deployment !== CLOUD_DEPLOYMENT) {
-      throw new IntegrationError(
-        "InvalidCredential",
-        `Jira ${deployment} is not supported; this provider speaks Jira Cloud`,
-      );
-    }
+    assertDeployment(dialect, typeof deployment === "string" ? deployment : "");
   }
 
   private resolveSite(requested: string | undefined): JiraSite {

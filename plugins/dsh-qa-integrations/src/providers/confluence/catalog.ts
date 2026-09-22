@@ -3,7 +3,7 @@ import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
 } from "../../types.js";
-import type { ConfluenceFlags } from "./config.js";
+import type { ConfluenceDeployment, ConfluenceFlags } from "./config.js";
 
 /**
  * Capabilities this provider offers. They are narrower than Confluence's own
@@ -129,6 +129,14 @@ export interface ConfluenceOperationDefinition {
    * endpoint of its own.
    */
   readonly path: string;
+  /**
+   * The path of this operation on a Server / Data Center installation. The two
+   * products genuinely differ here — Cloud answers the v2 API under `/wiki`
+   * (`/wiki/api/v2/pages/:pageId`), a self-hosted installation its own v1 API
+   * (`/rest/api/content/:pageId`) — so nearly every read names both rather than
+   * deriving one from the other.
+   */
+  readonly serverPath: string;
   /** Set when the operation answers with one page of a collection. */
   readonly list?: boolean;
   /**
@@ -151,10 +159,13 @@ export const CONFLUENCE_RESOURCE_KIND = "spaces";
  * could change Confluence state, and the confirmation framework does not exist
  * yet.
  *
- * The mix of REST versions is deliberate. Confluence Cloud v2 covers pages,
- * comments, attachments, versions and spaces, and that is where the reads go;
- * the CQL search and the "who am I" call exist only in v1. Tools never see the
- * difference — an operation answers a normalized object either way.
+ * The mix of REST versions is deliberate. On Cloud the v2 API covers pages,
+ * comments, attachments, versions and spaces, and that is where those reads go,
+ * while the CQL search and the "who am I" call exist only in v1; on a Server /
+ * Data Center installation the whole surface is that v1 API. Each operation
+ * declares the endpoint of both products, and the dialect builds the request
+ * from the one the instance declared. Tools never see the difference — an
+ * operation answers a normalized object either way.
  */
 export const CONFLUENCE_OPERATIONS: Readonly<
   Record<string, ConfluenceOperationDefinition>
@@ -167,6 +178,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "identity.read",
     method: "GET",
     path: "/wiki/rest/api/user/current",
+    serverPath: "/rest/api/user/current",
     security: IDENTITY_READ,
   },
   /** CQL search: the only read Confluence offers for free-text lookup. */
@@ -174,6 +186,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "search.read",
     method: "GET",
     path: "/wiki/rest/api/search",
+    serverPath: "/rest/api/content/search",
     list: true,
     cursor: "offset",
     security: SPACE_READ,
@@ -182,6 +195,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "spaces.read",
     method: "GET",
     path: "/wiki/api/v2/spaces",
+    serverPath: "/rest/api/space",
     list: true,
     cursor: "upstream",
     security: SPACE_READ,
@@ -194,12 +208,14 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "spaces.read",
     method: "GET",
     path: "/wiki/api/v2/spaces/:spaceId",
+    serverPath: "/rest/api/space",
     security: SPACE_READ,
   },
   "pages.get": {
     capability: "content.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId",
+    serverPath: "/rest/api/content/:pageId",
     security: SPACE_READ,
   },
   /**
@@ -211,6 +227,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "comments.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId/footer-comments",
+    serverPath: "/rest/api/content/:pageId/child/comment",
     list: true,
     cursor: "upstream",
     security: SPACE_READ,
@@ -224,6 +241,7 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "attachments.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId/attachments",
+    serverPath: "/rest/api/content/:pageId/child/attachment",
     list: true,
     cursor: "upstream",
     security: SPACE_READ,
@@ -232,11 +250,45 @@ export const CONFLUENCE_OPERATIONS: Readonly<
     capability: "versions.read",
     method: "GET",
     path: "/wiki/api/v2/pages/:pageId/versions",
+    serverPath: "/rest/api/content/:pageId/version",
     list: true,
     cursor: "upstream",
     security: SPACE_READ,
   },
 });
+
+/**
+ * The inline comment collection of a Cloud page. The catalog declares the
+ * footer one as the operation's endpoint; the inline kind is the same collection
+ * under its own name, and it is declared here rather than derived, so both paths
+ * a request may reach are lines somebody added on purpose.
+ */
+export const CONFLUENCE_INLINE_COMMENTS_PATH =
+  "/wiki/api/v2/pages/:pageId/inline-comments";
+
+/**
+ * The reads this provider performs that are not operations of the catalog: the
+ * replies of one comment, which Cloud keeps in a collection per comment kind
+ * and a Server / Data Center installation in the comment's own children.
+ */
+export const CONFLUENCE_COMPANION_PATHS: readonly string[] = Object.freeze([
+  "/wiki/api/v2/footer-comments/:commentId/children",
+  "/wiki/api/v2/inline-comments/:commentId/children",
+]);
+
+/** The same read on a Server / Data Center installation, which has one kind. */
+export const CONFLUENCE_SERVER_COMPANION_PATHS: readonly string[] =
+  Object.freeze(["/rest/api/content/:commentId/child/comment"]);
+
+/** The path of one operation on the instance's product. */
+export function confluenceOperationPath(
+  operation: string,
+  deployment: ConfluenceDeployment,
+): string | undefined {
+  const definition = CONFLUENCE_OPERATIONS[operation];
+  if (definition === undefined) return undefined;
+  return deployment === "server" ? definition.serverPath : definition.path;
+}
 
 /** Capabilities this deployment allows, in catalog order. */
 export function enabledCapabilities(

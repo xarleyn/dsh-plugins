@@ -6,6 +6,13 @@ import {
   type ConfluenceFlags,
   type ConfluenceInstance,
 } from "./config.js";
+import {
+  authorizationFor,
+  dialectOf,
+  type ConfluenceQuery,
+} from "./dialect.js";
+
+export type { ConfluenceQuery } from "./dialect.js";
 
 /**
  * Encrypted credential payload of one Confluence connection: which configured
@@ -17,7 +24,10 @@ import {
  * The e-mail is not a secret, but it is part of the authentication pair, and it
  * comes from the connect form through the operator-facing RPC. Keeping both
  * halves in one encrypted record means a token can never be paired with another
- * account's address, not even by a bug in the broker.
+ * account's address, not even by a bug in the broker. A Server / Data Center
+ * connection authenticates on the token alone and keeps the field empty: the
+ * instance's declared deployment type decides whether it is spent, which is why
+ * a credential is never paired with the other product's scheme.
  */
 export interface ConfluenceCredential {
   readonly instanceId: string;
@@ -44,10 +54,12 @@ export function credentialFromPlaintext(
     );
   }
   const record = parsed as Record<string, unknown>;
+  // An empty e-mail is a Server / Data Center connection, which authenticates
+  // on the token alone; whether one is *required* is decided by the instance's
+  // declared deployment type, at the moment the secret would be spent.
   if (
     typeof record["instanceId"] !== "string" ||
     typeof record["email"] !== "string" ||
-    record["email"] === "" ||
     typeof record["token"] !== "string" ||
     record["token"] === ""
   ) {
@@ -82,16 +94,13 @@ export function credentialInstance(
   return instance;
 }
 
-export interface ConfluenceQuery {
-  readonly [key: string]: string | number | boolean | undefined;
-}
-
 /** What a listing answers about its own pagination, in provider terms. */
 export interface ConfluencePage {
   /**
-   * Opaque token from the upstream `_links.next`, when the API is cursor-based.
-   * It is never a URL: the whole point is that the next request is rebuilt from
-   * our own path and parameters, so a caller cannot steer it.
+   * Opaque token from the upstream `_links.next`: a cursor on Cloud, the row
+   * offset of the next page on a Server / Data Center installation. It is never
+   * a URL: the whole point is that the next request is rebuilt from our own
+   * path and parameters, so a caller cannot steer it.
    */
   readonly nextCursor?: string | undefined;
 }
@@ -102,25 +111,31 @@ export interface ConfluenceJsonResponse<T> {
 }
 
 /**
- * The cursor a v2 listing points at. Confluence puts the next page in
- * `_links.next` as a URL; only the `cursor` parameter is kept, because every
- * other part of that URL is ours to build from operator configuration.
+ * The cursor a listing points at. Confluence puts the next page in
+ * `_links.next` as a URL: Cloud's v2 collections carry an opaque `cursor`
+ * there, while every offset-paged read — a CQL search on either product, any
+ * v1 listing on a Server / Data Center installation — names the `start` of the
+ * next page instead. Only that one parameter is kept, because every other part
+ * of the URL is ours to build from operator configuration, and the read that
+ * issued the token decides how it is spent.
  */
 function cursorFrom(links: unknown): string | undefined {
   if (typeof links !== "object" || links === null) return undefined;
   const next = (links as Record<string, unknown>)["next"];
   if (typeof next !== "string" || next === "") return undefined;
   const query = next.includes("?") ? next.slice(next.indexOf("?") + 1) : next;
+  const found = new Map<string, string>();
   for (const pair of query.split("&")) {
     const [key, value] = pair.split("=");
-    if (key !== "cursor" || value === undefined || value === "") continue;
+    if (value === undefined || value === "") continue;
+    if (key !== "cursor" && key !== "start") continue;
     try {
-      return decodeURIComponent(value);
+      found.set(key, decodeURIComponent(value));
     } catch {
-      return value;
+      found.set(key, value);
     }
   }
-  return undefined;
+  return found.get("cursor") ?? found.get("start");
 }
 
 /**
@@ -167,18 +182,6 @@ export class ConfluenceTransport {
     return url.toString();
   }
 
-  /**
-   * The one place the secret is spent. Basic authentication carries the account
-   * e-mail and the API token; nothing else in the request names the user.
-   */
-  private authorization(credential: ConfluenceCredential): string {
-    const pair = Buffer.from(
-      `${credential.email}:${credential.token}`,
-      "utf8",
-    ).toString("base64");
-    return `Basic ${pair}`;
-  }
-
   private async request(
     instance: ConfluenceInstance,
     credential: ConfluenceCredential,
@@ -186,7 +189,10 @@ export class ConfluenceTransport {
     query: ConfluenceQuery,
   ): Promise<Response> {
     const target = this.url(instance, path, query);
-    const authorization = this.authorization(credential);
+    // The one place the secret is spent. Which scheme carries it is the
+    // instance's declared deployment type: Basic over `email:token` on Cloud,
+    // a bearer token on a Server / Data Center installation.
+    const authorization = authorizationFor(dialectOf(instance), credential);
     let lastError: IntegrationError | undefined;
     for (let attempt = 0; ; attempt += 1) {
       let response: Response;

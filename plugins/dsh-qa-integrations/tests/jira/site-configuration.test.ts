@@ -13,11 +13,13 @@ describe("jira site configuration", () => {
         id: "company",
         label: "company.atlassian.net",
         baseUrl: "https://company.atlassian.net",
+        deploymentType: "cloud",
       },
       {
         id: "lab",
         label: "Lab",
         baseUrl: "https://jira.example.com/jira",
+        deploymentType: "cloud",
       },
     ]);
     expect(flags.enabled).toBe(true);
@@ -44,6 +46,58 @@ describe("jira site configuration", () => {
         ],
       }),
     ).toThrow(/duplicate/u);
+  });
+
+  it("keeps a site that declares no product on Cloud, and names the others", () => {
+    const [implicit] = resolveJiraConfig({
+      sites: [
+        { id: "legacy", label: "", baseUrl: "https://jira.example.corp" },
+      ],
+    }).sites;
+    expect(implicit?.deploymentType).toBe("cloud");
+
+    // An administrator calls the product Data Center; the API is the same one
+    // Server answers, so both spellings resolve to the same deployment.
+    for (const declared of ["server", "data-center", "DataCenter"]) {
+      const [site] = resolveJiraConfig({
+        sites: [
+          {
+            id: "corp",
+            label: "",
+            baseUrl: "https://jira.example.corp",
+            deploymentType: declared,
+          },
+        ],
+      }).sites;
+      expect(site?.deploymentType, declared).toBe("server");
+    }
+
+    const [cloud] = resolveJiraConfig({
+      sites: [
+        {
+          id: "cloud",
+          label: "",
+          baseUrl: "https://company.atlassian.net",
+          deploymentType: " Cloud ",
+        },
+      ],
+    }).sites;
+    expect(cloud?.deploymentType).toBe("cloud");
+
+    // A typo fails loudly instead of silently becoming the default: a site read
+    // as the wrong product would refuse every connection with no explanation.
+    expect(() =>
+      resolveJiraConfig({
+        sites: [
+          {
+            id: "corp",
+            label: "",
+            baseUrl: "https://jira.example.corp",
+            deploymentType: "datacentre",
+          },
+        ],
+      }),
+    ).toThrow(/deploymentType must be cloud, server or data-center/u);
   });
 
   it("caps the search page at the deployment ceiling", () => {

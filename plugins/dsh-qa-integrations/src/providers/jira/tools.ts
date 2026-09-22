@@ -31,7 +31,7 @@ const ISSUE_KEY = {
 } as const;
 
 const ACCOUNT_HINT =
-  "Either \"me\" for the connected Jira user, an accountId, or a person's name: a name is resolved against the site's user directory, and a name nobody matches — or that several people share — is refused with a request for the accountId an issue reported.";
+  "Either \"me\" for the connected Jira user, the identifier Jira filters on — an accountId on Atlassian Cloud, a user name on a Server / Data Center instance — or a person's name: a name is resolved against the site's user directory, and a name nobody matches — or that several people share — is refused with a request for the identifier an issue reported.";
 
 const TIMESTAMP_HINT =
   "ISO 8601 timestamp, a plain date (YYYY-MM-DD), or Jira's own relative token such as -3w (three weeks), -2d, -4h, -30m. Both bounds are inclusive.";
