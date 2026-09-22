@@ -9,7 +9,14 @@
  * the parent path, because the Host stores the user layer per section path.
  */
 
-import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { draftNote, instanceDraftMissing } from "./operator-drafts.js";
 
 /** Path-addressed write into the plugin's settings namespace. */
 export type ConfigWrite = (path: readonly string[], value: unknown) => void;
@@ -262,13 +269,29 @@ export function StringListField(props: {
   overridden: OverrideCheck;
 }): ReactElement {
   const [draft, setDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const addInput = useRef<HTMLInputElement | null>(null);
   const commit = (next: readonly string[]) => {
     if (next.length === 0) props.unset(props.path);
     else props.write(props.path, next);
   };
+  /**
+   * A click always answers. The button used to be disabled while the input was
+   * empty, which reads as a dead button: now it says what it is waiting for and
+   * puts the caret where the missing value goes.
+   */
   const add = () => {
     const value = draft.trim();
-    if (value === "" || props.values.includes(value)) return;
+    if (value === "") {
+      setNotice("введите значение");
+      addInput.current?.focus();
+      return;
+    }
+    if (props.values.includes(value)) {
+      setNotice("такое значение уже есть в списке");
+      return;
+    }
+    setNotice(null);
     commit([...props.values, value]);
     setDraft("");
   };
@@ -300,6 +323,7 @@ export function StringListField(props: {
         <input
           className="qai-op__input"
           type="text"
+          ref={addInput}
           value={draft}
           placeholder={props.placeholder}
           disabled={props.disabled}
@@ -316,11 +340,14 @@ export function StringListField(props: {
         <button
           type="button"
           className="qai-op__button"
-          disabled={props.disabled || draft.trim() === ""}
+          disabled={props.disabled}
           onClick={add}
         >
           добавить
         </button>
+        {notice === null ? null : (
+          <span className="qai-op__pending">{notice}</span>
+        )}
       </span>
     </FieldFrame>
   );
@@ -331,43 +358,77 @@ export interface InstanceDraft {
   readonly id: string;
   readonly label: string;
   readonly baseUrl: string;
+  /**
+   * Which product answers at the address, on the providers that distinguish a
+   * Cloud deployment from a self-hosted Server / Data Center one. Absent on
+   * every other provider, and on a row whose operator never touched the
+   * control — the Host resolver reads that as `cloud`.
+   */
+  readonly deploymentType?: string | undefined;
 }
 
 /**
  * Deployment instances (GitLab, Confluence, Jira sites, Test IT, Weblate): a
  * row edits id, label and address, and every committed edit writes the whole
  * list, because a partially stored row would fail the resolvers anyway.
+ *
+ * The providers that host both a Cloud product and a self-hosted one pass
+ * `deployments` as well, and the row then carries a fourth control: the row is
+ * written with the key it selects, and a row nobody touched keeps the key out
+ * of the payload the other providers' rows must keep clean.
  */
 export function InstanceListField(props: {
   label: string;
   hint?: string;
   path: readonly string[];
   instances: readonly InstanceDraft[];
+  /**
+   * Products a row may declare, first one being what the Host reads when the
+   * row names none. Absent for every provider without that distinction.
+   */
+  deployments?: readonly { readonly value: string; readonly label: string }[];
   disabled: boolean;
   write: ConfigWrite;
   unset: ConfigUnset;
   overridden: OverrideCheck;
 }): ReactElement {
+  const deployments = props.deployments;
   const [drafts, setDrafts] = useState<readonly InstanceDraft[]>(() =>
     props.instances.map((row) => ({ ...row })),
   );
   useEffect(() => {
-    setDrafts(props.instances.map((row) => ({ ...row })));
+    // Rows the Host stores, plus the rows this card added and has not committed
+    // yet: an unfinished row is the operator's draft, and a refuel from the
+    // store must not take it off the screen.
+    setDrafts((current) => [
+      ...props.instances.map((row) => ({ ...row })),
+      ...current.slice(props.instances.length),
+    ]);
   }, [props.instances]);
+  /**
+   * Writes the rows the Host can take — every stored row, plus the drafts that
+   * are complete. An unfinished draft stays local: committing it is what used
+   * to make the Host refuse the whole array, which is why «добавить» looked
+   * like it did nothing.
+   */
   const commit = (next: readonly InstanceDraft[]) => {
     setDrafts(next);
-    if (next.length === 0) props.unset(props.path);
-    else
-      props.write(
-        props.path,
-        next.map((row) => ({ ...row })),
-      );
+    const takeable = next.filter(
+      (row, at) =>
+        at < props.instances.length || instanceDraftMissing(row).length === 0,
+    );
+    if (takeable.length === 0) {
+      if (next.length === 0) props.unset(props.path);
+      return;
+    }
+    props.write(
+      props.path,
+      takeable.map((row) => ({ ...row })),
+    );
   };
   const edit = (index: number, patch: Partial<InstanceDraft>) => {
     commit(
-      props.instances.map((row, at) =>
-        at === index ? { ...row, ...patch } : row,
-      ),
+      drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)),
     );
   };
   return (
@@ -378,93 +439,135 @@ export function InstanceListField(props: {
       hint={props.hint}
     >
       <ul className="qai-op__instances">
-        {props.instances.map((row, index) => (
-          <li key={`${index}:${row.id}`} className="qai-op__instance">
-            <span className="qai-op__instance-cell">
-              <span className="qai-op__instance-key">id</span>
-              <input
-                className="qai-op__input"
-                type="text"
-                value={drafts[index]?.id ?? ""}
-                placeholder="corp"
+        {drafts.map((row, index) => {
+          // The map walks the drafts, so the stored counterpart of a row is the
+          // instance at the same index; a commit compares against that, never
+          // against the draft the input already shows.
+          const stored = props.instances[index];
+          return (
+            <li key={`${index}:${row.id}`} className="qai-op__instance">
+              <span className="qai-op__instance-cell">
+                <span className="qai-op__instance-key">id</span>
+                <input
+                  className="qai-op__input"
+                  type="text"
+                  value={drafts[index]?.id ?? ""}
+                  placeholder="corp"
+                  disabled={props.disabled}
+                  onChange={(event) => {
+                    setDrafts(
+                      drafts.map((draft, at) =>
+                        at === index
+                          ? { ...draft, id: event.currentTarget.value }
+                          : draft,
+                      ),
+                    );
+                  }}
+                  onBlur={() => {
+                    const id = drafts[index]?.id.trim() ?? "";
+                    if (id !== "" && id !== (stored?.id ?? "")) {
+                      edit(index, { id });
+                    }
+                  }}
+                />
+              </span>
+              <span className="qai-op__instance-cell">
+                <span className="qai-op__instance-key">название</span>
+                <input
+                  className="qai-op__input"
+                  type="text"
+                  value={drafts[index]?.label ?? ""}
+                  placeholder="Корпоративный GitLab"
+                  disabled={props.disabled}
+                  onChange={(event) => {
+                    setDrafts(
+                      drafts.map((draft, at) =>
+                        at === index
+                          ? { ...draft, label: event.currentTarget.value }
+                          : draft,
+                      ),
+                    );
+                  }}
+                  onBlur={() => {
+                    const label = drafts[index]?.label.trim() ?? "";
+                    if (label !== "" && label !== (stored?.label ?? "")) {
+                      edit(index, { label });
+                    }
+                  }}
+                />
+              </span>
+              <span className="qai-op__instance-cell qai-op__instance-cell--wide">
+                <span className="qai-op__instance-key">адрес</span>
+                <input
+                  className="qai-op__input"
+                  type="text"
+                  value={drafts[index]?.baseUrl ?? ""}
+                  placeholder="https://gitlab.example.corp"
+                  disabled={props.disabled}
+                  onChange={(event) => {
+                    setDrafts(
+                      drafts.map((draft, at) =>
+                        at === index
+                          ? { ...draft, baseUrl: event.currentTarget.value }
+                          : draft,
+                      ),
+                    );
+                  }}
+                  onBlur={() => {
+                    const baseUrl = drafts[index]?.baseUrl.trim() ?? "";
+                    if (baseUrl !== "" && baseUrl !== (stored?.baseUrl ?? "")) {
+                      edit(index, { baseUrl });
+                    }
+                  }}
+                />
+              </span>
+              {deployments === undefined ? null : (
+                // A real label, so clicking the caption lands in the select — the
+                // provider's rows follow the same shape as the other controls.
+                <label className="qai-op__instance-cell">
+                  <span className="qai-op__instance-key">развёртывание</span>
+                  <select
+                    className="qai-op__input"
+                    value={
+                      drafts[index]?.deploymentType ??
+                      deployments[0]?.value ??
+                      ""
+                    }
+                    disabled={props.disabled}
+                    onChange={(event) => {
+                      // The whole list commits at once, like every other cell of
+                      // the row, so the row can never be stored half-written.
+                      edit(index, {
+                        deploymentType: event.currentTarget.value,
+                      });
+                    }}
+                  >
+                    {deployments.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button
+                type="button"
+                className="qai-op__row-remove"
                 disabled={props.disabled}
-                onChange={(event) => {
-                  setDrafts(
-                    drafts.map((draft, at) =>
-                      at === index
-                        ? { ...draft, id: event.currentTarget.value }
-                        : draft,
-                    ),
-                  );
+                onClick={() => {
+                  commit(drafts.filter((_, at) => at !== index));
                 }}
-                onBlur={() => {
-                  const id = drafts[index]?.id.trim() ?? "";
-                  if (id !== "" && id !== row.id) edit(index, { id });
-                }}
-              />
-            </span>
-            <span className="qai-op__instance-cell">
-              <span className="qai-op__instance-key">название</span>
-              <input
-                className="qai-op__input"
-                type="text"
-                value={drafts[index]?.label ?? ""}
-                placeholder="Корпоративный GitLab"
-                disabled={props.disabled}
-                onChange={(event) => {
-                  setDrafts(
-                    drafts.map((draft, at) =>
-                      at === index
-                        ? { ...draft, label: event.currentTarget.value }
-                        : draft,
-                    ),
-                  );
-                }}
-                onBlur={() => {
-                  const label = drafts[index]?.label.trim() ?? "";
-                  if (label !== "" && label !== row.label) {
-                    edit(index, { label });
-                  }
-                }}
-              />
-            </span>
-            <span className="qai-op__instance-cell qai-op__instance-cell--wide">
-              <span className="qai-op__instance-key">адрес</span>
-              <input
-                className="qai-op__input"
-                type="text"
-                value={drafts[index]?.baseUrl ?? ""}
-                placeholder="https://gitlab.example.corp"
-                disabled={props.disabled}
-                onChange={(event) => {
-                  setDrafts(
-                    drafts.map((draft, at) =>
-                      at === index
-                        ? { ...draft, baseUrl: event.currentTarget.value }
-                        : draft,
-                    ),
-                  );
-                }}
-                onBlur={() => {
-                  const baseUrl = drafts[index]?.baseUrl.trim() ?? "";
-                  if (baseUrl !== "" && baseUrl !== row.baseUrl) {
-                    edit(index, { baseUrl });
-                  }
-                }}
-              />
-            </span>
-            <button
-              type="button"
-              className="qai-op__row-remove"
-              disabled={props.disabled}
-              onClick={() => {
-                commit(props.instances.filter((_, at) => at !== index));
-              }}
-            >
-              убрать
-            </button>
-          </li>
-        ))}
+              >
+                убрать
+              </button>
+              {index >= props.instances.length ? (
+                <span className="qai-op__pending">
+                  {draftNote(instanceDraftMissing(row))}
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
       <span>
         <button
@@ -472,11 +575,16 @@ export function InstanceListField(props: {
           className="qai-op__button"
           disabled={props.disabled}
           onClick={() => {
-            commit([...props.instances, { id: "", label: "", baseUrl: "" }]);
+            commit([...drafts, { id: "", label: "", baseUrl: "" }]);
           }}
         >
           добавить
         </button>
+        {drafts.length === 0 && props.disabled ? (
+          <span className="qai-op__pending">
+            не сохранено — Хост не принимает правки из этого браузера
+          </span>
+        ) : null}
       </span>
     </FieldFrame>
   );
@@ -504,6 +612,9 @@ export function RecordField(props: {
 }): ReactElement {
   const [keyDraft, setKeyDraft] = useState("");
   const [valueDraft, setValueDraft] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const keyInput = useRef<HTMLInputElement | null>(null);
+  const valueInput = useRef<HTMLInputElement | null>(null);
   const commit = (next: readonly (readonly [string, string])[]) => {
     if (next.length === 0) {
       props.unset(props.path);
@@ -513,11 +624,25 @@ export function RecordField(props: {
     for (const [key, value] of next) record[key] = props.fixedValue ?? value;
     props.write(props.path, record);
   };
+  /** A click always answers: the button is never the silent kind. */
   const add = () => {
     const key = keyDraft.trim();
-    if (key === "" || props.entries.some(([rowKey]) => rowKey === key)) return;
+    if (key === "") {
+      setNotice("введите ключ");
+      keyInput.current?.focus();
+      return;
+    }
+    if (props.entries.some(([rowKey]) => rowKey === key)) {
+      setNotice("такой ключ уже есть в списке");
+      return;
+    }
     const value = props.fixedValue ?? valueDraft.trim();
-    if (value === "") return;
+    if (value === "") {
+      setNotice("введите значение");
+      valueInput.current?.focus();
+      return;
+    }
+    setNotice(null);
     commit([...props.entries, [key, value] as readonly [string, string]]);
     setKeyDraft("");
     setValueDraft("");
@@ -579,6 +704,7 @@ export function RecordField(props: {
         <input
           className="qai-op__input"
           type="text"
+          ref={keyInput}
           value={keyDraft}
           placeholder={props.keyPlaceholder}
           disabled={props.disabled}
@@ -596,6 +722,7 @@ export function RecordField(props: {
           <input
             className="qai-op__input"
             type="text"
+            ref={valueInput}
             value={valueDraft}
             placeholder={props.valuePlaceholder}
             disabled={props.disabled}
@@ -613,11 +740,14 @@ export function RecordField(props: {
         <button
           type="button"
           className="qai-op__button"
-          disabled={props.disabled || keyDraft.trim() === ""}
+          disabled={props.disabled}
           onClick={add}
         >
           добавить
         </button>
+        {notice === null ? null : (
+          <span className="qai-op__pending">{notice}</span>
+        )}
       </span>
     </FieldFrame>
   );

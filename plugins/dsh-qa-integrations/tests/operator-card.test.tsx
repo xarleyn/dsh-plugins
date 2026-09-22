@@ -281,10 +281,153 @@ describe("integrations operator card", () => {
   it("shows read-only copy when the Host document takes no writes", () => {
     renderCard({ value: RESOLVED, writable: false });
     expand();
+    // The anchored copy is the read-only banner; the list editors say the same
+    // words about a row they could not commit, so the query stays specific.
     expect(
-      screen.getByText(/Хост не принимает правки из этого браузера/u),
+      screen.getByText(/^Хост не принимает правки из этого браузера/u),
     ).toBeDefined();
     const toggle = screen.getByLabelText(/Плагин включён/u) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
+  });
+
+  it("writes the deployment of a Jira site back with the row", () => {
+    const stub = renderCard({
+      value: {
+        ...RESOLVED,
+        jira: {
+          enabled: true,
+          sites: [
+            { id: "corp", label: "Corp", baseUrl: "https://jira.example.corp" },
+          ],
+        },
+      },
+    });
+    expand();
+    const section = screen
+      .getByText("Сайты Jira Cloud")
+      .closest(".qai-op__section") as HTMLElement;
+    const select = section.querySelector("select") as HTMLSelectElement;
+    // A site that names no product reads as the Host resolver's own default.
+    expect(select.value).toBe("cloud");
+    fireEvent.change(select, { target: { value: "server" } });
+    expect(stub.writes).toEqual([
+      {
+        op: "set",
+        path: ["jira", "sites"],
+        value: [
+          {
+            id: "corp",
+            label: "Corp",
+            baseUrl: "https://jira.example.corp",
+            deploymentType: "server",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("keeps the canonical deployment of a Confluence instance through an edit", () => {
+    const stub = renderCard({
+      value: {
+        ...RESOLVED,
+        confluence: {
+          enabled: true,
+          instances: [
+            {
+              id: "wiki",
+              label: "Wiki",
+              baseUrl: "https://wiki.example.corp",
+              // The Host resolves both spellings to `server`, so the row reads
+              // and writes back the value the control can show.
+              deploymentType: "datacenter",
+            },
+          ],
+        },
+      },
+    });
+    expand();
+    const section = screen
+      .getByText("Сайты Confluence")
+      .closest(".qai-op__section") as HTMLElement;
+    const select = section.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("server");
+    const row = section.querySelector(".qai-op__instance") as HTMLElement;
+    const label = row.querySelectorAll("input")[1] as HTMLInputElement;
+    fireEvent.change(label, { target: { value: "Корпоративная вики" } });
+    fireEvent.blur(label);
+    expect(stub.writes).toEqual([
+      {
+        op: "set",
+        path: ["confluence", "instances"],
+        value: [
+          {
+            id: "wiki",
+            label: "Корпоративная вики",
+            baseUrl: "https://wiki.example.corp",
+            deploymentType: "server",
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("offers the deployment control only to Jira and Confluence", () => {
+    renderCard({
+      value: {
+        ...RESOLVED,
+        confluence: {
+          enabled: true,
+          instances: [
+            {
+              id: "wiki",
+              label: "Wiki",
+              baseUrl: "https://wiki.example.corp",
+              deploymentType: "server",
+            },
+          ],
+        },
+        jira: {
+          enabled: true,
+          sites: [
+            { id: "corp", label: "Corp", baseUrl: "https://jira.example.corp" },
+          ],
+        },
+      },
+    });
+    expand();
+    for (const provider of ["Confluence", "GitLab", "Jira", "Test IT"]) {
+      fireEvent.click(screen.getByText(provider));
+    }
+    const selectsIn = (label: string): number => {
+      const section = screen
+        .getByText(label)
+        .closest(".qai-op__section") as HTMLElement;
+      return section.querySelectorAll("select").length;
+    };
+    // One control per row of the two providers that distinguish a deployment…
+    expect(selectsIn("Сайты Confluence")).toBe(1);
+    expect(selectsIn("Сайты Jira Cloud")).toBe(1);
+    // …and none at all for a provider that has no such distinction.
+    expect(selectsIn("Инстансы GitLab")).toBe(0);
+  });
+
+  it("starts a row the operator adds on the Cloud default", () => {
+    const stub = renderCard({
+      value: { ...RESOLVED, jira: { enabled: true, sites: [] } },
+    });
+    expand();
+    const section = screen
+      .getByText("Сайты Jira Cloud")
+      .closest(".qai-op__section") as HTMLElement;
+    // The add button sits in the span next to the row list; the field-alias
+    // record editor further down carries one of its own.
+    const add = section.querySelector(
+      ".qai-op__instances ~ span button",
+    ) as HTMLButtonElement;
+    fireEvent.click(add);
+    const select = section.querySelector("select") as HTMLSelectElement;
+    expect(select.value).toBe("cloud");
+    // An unfinished row stays a local draft, so nothing is committed yet.
+    expect(stub.writes).toEqual([]);
   });
 });

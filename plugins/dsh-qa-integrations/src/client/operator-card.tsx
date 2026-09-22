@@ -275,6 +275,21 @@ interface InstanceRow {
   readonly id: string;
   readonly label: string;
   readonly baseUrl: string;
+  readonly deploymentType?: string | undefined;
+}
+
+/**
+ * The one spelling the row control offers for a self-hosted product: the Host
+ * resolver folds `data-center` and `datacenter` into the same value, so a stored
+ * row reads as the value the control can show and writes back canonically.
+ */
+function deploymentTypeOf(value: string): string {
+  const folded = value.trim().toLowerCase();
+  return folded === "server" ||
+    folded === "data-center" ||
+    folded === "datacenter"
+    ? "server"
+    : "cloud";
 }
 
 function instanceRows(value: unknown): readonly InstanceRow[] {
@@ -284,8 +299,24 @@ function instanceRows(value: unknown): readonly InstanceRow[] {
       id: rawString(row.id),
       label: rawString(row.label),
       baseUrl: rawString(row.baseUrl),
+      // Only a row that names a product carries the key: a provider without
+      // the distinction, and a row the operator never declared one for, must
+      // keep writing the three cells it always wrote.
+      ...(typeof row.deploymentType === "string" &&
+      row.deploymentType.trim() !== ""
+        ? { deploymentType: deploymentTypeOf(row.deploymentType) }
+        : {}),
     }));
 }
+
+/**
+ * The products a Jira site or a Confluence instance can answer as, with the
+ * Host resolver's default (`cloud`) first: an absent value is read as it.
+ */
+const DEPLOYMENT_OPTIONS = [
+  { value: "cloud", label: "Cloud" },
+  { value: "server", label: "Server / Data Center" },
+] as const;
 
 /**
  * One managed service credential profile, in editor draft shape: resources
@@ -1094,6 +1125,7 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 hint="пользователь выбирает сайт из списка и вводит e-mail с токеном"
                 path={["confluence", "instances"]}
                 instances={instanceRows(rawObject(config.confluence).instances)}
+                deployments={DEPLOYMENT_OPTIONS}
                 {...control}
               />
               <StringListField
@@ -1484,6 +1516,7 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
                 hint="пользователь выбирает сайт из списка, произвольный хост ввести нельзя"
                 path={["jira", "sites"]}
                 instances={instanceRows(rawObject(config.jira).sites)}
+                deployments={DEPLOYMENT_OPTIONS}
                 {...control}
               />
               <RecordField
