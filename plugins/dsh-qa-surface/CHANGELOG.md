@@ -1,3 +1,311 @@
+## 0.11.0 (2026-09-22)
+
+### 🚀 Features
+
+- Skill files became something an administrator can edit, and a person can tell ([f8a98ac](https://github.com/xarleyn/dsh-plugins/commit/f8a98ac))
+  when theirs was edited by somebody else.
+
+  The console gained a "Редактор навыков" section. It writes the deployment's own
+  shared skills — a store that sits beside the registered workspace, is offered
+  to the model by the same discovery provider as a personal one, and is labelled
+  `qa-shared` so a loaded skill names where it came from — and it writes the
+  personal skills of any account, chosen from the account directory. Neither is a
+  second editor: every call goes through the storage service the owner's own
+  settings page uses, so path checks, draft validation, revision conflicts,
+  trash-on-remove and catalog invalidation are the same code, and a shared skill
+  ranks between a personal one and the checkout's own layers (60 against the
+  personal layer's 50 and the project layer's 100).
+
+  Editing somebody else's file is a write on their behalf, so it is not silent.
+  Each administrator write leaves a mark beside the skills it describes
+  (`.admin-edits.json`, a dot entry no skill enumeration can mistake for a skill),
+  keyed by directory name and carrying the revision it produced, and the owner's
+  catalog shows "Изменено администратором" with the date while the stored bytes
+  are still the administrator's. The owner's own save clears it, because the
+  question the mark answers is "did an administrator write what I am looking at",
+  not "was this file ever touched". Renaming a skill moves the mark with it;
+  removing one drops it.
+
+  Authorization is its own permission, `skills.manage`, held by the admin role and
+  deliberately separate from `settings.manage` so a future curator role can hold
+  one without the other. Every write appends an audit row (`skill.created`,
+  `skill.updated`, `skill.deleted`) naming the actor, the skill, the store and the
+  account it belongs to, with before and after images that carry the revision and
+  the description but never the body: the trail records who changed which
+  instructions, not a second copy of a person's instructions.
+
+- A QA chat can read the stand's documentation on purpose instead of guessing at it. ([a759fab](https://github.com/xarleyn/dsh-plugins/commit/a759fab))
+
+  Documentation was never a surface of its own: a reviewer would cite a path in
+  the chat's own `docs/` tree and the model had no tool that said where that tree
+  is, so it swept the workspace with globs, asked memory instead, and read a miss
+  as "the document does not exist" rather than "wrong tree". The catalog now
+  ships `docs_search` and `docs_read` (catalog version 3), both read-only and
+  both pointing at `<chat workspace>/docs`.
+
+  `docs_search` matches a phrase inside single lines and reports every hit with
+  its path, its line number and the module and version parsed out of the layout
+  `docs/<module>/<version>/…`; `version`, `module` and `path` narrow a search to
+  one edition, one module or one subtree, so a chat that was told "3.8" stops
+  sweeping every edition. `docs_read` opens one file at a bounded window of
+  lines, and both tools bound what they return — `limit` and a byte budget on the
+  reported hits, a line budget on a read — and say so when they truncate, which
+  keeps a "right search" from answering with a wall of text.
+
+  The fence is the same one the rest of the plugin uses. Only files inside the
+  documentation tree are read; a path outside it, a path that leaves it through a
+  symbolic link, a directory handed to a read, a binary file and a workspace
+  whose `docs/` is missing, a file or a link are refused with an explicit reason
+  that names neither an absolute host path nor anything outside the tree. Files
+  the walk merely meets and cannot read are skipped rather than failing the
+  search, and an explicitly named path still gets the honest refusal.
+
+  The tool descriptions do the routing the catalog exists for: they state that
+  documentation lives in `docs/` and is looked up with these tools rather than
+  from memory, so the instruction travels with the schema the model is actually
+  given.
+
+- A question can be asked over HTTP, with an integration token instead of a browser. ([62e1533](https://github.com/xarleyn/dsh-plugins/commit/62e1533))
+
+  The surface could only be used by a person in a browser: the account credential
+  is an HMAC token minted at login, every action is a DSH remote call from the
+  client bundle, and there was no long-lived credential and no HTTP endpoint for
+  another application at all. A ticket system integration therefore had nowhere to
+  send its questions.
+
+  The deployment can now serve `POST {integration.basePath}/ask`,
+  `GET {integration.basePath}/session` and `GET {integration.basePath}/health`
+  (off by default, `/qa/api` when switched on).
+  `/ask` takes the same request the bridge already sends — `application/json`, or
+  `multipart/form-data` with the ticket's attachments: an image rides the prompt
+  inline, a text file is decoded, and a PDF or Office document is extracted to
+  Markdown through the deployment's own document pipeline, so the question is
+  answered with the attachment in hand. A file the Host cannot read refuses the
+  request with `415`, which is the fallback the bridge implements — it repeats the
+  question without attachments rather than receiving an answer nobody could base
+  on the material. Nothing is stored: the bytes live in a temporary directory for
+  one extraction, and the inlined text is bounded. It answers with
+  `chat_id`, a Markdown `answer`, `sources`, `confidence`, `escalate` and `reason`,
+  within a configurable budget (90 seconds by default, and `maxAnswerCharacters`
+  for the answer the ticket comment can hold — an over-long answer is cut at a
+  paragraph break and marked, not silently truncated by the ticket system).
+  Passing the returned `chat_id` back as `session_id` continues the same
+  conversation.
+
+  The account issues that credential itself, in a «Интеграционные токены» section
+  of the `Настройки` dialog: it lists its own tokens with their scopes, expiry and
+  last use, mints one (the secret is shown once and is never recoverable), and
+  revokes one with a confirming click. Minting is offered only while the endpoint
+  is switched on, while revoking keeps working either way, and the token always
+  belongs to the account that asked — one account never sees another's tokens.
+
+  Requests authenticate with an integration token, a second credential that is
+  deliberately not the browser token: it survives a password change, it carries
+  scopes, it expires on its own schedule, it is stored only as a SHA-256 digest,
+  and it is revoked on its own (`qa-accounts token create|list|revoke`) without
+  touching anybody's browser session. An account that is disabled, and the
+  operator's `revoke <email>` leak response, do stop it.
+
+  The conversation can be read back too: `GET {basePath}/session?chat_id=…`
+  returns the prompts and answers of a chat the token's account owns, in the same
+  words the answer carries them, page by page from a cursor the caller keeps
+  (`after`, `limit` up to 200, `truncated` when older messages stayed below the
+  window). This is what the `sessions:read` scope is for — a bridge whose question
+  was escalated can show the specialist what was already said instead of spending
+  a turn to ask it again, and a read-only integration can be granted that scope
+  without the right to spend inference. Injected context, reasoning and tool
+  traffic are never published: they are model input the caller did not write.
+  Ownership is the rule `ask` already applies, so an unknown chat id and another
+  account's chat answer one `404`. Reading stays cheap on a long conversation: the
+  newest messages are kept warm and a chat this Host holds is checked against its
+  own memory, so a page costs neither a stored read nor a walk through the history
+  behind it — a page of a ten-thousand-message chat is a page.
+
+  The endpoints run questions through the same admission path as the browser —
+  deployment preflight, the per-user workspace, the capability snapshot, the QA
+  tool policy and the attestation record — so an external caller cannot reach a
+  chat composition a person could not open, and it can only ever continue chats
+  owned by the account its token belongs to.
+
+- A user can change their own password, and a forgotten one has a way back in. ([66eec35](https://github.com/xarleyn/dsh-plugins/commit/66eec35))
+
+  The store already had everything an operator needs — `setPassword` with its
+  token-version bump, `validatePassword`, the sign-in rate limit — but nothing
+  reached the person who owns the account. Somebody who suspected a leaked
+  password had no action to take, and somebody who had forgotten one had no path
+  at all: the only way back in was an operator with shell access running
+  `qa-accounts set-password`.
+
+  `changePassword(token, current, next)` is the self-service half. It verifies the
+  current password, applies the same strength gate as registration, and bumps the
+  token version — which signs every *other* browser out, the point of a change
+  after a leak — then answers with a freshly minted token, so the browser that
+  made the change is not signed out by its own write. `accountsChangePassword` is
+  its Remote, and the settings dialog gains a "Пароль" section: current, new, and
+  the repeat that catches a typo in a field that cannot be read back later.
+
+  A forgotten password has no mail transport on this stand, so the way back is a
+  request an operator answers. `requestPasswordReset(email)` is deliberately
+  indifferent: a known address, an unknown one and a disabled account all take the
+  same path out, and the attempt spends the same authentication budget as a
+  sign-in — so the screen can be used neither to learn which accounts exist nor to
+  flood an operator's queue. Real requests land in a new `qa_password_resets`
+  table (schema migration 2), one row per account with a repeat count, and the
+  sign-in card grows the "Забыли пароль?" path that says the same thing to
+  everybody. A change made by the account-holder clears their own pending row,
+  because it answers the request.
+
+  The operator reads that queue in the admin console's "Пользователи" page and
+  answers it there: `adminPasswordResetRequests` (users.read) lists it,
+  `adminResetPassword` (users.manage) sets the new password, drops the row and
+  writes a `user.password-reset` audit event. The queue renders only while
+  somebody is waiting — a permanently empty panel teaches operators to ignore it,
+  and this one has to be noticed, because a reset ends every session of that
+  account and the new password must be handed over deliberately.
+
+- The QA prompt gains a note saying which source owns the question. ([025e2b4](https://github.com/xarleyn/dsh-plugins/commit/025e2b4))
+
+  `notes` carried three ambient notes — who the user is, the rules about source
+  provenance, how to label delegations — and none of them said where an answer
+  belongs. The memory plugin's skill says so for the model that reads it, but a QA
+  persona registers with `complete: true`, the persona is the whole system prompt,
+  and a skill is read only once the model decides to reach for it; on a stand
+  where the model went to memory instead, nothing told it otherwise.
+
+  The new `notes.sourcePriority` note is the deployment's version of that rule,
+  and a new editable surface beside the three the `notes` block already had:
+  read what the conversation and its attachments already carry, then the product
+  documentation and the domain expert, and only then memory — with the two
+  consequences the failure needed spelled out, that a miss in memory is not
+  evidence that no source exists, and that memory is not where a document, a page
+  or a product fact is looked up. It is on by default beside the other notes, can
+  be muted or reworded on its own from the «Заметки модели» section of the
+  settings card, and reaches attested chats and their delegated children only, on
+  the same gate as the provenance and delegation notes. A stand with no memory
+  plugin keeps it harmlessly: the note names sources the model does not have.
+
+
+### 🩹 Fixes
+
+- An attached document becomes readable input for the document pipeline (#174). ([e86ee49](https://github.com/xarleyn/dsh-plugins/commit/e86ee49))
+
+  The QA read fence has exactly one deliberate exemption: a single-file read of
+  the mounted attachment store, which sits outside every workspace by design and
+  whose stored path the prompt hands the model. The document pipeline keeps its
+  own read scope — session workspace, artifact root, and the roots configuration
+  names — and knew nothing about that store, so `document_inspect`,
+  `document_to_markdown` and `document_convert` refused the very file the model
+  had just been allowed to read, and the files panel's Word preview hit the same
+  wall. Naming the store in `documents.storage.allowedInputRoots` would have
+  closed the gap by configuration alone, at the price of two settings that must
+  stay in sync and a fence nobody owns.
+
+  The scope now carries the roots a *caller* grants for one call:
+  `DocumentScope.extraInputRoots` is canonicalized like every other root and
+  appended to `allowedInputRoots`, so it adds readable roots without touching the
+  artifact root writes go through. The published `documents` face gains
+  `registerInputRoots(sessionId, roots)` for the plugin that owns a session's read
+  fence, and qa-surface uses it: the admission that installs the per-user
+  workspace fence grants the attachment root for the session it just attested, a
+  delegated child inherits the grant the way it inherits the fence, and
+  `agent/disposed` plus `dispose()` revoke it. The files panel passes the same
+  root inline on the conversion it starts, because its own read policy is what
+  accepted the file.
+
+  A grant stays as narrow as the exemption it mirrors: resolution still reads
+  exactly one named file, so a shared store can never be walked, and symlinks that
+  leave a granted root, directories, and paths outside every root are refused
+  exactly as before.
+
+- Attachments take the documents the stand can read, not only text files. ([6e89147](https://github.com/xarleyn/dsh-plugins/commit/6e89147))
+
+  `attachments.extensions` was a list of *text* extensions in every sense: the
+  constant, the normalizer, the settings label and the refusal copy all said so.
+  A deployment whose document pipeline reads Word and PDF therefore still refused
+  a `.docx` at the composer, with a message that named a fixed set ("md, txt, log
+  и другие") which had nothing to do with its own configuration — the visitor
+  could see the stand render that very document in the files panel while being
+  unable to hand one over.
+
+  The list is now what its name implies. Accepted extensions are the files the
+  stand can work with, `docx` and `pdf` join the text files in the default set, a
+  refusal names the extension it refused and says the operator owns the list, and
+  the settings card calls the pair what they are ("Файловые вложения" and
+  "Разрешённые расширения файлов"). A deployment that pins its own list keeps it
+  exactly as written, which is why the operator-facing wording matters: an empty
+  or text-only list is now visibly a narrowing rather than the only shape the
+  setting can take.
+
+- The prompt gains a note that sends an attached office document to the document ([ab4605e](https://github.com/xarleyn/dsh-plugins/commit/ab4605e))
+  pipeline instead of the plain file reader.
+
+  A chat user's `.docx` arrives as a path into the attachment store, and a run
+  that reads it with the plain file reader gets `cannot read "…docx": binary
+  file`. That answer is a fact about the format, not about the file being absent,
+  but nothing said so: in the session this comes from the agent read the refusal
+  as "the file isn't in the workspace", went looking for the document it had
+  already been handed, and opened the next turn by announcing that it could not
+  reach the file at all. The pipeline it should have used — `document_inspect`,
+  `document_to_markdown`, and `document_from_url` for an attachment that only
+  exists behind a URL — was available the whole time.
+
+  `notes.documents` is that rule in the deployment's own words, on by default
+  beside the other notes, muteable and rewordable from the «Заметки модели»
+  section of the settings card, and delivered on the same gate as the provenance
+  and delegation notes. It says which reader a DOCX or PDF belongs to, that the
+  plain reader's refusal for those formats is expected rather than a hint to
+  search elsewhere, and that a refusal from the pipeline itself is a report to
+  make — with the path it named — rather than a reason to try a third reader.
+
+  This is the last third of the routing the QA stand was missing: it is the only
+  note whose subject is another plugin's tools, so a deployment with no document
+  pipeline can mute it, and the note is advisory like every other — the
+  lockdown, the tool allow-list and the sandbox hold whatever the conversation
+  says.
+
+- The chat list is the account's own, and a chat opened after login appears at ([071abce](https://github.com/xarleyn/dsh-plugins/commit/071abce))
+  once.
+
+  With accounts on, `QaSessionController.chatIds()` unioned the server's owned
+  list with the browser-local chat index. The index is what a browser
+  accumulated, not an identity: on a shared browser it still holds the chats the
+  previous visitor started, and every one of them was listed — title, timestamp,
+  running spinner, audit badge — beside the account's own. An account whose owned
+  list was still empty listed the index alone, so the fresh sign-in saw someone
+  else's chats and their live activity. The union also carried the case it was
+  there for: a chat created after login is claimed on the Host but was never
+  added to the owned list, so it stayed listed only through the index.
+
+  The owned list is now the list. `claimNewSession` records the claimed id in the
+  snapshot, so a chat created or reopened under the account enters it without a
+  reload (a claim the Host answers with a conflict stays out; a claim that never
+  reached the Host still enters, because the binding already passed the
+  attendance boundary, which claims an unowned chat for whoever asks first and
+  refuses another account's). Deployments without accounts are unchanged: the
+  index is the list, as before.
+
+  `subagentNames()` read the deployment-wide session list — every chat's
+  delegations, catalogs included — to sign settlement notices. It now reads only
+  the chats this page lists: `visibleSubagentCandidates` resolves a delegated
+  session to the chat it belongs to through its parent chain (`chatRootOf`, so a
+  nested child is not mistaken for a chat of its own) and keeps children of the
+  visible chats alone.
+
+  Verification: `pnpm nx test dsh-qa-surface` (1253 tests, 185 files),
+  `pnpm nx run dsh-qa-surface:typecheck`, `pnpm nx run dsh-qa-surface:lint`.
+  `tests/session-chat-ownership.test.ts` fails against the previous `chatIds()`
+  on both list cases; `tests/accounts-controller-actions.test.ts` covers the
+  claim path.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.5.0
+
+### ❤️ Thank You
+
+- Codebuff
+- xarleyn @xarleyn
+
 ## 0.10.0 (2026-09-21)
 
 ### 🚀 Features

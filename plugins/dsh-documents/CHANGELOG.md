@@ -1,3 +1,62 @@
+## 0.5.0 (2026-09-22)
+
+### 🚀 Features
+
+- An attached document becomes readable input for the document pipeline (#174). ([e86ee49](https://github.com/xarleyn/dsh-plugins/commit/e86ee49))
+
+  The QA read fence has exactly one deliberate exemption: a single-file read of
+  the mounted attachment store, which sits outside every workspace by design and
+  whose stored path the prompt hands the model. The document pipeline keeps its
+  own read scope — session workspace, artifact root, and the roots configuration
+  names — and knew nothing about that store, so `document_inspect`,
+  `document_to_markdown` and `document_convert` refused the very file the model
+  had just been allowed to read, and the files panel's Word preview hit the same
+  wall. Naming the store in `documents.storage.allowedInputRoots` would have
+  closed the gap by configuration alone, at the price of two settings that must
+  stay in sync and a fence nobody owns.
+
+  The scope now carries the roots a *caller* grants for one call:
+  `DocumentScope.extraInputRoots` is canonicalized like every other root and
+  appended to `allowedInputRoots`, so it adds readable roots without touching the
+  artifact root writes go through. The published `documents` face gains
+  `registerInputRoots(sessionId, roots)` for the plugin that owns a session's read
+  fence, and qa-surface uses it: the admission that installs the per-user
+  workspace fence grants the attachment root for the session it just attested, a
+  delegated child inherits the grant the way it inherits the fence, and
+  `agent/disposed` plus `dispose()` revoke it. The files panel passes the same
+  root inline on the conversion it starts, because its own read policy is what
+  accepted the file.
+
+  A grant stays as narrow as the exemption it mirrors: resolution still reads
+  exactly one named file, so a shared store can never be walked, and symlinks that
+  leave a granted root, directories, and paths outside every root are refused
+  exactly as before.
+
+- Repeat conversions reuse the recorded result instead of running the backend again. ([56d2532](https://github.com/xarleyn/dsh-plugins/commit/56d2532))
+
+  The pipeline kept no memory of what it had already converted: every
+  `document_convert` and `document_to_markdown` call allocated a fresh artifact and
+  ran Docling or LibreOffice from scratch, even when the same file had just been
+  processed with the same options. Extraction is the slowest step in the pipeline,
+  so the repeat was pure waiting.
+
+  Conversions now record what they produced under `<artifact root>/.cache/`, keyed
+  by the input's SHA-256, the options that shape the request, a fingerprint of the
+  pipeline settings, and the identity and version of the backend that would run.
+  A hit copies the recorded file into a fresh bundle — verified against the hash
+  the entry stored — and writes an ordinary manifest that names the bundle the
+  bytes came from in a new `cache` record, so a caller cannot tell a hit from a run
+  except by the provenance line. A missing artifact, a tampered file or an
+  unreadable entry is a miss, and the backend runs again.
+
+  The new `documents.cache` settings section turns the cache off, bounds it by
+  entries, bytes and age, and defaults to on with a one-gigabyte budget.
+
+### ❤️ Thank You
+
+- Codebuff
+- xarleyn @xarleyn
+
 ## 0.4.0 (2026-09-21)
 
 ### 🚀 Features
