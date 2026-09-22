@@ -31,6 +31,16 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 | Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
 
+## What gates cannot prove
+
+Nothing above dials a real service, so three failures stay invisible to every
+one of them: an address that does not answer, a credential the product refuses,
+and — the expensive one — a provider that speaks a different API than the
+instance serves. Those are covered by
+[MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md), which carries the probe
+command (`scripts/probe-provider.mjs`), the per-provider acceptance steps, the
+negative cases, and the checklist for adding a second product to a provider.
+
 ## CI vs local
 
 `.github/workflows/ci.yml` selects affected Nx projects once, then fans their
