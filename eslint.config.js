@@ -10,11 +10,6 @@ export default tseslint.config(
       "**/node_modules/**",
       ".nx/**",
       "coverage/**",
-      // TODO: unignore once plugins/dsh-session-scope/src/client.ts stops
-      // being a vendored prebuilt bundle source (single @ts-nocheck file,
-      // ~100 `var` declarations in module-loader factory style); linting it
-      // today reports 108 errors that no mechanical fix can land safely.
-      "plugins/dsh-session-scope/src/client.ts",
     ],
   },
   eslint.configs.recommended,
