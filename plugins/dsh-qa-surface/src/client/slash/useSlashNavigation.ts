@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { rankSlashEntries } from "../../slash/matcher.js";
 import type { QaSlashCatalogEntry, QaSlashView } from "../../types.js";
 import { slashPaletteQuery } from "../../slash/parser.js";
+import { flattenPaletteGroups, groupPaletteRows } from "./palette-rows.js";
 
 export interface QaSlashNavigation {
   /** True while the palette is on screen. */
@@ -68,11 +69,19 @@ export function useSlashNavigation(
     setDismissed(false);
   }, [options.reopen]);
 
+  // The ranking decides which rows are shown and in which order; the grouping
+  // decides how they are captioned. Publishing the grouped order is what keeps
+  // the arrow keys on the rows the palette actually draws — see
+  // `groupPaletteRows` for why the two are not the same list.
   const rows = useMemo(() => {
     if (query === undefined) return [];
-    return rankSlashEntries(slash.entries, query, {
+    const ranked = rankSlashEntries(slash.entries, query, {
       fuzzy: options.fuzzySearch,
-    }).slice(0, options.maxVisible);
+    });
+    return flattenPaletteGroups(groupPaletteRows(ranked)).slice(
+      0,
+      options.maxVisible,
+    );
   }, [slash.entries, query, options.fuzzySearch, options.maxVisible]);
 
   // A new query re-ranks the rows, so the old index may point at a row that is

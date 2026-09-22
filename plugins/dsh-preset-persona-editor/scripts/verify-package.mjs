@@ -74,8 +74,10 @@ await runVerifyPackage({
       /\bfrom\s*["']yaml["']/u,
     ],
     // The page reuses the canonical card shell for its preset rows (AGENTS.md
-    // card contract). Opting into the contract keeps the shell CSS and the
-    // chevron SVG honest through the bundler.
+    // card contract). The page mounts inside the native settings tree instead
+    // of registering a `settings.plugin.item` card, so it draws the shell
+    // itself: opting into the contract keeps the shell CSS, the chevron SVG and
+    // the rendered open state honest through the bundler.
     cardContract: {},
   },
   extra: async ({ manifest, readFile }) => {

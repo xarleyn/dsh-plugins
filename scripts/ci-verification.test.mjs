@@ -12,6 +12,10 @@ import {
 const canonicalClient = [
   ...CANONICAL_SHELL_RULES,
   '<path d="m3.5 5.25 3.5 3.5 3.5-3.5"/>',
+  // The sheet above only proves the shell is styled; the contract also reads
+  // the two strings only the code that renders the shell produces.
+  'const card = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";',
+  'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
 ].join("\n");
 
 test("the PR workflow fans affected projects out into a bounded matrix", async () => {

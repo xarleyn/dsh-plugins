@@ -765,10 +765,14 @@ docs: add plugin guidelines
 - `dsh-l10n-overrides/tests/` — **выполнено**: мегатесты разбиты на тематические
   файлы (`dom-translator-*`, `locale-hook-*`, `registry-*`,
   `integration-client`), самый крупный тест пакета — 374 строки вместо 1273.
-- `dsh-session-scope/src/client.ts` (1460 строк) остаётся рукописным
-  module-loader бандлом (`window.__ModuleLoader__.load` с фабрикой-closure,
-  `@ts-nocheck`): перевод на общий tsdown-пайплайн и модульное разбиение —
-  отдельный проект, не быстрый рефакторинг. Плагин при этом полностью покрыт
-  тестами и verify-гейтами.
+- `dsh-session-scope` — **сборка клиента мигрирована (2026-09-22):**
+  `src/client.ts` больше не бандл, а обычный модуль, который собирает общий
+  tsdown-пайплайн (`tsdown.config.ts` печатает регистрацию
+  `window.__ModuleLoader__.load` и фабрику вокруг модуля). Файл исключён из
+  `tsc`-сборки, поэтому `./client` в манифесте указывает прямо на бандл;
+  `@ts-nocheck` снят, файл типизирован, lint-игнор убран, ручной правки
+  `lib/client.js` больше нет. Осталось модульное разбиение одного файла
+  (css/icons/paths/remote/editor — отдельные модули) и общий с `core.ts` хелпер
+  путей — по-прежнему отдельный проект.
 - `dsh-session-scope/src/index.ts` (907 строк) — разбиение на scope-patches/
   scope-commands/projections отложено вместе с клиентом.

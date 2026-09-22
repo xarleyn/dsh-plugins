@@ -20,6 +20,10 @@ const PATCH = `# The DSH plugin manager discovers this bundle through package.js
 const canonicalClient = [
   ...CANONICAL_SHELL_RULES,
   '<path d="m3.5 5.25 3.5 3.5 3.5-3.5"/>',
+  // The stylesheet above only says the shell is styled. The contract also reads
+  // the two strings only the code that *renders* the shell can produce.
+  'const card = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";',
+  'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
   'window.__ModuleLoader__.load({ id: "@yadsh/dsh-fixture"',
 ].join("\n");
 

@@ -4,6 +4,7 @@ import type {
   QaSlashCommandSurface,
   QaSlashView,
 } from "../../types.js";
+import { groupPaletteRows } from "./palette-rows.js";
 
 export interface QaSlashPaletteProps {
   readonly rows: readonly QaSlashCatalogEntry[];
@@ -23,27 +24,6 @@ const KIND_LABEL: Readonly<Record<QaSlashCatalogEntry["kind"], string>> =
 
 const KIND_GROUP: Readonly<Record<QaSlashCatalogEntry["kind"], string>> =
   Object.freeze({ skill: "Навыки", command: "Команды" });
-
-interface Row {
-  readonly entry: QaSlashCatalogEntry;
-  readonly index: number;
-}
-
-function groupRows(rows: readonly QaSlashCatalogEntry[]): readonly {
-  readonly kind: QaSlashCatalogEntry["kind"];
-  readonly rows: readonly Row[];
-}[] {
-  const groups: { kind: QaSlashCatalogEntry["kind"]; rows: Row[] }[] = [];
-  rows.forEach((entry, index) => {
-    const tail = groups.at(-1);
-    if (tail !== undefined && tail.kind === entry.kind) {
-      tail.rows.push({ entry, index });
-      return;
-    }
-    groups.push({ kind: entry.kind, rows: [{ entry, index }] });
-  });
-  return groups;
-}
 
 /**
  * The palette itself: a listbox over rows the composer has already filtered
@@ -65,7 +45,9 @@ export const QaSlashPalette = memo(function QaSlashPalette(
         : props.rows.length === 0
           ? "Ничего не найдено"
           : null;
-  const groups = groupRows(props.rows);
+  // One group per kind, which is also what makes the keys below unique: the
+  // rows arrive in the grouped order, so a kind never reappears further down.
+  const groups = groupPaletteRows(props.rows);
   return (
     <div
       className="dsh-qa-slash"
