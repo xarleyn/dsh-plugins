@@ -1,3 +1,18 @@
+## 0.2.6 (2026-09-22)
+
+### 🩹 Fixes
+
+- One helper builds the gate the tests exercise. ([89470e0](https://github.com/xarleyn/dsh-plugins/commit/89470e0))
+
+  Every gate test assembled its own stub of the surrounding host, which is how a
+  test quietly stops testing the thing it names: the helper now builds the gate
+  the same way for all of them, so a surface the plugin gains is exercised by the
+  whole suite rather than by whichever test remembered to add it.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.5 (2026-09-22)
 
 ### 🩹 Fixes

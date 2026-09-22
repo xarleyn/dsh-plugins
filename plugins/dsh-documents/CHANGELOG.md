@@ -1,3 +1,68 @@
+## 0.5.1 (2026-09-22)
+
+### 🩹 Fixes
+
+- Five client bundles stop letting a literal decide a surface, a status or an ([54c2bcc](https://github.com/xarleyn/dsh-plugins/commit/54c2bcc))
+  elevation (#254).
+
+  The audited rule is the one the guidelines state: UI is built from
+  `--dsw-alias-*` tokens, and a literal may only carry a narrow semantic accent.
+  Outside `dsh-qa-surface` (excluded by the card), the sweep found two statuses
+  and two elevations that broke it:
+
+  - `dsh-domain-experts` defined its own `--dx-ok/--dx-warn/--dx-danger` with hex
+    literals, so enforced, advisory and error text kept a fixed green, amber and
+    red in every theme. They now resolve to the host's
+    `--dsw-alias-state-{success,warn,error}-primary`, which the rest of the
+    repository already uses; the local names stay, so no rule changed shape.
+  - `dsh-qa-browser`'s canvas and its tab menu carried literal `box-shadow`
+    values. They now ask for `--dsw-shadow-lv2`/`--dsw-shadow-lv3` - the tokens
+    `dsh-qa-surface` and `dsh-draft-sessions` already use - and keep the previous
+    value as the fallback, so an older host renders exactly as before.
+  - `dsh-draft-sessions` wrote the same idea as `--dsw-shadow-l2`, a name no host
+    defines; the literal fallback hid it, which is why it survived. Corrected to
+    `--dsw-shadow-lv2`.
+  - `dsh-documents` asked for `--dsw-label-tertiary` first and only fell back to
+    the token that exists; the dead first name is gone.
+  - `dsh-doc-impact`'s transparent button border was spelled `#0000`; the keyword
+    `transparent` says the same thing without a color literal.
+
+  What stayed is what the rule allows: the remaining literals in these bundles are
+  all fallbacks inside `var(<token>, <literal>)`, never the value a themed host
+  would resolve. Typography literals were deliberately not touched - the canonical
+  card shell in AGENTS.md hardcodes its own 15/13/11px sizes, so font sizes are
+  the repository's convention rather than a token-governed surface.
+
+- Two more package gates become manifests for the shared runner instead of copies ([c3ea6d9](https://github.com/xarleyn/dsh-plugins/commit/c3ea6d9))
+  of it (#231).
+
+  `packages/plugin-scripts` has carried `runVerifyPackage` since the generator was
+  folded in, and 20 of the 26 `plugins/*/scripts/verify-package.mjs` already pass
+  their identity and expectations to it. The two largest scripts that still
+  hand-rolled the same manifest, patch, file, export and bundle-registration
+  checks - `dsh-qa-browser` and `dsh-documents` - now declare that contract as
+  options and keep only what their own package can promise in the `extra` hook:
+  the tool inventory and the defaults the browser runtime reads, and for the
+  document pipeline the installed subsystem, the in-process `documents` face, the
+  comparison tools, the skills that ship with it and the source scan that keeps
+  `comparison/` away from a process or a socket.
+
+  The runner gained the check those scripts kept re-writing: `exportsBuilt` makes
+  every export subpath point at a file that exists, so a declaration the build
+  never wrote fails here rather than only in a packing run. It also covers the
+  export `types`/`default` conditions, which is what the hand-rolled loops in
+  `dsh-documents`, `dsh-qa-integrations` and `dsh-qa-surface` did one by one.
+
+  Because a manifest now satisfies the card contract through
+  `clientBundle.cardContract` rather than by importing the module by path,
+  `verify-package-hygiene`'s client-contract gate learns that form too - it
+  accepts a script that reaches the runner with the option, and still refuses one
+  that only mentions the word.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.0 (2026-09-22)
 
 ### 🚀 Features

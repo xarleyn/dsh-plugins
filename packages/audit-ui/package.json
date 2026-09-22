@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-audit-ui",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared audit presentation components for DeepSeek Harness: sanitized report rendering, findings, scorecard and JSON view",
   "repository": {
     "type": "git",

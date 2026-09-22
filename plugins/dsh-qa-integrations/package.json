@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-qa-integrations",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Principal-scoped, encrypted user integrations for DSH QA Surface",
   "repository": {
     "type": "git",

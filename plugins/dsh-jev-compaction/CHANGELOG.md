@@ -1,3 +1,19 @@
+## 0.1.1 (2026-09-22)
+
+### 🩹 Fixes
+
+- A missing-credential key stays one key, and the file stays text. ([0a70f14](https://github.com/xarleyn/dsh-plugins/commit/0a70f14))
+
+  The dedupe key for "this provider has no credential configured" joined the
+  provider and the variable name with a literal NUL byte, which made git treat
+  `service.ts` as binary — no diff, no review — and the separator is now written
+  as an escape. The key a running plugin compares is unchanged, so a deployment
+  that already reported the missing variable once still reports it once.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.0 (2026-09-21)
 
 ### 🚀 Features

@@ -1,3 +1,122 @@
+## 0.11.2 (2026-09-22)
+
+### 🩹 Fixes
+
+- A tool the plugin attaches to the chat is callable in a role-bound chat. ([90897c6](https://github.com/xarleyn/dsh-plugins/commit/90897c6))
+
+  The QA tool catalogue — the documentation readers, the workspace-fenced delete,
+  the activation diagnostic — is registered on the agent itself, so no role list
+  carries it and no scoped restriction can name it. Two layers decide whether a
+  call to it runs, and in a chat that attests a role only one of them knew it: the
+  grants admit a catalogue tool for as long as the policy holds, while the
+  conversation ceiling was built from the deployment's pinned list, the role's own
+  tools and its grantable reach. A catalogue tool therefore sat inside the chat
+  and outside the ceiling, and every call to it was refused as "outside the
+  capability profile of this conversation" — a refusal that names a profile the
+  caller cannot see the gap in, on a deployment that attaches the catalogue at
+  session start.
+
+  The ceiling now includes the catalogue names the plugin attaches, exactly as the
+  account-free path already did, and the profile guard reads them from the calling
+  agent's own catalogue in a role-bound chat too. What the catalogue did not
+  attach is unchanged: it stays the role's to allow, and a refusal there still
+  names the execution profile.
+
+- The documentation readers reach a corpus that is not inside every chat. ([24e150c](https://github.com/xarleyn/dsh-plugins/commit/24e150c))
+
+  `docs_search` and `docs_read` resolved `<calling chat's cwd>/docs` and nothing
+  else. In a deployment with per-user workspaces that cwd is the account's own
+  directory, so the corpus published once — the stand's `/workspace/docs` — was
+  outside the tree the tools looked in, and every chat and every expert got "this
+  chat's workspace has no docs/ directory" from a tool that was working exactly as
+  written. The file tools reached the same corpus all along, by absolute path,
+  which is why the personas name it; the readers had no way to be pointed at it.
+
+  `tools.docsRoot` names that root. Empty keeps the per-chat layout unchanged;
+  an absolute path makes the documentation tree the configured one, with the
+  same reporting (`docs/<module>/<version>/…`), the same canonicalization and the
+  same fence: a root that is missing, not absolute, a file or a link is refused
+  with a message that names it, and a path that leaves the tree through a
+  symbolic link is refused as before. The tool descriptions say which of the two
+  layouts is in force, so the model is told where the documentation is rather than
+  left to guess.
+
+- A `/qa` entry that raced the start of the process stops dead-ending at the ([7ecfe39](https://github.com/xarleyn/dsh-plugins/commit/7ecfe39))
+  token screen.
+
+  The route sends a browser without the host cookie through the host's one-time
+  `?token=` exchange, so the cookie is installed before the root gate sees the
+  request; without a token it falls back to the marker hand-off, which a
+  cookie-less browser cannot pass. That token was resolved lazily but remembered
+  *forever*, including the answer "not available": the first `/qa` request can
+  arrive while `connection` is not answerable yet, and from then on every such
+  browser went to the marker hand-off and saw the access-denied screen until the
+  process restarted — a boot-order race that looked random from the outside.
+
+  A resolved token is still cached (it is stable for the process), while a
+  failure is reported once per reason and retried on the next navigation, so a
+  single early answer can no longer disable the exchange for the whole run.
+
+- An integration may wait as long as its operator allows. ([f35a6de](https://github.com/xarleyn/dsh-plugins/commit/f35a6de))
+
+  `integration.requestTimeoutMs` was validated inside a fixed window whose ceiling
+  was ten minutes, and that ceiling was not a budget the deployment spends: nothing
+  in the plugin pays for a longer wait. It only cut off the questions an
+  integration exists for — a long analysis came back as an escalation while its
+  answer was still being written. The floor stays (five seconds: a shorter wait is
+  not a wait), the ceiling is gone, and the refusal message says so. A deployment
+  that wants thirty minutes now writes `requestTimeoutMs: 1800000` and gets
+  thirty minutes.
+
+- The slash palette captions each group once instead of once per run of rows. ([ff614f2](https://github.com/xarleyn/dsh-plugins/commit/ff614f2))
+
+  Ranking is global across the two halves of the catalog, so one query can put a
+  command between two skills — and the palette, which draws a titled group per
+  kind, drew «Навыки» again after the command. One group read as two, and the
+  second header said nothing about the rows under it.
+
+  The grouped order is now the order the palette draws, and it is the order the
+  keyboard walks: the rows of a kind stand together, the group holding the
+  best-ranked row leads, and each group keeps the ranking's order inside it. The
+  first row of the list — the one Enter picks — is therefore still the best match,
+  which is why the group order follows the ranking rather than a fixed
+  skills-then-commands rule.
+
+  `palette-rows.ts` holds that translation as a pure function, so the hook, the
+  component and the tests share one definition of what a group is.
+
+- A source the answer just cited opens on the first click again. ([47d7cd6](https://github.com/xarleyn/dsh-plugins/commit/47d7cd6))
+
+  The rail projects a turn's sources from the durable tool results, and the Host
+  records the same results as the evidence the source preview checks a request
+  against — but the two anchored the recorded path on different directories: the
+  projection used the deployment's configured `session.cwd`, while the Host
+  canonicalizes every recorded path against the chat's own cwd. While those name
+  the same directory the two agree, and a request spelled one way is re-anchored
+  on the way in. The moment they differ — an adopted chat, a chat whose cwd was
+  pinned under an older configuration, a per-account directory below the
+  configured workspace — one file gained two spellings, and the rail offered the
+  one the Host does not hold: the detailed view then answered that the source was
+  no longer evidence of the chat, although the answer had just cited it, and the
+  same source opened after a page reload, when the rail was rebuilt from the
+  Host's own bundles.
+
+  The projection now anchors on the chat's own cwd, the directory the evidence
+  itself is recorded against, and keeps the configured pin only as the fallback
+  for a chat the browser's list does not carry yet. The refusal is unchanged
+  where it is honest: a path this chat's own record does not carry is still
+  refused as not-evidence.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.5.1
+- Updated @yadsh/dsh-audit-ui to 0.1.1
+
+### ❤️ Thank You
+
+- Codebuff
+- xarleyn @xarleyn
+
 ## 0.11.1 (2026-09-22)
 
 ### 🩹 Fixes
