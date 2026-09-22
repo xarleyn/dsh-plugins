@@ -10,11 +10,7 @@
       "types": "./lib/index.d.ts",
       "import": "./lib/index.js"
     },
-    "./client": {
-      "types": "./lib/client.d.ts",
-      "import": "./lib/client.js",
-      "default": "./lib/client.js"
-    },
+    "./client": "./lib/client.js",
     "./core": {
       "types": "./lib/core.d.ts",
       "import": "./lib/core.js"
@@ -65,10 +61,12 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "lint": "eslint src tests scripts",
+    "clean": "node -e \"require('node:fs').rmSync('lib', { recursive: true, force: true })\"",
+    "build:client": "tsdown",
+    "build": "pnpm run clean && pnpm run build:client && tsc -p tsconfig.build.json",
+    "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
+    "test": "pnpm run build:client && vitest run",
     "test:watch": "vitest",
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "verify:compatibility": "node scripts/verify-compatibility.mjs",
@@ -157,6 +155,7 @@
     "eslint": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",
+    "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"
   }
