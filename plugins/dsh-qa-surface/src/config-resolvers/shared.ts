@@ -17,6 +17,25 @@ export function isAbsoluteDirectoryPath(value: string): boolean {
 }
 
 /**
+ * Shared numeric guard for a limit with a floor but no honest ceiling: the value
+ * has to be a safe integer of at least `min`. A ceiling belongs on a budget the
+ * deployment itself spends (bytes, parallel calls); a wait it merely allows is
+ * the operator's call, and a ceiling there only ever truncated a legitimate long
+ * answer.
+ */
+export function assertIntAtLeast(
+  name: string,
+  value: number,
+  min: number,
+): void {
+  if (!Number.isSafeInteger(value) || value < min) {
+    throw new TypeError(
+      `dsh-qa-surface: ${name} must be an integer of at least ${min}`,
+    );
+  }
+}
+
+/**
  * Shared numeric guard for operator-tuned limits: the value has to be a safe
  * integer inside [min, max], and every rejection carries the same message.
  */
