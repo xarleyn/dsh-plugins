@@ -1087,18 +1087,27 @@ jira_cache_hits_total
 
 ## Compatibility
 
-Первая версия ориентирована на Jira Cloud.
-
-Jira Data Center / Server не должна молча считаться совместимой.
-
-Если понадобится Data Center, сделать отдельный auth/client strategy:
+Провайдер работает с двумя продуктами, и какой из них перед ним — объявляет
+оператор в конфиге сайта (`jira.sites[].deploymentType`).
 
 ```text
-jira-cloud
-jira-data-center
+jira-cloud        deploymentType: cloud    /rest/api/3   Basic (email:token)
+jira-data-center  deploymentType: server   /rest/api/2   Bearer (PAT)
 ```
 
-не смешивая API tokens/basic auth с Cloud OAuth 3LO в одном code path.
+Реализовано как отдельная auth/client strategy на сайт, а не как один code path:
+различаются API-root, схема аутентификации, форма ответа поиска (continuation
+token против offset + total), способ обратиться к справочнику пользователей
+(`query=` против `username=`) и идентификатор человека в ответе (`accountId`
+против `name`). Общая у обоих продуктов — только модель ошибок, границы
+(allow-list путей, capabilities, service ceiling) и форма ответа инструмента.
+
+Jira Data Center / Server не должна молча считаться совместимой: сайт, который
+отвечает `serverInfo.deploymentType` не тем продуктом, который объявлен,
+отклоняется на подключении с подсказкой, какое значение поставить.
+
+Cloud OAuth 3LO не смешивается с этим: 3LO остаётся отдельной будущей стратегией
+(раздел «Non-goals»), а личный токен доступа Data Center — это не OAuth.
 
 ---
 

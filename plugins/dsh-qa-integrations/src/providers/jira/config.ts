@@ -2,10 +2,24 @@ import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../../errors.js";
 
 /**
- * One Jira Cloud site the operator allows. A user never types a host: the
- * connect form picks from this list, so the broker cannot be pointed at an
- * arbitrary origin (the specification's SSRF rule) and a credential minted for
- * a site cannot be spent against another one.
+ * Which Jira this site is: Atlassian Cloud, or a self-hosted Server / Data
+ * Center instance. The two are different products behind one name — different
+ * API roots (`/rest/api/3` against `/rest/api/2`), different authentication
+ * (an Atlassian API token over HTTP Basic against a personal access token over
+ * Bearer), and different answers for the same read — so the deployment type is
+ * a property of the site the operator declares, never a guess this provider
+ * makes at run time.
+ *
+ * Server and Data Center are one value on purpose: Data Center is Server with
+ * clustering, and the REST surface they answer is the same one.
+ */
+export type JiraDeployment = "cloud" | "server";
+
+/**
+ * One Jira site the operator allows. A user never types a host: the connect
+ * form picks from this list, so the broker cannot be pointed at an arbitrary
+ * origin (the specification's SSRF rule) and a credential minted for a site
+ * cannot be spent against another one.
  *
  * The Atlassian account behind a site is a tenant of this deployment, not a
  * global discriminator: the same person may reach several sites, and the
@@ -16,6 +30,8 @@ export interface JiraSite {
   readonly label: string;
   /** Canonical `<origin><path>`, without a trailing slash. */
   readonly baseUrl: string;
+  /** Which product answers at `baseUrl`; see {@link JiraDeployment}. */
+  readonly deploymentType: JiraDeployment;
 }
 
 /**
@@ -60,6 +76,24 @@ export interface JiraFlags {
 export const SEARCH_PAGE_CAP = 100;
 
 /**
+ * One site as the operator writes it. `deploymentType` is spelled as a plain
+ * string here and resolved below, so that a config which predates the field
+ * keeps loading as the Cloud site it always was, and a typo is refused with the
+ * accepted values instead of silently becoming a default.
+ */
+export interface JiraSiteInput {
+  readonly id: string;
+  readonly label?: string;
+  readonly baseUrl: string;
+  readonly deploymentType?: string;
+}
+
+/** Config slice as YAML writes it: every member is optional there. */
+export interface JiraConfigInput extends Partial<Omit<JiraFlags, "sites">> {
+  readonly sites?: readonly JiraSiteInput[] | undefined;
+}
+
+/**
  * The shape of a custom field id, as Jira spells it. The provider never carries
  * one itself: an id belongs to an instance, so it arrives either from the
  * field catalog or from the operator's aliases.
@@ -91,6 +125,33 @@ const MAX_SITES = 16;
 const MAX_ALIASES = 32;
 
 const configError = scopedConfigError("jira integration config");
+
+/**
+ * Deployment types as an operator may spell them. `data-center` and
+ * `datacenter` are accepted because that is what an administrator calls the
+ * product on the stand; both name the same API as `server`.
+ */
+const DEPLOYMENT_TYPES: Readonly<Record<string, JiraDeployment>> =
+  Object.freeze({
+    cloud: "cloud",
+    server: "server",
+    "data-center": "server",
+    datacenter: "server",
+  });
+
+/** The deployment type of one configured site; Cloud when it is not declared. */
+function normalizeDeployment(input: unknown, index: number): JiraDeployment {
+  if (input === undefined || input === null) return "cloud";
+  const raw = typeof input === "string" ? input.trim().toLowerCase() : "";
+  if (raw === "") return "cloud";
+  const deployment = DEPLOYMENT_TYPES[raw];
+  if (deployment === undefined) {
+    throw configError(
+      `sites[${index}].deploymentType must be cloud, server or data-center`,
+    );
+  }
+  return deployment;
+}
 
 /**
  * Canonicalize one configured site. Everything here is operator input, so a typo
@@ -144,6 +205,7 @@ function normalizeSite(
     id,
     label: label === "" ? url.host : label,
     baseUrl: `${url.origin}${path}`,
+    deploymentType: normalizeDeployment(record["deploymentType"], index),
   });
 }
 
@@ -213,6 +275,7 @@ export const jiraConfigSchema = z.object({
         id: z.string(),
         label: z.string(),
         baseUrl: z.string(),
+        deploymentType: z.string(),
       }),
     )
     .default([]),
@@ -248,9 +311,9 @@ export const jiraConfigSchema = z.object({
     .min(1_000)
     .default(JIRA_DEFAULTS.maxTextChars),
   retries: z.number().step(1).min(0).max(5).default(JIRA_DEFAULTS.retries),
-}) as unknown as z<Partial<JiraFlags>>;
+}) as unknown as z<JiraConfigInput>;
 
-export function resolveJiraConfig(input: Partial<JiraFlags> = {}): JiraFlags {
+export function resolveJiraConfig(input: JiraConfigInput = {}): JiraFlags {
   const allowInsecureHttp =
     input.allowInsecureHttp ?? JIRA_DEFAULTS.allowInsecureHttp;
   // Jira Cloud answers at most 100 issues per page once fields are requested, so

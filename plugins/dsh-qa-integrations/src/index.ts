@@ -266,6 +266,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: instance.id,
           label: instance.label,
           baseUrl: instance.baseUrl,
+          deploymentType: instance.deploymentType,
           service: this.serviceBinding("confluence", instance.id),
         }))
       : [];
@@ -282,6 +283,7 @@ export class QaIntegrations extends TypertRemoteService {
           id: site.id,
           label: site.label,
           baseUrl: site.baseUrl,
+          deploymentType: site.deploymentType,
           service: this.serviceBinding("jira", site.id),
         }))
       : [];
@@ -602,13 +604,17 @@ export class QaIntegrations extends TypertRemoteService {
    * The account e-mail is not a secret, but it is half of the Basic pair, so it
    * travels with the secret instead of being a separate field: both halves land
    * in one encrypted record, and a token can never be spent as another account.
+   * A Server / Data Center instance authenticates with a personal access token
+   * alone, so its connect sends no e-mail and the instance's declared
+   * deployment type is what makes that shape acceptable.
    */
   @Remote("putConfluenceCredential")
   async putConfluenceCredential(
     token: string,
     input: {
       readonly instanceId: string;
-      readonly email: string;
+      /** Absent on a Server / Data Center connect, which needs no account. */
+      readonly email?: string | undefined;
       readonly token: string;
       /** Whether the connect form asked for the managed credential instead. */
       readonly useServiceCredential?: boolean | undefined;
@@ -620,7 +626,10 @@ export class QaIntegrations extends TypertRemoteService {
         "confluence",
         {
           token: input.token,
-          options: { instanceId: input.instanceId, email: input.email },
+          options: {
+            instanceId: input.instanceId,
+            ...(input.email === undefined ? {} : { email: input.email }),
+          },
         },
         { useServiceCredential: input.useServiceCredential },
       ),
@@ -735,7 +744,11 @@ export class QaIntegrations extends TypertRemoteService {
     token: string,
     input: {
       readonly siteId: string;
-      readonly email: string;
+      /**
+       * Absent on a Server / Data Center connect: a personal access token
+       * authenticates as its own bearer and needs no account.
+       */
+      readonly email?: string | undefined;
       readonly token: string;
       /** Whether the connect form asked for the managed credential instead. */
       readonly useServiceCredential?: boolean | undefined;
@@ -749,7 +762,10 @@ export class QaIntegrations extends TypertRemoteService {
           token: input.token,
           // The broker resolves the profile by `instanceId`; Jira names its
           // instances `siteId` on the wire.
-          options: { instanceId: input.siteId, email: input.email },
+          options: {
+            instanceId: input.siteId,
+            ...(input.email === undefined ? {} : { email: input.email }),
+          },
         },
         { useServiceCredential: input.useServiceCredential },
       ),
