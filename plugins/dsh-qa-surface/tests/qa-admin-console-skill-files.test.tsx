@@ -50,14 +50,32 @@ const TOKEN = "token";
  * the page picks a store and then mounts the same settings page a person sees
  * for their own skills.
  */
+/**
+ * The console mounts asynchronously, and the release runner is a shared
+ * container: under that load the first render starves past Testing Library's
+ * default 1s, which reads as a missing button rather than a slow machine. The
+ * file runs in a fraction of a second locally.
+ */
+const MOUNT_TIMEOUT = { timeout: 15_000 } as const;
+
 describe("admin console skill files", () => {
   it("opens on the shared store and mounts the shared catalog", async () => {
     const { api, listSkills } = rig([row()]);
     renderConsole(api, "/qa/admin/skills/editor");
     expect(
-      await screen.findByRole("heading", { name: "Редактор навыков" }),
+      await screen.findByRole(
+        "heading",
+        { name: "Редактор навыков" },
+        MOUNT_TIMEOUT,
+      ),
     ).toBeTruthy();
-    expect(await screen.findByText("У вас пока нет навыков.")).toBeTruthy();
+    expect(
+      await screen.findByText(
+        "У вас пока нет навыков.",
+        undefined,
+        MOUNT_TIMEOUT,
+      ),
+    ).toBeTruthy();
     expect(listSkills).toHaveBeenCalledWith(TOKEN, SHARED);
   });
 
@@ -65,9 +83,11 @@ describe("admin console skill files", () => {
     const { api, listSkills } = rig([row()]);
     renderConsole(api, "/qa/admin/skills/editor");
     fireEvent.click(
-      await screen.findByRole("button", {
-        name: "Личные навыки пользователя",
-      }),
+      await screen.findByRole(
+        "button",
+        { name: "Личные навыки пользователя" },
+        MOUNT_TIMEOUT,
+      ),
     );
     expect(
       screen.getByText(
@@ -88,7 +108,7 @@ describe("admin console skill files", () => {
         kind: "user",
         userId: "u1",
       });
-    });
+    }, MOUNT_TIMEOUT);
   });
 
   it("names the owner and the directory an administrator is editing", async () => {
