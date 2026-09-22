@@ -27,6 +27,9 @@ export default tseslint.config(
         Buffer: "readonly",
         URL: "readonly",
         fetch: "readonly",
+        // The other half of the fetch pair, and a Node global since 18: a
+        // script that dials something has to be able to build an answer.
+        Response: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
       },
