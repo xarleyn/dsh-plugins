@@ -68,6 +68,14 @@ Prettier and its ignore list live in the repository root (`.prettierrc`, `.prett
 
 Every text file is stored and checked out with LF line endings. `.gitattributes` enforces that on staging and checkout, and `.editorconfig` keeps editors from writing CRLF in the first place. Both matter, because a working tree that disagrees with the index stays invisible to `git status` until something stages it.
 
+A reformat commit owns every line of a file it reflowed, which buries the attribution of the code underneath. `.git-blame-ignore-revs` lists those formatting-only commits, and `git blame` skips them once you switch the list on in your clone:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+Add a commit to that list only when its whole change is formatting and it reflowed four or more files — a `style(...)` commit, by the convention above. `scripts/repo-config.test.mjs` checks every entry still resolves on the branch and is still a formatting commit, so a rewritten history cannot leave the list silently useless.
+
 ---
 
 ## Adding a New Plugin
