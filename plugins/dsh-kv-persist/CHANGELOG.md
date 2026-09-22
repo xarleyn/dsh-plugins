@@ -1,3 +1,19 @@
+## 0.2.7 (2026-09-22)
+
+### 🩹 Fixes
+
+- A route key's separator no longer makes the file binary. ([0a70f14](https://github.com/xarleyn/dsh-plugins/commit/0a70f14))
+
+  `manifestRouteKey` joined the provider and the model with a literal NUL byte.
+  Git reads such a file as binary: the diff of `snapshots/manifest.ts` became
+  "Binary files differ", so a change to how keys are composed could not be
+  reviewed at all. The separator is now the same character written as an escape,
+  the key is byte-for-byte what it was, and the file diffs as text again.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.6 (2026-09-17)
 
 ### 🩹 Fixes

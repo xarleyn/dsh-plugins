@@ -1,3 +1,17 @@
+## 0.1.6 (2026-09-22)
+
+### 🩹 Fixes
+
+- The offload fixtures are shared instead of copied. ([89470e0](https://github.com/xarleyn/dsh-plugins/commit/89470e0))
+
+  Each test grew its own payloads, and two of them had already drifted apart, so
+  a fixture that stopped matching what the plugin sends kept passing. The payloads
+  now live in one fixture module the suite imports.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.5 (2026-09-22)
 
 ### 🩹 Fixes
