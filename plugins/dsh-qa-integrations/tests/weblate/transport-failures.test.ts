@@ -9,10 +9,15 @@ import { INSTANCE, TOKEN, credentialFor, provider, stub } from "./shared.js";
  */
 describe("weblate transport failures", () => {
   it("separates an unreachable host from bad TLS", async () => {
+    // The retry policy is the shared suite's subject, and its backoff is real
+    // wall clock: at the configured default these two calls slept ~1.6s per
+    // run, which a loaded CI runner turns into a five-second starvation. The
+    // mapping under test happens on the first attempt, so the retries are off
+    // here — the same shape the sibling provider suites use.
     const refused: typeof fetch = () => {
       throw new Error("connect ECONNREFUSED");
     };
-    const denied = provider(refused);
+    const denied = provider(refused, { retries: 0 });
     await expect(
       denied.execute({ credential: credentialFor() }, "projects.list", {}),
     ).rejects.toMatchObject({ code: "ProviderUnavailable" });
@@ -21,7 +26,7 @@ describe("weblate transport failures", () => {
         cause: { code: "SELF_SIGNED_CERT_IN_CHAIN" },
       });
     };
-    const broken = provider(tls);
+    const broken = provider(tls, { retries: 0 });
     await expect(
       broken.execute({ credential: credentialFor() }, "projects.list", {}),
     ).rejects.toMatchObject({ code: "TlsFailure" });
