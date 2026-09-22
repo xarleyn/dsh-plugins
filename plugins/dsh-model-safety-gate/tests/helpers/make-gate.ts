@@ -2,10 +2,7 @@ import {
   SafetyClassifierService,
   type ClassifierTransport,
 } from "../../src/classifier/service.js";
-import {
-  SafetyMetrics,
-  type SafetyMetricsSnapshot,
-} from "../../src/audit/metrics.js";
+import { SafetyMetrics } from "../../src/audit/metrics.js";
 import {
   resolveSafetyGateConfig,
   type ModelSafetyGateConfig,
@@ -111,4 +108,3 @@ export function makeTestGate(options: MakeGateOptions = {}): TestGate {
 }
 
 export { SAFETY_EVENT_TYPES };
-export type SafetyMetricsSnapshotAlias = SafetyMetricsSnapshot;
