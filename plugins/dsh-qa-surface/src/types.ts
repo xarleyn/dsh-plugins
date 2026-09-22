@@ -810,6 +810,21 @@ export interface QaSurfaceConfig {
      * per-user directory, which is otherwise unreadable to those tools.
      */
     readonly docsRoot?: string;
+    /**
+     * Documentation version `docs_search` stays inside when the model named
+     * neither `version` nor `path`. A corpus carries several editions of the
+     * same module, and a chat asked about "the product" answers out of whichever
+     * edition it happened to read first; naming the stand's edition here lets a
+     * search default to it, and an explicit `version` or `path` still decides
+     * for itself.
+     */
+    readonly docsDefaultVersion?: string;
+    /**
+     * Whether `docsDefaultVersion` is applied. The value stays configured while
+     * the switch is off, so a stand can turn the default back on without
+     * retyping it.
+     */
+    readonly docsDefaultVersionEnabled?: boolean;
   };
   readonly lockdown?: {
     readonly enabled?: boolean;
@@ -1094,6 +1109,13 @@ export interface ResolvedQaSurfaceConfig {
      * `docs/` directory inside each chat's own workspace.
      */
     readonly docsRoot: string;
+    /**
+     * Version a search without `version` and without `path` stays inside, or
+     * `""` for a search across every edition the corpus carries.
+     */
+    readonly docsDefaultVersion: string;
+    /** Whether the deployment's default version is in force. */
+    readonly docsDefaultVersionEnabled: boolean;
   };
   readonly sources: {
     readonly enabled: boolean;

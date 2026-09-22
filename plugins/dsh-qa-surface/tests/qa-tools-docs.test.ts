@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import { validateJsonSchemaValue } from "@deepseek-ai/dsh-tools";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import {
   createDocsReadTool,
@@ -24,6 +25,7 @@ import {
   readDocumentation,
   searchDocumentation,
 } from "../src/qa-tools/docs-tools.js";
+import type { QaDocsSearchResult } from "../src/qa-tools/docs-tools.js";
 
 const LONG = "x".repeat(400);
 
@@ -79,14 +81,19 @@ async function refusal(pending: Promise<unknown>): Promise<QaDocsError> {
   return error as QaDocsError;
 }
 
-function render(tool: ToolDefinition, value: unknown): string {
+/**
+ * The rendered report of one call. The arguments are the model's, and a report
+ * that says where a facet came from reads them: "the stand's default" is only
+ * true of a search that did not name the version itself.
+ */
+function render(tool: ToolDefinition, value: unknown, args?: unknown): string {
   const output = tool.output as {
     render?: (
       args: unknown,
       value: unknown,
     ) => readonly { readonly type: string; readonly text: string }[];
   };
-  const parts = output.render?.(undefined, value) ?? [];
+  const parts = output.render?.(args, value) ?? [];
   return parts.map((part) => part.text).join("\n");
 }
 
@@ -373,6 +380,191 @@ describe("docs_search", () => {
     )) as unknown;
     expect(render(tool, value)).toContain("docs/platform/4.0/auth.md:3");
     cleanup();
+  });
+
+  it("answers a filtered search with facets its own output schema declares", async () => {
+    // A filtered result tags itself with the facets it ran under, and the
+    // registry refuses a property the schema does not declare: an undeclared
+    // facet turns the one call the filters exist for into "returned invalid
+    // output", with the search already done and its answer thrown away.
+    const { workspace, cleanup } = fixture();
+    const tool = createDocsSearchTool();
+    const value = (await tool.execute(
+      { query: "token is issued", version: "3.8", module: "platform" },
+      { agent: agentWithCwd(workspace) } as never,
+    )) as unknown;
+    expect(validateJsonSchemaValue(tool.output.schema, value as never)).toEqual(
+      [],
+    );
+    expect(value).toMatchObject({ version: "3.8", module: "platform" });
+    // The report says which edition it answered from, the same way a hit does.
+    expect(render(tool, value)).toContain("(version 3.8, module platform)");
+    cleanup();
+  });
+});
+
+/**
+ * A corpus the way a stand publishes one: documented modules beside the
+ * corpus's own working material — an asset tree of pictures and the inventories
+ * that name every document there is — which is where a bounded search used to
+ * spend itself before it reached a single document.
+ */
+function corpusFixture() {
+  const base = mkdtempSync(path.join(tmpdir(), "qa-corpus-"));
+  const workspace = path.join(base, "ws");
+  const docs = path.join(workspace, "docs");
+  mkdirSync(path.join(docs, "platform", "3.8"), { recursive: true });
+  mkdirSync(path.join(docs, "_meta"), { recursive: true });
+  mkdirSync(path.join(docs, "_assets", "00"), { recursive: true });
+  writeFileSync(
+    path.join(docs, "platform", "3.8", "auth.md"),
+    "# Auth\n\nThe ftp client is configured per stand.\n",
+  );
+  writeFileSync(
+    path.join(docs, "_meta", "INVENTORY.md"),
+    [
+      "ftp client inventory",
+      "- v38_platform_auth — ftp client",
+      "- v38_platform_auth — ftp client",
+      "- v38_platform_auth — ftp client",
+      "",
+    ].join("\n"),
+  );
+  writeFileSync(path.join(docs, "index.md"), "The corpus index.\n");
+  for (let index = 0; index < 5; index += 1) {
+    writeFileSync(
+      path.join(docs, "_assets", "00", `img-${index}.png`),
+      "\u0089PNG\r\n\u001a\n",
+    );
+  }
+  return {
+    workspace,
+    docs,
+    cleanup: () => rmSync(base, { recursive: true, force: true }),
+  };
+}
+
+describe("docs_search over a published corpus", () => {
+  it("answers from a documented module before the corpus's own inventory", async () => {
+    // Name order put `_meta` first (`_` sorts before letters) and its inventory
+    // matches nearly every product term, so the one hit a caller asked for was
+    // an inventory line about the document rather than the document.
+    const { workspace, cleanup } = corpusFixture();
+    const result = await searchDocumentation(await rootOf(workspace), {
+      query: "ftp client",
+      limit: 1,
+    });
+    expect(result.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/3.8/auth.md",
+    ]);
+    cleanup();
+  });
+
+  it("counts pictures as skipped material, never as documents read", async () => {
+    const { workspace, cleanup } = corpusFixture();
+    const result = await searchDocumentation(await rootOf(workspace), {
+      query: "greenhouse",
+    });
+    expect(result.hits).toEqual([]);
+    // The three text files of the corpus: two documents and the inventory.
+    expect(result.filesScanned).toBe(3);
+    expect(result.skipped).toBe(5);
+    cleanup();
+  });
+
+  it("still searches the corpus's own directories, after the documents", async () => {
+    const { workspace, cleanup } = corpusFixture();
+    const result = await searchDocumentation(await rootOf(workspace), {
+      query: "v38_platform_auth",
+    });
+    expect(result.hits).not.toEqual([]);
+    expect(result.hits[0]?.path).toBe("docs/_meta/INVENTORY.md");
+    cleanup();
+  });
+
+  it("filters before the walk, so an excluded edition is not counted or read", async () => {
+    const { workspace, cleanup } = corpusFixture();
+    const result = await searchDocumentation(await rootOf(workspace), {
+      query: "ftp client",
+      version: "4.0",
+    });
+    expect(result.hits).toEqual([]);
+    // Nothing in the corpus carries 4.0: no document was read at all.
+    expect(result.filesScanned).toBe(0);
+    cleanup();
+  });
+});
+
+describe("docs_search: the deployment's default version", () => {
+  it("keeps a search without version and without path inside the default edition", async () => {
+    const { workspace, cleanup } = fixture();
+    const tool = createDocsSearchTool({ defaultVersion: "3.8" });
+    const args = { query: "token is issued" };
+    const value = (await tool.execute(args, {
+      agent: agentWithCwd(workspace),
+    } as never)) as unknown;
+    const result = value as QaDocsSearchResult;
+    expect(result.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/3.8/auth.md",
+    ]);
+    // The answer says the stand narrowed it, so a model that did not ask for
+    // 3.8 reads the result as "this edition", not as "the whole corpus".
+    expect(render(tool, value, args)).toContain(
+      "(version 3.8, the stand's default)",
+    );
+    expect(validateJsonSchemaValue(tool.output.schema, value as never)).toEqual(
+      [],
+    );
+    cleanup();
+  });
+
+  it("lets the call's own version win, including another edition", async () => {
+    const { workspace, cleanup } = fixture();
+    const tool = createDocsSearchTool({ defaultVersion: "3.8" });
+    const args = { query: "token is issued", version: "4.0" };
+    const value = (await tool.execute(args, {
+      agent: agentWithCwd(workspace),
+    } as never)) as unknown;
+    expect((value as QaDocsSearchResult).hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/4.0/auth.md",
+    ]);
+    // The caller named the edition, so the report does not attribute it to the
+    // stand's default.
+    expect(render(tool, value, args)).not.toContain("the stand's default");
+    cleanup();
+  });
+
+  it("lets an explicit path win, so a scoped search of another edition still works", async () => {
+    const { workspace, cleanup } = fixture();
+    const tool = createDocsSearchTool({ defaultVersion: "3.8" });
+    const value = (await tool.execute(
+      { query: "token is issued", path: "platform/4.0" },
+      { agent: agentWithCwd(workspace) } as never,
+    )) as unknown;
+    expect((value as QaDocsSearchResult).hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/4.0/auth.md",
+    ]);
+    cleanup();
+  });
+
+  it("searches every edition when the deployment has no default", async () => {
+    const { workspace, cleanup } = fixture();
+    const tool = createDocsSearchTool();
+    const value = (await tool.execute({ query: "token is issued" }, {
+      agent: agentWithCwd(workspace),
+    } as never)) as unknown;
+    expect((value as QaDocsSearchResult).hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/3.8/auth.md",
+      "docs/platform/4.0/auth.md",
+    ]);
+    cleanup();
+  });
+
+  it("tells the model which edition a search it did not scope stays inside", () => {
+    expect(
+      createDocsSearchTool({ defaultVersion: "3.8" }).description,
+    ).toContain("This stand documents version 3.8 by default");
+    expect(createDocsSearchTool().description).not.toContain("by default");
   });
 });
 

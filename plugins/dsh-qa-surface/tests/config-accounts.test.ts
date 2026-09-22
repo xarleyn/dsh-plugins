@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigSchema } from "../src/config.js";
+import { docsDefaultVersionOf } from "../src/config-resolvers/tools.js";
 import { resolveConfig } from "../src/resolve-config.js";
 import { schemaParse } from "./config.helpers.js";
 
@@ -214,6 +215,9 @@ describe("qa surface config", () => {
       activationPresets: [],
       // Empty: the per-chat `docs/` layout, which needs no configuration.
       docsRoot: "",
+      // No default edition, and the switch that would apply one is off.
+      docsDefaultVersion: "",
+      docsDefaultVersionEnabled: false,
     });
     expect(
       resolveConfig(
@@ -231,7 +235,33 @@ describe("qa surface config", () => {
       activationMode: "all",
       activationPresets: ["qa-research"],
       docsRoot: "",
+      docsDefaultVersion: "",
+      docsDefaultVersionEnabled: false,
     });
+    expect(
+      resolveConfig(
+        schemaParse({
+          tools: {
+            docsDefaultVersion: "3.8",
+            docsDefaultVersionEnabled: true,
+          },
+        }),
+      ).tools,
+    ).toEqual({
+      dynamicActivation: true,
+      activationSkill: "qa-surface",
+      activationMode: "all",
+      activationPresets: [],
+      docsRoot: "",
+      docsDefaultVersion: "3.8",
+      docsDefaultVersionEnabled: true,
+    });
+    // A default the corpus can never match would answer every search with "no
+    // documentation matches", which reads as a missing document rather than a
+    // misconfigured stand.
+    expect(() =>
+      resolveConfig({ tools: { docsDefaultVersion: "три-восемь" } }),
+    ).toThrow(/documentation version/u);
     // A typo in the trigger must fail the boot, not silently disable the
     // feature for the whole deployment.
     expect(() =>
@@ -240,5 +270,23 @@ describe("qa surface config", () => {
     expect(() => resolveConfig({ tools: { activationPresets: [""] } })).toThrow(
       /empty names/u,
     );
+  });
+
+  it("applies the documentation default version only while its switch is on", () => {
+    // The value stays configured while the switch is off, so a stand can turn
+    // the default back on without retyping the edition.
+    const off = resolveConfig({ tools: { docsDefaultVersion: " 3.8 " } });
+    expect(off.tools.docsDefaultVersion).toBe("3.8");
+    expect(docsDefaultVersionOf(off.tools)).toBe("");
+
+    const on = resolveConfig({
+      tools: { docsDefaultVersion: "3.8", docsDefaultVersionEnabled: true },
+    });
+    expect(docsDefaultVersionOf(on.tools)).toBe("3.8");
+
+    // Enabled with nothing to default to is no default, not a broken stand.
+    const empty = resolveConfig({ tools: { docsDefaultVersionEnabled: true } });
+    expect(empty.tools.docsDefaultVersion).toBe("");
+    expect(docsDefaultVersionOf(empty.tools)).toBe("");
   });
 });

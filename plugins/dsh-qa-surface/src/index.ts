@@ -52,6 +52,7 @@ import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
 import { QaTools } from "./qa-tools/index.js";
+import { docsDefaultVersionOf } from "./config-resolvers/tools.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
 import {
   defaultLegacyProvenanceFilePath,
@@ -452,6 +453,7 @@ export class QaSurface extends TypertRemoteService {
       activationMode: this.getConfig().tools.activationMode,
       activationPresets: this.getConfig().tools.activationPresets,
       docsRoot: this.getConfig().tools.docsRoot,
+      docsDefaultVersion: docsDefaultVersionOf(this.getConfig().tools),
     });
     ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue
