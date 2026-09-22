@@ -9,6 +9,7 @@ import {
 import {
   confluenceConfigSchema,
   resolveConfluenceConfig,
+  type ConfluenceConfigInput,
   type ConfluenceFlags,
 } from "./providers/confluence/config.js";
 import {
@@ -19,6 +20,7 @@ import {
 import {
   jiraConfigSchema,
   resolveJiraConfig,
+  type JiraConfigInput,
   type JiraFlags,
 } from "./providers/jira/config.js";
 import {
@@ -70,10 +72,10 @@ export interface QaIntegrationsConfig {
    */
   readonly credentialHelp?: Readonly<Record<string, CredentialHelpOverride>>;
   readonly bitrix24?: Partial<Bitrix24Flags>;
-  readonly confluence?: Partial<ConfluenceFlags>;
+  readonly confluence?: ConfluenceConfigInput;
   readonly gitlab?: Partial<GitlabFlags>;
   readonly teamcity?: TeamCityConfigInput;
-  readonly jira?: Partial<JiraFlags>;
+  readonly jira?: JiraConfigInput;
   readonly testit?: Partial<TestitFlags>;
   readonly weblate?: Partial<WeblateFlags>;
   /**

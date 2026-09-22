@@ -18,6 +18,7 @@ import type {
 } from "../../types.js";
 import type { IntegrationProvider, ProviderContext } from "../contract.js";
 import { healthFromFailure } from "../shared/health.js";
+import { recordOf } from "../shared/payload.js";
 import {
   assertServiceOperationAllowed,
   serviceBoundaryOf,
@@ -38,18 +39,20 @@ import {
   ConfluenceTransport,
   type ConfluenceCredential,
 } from "./transport.js";
+import { dialectOf, type ConfluenceDialect } from "./dialect.js";
 import {
   CONFLUENCE_HANDLERS,
   CONFLUENCE_PROJECTIONS,
   SPACE_TYPES,
   bodyLimit,
-  commentChildrenPath,
   commentCollections,
+  commentChildrenPath,
   commentKind,
   commentPath,
   commentReplies,
   confluenceSource,
   isNumericSpace,
+  listingCursor,
   numericId,
   offsetCursor,
   pageLimit,
@@ -72,12 +75,12 @@ export {
 } from "./transport.js";
 
 /**
- * Atlassian API tokens are long opaque strings, sometimes prefixed. A pasted
- * URL, a YAML snippet or a credential with whitespace is refused before
- * anything is sent upstream.
+ * Atlassian API tokens are long opaque strings, sometimes prefixed; a Server /
+ * Data Center personal access token is base64 and may carry `+`, `/` and
+ * padding. The shape a connection accepts is the dialect's own. A pasted URL, a
+ * YAML snippet or a credential with whitespace is refused before anything is
+ * sent upstream.
  */
-const TOKEN_SHAPE = /^[A-Za-z0-9._=+/-]{16,512}$/u;
-/** The Atlassian account the token belongs to; the pair is what authenticates. */
 const EMAIL_SHAPE = /^[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+$/u;
 
 /**
@@ -123,6 +126,31 @@ function textOf(value: unknown): string | undefined {
 }
 
 /**
+ * Which collection a comment of the marker dialect belongs to. Cloud hands out
+ * one endpoint per kind, so nothing has to be read off the comment there.
+ */
+function commentMarker(row: unknown): "footer" | "inline" | undefined {
+  const value =
+    typeof row === "object" && row !== null
+      ? (row as Record<string, unknown>)["kind"]
+      : undefined;
+  return value === "footer" || value === "inline" ? value : undefined;
+}
+
+/**
+ * The identifier of one user as either product reports it: Cloud names an
+ * account id, a Server / Data Center installation the user key and login its
+ * directory uses. The same value is what a later read has to name the user by.
+ */
+function identityOf(data: Record<string, unknown>): string | undefined {
+  return (
+    textOf(data["accountId"]) ??
+    textOf(data["userKey"]) ??
+    textOf(data["username"])
+  );
+}
+
+/**
  * Whether one space key stays inside the deployment's boundary. The profile's
  * `resources.spaces` lists space keys — the same vocabulary the deployment's
  * own allowlist and the CQL speak — and keys are compared case-insensitively,
@@ -141,7 +169,15 @@ export function spaceInBoundary(
   );
 }
 
-/** Confluence provider: operator-configured sites over an Atlassian API token. */
+/**
+ * Confluence provider: operator-configured sites over an Atlassian API token
+ * (Cloud) or a personal access token (Server / Data Center).
+ *
+ * Which product answers at a site — and so which endpoints, which
+ * authentication scheme and which shape of body this provider speaks — is the
+ * site's own declared deployment type, never a guess made at connect or at run
+ * time.
+ */
 export class ConfluenceProvider implements IntegrationProvider {
   readonly id = "confluence";
   readonly displayName = "Confluence";
@@ -187,38 +223,44 @@ export class ConfluenceProvider implements IntegrationProvider {
    * broker from dialling any host the caller names or authenticating as any
    * account the caller names.
    *
-   * A deployment-managed secret cannot travel with a connect form, so it
-   * arrives as the Basic pair Atlassian documents (`email:token`). The two
-   * forms can never be confused: an API token contains neither `@` nor `:`.
+   * A deployment-managed secret cannot travel with a connect form, so on Cloud
+   * it arrives as the Basic pair Atlassian documents (`email:token`); the two
+   * forms can never be confused there, because an API token contains neither
+   * `@` nor `:`. A Server / Data Center personal access token is the secret
+   * alone, and its connection stores an empty e-mail: the instance's declared
+   * deployment type is what decides whether an account is required.
    */
   parseCredential(
     raw: string,
     options?: Readonly<Record<string, string>>,
   ): { readonly credential: string; readonly portal: string } {
+    // The instance decides what this connection is allowed to look like, so it
+    // is resolved before the secret is judged.
+    const instance = this.resolveInstance(options?.["instanceId"]);
+    const dialect = dialectOf(instance);
     const provided = raw.trim();
     const pair =
       options?.["email"] === undefined ? splitBasicPair(provided) : undefined;
     const token = pair === undefined ? provided : pair.token;
-    if (!TOKEN_SHAPE.test(token)) {
+    if (!dialect.tokenShape.test(token)) {
       throw new IntegrationError(
         "InvalidCredential",
-        "Use an Atlassian API token",
+        `Use a Confluence ${dialect.credentialLabel}`,
       );
     }
     const email = (
       pair === undefined ? options?.["email"] : pair.email
     )?.trim();
-    if (email === undefined || !EMAIL_SHAPE.test(email)) {
+    if (dialect.requiresEmail && !EMAIL_SHAPE.test(email ?? "")) {
       throw new IntegrationError(
         "InvalidCredential",
         "Use the e-mail of the Atlassian account the token belongs to",
       );
     }
-    const instance = this.resolveInstance(options?.["instanceId"]);
     return {
       credential: JSON.stringify({
         instanceId: instance.id,
-        email,
+        email: email ?? "",
         token,
       } satisfies ConfluenceCredential),
       portal: instance.baseUrl,
@@ -264,17 +306,14 @@ export class ConfluenceProvider implements IntegrationProvider {
   async validate(context: ProviderContext): Promise<ProviderValidation> {
     const credential = credentialFromPlaintext(context.credential);
     const instance = credentialInstance(this.config.confluence, credential);
-    // The connected user is the one read Confluence only serves over v1, and it
-    // is also the cheapest proof that this token may use Confluence at all.
+    // The connected user is the one read both products serve, and it is also
+    // the cheapest proof that this token may use Confluence at all.
     const { data } = await this.transport.getJson<Record<string, unknown>>(
       instance,
       credential,
-      "/wiki/rest/api/user/current",
+      dialectOf(instance).currentUserPath,
     );
-    const accountId =
-      textOf(data["accountId"]) ??
-      textOf(data["userKey"]) ??
-      textOf(data["username"]);
+    const accountId = identityOf(data);
     if (accountId === undefined) {
       throw new IntegrationError(
         "ProviderUnavailable",
@@ -305,16 +344,13 @@ export class ConfluenceProvider implements IntegrationProvider {
       const response = await this.transport.getJson<Record<string, unknown>>(
         instance,
         credential,
-        "/wiki/rest/api/user/current",
+        dialectOf(instance).currentUserPath,
       );
       data = response.data;
     } catch (error) {
       return healthFromFailure(error);
     }
-    const id =
-      textOf(data["accountId"]) ??
-      textOf(data["userKey"]) ??
-      textOf(data["username"]);
+    const id = identityOf(data);
     return {
       status: "healthy",
       ...(id === undefined
@@ -376,6 +412,7 @@ export class ConfluenceProvider implements IntegrationProvider {
         numericId(input["pageId"], "pageId"),
         flags,
         boundary,
+        dialectOf(instance),
       );
     }
     if (boundary !== undefined && operation === "spaces.get") {
@@ -392,9 +429,11 @@ export class ConfluenceProvider implements IntegrationProvider {
       boundary !== undefined && operation === "search.run"
         ? this.boundedSearchInput(input, boundary, flags)
         : input;
+    const dialect = dialectOf(instance);
     const request = handler(prepared, {
       externalUserId: context.externalUserId,
       flags,
+      dialect,
     });
     if (operation === "pages.get") {
       return this.readPage(
@@ -404,16 +443,17 @@ export class ConfluenceProvider implements IntegrationProvider {
         flags,
         prepared,
         boundary,
+        dialect,
       );
     }
     if (operation === "pages.comments") {
       return this.readComments(
         instance,
         credential,
-        request,
         flags,
         prepared,
         boundary,
+        dialect,
       );
     }
     if (operation === "spaces.get") {
@@ -466,8 +506,14 @@ export class ConfluenceProvider implements IntegrationProvider {
         this.itemSpaceReachable(item, flags, boundary),
       );
     }
+    // An offset-paged read counts its own rows, but the product's own `next`
+    // link is authoritative when it has one: it says where the next page really
+    // begins, which matters when a row of this page was dropped by a policy.
+    const upstream = response.page?.nextCursor;
     const nextCursor =
-      cursorMode === "upstream" ? response.page?.nextCursor : undefined;
+      cursorMode === "upstream"
+        ? upstream
+        : ((answer["nextCursor"] as string | undefined) ?? upstream);
     return nextCursor === undefined ? answer : { ...answer, nextCursor };
   }
 
@@ -484,6 +530,7 @@ export class ConfluenceProvider implements IntegrationProvider {
     flags: ConfluenceFlags,
     input: Readonly<Record<string, unknown>>,
     boundary: ServiceResourceBoundary | undefined,
+    dialect: ConfluenceDialect,
   ): Promise<Record<string, unknown>> {
     const projection = CONFLUENCE_PROJECTIONS["pages.get"];
     const response = await this.transport.getJson<Record<string, unknown>>(
@@ -492,11 +539,12 @@ export class ConfluenceProvider implements IntegrationProvider {
       request.path,
       request.query,
     );
-    const spaceId = textOf(response.data["spaceId"]);
-    const space =
-      spaceId === undefined
-        ? {}
-        : await this.readSpaceFields(instance, credential, spaceId);
+    const space = await this.spaceOfPage(
+      instance,
+      credential,
+      response.data,
+      dialect,
+    );
     this.assertSpaceReachable(flags, textOf(space["key"]), boundary);
     return (
       projection?.(response.data, {
@@ -515,10 +563,10 @@ export class ConfluenceProvider implements IntegrationProvider {
   private async readComments(
     instance: ConfluenceInstance,
     credential: ConfluenceCredential,
-    request: ConfluenceRequest,
     flags: ConfluenceFlags,
     input: Readonly<Record<string, unknown>>,
     boundary: ServiceResourceBoundary | undefined,
+    dialect: ConfluenceDialect,
   ): Promise<Record<string, unknown>> {
     const projection = CONFLUENCE_PROJECTIONS["pages.comments"];
     const pageId = numericId(input["pageId"], "pageId");
@@ -530,20 +578,28 @@ export class ConfluenceProvider implements IntegrationProvider {
         pageId,
         flags,
         boundary,
+        dialect,
       );
     }
     const includeReplies =
       typeof input["includeReplies"] === "boolean" && input["includeReplies"];
-    const collections = commentCollections(kind);
+    // Cloud keeps the two kinds in two collections, so a kind selects one; a
+    // Server / Data Center installation keeps both in one and marks each
+    // comment, so every kind is read from that one collection.
+    const collections: readonly ("footer" | "inline")[] =
+      dialect.commentKinds === "path" ? commentCollections(kind) : ["footer"];
+    const cursor = listingCursor(input["cursor"], dialect);
+    const limit = pageLimit(input["limit"], flags);
     const items: unknown[] = [];
     const cursors: Record<string, string> = {};
     let repliesTruncated = false;
     for (const collection of collections) {
+      const call = commentPath(dialect, pageId, collection, cursor, limit);
       const response = await this.transport.getJson<unknown>(
         instance,
         credential,
-        commentPath(pageId, collection),
-        request.query,
+        call.path,
+        call.query,
       );
       const context: ConfluenceProjectionContext = {
         ...this.projectionContext(flags, instance, input),
@@ -551,7 +607,15 @@ export class ConfluenceProvider implements IntegrationProvider {
         kind: collection,
       };
       const projected = projection?.(response.data, context) ?? {};
-      const rows = Array.isArray(projected["items"]) ? projected["items"] : [];
+      const projectedRows = Array.isArray(projected["items"])
+        ? projected["items"]
+        : [];
+      // The marker dialect answered one collection for every kind, so a kind
+      // the caller named is applied to the rows the product marked.
+      const rows =
+        dialect.commentKinds === "marker" && kind !== "all"
+          ? projectedRows.filter((row) => commentMarker(row) === kind)
+          : projectedRows;
       const loaded = includeReplies
         ? await this.withReplies(
             instance,
@@ -560,12 +624,13 @@ export class ConfluenceProvider implements IntegrationProvider {
             collection,
             flags,
             context,
+            dialect,
           )
         : { items: rows, truncated: false };
       repliesTruncated = repliesTruncated || loaded.truncated;
       items.push(...loaded.items);
-      const cursor = response.page?.nextCursor;
-      if (cursor !== undefined) cursors[collection] = cursor;
+      const next = response.page?.nextCursor;
+      if (next !== undefined) cursors[collection] = next;
     }
     const answer: Record<string, unknown> = {
       source: confluenceSource(instance, { pageId }),
@@ -574,7 +639,7 @@ export class ConfluenceProvider implements IntegrationProvider {
     if (kind === "all") return { ...answer, cursors, repliesTruncated };
     return {
       ...answer,
-      nextCursor: cursors[kind],
+      nextCursor: cursors[collections[0] ?? "footer"],
       ...(repliesTruncated ? { repliesTruncated: true } : {}),
     };
   }
@@ -587,6 +652,7 @@ export class ConfluenceProvider implements IntegrationProvider {
     collection: "footer" | "inline",
     flags: ConfluenceFlags,
     context: ConfluenceProjectionContext,
+    dialect: ConfluenceDialect,
   ): Promise<{ readonly items: unknown[]; readonly truncated: boolean }> {
     const cap = Math.max(flags.maxReplyParents, 0);
     const items: unknown[] = [];
@@ -600,15 +666,20 @@ export class ConfluenceProvider implements IntegrationProvider {
         items.push(row);
         continue;
       }
+      const call = commentChildrenPath(
+        dialect,
+        // A row of the marker dialect names its own kind; a reply belongs to the
+        // collection its parent was read from.
+        commentMarker(row) ?? collection,
+        numericId(id, "commentId"),
+        undefined,
+        pageLimit(undefined, flags),
+      );
       const response = await this.transport.getJson<unknown>(
         instance,
         credential,
-        commentChildrenPath(collection, numericId(id, "commentId")),
-        {
-          "body-format": "atlas_doc_format",
-          limit: pageLimit(undefined, flags),
-          sort: "created-date",
-        },
+        call.path,
+        call.query,
       );
       items.push({
         ...(row as Record<string, unknown>),
@@ -725,11 +796,17 @@ export class ConfluenceProvider implements IntegrationProvider {
     const unavailable: string[] = [];
     for (const key of entries) {
       try {
+        const call = dialectOf(instance).spaceList({
+          keys: [key],
+          type,
+          cursor: undefined,
+          limit: 2,
+        });
         const { data } = await this.transport.getJson<unknown>(
           instance,
           credential,
-          "/wiki/api/v2/spaces",
-          { keys: key, limit: 2, "description-format": "plain", type },
+          call.path,
+          call.query,
         );
         const projected = projection?.(data, { flags, instance }) ?? {};
         const rows = Array.isArray(projected["items"])
@@ -756,15 +833,36 @@ export class ConfluenceProvider implements IntegrationProvider {
     instance: ConfluenceInstance,
     credential: ConfluenceCredential,
     spaceId: string,
+    dialect: ConfluenceDialect,
   ): Promise<Record<string, unknown>> {
+    const call = dialect.spacePath(numericId(spaceId, "spaceId"));
     const { data } = await this.transport.getJson<Record<string, unknown>>(
       instance,
       credential,
-      // An id that arrived from upstream is not trusted as a path segment.
-      `/wiki/api/v2/spaces/${numericId(spaceId, "spaceId")}`,
-      {},
+      call.path,
+      call.query,
     );
     return data;
+  }
+
+  /**
+   * The space a page belongs to, as the product reports it. Cloud names the
+   * space by an id on the page, so it is resolved with a second read; a
+   * Server / Data Center installation carries the space itself on the page, and
+   * that read would be spent for nothing.
+   */
+  private async spaceOfPage(
+    instance: ConfluenceInstance,
+    credential: ConfluenceCredential,
+    page: Record<string, unknown>,
+    dialect: ConfluenceDialect,
+  ): Promise<Record<string, unknown>> {
+    const inline = recordOf(page["space"]);
+    if (Object.keys(inline).length > 0) return inline;
+    const spaceId = textOf(page["spaceId"]);
+    return spaceId === undefined
+      ? {}
+      : await this.readSpaceFields(instance, credential, spaceId, dialect);
   }
 
   /**
@@ -779,22 +877,27 @@ export class ConfluenceProvider implements IntegrationProvider {
     pageId: string,
     flags: ConfluenceFlags,
     boundary: ServiceResourceBoundary | undefined,
+    dialect: ConfluenceDialect,
   ): Promise<void> {
+    const call = dialect.pageSpacePath(pageId);
     const { data } = await this.transport.getJson<Record<string, unknown>>(
       instance,
       credential,
-      `/wiki/api/v2/pages/${pageId}`,
-      {},
+      call.path,
+      call.query,
     );
-    const spaceId = textOf(data["spaceId"]);
-    if (spaceId === undefined) {
+    const space = await this.spaceOfPage(instance, credential, data, dialect);
+    const key = textOf(space["key"]);
+    if (key === undefined) {
+      // A page answer that names no space at all is a page that is not there —
+      // or one the credentials may not see, which Confluence answers the same
+      // way on purpose.
       throw new IntegrationError(
         "ResourceNotFound",
         "Confluence page not found",
       );
     }
-    const space = await this.readSpaceFields(instance, credential, spaceId);
-    this.assertSpaceReachable(flags, textOf(space["key"]), boundary);
+    this.assertSpaceReachable(flags, key, boundary);
   }
 
   /**

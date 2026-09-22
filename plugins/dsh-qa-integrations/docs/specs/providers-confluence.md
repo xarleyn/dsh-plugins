@@ -1258,21 +1258,29 @@ confluence_cache_hits_total
 
 ## Compatibility
 
-Initial target:
+Два продукта, и какой из них перед провайдером — объявляет оператор в конфиге
+инстанса (`confluence.instances[].deploymentType`).
 
 ```text
-Confluence Cloud
+confluence-cloud        deploymentType: cloud    /wiki/api/v2 + /wiki/rest/api   Basic (email:token)   ADF
+confluence-data-center  deploymentType: server   /rest/api                       Bearer (PAT)          storage
 ```
 
-Confluence Data Center/Server is separate future strategy.
+Реализовано как отдельная auth/client strategy на инстанс, а не как один code
+path: у Cloud это v2 API под `/wiki` с телами в Atlassian Document Format и
+пагинацией opaque-курсором, у Server / Data Center — свой v1 API с телами в
+storage-разметке и пагинацией по offset. Общая у обоих продуктов — только форма
+ответа инструмента, политика пространств (allowlist и service boundary) и модель
+ошибок. Контекстный путь инстанса (`https://host/confluence`) задаётся в
+`baseUrl`, и все пути считаются от него.
 
-Не пытаться автоматически использовать Cloud 3LO client с Data Center.
+Cloud OAuth 3LO с Data Center не смешивается.
 
 Future provider modes:
 
 ```text
-confluence-cloud
-confluence-data-center
+confluence-cloud-sso
+confluence-data-center-oauth
 ```
 
 ---

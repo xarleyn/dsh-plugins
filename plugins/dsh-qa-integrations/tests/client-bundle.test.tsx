@@ -96,6 +96,7 @@ describe("classic browser bundle", () => {
                 id: "company",
                 label: "Company",
                 baseUrl: "https://company.atlassian.net",
+                deploymentType: "cloud" as const,
               },
             ],
           }),
@@ -183,10 +184,11 @@ describe("classic browser bundle", () => {
     const rendered = render(
       Page === undefined ? null : <Page token="qa-account-token" />,
     );
-    // One configured site means no selector: the card names it and asks for the
-    // credential alone.
+    // One configured site means no selector: the card names it, says which
+    // product answers there, and asks for the credential alone.
     expect(await screen.findByLabelText("Atlassian API token")).toBeDefined();
     expect(screen.getByText("Сайт: Company")).toBeDefined();
+    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
     expect(screen.getByText("Confluence")).toBeDefined();
     // A refused read is answered with the taxonomy the card renders, so a
     // deployment whose site cannot be reached still explains itself.

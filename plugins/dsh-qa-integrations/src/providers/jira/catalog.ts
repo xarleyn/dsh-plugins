@@ -3,7 +3,7 @@ import type {
   IntegrationCapability,
   IntegrationCapabilityInfo,
 } from "../../types.js";
-import type { JiraFlags } from "./config.js";
+import type { JiraDeployment, JiraFlags } from "./config.js";
 
 /**
  * Capabilities this provider offers, one per kind of Jira data a user may hand
@@ -144,6 +144,13 @@ export interface JiraOperationDefinition {
    */
   readonly path: string;
   /**
+   * The path of this operation on a Server / Data Center instance, when the
+   * product does not serve the Cloud one. Every other operation is the same
+   * path under the instance's own `/rest/api/2` root, which is what
+   * {@link jiraOperationPath} resolves.
+   */
+  readonly serverPath?: string;
+  /**
    * Every operation of this catalog is a read. The field exists so the package
    * gate can assert that, instead of trusting the path names to look harmless:
    * Jira serves the same paths writes land on (`/transitions` is a POST).
@@ -174,7 +181,9 @@ export const JIRA_RESOURCE_KIND = "projects";
  *
  * `issues.search` reads the enhanced search endpoint Jira Cloud serves today;
  * the legacy `/search` was removed by Atlassian, so a catalog that still named
- * it would answer with an error page instead of issues.
+ * it would answer with an error page instead of issues. A Server / Data Center
+ * instance is the other way round: it serves exactly the legacy `/search`, and
+ * that is why the operation declares a `serverPath` of its own.
  */
 export const JIRA_OPERATIONS: Readonly<
   Record<string, JiraOperationDefinition>
@@ -188,6 +197,7 @@ export const JIRA_OPERATIONS: Readonly<
   "issues.search": {
     capability: "issues.read",
     path: "/rest/api/3/search/jql",
+    serverPath: "/rest/api/2/search",
     method: "GET",
     list: true,
     security: PROJECT_READ,
@@ -271,6 +281,67 @@ export const JIRA_READ_PATHS: readonly string[] = Object.freeze([
   "/rest/api/3/field",
   ...JIRA_COMPANION_PATHS,
 ]);
+
+/**
+ * The same allow-list for a Server / Data Center instance, which serves the
+ * whole read surface under `/rest/api/2`. It is written out instead of being
+ * derived, so that every endpoint this provider may ever call on either product
+ * is a line somebody added on purpose — and the package gate asserts the two
+ * lists stay in step, entry for entry, apart from the search endpoint that the
+ * two products genuinely do not share.
+ */
+export const JIRA_SERVER_READ_PATHS: readonly string[] = Object.freeze([
+  "/rest/api/2/myself",
+  "/rest/api/2/search",
+  "/rest/api/2/issue/:issueKey",
+  "/rest/api/2/issue/:issueKey/comment",
+  "/rest/api/2/issue/:issueKey/transitions",
+  "/rest/api/2/project/:projectKey",
+  "/rest/api/2/field",
+  "/rest/api/2/serverInfo",
+  "/rest/api/2/user/search",
+]);
+
+/**
+ * The path of one catalog operation on the site's own product: the declared
+ * Cloud path, or its Server / Data Center counterpart — the operation's own
+ * when the product serves a different endpoint, and the same path under the
+ * instance's `/rest/api/2` root otherwise.
+ */
+export function jiraOperationPath(
+  operation: string,
+  deployment: JiraDeployment,
+): string | undefined {
+  const definition = JIRA_OPERATIONS[operation];
+  if (definition === undefined) return undefined;
+  if (deployment === "server") {
+    return definition.serverPath ?? mirrorToServer(definition.path);
+  }
+  return definition.path;
+}
+
+/** `/rest/api/3/x` as a Data Center instance spells it. */
+export function mirrorToServer(path: string): string {
+  return `/rest/api/2${path.slice("/rest/api/3".length)}`;
+}
+
+/** The two reads this provider makes that are not operations of the catalog. */
+export type JiraCompanionRead = "serverInfo" | "userSearch";
+
+/**
+ * The path of one companion read on the site's product: the deployment probe a
+ * connect makes, and the directory lookup behind a person named by name.
+ */
+export function jiraCompanionPath(
+  read: JiraCompanionRead,
+  deployment: JiraDeployment,
+): string {
+  const cloud =
+    read === "serverInfo"
+      ? "/rest/api/3/serverInfo"
+      : "/rest/api/3/user/search";
+  return deployment === "server" ? mirrorToServer(cloud) : cloud;
+}
 
 /** Capabilities this deployment allows, in catalog order. */
 export function enabledCapabilities(

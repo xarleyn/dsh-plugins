@@ -30,11 +30,13 @@ describe("confluence site configuration", () => {
         id: "company",
         label: "company.atlassian.net",
         baseUrl: "https://company.atlassian.net",
+        deploymentType: "cloud",
       },
       {
         id: "gateway",
         label: "Scoped",
         baseUrl: "https://api.atlassian.com/ex/confluence/cloud-1",
+        deploymentType: "cloud",
       },
     ]);
 
@@ -58,6 +60,46 @@ describe("confluence site configuration", () => {
         ],
       }),
     ).toThrow(/duplicate/u);
+  });
+
+  it("keeps an instance that declares no product on Cloud, and names the others", () => {
+    const [implicit] = resolveConfluenceConfig({
+      instances: [
+        { id: "legacy", label: "", baseUrl: "https://wiki.example.corp" },
+      ],
+    }).instances;
+    expect(implicit?.deploymentType).toBe("cloud");
+
+    // An administrator calls the product Data Center; the API is the same one
+    // Server answers, so both spellings resolve to the same deployment.
+    for (const declared of ["server", "data-center", "DataCenter"]) {
+      const [instance] = resolveConfluenceConfig({
+        instances: [
+          {
+            id: "corp",
+            label: "",
+            baseUrl: "https://wiki.example.corp/confluence",
+            deploymentType: declared,
+          },
+        ],
+      }).instances;
+      expect(instance?.deploymentType, declared).toBe("server");
+    }
+
+    // A typo fails loudly instead of silently becoming the default: an instance
+    // read as the wrong product would answer every read with a 404.
+    expect(() =>
+      resolveConfluenceConfig({
+        instances: [
+          {
+            id: "corp",
+            label: "",
+            baseUrl: "https://wiki.example.corp",
+            deploymentType: "datacentre",
+          },
+        ],
+      }),
+    ).toThrow(/deploymentType must be cloud, server or data-center/u);
   });
 
   it("allows plain HTTP only when the deployment says so", () => {

@@ -36,6 +36,8 @@ for (const file of [
   "lib/providers/confluence/tools.js",
   "lib/providers/confluence/adf.js",
   "lib/providers/confluence/cql.js",
+  "lib/providers/confluence/dialect.js",
+  "lib/providers/confluence/storage.js",
   "lib/providers/gitlab/index.js",
   "lib/providers/gitlab/catalog.js",
   "lib/providers/gitlab/operations.js",
@@ -60,6 +62,7 @@ for (const file of [
   "lib/providers/jira/tools.js",
   "lib/providers/jira/jql.js",
   "lib/providers/jira/adf.js",
+  "lib/providers/jira/dialect.js",
   "lib/providers/testit/index.js",
   "lib/providers/testit/catalog.js",
   "lib/providers/testit/operations.js",
@@ -806,8 +809,14 @@ const jiraCatalog = await readFile(
 const jiraPaths = [...jiraCatalog.matchAll(/\bpath: "([^"]+)"/gu)].map(
   (match) => match[1],
 );
+const jiraServerPaths = [
+  ...jiraCatalog.matchAll(/\bserverPath: "([^"]+)"/gu),
+].map((match) => match[1]);
 const jiraReadPaths = [
   ...jiraCatalog.matchAll(/^\s*"(\/rest\/api\/3\/[^"]+)",$/gmu),
+].map((match) => match[1]);
+const jiraServerReadPaths = [
+  ...jiraCatalog.matchAll(/^\s*"(\/rest\/api\/2\/[^"]+)",$/gmu),
 ].map((match) => match[1]);
 const jiraToolCount = [...jiraTools.matchAll(/operation: "([^"]+)"/gu)].length;
 assert.equal(
@@ -828,6 +837,45 @@ for (const path of jiraPaths) {
     `${path} is not in the provider's read-only allow-list`,
   );
 }
+for (const path of jiraServerReadPaths) {
+  assert.match(path, /^\/rest\/api\/2\//u, `${path} must be a v2 API path`);
+}
+// Every operation reaches both products: Cloud under its own root, a Server /
+// Data Center instance under `/rest/api/2`. The two allow-lists are the same
+// length and differ only where the products genuinely do — a Data Center
+// instance has no `/search/jql`, and the classic `/search` it has was removed
+// from Cloud — so a read that exists on one product alone cannot appear here
+// without being declared as exactly that difference.
+assert.equal(
+  jiraServerReadPaths.length,
+  jiraReadPaths.length,
+  "both products must declare the same read surface",
+);
+for (const path of jiraServerPaths) {
+  assert(
+    jiraServerReadPaths.includes(path),
+    `${path} is not in the Server / Data Center allow-list`,
+  );
+}
+const mirrorToServer = (path) =>
+  path.replace(/^\/rest\/api\/3\//u, "/rest/api/2/");
+const serverSurface = new Set(jiraServerReadPaths);
+const onlyCloud = jiraReadPaths.filter(
+  (path) => !serverSurface.has(mirrorToServer(path)),
+);
+const onlyServer = jiraServerReadPaths.filter(
+  (path) => !jiraReadPaths.some((cloud) => mirrorToServer(cloud) === path),
+);
+assert.deepEqual(
+  onlyCloud,
+  ["/rest/api/3/search/jql"],
+  "the two products may differ only where their search APIs do",
+);
+assert.deepEqual(
+  onlyServer,
+  ["/rest/api/2/search"],
+  "the two products may differ only where their search APIs do",
+);
 for (const forbidden of [
   '/rest/api/3/search"',
   "expression",
@@ -844,12 +892,33 @@ for (const forbidden of [
     `Jira allow-list must not carry ${forbidden}`,
   );
 }
+// A Server / Data Center instance serves none of the writes the v2 API shares
+// paths with, on either product's allow-list.
+for (const forbidden of [
+  "/worklog",
+  "/watchers",
+  "/votes",
+  "issueLinkType",
+  "/attachment/",
+  "raw",
+  "expression",
+]) {
+  assert.equal(
+    jiraServerReadPaths.some((path) => path.includes(forbidden)),
+    false,
+    `Jira Server allow-list must not carry ${forbidden}`,
+  );
+}
 // The reads the provider makes beside an operation are declared in the same
 // allow-list as the operations themselves: the deployment type at connect, and
 // the people directory behind a name filter.
 for (const companion of ["/rest/api/3/serverInfo", "/rest/api/3/user/search"]) {
   assert.match(jiraCatalog, new RegExp(`"${companion}"`, "u"));
   assert(jiraReadPaths.includes(companion), companion);
+}
+for (const companion of ["/rest/api/2/serverInfo", "/rest/api/2/user/search"]) {
+  assert.match(jiraCatalog, new RegExp(`"${companion}"`, "u"));
+  assert(jiraServerReadPaths.includes(companion), companion);
 }
 // The filter vocabulary stays typed: custom fields are addressed by the id the
 // field catalog reported or by an alias the deployment configured, never by a
@@ -876,8 +945,13 @@ const jiraOperations = await readFile(
   new URL("src/providers/jira/operations.ts", root),
   "utf8",
 );
-// The only thing that reaches the search endpoint is the builder's own output.
-assert.match(jiraOperations, /jql: buildJql\(input\)/u);
+// The only thing that reaches the search endpoint is the builder's own output,
+// built against the product the site declared: a Server / Data Center instance
+// filters on a user name where Cloud filters on an account id.
+assert.match(
+  jiraOperations,
+  /jql: buildJql\(input, context\.dialect\.deployment\)/u,
+);
 assert.match(jiraOperations, /expand: "changelog"/u);
 assert.match(jiraOperations, /"changelog_summary"/u);
 // An instance's own field ids and values live in the deployment's config, never
@@ -902,17 +976,33 @@ const jiraTransport = await readFile(
 );
 assert.match(jiraTransport, /method: "GET"/u);
 assert.match(jiraTransport, /redirect: "error"/u);
-assert.match(jiraTransport, /authorization: basicAuthorization/u);
-// The API token travels as HTTP Basic over `email:token`, never in the URL.
-assert.match(jiraTransport, /`Basic \$\{pair\}`/u);
+// The HTTP boundary builds no scheme of its own: which product answers decides
+// whether the secret is an HTTP Basic pair over `email:token` or a bearer
+// token, and that decision lives in one place.
+assert.match(jiraTransport, /authorizationFor\(dialect, credential\)/u);
+assert.doesNotMatch(jiraTransport, /toString\("base64"\)/u);
+const jiraDialect = await readFile(
+  new URL("src/providers/jira/dialect.ts", root),
+  "utf8",
+);
+assert.match(jiraDialect, /`Basic \$\{pair\}`/u);
+assert.match(jiraDialect, /Bearer \$\{credential\.token\}/u);
+assert.match(jiraDialect, /dialect\.deployment === "server"/u);
+assert.match(jiraDialect, /requiresEmail/u);
 const jiraHost = await readFile(
   new URL("src/providers/jira/index.ts", root),
   "utf8",
 );
-assert.match(jiraHost, /requireCloud/u);
+// A site that answers the other product is refused at connect, with the value
+// that fixes it: the two Jiras are different APIs and must never be read as
+// silently compatible.
+assert.match(jiraHost, /requireDeployment/u);
 assert.match(jiraHost, /credentialSite/u);
 assert.doesNotMatch(jiraHost, /baseUrl:\s*input/u);
-assert.match(jiraHost, /\/rest\/api\/3\/myself/u);
+assert.match(jiraHost, /jiraOperationPath\("connection\.get"/u);
+// No v3 or v2 literal is built outside the catalog: the paths live there, and
+// the host asks it for the one of the site's product.
+assert.doesNotMatch(jiraHost, /`\/rest\/api\/[23]\//u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of every catalog.
@@ -1079,6 +1169,9 @@ const confluenceCatalog = await readFile(
 const confluencePaths = [
   ...confluenceCatalog.matchAll(/\bpath: "([^"]+)"/gu),
 ].map((match) => match[1]);
+const confluenceServerPaths = [
+  ...confluenceCatalog.matchAll(/\bserverPath: "([^"]+)"/gu),
+].map((match) => match[1]);
 const confluenceToolCount = [
   ...confluenceTools.matchAll(/operation: "([^"]+)"/gu),
 ].length;
@@ -1087,7 +1180,17 @@ assert.equal(
   confluenceToolCount,
   "every Confluence tool must name exactly one catalog operation",
 );
+// Both products declare every operation: Cloud under `/wiki`, a Server / Data
+// Center instance under its own `/rest/api` root. Neither list may name a write
+// endpoint, a retired collection, or anything with state.
+assert.equal(
+  confluenceServerPaths.length,
+  confluencePaths.length,
+  "every Confluence operation must name its Server / Data Center path",
+);
 assert.doesNotMatch(confluenceCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
+const FORBIDDEN_CONFLUENCE_PATH =
+  /\/admin|properties|operations|likes|watchers|permissions|restrictions|blueprint|template/u;
 for (const path of confluencePaths) {
   assert.match(
     path,
@@ -1096,10 +1199,43 @@ for (const path of confluencePaths) {
   );
   assert.doesNotMatch(
     path,
-    /\/rest\/api\/content|\/admin|properties|operations|likes|watchers|permissions|restrictions|blueprint|template/u,
+    FORBIDDEN_CONFLUENCE_PATH,
     `${path} is not a read-only endpoint`,
   );
 }
+for (const path of confluenceServerPaths) {
+  assert.match(
+    path,
+    /^\/rest\/api\//u,
+    `${path} must be a Server / Data Center API path`,
+  );
+  assert.doesNotMatch(
+    path,
+    FORBIDDEN_CONFLUENCE_PATH,
+    `${path} is not a read-only endpoint`,
+  );
+}
+// The replies of a comment are read too, and both products' endpoints for them
+// are declared in the same file rather than assembled at the call site.
+for (const path of [
+  ...confluenceCatalog.matchAll(/^\s*"(\/wiki\/api\/v2\/[^"]+)",$/gmu),
+  ...confluenceCatalog.matchAll(/^\s*"(\/rest\/api\/[^"]+)",$/gmu),
+]) {
+  assert.doesNotMatch(path[1], FORBIDDEN_CONFLUENCE_PATH, path[1]);
+}
+// The product decides where a read goes and how it pages: the dialect owns both,
+// and no path literal is built outside the catalog.
+const confluenceDialect = await readFile(
+  new URL("src/providers/confluence/dialect.ts", root),
+  "utf8",
+);
+assert.match(confluenceDialect, /commentKinds: "marker"/u);
+assert.match(confluenceDialect, /Bearer \$\{credential\.token\}/u);
+assert.match(confluenceDialect, /dialect\.deployment === "server"/u);
+assert.match(confluenceDialect, /confluenceOperationPath/u);
+// No path is spelled out here: every endpoint comes from the catalog, so the
+// allow-list above is the only place a request path is decided.
+assert.doesNotMatch(confluenceDialect, /"\/(?:wiki|rest)\//u);
 
 const confluenceTransport = await readFile(
   new URL("src/providers/confluence/transport.ts", root),
@@ -1107,10 +1243,10 @@ const confluenceTransport = await readFile(
 );
 assert.match(confluenceTransport, /method: "GET"/u);
 assert.match(confluenceTransport, /redirect: "error"/u);
-// The credential reaches the service as a Basic pair and nowhere else: no
-// query parameter is ever built out of a token.
-assert.match(confluenceTransport, /Basic \$\{pair\}/u);
-assert.match(confluenceTransport, /toString\("base64"\)/u);
+// The credential reaches the service through the dialect's one scheme and
+// nowhere else: no query parameter is ever built out of a token.
+assert.match(confluenceTransport, /authorizationFor\(dialectOf\(instance\)/u);
+assert.doesNotMatch(confluenceTransport, /toString\("base64"\)/u);
 assert.doesNotMatch(confluenceTransport, /searchParams\.set\([^)]*token/u);
 
 // The page's space is what the operator allowlist is written in, so the guard

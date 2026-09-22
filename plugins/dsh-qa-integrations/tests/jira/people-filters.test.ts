@@ -66,9 +66,9 @@ describe("jira people filters", () => {
     expect(calls[0]?.url.pathname).toBe("/rest/api/3/search/jql");
     expect(jqlOf(calls[0])).toContain("assignee = currentUser()");
     expect(jqlOf(calls[0])).toContain('reporter = "5b10ac8d82e05b22cc7d4ef6"');
-    expect(needsUserLookup("me")).toBe(false);
-    expect(needsUserLookup("5b10ac8d82e05b22cc7d4ef6")).toBe(false);
-    expect(needsUserLookup("Иванов")).toBe(true);
+    expect(needsUserLookup("me", "cloud")).toBe(false);
+    expect(needsUserLookup("5b10ac8d82e05b22cc7d4ef6", "cloud")).toBe(false);
+    expect(needsUserLookup("Иванов", "cloud")).toBe(true);
   });
 
   it("refuses a name nobody matches instead of answering an empty page", async () => {
