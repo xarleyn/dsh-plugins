@@ -1043,6 +1043,63 @@ test("a card source demands a script that runs the card-contract gate", async ()
   }
 });
 
+test("the shared runner's cardContract option satisfies the card gate", async () => {
+  const cardSource = {
+    "client/card.tsx": 'renderSlot("settings.plugin.item", Card);\n',
+  };
+  // A manifest leaning on the runner never names the contract module, so the
+  // gate has to read the option it passes instead of the import path.
+  const runnerForm = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": [
+        'import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";',
+        "",
+        "await runVerifyPackage({",
+        '  packageName: "@yadsh/dsh-fixture",',
+        "  clientBundle: {",
+        "    moduleLoaderId: true,",
+        "    cardContract: { legacyPatterns: [/.fixture-card{/u] },",
+        "  },",
+        "});",
+        "",
+      ].join("\n"),
+    },
+    sourceFiles: cardSource,
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(runnerForm.directory, runnerForm.manifest),
+      [],
+    );
+  } finally {
+    await rm(runnerForm.root, { recursive: true, force: true });
+  }
+
+  // A script that never reaches the runner is still refused.
+  const withoutRunner = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": [
+        "// cardContract: nothing runs it",
+        "assert.match(client, /window\\.__ModuleLoader__\\.load/u);",
+        "assert.equal(name, '@yadsh/dsh-fixture');",
+      ].join("\n"),
+    },
+    sourceFiles: cardSource,
+  });
+  try {
+    const errors = validateClientContractGates(
+      withoutRunner.directory,
+      withoutRunner.manifest,
+    );
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /verify-plugin-card-contract/u);
+  } finally {
+    await rm(withoutRunner.root, { recursive: true, force: true });
+  }
+});
+
 test("a plugin without a client bundle or card owes neither gate", async () => {
   const { root, directory, manifest } = await pluginFixture({
     scriptFiles: { "verify-package.mjs": "assert.ok(true);\n" },
