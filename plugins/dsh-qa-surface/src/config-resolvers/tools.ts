@@ -44,5 +44,6 @@ export function resolveTools(input: QaSurfaceConfig): ToolsSlice {
     dynamicActivation:
       input.tools?.dynamicActivation ??
       DEFAULT_QA_SURFACE_CONFIG.tools.dynamicActivation,
+    docsRoot: input.tools?.docsRoot ?? DEFAULT_QA_SURFACE_CONFIG.tools.docsRoot,
   });
 }

@@ -1,5 +1,5 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import { canonicalCandidate, pathIsInside } from "../user-workspace.js";
@@ -83,7 +83,19 @@ const DOCS_UNAVAILABLE = `this chat's workspace has no ${QA_DOCS_DIRECTORY}/ dir
 const DOCS_NOT_A_DIRECTORY = `the ${QA_DOCS_DIRECTORY}/ entry in this chat's workspace is not a real directory (it is a file or a link), and documentation is never followed through a link.`;
 const DOCS_ESCAPE = `the ${QA_DOCS_DIRECTORY}/ directory resolves outside the calling chat's workspace, so the documentation tree is refused.`;
 const INVALID_QUERY = "no query was given: pass the phrase to look for.";
-const OUTSIDE_DOCS = `this path resolves outside the documentation directory (${QA_DOCS_DIRECTORY}/) of the calling chat's workspace. Documentation is only read where the stand publishes it; pass a path inside ${QA_DOCS_DIRECTORY}/.`;
+const OUTSIDE_DOCS = `this path resolves outside the documentation tree (${QA_DOCS_DIRECTORY}/) this stand reads. Documentation is only read where the stand publishes it; pass a path inside ${QA_DOCS_DIRECTORY}/.`;
+
+/**
+ * Refusals of a configured root. The operator named the path, so the message
+ * names it too: a typo in a deployment file is not something the model can
+ * diagnose from "documentation is unavailable".
+ */
+const configuredMissing = (root: string): string =>
+  `this deployment publishes its documentation at ${root}, and nothing is there. Report that documentation is unavailable rather than guessing its contents.`;
+const configuredNotADirectory = (root: string): string =>
+  `this deployment publishes its documentation at ${root}, which is not a real directory (it is a file or a link), and documentation is never followed through a link.`;
+const CONFIGURED_NOT_ABSOLUTE =
+  "the configured documentation root is not an absolute path, so the documentation tree cannot be located. Report that documentation is unavailable rather than guessing its contents.";
 const SYMLINK_ESCAPE =
   "this path leaves the documentation tree through a symbolic link, and links are not followed out of it.";
 const NOT_FOUND =
@@ -104,11 +116,26 @@ interface QaDocsExecution {
   };
 }
 
+/**
+ * Where this deployment publishes its documentation.
+ *
+ * A deployment that hands every chat its own workspace publishes documentation
+ * inside it, and an empty `root` keeps that layout. One that publishes the
+ * corpus once — outside every per-user directory — names it here, and the tools
+ * read it exactly as they read a per-chat tree: same fence, same reported paths
+ * (`docs/<module>/<version>/…`), only the directory that contains the tree
+ * comes from configuration instead of from the calling chat.
+ */
+export interface QaDocsOptions {
+  /** Absolute documentation root, or `""` for `<chat workspace>/docs`. */
+  readonly root?: string;
+}
+
 /** The resolved documentation root of one call. */
 export interface QaDocsRoot {
-  /** Canonical workspace root of the calling chat. */
+  /** Canonical directory the tree sits in: the chat's workspace, or the configured root's parent. */
   readonly workspace: string;
-  /** Canonical `<workspace>/docs`. */
+  /** Canonical directory documentation is read from. */
   readonly docs: string;
 }
 
@@ -212,8 +239,17 @@ function moduleMatches(identity: QaDocsIdentity, wanted: string): boolean {
  * The root is a real directory inside the canonical workspace: a `docs` entry
  * that is a link or a file is refused rather than followed, because the fence
  * is the point of the tool and a link is how a fence is left.
+ *
+ * A deployment that names its corpus once (`QaDocsOptions.root`) skips the
+ * per-chat lookup entirely — that layout is exactly why it configures the root —
+ * and is held to the same rules: absolute, a real directory, no links.
  */
-export async function docsRootOf(exec: QaDocsExecution): Promise<QaDocsRoot> {
+export async function docsRootOf(
+  exec: QaDocsExecution,
+  options: QaDocsOptions = {},
+): Promise<QaDocsRoot> {
+  const configured = (options.root ?? "").trim();
+  if (configured !== "") return await configuredDocsRoot(configured);
   const cwd = exec.agent?.session.header.cwd;
   if (typeof cwd !== "string" || cwd.trim() === "") {
     throw new QaDocsError("workspace-unavailable", WORKSPACE_UNAVAILABLE);
@@ -247,6 +283,42 @@ export async function docsRootOf(exec: QaDocsExecution): Promise<QaDocsRoot> {
     throw new QaDocsError("symlink-escape", DOCS_ESCAPE);
   }
   return { workspace, docs };
+}
+
+/**
+ * The documentation root a deployment named.
+ *
+ * The parent directory plays the part the chat's workspace plays in the
+ * per-chat layout: `docs/`-relative reporting, the fence and every path rule
+ * below are unchanged, so a configured corpus is read by the same rules as a
+ * published-into-the-workspace one.
+ */
+async function configuredDocsRoot(configured: string): Promise<QaDocsRoot> {
+  if (!isAbsolute(configured)) {
+    throw new QaDocsError("docs-unavailable", CONFIGURED_NOT_ABSOLUTE);
+  }
+  const entry = await lstat(configured).catch(
+    (error: unknown): NodeJS.ErrnoException => error as NodeJS.ErrnoException,
+  );
+  if (entry instanceof Error) {
+    if (entry.code === "ENOENT") {
+      throw new QaDocsError("docs-unavailable", configuredMissing(configured));
+    }
+    throw new QaDocsError("workspace-unavailable", WORKSPACE_UNAVAILABLE);
+  }
+  if (entry.isSymbolicLink() || !entry.isDirectory()) {
+    throw new QaDocsError(
+      "docs-unavailable",
+      configuredNotADirectory(configured),
+    );
+  }
+  let docs: string;
+  try {
+    docs = canonicalCandidate(configured);
+  } catch {
+    throw new QaDocsError("workspace-unavailable", WORKSPACE_UNAVAILABLE);
+  }
+  return { workspace: dirname(docs), docs };
 }
 
 /** One documentation target: canonical, and inside the documentation root. */
@@ -584,10 +656,12 @@ function identityLabel(identity: QaDocsIdentity): string {
  * version/module facets exist so a model that has been told "3.8" stops
  * sweeping the whole tree.
  */
-export function createDocsSearchTool(): ToolDefinition {
+export function createDocsSearchTool(
+  options: QaDocsOptions = {},
+): ToolDefinition {
   return defineTool({
     name: "docs_search",
-    description: `Search the stand's documentation, which lives in the ${QA_DOCS_DIRECTORY}/ directory of this chat's workspace. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.`,
+    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.`,
     parameters: {
       query: {
         type: "string",
@@ -664,7 +738,7 @@ export function createDocsSearchTool(): ToolDefinition {
       },
     },
     execute: async (args, exec) => {
-      const root = await docsRootOf(exec as QaDocsExecution);
+      const root = await docsRootOf(exec as QaDocsExecution, options);
       return searchDocumentation(root, {
         query: args.query,
         version: args.version,
@@ -676,11 +750,25 @@ export function createDocsSearchTool(): ToolDefinition {
   });
 }
 
+/**
+ * How the tool description names the tree: the model has to know where the
+ * documentation is before it decides to look, and a configured corpus is named
+ * by the stand rather than by the chat, so the sentence differs.
+ */
+function docsLayout(options: QaDocsOptions): string {
+  const root = (options.root ?? "").trim();
+  return root === ""
+    ? `in the ${QA_DOCS_DIRECTORY}/ directory of this chat's workspace`
+    : `in the ${QA_DOCS_DIRECTORY}/ tree this stand publishes (reported as ${QA_DOCS_DIRECTORY}/<module>/<version>/…)`;
+}
+
 /** `docs_read` — open one documentation file at a bounded window of lines. */
-export function createDocsReadTool(): ToolDefinition {
+export function createDocsReadTool(
+  options: QaDocsOptions = {},
+): ToolDefinition {
   return defineTool({
     name: "docs_read",
-    description: `Read one documentation file of this chat's workspace, ${QA_DOCS_DIRECTORY}/, at a bounded window of lines. Use it after docs_search reports a path, to read the passage a hit belongs to. Only files inside ${QA_DOCS_DIRECTORY}/ can be read; directories, paths outside the tree and paths that leave it through a symbolic link are refused with the reason.`,
+    description: `Read one documentation file of the stand's documentation, which lives ${docsLayout(options)}, at a bounded window of lines. Use it after docs_search reports a path, to read the passage a hit belongs to. Only files inside ${QA_DOCS_DIRECTORY}/ can be read; directories, paths outside the tree and paths that leave it through a symbolic link are refused with the reason.`,
     parameters: {
       path: {
         type: "string",
@@ -723,7 +811,7 @@ export function createDocsReadTool(): ToolDefinition {
       },
     },
     execute: async (args, exec) => {
-      const root = await docsRootOf(exec as QaDocsExecution);
+      const root = await docsRootOf(exec as QaDocsExecution, options);
       return readDocumentation(root, {
         path: args.path,
         from: args.from,

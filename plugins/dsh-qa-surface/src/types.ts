@@ -803,6 +803,13 @@ export interface QaSurfaceConfig {
      * name the QA preset in any deployment that composes more than one.
      */
     readonly activationPresets?: readonly string[];
+    /**
+     * Absolute path of the documentation tree `docs_search`/`docs_read` read.
+     * Leave it empty when the deployment publishes `docs/` inside each chat's
+     * own workspace; name it when the corpus is published once, outside every
+     * per-user directory, which is otherwise unreadable to those tools.
+     */
+    readonly docsRoot?: string;
   };
   readonly lockdown?: {
     readonly enabled?: boolean;
@@ -1082,6 +1089,11 @@ export interface ResolvedQaSurfaceConfig {
     readonly activationSkill: string;
     readonly activationMode: QaToolActivationMode;
     readonly activationPresets: readonly string[];
+    /**
+     * Absolute documentation root the QA catalogue reads, or `""` for the
+     * `docs/` directory inside each chat's own workspace.
+     */
+    readonly docsRoot: string;
   };
   readonly sources: {
     readonly enabled: boolean;

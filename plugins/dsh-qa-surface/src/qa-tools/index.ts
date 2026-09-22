@@ -14,6 +14,8 @@ export interface QaToolsOptions {
   readonly activationSkill: string;
   readonly activationMode: string;
   readonly activationPresets: readonly string[];
+  /** Documentation root the readers use; `""` reads each chat's own `docs/`. */
+  readonly docsRoot: string;
 }
 
 /**
@@ -45,6 +47,7 @@ export class QaTools implements QaToolActivation {
       activeTools: (agent) => this.manager.activeToolNames(agent),
       skillLoaded: (agent) =>
         sessionLoadedSkill(agent.session, options.activationSkill),
+      docsRoot: options.docsRoot,
     });
     this.catalogTools = catalog.map((entry) => entry.definition.name);
     this.manager = new QaToolActivationManager({

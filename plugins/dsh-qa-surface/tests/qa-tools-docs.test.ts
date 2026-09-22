@@ -5,6 +5,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -303,6 +304,57 @@ describe("docs_search", () => {
     expect(noCwd.code).toBe("workspace-unavailable");
     const noAgent = await refusal(docsRootOf({}));
     expect(noAgent.code).toBe("workspace-unavailable");
+    cleanup();
+  });
+
+  it("reads a corpus the deployment publishes outside every chat workspace", async () => {
+    // The per-user layout puts the chat's cwd in a per-account directory, so a
+    // corpus published once is unreachable to these tools unless the deployment
+    // names it. Naming it must not change what the tools report or how they
+    // fence: same `docs/…` paths, same refusal to leave the tree.
+    const { workspace, cleanup } = fixture();
+    const corpus = workspace; // any real tree with `docs/` in it
+    const root = await docsRootOf({}, { root: path.join(corpus, "docs") });
+    expect(root.docs).toBe(realpathSync(path.join(corpus, "docs")));
+    // The parent takes the part the chat's workspace plays per-chat.
+    expect(root.workspace).toBe(realpathSync(corpus));
+
+    const elsewhere = await docsRootOf(
+      { agent: { session: { header: { cwd: path.join(corpus, "..") } } } },
+      { root: path.join(corpus, "docs") },
+    );
+    const result = await searchDocumentation(elsewhere, {
+      query: "token is issued",
+    });
+    expect(result.hits[0]?.path).toBe("docs/platform/3.8/auth.md");
+    // The fence is unchanged: a path that leaves the configured tree is
+    // refused exactly as it is refused in the per-chat layout.
+    const read = createDocsReadTool({ root: path.join(corpus, "docs") });
+    const escape = await refusal(
+      read.execute({ path: "../outside/secret.md" }, {} as never),
+    );
+    expect(escape.code).toBe("outside-docs");
+    cleanup();
+  });
+
+  it("refuses a configured root that is not there, and one that is not a path", async () => {
+    const { workspace, cleanup } = fixture();
+    const missing = await refusal(
+      docsRootOf({}, { root: path.join(workspace, "no-such-corpus") }),
+    );
+    expect(missing.code).toBe("docs-unavailable");
+    expect(missing.message).toContain("no-such-corpus");
+
+    const relative = await refusal(docsRootOf({}, { root: "docs" }));
+    expect(relative.code).toBe("docs-unavailable");
+
+    const file = await refusal(
+      docsRootOf(
+        {},
+        { root: path.join(workspace, "docs", "platform", "3.8", "auth.md") },
+      ),
+    );
+    expect(file.code).toBe("docs-unavailable");
     cleanup();
   });
 

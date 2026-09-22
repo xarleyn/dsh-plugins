@@ -142,6 +142,9 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       activationSkill: "qa-surface",
       activationMode: "all" as const,
       activationPresets: Object.freeze([]),
+      // Empty means `docs/` inside the chat's own workspace: the layout a
+      // deployment gets when it publishes documentation per chat.
+      docsRoot: "",
     }),
     sources: Object.freeze({
       enabled: true,

@@ -353,6 +353,12 @@ const configSchema = z.object({
       activationPresets: z
         .array(z.string())
         .default([...D.tools.activationPresets]),
+      /**
+       * Absolute path of the documentation tree `docs_search`/`docs_read` read,
+       * for a deployment that publishes the corpus once instead of inside every
+       * chat workspace. Empty keeps the per-chat `docs/` layout.
+       */
+      docsRoot: z.string().default(D.tools.docsRoot),
     })
     .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] }),
   sources: z
