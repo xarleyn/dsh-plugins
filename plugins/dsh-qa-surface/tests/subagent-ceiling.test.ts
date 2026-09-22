@@ -49,7 +49,15 @@ const ROLE_POLICY = {
   policyRevision: "rev-1",
 };
 
-function harness(options: { readonly ceiling?: boolean } = {}) {
+function harness(
+  options: {
+    readonly ceiling?: boolean;
+    /** Names the QA tool catalog attaches to the agent itself. */
+    readonly catalogTools?: readonly string[];
+    /** The catalogue names that agent actually carries right now. */
+    readonly attachedTools?: readonly string[];
+  } = {},
+) {
   const captured: Captured = { guards: [] };
   const sessions: ((session: never) => void)[] = [];
   const session = {
@@ -63,7 +71,12 @@ function harness(options: { readonly ceiling?: boolean } = {}) {
     options: {},
     ctx: {
       tools: {
-        guard: () => () => undefined,
+        // The chat's own guard joins the same list: whichever layer refuses
+        // first is the one the caller reads.
+        guard: (guard: (execution: unknown) => string | undefined) => {
+          captured.guards.push(guard);
+          return () => undefined;
+        },
         restrict: () => () => undefined,
       },
       systemPrompt: { section: () => () => undefined },
@@ -104,7 +117,7 @@ function harness(options: { readonly ceiling?: boolean } = {}) {
       userWorkspace: () => "",
       ownerIdOf: () => undefined,
     },
-    () => [],
+    () => options.attachedTools ?? [],
     options.ceiling === false
       ? undefined
       : async () => ({
@@ -113,14 +126,16 @@ function harness(options: { readonly ceiling?: boolean } = {}) {
           skillMetadata: new Map(),
           adminPreview: false,
           // The grants object is exercised in tool-grants.test.ts; here it only
-          // has to satisfy the admission's contract.
+          // has to satisfy the admission's contract, which includes admitting
+          // what the role can grant — the profile guard reads this set.
           createGrants: () =>
             ({
               dispose: () => undefined,
-              effectiveTools: () => new Set(ROLE_POLICY.tools),
+              effectiveTools: () =>
+                new Set([...ROLE_POLICY.tools, ...ROLE_POLICY.grantableTools]),
             }) as never,
         }),
-    () => [],
+    () => options.catalogTools ?? [],
   );
   return { admission, captured, sessions, session, agent };
 }
@@ -180,6 +195,34 @@ describe("conversation ceiling", () => {
       denial(captured, { name: "read", arguments: {}, agent: childAgent }),
     ).toBeUndefined();
     // The chat's own agent keeps its stricter scoped set.
+    expect(
+      denial(captured, { name: "dsh_git_history", arguments: {}, agent }),
+    ).toMatch(/capability profile/u);
+  });
+
+  it("admits exactly the catalogue tools the agent carries", async () => {
+    const { admission, captured, agent } = harness({
+      catalogTools: ["docs_search", "docs_read", "file_delete"],
+      attachedTools: ["docs_search", "docs_read"],
+    });
+    await admission.secureSession("token", "session-root");
+
+    // A catalogue tool rides on the agent itself: no role list carries it and
+    // no restriction can name it, so both layers — the profile guard and the
+    // conversation ceiling — have to read it from the agent's own catalogue,
+    // or a call to a tool the chat both owns and can see is refused as outside
+    // a profile the caller cannot see the gap in.
+    expect(
+      denial(captured, { name: "docs_search", arguments: {}, agent }),
+    ).toBeUndefined();
+    expect(
+      denial(captured, { name: "docs_read", arguments: {}, agent }),
+    ).toBeUndefined();
+    // A catalogue name this agent does not carry stays the role's to allow.
+    expect(
+      denial(captured, { name: "file_delete", arguments: {}, agent }),
+    ).toMatch(/execution profile/u);
+    // The rest of the ceiling is untouched by that admission.
     expect(
       denial(captured, { name: "dsh_git_history", arguments: {}, agent }),
     ).toMatch(/capability profile/u);
