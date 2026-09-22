@@ -74,5 +74,5 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-log{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;max-height:220px;overflow:auto}
 .dx-log-item{font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .dx-persona-preview{max-height:420px}
-:root{--dx-ok:#2f9e6b;--dx-warn:#c08a2a;--dx-danger:#d0524a}
+:root{--dx-ok:var(--dsw-alias-state-success-primary);--dx-warn:var(--dsw-alias-state-warn-primary);--dx-danger:var(--dsw-alias-state-error-primary)}
 `;
