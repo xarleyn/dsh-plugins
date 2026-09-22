@@ -400,8 +400,10 @@ export class QaSurface extends TypertRemoteService {
     });
     // The /qa route hands cookie-less browsers to the one-time host token
     // exchange; the proxy in the deploy kit does the same and either alone
-    // suffices. Resolved lazily and once per process; unavailable bridges
-    // warn once and leave the old marker hand-off in place.
+    // suffices. Resolved lazily per navigation: a resolved token is cached for
+    // the process, while a bridge that is not answerable yet is retried rather
+    // than written off, so a request that races plugin init falls back to the
+    // marker hand-off once and the next one installs the cookie.
     this.launchToken = makeLaunchTokenSource(
       () =>
         (ctx as unknown as { get(service: string): unknown }).get(

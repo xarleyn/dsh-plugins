@@ -16,6 +16,20 @@ function escapeRegExp(text) {
 }
 
 /**
+ * The file paths an `exports` entry promises: a bare string target, or the
+ * `types`/`default` conditions of an object target. Conditions the browser
+ * resolves differently (`import`/`require`) are not checked separately - the
+ * build writes them from the same source.
+ */
+function exportTargets(target) {
+  if (typeof target === "string") return [target];
+  return Object.entries(target ?? {})
+    .filter(([condition]) => condition === "types" || condition === "default")
+    .map(([, path]) => path)
+    .filter((path) => typeof path === "string");
+}
+
+/**
  * @param {object} options
  * @param {URL | string} options.packageRoot - The plugin package root (the script's `new URL("../", import.meta.url)`).
  * @param {string} options.packageName - Full npm package name, e.g. `@yadsh/dsh-kv-persist`.
@@ -25,6 +39,7 @@ function escapeRegExp(text) {
  * @param {boolean} [options.bundlePatch] - Require `dsh.bundle.patch === "./cordis.patch.yml"` (default true).
  * @param {string[]} [options.exports] - Export subpaths that must exist.
  * @param {Record<string, string>} [options.exportDefaults] - Export subpaths whose `default` must equal the given path.
+ * @param {boolean} [options.exportsBuilt] - Every export subpath (except `./package.json`) must point at a file that exists on disk.
  * @param {"none" | {platform?: string, injectEquals?: string[], injectIncludes?: string[]}} [options.client] - `dsh.client` contract; `"none"` forbids a client surface.
  * @param {string[]} [options.files] - Entries `package.json#files` must publish.
  * @param {string[]} [options.requiredFiles] - Package-relative files that must exist on disk (built artifacts included).
@@ -42,6 +57,7 @@ export async function runVerifyPackage(options) {
     bundlePatch = true,
     exports: exportPaths = [],
     exportDefaults = {},
+    exportsBuilt = false,
     client,
     files = [],
     requiredFiles = [],
@@ -78,6 +94,24 @@ export async function runVerifyPackage(options) {
   }
   for (const [exportPath, target] of Object.entries(exportDefaults)) {
     assert.equal(manifest.exports?.[exportPath]?.default, target);
+  }
+
+  // A subpath that no build step produces is a promise the package cannot
+  // keep, and the packed-tarball gate only catches it in a packing run, so the
+  // targets of the public surface are checked against the tree here.
+  if (exportsBuilt) {
+    for (const [exportPath, target] of Object.entries(manifest.exports ?? {})) {
+      if (exportPath === "./package.json") continue;
+      for (const path of exportTargets(target)) {
+        const entry = await stat(new URL(path, packageRoot)).catch(
+          () => undefined,
+        );
+        assert(
+          entry?.isFile() === true,
+          `exports["${exportPath}"] must be built: ${path}`,
+        );
+      }
+    }
   }
 
   // DSH bundle metadata points at the packaged patch.

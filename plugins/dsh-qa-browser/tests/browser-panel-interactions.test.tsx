@@ -207,6 +207,62 @@ describe("BrowserPanel", () => {
     );
   });
 
+  it("keeps the lease when a poll reports a different lease length", async () => {
+    const { remote, mocks, setState } = host(panelState([tab()], "tab-a"));
+    render(<BrowserPanel {...owner(remote)} />);
+    await takeLease();
+    const reads = mocks.panelState.mock.calls.length;
+
+    // The Host's advertised lease length is one more fact that arrives with a
+    // poll. Acting on it used to run the heartbeat's teardown, which hands the
+    // page back: the operator lost a lease they were still holding.
+    setState(panelState([tab()], "tab-a", { humanControlLeaseSeconds: 60 }));
+    fireEvent.click(screen.getByRole("button", { name: "Действия Browser" }));
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Обновить изображение" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.panelState.mock.calls.length).toBeGreaterThan(reads),
+    );
+    expect(mocks.panelReleaseControl).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Вернуть агенту" })).toBeTruthy();
+  });
+
+  it("re-reads the frame when the selection moves to a tab with the same revision", async () => {
+    const tabs = [
+      tab({ revision: 7 }),
+      tab({
+        id: "tab-b",
+        url: "https://second.test/",
+        title: "Second",
+        revision: 7,
+      }),
+    ];
+    const { remote, mocks, setState } = host(panelState(tabs, "tab-a"));
+    render(<BrowserPanel {...owner(remote)} />);
+    await takeLease();
+    await screen.findByRole("img", { name: /Example App/u });
+    const frames = mocks.panelFrame.mock.calls.length;
+
+    setState(panelState(tabs, "tab-b"));
+    // Only the poll re-reads a frame it believes it already has, and a forced
+    // read through the menu skips exactly the check under test — so wait for the
+    // lease-holder cadence instead (a revision is per tab, and both tabs are on
+    // revision 7: remembering the number alone showed the other page's image).
+    await waitFor(
+      () => {
+        expect(mocks.panelFrame.mock.calls.length).toBeGreaterThan(frames);
+        expect(mocks.panelFrame).toHaveBeenLastCalledWith(
+          TOKEN,
+          SESSION,
+          "tab-b",
+        );
+      },
+      { timeout: 4_000 },
+    );
+  });
+
   it("says so when the deployment forwards no pointer input", async () => {
     const { remote, mocks } = host(
       panelState([tab()], "tab-a", { coordinateInputEnabled: false }),

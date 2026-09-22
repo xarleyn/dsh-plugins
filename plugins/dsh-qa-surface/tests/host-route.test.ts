@@ -3,6 +3,7 @@ import {
   hasHostAuthCookie,
   registerQaNavigationRoute,
 } from "../src/host-route.js";
+import { makeLaunchTokenSource } from "../src/launch-token.js";
 import { resolveConfig } from "../src/resolve-config.js";
 
 function capture(
@@ -60,6 +61,49 @@ describe("QA Host navigation route", () => {
     registerQaNavigationRoute({ register } as never, resolveConfig(), {
       launchToken: () => "secret-token",
     });
+  });
+
+  it("installs the cookie on the next navigation when the first one raced plugin init", () => {
+    // The boot order under test: the first /qa request can arrive before the
+    // connection service is answerable, and the browser it belongs to ends up
+    // on the root gate's token screen. Every later cookie-less navigation has to
+    // try the exchange again — a bridge that failed once is not a bridge that is
+    // unavailable for the rest of the process.
+    const boot = { connected: false };
+    const source = makeLaunchTokenSource(
+      () =>
+        boot.connected
+          ? {
+              authenticatedUrl: (baseUrl: string) =>
+                `${baseUrl}/?token=late-token`,
+            }
+          : undefined,
+      vi.fn(),
+    );
+    const locations: unknown[] = [];
+    const register = vi.fn((route) => {
+      const navigate = () => {
+        route.handler(
+          { method: "GET", url: "/qa", headers: {} },
+          {
+            writeHead: (_code: number, headers: Record<string, string>) => {
+              locations.push(headers.location);
+            },
+            end: () => undefined,
+          },
+        );
+      };
+      navigate();
+      boot.connected = true;
+      navigate();
+      return vi.fn();
+    });
+
+    registerQaNavigationRoute({ register } as never, resolveConfig(), {
+      launchToken: source,
+    });
+
+    expect(locations).toEqual(["/?__dsh_qa_route=%2Fqa", "/?token=late-token"]);
   });
 
   it("keeps the marker hand-off when the browser holds a host cookie", () => {

@@ -49,9 +49,10 @@
 - **Строка плагина в composition несёт два идентификатора.** `id` —
   runtime-идентификатор `dsh-<name>` (полное имя с префиксом `dsh-`, без
   npm-скоупа); `name` — точное npm-имя пакета `"@yadsh/dsh-<name>"` (в кавычках:
-  `@` — зарезервированный символ YAML). По `id` строку адресуют patch-слои и
-  строится URL клиентского бандла (`/plugins/<id>/client.js`); по `name` хост
-  резолвит сам пакет (package.json → поле `dsh`, exports). Подробности — §4.3.
+  `@` — зарезервированный символ YAML). По `id` строку адресуют patch-слои;
+  по `name` хост резолвит сам пакет (package.json → поле `dsh`, exports) и по
+  нему же отдаёт клиентский бандл — `/plugins/<name>/client.js`, то есть с
+  npm-скоупом в сегменте пути, а не с runtime-id. Подробности — §4.3.
 - **Хост владеет фреймворком.** Все `@deepseek-ai/*`-пакеты — всегда
   `peerDependencies` (диапазоны из `catalog:dsh`), никогда не `dependencies`.
   Локальные копии для разработки — в `devDependencies` из `catalog:dsh-dev`.
@@ -273,8 +274,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `LICENSE` | ✔ | Копия корневого MIT |
 | `compatibility.json` | ✔ (publishable) | Машиночитаемая совместимость, см. §7 |
 | `tsconfig.json` / `tsconfig.build.json` | ✔ | Расширяют `@yadsh/dsh-config` |
-| `tsdown.config.ts` | ✔ | Сборка клиентских/дополнительных бандлов |
-| `vitest.config.ts` | ✔ (есть тесты) | Реэкспорт конфига из `@yadsh/dsh-config` |
+| `tsdown.config.ts` | ✔ (если есть client- или доп. бандлы) | Сборка клиентских/дополнительных бандлов |
+| `vitest.config.ts` | ✔ (если нужны настройки сверх общего пресета) | Реэкспорт конфига из `@yadsh/dsh-config` |
 | `tests/` | ✔ (кроме spec-only) | См. §6 |
 | `README.ru.md`, `README.zh-CN.md` | recommended | Переводы README |
 | `ROADMAP.md` | optional | Публичные планы |
@@ -412,7 +413,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 ```yaml
 # The DSH plugin manager discovers this bundle through package.json.
 - insert:
-    - id: dsh-<name>              # runtime-id: identity строки, сегмент URL клиентского бандла
+    - id: dsh-<name>              # runtime-id: identity строки в composition
       name: "@yadsh/dsh-<name>"   # точное npm-имя пакета; кавычки обязательны
 ```
 
@@ -422,8 +423,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `dsh-`, без npm-скоупа). Это identity-ключ строки в composition хоста:
   последующие patch-слои (включая пользовательский patch-слой профиля)
   адресуют строку по `id`, чтобы переопределить `config` или отключить плагин.
-  `id` также — сегмент пути клиентского бандла `/plugins/<id>/client.js`,
-  поэтому без `/`, `@` и пробелов.
+  `id` не участвует в URL клиентского бандла — тот собирается из полного
+  npm-имени (`/plugins/@yadsh/dsh-<name>/client.js`, см. §1) — но `id`
+  адресует строку из patch-слоёв, поэтому держите его без `/`, `@` и пробелов.
 - **`name` = точное npm-имя `"@yadsh/dsh-<name>"`** — по нему хост резолвит
   пакет (package.json → `dsh.bundle.patch`, `dsh.client`, exports) и сверяет
   строку при override-патчах: патч с `name`, не совпавшим со строкой,
@@ -763,10 +765,14 @@ docs: add plugin guidelines
 - `dsh-l10n-overrides/tests/` — **выполнено**: мегатесты разбиты на тематические
   файлы (`dom-translator-*`, `locale-hook-*`, `registry-*`,
   `integration-client`), самый крупный тест пакета — 374 строки вместо 1273.
-- `dsh-session-scope/src/client.ts` (1460 строк) остаётся рукописным
-  module-loader бандлом (`window.__ModuleLoader__.load` с фабрикой-closure,
-  `@ts-nocheck`): перевод на общий tsdown-пайплайн и модульное разбиение —
-  отдельный проект, не быстрый рефакторинг. Плагин при этом полностью покрыт
-  тестами и verify-гейтами.
+- `dsh-session-scope` — **сборка клиента мигрирована (2026-09-22):**
+  `src/client.ts` больше не бандл, а обычный модуль, который собирает общий
+  tsdown-пайплайн (`tsdown.config.ts` печатает регистрацию
+  `window.__ModuleLoader__.load` и фабрику вокруг модуля). Файл исключён из
+  `tsc`-сборки, поэтому `./client` в манифесте указывает прямо на бандл;
+  `@ts-nocheck` снят, файл типизирован, lint-игнор убран, ручной правки
+  `lib/client.js` больше нет. Осталось модульное разбиение одного файла
+  (css/icons/paths/remote/editor — отдельные модули) и общий с `core.ts` хелпер
+  путей — по-прежнему отдельный проект.
 - `dsh-session-scope/src/index.ts` (907 строк) — разбиение на scope-patches/
   scope-commands/projections отложено вместе с клиентом.

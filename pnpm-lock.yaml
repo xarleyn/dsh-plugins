@@ -1177,6 +1177,9 @@ importers:
       '@deepseek-ai/dsh-agent':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(df33aafd3e5ffc7e1d800e6bdb613fcc)
+      '@deepseek-ai/dsh-api-gateway':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
@@ -1968,6 +1971,9 @@ importers:
       react-dom:
         specifier: catalog:frontend-dev
         version: 18.3.1(react@18.3.1)
+      tsdown:
+        specifier: catalog:tooling
+        version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.22.4)(typescript@7.0.2)
       typescript:
         specifier: catalog:plugin-tooling
         version: 7.0.2
