@@ -68,6 +68,115 @@ function Pill({
   return <span className={`wfa-pill ${tone}`}>{children}</span>;
 }
 
+/**
+ * One meta line of facts, separated by layout rather than by a glyph.
+ *
+ * The card used to join every fact with a middle dot; a line of them reads as
+ * decoration and costs the reader a token per item (SC 1.4.11 aside, a glyph
+ * carries no meaning a gap does not). Items are single spans: each fact keeps
+ * its own label and value, and the gap between them does the separating.
+ */
+function MetaLine({
+  muted,
+  children,
+}: {
+  muted?: boolean;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div className={muted === true ? "wfa-meta wfa-muted" : "wfa-meta"}>
+      {children}
+    </div>
+  );
+}
+
+/** One fact of a meta line. */
+function Meta({
+  label,
+  children,
+}: {
+  label?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <span className="wfa-meta-item">
+      {label !== undefined && <b>{label}</b>} {children}
+    </span>
+  );
+}
+
+/**
+ * A row action. The rule row carries four of them, and spelled out they
+ * wrapped the row onto a second line, so each is an icon — but an icon is not
+ * a name: the label stays in `aria-label` (screen readers) and `title` (the
+ * pointer), and the glyph itself is hidden from the accessibility tree.
+ */
+function IconButton({
+  label,
+  danger,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  danger?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <button
+      className={danger === true ? "wfa-icon-btn danger" : "wfa-icon-btn"}
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg
+        viewBox="0 0 14 14"
+        aria-hidden="true"
+        focusable="false"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {children}
+      </svg>
+    </button>
+  );
+}
+
+/** Enable/disable a rule. */
+const ICON_POWER = (
+  <>
+    <path d="M7 2.2v4.4" />
+    <path d="M4.3 4a4 4 0 1 0 5.4 0" />
+  </>
+);
+
+/** Run the connection tester. */
+const ICON_TEST = <path d="M4.9 3.3 10.7 7l-5.8 3.7z" />;
+
+/** Edit a rule. */
+const ICON_EDIT = (
+  <>
+    <path d="m2.5 11.5.7-2.4 6.5-6.5 1.7 1.7-6.5 6.5z" />
+    <path d="m9 3.3 1.7 1.7" />
+  </>
+);
+
+/** Delete a rule. */
+const ICON_DELETE = (
+  <>
+    <path d="M2.6 4h8.8" />
+    <path d="M5.6 4v-.8a.7.7 0 0 1 .7-.7h1.4a.7.7 0 0 1 .7.7V4" />
+    <path d="m4.3 4 .5 6.9a.7.7 0 0 0 .7.6h3a.7.7 0 0 0 .7-.6L9.7 4" />
+  </>
+);
+
 function Field({
   label,
   children,
@@ -108,13 +217,18 @@ export function StatusSection({
           {report.enabled ? "Enabled" : "Disabled"}
         </Pill>
       </div>
-      <p className="wfa-muted">
-        {report.ruleCount} rule(s), {report.enabledRuleCount} enabled · ctx.web
-        fetchProvider: {selection} · unmatched URLs:{" "}
-        {report.unmatchedPolicy === "block"
-          ? "blocked (strict)"
-          : String(report.unmatchedPolicy)}
-      </p>
+      <MetaLine muted>
+        <Meta>
+          {report.ruleCount} rule(s), {report.enabledRuleCount} enabled
+        </Meta>
+        <Meta>ctx.web fetchProvider: {selection}</Meta>
+        <Meta>
+          unmatched URLs:{" "}
+          {report.unmatchedPolicy === "block"
+            ? "blocked (strict)"
+            : String(report.unmatchedPolicy)}
+        </Meta>
+      </MetaLine>
       {report.configErrors.length > 0 && (
         <div className="wfa-error">
           {report.configErrors.map((error, index) => (
@@ -1202,32 +1316,30 @@ function RuleTester({
 function TestReport({ report }: { report: RuleTestReport }): JSX.Element {
   return (
     <div className="wfa-report">
-      <div>
-        <Pill tone={report.ok ? "ok" : "err"}>{report.outcome}</Pill>{" "}
-        {report.statusCode !== undefined && <b>HTTP {report.statusCode}</b>}
-        {report.contentType !== undefined && <> · {report.contentType}</>}
-        {report.responseBytes !== undefined && (
-          <> · {formatBytes(report.responseBytes)}</>
+      <MetaLine>
+        <Pill tone={report.ok ? "ok" : "err"}>{report.outcome}</Pill>
+        {report.statusCode !== undefined && (
+          <Meta label="HTTP">{report.statusCode}</Meta>
         )}
-        <> · {report.redirectCount} redirect(s)</>
-        <> · {report.durationMs} ms</>
-      </div>
-      <div>
-        <b>Auth applied:</b> {report.authApplied ? "yes" : "no"}
+        {report.contentType !== undefined && <Meta>{report.contentType}</Meta>}
+        {report.responseBytes !== undefined && (
+          <Meta>{formatBytes(report.responseBytes)}</Meta>
+        )}
+        <Meta>{report.redirectCount} redirect(s)</Meta>
+        <Meta>{report.durationMs} ms</Meta>
+      </MetaLine>
+      <MetaLine>
+        <Meta label="Auth applied">{report.authApplied ? "yes" : "no"}</Meta>
         {report.adapter !== undefined && (
-          <>
-            {" "}
-            · <b>Adapter:</b> {report.adapter}
-          </>
+          <Meta label="Adapter">{report.adapter}</Meta>
         )}
         {report.credentialState !== undefined && (
-          <>
-            {" "}
-            · <b>Credential</b> {report.credentialState.ref}:{" "}
-            {report.credentialState.configured ? "configured" : "missing"}
-          </>
+          <Meta label="Credential">
+            {report.credentialState.ref} (
+            {report.credentialState.configured ? "configured" : "missing"})
+          </Meta>
         )}
-      </div>
+      </MetaLine>
       {report.addresses.length > 0 && (
         <div>
           <b>Resolved:</b>{" "}
@@ -1425,30 +1537,27 @@ export function RulesSection({
                 )}
               </span>
               <span className="wfa-actions">
-                <button
-                  className="wfa-btn link"
-                  type="button"
+                <IconButton
+                  label={rule.enabled ? "Disable" : "Enable"}
                   disabled={!writable}
                   onClick={() => {
                     toggleRule(rule.id, !rule.enabled);
                   }}
                 >
-                  {rule.enabled ? "Disable" : "Enable"}
-                </button>
-                <button
-                  className="wfa-btn link"
-                  type="button"
+                  {ICON_POWER}
+                </IconButton>
+                <IconButton
+                  label="Test"
                   onClick={() => {
                     setTestingId(testingId === rule.id ? undefined : rule.id);
                     setEditingId(undefined);
                     setCreating(false);
                   }}
                 >
-                  Test
-                </button>
-                <button
-                  className="wfa-btn link"
-                  type="button"
+                  {ICON_TEST}
+                </IconButton>
+                <IconButton
+                  label="Edit"
                   disabled={!writable}
                   onClick={() => {
                     setEditingId(editingId === rule.id ? undefined : rule.id);
@@ -1456,18 +1565,18 @@ export function RulesSection({
                     setTestingId(undefined);
                   }}
                 >
-                  Edit
-                </button>
-                <button
-                  className="wfa-btn link danger"
-                  type="button"
+                  {ICON_EDIT}
+                </IconButton>
+                <IconButton
+                  label="Delete"
+                  danger
                   disabled={!writable}
                   onClick={() => {
                     deleteRule(rule.id);
                   }}
                 >
-                  Delete
-                </button>
+                  {ICON_DELETE}
+                </IconButton>
               </span>
             </div>
             {testingId === rule.id && (

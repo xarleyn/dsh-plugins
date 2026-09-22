@@ -27,7 +27,12 @@ textarea.wfa-control{resize:vertical}
 .wfa-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
 .wfa-btn.primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-3)}
 .wfa-btn.danger{color:var(--dsw-alias-label-error)}
-.wfa-btn.link{height:27px;padding:0 8px;background:transparent}
+.wfa-icon-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0;flex:none}
+.wfa-icon-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.wfa-icon-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.wfa-icon-btn.danger:hover:not(:disabled){color:var(--dsw-alias-label-error)}
+.wfa-icon-btn svg{width:14px;height:14px}
+.wfa-icon-btn:disabled{cursor:default;opacity:.45}
 .wfa-btn:disabled{cursor:default;opacity:.45}
 .wfa-rules{display:grid;gap:6px}
 .wfa-rule{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
@@ -42,6 +47,8 @@ textarea.wfa-control{resize:vertical}
 .wfa-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .wfa-check{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .wfa-report{display:grid;gap:5px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:11px 12px;font-size:11px}
+.wfa-meta{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+.wfa-meta-item{display:inline-flex;align-items:baseline;gap:5px}
 .wfa-report b{font-weight:600;color:var(--dsw-alias-label-secondary)}
 .wfa-report pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;color:var(--dsw-alias-label-tertiary);max-height:160px;overflow:auto}
 .wfa-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px}
