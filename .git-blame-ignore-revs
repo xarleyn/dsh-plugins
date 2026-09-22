@@ -1,0 +1,31 @@
+# Commits that changed nothing but formatting, so `git blame` should look
+# through them. A single prettier pass rewrites whole files: without this list
+# the reformat commit owns every line it touched, and the attribution of the
+# code actually written is buried under it.
+#
+# The repository formats with `pnpm format:write` and the CI gate `pnpm format`
+# refuses anything else, so the list stays short by construction. Selection
+# rule: commits typed `style(...)` whose change is a prettier reflow of four or
+# more files. Single-file passes and one-line fixes are left out — blame noise
+# in one file is not worth an entry, and a long list is a list nobody reads.
+#
+# Enable it locally, once per clone:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# `scripts/repo-config.test.mjs` fails if an entry here stops resolving on the
+# branch, is not a `style(...)` commit, or is no longer documented in
+# CONTRIBUTING.md — a history rewrite must not be able to turn this file into a
+# no-op that still looks correct.
+
+# style(repo): prettier the merged sources
+e9dd98f37ec7adfcf767da0d5d73dfc3eae0d7d4
+
+# style(dsh-openviking-memory): apply the shared prettier configuration
+79820878dc9878c4175911a421dc8a281c7ad896
+
+# style(qa-browser): satisfy repository formatting gate
+7baedc4ae9249b73b7c41e3f744b0ce6dd5463af
+
+# style(dsh-qa-surface): format the panel host sources with prettier
+a826b61e6afdd1e5456ac71b748f3cddd3a02976

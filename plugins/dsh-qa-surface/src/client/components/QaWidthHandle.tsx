@@ -423,5 +423,3 @@ export function useQaSidebarWidth({
 
   return { onStart, onDrag, onCommit, onEnd: publish } as const;
 }
-
-export type UseQaSidebarWidthResult = ReturnType<typeof useQaSidebarWidth>;

@@ -20,6 +20,10 @@ const PATCH = `# The DSH plugin manager discovers this bundle through package.js
 const canonicalClient = [
   ...CANONICAL_SHELL_RULES,
   '<path d="m3.5 5.25 3.5 3.5 3.5-3.5"/>',
+  // The stylesheet above only says the shell is styled. The contract also reads
+  // the two strings only the code that *renders* the shell can produce.
+  'const card = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";',
+  'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
   'window.__ModuleLoader__.load({ id: "@yadsh/dsh-fixture"',
 ].join("\n");
 
@@ -107,6 +111,50 @@ test("a missing built file fails the gate", async () => {
   await assert.rejects(
     runVerifyPackage(baseOptions(directory)),
     /lib-index\.js must be a file/u,
+  );
+});
+
+test("an export subpath pointing at nothing fails the gate", async () => {
+  const directory = join(globalThis.fixtureRoot, "exports-built");
+  await writeFixture(directory, {
+    manifest: {
+      exports: {
+        ".": { types: "./lib-index.d.ts", default: "./lib-index.js" },
+        "./package.json": "./package.json",
+      },
+    },
+  });
+  const options = baseOptions(directory, { exportsBuilt: true });
+  // A declaration file the build never wrote is a surface the tarball cannot
+  // serve, so the subpath is refused...
+  await assert.rejects(
+    runVerifyPackage(options),
+    /exports\["\."\] must be built: \.\/lib-index\.d\.ts/u,
+  );
+  // ...and accepted once every condition of the entry is on disk.
+  await writeFile(join(directory, "lib-index.d.ts"), "export {};\n");
+  await runVerifyPackage(options);
+});
+
+test("a bare-string export target is checked as well", async () => {
+  const directory = join(globalThis.fixtureRoot, "exports-string");
+  await writeFixture(directory, {
+    manifest: {
+      exports: {
+        ".": "./lib-index.js",
+        "./styles.css": "./lib/styles.css",
+        "./package.json": "./package.json",
+      },
+    },
+  });
+  await assert.rejects(
+    runVerifyPackage(
+      baseOptions(directory, {
+        exports: [".", "./styles.css", "./package.json"],
+        exportsBuilt: true,
+      }),
+    ),
+    /exports\["\.\/styles\.css"\] must be built: \.\/lib\/styles\.css/u,
   );
 });
 

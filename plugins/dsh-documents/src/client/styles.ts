@@ -36,7 +36,7 @@ export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .dsh-docs-notice.warn{background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error)}
 .dsh-docs-facts{display:grid;gap:6px;margin:0}
 .dsh-docs-facts>div{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr);gap:10px}
-.dsh-docs-facts dt{font-size:11px;color:var(--dsw-label-tertiary,var(--dsw-alias-label-tertiary))}
+.dsh-docs-facts dt{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .dsh-docs-facts dd{margin:0;font-size:11px;color:var(--dsw-alias-label-primary);word-break:break-word}
 @media(max-width:720px){.dsh-docs-grid{grid-template-columns:1fr}}
 `;

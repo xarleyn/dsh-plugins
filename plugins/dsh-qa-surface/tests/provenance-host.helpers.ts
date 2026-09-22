@@ -53,6 +53,7 @@ function fakeSession(
   id: string,
   events: ReturnType<typeof event>[],
   parentSession?: string,
+  cwd = "D:/repo",
 ) {
   const appended: { type: string; data: unknown }[] = [];
   const session = {
@@ -60,7 +61,7 @@ function fakeSession(
     header: {
       id,
       createdAt: 1,
-      cwd: "D:/repo",
+      cwd,
       ...(parentSession === undefined
         ? {}
         : { parentSession, origin: "subagent" as const }),

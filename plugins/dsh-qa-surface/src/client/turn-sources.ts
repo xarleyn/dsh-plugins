@@ -110,6 +110,29 @@ export function projectTurnSources(
     .map(([, collector]) => collector.snapshot());
 }
 
+/**
+ * The directory a projected source path is anchored on: the chat's own cwd.
+ *
+ * Both channels read the same durable tool results, and the Host's evidence —
+ * the set the source preview checks a request against — canonicalizes every
+ * recorded path against the session's own cwd. A projection anchored on
+ * anything else splits one file into two spellings the moment the two
+ * directories differ (an adopted chat, a chat whose cwd was pinned under an
+ * older configuration): the rail then shows a path the Host does not hold, and
+ * the detailed view refuses a source the answer just cited as no longer
+ * evidence until the rail is rebuilt from the Host's own bundles. The
+ * configured pin stays the fallback for a chat the browser cannot place yet.
+ */
+export function sourceAnchorRoot(
+  chatCwd: string | undefined,
+  configuredCwd: string | null,
+): string | undefined {
+  const chat = chatCwd?.trim();
+  if (chat !== undefined && chat !== "") return chat;
+  const configured = configuredCwd?.trim();
+  return configured === undefined || configured === "" ? undefined : configured;
+}
+
 /** Visible evidence sources for the latest turn, shared by the drawer/footer. */
 export function projectSources(
   snapshot: ConversationSnapshot | undefined,

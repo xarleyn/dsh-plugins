@@ -757,9 +757,22 @@ export function validateClientContractGates(directory, manifest) {
       readFileSync(file, "utf8").includes(SETTINGS_CARD_SLOT),
     )
   ) {
-    if (!anyScriptMentions(scripts, CARD_CONTRACT_MODULE)) {
+    // The shared runner takes the contract as an option, so a manifest that
+    // passes `clientBundle.cardContract` runs the same gate without importing
+    // the module by path.
+    const routed =
+      anyScriptMentions(scripts, CARD_CONTRACT_MODULE) ||
+      walkFiles(scripts)
+        .filter((file) => file.endsWith(".mjs"))
+        .map((file) => readFileSync(file, "utf8"))
+        .some(
+          (content) =>
+            content.includes("runVerifyPackage") &&
+            /cardContract\s*:/u.test(content),
+        );
+    if (!routed) {
       errors.push(
-        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs`,
+        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
       );
     }
   }

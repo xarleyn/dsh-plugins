@@ -14,23 +14,30 @@ interface AuthenticatedUrlFace {
 }
 
 /**
- * Resolve the launch token once per process (it is stable for the process
- * lifetime); a missing connection service or an unusable answer warns once
- * and permanently disables the bridge instead of retrying per request.
+ * Resolve the launch token lazily, on the navigations that need it.
+ *
+ * A token that resolved is cached — it is stable for the process lifetime, so
+ * the host is asked once. A failure is **not** cached: the first `/qa` request
+ * can arrive while the plugin tree is still starting, when `connection` is not
+ * answerable yet, and treating that single early answer as final used to leave
+ * every later cookie-less browser on the marker hand-off, which dead-ends at
+ * the host's token screen until the next restart. The failure is reported once
+ * per reason and retried quietly afterwards, so the retry costs a service
+ * lookup and never a log flood.
  */
 export function makeLaunchTokenSource(
   getConnection: () => AuthenticatedUrlFace | undefined,
   warn: (message: string) => void,
 ): LaunchTokenSource {
-  let cached: string | undefined | null = null;
-  let warned = false;
-  const warnOnce = (message: string): void => {
-    if (warned) return;
-    warned = true;
+  let cached: string | undefined;
+  const warned = new Set<string>();
+  const warnOnce = (reason: string, message: string): void => {
+    if (warned.has(reason)) return;
+    warned.add(reason);
     warn(message);
   };
   return () => {
-    if (cached !== null) return cached;
+    if (cached !== undefined) return cached;
     try {
       const connection = getConnection();
       if (
@@ -38,10 +45,10 @@ export function makeLaunchTokenSource(
         typeof connection.authenticatedUrl !== "function"
       ) {
         warnOnce(
+          "no-bridge",
           "launch-token bridge inactive: no connection.authenticatedUrl on the host",
         );
-        cached = undefined;
-        return cached;
+        return undefined;
       }
       // The loopback base only feeds the URL parsing; host/scheme are dropped.
       const token = new URL(
@@ -49,17 +56,18 @@ export function makeLaunchTokenSource(
       ).searchParams.get("token");
       if (token === null || token === "") {
         warnOnce(
+          "no-token",
           "launch-token bridge inactive: authenticatedUrl carries no token",
         );
-        cached = undefined;
-        return cached;
+        return undefined;
       }
       cached = token;
     } catch (error) {
       warnOnce(
+        "failed",
         `launch-token bridge failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      cached = undefined;
+      return undefined;
     }
     return cached;
   };
