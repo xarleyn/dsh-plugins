@@ -8,6 +8,12 @@
  * the *lease* says who is driving, and the deployment's coordinate-input switch
  * says whether pointer gestures may be forwarded at all. Keys, text and scroll
  * follow the lease; clicks and context menus need both.
+ *
+ * What all of that resolves to — the selected tab, the lease owner, the
+ * refusals, the address the field reads — is decided once, in `panel-view.ts`,
+ * and consumed from there. This file owns what the module cannot know: the
+ * remotes, the polling, the frame memo, and the operator's own draft in the
+ * address field.
  */
 import {
   useCallback,
@@ -30,11 +36,7 @@ import {
   type QaSurfacePanelOwnerProps,
 } from "@yadsh/dsh-qa-surface/client/panels";
 
-import type {
-  BrowserPanelFrame,
-  BrowserPanelState,
-  BrowserPolicyRefusal,
-} from "../types.js";
+import type { BrowserPanelFrame, BrowserPanelState } from "../types.js";
 import {
   BrowserDeviceRow,
   BrowserMenu,
@@ -45,6 +47,12 @@ import {
   type BrowserMenuItem,
 } from "./chrome.js";
 import { BROWSER_SCALES } from "./devices.js";
+import {
+  panelView,
+  refusalKindLabel,
+  selectedTab,
+  type PanelAddressDraft,
+} from "./panel-view.js";
 import { normalizeAddress } from "./url.js";
 
 export type BrowserPanelRemote = TypertRemoteNamespace<"qaBrowser">;
@@ -74,62 +82,11 @@ function remoteValue<T>(result: RemoteResult<T>): T {
   throw new Error(result.error.message);
 }
 
-function browserStatus(
-  state: BrowserPanelState | null,
-  loading: boolean,
-): string {
-  if (state === null) {
-    return loading ? "Получаем состояние…" : "Нет данных о Browser";
-  }
-  const session = state.session;
-  if (session === null) return "Browser ещё не запускался";
-  switch (session.status) {
-    case "starting":
-      return "Запуск Chromium…";
-    case "crashed":
-      return "Chromium завершился с ошибкой";
-    case "idle":
-      return "Browser неактивен";
-    case "closed":
-      return "Browser закрыт";
-    default:
-      return session.control.owner === "human"
-        ? "Управляет пользователь"
-        : "Управляет агент";
-  }
-}
-
 function makeClientId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
   return `panel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-/**
- * What went wrong, in one line, before any host is named.
- *
- * A page that never opened and a page that opened without its assets are
- * different problems: the first is the model asking for somewhere the policy
- * will not go, the second is a page that looks broken and is not. The operator
- * decides which of them a host entry fixes from that sentence.
- */
-function refusalTitle(refusals: readonly BrowserPolicyRefusal[]): string {
-  const blocked = refusals.find((entry) => entry.kind === "document");
-  if (blocked !== undefined) {
-    return `Политика Browser не пускает на ${blocked.host}`;
-  }
-  return refusals.length === 1
-    ? "Страница загрузилась не полностью: запрос заблокирован политикой Browser"
-    : `Страница загрузилась не полностью: заблокировано запросов — ${refusals.length}`;
-}
-
-/** One refused destination, said the way a reader asks about it. */
-function refusalKindLabel(entry: BrowserPolicyRefusal): string {
-  if (entry.kind === "document") return "переход";
-  return entry.count === 1
-    ? "запрос страницы"
-    : `запросы страницы ×${entry.count}`;
 }
 
 function keyboardShortcut(event: KeyboardEvent<HTMLElement>): string {
@@ -146,40 +103,43 @@ export function BrowserPanel(props: BrowserPanelProps) {
   const owner: QaSurfacePanelOwnerProps = props;
   const [state, setState] = useState<BrowserPanelState | null>(null);
   const [frame, setFrame] = useState<BrowserPanelFrame | null>(null);
-  const [address, setAddress] = useState("about:blank");
-  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressDraft, setAddressDraft] = useState<PanelAddressDraft>({
+    editing: false,
+    value: null,
+  });
   const [deviceOpen, setDeviceOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [scaleId, setScaleId] = useState("fit");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const clientId = useRef(makeClientId()).current;
-  const lastFrameRevision = useRef<number | null>(null);
+  /**
+   * The frame currently on the stage, identified the way the Host identifies a
+   * picture: by the tab it belongs to *and* that tab's revision. A revision on
+   * its own is not an identity — two tabs each carry their own counter, so two
+   * pages that were both never scrolled share one number, and remembering only
+   * the number showed the other tab's image.
+   */
+  const lastFrame = useRef<{ tabId: string; revision: number } | null>(null);
+  /** The lease length the Host last advertised, read when a heartbeat is armed. */
+  const leaseSeconds = useRef(30);
   const requestSequence = useRef(0);
   const stage = useRef<HTMLDivElement | null>(null);
   const bindStage = useCallback((node: HTMLDivElement | null) => {
     stage.current = node;
   }, []);
 
-  const session = state?.session ?? null;
-  const selected = state?.tabs.find((tab) => tab.id === session?.selectedTabId);
-  const ownsControl =
-    session?.control.owner === "human" && session.control.clientId === clientId;
+  // One pass over the polled state decides the tab, the lease, the refusals and
+  // the address; everything below reads that decision instead of repeating it.
+  const view = panelView(state, loading, clientId, addressDraft);
+  const session = view.session;
+  const selected = view.selected;
+  const ownsControl = view.ownsControl;
+  const refusals = view.refusals;
+  const interactive = view.canDrive;
   const coordinateInputEnabled = state?.coordinateInputEnabled === true;
-  // The selected tab explains the page the operator is looking at; the
-  // session's untabbed entries ride along because they belong to no page at
-  // all. A refusal in another tab stays there, marked in the strip.
-  const refusals = [
-    ...(selected?.policyRefusals ?? []),
-    ...(state?.policyRefusals ?? []),
-  ];
-  // The refusal text is shown once, verbatim. It is the same shape for every
-  // entry — class of address plus the setting that lifts the block — so the
-  // page's own refusal explains the list whenever there is one.
-  const leadRefusal =
-    refusals.find((entry) => entry.kind === "document") ?? refusals[0];
-  const interactive = ownsControl && session !== null;
   const scale = BROWSER_SCALES.find((option) => option.id === scaleId)?.scale;
+  leaseSeconds.current = state?.humanControlLeaseSeconds ?? 30;
 
   const refresh = useCallback(
     async (forceFrame: boolean) => {
@@ -193,15 +153,18 @@ export function BrowserPanel(props: BrowserPanelProps) {
         if (sequence !== requestSequence.current || owner.signal.aborted)
           return;
         setState(next);
-        const selectedId = next.session?.selectedTabId;
-        const tab = next.tabs.find((candidate) => candidate.id === selectedId);
+        const tab = selectedTab(next);
         if (tab === undefined) {
           setFrame(null);
-          lastFrameRevision.current = null;
+          lastFrame.current = null;
           setError(null);
           return;
         }
-        if (!forceFrame && lastFrameRevision.current === tab.revision) {
+        if (
+          !forceFrame &&
+          lastFrame.current?.tabId === tab.id &&
+          lastFrame.current.revision === tab.revision
+        ) {
           setError(null);
           return;
         }
@@ -214,7 +177,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
         );
         if (sequence !== requestSequence.current || owner.signal.aborted)
           return;
-        lastFrameRevision.current = nextFrame.revision;
+        lastFrame.current = { tabId: tab.id, revision: nextFrame.revision };
         setFrame(nextFrame);
         setError(null);
       } catch (cause) {
@@ -270,33 +233,51 @@ export function BrowserPanel(props: BrowserPanelProps) {
     };
   }, [owner.sessionId, owner.visible, ownsControl, anyTabLoading, refresh]);
 
-  useEffect(() => {
-    if (editingAddress) return;
-    setAddress(
-      selected?.url === undefined || selected.url === ""
-        ? "about:blank"
-        : selected.url,
-    );
-  }, [editingAddress, selected?.url]);
-
+  /**
+   * Keep the lease alive while this panel holds it.
+   *
+   * The cadence comes from the length the Host advertises, read when the
+   * heartbeat is armed rather than tracked as a dependency: the advertised
+   * length is one more fact that arrives with a poll, and rebuilding the
+   * interval on it would run the teardown beside this effect — which hands the
+   * page back — and the operator would lose the lease they were still holding.
+   */
   useEffect(() => {
     if (!ownsControl || owner.sessionId === null) return;
     const sessionId = owner.sessionId;
-    const heartbeatMs = Math.max(
-      1_000,
-      Math.floor(((state?.humanControlLeaseSeconds ?? 30) * 1_000) / 3),
+    const timer = window.setInterval(
+      () => {
+        void props.browserRemote
+          .panelControlHeartbeat(owner.qaToken, sessionId, clientId)
+          .then(remoteValue)
+          .catch((cause: unknown) => {
+            setError(cause instanceof Error ? cause.message : String(cause));
+            void refresh(false);
+          });
+      },
+      Math.max(1_000, Math.floor((leaseSeconds.current * 1_000) / 3)),
     );
-    const timer = window.setInterval(() => {
-      void props.browserRemote
-        .panelControlHeartbeat(owner.qaToken, sessionId, clientId)
-        .then(remoteValue)
-        .catch((cause: unknown) => {
-          setError(cause instanceof Error ? cause.message : String(cause));
-          void refresh(false);
-        });
-    }, heartbeatMs);
     return () => {
       window.clearInterval(timer);
+    };
+  }, [
+    clientId,
+    owner.qaToken,
+    owner.sessionId,
+    ownsControl,
+    props.browserRemote,
+    refresh,
+  ]);
+
+  /**
+   * Hand the page back when this panel stops being the one that holds it: on
+   * unmount, on a chat switch, or when the lease moves to the agent. Its
+   * dependencies are deliberately only the ones that end or start a lease.
+   */
+  useEffect(() => {
+    if (!ownsControl || owner.sessionId === null) return;
+    const sessionId = owner.sessionId;
+    return () => {
       void props.browserRemote.panelReleaseControl(
         owner.qaToken,
         sessionId,
@@ -309,8 +290,6 @@ export function BrowserPanel(props: BrowserPanelProps) {
     owner.sessionId,
     ownsControl,
     props.browserRemote,
-    refresh,
-    state?.humanControlLeaseSeconds,
   ]);
 
   const sessionId = owner.sessionId;
@@ -407,13 +386,13 @@ export function BrowserPanel(props: BrowserPanelProps) {
   );
 
   const submitAddress = useCallback(() => {
-    const target = normalizeAddress(address);
+    const target = normalizeAddress(view.address);
     if (target === null) {
       setError("Введите адрес страницы.");
       return;
     }
     navigateTo(target);
-  }, [address, navigateTo]);
+  }, [navigateTo, view.address]);
 
   const pointer = useCallback(
     (event: MouseEvent<HTMLImageElement>, button: "left" | "right") => {
@@ -585,12 +564,10 @@ export function BrowserPanel(props: BrowserPanelProps) {
     return [
       {
         id: "control",
-        label: ownsControl ? "Вернуть агенту" : "Взять управление",
-        disabled:
-          state?.humanControlEnabled !== true ||
-          (!ownsControl && session?.control.owner === "human"),
+        label: view.menuControl.label,
+        disabled: view.menuControl.disabled,
         onSelect: () => {
-          if (ownsControl) releaseControl();
+          if (view.menuControl.action === "release") releaseControl();
           else takeControl();
         },
       },
@@ -632,14 +609,15 @@ export function BrowserPanel(props: BrowserPanelProps) {
     history,
     interactive,
     openTab,
-    ownsControl,
     refresh,
     releaseControl,
     selected,
-    session?.control.owner,
-    state?.humanControlEnabled,
     takeControl,
+    view.menuControl,
   ]);
+
+  /** The status-bar chip, resolved once for the JSX below. */
+  const chip = view.chipControl;
 
   if (owner.sessionId === null) {
     return (
@@ -656,12 +634,6 @@ export function BrowserPanel(props: BrowserPanelProps) {
           src: `data:${frame.mediaType};base64,${frame.data}`,
           alt: `Страница Browser: ${frame.title || frame.url}`,
         };
-  const emptyMessage =
-    session === null
-      ? "Browser ещё не запускался в этой сессии. Нажмите «Взять управление», чтобы открыть страницу самим."
-      : loading
-        ? "Получаем изображение…"
-        : "Вкладка ещё не открывала страницу.";
 
   return (
     <section className="dsh-qa-browser-panel" aria-label="Browser">
@@ -675,15 +647,23 @@ export function BrowserPanel(props: BrowserPanelProps) {
       />
       <div className="dsh-qa-browser-panel__bar">
         <BrowserToolbar
-          address={address}
+          address={view.address}
           editable={interactive && selected !== undefined}
           canGoBack={(selected?.history.back ?? 0) > 0}
           canGoForward={(selected?.history.forward ?? 0) > 0}
           deviceOpen={deviceOpen}
           menuOpen={menuOpen}
-          onAddressChange={setAddress}
-          onAddressFocus={() => setEditingAddress(true)}
-          onAddressBlur={() => setEditingAddress(false)}
+          onAddressChange={(value) => {
+            // Typing starts an edit and owns the field until the operator
+            // leaves it: nothing a poll delivers may overwrite half a URL.
+            setAddressDraft({ editing: true, value });
+          }}
+          onAddressFocus={() => {
+            setAddressDraft((draft) => ({ ...draft, editing: true }));
+          }}
+          onAddressBlur={() => {
+            setAddressDraft({ editing: false, value: null });
+          }}
           onAddressSubmit={submitAddress}
           onBack={() => history("back")}
           onForward={() => history("forward")}
@@ -708,18 +688,14 @@ export function BrowserPanel(props: BrowserPanelProps) {
       <BrowserStage
         frame={frameView}
         busy={selected?.status === "loading"}
-        emptyMessage={emptyMessage}
-        viewport={selected?.viewport ?? { width: 1_280, height: 720 }}
+        emptyMessage={view.emptyMessage}
+        viewport={view.viewport}
         scale={scale ?? null}
         interactive={interactive}
         coordinateInputEnabled={coordinateInputEnabled}
         // The page is driven by whoever holds the lease, which may be another
         // panel: the chip reports the session, not this pane.
-        ownerLabel={
-          session?.control.owner === "human"
-            ? "Управляет пользователь"
-            : "Управляет агент"
-        }
+        ownerLabel={view.ownerLabel}
         onStageRef={bindStage}
         onImageClick={(event) => pointer(event, "left")}
         onImageContextMenu={(event) => {
@@ -731,10 +707,10 @@ export function BrowserPanel(props: BrowserPanelProps) {
         onPaste={paste}
         onWheel={wheel}
       />
-      {leadRefusal === undefined ? null : (
+      {view.refusalHeadline === null ? null : (
         <div className="dsh-qa-browser-panel__refusal" role="alert">
           <p className="dsh-qa-browser-panel__refusal-title">
-            {refusalTitle(refusals)}
+            {view.refusalHeadline}
           </p>
           <ul className="dsh-qa-browser-panel__refusal-list">
             {refusals.map((entry, index) => (
@@ -752,7 +728,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
             ))}
           </ul>
           <p className="dsh-qa-browser-panel__refusal-text">
-            {leadRefusal.message}
+            {view.leadRefusal?.message}
           </p>
           {/*
             The refusal names the setting; what it cannot say is which of the
@@ -767,22 +743,20 @@ export function BrowserPanel(props: BrowserPanelProps) {
         </div>
       )}
       <BrowserStatusBar
-        status={browserStatus(state, loading)}
+        status={view.statusLine}
         viewport={selected?.viewport ?? null}
-        tabCount={state?.tabs.length ?? 0}
+        tabCount={view.tabCount}
         control={
-          state?.humanControlEnabled === true && session !== null
-            ? {
-                label: ownsControl
-                  ? "Вернуть агенту"
-                  : session.control.owner === "human"
-                    ? "Занято другой панелью"
-                    : "Взять управление",
-                disabled: !ownsControl && session.control.owner === "human",
-                onSelect: () =>
-                  ownsControl ? releaseControl() : takeControl(),
+          chip === null
+            ? null
+            : {
+                label: chip.label,
+                disabled: chip.disabled,
+                onSelect: () => {
+                  if (chip.action === "release") releaseControl();
+                  else takeControl();
+                },
               }
-            : null
         }
       />
       {error === null ? null : (
