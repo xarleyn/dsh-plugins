@@ -45,7 +45,9 @@ is specified in [AGENTS.md](../AGENTS.md), implemented once in
 - Plain host packages compile with `tsc` to `lib/` (`lib/index.js` +
   `lib/index.d.ts`).
 - Client-bearing packages compile the host with `tsc` and bundle the client
-  with tsdown (`lib/client.js`, types under `lib/types/`).
+  with tsdown (`lib/client.js`). Whether the client module is also part of the
+  `tsc` build — the way a package publishes declarations for `./client` — is
+  per-package; the bundle itself is always built by tsdown.
 - Everything ships from `lib/`; `dist/` layouts are retired. Build outputs are
   gitignored and never edited by hand.
 

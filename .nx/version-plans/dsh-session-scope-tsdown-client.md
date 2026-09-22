@@ -20,3 +20,11 @@ than through a `/scope` command. Because the artifact is now generated rather
 than authored, the manifest declares `./client` as its bundle path: a
 module-loader bundle is fetched and registered by the shell, so it has no
 importable type surface to point `types` at.
+
+The client module is part of the package's type and lint surface now: the
+`@ts-nocheck` that covered the whole file is gone, the ported body uses
+`let`/`const` and typed parameters instead of function-scoped declarations, the
+standing ESLint ignore for the file is removed, and the bundle gate runs the
+built registration against a module-loader stub instead of only reading its
+text — a factory that stopped exporting a working plugin now fails the package
+check rather than the browser.

@@ -1,12 +1,13 @@
-// @ts-nocheck -- ported hand-written client, kept in its factory style.
 // dsh-session-scope — web client half.
 //
-// The module below is the client's source, not its artifact: `tsdown` wraps
-// what it exports into the shell's classic bundle, so `lib/client.js`
-// registers `@yadsh/dsh-session-scope` with `window.__ModuleLoader__` and
-// hands the shell a Cordis client plugin. Only `react` and `react-dom` stay
-// external (both are shell statics); everything else comes from client
-// services (`slots`, `remote`, `sessions`).
+// This module is the source of the package's browser bundle, not the bundle
+// itself: tsdown wraps it into the classic ModuleLoader script served at
+// /plugins/@yadsh/dsh-session-scope/client.js. The registration
+// (`window.__ModuleLoader__.load({ id, factory })`, `id` being the full package
+// name) and the factory closure come from the build banner, so this module only
+// exports the Cordis client plugin. It requires only `react` and `react-dom`
+// (both are shell statics); everything else comes from client services
+// (`slots`, `remote`, `sessions`).
 //
 // It contributes an independent Scope chip beside the Workspace picker while
 // a session is blank and beside the permission selector after the first turn.
@@ -31,16 +32,16 @@ import * as React from "react";
 import * as ReactDOM from "react-dom";
 
 // ---------- copy ----------
-var LANG =
+const LANG =
   typeof navigator !== "undefined" && /^zh/i.test(navigator.language || "")
     ? "zh"
     : "en";
-function L(zh, en) {
+function L(zh: string, en: string): string {
   return LANG === "zh" ? zh : en;
 }
 
 // ---------- styling (cosmetic; never fail the plugin) ----------
-var CSS = [
+const CSS = [
   ".wss-btnScope { box-sizing: border-box; height: 22px; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 6px; background: var(--dsw-alias-fill-tsp-secondary); color: var(--dsw-alias-label-secondary); padding: 0 8px; font: inherit; font-size: 12px; line-height: 22px; cursor: pointer; white-space: nowrap; }",
   ".wss-btnScope:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }",
   ".wss-btnScope:disabled { cursor: default; opacity: .55; }",
@@ -186,28 +187,28 @@ function IconScope() {
 }
 
 // ---------- shared helpers ----------
-function sepOf(path) {
+function sepOf(path: string) {
   return path.indexOf("\\") !== -1 ? "\\" : "/";
 }
-function comparablePath(path) {
+function comparablePath(path: string) {
   return sepOf(path) === "\\" ? path.toLowerCase() : path;
 }
 // Whether `path` is `root` or lies beneath it (separator-aware prefix).
-function isUnder(path, root) {
-  var comparableTarget = comparablePath(path);
-  var comparableRoot = comparablePath(root);
+function isUnder(path: string, root: string) {
+  const comparableTarget = comparablePath(path);
+  const comparableRoot = comparablePath(root);
   if (comparableTarget === comparableRoot) return true;
-  var sep = sepOf(root);
-  var prefix = comparableRoot.endsWith(sep)
+  const sep = sepOf(root);
+  const prefix = comparableRoot.endsWith(sep)
     ? comparableRoot
     : comparableRoot + sep;
   return comparableTarget.indexOf(prefix) === 0;
 }
 // The deepest selected root that covers `path`, or undefined.
-function coveringRoot(path, roots) {
-  var best = undefined;
-  for (var i = 0; i < roots.length; i++) {
-    var root = roots[i];
+function coveringRoot(path: string, roots: any[]) {
+  let best: string | undefined;
+  for (let i = 0; i < roots.length; i++) {
+    const root = roots[i];
     if (
       isUnder(path, root) &&
       (best === undefined || root.length > best.length)
@@ -216,14 +217,14 @@ function coveringRoot(path, roots) {
   }
   return best;
 }
-function baseName(path) {
-  var sep = sepOf(path);
-  var parts = path.split(sep).filter(Boolean);
+function baseName(path: string) {
+  const sep = sepOf(path);
+  const parts = path.split(sep).filter(Boolean);
   return parts.length === 0 ? path : parts[parts.length - 1];
 }
 // Render paths relative to the session workspace. Absolute paths remain
 // host-side implementation details and never need to appear in the picker.
-function displayPath(path, root) {
+function displayPath(path: string, root: string) {
   if (
     typeof path !== "string" ||
     typeof root !== "string" ||
@@ -231,20 +232,20 @@ function displayPath(path, root) {
   )
     return baseName(path);
   if (comparablePath(path) === comparablePath(root)) return ".";
-  var relative = path.slice(root.length);
-  var sep = sepOf(root);
+  let relative = path.slice(root.length);
+  const sep = sepOf(root);
   while (relative.startsWith(sep)) relative = relative.slice(1);
   return relative.split(sep).join("/");
 }
-function normalizeDraftRoots(roots) {
+function normalizeDraftRoots(roots: any) {
   return Array.isArray(roots)
-    ? roots.filter(function (root) {
+    ? roots.filter(function (root: string) {
         return typeof root === "string";
       })
     : [];
 }
-function comparableScopeRoots(roots) {
-  var ordered = normalizeDraftRoots(roots)
+function comparableScopeRoots(roots: any) {
+  const ordered = normalizeDraftRoots(roots)
     .slice()
     .sort(function (left, right) {
       return (
@@ -252,8 +253,8 @@ function comparableScopeRoots(roots) {
         comparablePath(left).localeCompare(comparablePath(right))
       );
     });
-  var collapsed = [];
-  for (var i = 0; i < ordered.length; i++) {
+  const collapsed: string[] = [];
+  for (let i = 0; i < ordered.length; i++) {
     if (
       !collapsed.some(function (root) {
         return isUnder(ordered[i], root);
@@ -265,9 +266,9 @@ function comparableScopeRoots(roots) {
     return comparablePath(left).localeCompare(comparablePath(right));
   });
 }
-function sameRoots(left, right) {
-  var a = comparableScopeRoots(left);
-  var b = comparableScopeRoots(right);
+function sameRoots(left: any, right: any) {
+  const a = comparableScopeRoots(left);
+  const b = comparableScopeRoots(right);
   return (
     a.length === b.length &&
     a.every(function (root, index) {
@@ -276,15 +277,15 @@ function sameRoots(left, right) {
   );
 }
 
-var stringSchema = {
-  parse: function (value) {
+const stringSchema = {
+  parse: function (value: any) {
     if (typeof value !== "string" || value.length === 0)
       throw new TypeError("expected a non-empty string");
     return value;
   },
 };
-var directoryListingSchema = {
-  parse: function (value) {
+const directoryListingSchema = {
+  parse: function (value: any) {
     if (value === null || typeof value !== "object")
       throw new TypeError("expected a directory listing");
     if (typeof value.path !== "string" || typeof value.home !== "string")
@@ -294,7 +295,7 @@ var directoryListingSchema = {
     return {
       path: value.path,
       home: value.home,
-      crumbs: value.crumbs.map(function (crumb) {
+      crumbs: value.crumbs.map(function (crumb: any) {
         if (
           crumb === null ||
           typeof crumb !== "object" ||
@@ -305,7 +306,7 @@ var directoryListingSchema = {
         }
         return { name: crumb.name, path: crumb.path };
       }),
-      entries: value.entries.map(function (entry) {
+      entries: value.entries.map(function (entry: any) {
         if (
           entry === null ||
           typeof entry !== "object" ||
@@ -324,7 +325,7 @@ var directoryListingSchema = {
     };
   },
 };
-var scopeRemoteContribution = {
+const scopeRemoteContribution = {
   package: "@yadsh/dsh-session-scope",
   descriptors: [
     {
@@ -364,38 +365,41 @@ var scopeRemoteContribution = {
   ],
 };
 
-export function apply(ctx) {
-  var styleTag = null;
+function apply(ctx: any): () => void {
+  let styleTag: any = null;
   try {
     styleTag = document.createElement("style");
     styleTag.textContent = CSS;
     document.head.appendChild(styleTag);
-  } catch (err) {
+  } catch {
     /* styling is cosmetic */
   }
 
   function remote() {
-    var value = ctx.get("remote");
+    const value = ctx.get("remote");
     return value !== undefined && value !== null ? value : undefined;
   }
-  var scopeRemoteDispose = null;
-  var scopeRemoteError = null;
-  var scopeRemoteFace = null;
-  var rem = remote();
-  var scopeRemoteReady =
+  let scopeRemoteDispose: any = null;
+  let scopeRemoteError: any = null;
+  let scopeRemoteFace: any = null;
+  const rem = remote();
+  const scopeRemoteReady =
     rem !== undefined && typeof rem.$mount === "function"
       ? rem
           .$mount(scopeRemoteContribution)
-          .then(function (dispose) {
+          .then(function (dispose: any) {
             scopeRemoteDispose = dispose;
             if (typeof ctx.inject !== "function")
               throw new Error("session-scope: client injection unavailable");
-            return ctx.inject(["remote.sessionScope"], function (remoteCtx) {
-              var injectedRemote = remoteCtx.get("remote");
-              scopeRemoteFace = injectedRemote.sessionScope;
-            });
+            return ctx.inject(
+              ["remote.sessionScope"],
+              function (remoteCtx: any) {
+                const injectedRemote = remoteCtx.get("remote");
+                scopeRemoteFace = injectedRemote.sessionScope;
+              },
+            );
           })
-          .catch(function (err) {
+          .catch(function (err: any) {
             scopeRemoteError = err instanceof Error ? err.message : String(err);
           })
       : Promise.resolve().then(function () {
@@ -404,8 +408,8 @@ export function apply(ctx) {
 
   // Execute one slash-command and return { ok, result } where result is
   // the normalized { kind, text } command result when the host answered.
-  async function runCommand(sessionId, line) {
-    var rem = remote();
+  async function runCommand(sessionId: string, line: string) {
+    const rem = remote();
     if (
       rem === undefined ||
       typeof rem.commands === "undefined" ||
@@ -416,9 +420,9 @@ export function apply(ctx) {
     try {
       // commands/execute carries an image list even when the command is
       // text-only. Current DSH validates the generated remote arity.
-      var response = await rem.commands.execute(sessionId, line, []);
+      const response = await rem.commands.execute(sessionId, line, []);
       if (response === undefined || response === null || response.ok !== true) {
-        var message =
+        const message =
           response !== undefined &&
           response !== null &&
           response.error !== undefined &&
@@ -427,7 +431,7 @@ export function apply(ctx) {
             : "command failed";
         return { ok: false, error: message };
       }
-      var result =
+      const result =
         response.value !== undefined && response.value !== null
           ? response.value.result
           : undefined;
@@ -450,7 +454,7 @@ export function apply(ctx) {
   }
 
   // List one directory level through the dedicated host RPC.
-  async function listLevel(sessionId, path) {
+  async function listLevel(sessionId: string, path: string) {
     await scopeRemoteReady;
     if (scopeRemoteError !== null)
       return { ok: false, error: scopeRemoteError };
@@ -461,11 +465,11 @@ export function apply(ctx) {
       return { ok: false, error: "session-scope: read RPC unavailable" };
     }
     try {
-      var response = await scopeRemoteFace.list(sessionId, path);
+      const response = await scopeRemoteFace.list(sessionId, path);
       if (response !== undefined && response.ok === true) {
         return { ok: true, value: response.value, source: "scope-rpc" };
       }
-      var message =
+      const message =
         response !== undefined &&
         response.error !== undefined &&
         response.error.message !== undefined
@@ -481,10 +485,10 @@ export function apply(ctx) {
   }
 
   // ---------- the scope editor (modal with the directory tree) ----------
-  function ScopeEditor(props) {
+  function ScopeEditor(props: any) {
     // props: sessionId, workspaceRoot (injected cwd, may be undefined),
     // projectedRoot, scopeMode, scopeRoots, capabilities, onClose
-    var state = React.useState({
+    const state = React.useState<any>({
       root: null,
       rootSource: null, // 'injected' | 'projection'
       path: null,
@@ -506,18 +510,19 @@ export function apply(ctx) {
       // inserted after root resolution to keep the checkbox semantics.
       draft: normalizeDraftRoots(props.scopeRoots),
     });
-    var snap = state[0];
-    var setSnap = state[1];
-    var patch = function (part) {
-      setSnap(function (prev) {
+    const snap = state[0];
+    const setSnap = state[1];
+    const patch = function (part: any) {
+      setSnap(function (prev: any) {
         return Object.assign({}, prev, part);
       });
     };
 
     // Resolve the immutable workspace root from the session list or the
     // session-scope projection. No read command is issued from the UI.
-    function applyRoot(root, source, mode, roots) {
-      var nextMode = mode === "focused" || mode === "isolated" ? mode : "full";
+    function applyRoot(root: string, source: string, mode: string, roots: any) {
+      const nextMode =
+        mode === "focused" || mode === "isolated" ? mode : "full";
       patch({
         root: root,
         rootSource: source,
@@ -529,12 +534,12 @@ export function apply(ctx) {
     }
     React.useEffect(
       function () {
-        var cancelled = false;
-        var timer = null;
+        let cancelled = false;
+        const timer: any = null;
         (async function () {
           try {
             if (snap.root !== null) return;
-            var injected = props.workspaceRoot;
+            const injected = props.workspaceRoot;
             if (
               injected !== undefined &&
               injected !== null &&
@@ -543,7 +548,7 @@ export function apply(ctx) {
               applyRoot(injected, "injected", snap.mode, snap.draft);
               return;
             }
-            var projected = props.projectedRoot;
+            const projected = props.projectedRoot;
             if (
               projected !== undefined &&
               projected !== null &&
@@ -582,8 +587,8 @@ export function apply(ctx) {
     // Load the first level when the root is known.
     React.useEffect(
       function () {
-        var cancelled = false;
-        var timer = null;
+        let cancelled = false;
+        let timer: any = null;
         if (snap.root === null || snap.path !== null) return;
         (async function () {
           patch({
@@ -602,7 +607,7 @@ export function apply(ctx) {
               phase: null,
             });
           }, 12000);
-          var outcome = await listLevel(props.sessionId, snap.root);
+          const outcome = await listLevel(props.sessionId, snap.root);
           if (cancelled) return;
           if (timer !== null) {
             clearTimeout(timer);
@@ -642,14 +647,14 @@ export function apply(ctx) {
     }
 
     // Navigate into a directory.
-    function enter(path) {
+    function enter(path: string) {
       patch({
         loading: true,
         error: null,
         phase: L("正在加载目录…", "Loading directories…"),
       });
-      var settled = false;
-      var timer = setTimeout(function () {
+      let settled = false;
+      const timer = setTimeout(function () {
         if (settled) return;
         settled = true;
         patch({
@@ -698,12 +703,12 @@ export function apply(ctx) {
     // never per toggle. The RPC must not leave the modal stuck: a timeout
     // and a rejection handler both settle the flag and surface a visible
     // error, keeping the modal open with the draft intact.
-    function save(mode, draft) {
-      var effectiveMode =
+    function save(mode: string, draft: string[]) {
+      const effectiveMode =
         snap.root !== null && draft.indexOf(snap.root) !== -1 ? "full" : mode;
-      var effectiveRoots =
+      const effectiveRoots =
         effectiveMode === "full" ? [] : normalizeDraftRoots(draft);
-      var currentRoots = normalizeDraftRoots(props.scopeRoots);
+      const currentRoots = normalizeDraftRoots(props.scopeRoots);
       if (
         effectiveMode === props.scopeMode &&
         sameRoots(effectiveRoots, currentRoots)
@@ -712,8 +717,8 @@ export function apply(ctx) {
         return;
       }
       patch({ saving: true, error: null });
-      var settled = false;
-      var timer = setTimeout(function () {
+      let settled = false;
+      const timer = setTimeout(function () {
         if (settled) return;
         settled = true;
         patch({
@@ -721,7 +726,7 @@ export function apply(ctx) {
           error: L("保存超时 — 请重试", "saving timed out — please retry"),
         });
       }, 12000);
-      var command =
+      const command =
         effectiveMode === "full"
           ? "/scope full"
           : "/scope " + effectiveMode + " " + JSON.stringify(draft);
@@ -741,7 +746,7 @@ export function apply(ctx) {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          var message = err instanceof Error ? err.message : String(err);
+          const message = err instanceof Error ? err.message : String(err);
           console.error("[session-scope] save command failed:", err);
           patch({
             saving: false,
@@ -757,11 +762,11 @@ export function apply(ctx) {
     // matches the visible content roots. A row that is only COVERED by a selected
     // ancestor is not toggleable here — uncheck the ancestor (its row
     // shows the covering check) to stop including the whole subtree.
-    function toggle(path) {
-      var self = snap.draft.indexOf(path);
-      var next;
+    function toggle(path: string) {
+      const self = snap.draft.indexOf(path);
+      let next;
       if (self !== -1) {
-        next = snap.draft.filter(function (root) {
+        next = snap.draft.filter(function (root: string) {
           return root !== path;
         });
       } else {
@@ -783,7 +788,7 @@ export function apply(ctx) {
       patch({ draft: next, error: null });
     }
 
-    function selectMode(mode) {
+    function selectMode(mode: string) {
       if (mode === "isolated" && snap.isolatedSupported === false) {
         patch({
           error: L(
@@ -806,7 +811,7 @@ export function apply(ctx) {
         draft:
           snap.root === null
             ? snap.draft
-            : snap.draft.filter(function (root) {
+            : snap.draft.filter(function (root: string) {
                 return root !== snap.root;
               }),
         error: null,
@@ -814,9 +819,9 @@ export function apply(ctx) {
     }
 
     // Escape / outside-click closes the modal.
-    var modalRef = React.useRef(null);
+    const modalRef = React.useRef<any>(null);
     React.useEffect(function () {
-      function onDown(ev) {
+      function onDown(ev: any) {
         if (
           modalRef.current !== null &&
           ev.target instanceof Node &&
@@ -825,7 +830,7 @@ export function apply(ctx) {
           return;
         props.onClose();
       }
-      function onKey(ev) {
+      function onKey(ev: any) {
         if (ev.key !== "Escape") return;
         ev.preventDefault();
         ev.stopPropagation();
@@ -839,16 +844,16 @@ export function apply(ctx) {
       };
     }, []);
 
-    var listing = snap.listing;
-    var crumbs = listing !== null ? listing.crumbs : [];
-    var entries = listing !== null ? listing.entries : [];
-    var visibleCrumbs =
+    const listing = snap.listing;
+    const crumbs = listing !== null ? listing.crumbs : [];
+    const entries = listing !== null ? listing.entries : [];
+    const visibleCrumbs =
       snap.root === null
         ? []
-        : crumbs.filter(function (crumb) {
+        : crumbs.filter(function (crumb: any) {
             return isUnder(crumb.path, snap.root);
           });
-    var overlay = React.createElement(
+    const overlay = React.createElement(
       "div",
       { className: "wss-overlay" },
       React.createElement(
@@ -898,7 +903,7 @@ export function apply(ctx) {
             { value: "focused", label: L("聚焦", "Focused") },
             { value: "isolated", label: L("隔离", "Isolated") },
           ].map(function (option) {
-            var unavailable =
+            const unavailable =
               option.value === "isolated" && snap.isolatedSupported === false;
             return React.createElement(
               "button",
@@ -949,7 +954,7 @@ export function apply(ctx) {
           React.createElement(
             "div",
             { className: "wss-crumbs" },
-            visibleCrumbs.map(function (crumb, index) {
+            visibleCrumbs.map(function (crumb: any, index: number) {
               return React.createElement(
                 React.Fragment,
                 { key: crumb.path },
@@ -1023,7 +1028,7 @@ export function apply(ctx) {
                               "Check to expose the entire workspace",
                             )
                         : displayPath(snap.path, snap.root),
-                  onClick: function (ev) {
+                  onClick: function (ev: any) {
                     ev.stopPropagation();
                     toggle(snap.path);
                   },
@@ -1066,10 +1071,10 @@ export function apply(ctx) {
             ),
           !snap.loading &&
             snap.path !== null &&
-            entries.map(function (entry) {
-              var covered = coveringRoot(entry.path, snap.draft);
-              var self = snap.draft.indexOf(entry.path) !== -1;
-              var on = covered !== undefined;
+            entries.map(function (entry: any) {
+              const covered = coveringRoot(entry.path, snap.draft);
+              const self = snap.draft.indexOf(entry.path) !== -1;
+              const on = covered !== undefined;
               return React.createElement(
                 "div",
                 {
@@ -1096,7 +1101,7 @@ export function apply(ctx) {
                             "Included via a parent directory; uncheck the parent to hide its whole subtree",
                           )
                         : displayPath(entry.path, snap.root),
-                    onClick: function (ev) {
+                    onClick: function (ev: any) {
                       ev.stopPropagation();
                       toggle(entry.path);
                     },
@@ -1154,7 +1159,7 @@ export function apply(ctx) {
             {
               className: "wss-footRoots",
               title: snap.draft
-                .map(function (root) {
+                .map(function (root: string) {
                   return displayPath(root, snap.root);
                 })
                 .join("\n"),
@@ -1213,20 +1218,20 @@ export function apply(ctx) {
   }
 
   // ---------- independent Scope chip ----------
-  function ScopeButton(props) {
+  function ScopeButton(props: any) {
     // props: useProjection, sessionId, workspaceRoot (injected)
-    var scope = props.useProjection("session-scope");
-    var openState = React.useState(false);
-    var open = openState[0];
-    var setOpen = openState[1];
-    var heroMountState = React.useState(null);
-    var heroMount = heroMountState[0];
-    var setHeroMount = heroMountState[1];
-    var heroCheckedState = React.useState(false);
-    var heroChecked = heroCheckedState[0];
-    var setHeroChecked = heroCheckedState[1];
-    var heroProbe = React.useRef(null);
-    var blank =
+    const scope = props.useProjection("session-scope");
+    const openState = React.useState(false);
+    const open = openState[0];
+    const setOpen = openState[1];
+    const heroMountState = React.useState<any>(null);
+    const heroMount = heroMountState[0];
+    const setHeroMount = heroMountState[1];
+    const heroCheckedState = React.useState(false);
+    const heroChecked = heroCheckedState[0];
+    const setHeroChecked = heroCheckedState[1];
+    const heroProbe = React.useRef<any>(null);
+    const blank =
       props.session !== undefined && props.session.composerPhase === "blank";
     React.useLayoutEffect(
       function () {
@@ -1235,24 +1240,25 @@ export function apply(ctx) {
           if (heroChecked) setHeroChecked(false);
           return undefined;
         }
-        var probe = heroProbe.current;
-        var heroRoot =
+        const probe = heroProbe.current;
+        const heroRoot =
           probe !== null && typeof probe.closest === "function"
             ? probe.closest('[data-phase="hero"]')
             : null;
         // Workspace is the first menu trigger in the hero tree. This uses
         // semantic DOM already exposed by DSH, not localized copy or its
         // generated CSS-module class names.
-        var workspaceButton =
+        const workspaceButton =
           heroRoot !== null && typeof heroRoot.querySelector === "function"
             ? heroRoot.querySelector('button[aria-haspopup="menu"]')
             : null;
-        var row = workspaceButton !== null ? workspaceButton.parentNode : null;
+        const row =
+          workspaceButton !== null ? workspaceButton.parentNode : null;
         if (row === null || typeof row.insertBefore !== "function") {
           setHeroChecked(true);
           return undefined;
         }
-        var mount = document.createElement("span");
+        const mount = document.createElement("span");
         mount.className = "wss-heroMount";
         mount.setAttribute("data-session-scope-hero-mount", "");
         row.insertBefore(mount, workspaceButton.nextSibling);
@@ -1264,24 +1270,24 @@ export function apply(ctx) {
       },
       [blank],
     );
-    var roots =
+    const roots =
       scope !== undefined && Array.isArray(scope.roots) ? scope.roots : [];
-    var projectedRoot =
+    const projectedRoot =
       scope !== undefined &&
       typeof scope.workspaceRoot === "string" &&
       scope.workspaceRoot !== ""
         ? scope.workspaceRoot
         : undefined;
-    var mode =
+    const mode =
       scope !== undefined &&
       (scope.mode === "focused" || scope.mode === "isolated")
         ? scope.mode
         : "full";
-    var capabilities =
+    const capabilities =
       scope !== undefined && scope.capabilities !== undefined
         ? scope.capabilities
         : undefined;
-    var label =
+    const label =
       mode === "full"
         ? L("范围：全部", "Scope: All")
         : roots.length === 0
@@ -1292,13 +1298,13 @@ export function apply(ctx) {
                 "范围：" + String(roots.length) + " 个目录",
                 "Scope: " + String(roots.length) + " roots",
               );
-    var title =
+    const title =
       mode === "isolated"
         ? L("隔离会话范围", "Isolated session scope")
         : mode === "focused"
           ? L("聚焦会话范围", "Focused session scope")
           : L("整个工作区可见", "Entire workspace visible");
-    var button = React.createElement(
+    const button = React.createElement(
       "button",
       {
         type: "button",
@@ -1351,27 +1357,27 @@ export function apply(ctx) {
   }
 
   // ---------- registration ----------
-  var disposers = [];
-  var slots = ctx.get("slots");
+  const disposers: any[] = [];
+  const slots = ctx.get("slots");
   if (slots !== undefined) {
-    function scopeInjection(sessionId) {
+    function scopeInjection(sessionId: string) {
       // The session's workspace root never changes; the sessions list
       // store (byId, keyed by session id) is the cheapest reliable
       // source. The editor falls back to the session-scope projection.
-      var root = undefined;
+      let root = undefined;
       try {
-        var sessions = ctx.get("sessions");
+        const sessions = ctx.get("sessions");
         if (
           sessions !== undefined &&
           sessions.list !== undefined &&
           typeof sessions.list.getSnapshot === "function"
         ) {
-          var snapshot = sessions.list.getSnapshot();
-          var entry =
+          const snapshot = sessions.list.getSnapshot();
+          const entry =
             snapshot.byId !== undefined ? snapshot.byId[sessionId] : undefined;
           if (entry !== undefined && entry.cwd !== undefined) root = entry.cwd;
         }
-      } catch (err) {
+      } catch {
         /* non-fatal: the editor resolves the root itself */
       }
       return { workspaceRoot: root };
@@ -1387,7 +1393,7 @@ export function apply(ctx) {
               name: "conversation.input.left",
               id: "session-scope",
               order: 0,
-              inject: function (sessionId) {
+              inject: function (sessionId: string) {
                 return scopeInjection(sessionId);
               },
             },
@@ -1399,17 +1405,17 @@ export function apply(ctx) {
   }
 
   return function () {
-    for (var i = 0; i < disposers.length; i++) {
+    for (let i = 0; i < disposers.length; i++) {
       try {
         disposers[i]();
-      } catch (err) {
+      } catch {
         /* best effort */
       }
     }
     if (scopeRemoteDispose !== null) {
       try {
         void scopeRemoteDispose();
-      } catch (err) {
+      } catch {
         /* best effort */
       }
     }
@@ -1419,3 +1425,5 @@ export function apply(ctx) {
 }
 
 export const inject = ["slots", "remote", "remote.commands", "sessions"];
+
+export { apply };
