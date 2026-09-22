@@ -26,6 +26,10 @@ await runVerifyPackage({
   client: {
     platform: "web",
     injectEquals: [
+      // The bundle mounts a Remote contribution, so the loader has to bring the
+      // gateway client up before this entry applies — the same ordering every
+      // other Remote plugin in this repository declares.
+      "@deepseek-ai/dsh-api-gateway",
       "@deepseek-ai/dsh-client-ui-settings",
       "@deepseek-ai/dsh-client-ui-settings-plugins",
       // The account-scoped page mounts into the QA settings dialog, so the QA
