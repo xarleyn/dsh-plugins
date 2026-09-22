@@ -27,6 +27,10 @@ package; shared runtime libraries and workspace tooling live under `packages/`.
 
 ## Packages
 
+The table is generated from the workspace manifests. Published packages show
+their npm name; private build tooling stays listed as a private workspace
+package.
+
 | Directory | npm package | Purpose |
 | --- | --- | --- |
 | `plugins/dsh-answer-review-gate` | `@yadsh/dsh-answer-review-gate` | Independent answer review gate for DeepSeek Harness agent responses |
@@ -83,9 +87,9 @@ their outputs. The dependency check enforces workspace boundaries, while the
 tarball check packs every public package, validates its manifest and exported
 files, and installs it in a clean consumer project.
 
-`plugins.json` is generated from the workspace manifests. Regenerate it after
-changing a package description, keywords, or the package set — `pnpm
-verify:packages` fails while the catalog is stale:
+`plugins.json` and the package table above are generated from the workspace
+manifests. Regenerate both after changing a package description, keywords, or
+the package set — `pnpm verify:packages` fails while either catalog is stale:
 
 ```bash
 pnpm plugins:manifest
