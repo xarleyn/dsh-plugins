@@ -24,8 +24,8 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 | Discoverability | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every publishable manifest carries canonical monorepo metadata (`repository.directory`, `homepage`, `bugs.url`), a description naming DeepSeek Harness/DSH, and the canonical keyword set plus feature words; the root `plugins.json` catalog and the README package table match the workspace manifests — the manifest lists published packages, the README table also documents private build tooling (`pnpm plugins:manifest` regenerates both); `plugins.json` additionally validates against `docs/plugins.schema.json`, and unknown schema keywords fail the gate instead of silently skipping the check |
 | Published content | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | A tarball carries the runtime, the bundle patch, compatibility data, legal notices, the README, and the images it embeds — never specs, changelogs, roadmaps, design docs, integration notes, or README translations; every relative link in a published README resolves inside the tarball, so the package page shows no dead links |
 | Logging contract | `pnpm verify:logging` (`scripts/verify-plugin-logging.mjs`) | Plugins write logs through `@yadsh/dsh-plugin-log` conventions (see [PLUGIN_LOGGING.md](PLUGIN_LOGGING.md)) |
-| Client bundle | per-plugin `verify` chain (`plugins/*/scripts/verify-client-bundle.mjs`, or bundle asserts inside `verify-package.mjs`) | Built `lib/client.js` registers under the plugin's **full npm package name** and is self-contained (no bare external imports). Five plugins run these asserts as a separate `verify:client` script; the other client bundles carry them inside `verify:package` |
-| Configuration card | per-plugin `verify` chain (calling `scripts/verify-plugin-card-contract.mjs`) | The 10 of 15 client bundles that register a `settings.plugin.item` card contain the canonical card shell CSS + chevron SVG in the built bundle; plugins without a card owe nothing here |
+| Client bundle | per-plugin `verify` chain (`plugins/*/scripts/verify-client-bundle.mjs`, or bundle asserts inside `verify-package.mjs`) | Built `lib/client.js` registers under the plugin's **full npm package name** and is self-contained (no bare external imports). A plugin may run these asserts as a separate `verify:client` script (`dsh-doc-impact` does); the other client bundles carry them inside `verify:package`. Either way the integration URL is `/plugins/<full-package-name>/client.js` |
+| Configuration card | per-plugin `verify` chain (calling `scripts/verify-plugin-card-contract.mjs`) | Every client bundle that registers a `settings.plugin.item` card contains the canonical card shell CSS + chevron SVG in the built bundle; a plugin without a card owes nothing here. The gate reads each declaring bundle, so the table names the rule rather than a count of bundles |
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
 | Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Installs every packed tarball into a clean consumer project and smoke-imports it |
 | Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
@@ -40,6 +40,13 @@ instance serves. Those are covered by
 [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md), which carries the probe
 command (`scripts/probe-provider.mjs`), the per-provider acceptance steps, the
 negative cases, and the checklist for adding a second product to a provider.
+
+Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
+**not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
+do not need (their `lib/` comes from `tsc` alone), and a local
+`vitest.config.ts`, which `dsh-ui-repair` does without (the shared preset plus a
+`// @vitest-environment jsdom` pragma in the files that need a DOM). A gate on
+their presence would reject packages that are correct as they stand.
 
 ## CI vs local
 
@@ -65,3 +72,15 @@ need a plan: the tag covers the work it released, not what follows it.
 See [RELEASING.md](RELEASING.md). Publishing happens exclusively through the
 GitHub release workflow with npm Trusted Publishing — there are no npm tokens
 and no tag-driven releases.
+
+### Stand acceptance
+
+Gates verify the code, not a deployment: a tool that exists but is out of the
+conversation's reach, an expert whose tool policy names tools the runtime
+refuses, a reviewer whose service is missing, or a model pin that no longer
+matches all pass lint, typecheck, test and verify. A wave that will be deployed
+is therefore accepted on a stand as well. The deployment kit carries the manual
+playbooks — smoke after every deploy, wave acceptance with a row per changed
+package, and a refusal-to-cause reference — together with the evidence collector
+each round is recorded by. Run that pass on the test stand before moving the
+deployment's plugin list, and repeat the smoke pass on the deployment itself.

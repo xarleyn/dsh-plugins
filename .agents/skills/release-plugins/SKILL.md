@@ -123,6 +123,29 @@ node scripts/workspace-packages.mjs --format=tsv > "$TMPDIR/rows.tsv"
 node scripts/publish-release.mjs --check --tsv="$TMPDIR/rows.tsv"
 ```
 
+## 1b. Stand acceptance
+
+Green gates prove the code; they say nothing about a deployment. The failures
+that reach users are composition failures — a tool that exists but is out of the
+conversation's reach, an expert whose policy names tools the runtime refuses, a
+reviewer whose service is missing, a model pin that no longer matches — and every
+one of them passes lint, typecheck, test and verify.
+
+So a wave that will be deployed is accepted on a stand, not in CI:
+
+1. Stage it on the test stand (the deployment kit's dev plugin list, or its
+   release list) and restart the container.
+2. Run the kit's manual playbooks — `docs/manual-testing/smoke.md` after every
+   deploy, `docs/manual-testing/wave.md` for a wave (a row per changed package:
+   package → manual check → evidence), `docs/manual-testing/signatures.md` when
+   something refuses. The kit's `scripts/qa-smoke-evidence.mjs` collects the
+   evidence from the plugin logs and exits non-zero on a FAIL.
+3. Record the round in a protocol file: a round without evidence and without a
+   written result did not happen, and the next incident starts from zero.
+4. Only then move the deployment's plugin list and repeat the smoke pass there.
+   The two stands differ in pins and service set, so a difference between them is
+   itself a finding.
+
 ## 2. Dispatch
 
 ```bash
