@@ -1,3 +1,4 @@
+import { remoteErrorOf } from "@deepseek-ai/dsh-typert-protocol";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "../accounts/store.js";
 import {
@@ -278,6 +279,30 @@ export class QaIntegrationService {
           cause: error,
         });
       }
+      const refusal = admittedAttachmentRefusal(error);
+      if (refusal !== null) {
+        // The Harness refuses the prompt itself when it will not admit an
+        // attachment: an image its admission rejects (over its byte, pixel or
+        // dimension budget, bytes that are not the type the caller declared)
+        // or one the selected model cannot see, which is the same refusal for
+        // a deployment whose model has no vision. The caller can correct all
+        // of them by sending the question again without attachments, which is
+        // what the bridge's own 415 fallback does — a 503 would instead set a
+        // bridge whose tickets carry screenshots retrying the same refusal.
+        const code = /^[A-Z][A-Z0-9_]{2,63}$/u.test(refusal)
+          ? ` (${refusal})`
+          : "";
+        this.deps.logger.warn("integration.attachment-refused", {
+          tokenId: identity.tokenId,
+          chatId,
+          reason: refusal,
+        });
+        throw new QaIntegrationError(
+          "unsupported-media",
+          `the attachment was refused${code}; repeat the request without attachments`,
+          { cause: error },
+        );
+      }
       this.deps.logger.error("integration.failed", {
         tokenId: identity.tokenId,
         chatId,
@@ -397,6 +422,32 @@ export class QaIntegrationService {
     kept.push(this.now());
     this.recent.set(tokenId, kept);
   }
+}
+
+/**
+ * Why the Harness refused one prompt for its attachment, or null.
+ *
+ * The session controller folds every attachment failure — its own admission
+ * codes (`IMAGE_TOO_LARGE`, `IMAGE_TOO_MANY_PIXELS`, `IMAGE_TYPE_MISMATCH`, …)
+ * and a model that cannot take images at all — into one Remote failure,
+ * `session/attachment-invalid`, whose `reason` carries the code. The failure is
+ * identified structurally rather than with `instanceof`: it crosses the session
+ * controller's bundle boundary, which is exactly what `remoteErrorOf` exists
+ * for.
+ *
+ * @param error - the failure raised by the turn.
+ * @returns the Harness's reason code, or null when this is some other failure.
+ */
+function admittedAttachmentRefusal(error: unknown): string | null {
+  const failure = remoteErrorOf(error) as
+    | {
+        readonly code?: string;
+        readonly details?: { readonly reason?: unknown };
+      }
+    | undefined;
+  if (failure?.code !== "session/attachment-invalid") return null;
+  const reason = failure.details?.reason;
+  return typeof reason === "string" ? reason : "attachment-refused";
 }
 
 /**

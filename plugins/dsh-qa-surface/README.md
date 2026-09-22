@@ -269,6 +269,10 @@ config:
     # Presets whose sessions may unlock the catalog. Empty leaves the gate open:
     # only do that when this Host serves one agent composition.
     activationPresets: []
+    # Where the documentation readers look. Empty reads `docs/` inside each
+    # chat's own workspace; name the corpus when it is published once, outside
+    # every per-user workspace (see "Dynamic QA tools" below).
+    docsRoot: ""
 ```
 
 `workspaceId` is recommended for a deterministic assistant. Without it, DSH
@@ -338,6 +342,17 @@ empty list the catalog is reachable by any agent that loads a skill of the same
 name. `tools.dynamicActivation: false` restores the always-on behaviour and
 attaches the catalog to every managed agent at creation — useful for a
 deployment that would rather debug the tool surface than the trigger.
+
+`docs_search` and `docs_read` read the `docs/` directory of the calling chat's
+own workspace by default. A deployment that publishes the corpus **once** — for
+example `/workspace/docs` next to a per-user workspace layout — sets
+`tools.docsRoot` to that absolute path, because with
+`accounts.perUserWorkspace: true` the chat's workspace is a per-account
+directory that holds no documentation: the readers would answer "there is no
+documentation tree here" in every chat, while the `glob`/`grep`/`read` tools
+reached the corpus by absolute path all along. The root is held to the same
+rules either way: an absolute path, a real directory, no symlinks, and every
+path is canonicalized and refused if it leaves the tree.
 
 These tools are not `lockdown.toolPolicy.allow` entries, and cannot be: that
 list is validated against the mounted catalog at attestation time, and a tool
@@ -625,13 +640,13 @@ lockdown:
 
 slashCommands:
   skills:
-    mode: allow-list      # deny-all | allow-list | all
+    mode: allow-list # deny-all | allow-list | all
     allow:
       - generate-tkp
       - generate-tz
       - gap-analysis
   commands:
-    mode: deny-all        # deny-all | allow-list | all
+    mode: deny-all # deny-all | allow-list | all
     allow: []
   palette:
     enabled: true
@@ -699,42 +714,41 @@ through the `qaSurfacePanels` service; the React body is registered separately
 in the keyed `qa.surface.panel` slot under the same implementation id:
 
 ```ts
-import type { Context } from "@deepseek-ai/cordis"
-import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots"
-import type {} from "@deepseek-ai/dsh-client-ui-renderer/client"
-import { QA_SURFACE_PANEL_SLOT } from "@yadsh/dsh-qa-surface/client/panels"
+import type { Context } from "@deepseek-ai/cordis";
+import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import { QA_SURFACE_PANEL_SLOT } from "@yadsh/dsh-qa-surface/client/panels";
 
-const id = "@example/dsh-qa-browser"
+const id = "@example/dsh-qa-browser";
 
 function BrowserPanel(props: PropsRuntime<typeof QA_SURFACE_PANEL_SLOT>) {
   // panelId, panelKind, sessionId, visible, presentation, params,
   // actions and a registration-lifetime AbortSignal arrive in props.
-  return null
+  return null;
 }
 
-export const inject = ["slots", "qaSurfacePanels"]
+export const inject = ["slots", "qaSurfacePanels"];
 
 export function apply(ctx: Context) {
-  ctx.effect(() => ctx.qaSurfacePanels.register({
-    id,
-    kind: "browser",
-    title: () => "Browser",
-    icon: "browser",
-    order: 100,
-    keepMounted: true,
-  }))
+  ctx.effect(() =>
+    ctx.qaSurfacePanels.register({
+      id,
+      kind: "browser",
+      title: () => "Browser",
+      icon: "browser",
+      order: 100,
+      keepMounted: true,
+    }),
+  );
 
   ctx.slots.inject(QA_SURFACE_PANEL_SLOT, () =>
-    ctx.slots.register(
-      { name: QA_SURFACE_PANEL_SLOT, key: id },
-      BrowserPanel,
-    ),
-  )
+    ctx.slots.register({ name: QA_SURFACE_PANEL_SLOT, key: id }, BrowserPanel),
+  );
 
   ctx.qaSurfacePanels.open("browser", {
     reason: "extension",
     focus: false,
-  })
+  });
 }
 ```
 
@@ -756,17 +770,19 @@ authorize every Host call server-side and must not persist credentials in the
 browser.
 
 ```ts
-import type { Context } from "@deepseek-ai/cordis"
+import type { Context } from "@deepseek-ai/cordis";
 
-export const inject = ["qaUserSettingsSections"]
+export const inject = ["qaUserSettingsSections"];
 
 export function apply(ctx: Context) {
-  ctx.effect(() => ctx.qaUserSettingsSections.register({
-    id: "integrations",
-    title: "Интеграции",
-    order: 40,
-    component: IntegrationsPage,
-  }))
+  ctx.effect(() =>
+    ctx.qaUserSettingsSections.register({
+      id: "integrations",
+      title: "Интеграции",
+      order: 40,
+      component: IntegrationsPage,
+    }),
+  );
 }
 ```
 
@@ -783,9 +799,9 @@ the credential is transport authentication only: never persist it, log it, or
 put it in a URL, a tool argument or any model-visible value.
 
 ```ts
-import type { Context } from "@deepseek-ai/cordis"
+import type { Context } from "@deepseek-ai/cordis";
 
-export const inject = ["qaUserSession", "slots"]
+export const inject = ["qaUserSession", "slots"];
 
 export function apply(ctx: Context) {
   ctx.effect(() =>
@@ -793,7 +809,9 @@ export function apply(ctx: Context) {
       ctx.slots.register(
         { name: "settings.plugin.item", key: "my-namespace" },
         MyCard,
-      )))
+      ),
+    ),
+  );
 }
 ```
 
@@ -957,12 +975,12 @@ metadata:
   qa-surface:
     version: 1
     audience:
-      type: subroles        # or: type: common
+      type: subroles # or: type: common
       include: [analyst, presales]
     tools:
       requires: [browser_open, browser_click]
       grant:
-        lifecycle: session  # the only lifecycle in v1
+        lifecycle: session # the only lifecycle in v1
         requireAll: true
 ---
 ```
@@ -988,6 +1006,7 @@ declared audience next to the effective one with a
 `Healthy`/`Degraded`/`Blocked` state. Every activation is recorded on the
 session record with the requested, granted and denied tools, so a later review
 can see what a conversation actually gained.
+
 ## Administrative console
 
 `/qa/admin` is the review and administration surface. It is part of the QA page
@@ -1045,13 +1064,13 @@ default**.
 
 ```yaml
 integration:
-  enabled: true          # requires accounts.enabled: true
-  basePath: /qa/api      # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
+  enabled: true # requires accounts.enabled: true
+  basePath: /qa/api # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
   tokenTtlDays: 90
   requestTimeoutMs: 90000
   maxConcurrent: 4
   requestsPerMinute: 60
-  maxAnswerCharacters: 4096   # the answer the ticket comment can hold
+  maxAnswerCharacters: 4096 # the answer the ticket comment can hold
 ```
 
 The API needs accounts: a caller is an account, and the credential it presents
@@ -1121,19 +1140,23 @@ capability snapshot like any other QA chat.
 `session_id`, `context` as a JSON **string**) plus repeated `files` parts (at
 most five, 10 MiB each by default).
 
-| Attachment | What the model receives |
-| --- | --- |
-| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image itself |
-| `text/plain`, `text/csv`, `text/markdown` | its text, under a heading with the file name |
-| `application/pdf`, Word, Excel, PowerPoint | text extracted by the deployment's document pipeline |
-| anything else | `415` — the fallback the bridge already implements |
+| Attachment                                           | What the model receives                              |
+| ---------------------------------------------------- | ---------------------------------------------------- |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image itself                                     |
+| `text/plain`, `text/csv`, `text/markdown`            | its text, under a heading with the file name         |
+| `application/pdf`, Word, Excel, PowerPoint           | text extracted by the deployment's document pipeline |
+| anything else                                        | `415` — the fallback the bridge already implements   |
 
 A file the Host cannot read refuses the whole question with `415` rather than
 being skipped: an answer produced without the material it was asked about is
 worse than asking again without it. Documents need the `documents` plugin
 installed; without it PDF and Office attachments take the same `415` path, and
-images and text keep working. Attachments are read, not stored: the bytes live
-in a temporary directory for the length of one extraction, and the text is
+images and text keep working. An image the deployment itself refuses — one the
+selected model cannot see, or one past the Host's image limits — answers the
+same `415`, with the reason (`MODEL_DOES_NOT_SUPPORT_IMAGES`, `IMAGE_TOO_LARGE`,
+`IMAGE_TYPE_MISMATCH`, …) in the body and in the Host log. Attachments are read,
+not stored: the bytes live in a temporary directory for the length of one
+extraction, and the text is
 bounded (60 000 characters per file, 120 000 per question, truncated with a
 marker). Everything the bridge's own filter lets through is accepted; archives,
 executables and media are not.
@@ -1204,17 +1227,17 @@ curl -sS https://dsh.example.local/qa/api/health \
 
 ### Statuses
 
-| Status | Meaning |
-| --- | --- |
-| 200 | Answered, or escalated with an empty `answer` |
-| 400 | Malformed body (no `message`, broken JSON or `context`), a missing `chat_id`, or a cursor that is not a whole number |
-| 401 | Missing, expired, revoked or unknown token |
-| 403 | Valid token without the scope the call needs (`ask`, `sessions:read`) |
-| 404 | A chat the token's account does not own (or that does not exist); also `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
-| 413 | Body or attachment over the configured limit |
-| 415 | Unsupported content type, or a non-image attachment |
-| 429 | Per-token rate limit or the deployment's concurrency limit |
-| 503 | The QA assistant failed before it could answer; retry |
+| Status | Meaning                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 200    | Answered, or escalated with an empty `answer`                                                                                                                                                           |
+| 400    | Malformed body (no `message`, broken JSON or `context`), a missing `chat_id`, or a cursor that is not a whole number                                                                                    |
+| 401    | Missing, expired, revoked or unknown token                                                                                                                                                              |
+| 403    | Valid token without the scope the call needs (`ask`, `sessions:read`)                                                                                                                                   |
+| 404    | A chat the token's account does not own (or that does not exist); also `integration.enabled` is false: no route is registered, and the request reaches whatever the deployment serves for unknown paths |
+| 413    | Body or attachment over the configured limit                                                                                                                                                            |
+| 415    | Unsupported content type, or an attachment the deployment refused                                                                                                                                       |
+| 429    | Per-token rate limit or the deployment's concurrency limit                                                                                                                                              |
+| 503    | The QA assistant failed before it could answer; retry                                                                                                                                                   |
 
 Response bodies carry `{ "error": "…", "code": "…" }` with the same reason
 vocabulary, so a client can branch on the code instead of parsing prose.

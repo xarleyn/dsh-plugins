@@ -43,13 +43,13 @@ route.
 Integration tokens are a separate credential from the browser token
 (`accounts/token.ts`):
 
-| | browser token | integration token |
-| --- | --- | --- |
-| shape | `v1.<payload>.<hmac>` | `qsat.<uuid>.<secret>` |
-| lifetime | `accounts.sessionTtlDays` | its own `expiresAt` |
+|            | browser token                                   | integration token                              |
+| ---------- | ----------------------------------------------- | ---------------------------------------------- |
+| shape      | `v1.<payload>.<hmac>`                           | `qsat.<uuid>.<secret>`                         |
+| lifetime   | `accounts.sessionTtlDays`                       | its own `expiresAt`                            |
 | revoked by | `tokenVersion` bump (password change, `revoke`) | its own `revokedAt`, `revoke`, account disable |
-| stored as | nothing (self-describing) | SHA-256 digest of the secret only |
-| scopes | none (the whole account) | `ask`, `sessions:read` |
+| stored as  | nothing (self-describing)                       | SHA-256 digest of the secret only              |
+| scopes     | none (the whole account)                        | `ask`, `sessions:read`                         |
 
 The separation is the point. A password change must not log out a running
 integration; a leaked integration credential must not become a browser
@@ -113,12 +113,12 @@ that belongs to an account. Two details carry the weight:
 - **The owner is never on the wire.** The remote takes a label, scopes and a
   lifetime; the account is the one that authenticated. The administrative path
   that mints for somebody else (`mintServiceToken` with a `userId`) already
-existed for the CLI and stays there, so a page can never name another account.
+  existed for the CLI and stays there, so a page can never name another account.
 - **Minting requires something to mint for.** With `integration.enabled` false
-the section explains the off state instead of offering a button that only ever
-refuses, while listing and revoking keep working: an endpoint that is switched
-off must not make an existing credential irrevocable. The refusal is enforced
-in the Host (`integration-disabled`), not only by hiding the form.
+  the section explains the off state instead of offering a button that only ever
+  refuses, while listing and revoking keep working: an endpoint that is switched
+  off must not make an existing credential irrevocable. The refusal is enforced
+  in the Host (`integration-disabled`), not only by hiding the form.
 
 The secret is shown once, in the answer that minted it, and the list that
 follows carries no token field in any state — a list that could repeat a
@@ -136,12 +136,12 @@ browser session, so it cannot mint one.
 
 So the plugin reads the attachment itself and sends text:
 
-| What arrived | What the prompt gets |
-| --- | --- |
-| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image, inline, unchanged |
-| `text/plain`, `text/csv`, `text/markdown` | the decoded content under a heading naming the file |
-| `application/pdf` and the OOXML family | the deployment's document pipeline extracts Markdown (`DocumentsFace.toMarkdown`), and that text is inlined |
-| anything else | `415`, which is the caller's own fallback: it repeats the question without attachments |
+| What arrived                                         | What the prompt gets                                                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the image, inline, unchanged                                                                                |
+| `text/plain`, `text/csv`, `text/markdown`            | the decoded content under a heading naming the file                                                         |
+| `application/pdf` and the OOXML family               | the deployment's document pipeline extracts Markdown (`DocumentsFace.toMarkdown`), and that text is inlined |
+| anything else                                        | `415`, which is the caller's own fallback: it repeats the question without attachments                      |
 
 Three consequences are deliberate. **Nothing is written into a path the
 deployment shares:** the pipeline takes a path, so the bytes go to a temporary
@@ -251,11 +251,11 @@ the window. The window is bounded by one maximal page (`maxMessages` = the 200
 the route already clamps to) and a bounded number of conversations keep one, so
 what the reader holds is the pages it has already handed out.
 
-**Trust is decided in two ways.** A chat this process holds is *probed in
-memory*: `sessionLog.snapshot(chatId, { after })` walks the session's in-memory
+**Trust is decided in two ways.** A chat this process holds is _probed in
+memory_: `sessionLog.snapshot(chatId, { after })` walks the session's in-memory
 events and materializes only those above the cursor, which answers "has anything
 been appended?" with no stored read — and the Harness is the writer, so the
-answer is strictly newer than what storage has flushed. The window is *extended*
+answer is strictly newer than what storage has flushed. The window is _extended_
 from that probe and never replaced by it: a session that outlived a process
 restart may hold only part of its history in memory. A chat this process does
 not hold is trusted for a bounded time (30 seconds, the same budget the review
@@ -274,6 +274,38 @@ texts; the stored read is faked as a parse of the encoded log, since the real
 one is disk I/O and JSON parsing): a page cost 13.4 ms before this, 0.008 ms
 from a warm window, and 0.104 ms for a chat this process holds, where the probe
 — one pass over the session's in-memory event references — is the whole cost.
+
+### 2.12 A refusal the caller caused is 415, even when the Harness raises it
+
+An attachment leaves this plugin's hands before the turn exists, and the last
+refusals happen there. The session controller admits images itself: an image
+over the Host's byte, pixel or dimension budget, bytes that are not the type the
+caller declared, or an image at all on a model route that cannot see one are all
+refused as one Remote failure, `session/attachment-invalid`, whose reason
+carries the code (`IMAGE_TOO_LARGE`, `IMAGE_TYPE_MISMATCH`,
+`MODEL_DOES_NOT_SUPPORT_IMAGES`, …). None of them is a transient condition: the
+same request repeats the same refusal for as long as the deployment is composed
+that way.
+
+They are therefore mapped onto the contract's own fallback signal, `415`, and
+not onto the generic `503` a failure with no reason of ours would have become.
+The distinction is not cosmetic — the bridge retries a `5xx`, so a ticket whose
+screenshot the model cannot see would have been retried forever, while a `415`
+makes it repeat the question without the attachment and get an answer. The
+Harness's reason code travels in the body (bounded to its own uppercase shape,
+so a future reason that is not a code cannot leak anything else) and is logged
+as `integration.attachment-refused`; the refusals this plugin raises itself keep
+using the same event, so an operator watching one log line sees both halves.
+
+Two smaller gaps in the same path were closed with it, both of which lost an
+attachment instead of refusing it. A Host whose temporary directory cannot be
+created for an extraction now answers `415` with the reason in the log rather
+than an opaque `503` — the caller's own correction is the same either way. And
+the multipart reader now reads the RFC 5987 `filename*` form, which is where a
+non-ASCII file name arrives: without it the part had no plain `filename`, so it
+was read as a text field and the file vanished from a question that was then
+answered without it. A part with no header separator at all is refused as
+`invalid-request` rather than skipped, for the same reason.
 
 ## 3. Contract
 
@@ -314,7 +346,9 @@ copy, and it is the contract this implementation is tested against.
   `413`, `415`), the body ceiling, `405` with `Allow`, the health payload's
   field names, the read route's query handling (an escaped chat id, the default
   and clamped page size, a refused cursor that never reaches the service), its
-  wire shape and the `404` a foreign chat becomes, and disposal of every route.
+  wire shape and the `404` a foreign chat becomes, an attachment named in the
+  RFC 5987 `filename*` form, a part with no header separator refused instead of
+  dropped, and disposal of every route.
 - `tests/integration-runner.test.ts` — the Host seam behind the read: the page
   projected from the durable log, the caller's cursor and window honoured, a
   chat that has written nothing yet read as empty (and its cursor left where
@@ -342,7 +376,9 @@ copy, and it is the contract this implementation is tested against.
   disabled/deployment-off states, the answer shape, citation bounding, the
   publication budget cutting an over-long answer to a readable head, the
   escalation paths (empty, interrupted, timed out — the last one keeping the
-  chat), a host failure as `503`, the rate and concurrency budgets, health with
+  chat), the Harness's own attachment refusal answered as the caller's `415`
+  (and a failure that is not the caller's kept retryable), a host failure as
+  `503`, the rate and concurrency budgets, health with
   and without a model catalog, a dropped connection, and the read path: the
   `sessions:read` scope, an unknown and another account's chat refused as one
   `404`, and an unreadable log reported rather than answered empty.
@@ -351,9 +387,10 @@ copy, and it is the contract this implementation is tested against.
   length); a text file decoded; bytes labelled as text refused; a document
   extracted through a fake pipeline that asserts the file exists while it reads
   it; the temporary directory gone after both a success and a failure; a
-  missing pipeline and a failing one refused with the reason in the log; and
+  missing pipeline, a failing pipeline and an unwritable staging directory
+  refused with the reason in the log; and
   every attachment inside the per-file and total text budgets.
-- `tests/integration-answer.test.ts` — the answer is the last prose of *this*
+- `tests/integration-answer.test.ts` — the answer is the last prose of _this_
   turn: an intermediate tool-only step is skipped, an earlier turn's answer is
   not republished, an injected context message does not become the prompt, and
   malformed events are tolerated. Plus the publication budget: an answer that

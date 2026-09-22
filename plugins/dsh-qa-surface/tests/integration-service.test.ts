@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaAccounts } from "../src/accounts/store.js";
 import {
   QaIntegrationAttachmentError,
@@ -384,6 +385,51 @@ describe("integration service answering", () => {
       {
         reason: "unsupported-media",
         status: 415,
+      },
+    );
+  });
+
+  it("answers a Harness attachment refusal with the caller's own fallback", async () => {
+    // The session controller refuses the prompt itself when it will not admit
+    // an attachment — over its byte, pixel or dimension budget, bytes that are
+    // not the type the caller declared, or a model that cannot see images at
+    // all — as one Remote failure. Every one of those is caller-correctable, so
+    // it is the 415 the bridge repeats without attachments, never a 5xx it
+    // would retry forever.
+    const api = service({
+      accounts,
+      runner: quietRunner(async () => {
+        throw new RemoteError(
+          "session/attachment-invalid",
+          'Model "demo-model" does not support image input.',
+          { reason: "MODEL_DOES_NOT_SUPPORT_IMAGES" },
+        );
+      }),
+    });
+    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toMatchObject(
+      {
+        reason: "unsupported-media",
+        status: 415,
+      },
+    );
+    // The Harness's own reason code reaches the caller's log through the body,
+    // which is what tells an operator the model route has no vision.
+    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toThrow(
+      /MODEL_DOES_NOT_SUPPORT_IMAGES/u,
+    );
+  });
+
+  it("keeps a failure that is not the caller's to fix retryable", async () => {
+    const api = service({
+      accounts,
+      runner: quietRunner(async () => {
+        throw new Error("the QA session has no live agent");
+      }),
+    });
+    await expect(api.ask(headerOf(), QUESTION, signal())).rejects.toMatchObject(
+      {
+        reason: "unavailable",
+        status: 503,
       },
     );
   });

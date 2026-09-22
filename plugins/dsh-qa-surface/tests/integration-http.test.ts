@@ -304,6 +304,47 @@ describe("integration multipart parsing", () => {
       ).reason,
     ).toBe("invalid-request");
   });
+
+  it("reads an extended filename, so a non-ASCII attachment stays a file", () => {
+    // Browsers and several HTTP clients send a non-ASCII name in the RFC 5987
+    // form, where the plain parameter is absent. Read as a text field, the part
+    // would be dropped and the question answered without its attachment.
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\ncontent-disposition: form-data; name="message"\r\n\r\n` +
+          "hi\r\n" +
+          `--${boundary}\r\ncontent-disposition: form-data; name="files"; ` +
+          "filename*=UTF-8''%D0%94%D0%BE%D0%B3%D0%BE%D0%B2%D0%BE%D1%80.pdf" +
+          "\r\ncontent-type: application/pdf\r\n\r\n%PDF\r\n",
+      ),
+      Buffer.from(`--${boundary}--\r\n`),
+    ]);
+    const parsed = parseAskBody(
+      body,
+      `multipart/form-data; boundary=${boundary}`,
+      config,
+    );
+    expect(parsed.attachments).toHaveLength(1);
+    expect(parsed.attachments[0]).toMatchObject({
+      kind: "file",
+      mediaType: "application/pdf",
+      name: "Договор.pdf",
+    });
+  });
+
+  it("refuses a part without its header separator instead of dropping it", () => {
+    // Skipping such a part is how an attachment disappears silently — the one
+    // outcome the contract refuses to answer around.
+    const body = Buffer.from(
+      `--${boundary}\r\ncontent-disposition: form-data; name="message"\r\n\r\n` +
+        `hi\r\n--${boundary}\r\nnot a header line\r\n--${boundary}--\r\n`,
+    );
+    expect(
+      expectRefusal(() =>
+        parseAskBody(body, `multipart/form-data; boundary=${boundary}`, config),
+      ).reason,
+    ).toBe("invalid-request");
+  });
 });
 
 describe("integration body ceiling", () => {
