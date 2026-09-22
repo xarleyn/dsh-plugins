@@ -359,6 +359,21 @@ const configSchema = z.object({
        * chat workspace. Empty keeps the per-chat `docs/` layout.
        */
       docsRoot: z.string().default(D.tools.docsRoot),
+      /**
+       * Version `docs_search` stays inside when the caller named neither
+       * `version` nor `path`. The stand documents several editions of the same
+       * module, and a chat that has to be told which one it means answers out
+       * of the wrong one; naming the edition here lets a search default to it.
+       */
+      docsDefaultVersion: z.string().default(D.tools.docsDefaultVersion),
+      /**
+       * Whether that default is applied. Kept beside the version so a
+       * deployment can keep the value and stop acting on it — and so the
+       * settings card can show which of the two a stand is running on.
+       */
+      docsDefaultVersionEnabled: z
+        .boolean()
+        .default(D.tools.docsDefaultVersionEnabled),
     })
     .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] }),
   sources: z

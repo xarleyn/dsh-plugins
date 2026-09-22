@@ -145,6 +145,10 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       // Empty means `docs/` inside the chat's own workspace: the layout a
       // deployment gets when it publishes documentation per chat.
       docsRoot: "",
+      // Off and empty: a search reads every edition the corpus carries until a
+      // stand names the one it is about.
+      docsDefaultVersion: "",
+      docsDefaultVersionEnabled: false,
     }),
     sources: Object.freeze({
       enabled: true,

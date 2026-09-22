@@ -16,6 +16,11 @@ export interface QaToolsOptions {
   readonly activationPresets: readonly string[];
   /** Documentation root the readers use; `""` reads each chat's own `docs/`. */
   readonly docsRoot: string;
+  /**
+   * Version a search falls back to when the model named neither `version` nor
+   * `path`; `""` searches every edition the corpus carries.
+   */
+  readonly docsDefaultVersion: string;
 }
 
 /**
@@ -48,6 +53,7 @@ export class QaTools implements QaToolActivation {
       skillLoaded: (agent) =>
         sessionLoadedSkill(agent.session, options.activationSkill),
       docsRoot: options.docsRoot,
+      docsDefaultVersion: options.docsDefaultVersion,
     });
     this.catalogTools = catalog.map((entry) => entry.definition.name);
     this.manager = new QaToolActivationManager({

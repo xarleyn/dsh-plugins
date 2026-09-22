@@ -1,7 +1,9 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
+import type { Dirent } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import { isDocumentationVersion } from "../shared/docs-version.js";
 import { canonicalCandidate, pathIsInside } from "../user-workspace.js";
 
 /**
@@ -24,6 +26,14 @@ import { canonicalCandidate, pathIsInside } from "../user-workspace.js";
  * names are accepted as filters. A path the convention does not describe is
  * still searched and still read — it simply carries no identity.
  *
+ * A real corpus also carries its own working material: the stand publishes an
+ * asset tree, inventories and triage notes beside the documents, under leading
+ * underscores. None of that is what a question is asked about, and an inventory
+ * names every module and version there is, so a walk that met it first spent the
+ * whole answer on it. The walk therefore visits the documented modules first,
+ * loose files next, and the underscored service material last — searched, but
+ * never at the expense of the documents.
+ *
  * Nothing here is destructive and building it registers nothing: like the rest
  * of the catalog these are side-effect-free definitions, and the workspace root
  * is read from `exec.agent` at call time.
@@ -41,10 +51,77 @@ export const QA_DOCS_READ_MAX_LINES = 400;
 
 /** One file larger than this is not documentation a chat needs to search. */
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
-/** Bound on the walk itself, so a huge tree cannot stall the turn. */
+/** Bound on how many documents one search reads. */
 const MAX_FILES_SCANNED = 2_000;
+/**
+ * Bound on how many entries one walk may look at, so a corpus with a huge asset
+ * tree cannot stall the turn even though nothing in it is read.
+ */
+const MAX_WALK_ENTRIES = 50_000;
 /** A matched line is trimmed to this many characters before it is reported. */
 const MAX_LINE_CHARS = 240;
+
+/**
+ * Extensions of material that is not documentation text: pictures, audio and
+ * video, archives, office binaries, fonts. A published corpus keeps them beside
+ * its prose — four fifths of the stand's own tree is images — and learning that
+ * by reading each one spends a search's whole document budget before it reaches
+ * a document. These are counted as skipped material, never as documents read.
+ */
+const NON_TEXT_EXTENSIONS = new Set([
+  "avif",
+  "bmp",
+  "bz2",
+  "class",
+  "dll",
+  "doc",
+  "docx",
+  "dylib",
+  "eot",
+  "exe",
+  "flac",
+  "gif",
+  "gz",
+  "heic",
+  "ico",
+  "jar",
+  "jpeg",
+  "jfif",
+  "jpg",
+  "m4a",
+  "m4v",
+  "mkv",
+  "mov",
+  "mp3",
+  "mp4",
+  "odp",
+  "ods",
+  "odt",
+  "ogg",
+  "otf",
+  "pdf",
+  "png",
+  "ppt",
+  "pptx",
+  "rar",
+  "sqlite",
+  "svg",
+  "tar",
+  "tgz",
+  "tif",
+  "tiff",
+  "ttf",
+  "wav",
+  "wasm",
+  "webm",
+  "webp",
+  "woff",
+  "woff2",
+  "xls",
+  "xlsx",
+  "xz",
+  "zip",
+]);
 
 const TEXT_DECODER = new TextDecoder("utf-8", { fatal: true });
 
@@ -129,6 +206,13 @@ interface QaDocsExecution {
 export interface QaDocsOptions {
   /** Absolute documentation root, or `""` for `<chat workspace>/docs`. */
   readonly root?: string;
+  /**
+   * Documentation version a search stays inside when the caller named neither
+   * `version` nor `path`; `""` (the default) leaves every edition in scope. The
+   * deployment sets it so a chat's questions do not have to carry the stand's
+   * edition, and an explicit `version` or `path` still decides for itself.
+   */
+  readonly defaultVersion?: string;
 }
 
 /** The resolved documentation root of one call. */
@@ -182,7 +266,27 @@ export interface QaDocsReadResult extends QaDocsIdentity {
   readonly text: string;
 }
 
-const VERSION_SEGMENT = /^v?\d+(?:\.\d+)*$/iu;
+/**
+ * The version one search runs under: the caller's own, the deployment's
+ * default, or none.
+ *
+ * An explicit `version` is the model saying which edition it means. An explicit
+ * `path` names a subtree the default has no business overriding — a corpus
+ * scoped to `platform/3.5` stays reachable on a stand whose default is `3.8` —
+ * so a call that named a path is left to that path alone.
+ */
+function versionFor(
+  options: QaDocsOptions,
+  args: {
+    readonly version?: string | undefined;
+    readonly path?: string | undefined;
+  },
+): string {
+  const asked = (args.version ?? "").trim();
+  if (asked !== "") return asked;
+  if ((args.path ?? "").trim() !== "") return "";
+  return (options.defaultVersion ?? "").trim();
+}
 
 function normalizeVersion(value: string): string {
   return value.replace(/^v/u, "").toLowerCase();
@@ -204,7 +308,7 @@ export function docsIdentityOf(pathFromDocsRoot: string): QaDocsIdentity {
     .filter((segment) => segment !== "");
   if (segments.length === 0) return identityOf(undefined, undefined);
   const versionIndex = segments.findIndex((segment) =>
-    VERSION_SEGMENT.test(segment),
+    isDocumentationVersion(segment),
   );
   if (versionIndex === -1) return identityOf(undefined, segments[0]);
   return identityOf(
@@ -432,14 +536,87 @@ interface VisitResult {
 }
 
 /**
- * Visit every documentation file of one target, in path order.
+ * Whether a name is the corpus's own working material: the asset tree, the
+ * inventories, the triage notes and anything else a publisher underscored or
+ * dotted.
+ */
+function isServiceName(name: string): boolean {
+  return name.startsWith("_") || name.startsWith(".");
+}
+
+/** Whether any segment of a path is such material. */
+function isServicePath(pathFromDocs: string): boolean {
+  return pathFromDocs.split(/[\\/]/u).some(isServiceName);
+}
+
+/**
+ * How the entries of one directory are ordered: documents before service
+ * material.
  *
- * Symbolic links are counted as skipped and never followed. The visitor
- * returns `stop` to end the walk, which is how the output budget ends it
- * early.
+ * A corpus keeps its own working material beside the documents, and the stand's
+ * names it with a leading underscore. Name order puts that material first (`_`
+ * sorts before letters), which is exactly where a bounded answer must not spend
+ * itself: an inventory names every module and version the corpus has, so it
+ * matches the question and consumes the budget before a document is opened.
+ * Module directories come first, then loose files at the same level, then
+ * everything underscored or dotted — which is still searched, just after the
+ * documentation. Material inside a service directory stays service material,
+ * however its own entries are named.
+ */
+function entryRank(parentIsService: boolean, entry: Dirent): number {
+  if (parentIsService || isServiceName(entry.name)) return 2;
+  return entry.isDirectory() ? 0 : 1;
+}
+
+function entryComparator(parentIsService: boolean) {
+  return (left: Dirent, right: Dirent): number => {
+    const rank =
+      entryRank(parentIsService, left) - entryRank(parentIsService, right);
+    if (rank !== 0) return rank;
+    return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+  };
+}
+
+/**
+ * Which queued directory the walk opens next.
+ *
+ * Rank and path decide, not the order directories happened to be queued in: the
+ * corpus's own `_meta` at the top of the tree must not be read before a
+ * documented module's edition one level below it, which is what a breadth-first
+ * queue did — the inventories answered every question about the product before
+ * a document was reached.
+ */
+function scopeComparator(left: QaDocsTarget, right: QaDocsTarget): number {
+  const rank =
+    Number(isServicePath(left.pathFromDocs)) -
+    Number(isServicePath(right.pathFromDocs));
+  if (rank !== 0) return rank;
+  if (left.pathFromDocs === right.pathFromDocs) return 0;
+  return left.pathFromDocs < right.pathFromDocs ? -1 : 1;
+}
+
+/**
+ * Whether a name is material the walk never reads: pictures, media, archives,
+ * office binaries and fonts, recognised by extension.
+ */
+function isNonTextName(name: string): boolean {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return false;
+  return NON_TEXT_EXTENSIONS.has(name.slice(dot + 1).toLowerCase());
+}
+
+/**
+ * Visit every documentation file of one target, in walk order.
+ *
+ * Symbolic links are counted as skipped and never followed. A file the caller's
+ * scope excludes is neither read nor counted, and material that is not text is
+ * counted as skipped rather than read, so the document budget below is spent on
+ * documents. The visitor returns `stop` to end the walk, which is how the output
+ * budget ends it early.
  */
 async function visitDocumentation(
   target: QaDocsTarget,
+  accept: (pathFromDocs: string) => boolean,
   visit: (
     file: string,
     pathFromDocs: string,
@@ -447,12 +624,18 @@ async function visitDocumentation(
   ) => Promise<VisitOutcome>,
 ): Promise<VisitResult> {
   let filesScanned = 0;
+  let entriesSeen = 0;
   let skipped = 0;
   const info = await lstat(target.absolute).catch((): undefined => undefined);
   if (info === undefined) {
     throw new QaDocsError("not-found", NOT_FOUND);
   }
   if (info.isFile()) {
+    // A path the caller named explicitly is read as it is: out of scope means
+    // no hits, not a refusal, and the refusal it may get comes from the reader.
+    if (!accept(target.pathFromDocs)) {
+      return { filesScanned, skipped, stopped: false };
+    }
     return {
       filesScanned: 1,
       skipped,
@@ -463,16 +646,21 @@ async function visitDocumentation(
   if (!info.isDirectory()) {
     throw new QaDocsError("not-found", NOT_FOUND);
   }
-  const pending = [target];
+  const pending: QaDocsTarget[] = [target];
   while (pending.length > 0) {
+    // Ranked by path, so the queue's order is the walk's order.
+    pending.sort(scopeComparator);
     const scope = pending.shift()!;
+    const serviceScope = isServicePath(scope.pathFromDocs);
     const entries = await readdir(scope.absolute, {
       withFileTypes: true,
     }).catch(() => []);
-    entries.sort((left, right) =>
-      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
-    );
+    entries.sort(entryComparator(serviceScope));
     for (const entry of entries) {
+      entriesSeen += 1;
+      if (entriesSeen > MAX_WALK_ENTRIES) {
+        return { filesScanned, skipped, stopped: true };
+      }
       const child = join(scope.absolute, entry.name);
       const pathFromDocs = join(scope.pathFromDocs, entry.name);
       if (entry.isSymbolicLink()) {
@@ -484,6 +672,11 @@ async function visitDocumentation(
         continue;
       }
       if (!entry.isFile()) continue;
+      if (!accept(pathFromDocs)) continue;
+      if (isNonTextName(entry.name)) {
+        skipped += 1;
+        continue;
+      }
       filesScanned += 1;
       if (filesScanned > MAX_FILES_SCANNED) {
         return { filesScanned, skipped, stopped: true };
@@ -541,7 +734,6 @@ export async function searchDocumentation(
     pathFromDocs: string,
     explicit: boolean,
   ): Promise<VisitOutcome> => {
-    if (!wanted(pathFromDocs)) return "continue";
     let lines: readonly string[];
     try {
       lines = await readDocLines(file);
@@ -574,7 +766,7 @@ export async function searchDocumentation(
     }
     return "continue";
   };
-  const walk = await visitDocumentation(scope, visit);
+  const walk = await visitDocumentation(scope, wanted, visit);
   return {
     ...identityOf(
       version === "" ? undefined : version,
@@ -633,7 +825,12 @@ export async function readDocumentation(
   };
 }
 
-function filtersOf(identity: QaDocsIdentity): string {
+/**
+ * The facets an answer ran under, as one leading-space clause the callers
+ * interpolate. `note` rides beside them in a report's header — never on a hit's
+ * own label, where it would repeat on every line.
+ */
+function filtersOf(identity: QaDocsIdentity, note = ""): string {
   const parts: string[] = [];
   if (identity.version !== undefined && identity.version !== "") {
     parts.push(`version ${identity.version}`);
@@ -641,7 +838,10 @@ function filtersOf(identity: QaDocsIdentity): string {
   if (identity.module !== undefined && identity.module !== "") {
     parts.push(`module ${identity.module}`);
   }
-  return parts.length === 0 ? "" : ` (${parts.join(", ")})`;
+  const facets = parts.join(", ");
+  const described =
+    note === "" ? facets : facets === "" ? note : `${facets}, ${note}`;
+  return described === "" ? "" : ` (${described})`;
 }
 
 function identityLabel(identity: QaDocsIdentity): string {
@@ -661,7 +861,7 @@ export function createDocsSearchTool(
 ): ToolDefinition {
   return defineTool({
     name: "docs_search",
-    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.`,
+    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.${defaultVersionNote(options)}`,
     parameters: {
       query: {
         type: "string",
@@ -713,11 +913,18 @@ export function createDocsSearchTool(
           truncated: { type: "boolean", required: true },
           filesScanned: { type: "integer", required: true },
           skipped: { type: "integer", required: true },
+          // A search answers with the facets it ran under, so a filtered result
+          // says which edition of which module it is speaking about.
+          version: { type: "string" },
+          module: { type: "string" },
         },
       },
-      render: (_args, value) => {
+      render: (args, value) => {
         const result = value as QaDocsSearchResult;
-        const filters = filtersOf(result);
+        const filters = filtersOf(
+          result,
+          defaultedVersion(options, args) ? "the stand's default" : "",
+        );
         if (result.hits.length === 0) {
           return [
             {
@@ -741,13 +948,36 @@ export function createDocsSearchTool(
       const root = await docsRootOf(exec as QaDocsExecution, options);
       return searchDocumentation(root, {
         query: args.query,
-        version: args.version,
+        version: versionFor(options, args),
         module: args.module,
         path: args.path,
         limit: args.limit,
       });
     },
   });
+}
+
+/**
+ * Whether the version in an answer is the deployment's default rather than one
+ * the caller named — the difference between "I looked in 3.8" and "the stand
+ * looked in 3.8", which the report has to keep.
+ */
+function defaultedVersion(options: QaDocsOptions, args: unknown): boolean {
+  const asked = ((args ?? {}) as { readonly version?: unknown }).version;
+  if (typeof asked === "string" && asked.trim() !== "") return false;
+  return (options.defaultVersion ?? "").trim() !== "";
+}
+
+/**
+ * The sentence that tells the model which edition a search it did not scope
+ * itself will stay inside. Without it the model reads a filtered answer as the
+ * whole corpus and reports a missing document rather than a narrowed search.
+ */
+function defaultVersionNote(options: QaDocsOptions): string {
+  const version = (options.defaultVersion ?? "").trim();
+  return version === ""
+    ? ""
+    : ` This stand documents version ${version} by default: a search without version and without path stays inside that edition, and pass version or path to look at another one.`;
 }
 
 /**

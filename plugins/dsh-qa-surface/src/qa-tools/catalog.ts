@@ -29,6 +29,11 @@ export interface QaToolsSelfcheckDeps {
    * inside each chat's own workspace.
    */
   readonly docsRoot?: string;
+  /**
+   * Version a search without `version` and without `path` stays inside, or `""`
+   * for a search across every edition the corpus carries.
+   */
+  readonly docsDefaultVersion?: string;
 }
 
 function createSelfcheckTool(
@@ -111,7 +116,10 @@ export function createQaToolCatalog(
       tags: ["activation", "diagnostics"],
     },
     {
-      definition: createDocsSearchTool({ root: deps.docsRoot ?? "" }),
+      definition: createDocsSearchTool({
+        root: deps.docsRoot ?? "",
+        defaultVersion: deps.docsDefaultVersion ?? "",
+      }),
       group: "documentation",
       tags: ["docs", "search"],
     },

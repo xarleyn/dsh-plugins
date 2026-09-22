@@ -46,6 +46,7 @@ import {
   AttachmentsSection,
   AccountsSection,
   BrandingSection,
+  DocsSection,
   EmbeddingSection,
   InterfaceSection,
   LockdownSection,
@@ -277,6 +278,7 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
           <SlashSection {...sectionProps} />
           <AccountsSection {...sectionProps} />
           <SourcesSection {...sectionProps} />
+          <DocsSection {...sectionProps} />
           <NotesSection {...sectionProps} />
           <AttachmentsSection {...sectionProps} />
           <EmbeddingSection {...sectionProps} />

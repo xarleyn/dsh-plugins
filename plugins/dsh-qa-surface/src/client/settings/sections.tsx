@@ -16,6 +16,7 @@ export { AccessSection } from "./sections/access.js";
 export { AccountsSection } from "./sections/accounts.js";
 export { AttachmentsSection } from "./sections/attachments.js";
 export { BrandingSection } from "./sections/branding.js";
+export { DocsSection } from "./sections/docs.js";
 export { EmbeddingSection } from "./sections/embedding.js";
 export { InterfaceSection } from "./sections/interface.js";
 export { LockdownSection } from "./sections/lockdown.js";

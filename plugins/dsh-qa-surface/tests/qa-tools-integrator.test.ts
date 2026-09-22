@@ -74,6 +74,7 @@ function qaTools(
     activationMode: "all",
     activationPresets: [],
     docsRoot: "",
+    docsDefaultVersion: "",
     ...overrides,
   });
 }
