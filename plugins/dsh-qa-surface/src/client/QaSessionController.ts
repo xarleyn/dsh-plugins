@@ -68,7 +68,7 @@ import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
 import { projectBoundSessionState } from "./project-session-state.js";
-import { projectTurnSources } from "./turn-sources.js";
+import { projectTurnSources, sourceAnchorRoot } from "./turn-sources.js";
 
 export interface QaAccountsFacade {
   /** The account bearer token, or null while anonymous. */
@@ -1403,7 +1403,7 @@ export class QaSessionController {
     const projectedSourceBundles = projectTurnSources(
       conversationSnapshot,
       sessionId,
-      this.config.session.cwd ?? undefined,
+      this.sourceAnchor(sessionId),
     );
     const sourceBundles = this.hostSources.merge(projectedSourceBundles);
     if (!snapshot.running) {
@@ -1461,6 +1461,29 @@ export class QaSessionController {
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
+  }
+
+  /**
+   * The directory the transcript's source paths are anchored on: the chat's
+   * own cwd, never the configured pin while the chat is known.
+   *
+   * The Host records and previews sources anchored on the session's own cwd,
+   * so the projection has to use that same directory. Anchoring it on
+   * `session.cwd` puts a second spelling of the same file into the rail the
+   * moment the two differ — an adopted chat, a chat created under an older
+   * configuration — and the preview then refuses, as no longer evidence, a
+   * source the answer just cited: the path it was asked for is not the path
+   * the Host holds. The configured pin remains the fallback for a chat the
+   * browser's list does not carry yet.
+   */
+  private sourceAnchor(sessionId: string): string | undefined {
+    const list = this.sessions.list.getSnapshot();
+    // `hasOwn`, not a plain read: the list is keyed by ids that reach us from
+    // the Host and from browser storage, and `__proto__` must not resolve.
+    const summary = Object.hasOwn(list.byId, sessionId)
+      ? list.byId[sessionId as SessionId]
+      : undefined;
+    return sourceAnchorRoot(summary?.cwd, this.config.session.cwd);
   }
 
   /**
