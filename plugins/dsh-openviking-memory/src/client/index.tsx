@@ -3,9 +3,10 @@
  *
  * The ModuleLoader registration (`window.__ModuleLoader__.load({ id, factory })`
  * with the full package name) is produced by the tsdown banner; this module
- * binds the plugin's settings namespace, registers the native settings card,
- * and — where a QA surface is mounted — the account-scoped page that a browser
- * reaching the deployment over the network can actually open.
+ * binds the plugin's settings namespace, registers the native settings card
+ * (the operator's configuration), and — where a QA surface is mounted — the
+ * account-scoped page that a browser reaching the deployment over the network
+ * can actually open, which shows what the memory holds about the account.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -24,9 +25,9 @@ import { OpenVikingMemoryCard } from "./card.js";
 import {
   QA_MEMORY_SECTION_ID,
   QA_MEMORY_SECTION_TITLE,
-  createMemorySettingsSection,
+  createMemoryOverviewSection,
   qaSettingsStyles,
-  type MemoryClientRemote,
+  type MemoryOverviewRemote,
 } from "./qa-settings.js";
 import { styles } from "./styles.js";
 
@@ -68,7 +69,7 @@ interface ClientFace {
     $mount(
       contribution: TypertRemoteContribution,
     ): Promise<() => Promise<void>>;
-    readonly openvikingMemory: MemoryClientRemote;
+    readonly openvikingMemory: MemoryOverviewRemote;
   };
   readonly qaUserSettingsSections: QaUserSettingsSections;
   effect(execute: () => () => void, name?: string): () => void;
@@ -144,7 +145,7 @@ function registerAccountScope(ctx: Context): () => void {
               id: QA_MEMORY_SECTION_ID,
               title: QA_MEMORY_SECTION_TITLE,
               order: 45,
-              component: createMemorySettingsSection(
+              component: createMemoryOverviewSection(
                 scoped.remote.openvikingMemory,
               ),
             });

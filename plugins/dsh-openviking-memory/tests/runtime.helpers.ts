@@ -14,6 +14,7 @@ export function ovPath(ovSessionId: string, suffix = ""): string {
 
 export type FetchHandler = (
   init: RequestInit | undefined,
+  url?: URL,
 ) => Response | Promise<Response>;
 
 /** The same well-formed answers the shared harness stubs by default. */
@@ -53,10 +54,14 @@ export function failure(status: number, code = "FAILED"): Response {
  */
 export function transport(
   overrides: Record<string, FetchHandler> = {},
-): (path: string, init: RequestInit | undefined) => Promise<Response> {
-  return async (path, init) => {
+): (
+  path: string,
+  init: RequestInit | undefined,
+  url?: URL,
+) => Promise<Response> {
+  return async (path, init, url) => {
     const override = overrides[path];
-    if (override) return await override(init);
+    if (override) return await override(init, url);
     if (Object.hasOwn(SUCCESS_BODIES, path)) return ok(SUCCESS_BODIES[path]);
     return failure(404, "NOT_FOUND");
   };

@@ -8,36 +8,75 @@
  * not pull `node:fs` or the Host config surface into the page.
  */
 
-/** Which automatic context additions are in effect. */
-export interface QaMemoryPlanView {
-  readonly startupProfile: boolean;
-  readonly stepProfile: boolean;
-  readonly recall: boolean;
+/** One remembered topic inside a memory section. */
+export interface QaMemoryOverviewItem {
+  /** Display name of the entry: its last path segment, without `.md`. */
+  readonly name: string;
+  /** The description the memory store wrote for it; empty when it wrote none. */
+  readonly summary: string;
+  /** Whether the entry is a folder holding further notes. */
+  readonly folder: boolean;
 }
 
-/**
- * One account's memory switches, as its settings page writes them. `null` hands
- * that knob back to the deployment; a key that is absent is left untouched.
- */
-export interface QaUserMemorySettingsPatch {
-  readonly autoInject?: boolean | null;
-  readonly profile?: boolean | null;
-  readonly recall?: boolean | null;
+/** One memory section — how the store files what it remembered. */
+export interface QaMemoryOverviewGroup {
+  /** Raw section name on disk (`cases`, `entities`, …); the page labels it. */
+  readonly name: string;
+  /** Section title for the page, derived from {@link name}. */
+  readonly title: string;
+  /** The section's own description, when the store generated one. */
+  readonly summary: string;
+  /** The first entries; {@link total} says how many the section holds. */
+  readonly items: readonly QaMemoryOverviewItem[];
+  /** Entries in the section, including the ones `items` does not carry. */
+  readonly total: number;
 }
 
-/** What the account-scoped memory page reads. */
-export interface QaUserMemorySettingsView {
-  /** The account's own switches; `null` means "follow the deployment". */
-  readonly autoInject: boolean | null;
-  readonly profile: boolean | null;
-  readonly recall: boolean | null;
-  /** The plan that actually applies to this account's sessions. */
-  readonly effective: QaMemoryPlanView;
-  /**
-   * The deployment's own plan, for a page that shows what a switch narrows.
-   * It is the plan the plugin configured, before any `autoInject` gating.
-   */
-  readonly configured: QaMemoryPlanView;
-  /** Whether this deployment keeps one memory space per account. */
+/** One past conversation the memory store keeps. */
+export interface QaMemoryOverviewSession {
+  /** The chat's session id, as the deployment knows it. */
+  readonly id: string;
+  /** The store's summary of that conversation; empty when it wrote none. */
+  readonly summary: string;
+  /** When the store last touched it (ISO 8601), or `null` when it sent none. */
+  readonly updatedAt: string | null;
+}
+
+/** The profile text the page shows, already bounded for the browser. */
+export interface QaMemoryOverviewProfile {
+  /** The file the text came from, as a display name (`identity.md`). */
+  readonly name: string;
+  readonly text: string;
+  /** Whether the file was longer than the page shows. */
+  readonly truncated: boolean;
+}
+
+/** What one account's memory looks like, as its page reads it. */
+export interface QaUserMemoryOverview {
+  /** Whether the memory server answered at all. */
+  readonly connected: boolean;
+  /** Whether this deployment is configured to keep one space per account. */
   readonly scoped: boolean;
+  /**
+   * Whether the memory server actually resolves this caller to the account the
+   * plugin asked for. A server that ignores the identity header answers with
+   * its own user — and then the space, and this page, are shared by everyone.
+   */
+  readonly accountApplies: boolean;
+  /** The identity the memory server resolved for this caller; `""` if none. */
+  readonly serverIdentity: string;
+  /** What the store knows about the account, when it wrote a profile file. */
+  readonly profile: QaMemoryOverviewProfile | null;
+  /** The sections of the account's memory, in the store's own order. */
+  readonly groups: readonly QaMemoryOverviewGroup[];
+  /** The most recent past conversations, newest first. */
+  readonly sessions: readonly QaMemoryOverviewSession[];
+  /** Section, entry and conversation counts over everything the store holds. */
+  readonly totals: {
+    readonly sections: number;
+    readonly memories: number;
+    readonly sessions: number;
+  };
+  /** Why nothing could be read; present exactly when `connected` is false. */
+  readonly error: string | null;
 }

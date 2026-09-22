@@ -47,28 +47,16 @@ import { injectStartupProfile } from "./lifecycle.js";
 import { createOpenVikingLogger } from "./logging.js";
 import { mountOpenVikingMcp } from "./mcp.js";
 import { QaMemoryIdentity, type QaMemorySurface } from "./qa/identity.js";
+import { readUserMemoryOverview } from "./qa/overview.js";
 import {
   QaUserMemorySettingsStore,
   effectiveInjectionPlan,
 } from "./qa/user-settings.js";
 import { installOpenVikingMemorySettings } from "./settings.js";
 import { OpenVikingRuntime, type SessionScoping } from "./runtime.js";
-import type {
-  QaMemoryPlanView,
-  QaUserMemorySettingsPatch,
-  QaUserMemorySettingsView,
-} from "./types.js";
+import type { QaUserMemoryOverview } from "./types.js";
 import { mountOpenVikingSkills } from "./skills.js";
 import { guardVikingUri } from "./uri-guard.js";
-
-/** The wire shape of one plan, for the account-scoped settings page. */
-function planView(plan: InjectionPlan): QaMemoryPlanView {
-  return {
-    startupProfile: plan.startupProfile,
-    stepProfile: plan.stepProfile,
-    recall: plan.recall,
-  };
-}
 
 /** Cordis plugin id. */
 export const name = "dsh-openviking-memory";
@@ -445,16 +433,9 @@ export default class OpenVikingMemory extends TypertRemoteService {
     this.logger.info("qa_memory_unattributed", { sessionId });
   }
 
-  private settingsView(userId: string): QaUserMemorySettingsView {
-    const settings = this.userSettings.read(userId);
-    return {
-      autoInject: settings.autoInject,
-      profile: settings.profile,
-      recall: settings.recall,
-      effective: planView(effectiveInjectionPlan(this.injection, settings)),
-      configured: planView(this.injection),
-      scoped: this.resolved.qaUserScoping && this.surface !== undefined,
-    };
+  /** Whether this deployment is configured to keep one space per account. */
+  private scoped(): boolean {
+    return this.resolved.qaUserScoping && this.qaSurface() !== undefined;
   }
 
   /** The signed-in account must exist; the browser supplies no identity. */
@@ -462,35 +443,29 @@ export default class OpenVikingMemory extends TypertRemoteService {
     const userId = this.qaSurface()?.principalForToken(token)?.userId;
     if (userId === undefined) {
       throw new Error(
-        "The OpenViking Memory settings need a signed-in QA account.",
+        "The OpenViking Memory page needs a signed-in QA account.",
       );
     }
     return userId;
   }
 
-  /** The signed-in account's memory switches, as its settings page reads them. */
-  @Remote("userMemorySettings")
-  userMemorySettings(token: string): QaUserMemorySettingsView {
-    return this.settingsView(this.requireAccount(token));
-  }
-
-  /** Change one of them. `null` hands that knob back to the deployment. */
-  @Remote("setUserMemorySettings")
-  setUserMemorySettings(
-    token: string,
-    patch: QaUserMemorySettingsPatch,
-  ): QaUserMemorySettingsView {
+  /**
+   * What the memory holds about the signed-in account, as its page reads it.
+   *
+   * Read-only on purpose. The switches that decide whether the assistant uses
+   * the memory at all belong to the deployment, and are configured where the
+   * deployment's own configuration lives; a page in a person's settings dialog
+   * is the place to *show* what the assistant remembers about them, not to let
+   * them switch the product's memory off.
+   */
+  @Remote("userMemoryOverview")
+  async userMemoryOverview(token: string): Promise<QaUserMemoryOverview> {
     const userId = this.requireAccount(token);
-    this.userSettings.patch(userId, patch);
-    return this.settingsView(userId);
-  }
-
-  /** Drop every override this account made. */
-  @Remote("resetUserMemorySettings")
-  resetUserMemorySettings(token: string): QaUserMemorySettingsView {
-    const userId = this.requireAccount(token);
-    this.userSettings.reset(userId);
-    return this.settingsView(userId);
+    const scoped = this.scoped();
+    return await readUserMemoryOverview(
+      this.runtime.readClientFor(userId, scoped),
+      { scoped },
+    );
   }
 
   /** Snapshot of the plugin's current state, for diagnostics and tests. */
