@@ -96,6 +96,46 @@ describe("slash palette in the composer", () => {
     expect(optionNames()).toEqual(["/generate-tkp"]);
   });
 
+  it("draws one header per kind when the ranking interleaves them", () => {
+    // Ranked by name, the two skills fall on either side of the command, so a
+    // palette that grouped neighbouring rows would draw «Навыки» twice.
+    mount({
+      slash: readySlash([
+        slashEntry("skill", "a-one"),
+        slashEntry("command", "b-two"),
+        slashEntry("skill", "c-three"),
+      ]),
+    });
+    type("/");
+    expect(screen.getAllByText("Навыки")).toHaveLength(1);
+    expect(screen.getAllByText("Команды")).toHaveLength(1);
+    // The group of the best-ranked row leads, and its rows keep their order.
+    expect(optionNames()).toEqual(["/a-one", "/c-three", "/b-two"]);
+  });
+
+  it("walks the arrow keys down the rows it draws", () => {
+    mount({
+      slash: readySlash([
+        slashEntry("skill", "a-one"),
+        slashEntry("command", "b-two"),
+        slashEntry("skill", "c-three"),
+      ]),
+    });
+    type("/");
+    const active = (): string =>
+      screen
+        .getAllByRole("option")
+        .find((node) => node.getAttribute("aria-selected") === "true")
+        ?.textContent ?? "";
+    expect(active()).toContain("/a-one");
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    // The next row on screen is the skill the grouping pulled up, not the
+    // command the ranking had put in between.
+    expect(active()).toContain("/c-three");
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    expect(active()).toContain("/b-two");
+  });
+
   it("moves the selection with the arrow keys, wrapping at both ends", () => {
     mount({ slash: readySlash(SKILLS) });
     type("/");
