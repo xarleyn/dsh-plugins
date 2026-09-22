@@ -267,6 +267,7 @@ export type DomainDegradationCode =
   | "MEMORY_PROVIDER_MISSING"
   | "WORKER_UNAVAILABLE"
   | "TOOL_UNVERIFIED"
+  | "TOOL_UNFILTERABLE"
   | "DELEGATION_TARGET_MISSING";
 
 export interface DomainDegradation {

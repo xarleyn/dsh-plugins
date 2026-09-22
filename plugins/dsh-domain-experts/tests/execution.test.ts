@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   RunTracker,
   runExpert,
+  unrestrictableToolNames,
   type ExecutionDependencies,
 } from "../src/host/execution.js";
 import { AuditRing } from "../src/host/audit.js";
@@ -363,6 +364,65 @@ describe("execution: refusals", () => {
     const error = await run(harness).catch((thrown: unknown) => thrown);
     expect(error).toBeInstanceOf(DomainExpertsError);
     expect((error as DomainExpertsError).code).toBe("WORKER_UNAVAILABLE");
+  });
+
+  it("starts the expert again without the tool names the runtime refused", async () => {
+    // A child composes its parent's preset into its own scope, so a name that
+    // preset mounts — the filesystem readers, the skill catalog — is exactly
+    // what a tool filter may not mention.
+    const definition = domainOf("payments", {
+      tools: { allow: ["glob", "read"], deny: [] },
+    });
+    const harness = harnessOf(definition, {
+      failOnce: new Error(
+        'tools.restrict() names unknown global tools "glob", "read"; known global tools: domain_expert, domain_memory',
+      ),
+    });
+    const result = await run(harness, definition);
+    expect(result.status).toBe("completed");
+    // The refusal never became a started child; the retry is the one run.
+    expect(harness.subagents.started).toHaveLength(1);
+    const allow = harness.subagents.started[0]?.request.toolFilter?.allow;
+    expect(allow).not.toContain("glob");
+    expect(allow).not.toContain("read");
+    // The plugin's own tools were never in question and stay in the filter.
+    expect(allow).toContain("domain_expert");
+    expect(harness.audits.recent()[0]?.degraded).toContain("TOOL_UNFILTERABLE");
+  });
+
+  it("reads the refused names out of the runtime's own wording", () => {
+    // Verbatim from a deployment whose chat preset mounts the filesystem
+    // readers and the skill catalog on the agent plane.
+    expect(
+      unrestrictableToolNames(
+        new Error(
+          'tools.restrict() names unknown global tools "glob", "grep", "read", "read_image", "skill"; known global tools: bitrix_find_chat, domain_expert, web_fetch_image',
+        ),
+      ),
+    ).toEqual(["glob", "grep", "read", "read_image", "skill"]);
+    expect(
+      unrestrictableToolNames(
+        new Error(
+          'tools.restrict() names unknown global tool "bash"; known global tools: read',
+        ),
+      ),
+    ).toEqual(["bash"]);
+    expect(unrestrictableToolNames(new Error("disk on fire"))).toBeUndefined();
+  });
+
+  it("does not retry around a name the filter never carried", async () => {
+    // The runtime names what it was given, so this cannot happen in practice;
+    // the assertion is that a refusal this plugin cannot explain stays loud
+    // instead of being retried away.
+    const harness = harnessOf(PAYMENTS, {
+      failOnce: new Error(
+        'tools.restrict() names unknown global tool "bash"; known global tools: x',
+      ),
+    });
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "WORKER_UNAVAILABLE",
+    });
+    expect(harness.subagents.started).toHaveLength(0);
   });
 
   it("lets an unrelated infrastructure fault through unchanged", async () => {
