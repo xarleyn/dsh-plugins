@@ -9,6 +9,9 @@ import {
   TLS_FAILURE,
 } from "../shared/http.js";
 import { jiraSite, type JiraFlags, type JiraSite } from "./config.js";
+import { authorizationFor, dialectOf } from "./dialect.js";
+
+export { basicAuthorization } from "./dialect.js";
 
 /**
  * Encrypted payload of one Jira connection: which configured site the token
@@ -17,10 +20,13 @@ import { jiraSite, type JiraFlags, type JiraSite } from "./config.js";
  *
  * The site's address is not stored — it is re-resolved from operator config on
  * every call, so removing or repointing a site takes effect at once instead of
- * at the next connect. The e-mail is not a secret, but it is what makes the
+ * at the next connect. The e-mail is not a secret, but it is what makes a Cloud
  * token usable (Jira Cloud authenticates an API token with HTTP Basic over
  * `email:token`), so it travels in the same encrypted blob rather than in a
- * second record that could go missing.
+ * second record that could go missing. A Server / Data Center connection
+ * authenticates on the token alone and keeps the field empty: the site's
+ * declared deployment type decides whether it is spent, which is why a
+ * credential is never paired with the other product's scheme.
  */
 export interface JiraCredential {
   readonly siteId: string;
@@ -47,12 +53,14 @@ export function credentialFromPlaintext(plaintext: string): JiraCredential {
   const siteId = record["siteId"];
   const email = record["email"];
   const token = record["token"];
+  // An empty e-mail is a Server / Data Center connection, which authenticates
+  // on the token alone; whether one is *required* is decided by the site's
+  // declared deployment type, at the moment the secret would be spent.
   if (
     typeof siteId !== "string" ||
     typeof email !== "string" ||
     typeof token !== "string" ||
     siteId === "" ||
-    email === "" ||
     token === ""
   ) {
     invalidCredential();
@@ -82,15 +90,6 @@ export function credentialSite(
 export type JiraQuery = Readonly<
   Record<string, string | number | boolean | undefined>
 >;
-
-/** Jira Cloud authenticates an API token with HTTP Basic over `email:token`. */
-export function basicAuthorization(credential: JiraCredential): string {
-  const pair = Buffer.from(
-    `${credential.email}:${credential.token}`,
-    "utf8",
-  ).toString("base64");
-  return `Basic ${pair}`;
-}
 
 /**
  * HTTP boundary of the provider: one documented Jira Cloud REST call, bounded in
@@ -138,6 +137,8 @@ export class JiraTransport {
     query: JiraQuery,
   ): Promise<Response> {
     const target = this.url(site, path, query);
+    const dialect = dialectOf(site);
+    const authorization = authorizationFor(dialect, credential);
     let lastError: IntegrationError | undefined;
     for (let attempt = 0; ; attempt += 1) {
       let response: Response;
@@ -152,7 +153,7 @@ export class JiraTransport {
           method: "GET",
           redirect: "error",
           headers: {
-            authorization: basicAuthorization(credential),
+            authorization,
             accept: "application/json",
           },
           signal: controller.signal,

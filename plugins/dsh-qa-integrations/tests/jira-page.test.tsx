@@ -11,12 +11,22 @@ const COMPANY = {
   id: "company",
   label: "company.atlassian.net",
   baseUrl: "https://company.atlassian.net",
+  deploymentType: "cloud" as const,
   service: null,
 };
 const SANDBOX = {
   id: "sandbox",
   label: "Sandbox",
   baseUrl: "https://sandbox.atlassian.net",
+  deploymentType: "cloud" as const,
+  service: null,
+};
+/** A self-hosted site: it accepts a personal access token and no account. */
+const ON_PREM = {
+  id: "onprem",
+  label: "Корпоративная Jira",
+  baseUrl: "https://jira.example.corp",
+  deploymentType: "server" as const,
   service: null,
 };
 const SITES = [COMPANY, SANDBOX];
@@ -65,7 +75,7 @@ function remote(overrides: Partial<JiraRemote> = {}): JiraRemote {
 
 describe("Integrations Jira card", () => {
   it("keeps the API token and the account e-mail write-only", async () => {
-    const writes: { siteId: string; email: string; token: string }[] = [];
+    const writes: { siteId: string; email?: string; token: string }[] = [];
     const Card = createJiraCard(
       remote({
         putJiraCredential: async (_token, input) => {
@@ -175,5 +185,79 @@ describe("Integrations Jira card", () => {
     const { container } = render(<Card token="qa-account-token" />);
     await screen.findByText(/Оператор не настроил ни одного сайта Jira/u);
     expect(container.textContent).not.toContain("API-токен Jira");
+  });
+
+  it("switches to the personal access token of the site the user picks", async () => {
+    const writes: { siteId: string; email?: string; token: string }[] = [];
+    const Card = createJiraCard(
+      remote({
+        jiraSites: async () => ({ ok: true, value: [COMPANY, ON_PREM] }),
+        putJiraCredential: async (_token, input) => {
+          writes.push(input);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const select = await screen.findByLabelText("Сайт Jira");
+    // A Cloud site keeps the account field and both of the original labels.
+    fireEvent.change(select, { target: { value: "company" } });
+    expect(screen.getByLabelText("Аккаунт Atlassian (e-mail)")).toBeDefined();
+    expect(screen.getByLabelText("API-токен Jira")).toBeDefined();
+    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
+    // The self-hosted site asks for a personal access token and no account.
+    fireEvent.change(select, { target: { value: "onprem" } });
+    expect(screen.queryByLabelText("Аккаунт Atlassian (e-mail)")).toBeNull();
+    expect(screen.queryByLabelText("API-токен Jira")).toBeNull();
+    expect(screen.getByLabelText("Личный токен доступа (PAT)")).toBeDefined();
+    expect(
+      screen.getByText("Развёртывание: Server / Data Center"),
+    ).toBeDefined();
+    const connect = screen.getByRole("button", {
+      name: "Сохранить и проверить",
+    });
+    expect(connect).toHaveProperty("disabled", true);
+    const pat = "Mzc4OTk0NDg3MTkwOnN5bnRoZXRpYy1wYXQ";
+    fireEvent.change(screen.getByLabelText("Личный токен доступа (PAT)"), {
+      target: { value: pat },
+    });
+    // The token alone unlocks the submit: a server site needs no e-mail.
+    expect(connect).toHaveProperty("disabled", false);
+    fireEvent.click(connect);
+    await waitFor(() =>
+      expect(writes).toEqual([{ siteId: "onprem", token: pat }]),
+    );
+    expect(container.textContent).not.toContain(pat);
+  });
+
+  it("reads a single self-hosted site as a personal access token site", async () => {
+    const writes: { siteId: string; email?: string; token: string }[] = [];
+    const Card = createJiraCard(
+      remote({
+        jiraSites: async () => ({ ok: true, value: [ON_PREM] }),
+        putJiraCredential: async (_token, input) => {
+          writes.push(input);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    render(<Card token="qa-account-token" />);
+    expect(
+      await screen.findByText(
+        "Сайт: Корпоративная Jira — задан оператором стенда",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByLabelText("Сайт Jira")).toBeNull();
+    expect(screen.queryByLabelText("Аккаунт Atlassian (e-mail)")).toBeNull();
+    const pat = "Mzc4OTk0NDg3MTkwOnN5bnRoZXRpYy1wYXQ";
+    fireEvent.change(screen.getByLabelText("Личный токен доступа (PAT)"), {
+      target: { value: pat },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Сохранить и проверить" }),
+    );
+    await waitFor(() =>
+      expect(writes).toEqual([{ siteId: "onprem", token: pat }]),
+    );
   });
 });

@@ -9,12 +9,15 @@ import {
   stringOf,
 } from "../shared/payload.js";
 import { bodyText } from "./adf.js";
+import { jiraOperationPath } from "./catalog.js";
 import type { JiraFlags, JiraSite } from "./config.js";
+import type { JiraDialect } from "./dialect.js";
 import {
   buildJql,
   commentLimit,
   commentStart,
   issueKey as issueKeyOf,
+  pageOffset,
   pageToken,
   projectKey as projectKeyOf,
   searchLimit,
@@ -81,6 +84,8 @@ export interface OperationContext {
    */
   readonly externalUserId?: string | undefined;
   readonly flags: JiraFlags;
+  /** The product this site is, which decides paths and search paging. */
+  readonly dialect: JiraDialect;
 }
 
 export interface JiraRequest {
@@ -93,8 +98,21 @@ export type JiraOperationHandler = (
   context: OperationContext,
 ) => JiraRequest;
 
-function issuePath(suffix = ""): string {
-  return `/rest/api/3/issue/:issueKey${suffix}`;
+/**
+ * The path of one operation on this site's product. Every operation is reached
+ * through the catalog, so the path is always one the allow-list declares — a
+ * handler can only fill the placeholders of a fixed template.
+ */
+function operationPath(
+  operation: string,
+  context: OperationContext,
+  suffix = "",
+): string {
+  const path = jiraOperationPath(operation, context.dialect.deployment);
+  if (path === undefined) {
+    throw new IntegrationError("InvalidRequest", "Unsupported Jira operation");
+  }
+  return `${path}${suffix}`;
 }
 
 function withIssue(template: string, value: unknown): string {
@@ -156,22 +174,39 @@ export function wantsFieldNames(include: readonly string[]): boolean {
 
 export const JIRA_HANDLERS: Readonly<Record<string, JiraOperationHandler>> =
   Object.freeze({
-    "connection.get": () => ({ path: "/rest/api/3/myself", query: {} }),
-
-    "issues.search": (input, context) => ({
-      path: "/rest/api/3/search/jql",
-      query: {
-        jql: buildJql(input),
-        maxResults: searchLimit(input["limit"], context.flags),
-        nextPageToken: pageToken(input["cursor"]),
-        fields: SEARCH_FIELDS.join(","),
-      },
+    "connection.get": (_input, context) => ({
+      path: operationPath("connection.get", context),
+      query: {},
     }),
+
+    /**
+     * One search, two products. Cloud serves the enhanced `/search/jql`, which
+     * hands out an opaque continuation token and says whether the page was the
+     * last one; a Server / Data Center instance serves the classic `/search`,
+     * which is paged by row offset and reports how many issues exist.
+     */
+    "issues.search": (input, context) => {
+      const server = context.dialect.deployment === "server";
+      return {
+        path: operationPath("issues.search", context),
+        query: {
+          jql: buildJql(input, context.dialect.deployment),
+          maxResults: searchLimit(input["limit"], context.flags),
+          fields: SEARCH_FIELDS.join(","),
+          ...(server
+            ? { startAt: pageOffset(input["cursor"]) }
+            : { nextPageToken: pageToken(input["cursor"]) }),
+        },
+      };
+    },
 
     "issues.get": (input, context) => {
       const include = requestedIncludes(input["include"]);
       return {
-        path: withIssue(issuePath(), input["issueKey"]),
+        path: withIssue(
+          operationPath("issues.get", context),
+          input["issueKey"],
+        ),
         query: {
           fields: issueFields(include, context.flags),
           // The history is an expansion, not a field: it only travels when the
@@ -187,7 +222,10 @@ export const JIRA_HANDLERS: Readonly<Record<string, JiraOperationHandler>> =
       const order = optionalText(input["order"], "order", 6, 6) ?? "newest";
       if (!COMMENT_ORDERS.includes(order)) invalid("order");
       return {
-        path: withIssue(issuePath("/comment"), input["issueKey"]),
+        path: withIssue(
+          operationPath("issues.comments", context),
+          input["issueKey"],
+        ),
         query: {
           startAt: commentStart(input["startAt"]),
           maxResults: commentLimit(input["limit"], context.flags),
@@ -196,24 +234,36 @@ export const JIRA_HANDLERS: Readonly<Record<string, JiraOperationHandler>> =
       };
     },
 
-    "issues.attachments": (input) => ({
-      path: withIssue(issuePath(), input["issueKey"]),
+    "issues.attachments": (input, context) => ({
+      path: withIssue(
+        operationPath("issues.attachments", context),
+        input["issueKey"],
+      ),
       query: { fields: "attachment" },
     }),
 
-    "issues.transitions": (input) => ({
-      path: withIssue(issuePath("/transitions"), input["issueKey"]),
+    "issues.transitions": (input, context) => ({
+      path: withIssue(
+        operationPath("issues.transitions", context),
+        input["issueKey"],
+      ),
       // The expansion adds the fields each transition would need, which is what
       // makes the answer useful to a later write phase without executing one.
       query: { expand: "transitions.fields" },
     }),
 
-    "projects.get": (input) => ({
-      path: `/rest/api/3/project/${projectKeyOf(input["projectKey"])}`,
+    "projects.get": (input, context) => ({
+      path: operationPath("projects.get", context).replace(
+        ":projectKey",
+        projectKeyOf(input["projectKey"]),
+      ),
       query: {},
     }),
 
-    "fields.list": () => ({ path: "/rest/api/3/field", query: {} }),
+    "fields.list": (_input, context) => ({
+      path: operationPath("fields.list", context),
+      query: {},
+    }),
   });
 
 /* ------------------------------------------------------------------ */
@@ -231,12 +281,20 @@ export function issueUrl(site: JiraSite, key: string): string {
   return `${site.baseUrl}/browse/${encodeURIComponent(key)}`;
 }
 
+/**
+ * One person as an answer names them. Cloud identifies a user by an opaque
+ * `accountId` and a Server / Data Center instance by the `name` its JQL filters
+ * on, so both are carried and whichever the product did not send stays absent —
+ * the model then passes back what the issue actually reported.
+ */
 function userSummary(value: unknown): Record<string, unknown> | undefined {
   const source = recordOf(value);
   const accountId = stringOf(source, "accountId");
-  if (accountId === undefined) return undefined;
+  const name = stringOf(source, "name") ?? stringOf(source, "key");
+  if (accountId === undefined && name === undefined) return undefined;
   return compact({
     accountId,
+    name,
     displayName: stringOf(source, "displayName"),
   });
 }
@@ -603,6 +661,7 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
       const source = recordOf(data);
       return compact({
         accountId: stringOf(source, "accountId"),
+        name: stringOf(source, "name") ?? stringOf(source, "key"),
         displayName: stringOf(source, "displayName"),
         emailAddress: stringOf(source, "emailAddress"),
         accountType: stringOf(source, "accountType"),
@@ -613,15 +672,31 @@ export const JIRA_PROJECTIONS: Readonly<Record<string, JiraProjection>> =
     "issues.search": (data, context) => {
       const source = recordOf(data);
       const issues = arrayOf(source, "issues");
+      const total = numberOf(source, "total");
+      const startAt = numberOf(source, "startAt") ?? 0;
+      // A product that pages a search by offset answers with the size of the
+      // whole result and expects the next page at a position, so the cursor is
+      // the position after the rows that actually arrived. The upstream count
+      // is used rather than the answer's own: a service-mode search drops the
+      // issues outside its boundary from the page it already read, and counting
+      // the rows it kept would page back into the same ones.
+      const upstream = numberOf(source, "returnedUpstream") ?? issues.length;
       return compact({
         items: issues.map((item) => issueSummary(item, context.site)),
         pagination: compact({
           returned: issues.length,
           isLast: booleanOf(source, "isLast"),
-          // The cursor is Jira's own continuation token: this provider keeps no
+          total,
+          startAt: total === undefined ? undefined : startAt,
+          // The cursor is Jira's own continuation token on Cloud, and the next
+          // offset on a product that pages by position: this provider keeps no
           // state between calls, so the model either continues with it or asks
           // a narrower question.
-          nextCursor: stringOf(source, "nextPageToken"),
+          nextCursor:
+            stringOf(source, "nextPageToken") ??
+            (total !== undefined && startAt + upstream < total
+              ? String(startAt + upstream)
+              : undefined),
         }),
       });
     },

@@ -6,7 +6,12 @@ import {
   requiredText,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
-import { CUSTOM_FIELD_ID, SEARCH_PAGE_CAP, type JiraFlags } from "./config.js";
+import {
+  CUSTOM_FIELD_ID,
+  SEARCH_PAGE_CAP,
+  type JiraDeployment,
+  type JiraFlags,
+} from "./config.js";
 
 /**
  * JQL is a query language, and this provider deliberately does not hand it to
@@ -34,8 +39,19 @@ const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]{0,31}-\d{1,10}$/u;
  * person's name fails it and is resolved through Jira's user search instead.
  */
 const ACCOUNT_ID = /^[A-Za-z0-9:_.@-]{8,128}$/u;
+/**
+ * A Server / Data Center user name, which is what its JQL filters on. It is
+ * shorter and freer than a Cloud account id (an administrator may keep mail
+ * addresses as logins), so it is checked as "one identifier token" rather than
+ * against a specific alphabet.
+ */
+const USER_NAME = /^[A-Za-z0-9._@+-]{1,255}$/u;
 /** An opaque continuation token Jira minted for this exact query. */
 const PAGE_TOKEN = /^[A-Za-z0-9._~+/=-]{1,4096}$/u;
+/** A row offset on a product that pages a search by position. */
+const PAGE_OFFSET = /^\d{1,7}$/u;
+/** Deepest offset a search may walk to; search pagination is not a crawl API. */
+const MAX_PAGE_START = 10_000;
 /** Jira's own relative date tokens: `-3w`, `-2d`, `-4h`, `-30m`. */
 const RELATIVE_DATE = /^-\d{1,4}[wdhm]$/u;
 /** Status categories are the three Jira defines, not a workflow state. */
@@ -95,36 +111,51 @@ export function issueKey(value: unknown, field = "issueKey"): string {
 }
 
 /**
- * A filter value that is a person: the connected user (`me`), or an account id.
- * A display name is refused here on purpose — Jira Cloud would match it against
- * nothing and answer an empty page, which reads like "no such issues" rather
- * than "wrong kind of filter". The provider resolves a name into an account id
- * before the builder ever sees it, so a name reaching this point means the
- * lookup did not happen.
+ * A filter value that is a person: the connected user (`me`), or the identifier
+ * the site's JQL filters on — an account id on Cloud, a user name on Server /
+ * Data Center. A display name is refused here on purpose — Jira would match it
+ * against nothing and answer an empty page, which reads like "no such issues"
+ * rather than "wrong kind of filter". The provider resolves a name into that
+ * identifier before the builder ever sees it, so a name reaching this point
+ * means the lookup did not happen.
  */
-function userFilter(value: unknown, field: string): string {
+function userFilter(
+  value: unknown,
+  field: string,
+  deployment: JiraDeployment,
+): string {
   if (typeof value === "string" && value.trim().toLowerCase() === "me") {
     return "currentUser()";
   }
-  const normalized = requiredText(value, field, 8, 128);
-  if (!ACCOUNT_ID.test(normalized)) {
+  const server = deployment === "server";
+  const normalized = requiredText(value, field, server ? 1 : 8, 255);
+  const shape = server ? USER_NAME : ACCOUNT_ID;
+  if (!shape.test(normalized)) {
     throw new IntegrationError(
       "InvalidRequest",
-      `${field} must be "me" or the accountId an issue reported`,
+      `${field} must be "me" or the ${identifierName(deployment)} an issue reported`,
     );
   }
   return jqlLiteral(normalized, field);
 }
 
+/** What this product calls the identifier a person filter takes. */
+export function identifierName(deployment: JiraDeployment): string {
+  return deployment === "server" ? "user name" : "accountId";
+}
+
 /**
  * Whether a person filter needs the directory before it becomes JQL: `me` and
- * an account id are already unambiguous, a free-text name is not.
+ * an already-shaped identifier are unambiguous, a free-text name is not.
  */
-export function needsUserLookup(value: unknown): boolean {
+export function needsUserLookup(
+  value: unknown,
+  deployment: JiraDeployment,
+): boolean {
   if (typeof value !== "string") return false;
   const normalized = value.trim();
   if (normalized === "" || normalized.toLowerCase() === "me") return false;
-  return !ACCOUNT_ID.test(normalized);
+  return !(deployment === "server" ? USER_NAME : ACCOUNT_ID).test(normalized);
 }
 
 /** One free-text fragment: every word searched, or the exact phrase. */
@@ -249,7 +280,10 @@ export function textMatch(value: unknown): "all" | "phrase" {
  * "OR project = SECRET" is a text fragment to search for rather than a clause
  * that widens the search.
  */
-export function buildJql(input: Readonly<Record<string, unknown>>): string {
+export function buildJql(
+  input: Readonly<Record<string, unknown>>,
+  deployment: JiraDeployment = "cloud",
+): string {
   const clauses: string[] = [];
 
   if (input["query"] !== undefined) {
@@ -315,10 +349,14 @@ export function buildJql(input: Readonly<Record<string, unknown>>): string {
     ),
   );
   if (input["assignee"] !== undefined) {
-    clauses.push(`assignee = ${userFilter(input["assignee"], "assignee")}`);
+    clauses.push(
+      `assignee = ${userFilter(input["assignee"], "assignee", deployment)}`,
+    );
   }
   if (input["reporter"] !== undefined) {
-    clauses.push(`reporter = ${userFilter(input["reporter"], "reporter")}`);
+    clauses.push(
+      `reporter = ${userFilter(input["reporter"], "reporter", deployment)}`,
+    );
   }
   if (input["createdAfter"] !== undefined) {
     clauses.push(
@@ -387,4 +425,20 @@ export function pageToken(value: unknown): string | undefined {
   const normalized = requiredText(value, "cursor", 1, 4096);
   if (!PAGE_TOKEN.test(normalized)) invalid("cursor");
   return normalized;
+}
+
+/**
+ * The row offset a Server / Data Center search continues from. Its cursor is
+ * the position the previous answer ended at — the product pages a search by
+ * offset, and reports the size of the answer rather than minting a token — so
+ * the cursor is a decimal number and a bounded one, because search pagination
+ * is not a crawl API.
+ */
+export function pageOffset(value: unknown): number {
+  if (value === undefined) return 0;
+  const normalized = requiredText(value, "cursor", 1, 7);
+  if (!PAGE_OFFSET.test(normalized)) invalid("cursor");
+  const offset = Number(normalized);
+  if (!Number.isFinite(offset) || offset > MAX_PAGE_START) invalid("cursor");
+  return offset;
 }

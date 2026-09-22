@@ -1,23 +1,37 @@
 import { resolveConfig } from "../../src/config.js";
-import { type ConfluenceFlags } from "../../src/providers/confluence/config.js";
+import {
+  type ConfluenceConfigInput,
+  type ConfluenceInstance,
+} from "../../src/providers/confluence/config.js";
 import { ConfluenceProvider } from "../../src/providers/confluence/index.js";
 
 export const TOKEN = "ATATT3xFfGF0abcdefghijklmnop";
+/** A Server / Data Center personal access token: base64, with `+` and `=`. */
+export const PAT = "NDIwOGE3ZDEyYjRjMzQ1YTZiN2M4ZDllMGYxYjJjM2Q0ZTUr";
 export const EMAIL = "alice@example.com";
 
-export const COMPANY = {
+export const COMPANY: ConfluenceInstance = {
   id: "company",
   label: "Company",
   baseUrl: "https://company.atlassian.net",
+  deploymentType: "cloud",
 };
-export const SANDBOX = {
+export const SANDBOX: ConfluenceInstance = {
   id: "sandbox",
   label: "Sandbox",
   baseUrl: "https://sandbox.atlassian.net",
+  deploymentType: "cloud",
+};
+/** A self-hosted installation behind its own context path. */
+export const DC: ConfluenceInstance = {
+  id: "dc",
+  label: "wiki.example.corp",
+  baseUrl: "https://wiki.example.corp/confluence",
+  deploymentType: "server",
 };
 export const SITES = [COMPANY, SANDBOX];
 
-export function config(confluence: Partial<ConfluenceFlags> = {}) {
+export function config(confluence: ConfluenceConfigInput = {}) {
   return resolveConfig({ confluence: { instances: SITES, ...confluence } });
 }
 
@@ -62,12 +76,43 @@ export function credentialFor(
   return provider.parseCredential(TOKEN, { instanceId, email }).credential;
 }
 
+/** A Server / Data Center connection: a personal access token, no e-mail. */
+export function dcCredentialFor(
+  instanceId: string,
+  fetcher: typeof fetch,
+): string {
+  const provider = new ConfluenceProvider(config({ instances: [DC] }), fetcher);
+  return provider.parseCredential(PAT, { instanceId }).credential;
+}
+
+/** One provider call against the self-hosted installation. */
+export async function callServer(
+  operation: string,
+  input: Record<string, unknown>,
+  options: {
+    readonly confluence?: ConfluenceConfigInput;
+    readonly fetcher: typeof fetch;
+    readonly instanceId?: string;
+  },
+) {
+  const settings = options.confluence ?? { instances: [DC] };
+  const provider = new ConfluenceProvider(config(settings), options.fetcher);
+  const credential = provider.parseCredential(PAT, {
+    instanceId: options.instanceId ?? DC.id,
+  }).credential;
+  return provider.execute(
+    { credential, externalUserId: "acc-alice" },
+    operation,
+    input,
+  );
+}
+
 /** One provider call, with the connect form's choices already applied. */
 export async function call(
   operation: string,
   input: Record<string, unknown>,
   options: {
-    readonly confluence?: Partial<ConfluenceFlags>;
+    readonly confluence?: ConfluenceConfigInput;
     readonly fetcher: typeof fetch;
     readonly instanceId?: string;
     readonly email?: string;

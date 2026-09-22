@@ -116,6 +116,14 @@ export interface IntegrationInstanceSummary {
   readonly id: string;
   readonly label: string;
   readonly baseUrl: string;
+  /**
+   * Which product answers at `baseUrl`, on the providers that distinguish the
+   * vendor's hosted deployment from a self-hosted one. Absent for a provider
+   * without that distinction, and an absent value means the resolver's own
+   * default — the hosted product — so a client reads `=== "server"` rather
+   * than enumerating both.
+   */
+  readonly deploymentType?: "cloud" | "server" | undefined;
   /** Safe alias of the managed credential bound to this instance, if any. */
   readonly service: { readonly label: string } | null;
 }
