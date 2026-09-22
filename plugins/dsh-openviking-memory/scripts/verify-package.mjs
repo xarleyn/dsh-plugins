@@ -131,14 +131,12 @@ await runVerifyPackage({
     }
 
     // The generated Remote artifacts are the account-scoped page's whole
-    // contract: a missing method there is a page that silently cannot save.
+    // contract: a missing method there is a page that renders empty. The page
+    // reads only — the switches that decide whether the memory is used at all
+    // belong to the deployment, not to the person looking at it.
     const remoteClient = await readFile("lib/typert.remote-client.js");
     const hostArtifact = await readFile("lib/typert.host.js");
-    for (const method of [
-      "userMemorySettings",
-      "setUserMemorySettings",
-      "resetUserMemorySettings",
-    ]) {
+    for (const method of ["userMemoryOverview"]) {
       assert.match(
         remoteClient,
         new RegExp(`openvikingMemory/${method}`, "u"),
@@ -148,6 +146,16 @@ await runVerifyPackage({
         hostArtifact,
         new RegExp(`openvikingMemory/${method}`, "u"),
         `the Host artifact describes ${method}`,
+      );
+    }
+    for (const removed of [
+      "setUserMemorySettings",
+      "resetUserMemorySettings",
+    ]) {
+      assert.doesNotMatch(
+        hostArtifact,
+        new RegExp(`openvikingMemory/${removed}`, "u"),
+        `the Host artifact no longer exposes ${removed}`,
       );
     }
     // The boundary types the page exchanges must stay reachable from ./types.

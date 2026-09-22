@@ -214,6 +214,16 @@ export class OpenVikingRuntime {
     else this.sessionOwners.set(state.ovSessionId, owner);
   }
 
+  /**
+   * The client an account's own reads speak with: the page that shows a person
+   * what the assistant remembers has to read the same space that person's chats
+   * read. With per-account scoping off there is one space for everybody, so the
+   * deployment's own client is the honest answer rather than a new identity.
+   */
+  readClientFor(user: string, scoped: boolean): OpenVikingClient {
+    return scoped ? this.clientFor(user) : this.client;
+  }
+
   /** The scoping of a session nobody has claimed: the configured one. */
   private deploymentScoping(): SessionScoping {
     this.deployment ??= Object.freeze({

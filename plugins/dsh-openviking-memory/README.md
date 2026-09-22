@@ -57,8 +57,9 @@ recall HTTP request (not "the request is made and the result dropped").
   configuration is editable from **Settings → Plugins** without touching a
   patch file. See [Settings card](#settings-card).
 - **Memory per QA account.** On a deployment with QA Surface mounted, each
-  account gets its own OpenViking space, and each account can switch automatic
-  context off for itself from its QA settings dialog. See
+  account gets its own OpenViking space, and its QA settings dialog shows what
+  that space holds about it — read-only, because the switches that decide
+  whether the assistant uses the memory belong to the deployment. See
   [Per-account memory](#per-account-memory-on-a-qa-deployment).
 - **Repository-conventional package layout.** The upstream `.mjs` sources are
   ported to TypeScript under `src/`, with a Cordis service, a `@yadsh`
@@ -173,20 +174,28 @@ the session and sends that account as `X-OpenViking-User`:
 - Without a QA Surface, or with `qaUserScoping: false`, the plugin keeps the
   single deployment-wide identity it always had.
 
-Each account also owns its own switches. The signed-in user's QA settings
-dialog gets a **Память** page (backed by the `openvikingMemory` Remote
-namespace, stored per account in `openviking-memory-qa-users.json` under
-`$DSH_HOME`):
+Each account's page shows what that space holds. The signed-in user's QA
+settings dialog gets a **Память** page (backed by the `openvikingMemory` Remote
+namespace): the profile the store keeps about the account, the sections it files
+memories under with their entries, and the conversations it has learned from.
 
-| Switch | Effect for that account |
-| --- | --- |
-| Автоматическая память (`autoInject`) | Silences the profile and the recall at once |
-| Профиль (`profile`) | No profile injection, at session start or per step |
-| Автоматический поиск (`recall`) | No automatic recall before a step |
+The page is **read-only**. Everything on it was written by conversations
+themselves, and the switches that decide whether the assistant uses the memory
+at all are the deployment's (the card above) — a person's settings dialog is the
+wrong place to switch the product's memory off.
 
-A switch narrows the deployment's plan and never widens it, and one reset hands
-every knob back. Capture, commit and the `mcp__openviking__*` tools keep working
-with every switch off — which is why the QA page says so.
+It also says when the space is not what it looks like. The plugin sends the
+account as `X-OpenViking-User`; a store running in **API-key mode strips that
+header** and answers as its own user. The page compares what it asked for with
+the identity the store reports (`userMemoryOverview` → `accountApplies`), and
+names the shared space instead of presenting other accounts' memories as this
+one's own.
+
+Per-account *overrides* of the deployment's plan still exist and are read from
+`openviking-memory-qa-users.json` under `$DSH_HOME` (`qaUserSettingsPath`
+overrides the path). An override can only narrow the plan, never widen it — and
+nothing in the browser writes that file any more: it is an operator's lever,
+applied the next time a session asks for its plan.
 
 ```yaml
 # A deployment that prefers the old shared space, or a local install that
@@ -199,8 +208,8 @@ config:
 > discovered from the Host settings directory, which a browser reaching the
 > deployment over the network never gets (and a QA overlay does not render the
 > native settings tree at all). That card stays the operator's surface on a
-> local installation; on a QA deployment the per-account page above is the one
-> a user can actually open.
+> local installation — it is where the memory is configured; the QA page above
+> only reports what the memory holds.
 >
 > The card needs its namespace registered in that directory to be served at
 > all — which is what `src/settings.ts` does. A plugin that only declares its
@@ -212,6 +221,13 @@ config:
 > written before it were filed under the deployment-wide user and will not show
 > up in any account's space. Turn it on from the start of a deployment, or
 > re-file what matters to you by hand.
+>
+> **The header is an assertion, not a guarantee.** Whether a space is really
+> per account is the memory store's decision: its `trusted` and `dev` auth modes
+> honour `X-OpenViking-User`, while `api_key` mode strips the header and answers
+> as the key's own user. That is not this plugin's to fix — but it is the
+> plugin's to report, which is why every account page says which space it is
+> actually showing.
 
 **What is still deployment-wide.** The bridged `mcp__openviking__*` tools are
 one MCP server for the whole process, and DSH's MCP client carries a single
@@ -326,7 +342,7 @@ The package ships a browser bundle, so the plugin gets a card under
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
 | `qaUserScoping` | boolean | `true` | With a QA Surface mounted, keep one memory space per account; an unattributed session is left alone entirely |
-| `qaUserSettingsPath` | string | `<$DSH_HOME>/openviking-memory-qa-users.json` | Where the per-account switches live |
+| `qaUserSettingsPath` | string | `<$DSH_HOME>/openviking-memory-qa-users.json` | Where the deployment's per-account plan overrides live (no browser writes it) |
 
 ### Transport
 

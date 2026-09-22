@@ -28,9 +28,9 @@ vi.mock("../src/client/qa-settings.js", async (importOriginal) => {
     await importOriginal<typeof import("../src/client/qa-settings.js")>();
   return {
     ...actual,
-    createMemorySettingsSection: (remote: unknown) => {
+    createMemoryOverviewSection: (remote: unknown) => {
       sectionFaces.push(remote);
-      return actual.createMemorySettingsSection(remote as never);
+      return actual.createMemoryOverviewSection(remote as never);
     },
   };
 });
@@ -80,19 +80,9 @@ class FakeNamespace extends Service {
     super(ctx, "remote.openvikingMemory");
   }
 
-  userMemorySettings(token: string): unknown {
-    this.calls.push(`userMemorySettings:${token}`);
-    return { autoInject: null, profile: null, recall: null };
-  }
-
-  setUserMemorySettings(token: string, patch: unknown): unknown {
-    this.calls.push(`setUserMemorySettings:${token}`);
-    return patch;
-  }
-
-  resetUserMemorySettings(token: string): unknown {
-    this.calls.push(`resetUserMemorySettings:${token}`);
-    return {};
+  userMemoryOverview(token: string): unknown {
+    this.calls.push(`userMemoryOverview:${token}`);
+    return { connected: true, scoped: true, accountApplies: true };
   }
 }
 
@@ -284,13 +274,13 @@ describe("client activation", () => {
     // service the mount installed, own state and all.
     expect(sectionFaces).toHaveLength(1);
     const face = sectionFaces[0] as FakeNamespace;
-    face.userMemorySettings("token");
-    expect(app.namespace?.calls).toEqual(["userMemorySettings:token"]);
+    face.userMemoryOverview("token");
+    expect(app.namespace?.calls).toEqual(["userMemoryOverview:token"]);
 
     const qaStyle = app.styles.find(
       (style) => style.dataset.dshOpenvikingMemory === "qa-settings",
     );
-    expect(qaStyle?.textContent).toContain(".ovm-qa__toggle");
+    expect(qaStyle?.textContent).toContain(".ovm-qa__facts");
 
     // Disposing the entry unmounts the contribution and the page with it.
     await fiber.dispose();

@@ -135,20 +135,34 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
 - **The account-scoped page.** The card of §2.1 is discovered from the Host
   settings directory, which a browser reaching the deployment over the network
   never gets, and a QA overlay does not render the native settings tree at all.
-  The account-scoped switches therefore ship as a `qaUserSettingsSections`
-  registration in the signed-in user's QA settings dialog, backed by three
-  `@Remote` methods of the `openvikingMemory` namespace
-  (`userMemorySettings`, `setUserMemorySettings`, `resetUserMemorySettings`).
-  Callers are resolved from a bearer token (`principalForToken`); no method
-  accepts an account id. The answer is stored per account in
-  `openviking-memory-qa-users.json` under `$DSH_HOME`
-  (`qaUserSettingsPath` overrides it).
-- **Narrowing only.** `effectiveInjectionPlan` intersects the account's
-  switches with the deployment's plan, so `autoInject: false` silences the
-  profile and the recall for one account, a granular switch never widens the
-  master one, and no account can switch on a path its deployment disabled.
-  Capture, commit, the MCP tools and the skills are untouched by these
-  switches, exactly as with the deployment-level knobs of §2.
+  What ships in that browser's place is a `qaUserSettingsSections` registration
+  in the signed-in user's QA settings dialog: a **read-only** overview of what
+  the memory holds about that account — the profile file, the sections under
+  `memories/` with their entries, and the conversations the store has under
+  `sessions/` — backed by one `@Remote` method of the `openvikingMemory`
+  namespace (`userMemoryOverview`). Callers are resolved from a bearer token
+  (`principalForToken`); no method accepts an account id, and no method writes.
+  The reading client is the account's own (`MemoryOverviewSource`), so the page
+  reads the space that account's chats read; with scoping off it is the
+  deployment's client, because a shared space is what its chats use.
+- **The page reports the space it is actually showing.** The account is
+  asserted with `X-OpenViking-User`, and a store is free to ignore that header:
+  OpenViking's `api_key` auth mode strips it and resolves the key's own user
+  instead. `userMemoryOverview` therefore compares the identity it asked for
+  with the one `/api/v1/system/status` reports and answers `accountApplies:
+  false` when they differ, which is what makes the page say "this is the shared
+  space" rather than present someone else's memory as the reader's own.
+- **Overrides are narrowed, and operator-managed.** `effectiveInjectionPlan`
+  intersects the account's stored overrides with the deployment's plan, so
+  `autoInject: false` silences the profile and the recall for one account, a
+  granular override never widens the master one, and no account can switch on a
+  path its deployment disabled. Capture, commit, the MCP tools and the skills
+  are untouched by these overrides, exactly as with the deployment-level knobs
+  of §2. They live in `openviking-memory-qa-users.json` under `$DSH_HOME`
+  (`qaUserSettingsPath` overrides the path) and nothing in the browser writes
+  that file: the switches that decide whether the assistant uses the memory at
+  all belong to the deployment, configured on the card of §2.1 or in the
+  profile patch.
 
 ## 3. Lifecycle
 
@@ -258,14 +272,18 @@ official plugin; any change to the MCP tool contracts.
    request carries an account that does not own its session.
 9. **Unclaimed session.** Start a session the QA surface does not attribute.
    → Zero requests: no profile read, no recall search, no capture, no commit.
-10. **Account switches.** Through the `openvikingMemory` remotes, set
-    `recall: false` for account A, then run a step in each account.
-    → A's step issues no recall request; B's is unchanged; capture keeps working
-    for both. `resetUserMemorySettings` hands A back to the deployment's plan.
-11. **Refused credential.** Call any of the three remotes with no account
-    behind the token.
+10. **Account page reads the account.** Open the **Память** page of account A
+    while A's space holds a profile, a couple of sections and several chats.
+    → The page shows A's profile text, those sections with their entries and the
+    newest conversations, and it issues no request that writes; B's page, if B's
+    space is empty, says the memory is empty rather than showing A's.
+11. **Shared space is reported.** Run the same page against a store whose
+    `api_key` mode strips `X-OpenViking-User`.
+    → `accountApplies` is false, the page names the identity the store answered
+    with, and it says the space is shared instead of presenting it as A's own.
+12. **Refused credential.** Call the remote with no account behind the token.
     → The call is refused and no file is written.
-12. **Committed settings change.** With a chat open, switch `autoRecall` off in
+13. **Committed settings change.** With a chat open, switch `autoRecall` off in
     the card and start a turn.
     → The next step of that session issues no recall request; the log records
     `settings_applied`. A connection change is applied to the plugin's own
@@ -284,7 +302,7 @@ official plugin; any change to the MCP tool contracts.
 | Injection matrix / manual-only / capture / config / guard / runtime / queue / proxy tests | Implemented |
 | Settings card in the Web GUI | Implemented (the namespace is registered by `src/settings.ts`; a card without that registration renders nowhere) |
 | Live re-apply of a committed settings change | Implemented (the bridged MCP tool surface follows on reload) |
-| Per-account scoping and the account-scoped QA settings page | Implemented (unit + request-level tests; no live multi-account run yet) |
+| Per-account scoping and the account-scoped QA settings page (read-only overview) | Implemented (unit + request-level tests; no live multi-account run yet) |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
 | Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet) |

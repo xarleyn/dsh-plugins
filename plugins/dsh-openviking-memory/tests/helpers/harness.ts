@@ -40,6 +40,7 @@ export interface HarnessOptions {
   readonly fetchImpl?: (
     path: string,
     init: RequestInit | undefined,
+    url?: URL,
   ) => Promise<Response>;
   /** Skip the environment isolation (for the config tests that set it themselves). */
   readonly isolateEnv?: boolean;
@@ -192,7 +193,7 @@ export async function createHarness(
         init?.body === undefined ? undefined : JSON.parse(String(init.body)),
       headers: (init?.headers ?? {}) as Record<string, string>,
     });
-    if (options.fetchImpl) return options.fetchImpl(url.pathname, init);
+    if (options.fetchImpl) return options.fetchImpl(url.pathname, init, url);
     if (!Object.hasOwn(responses, url.pathname)) {
       return jsonResponse(
         { status: "error", error: { code: "NOT_FOUND" } },

@@ -1,43 +1,32 @@
 /**
  * The account-scoped page of the QA settings dialog.
  *
- * This is the surface a signed-in user reaches on a QA deployment. The Host's
- * own "Plugin configuration" card cannot be it: those cards are discovered from
- * the Host settings directory, which a browser reaching the deployment over the
- * network never gets, and the QA overlay does not render the native settings
- * tree at all. The dialog is part of the QA surface itself, so it is reachable
- * exactly where the memory is shared.
+ * This is the surface a signed-in user reaches on a QA deployment, and what it
+ * answers is a question about *them*: what the assistant remembers about this
+ * account, and which conversations it learned that from. The Host's own "Plugin
+ * configuration" card cannot be it — those cards are discovered from the Host
+ * settings directory, which a browser reaching the deployment over the network
+ * never gets, and the QA overlay does not render the native settings tree at
+ * all.
  *
- * Everything here is per account. The switches narrow the deployment's own
- * plan; they can turn automatic context off for one account and never on for
- * an account whose deployment disabled it.
+ * It is deliberately read-only. Whether the assistant uses the memory at all is
+ * the deployment's decision, taken where the deployment's configuration lives;
+ * a person's settings dialog is the wrong place to switch the product's memory
+ * off, and the right place to show them what it holds.
  */
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { useCallback, useEffect, useState } from "react";
 
-import type {
-  QaUserMemorySettingsPatch,
-  QaUserMemorySettingsView,
-} from "../types.js";
+import type { QaMemoryOverviewGroup, QaUserMemoryOverview } from "../types.js";
 
 /** The Remote surface this page calls; the token authenticates the caller. */
-export interface MemoryClientRemote {
-  userMemorySettings(
+export interface MemoryOverviewRemote {
+  userMemoryOverview(
     token: string,
-  ): Promise<RemoteResult<QaUserMemorySettingsView>>;
-  setUserMemorySettings(
-    token: string,
-    patch: QaUserMemorySettingsPatch,
-  ): Promise<RemoteResult<QaUserMemorySettingsView>>;
-  resetUserMemorySettings(
-    token: string,
-  ): Promise<RemoteResult<QaUserMemorySettingsView>>;
+  ): Promise<RemoteResult<QaUserMemoryOverview>>;
 }
-
-/** Which switch a click is changing. */
-type SettingKey = "autoInject" | "profile" | "recall";
 
 /** The section id and title QA Surface registers this page under. */
 export const QA_MEMORY_SECTION_ID = "openviking-memory";
@@ -51,18 +40,27 @@ export const qaSettingsStyles: string = `
 .ovm-qa,.ovm-qa *{box-sizing:border-box}
 .ovm-qa{display:grid;gap:14px;color:var(--dsw-alias-label-primary);font-size:13px}
 .ovm-qa__lead{margin:0;color:var(--dsw-alias-label-secondary);line-height:1.5}
-.ovm-qa__rows{display:grid;gap:8px}
-.ovm-qa__row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 13px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}
-.ovm-qa__copy{display:grid;gap:3px;text-align:left;min-width:0}
-.ovm-qa__copy strong{font-size:13px;font-weight:600}
-.ovm-qa__copy span{font-size:11px;color:var(--dsw-alias-label-tertiary);line-height:1.45}
-.ovm-qa__side{display:flex;align-items:center;gap:8px;flex:none}
-.ovm-qa__toggle{appearance:none;width:36px;height:20px;border-radius:999px;background:var(--dsw-alias-label-dimmed);position:relative;cursor:pointer;transition:.18s;flex:none;border:0}
-.ovm-qa__toggle:after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--dsw-alias-bg-layer-3);transition:.18s}
-.ovm-qa__toggle:checked{background:var(--dsw-alias-brand-primary)}
-.ovm-qa__toggle:checked:after{transform:translateX(16px)}
-.ovm-qa__toggle:disabled{cursor:default;opacity:.45}
-.ovm-qa__badge{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:2px 8px;white-space:nowrap}
+.ovm-qa__facts{display:flex;flex-wrap:wrap;gap:6px}
+.ovm-qa__fact{display:grid;gap:2px;padding:8px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;min-width:86px}
+.ovm-qa__fact b{font-size:16px;font-weight:600;line-height:1.2}
+.ovm-qa__fact span{font-size:11px;color:var(--dsw-alias-label-tertiary)}
+.ovm-qa__block{display:grid;gap:8px}
+.ovm-qa__block-title{margin:0;font-size:13px;font-weight:600}
+.ovm-qa__block-hint{margin:0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.45}
+.ovm-qa__card{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:10px 12px;display:grid;gap:6px}
+.ovm-qa__card-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.ovm-qa__card-name{font-size:13px;font-weight:600}
+.ovm-qa__card-count{font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
+.ovm-qa__card-summary{margin:0;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
+.ovm-qa__items{display:grid;gap:5px;margin:0;padding:0;list-style:none}
+.ovm-qa__item{display:grid;gap:2px;padding-left:10px;border-left:2px solid var(--dsw-alias-border-l2)}
+.ovm-qa__item-name{font-size:12px;font-weight:600}
+.ovm-qa__item-summary{font-size:11px;color:var(--dsw-alias-label-tertiary);line-height:1.45}
+.ovm-qa__profile{margin:0;white-space:pre-wrap;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.55;max-height:220px;overflow:auto;font-family:inherit}
+.ovm-qa__chats{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.ovm-qa__chat{display:grid;gap:2px}
+.ovm-qa__chat-meta{font-size:11px;color:var(--dsw-alias-label-tertiary);display:flex;gap:8px;flex-wrap:wrap}
+.ovm-qa__chat-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .ovm-qa__notice{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .ovm-qa__notice strong{color:var(--dsw-alias-label-primary)}
 .ovm-qa__error{margin:0;padding:10px 12px;border-radius:9px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px;line-height:1.5}
@@ -75,22 +73,7 @@ export const qaSettingsStyles: string = `
 
 /** The message a refused Remote call shows; the wire carries no detail. */
 const GENERIC_FAILURE =
-  "Не удалось изменить настройки памяти. Обновите страницу и попробуйте снова.";
-
-/**
- * What is actually going to happen, spelled out. The switches above say what
- * this account asked for; this line says what the deployment's plan leaves of
- * it, which is the only place a narrowing master switch becomes visible.
- */
-function describeEffective(view: QaUserMemorySettingsView): string {
-  const parts = [
-    view.effective.startupProfile ? "профиль" : "без профиля",
-    view.effective.recall
-      ? "автоматический поиск"
-      : "без автоматического поиска",
-  ];
-  return `Сейчас: ${parts.join(", ")}.`;
-}
+  "Не удалось прочитать память. Обновите страницу и попробуйте снова.";
 
 function failureMessage(result: RemoteResult<unknown>): string {
   if (!result.ok && typeof result.error?.message === "string") {
@@ -99,37 +82,187 @@ function failureMessage(result: RemoteResult<unknown>): string {
   return GENERIC_FAILURE;
 }
 
-/** One switch row: label, description, and the switch itself. */
-function SettingRow(props: {
-  readonly label: string;
-  readonly hint: string;
-  readonly checked: boolean;
-  readonly overridden: boolean;
-  readonly disabled: boolean;
-  readonly onToggle: (checked: boolean) => void;
+/** A stored timestamp, as the page prints it; an unreadable one is left out. */
+function formatTime(value: string | null): string | null {
+  if (value === null || value.trim() === "") return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** One remembered entry: its name, and the store's note about it. */
+function MemoryItem(props: {
+  readonly name: string;
+  readonly summary: string;
+  readonly folder: boolean;
 }): React.JSX.Element {
   return (
-    <div className="ovm-qa__row">
-      <span className="ovm-qa__copy">
-        <strong>{props.label}</strong>
-        <span>{props.hint}</span>
+    <li className="ovm-qa__item">
+      <span className="ovm-qa__item-name">
+        {props.folder ? `${props.name}/` : props.name}
       </span>
-      <span className="ovm-qa__side">
-        {props.overridden ? (
-          <span className="ovm-qa__badge">своя настройка</span>
-        ) : null}
-        <input
-          type="checkbox"
-          className="ovm-qa__toggle"
-          checked={props.checked}
-          disabled={props.disabled}
-          aria-label={props.label}
-          onChange={(event) => {
-            props.onToggle(event.target.checked);
-          }}
-        />
-      </span>
+      {props.summary === "" ? null : (
+        <span className="ovm-qa__item-summary">{props.summary}</span>
+      )}
+    </li>
+  );
+}
+
+/** One memory section: what it covers, and the first of its entries. */
+function MemoryGroup(props: {
+  readonly group: QaMemoryOverviewGroup;
+}): React.JSX.Element {
+  const hidden = props.group.total - props.group.items.length;
+  return (
+    <div className="ovm-qa__card">
+      <div className="ovm-qa__card-head">
+        <span className="ovm-qa__card-name">{props.group.title}</span>
+        <span className="ovm-qa__card-count">
+          {props.group.total === 1
+            ? "1 запись"
+            : `${props.group.total} записей`}
+        </span>
+      </div>
+      {props.group.summary === "" ? null : (
+        <p className="ovm-qa__card-summary">{props.group.summary}</p>
+      )}
+      <ul className="ovm-qa__items">
+        {props.group.items.map((item) => (
+          <MemoryItem
+            key={`${props.group.name}:${item.name}`}
+            name={item.name}
+            summary={item.summary}
+            folder={item.folder}
+          />
+        ))}
+      </ul>
+      {hidden > 0 ? (
+        <p className="ovm-qa__muted">
+          Показаны первые {props.group.items.length}; всего {props.group.total}.
+        </p>
+      ) : null}
     </div>
+  );
+}
+
+/** The memory of one account, as its page reads it. */
+function MemoryOverview(props: {
+  readonly overview: QaUserMemoryOverview;
+}): React.JSX.Element {
+  const view = props.overview;
+  if (!view.connected) {
+    return (
+      <p className="ovm-qa__error">
+        Память недоступна: {view.error ?? "сервер не ответил"}. Разговоры при
+        этом продолжают записываться, как только он вернётся.
+      </p>
+    );
+  }
+
+  const empty =
+    view.groups.length === 0 &&
+    view.sessions.length === 0 &&
+    view.profile === null;
+
+  return (
+    <>
+      <div className="ovm-qa__facts">
+        <div className="ovm-qa__fact">
+          <b>{view.totals.sections}</b>
+          <span>разделов</span>
+        </div>
+        <div className="ovm-qa__fact">
+          <b>{view.totals.memories}</b>
+          <span>записей</span>
+        </div>
+        <div className="ovm-qa__fact">
+          <b>{view.totals.sessions}</b>
+          <span>разговоров</span>
+        </div>
+      </div>
+
+      {view.scoped && !view.accountApplies ? (
+        <p className="ovm-qa__notice">
+          Развёртывание настроено разделять память по учётным записям, но сервер
+          памяти его не применяет
+          {view.serverIdentity === ""
+            ? ""
+            : `: на запросы он отвечает как «${view.serverIdentity}»`}
+          . Поэтому здесь видно общую память стенда, а не только вашу.
+        </p>
+      ) : null}
+
+      {!view.scoped ? (
+        <p className="ovm-qa__notice">
+          Разделение памяти по пользователям в этом развёртывании выключено: все
+          аккаунты пользуются одной памятью.
+        </p>
+      ) : null}
+
+      {empty ? (
+        <p className="ovm-qa__muted">
+          Память пока пуста: она наполнится по мере разговоров.
+        </p>
+      ) : null}
+
+      {view.profile === null ? null : (
+        <div className="ovm-qa__block">
+          <h4 className="ovm-qa__block-title">Что ассистент о вас знает</h4>
+          <pre className="ovm-qa__profile">{view.profile.text}</pre>
+          <p className="ovm-qa__muted">
+            Из файла {view.profile.name}
+            {view.profile.truncated ? "; показаны только первые символы" : ""}.
+          </p>
+        </div>
+      )}
+
+      {view.groups.length === 0 ? null : (
+        <div className="ovm-qa__block">
+          <h4 className="ovm-qa__block-title">Что запомнено</h4>
+          <p className="ovm-qa__block-hint">
+            Записи, которые ассистент сделал по ходу разговоров.
+          </p>
+          {view.groups.map((group) => (
+            <MemoryGroup key={group.name} group={group} />
+          ))}
+        </div>
+      )}
+
+      {view.sessions.length === 0 ? null : (
+        <div className="ovm-qa__block">
+          <h4 className="ovm-qa__block-title">Прошлые разговоры</h4>
+          <ul className="ovm-qa__chats">
+            {view.sessions.map((session) => (
+              <li className="ovm-qa__chat" key={session.id}>
+                <span className="ovm-qa__chat-meta">
+                  <span className="ovm-qa__chat-id">
+                    {session.id.slice(0, 8)}
+                  </span>
+                  <span>{formatTime(session.updatedAt) ?? "без даты"}</span>
+                </span>
+                <span className="ovm-qa__item-summary">
+                  {session.summary === ""
+                    ? "Память не оставила описания этого разговора."
+                    : session.summary}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {view.totals.sessions > view.sessions.length ? (
+            <p className="ovm-qa__muted">
+              Показаны последние {view.sessions.length} из{" "}
+              {view.totals.sessions}.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </>
   );
 }
 
@@ -137,22 +270,30 @@ function SettingRow(props: {
  * Build the page component around one mounted Remote namespace. The token
  * arrives from the dialog as transport authentication; it is never stored.
  */
-export function createMemorySettingsSection(remote: MemoryClientRemote) {
-  return function MemorySettingsSection({
+export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
+  return function MemoryOverviewSection({
     token,
   }: QaUserSettingsSectionProps): React.JSX.Element {
-    const [view, setView] = useState<QaUserMemorySettingsView | null>(null);
+    const [overview, setOverview] = useState<QaUserMemoryOverview | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
     const load = useCallback(async () => {
-      const result = await remote.userMemorySettings(token);
-      if (result.ok) {
-        setView(result.value);
-        setError(null);
-      } else {
-        setView(null);
-        setError(failureMessage(result));
+      setBusy(true);
+      try {
+        const result = await remote.userMemoryOverview(token);
+        if (result.ok) {
+          setOverview(result.value);
+          setError(null);
+        } else {
+          setOverview(null);
+          setError(failureMessage(result));
+        }
+      } catch {
+        setOverview(null);
+        setError(GENERIC_FAILURE);
+      } finally {
+        setBusy(false);
       }
     }, [remote, token]);
 
@@ -160,125 +301,41 @@ export function createMemorySettingsSection(remote: MemoryClientRemote) {
       void load();
     }, [load]);
 
-    const write = useCallback(
-      (run: () => Promise<RemoteResult<QaUserMemorySettingsView>>) => {
-        setBusy(true);
-        void run()
-          .then((result) => {
-            if (result.ok) {
-              setView(result.value);
-              setError(null);
-            } else {
-              setError(failureMessage(result));
-            }
-          })
-          .catch(() => {
-            setError(GENERIC_FAILURE);
-          })
-          .finally(() => {
-            setBusy(false);
-          });
-      },
-      [],
-    );
-
-    const toggle = useCallback(
-      (key: SettingKey) => (checked: boolean) => {
-        write(() => remote.setUserMemorySettings(token, { [key]: checked }));
-      },
-      [remote, token, write],
-    );
-
-    const overridden =
-      view !== null &&
-      (view.autoInject !== null ||
-        view.profile !== null ||
-        view.recall !== null);
-
     return (
       <section className="ovm-qa" aria-label="Память OpenViking">
         <p className="ovm-qa__lead">
-          Память помощника хранится отдельно для каждой учётной записи QA. Эти
-          переключатели действуют только на ваш аккаунт.
+          Память ассистента — то, что он сохранил из ваших разговоров. Эта
+          страница только читает: память наполняется самими разговорами, а
+          автоподстановку в ответы задаёт развёртывание.
         </p>
 
         {error !== null ? <p className="ovm-qa__error">{error}</p> : null}
 
-        {view === null ? (
+        {overview !== null ? (
+          <MemoryOverview overview={overview} />
+        ) : error === null ? (
+          <p className="ovm-qa__muted">Читаю память…</p>
+        ) : null}
+
+        <div className="ovm-qa__footer">
           <p className="ovm-qa__muted">
-            {error === null ? "Загружаю настройки памяти…" : null}
+            {overview === null || !overview.connected
+              ? "Память OpenViking"
+              : overview.scoped && overview.accountApplies
+                ? "Память разделена по учётным записям QA."
+                : "Разделение по учётным записям не действует: память общая."}
           </p>
-        ) : (
-          <>
-            <div className="ovm-qa__rows">
-              <SettingRow
-                label="Автоматическая память"
-                hint="Главный выключатель: выключает и профиль, и автоматический поиск. Память при этом продолжает записываться, а инструменты поиска остаются доступны."
-                // The row shows the master switch itself, not "is anything
-                // still on": the two rows below say what each path does, and a
-                // derived value here would look stuck when they are both off.
-                checked={view.autoInject !== false}
-                overridden={view.autoInject !== null}
-                disabled={busy}
-                onToggle={toggle("autoInject")}
-              />
-              <SettingRow
-                label="Профиль в начале разговора"
-                hint="Подставлять сохранённый профиль в начало сессии. Действует, пока включена автоматическая память."
-                // Each row shows its own switch, exactly like the deployment's
-                // card: a derived "is it effective" value reads as a stuck
-                // checkbox the moment the master switch is off.
-                checked={view.profile !== false}
-                overridden={view.profile !== null}
-                disabled={busy}
-                onToggle={toggle("profile")}
-              />
-              <SettingRow
-                label="Автоматический поиск по памяти"
-                hint="Искать подходящее в памяти перед каждым шагом. Действует, пока включена автоматическая память."
-                checked={view.recall !== false}
-                overridden={view.recall !== null}
-                disabled={busy}
-                onToggle={toggle("recall")}
-              />
-            </div>
-
-            <p className="ovm-qa__muted">{describeEffective(view)}</p>
-
-            {view.scoped ? null : (
-              <p className="ovm-qa__notice">
-                Разделение памяти по пользователям в этом развёртывании
-                выключено: все аккаунты пользуются одной памятью.
-              </p>
-            )}
-
-            <p className="ovm-qa__notice">
-              Выключение затрагивает только <strong>автоматическую</strong>
-              подстановку. Разговоры по-прежнему записываются в память вашего
-              аккаунта, и помощник может искать по ней по своей инициативе.
-            </p>
-
-            <div className="ovm-qa__footer">
-              <p className="ovm-qa__muted">
-                {view.scoped
-                  ? "Память разделена по учётным записям QA."
-                  : "Разделение по учётным записям выключено."}
-              </p>
-              {overridden ? (
-                <button
-                  type="button"
-                  className="ovm-qa__btn"
-                  disabled={busy}
-                  onClick={() => {
-                    write(() => remote.resetUserMemorySettings(token));
-                  }}
-                >
-                  Вернуть как в развёртывании
-                </button>
-              ) : null}
-            </div>
-          </>
-        )}
+          <button
+            type="button"
+            className="ovm-qa__btn"
+            disabled={busy}
+            onClick={() => {
+              void load();
+            }}
+          >
+            Обновить
+          </button>
+        </div>
       </section>
     );
   };
