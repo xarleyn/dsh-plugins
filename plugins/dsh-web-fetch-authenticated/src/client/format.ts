@@ -19,10 +19,23 @@ export function authSummary(auth: AuthConfig | undefined): string {
   return `Header ${auth.headerName}`;
 }
 
+/**
+ * Scheme token of a rule row. A rule that accepts either scheme prints the
+ * compact `http(s)` rather than spelling both: the row is narrow, and the host
+ * — the part an operator actually reads — keeps the width the schemes ate.
+ * An omitted list means `https` only (SPEC §7).
+ */
+export function schemeSummary(rule: AuthenticatedFetchRule): string {
+  const schemes = rule.match.schemes ?? [];
+  const http = schemes.includes("http");
+  const https = schemes.includes("https");
+  if (http && https) return "http(s)";
+  return http ? "http" : "https";
+}
+
 /** Compact origin summary for a rule row. */
 export function originSummary(rule: AuthenticatedFetchRule): string {
-  const scheme =
-    rule.match.schemes?.includes("http") === true ? "https/http" : "https";
+  const scheme = schemeSummary(rule);
   const hosts = rule.match.hosts.join(", ");
   const ports =
     rule.match.ports !== undefined && rule.match.ports.length > 0
