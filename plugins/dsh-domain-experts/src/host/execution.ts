@@ -10,6 +10,7 @@ import type {
 } from "@deepseek-ai/dsh-subagent";
 import type {
   DomainDefinition,
+  DomainDegradation,
   DomainExpertRequest,
   DomainExpertResult,
   DomainExpertStatus,
@@ -17,6 +18,7 @@ import type {
 } from "../types.js";
 import type { AuditRing } from "./audit.js";
 import {
+  degradation,
   DomainExpertsError,
   SUBAGENT_UNSUPPORTED_CODE,
   unsupportedCapability,
@@ -163,6 +165,10 @@ export async function runExpert(
     },
     input.request,
   );
+  // Resolution's own picture, plus what the start itself had to learn. The
+  // audit entry is written from this array, so a name the runtime refused is
+  // recorded rather than silently missing from the run.
+  const degradations = [...profile.degradations];
 
   const provider = dependencies.subagents.getProvider(
     dependencies.subagentProvider,
@@ -223,9 +229,15 @@ export async function runExpert(
 
   let run: SubagentRun;
   try {
-    run = await dependencies.subagents.start(
+    run = await startWithRescue(
       dependencies.subagentProvider,
-      request,
+      (filter) =>
+        dependencies.subagents.start(
+          dependencies.subagentProvider,
+          withToolFilter(request, filter),
+        ),
+      request.toolFilter,
+      degradations,
     );
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
@@ -255,7 +267,7 @@ export async function runExpert(
         status: "error",
         durationMs,
         path,
-        degradations: profile.degradations.map((item) => item.code),
+        degradations: degradations.map((item) => item.code),
       });
       return {
         ...emptyResult(definition, childSessionId, durationMs, "error"),
@@ -271,7 +283,7 @@ export async function runExpert(
       status,
       durationMs,
       path,
-      degradations: profile.degradations.map((item) => item.code),
+      degradations: degradations.map((item) => item.code),
     });
     return {
       domainId: definition.id,
@@ -302,6 +314,7 @@ async function startBackground(
   depth: number,
 ): Promise<DomainExpertResult> {
   const definition = input.definition;
+  const degradations = [...profile.degradations];
   const startContinuable = dependencies.subagents.startContinuable;
   if (startContinuable === undefined) {
     throw new DomainExpertsError(
@@ -327,12 +340,18 @@ async function startBackground(
   };
   let started: ContinuableStart;
   try {
-    started = await startContinuable.call(dependencies.subagents, {
-      provider: dependencies.subagentProvider,
-      label: request.label ?? `domain-expert:${definition.id}`,
-      request: continuableRequest,
-      signal: request.signal,
-    });
+    started = await startWithRescue(
+      dependencies.subagentProvider,
+      (filter) =>
+        startContinuable.call(dependencies.subagents, {
+          provider: dependencies.subagentProvider,
+          label: request.label ?? `domain-expert:${definition.id}`,
+          request: withToolFilter(continuableRequest, filter),
+          signal: request.signal,
+        }),
+      continuableRequest.toolFilter,
+      degradations,
+    );
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
@@ -357,7 +376,7 @@ async function startBackground(
     status: "delegated",
     durationMs,
     path,
-    degradations: profile.degradations.map((item) => item.code),
+    degradations: degradations.map((item) => item.code),
   });
   return {
     ...emptyResult(definition, childSessionId, durationMs, "delegated"),
@@ -408,6 +427,106 @@ function statusOf(
       return "refusal";
     default:
       return "error";
+  }
+}
+
+/** The tool scoping a child composition carries, as the runtime declares it. */
+type ToolFilter = NonNullable<SubagentStartRequest["toolFilter"]>;
+
+/**
+ * Tool names a runtime refusal named, or `undefined` when the failure is
+ * something else. The refusal lists exactly the entries it could not resolve,
+ * so the run can be retried without them instead of being lost.
+ */
+export function unrestrictableToolNames(
+  error: unknown,
+): readonly string[] | undefined {
+  const detail = error instanceof Error ? error.message : String(error);
+  const listed = /names unknown global tools? ((?:"[^"]+"[, ]*)+);/u.exec(
+    detail,
+  );
+  if (listed === null) return undefined;
+  const names = [...listed[1]!.matchAll(/"([^"]+)"/gu)].map(
+    (match) => match[1] as string,
+  );
+  return names.length === 0 ? undefined : names;
+}
+
+/** The names from `named` this filter actually carries. */
+function filterNamesIn(
+  filter: ToolFilter | undefined,
+  named: readonly string[],
+): readonly string[] {
+  if (filter === undefined) return [];
+  const mine = new Set([...(filter.allow ?? []), ...(filter.deny ?? [])]);
+  return named.filter((name) => mine.has(name));
+}
+
+/** The same filter without `dropped`; `undefined` stays `undefined`. */
+function withoutToolNames(
+  filter: ToolFilter | undefined,
+  dropped: readonly string[],
+): ToolFilter | undefined {
+  if (filter === undefined) return undefined;
+  const gone = new Set(dropped);
+  return {
+    ...(filter.allow === undefined
+      ? {}
+      : { allow: filter.allow.filter((name) => !gone.has(name)) }),
+    ...(filter.deny === undefined
+      ? {}
+      : { deny: filter.deny.filter((name) => !gone.has(name)) }),
+  };
+}
+
+/** The same request carrying `filter` — or none, when it is `undefined`. */
+function withToolFilter<T extends { readonly toolFilter?: ToolFilter }>(
+  request: T,
+  filter: ToolFilter | undefined,
+): T {
+  const { toolFilter: _replaced, ...rest } = request;
+  return (filter === undefined ? rest : { ...rest, toolFilter: filter }) as T;
+}
+
+/**
+ * Start a child, and when the runtime refuses the tool filter itself, start it
+ * once more without the names the runtime named.
+ *
+ * A filter may only name what the child INHERITS: `restrict()` rejects a name
+ * that is the child's own, and a child composes its parent's preset into its
+ * own scope, so every tool that preset mounts — the filesystem readers, the
+ * skill catalog, the web tools — is exactly such a name. One entry then takes
+ * the whole composition down, and an expert whose policy is otherwise sound
+ * never starts. Dropping the name costs nothing there, because an own-layer
+ * tool stays visible whatever the filter says; a name no plugin mounts at all
+ * costs that single tool. Either way the run happens and the audit records
+ * which names went missing, instead of the expert being lost with the
+ * complaint that its policy names a tool.
+ */
+async function startWithRescue<T>(
+  provider: string,
+  start: (filter: ToolFilter | undefined) => Promise<T>,
+  filter: ToolFilter | undefined,
+  degradations: DomainDegradation[],
+): Promise<T> {
+  try {
+    return await start(filter);
+  } catch (error) {
+    const named = unrestrictableToolNames(error);
+    const dropped = named === undefined ? [] : filterNamesIn(filter, named);
+    if (dropped.length === 0) throw relabelCapabilityFailure(error, provider);
+    degradations.push(
+      degradation(
+        "TOOL_UNFILTERABLE",
+        `Tool${dropped.length > 1 ? "s" : ""} ${dropped
+          .map((name) => `"${name}"`)
+          .join(
+            ", ",
+          )} cannot be named in an expert's tool filter on this deployment, so the run started without ${dropped.length > 1 ? "them" : "it"} in the filter. A tool the expert's own preset provides stays available; one nothing mounts is absent.`,
+        dropped,
+      ),
+    );
+    return await start(withoutToolNames(filter, dropped));
   }
 }
 

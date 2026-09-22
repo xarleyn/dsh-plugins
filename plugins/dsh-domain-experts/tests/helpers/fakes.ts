@@ -142,6 +142,11 @@ export interface FakeSubagentsOptions {
   readonly stopReason?: string;
   readonly diagnostic?: string;
   readonly failWith?: unknown;
+  /**
+   * Refuse the first `start` only, then behave normally: the shape a runtime
+   * refusal takes when the caller retries without the names it named.
+   */
+  readonly failOnce?: unknown;
   readonly runId?: string;
   readonly continuable?: boolean;
 }
@@ -161,6 +166,7 @@ export function fakeSubagents(
   const disposed: string[] = [];
   const name = options.name ?? "spawn";
   const runId = options.runId ?? "child-session";
+  let attempts = 0;
   const face: FakeSubagents = {
     started,
     continued,
@@ -180,6 +186,11 @@ export function fakeSubagents(
     ): Promise<SubagentRun> {
       if (options.failWith !== undefined)
         return Promise.reject(options.failWith);
+      if (options.failOnce !== undefined && attempts === 0) {
+        attempts += 1;
+        return Promise.reject(options.failOnce);
+      }
+      attempts += 1;
       started.push({ provider: providerName, request });
       const result = {
         output: [{ type: "text", text: options.text ?? "plain answer" }],
