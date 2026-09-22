@@ -30,7 +30,7 @@
   "scripts": {
     "build": "nx run-many -t build",
     "test": "pnpm test:release && nx run-many -t test",
-    "test:release": "node --test scripts/publish-release.test.mjs scripts/release-workflow.test.mjs scripts/ci-verification.test.mjs scripts/run-bash.test.mjs scripts/package-hygiene.test.mjs scripts/check-release-plans.test.mjs scripts/generate-plugins-manifest.test.mjs scripts/json-schema-validate.test.mjs packages/plugin-scripts/run-verify-package.test.mjs",
+    "test:release": "node --test scripts/publish-release.test.mjs scripts/release-workflow.test.mjs scripts/ci-verification.test.mjs scripts/run-bash.test.mjs scripts/package-hygiene.test.mjs scripts/check-release-plans.test.mjs scripts/generate-plugins-manifest.test.mjs scripts/json-schema-validate.test.mjs packages/plugin-scripts/run-verify-package.test.mjs packages/plugin-scripts/verify-plugin-card-contract.test.mjs",
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
     "lint:workspace": "eslint eslint.config.js scripts",
