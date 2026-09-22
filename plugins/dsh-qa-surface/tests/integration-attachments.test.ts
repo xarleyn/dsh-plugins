@@ -25,6 +25,24 @@ import {
  * never escapes the temporary directory.
  */
 
+/**
+ * A switch the staging test flips, so one test can watch a Host whose
+ * temporary directory cannot be written while every other test keeps the real
+ * one. Hoisted because `vi.mock` runs before this module's own body.
+ */
+const staging = vi.hoisted(() => ({ fail: false }));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    mkdtemp: async (prefix: string) => {
+      if (staging.fail) throw new Error("EACCES: permission denied");
+      return await actual.mkdtemp(prefix);
+    },
+  };
+});
+
 function file(
   name: string,
   mediaType: string,
@@ -236,6 +254,33 @@ describe("attachment prompt parts", () => {
       reason: "unavailable",
       attachment: "scan.pdf",
     });
+  });
+
+  it("refuses the request when the staging directory cannot be created", async () => {
+    // A Host whose temporary directory is unwritable cannot read the
+    // attachment either — the caller's own answer is to repeat the question
+    // without it, not a 5xx it would retry against the same broken directory.
+    const warn = vi.fn();
+    staging.fail = true;
+    let thrown: unknown;
+    try {
+      await attachmentPromptParts(
+        [file("scan.pdf", "application/pdf", "%PDF")],
+        deps(pipeline().face, { logger: { warn } as never }),
+      );
+    } catch (error) {
+      thrown = error;
+    } finally {
+      staging.fail = false;
+    }
+    expect(refusalReason(thrown)).toEqual({
+      reason: "unavailable",
+      attachment: "scan.pdf",
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "integration.attachment-unreadable",
+      expect.objectContaining({ name: "scan.pdf" }),
+    );
   });
 
   it("keeps every attachment inside the total text budget", async () => {

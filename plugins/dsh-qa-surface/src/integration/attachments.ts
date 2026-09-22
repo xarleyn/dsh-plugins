@@ -196,9 +196,27 @@ async function extractDocumentText(
       "this deployment has no document pipeline",
     );
   }
-  const directory = await mkdtemp(
-    path.join(tmpdir(), "qa-integration-attachment-"),
-  );
+  let directory: string;
+  try {
+    directory = await mkdtemp(
+      path.join(tmpdir(), "qa-integration-attachment-"),
+    );
+  } catch (error) {
+    // A Host whose temporary directory cannot be written cannot read the
+    // attachment either. That is the caller's own answer — repeat the question
+    // without it — and not a 5xx: a bridge would retry a 5xx forever against
+    // the same broken directory.
+    deps.logger.warn("integration.attachment-unreadable", {
+      name,
+      mediaType: file.mediaType,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw new QaIntegrationAttachmentError(
+      name,
+      "unavailable",
+      `could not stage ${name} for extraction`,
+    );
+  }
   try {
     const input = path.join(directory, name);
     await writeFile(input, file.bytes, { mode: 0o600 });

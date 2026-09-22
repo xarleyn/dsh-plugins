@@ -533,30 +533,39 @@ export function parseMultipart(body: Buffer, boundary: string): MultipartBody {
     // Each part is "\r\n" headers "\r\n\r\n" content "\r\n".
     const raw = body.subarray(start, next);
     const split = raw.indexOf("\r\n\r\n");
-    if (split !== -1) {
-      const headers = raw.subarray(0, split).toString("utf8");
-      const content = raw.subarray(split + 4);
-      const trimmed = content.subarray(
-        0,
-        content.length >= 2 &&
-          content[content.length - 2] === 0x0d &&
-          content[content.length - 1] === 0x0a
-          ? content.length - 2
-          : content.length,
+    if (split === -1) {
+      // A part without its header/content separator is malformed, and skipping
+      // it would silently drop what the caller sent — a text field, or an
+      // attachment the question would then be answered without. That is the
+      // one outcome this contract refuses to publish, so the body is refused
+      // instead.
+      throw new QaIntegrationError(
+        "invalid-request",
+        "the multipart body has a part without headers",
       );
-      const part = parsePartHeaders(headers);
-      if (part !== null) {
-        if (part.filename === null) {
-          fields.set(part.name, trimmed.toString("utf8"));
-        } else {
-          files.push(
-            Object.freeze({
-              filename: part.filename,
-              mediaType: part.contentType ?? "application/octet-stream",
-              bytes: Buffer.from(trimmed),
-            }),
-          );
-        }
+    }
+    const headers = raw.subarray(0, split).toString("utf8");
+    const content = raw.subarray(split + 4);
+    const trimmed = content.subarray(
+      0,
+      content.length >= 2 &&
+        content[content.length - 2] === 0x0d &&
+        content[content.length - 1] === 0x0a
+        ? content.length - 2
+        : content.length,
+    );
+    const part = parsePartHeaders(headers);
+    if (part !== null) {
+      if (part.filename === null) {
+        fields.set(part.name, trimmed.toString("utf8"));
+      } else {
+        files.push(
+          Object.freeze({
+            filename: part.filename,
+            mediaType: part.contentType ?? "application/octet-stream",
+            bytes: Buffer.from(trimmed),
+          }),
+        );
       }
     }
     cursor = next;
@@ -585,13 +594,43 @@ function parsePartHeaders(headers: string): {
     const value = line.slice(colon + 1).trim();
     if (key === "content-disposition") {
       name = parameterOf(value, "name");
-      filename = parameterOf(value, "filename");
+      filename = filenameOf(value);
     } else if (key === "content-type") {
       contentType = value;
     }
   }
   if (name === null) return null;
   return { name, filename, contentType };
+}
+
+/**
+ * The `filename` of one `content-disposition`, in either of its two forms.
+ *
+ * A file name is what tells a part apart from a text field, so reading only the
+ * plain form loses attachments: a caller that sends a non-ASCII name — what
+ * browsers and several HTTP clients do — puts it in the RFC 5987 extended form
+ * (`filename*=UTF-8''%D0%94...`), where the plain parameter is absent. Read as
+ * a field, the file would be dropped and the question answered without the
+ * material it was asked about.
+ *
+ * @param value - the header value.
+ * @returns the decoded name, or null when neither form is present.
+ */
+function filenameOf(value: string): string | null {
+  const plain = parameterOf(value, "filename");
+  if (plain !== null) return plain;
+  const extended = /filename\*=("[^"]*"|[^;\s]+)/iu.exec(value)?.[1];
+  if (extended === undefined) return null;
+  const unquoted = extended.replace(/^"|"$/gu, "");
+  // "charset'language'percent-encoded", per RFC 5987/8187. The charset is not
+  // honoured: a name the caller encoded as raw bytes is not worth a decoder,
+  // and a decode failure falls back to the field it would otherwise have been.
+  const encoded = unquoted.replace(/^[^']*'[^']*'/u, "");
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return null;
+  }
 }
 
 /** One quoted parameter of a header value, or null when it is absent. */
