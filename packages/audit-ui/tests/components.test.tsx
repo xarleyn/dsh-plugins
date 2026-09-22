@@ -277,11 +277,11 @@ describe("states and tabs", () => {
   });
 
   it("offers a retry only when one was supplied", () => {
-    const { rerender, container } = render(<AuditErrorState />);
-    expect(container.querySelector("button")).toBeNull();
+    const { rerender } = render(<AuditErrorState />);
+    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
 
     rerender(<AuditErrorState onRetry={() => {}} />);
-    expect(container.querySelector("button")?.textContent).toBe("Try again");
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
   });
 
   it("marks the active tab for assistive technology", () => {

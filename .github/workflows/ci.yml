@@ -55,6 +55,9 @@ jobs:
       - name: Verify plugin logging contract
         run: pnpm verify:logging
 
+      - name: Verify button accessible names
+        run: pnpm verify:a11y
+
       - name: Verify publishable plugin package hygiene
         run: pnpm verify:packages
 
