@@ -449,6 +449,7 @@ export class QaSurface extends TypertRemoteService {
       activationSkill: this.getConfig().tools.activationSkill,
       activationMode: this.getConfig().tools.activationMode,
       activationPresets: this.getConfig().tools.activationPresets,
+      docsRoot: this.getConfig().tools.docsRoot,
     });
     ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue

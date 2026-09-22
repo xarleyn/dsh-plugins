@@ -14,7 +14,7 @@ import type { QaToolDescriptor } from "./types.js";
  */
 export const QA_TOOL_CATALOG_VERSION = "3";
 
-/** One QA tool reports the activation state of whichever agent calls it. */
+/** What the catalog's definitions read, beyond the execution record. */
 export interface QaToolsSelfcheckDeps {
   readonly catalogVersion: string;
   readonly activationMode: string;
@@ -24,6 +24,11 @@ export interface QaToolsSelfcheckDeps {
   readonly activeTools: (agent: Agent) => readonly string[];
   /** Whether the calling agent's session shows the activation skill was loaded. */
   readonly skillLoaded: (agent: Agent) => boolean;
+  /**
+   * Documentation root the two readers use, or `""` for the `docs/` directory
+   * inside each chat's own workspace.
+   */
+  readonly docsRoot?: string;
 }
 
 function createSelfcheckTool(
@@ -106,12 +111,12 @@ export function createQaToolCatalog(
       tags: ["activation", "diagnostics"],
     },
     {
-      definition: createDocsSearchTool(),
+      definition: createDocsSearchTool({ root: deps.docsRoot ?? "" }),
       group: "documentation",
       tags: ["docs", "search"],
     },
     {
-      definition: createDocsReadTool(),
+      definition: createDocsReadTool({ root: deps.docsRoot ?? "" }),
       group: "documentation",
       tags: ["docs", "read"],
     },

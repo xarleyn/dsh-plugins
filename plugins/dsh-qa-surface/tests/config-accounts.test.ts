@@ -212,6 +212,8 @@ describe("qa surface config", () => {
       activationSkill: "qa-surface",
       activationMode: "all",
       activationPresets: [],
+      // Empty: the per-chat `docs/` layout, which needs no configuration.
+      docsRoot: "",
     });
     expect(
       resolveConfig(
@@ -228,6 +230,7 @@ describe("qa surface config", () => {
       activationSkill: "qa-research",
       activationMode: "all",
       activationPresets: ["qa-research"],
+      docsRoot: "",
     });
     // A typo in the trigger must fail the boot, not silently disable the
     // feature for the whole deployment.

@@ -73,6 +73,7 @@ function qaTools(
     activationSkill: "qa-surface",
     activationMode: "all",
     activationPresets: [],
+    docsRoot: "",
     ...overrides,
   });
 }
