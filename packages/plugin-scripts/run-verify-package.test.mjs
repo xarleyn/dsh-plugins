@@ -110,6 +110,50 @@ test("a missing built file fails the gate", async () => {
   );
 });
 
+test("an export subpath pointing at nothing fails the gate", async () => {
+  const directory = join(globalThis.fixtureRoot, "exports-built");
+  await writeFixture(directory, {
+    manifest: {
+      exports: {
+        ".": { types: "./lib-index.d.ts", default: "./lib-index.js" },
+        "./package.json": "./package.json",
+      },
+    },
+  });
+  const options = baseOptions(directory, { exportsBuilt: true });
+  // A declaration file the build never wrote is a surface the tarball cannot
+  // serve, so the subpath is refused...
+  await assert.rejects(
+    runVerifyPackage(options),
+    /exports\["\."\] must be built: \.\/lib-index\.d\.ts/u,
+  );
+  // ...and accepted once every condition of the entry is on disk.
+  await writeFile(join(directory, "lib-index.d.ts"), "export {};\n");
+  await runVerifyPackage(options);
+});
+
+test("a bare-string export target is checked as well", async () => {
+  const directory = join(globalThis.fixtureRoot, "exports-string");
+  await writeFixture(directory, {
+    manifest: {
+      exports: {
+        ".": "./lib-index.js",
+        "./styles.css": "./lib/styles.css",
+        "./package.json": "./package.json",
+      },
+    },
+  });
+  await assert.rejects(
+    runVerifyPackage(
+      baseOptions(directory, {
+        exports: [".", "./styles.css", "./package.json"],
+        exportsBuilt: true,
+      }),
+    ),
+    /exports\["\.\/styles\.css"\] must be built: \.\/lib\/styles\.css/u,
+  );
+});
+
 test("a drifting bundle patch identity fails the gate", async () => {
   const directory = join(globalThis.fixtureRoot, "patch-drift");
   await writeFixture(directory, {
