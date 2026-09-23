@@ -18,8 +18,10 @@ export interface SqliteDatabaseOptions {
   /**
    * The plugin's own logger, from `@yadsh/dsh-plugin-log`. Omitting it keeps
    * the store silent, which is what every store that predates this option did.
+   * Passing an optional logger through is allowed: `undefined` means the same
+   * as leaving the key out.
    */
-  readonly logger?: PluginLoggerLike;
+  readonly logger?: PluginLoggerLike | undefined;
   /**
    * Prefix of the events this store writes (`<label>/db-opened`), so two
    * databases of one plugin stay tellable apart in one log. Defaults to the
