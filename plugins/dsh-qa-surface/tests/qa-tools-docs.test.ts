@@ -131,6 +131,42 @@ describe("docs_search", () => {
     cleanup();
   });
 
+  it("supports grep-style alternatives instead of treating the query as one literal phrase", async () => {
+    const { workspace, docs, cleanup } = fixture();
+    writeFileSync(
+      path.join(docs, "roles.md"),
+      "Бригадир назначен.\nБригада готова.\nСовсем другая строка.\n",
+    );
+    const result = await searchDocumentation(await rootOf(workspace), {
+      query: "бригадир|бригада",
+    });
+    expect(result.hits.map((hit) => hit.text)).toEqual([
+      "Бригадир назначен.",
+      "Бригада готова.",
+    ]);
+    cleanup();
+  });
+
+  it("refuses an invalid regular expression with an actionable message", async () => {
+    const { workspace, cleanup } = fixture();
+    const error = await refusal(
+      searchDocumentation(await rootOf(workspace), { query: "[broken" }),
+    );
+    expect(error.code).toBe("invalid-request");
+    expect(error.message).toContain("regular expression");
+    cleanup();
+  });
+
+  it("refuses nested quantifiers before they can backtrack over a document", async () => {
+    const { workspace, cleanup } = fixture();
+    const error = await refusal(
+      searchDocumentation(await rootOf(workspace), { query: "(a+)+$" }),
+    );
+    expect(error.code).toBe("invalid-request");
+    expect(error.message).toContain("grouping or repetition");
+    cleanup();
+  });
+
   it("keeps only the requested version", async () => {
     const { workspace, cleanup } = fixture();
     const result = await searchDocumentation(await rootOf(workspace), {
@@ -258,10 +294,23 @@ describe("docs_search", () => {
     const absolute = await refusal(
       searchDocumentation(root, {
         query: "token",
-        path: path.join(workspace, "docs"),
+        path: path.join(workspace, "..", "outside"),
       }),
     );
     expect(absolute.code).toBe("outside-docs");
+    cleanup();
+  });
+
+  it("accepts an absolute scope path only when it remains inside the resolved documentation root", async () => {
+    const { workspace, docs, cleanup } = fixture();
+    const root = await rootOf(workspace);
+    const result = await searchDocumentation(root, {
+      query: "token is issued",
+      path: path.join(docs, "platform", "3.8"),
+    });
+    expect(result.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/3.8/auth.md",
+    ]);
     cleanup();
   });
 
@@ -390,6 +439,7 @@ describe("docs_search", () => {
     const description = createDocsSearchTool().description;
     expect(description).toContain("docs/");
     expect(description).toContain("not memory");
+    expect(description).toContain("grep-style regular expression");
   });
 
   it("runs from a real execution record and renders its hits", async () => {
@@ -653,6 +703,22 @@ describe("docs_read", () => {
       path: "billing/tokens.md",
     });
     expect(workspaceRelative).toEqual(docsRelative);
+    cleanup();
+  });
+
+  it("accepts an absolute file path inside the resolved documentation root", async () => {
+    const { workspace, docs, cleanup } = fixture();
+    const result = await readDocumentation(await rootOf(workspace), {
+      path: path.join(docs, "platform", "3.8", "auth.md"),
+      from: 3,
+      lines: 1,
+    });
+    expect(result).toMatchObject({
+      path: "docs/platform/3.8/auth.md",
+      module: "platform",
+      version: "3.8",
+      text: "The token is issued per session.",
+    });
     cleanup();
   });
 

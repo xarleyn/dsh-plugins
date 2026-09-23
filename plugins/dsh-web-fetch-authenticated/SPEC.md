@@ -851,6 +851,29 @@ Text extraction covers documents, but an image has no text to extract and no bin
 
 ---
 
+## 15.5 Generic file downloads (`web_fetch_file`)
+
+`web_fetch_file(url)` covers successful responses that must retain their exact
+bytes: Jira and Confluence attachments, PDF and Office files, spreadsheets,
+presentations, archives, logs, and HTML/JSON/XML downloads. It uses the same
+rule selection, credentials, DNS pinning, network policy, redirects, timeout,
+audit and `maxResponseBytes` ceiling as `web_fetch`; it does not introduce a
+second allowlist. Non-2xx bodies are refused as
+`AUTH_FETCH_FILE_DOWNLOAD_FAILED`, and truncated bodies are never stored.
+
+The tool commits bytes with `ctx.attachments.saveFile` and returns a durable
+file block plus a summary containing the final URL, media type, byte count and
+sanitized filename. It is registered only while both the tools service and a
+durable attachment store are mounted. Registration is capability discovery,
+not authorization: the QA role/tool policy remains administrator-controlled
+and this plugin does not pin `web_fetch_file` into every role.
+
+The settings card names the supported content families and directs readable
+pages to `web_fetch`, arbitrary files to `web_fetch_file`, and raster images to
+`web_fetch_image`.
+
+---
+
 ## 16. Rule routing vs provider routing
 
 The plugin should be a single `ctx.web` fetch provider capable of selecting authentication rules internally.
@@ -1534,4 +1557,3 @@ This plan is based on the current DeepSeek Harness architecture where:
 - DSH's model provider UI already follows a write-only credential pattern where literal secrets are kept in the credential store and settings retain references/redacted descriptors.
 
 Before implementation, Phase 0 must re-check these APIs against the exact DSH version used by the target deployment.
-

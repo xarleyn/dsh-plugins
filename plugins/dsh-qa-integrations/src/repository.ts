@@ -107,6 +107,21 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       -- knows the shape of a store, not the name of a provider.
     `,
   },
+  {
+    version: 3,
+    up: `
+      -- An absent binding normally means a new account and may be provisioned
+      -- from the deployment-managed credential. A user who explicitly
+      -- disconnects must stay disconnected, so that choice needs its own
+      -- durable tombstone after the credential row is removed.
+      CREATE TABLE integration_service_opt_outs (
+        owner_user_id TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (owner_user_id, provider)
+      );
+    `,
+  },
 ];
 
 /** SQLite hands back null-prototype records; the row shapes describe them. */
@@ -330,6 +345,20 @@ export class IntegrationRepository {
     return row === undefined ? undefined : toIntegration(row);
   }
 
+  /** Whether this account explicitly disconnected this provider. */
+  serviceOptedOut(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+  ): boolean {
+    return (
+      this.storage.db
+        .prepare(
+          "SELECT 1 FROM integration_service_opt_outs WHERE owner_user_id = ? AND provider = ?",
+        )
+        .get(principal.userId, provider) !== undefined
+    );
+  }
+
   secretFor(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
@@ -374,6 +403,12 @@ export class IntegrationRepository {
     serviceProfileId?: string | null;
   }): StoredIntegration {
     return this.storage.transaction(() => {
+      // Any explicit/manual connection reverses a previous disconnect choice.
+      this.storage.db
+        .prepare(
+          "DELETE FROM integration_service_opt_outs WHERE owner_user_id = ? AND provider = ?",
+        )
+        .run(options.principal.userId, options.provider);
       const existing = this.find(options.principal, options.provider);
       const now = new Date().toISOString();
       const credentialSource = options.credentialSource ?? "personal";
@@ -640,6 +675,14 @@ export class IntegrationRepository {
           .prepare("DELETE FROM integration_secrets WHERE id = ?")
           .run(integration.secretRef);
       }
+      this.storage.db
+        .prepare(
+          `INSERT INTO integration_service_opt_outs
+             (owner_user_id, provider, created_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(owner_user_id, provider) DO UPDATE SET created_at = excluded.created_at`,
+        )
+        .run(principal.userId, provider, new Date().toISOString());
       return true;
     });
   }

@@ -35,6 +35,7 @@ import type { TransportGlobals } from "./transport/fetch.js";
 import {
   imageAcceptHeader,
   imageNameFromUrl,
+  fileNameFromUrl,
   sniffImageMediaType,
   type ImageMediaType,
 } from "./images.js";
@@ -55,6 +56,15 @@ export interface FetchedImage {
   readonly mediaType: ImageMediaType;
   readonly bytes: Uint8Array;
   /** Display name derived from the URL path. */
+  readonly name: string;
+}
+
+/** One successful response stored verbatim by `web_fetch_file`. */
+export interface FetchedFile {
+  readonly url: string;
+  readonly statusCode: number;
+  readonly mediaType: string;
+  readonly bytes: Uint8Array;
   readonly name: string;
 }
 
@@ -183,6 +193,62 @@ export class AuthenticatedFetchProvider implements WebFetchProvider {
       };
       this.auditOk(rule, url, Date.now() - startedAt, fetched.statusCode);
       return image;
+    } catch (error: unknown) {
+      const code =
+        error instanceof WebError && typeof error.code === "string"
+          ? error.code
+          : "AUTH_FETCH_PROVIDER_ERROR";
+      this.audit(rule, url, code, Date.now() - startedAt, undefined);
+      throw error;
+    }
+  }
+
+  /**
+   * Download any successful response through the authenticated pipeline for
+   * immutable file storage. The matched rule's response cap is authoritative;
+   * non-2xx bodies are error pages and are never retained as attachments.
+   */
+  async fetchFile(
+    request: { readonly url: string },
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<FetchedFile> {
+    const config = this.resolved();
+    if (!config.enabled) throw errors.ruleDisabled("provider");
+    const url = this.validatedUrl(request.url);
+    const rule = this.ruleFor(url, request.url, config);
+    const startedAt = Date.now();
+    try {
+      const fetched = await authenticatedFetchBinary(
+        {
+          url,
+          rule,
+          rules: config.rules,
+          globals: this.globals(),
+          resolveSecrets: (candidate) => this.resolveSecrets(candidate),
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        },
+        { accept: "*/*", maxBytes: rule.limits.maxResponseBytes },
+      );
+      if (fetched.statusCode < 200 || fetched.statusCode >= 300) {
+        throw errors.fileDownloadFailed(
+          fetched.contentType,
+          fetched.statusCode,
+        );
+      }
+      if (fetched.truncated) {
+        throw errors.responseTooLarge(rule.limits.maxResponseBytes);
+      }
+      const file: FetchedFile = {
+        url: fetched.url,
+        statusCode: fetched.statusCode,
+        mediaType:
+          fetched.contentType?.split(";", 1)[0]?.trim().toLowerCase() ||
+          "application/octet-stream",
+        bytes: fetched.bytes,
+        name: fileNameFromUrl(fetched.url),
+      };
+      this.auditOk(rule, url, Date.now() - startedAt, fetched.statusCode);
+      return file;
     } catch (error: unknown) {
       const code =
         error instanceof WebError && typeof error.code === "string"

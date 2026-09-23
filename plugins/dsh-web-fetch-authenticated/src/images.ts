@@ -66,7 +66,15 @@ export function sniffImageMediaType(
 
 /** A filename for the stored attachment, derived from the URL path. */
 export function imageNameFromUrl(url: string): string {
-  const fallback = "image";
+  return downloadNameFromUrl(url, "image");
+}
+
+/** A sanitized display filename for an arbitrary downloaded response. */
+export function fileNameFromUrl(url: string): string {
+  return downloadNameFromUrl(url, "download");
+}
+
+function downloadNameFromUrl(url: string, fallback: string): string {
   let pathname: string;
   try {
     pathname = new URL(url).pathname;

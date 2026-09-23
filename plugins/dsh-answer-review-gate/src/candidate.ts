@@ -39,6 +39,25 @@ export interface CollectedCandidate {
   readonly requestSeq: number | null;
 }
 
+/**
+ * Whether the real user request explicitly opts out of the automatic answer
+ * review. This is intentionally narrow: ordinary mentions of review still go
+ * through the gate, while direct Russian and English instructions to omit it
+ * are honoured at the lifecycle boundary.
+ */
+export function declinesAnswerReview(requestText: string | null): boolean {
+  if (requestText === null) return false;
+  const request = requestText.toLocaleLowerCase("ru-RU");
+  return [
+    /(?:^|[^\p{L}\p{N}_])без\s+(?:авто(?:матического)?\s*)?ревью(?:$|[^\p{L}\p{N}_])/u,
+    /(?:^|[^\p{L}\p{N}_])ревью\s+(?:не\s+(?:нужно|надо|требуется)|не\s+(?:делай(?:те)?|провод(?:и|ите)|запускай(?:те)?))(?:$|[^\p{L}\p{N}_])/u,
+    /(?:^|[^\p{L}\p{N}_])не\s+(?:делай(?:те)?|провод(?:и|ите)|запускай(?:те)?)\s+(?:авто(?:матическое)?\s*)?ревью(?:$|[^\p{L}\p{N}_])/u,
+    /(?:^|[^\p{L}\p{N}_])(?:no|skip)\s+(?:the\s+)?(?:automatic\s+|auto\s+)?review(?:$|[^\p{L}\p{N}_])/u,
+    /(?:^|[^\p{L}\p{N}_])(?:do\s+not|don't)\s+(?:run|perform|start)\s+(?:the\s+)?(?:automatic\s+|auto\s+)?review(?:$|[^\p{L}\p{N}_])/u,
+    /(?:^|[^\p{L}\p{N}_])review\s+(?:is\s+)?not\s+(?:needed|required)(?:$|[^\p{L}\p{N}_])/u,
+  ].some((pattern) => pattern.test(request));
+}
+
 /** Model-visible text of one content-block list. */
 export function textOfBlocks(blocks: readonly ContentBlock[]): string {
   return blocks

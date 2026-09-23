@@ -60,6 +60,8 @@ const MAX_FILES_SCANNED = 2_000;
 const MAX_WALK_ENTRIES = 50_000;
 /** A matched line is trimmed to this many characters before it is reported. */
 const MAX_LINE_CHARS = 240;
+/** Keep model-supplied regular expressions small enough to audit and execute. */
+const MAX_QUERY_PATTERN_CHARS = 512;
 
 /**
  * Extensions of material that is not documentation text: pictures, audio and
@@ -160,6 +162,11 @@ const DOCS_UNAVAILABLE = `this chat's workspace has no ${QA_DOCS_DIRECTORY}/ dir
 const DOCS_NOT_A_DIRECTORY = `the ${QA_DOCS_DIRECTORY}/ entry in this chat's workspace is not a real directory (it is a file or a link), and documentation is never followed through a link.`;
 const DOCS_ESCAPE = `the ${QA_DOCS_DIRECTORY}/ directory resolves outside the calling chat's workspace, so the documentation tree is refused.`;
 const INVALID_QUERY = "no query was given: pass the phrase to look for.";
+const INVALID_PATTERN =
+  "the search query is not a valid regular expression. Use grep-style syntax, for example `brigadir|brigada`, and escape punctuation that should be literal.";
+const UNSAFE_PATTERN =
+  "the search query uses grouping or repetition, which this bounded search does not execute. Use safe grep-style alternatives such as `brigadir|brigada`, character classes or anchors.";
+const QUERY_TOO_LONG = `the search query is longer than ${MAX_QUERY_PATTERN_CHARS} characters. Narrow the regular expression and try again.`;
 const OUTSIDE_DOCS = `this path resolves outside the documentation tree (${QA_DOCS_DIRECTORY}/) this stand reads. Documentation is only read where the stand publishes it; pass a path inside ${QA_DOCS_DIRECTORY}/.`;
 
 /**
@@ -444,20 +451,23 @@ async function docsTargetOf(
   input: string,
 ): Promise<QaDocsTarget> {
   const trimmed = input.trim();
-  if (trimmed === "" || isAbsolute(trimmed)) {
+  if (trimmed === "") {
     throw new QaDocsError("outside-docs", OUTSIDE_DOCS);
   }
+  const absoluteInput = isAbsolute(trimmed);
   const normalized = trimmed.replace(/\\/gu, "/").replace(/^\.\//u, "");
   // `docs/` is the stable public spelling, not necessarily the configured
   // directory's basename. Resolve both accepted spellings from the canonical
   // root itself so `/srv/published-corpus` still reads `docs/module/file.md`.
-  const pathFromDocs =
+  const relativeInput =
     normalized === QA_DOCS_DIRECTORY
       ? ""
       : normalized.startsWith(`${QA_DOCS_DIRECTORY}/`)
         ? normalized.slice(QA_DOCS_DIRECTORY.length + 1)
         : normalized;
-  const spelled = resolve(root.docs, pathFromDocs);
+  const spelled = absoluteInput
+    ? resolve(trimmed)
+    : resolve(root.docs, relativeInput);
   if (!pathIsInside(spelled, root.docs)) {
     throw new QaDocsError("outside-docs", OUTSIDE_DOCS);
   }
@@ -520,6 +530,38 @@ function boundedLine(line: string): string {
 function clamp(value: number | undefined, low: number, high: number): number {
   if (value === undefined || !Number.isFinite(value)) return low;
   return Math.min(Math.max(Math.trunc(value), low), high);
+}
+
+/**
+ * Accept the linear subset this tool documents: literals, escapes,
+ * alternatives, character classes, dot and anchors. JavaScript regular
+ * expressions have no execution timeout, so grouping and repetition are
+ * rejected before compilation instead of letting a model-supplied nested
+ * quantifier block the Host on a long documentation line.
+ */
+function isSafeSearchPattern(query: string): boolean {
+  let escaped = false;
+  let inClass = false;
+  for (const character of query) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === "[") {
+      inClass = true;
+      continue;
+    }
+    if (character === "]" && inClass) {
+      inClass = false;
+      continue;
+    }
+    if (!inClass && "()*+?{}".includes(character)) return false;
+  }
+  return true;
 }
 
 export interface QaDocsSearchRequest {
@@ -708,8 +750,8 @@ async function visitDocumentation(
 /**
  * Search the documentation tree of one chat workspace.
  *
- * Matching is a case-insensitive substring test, line by line: a hit is a
- * line, not a file, so the caller can cite it. The result is bounded twice —
+ * Matching uses one case-insensitive, grep-style regular expression, line by
+ * line: a hit is a line, not a file, so the caller can cite it. The result is bounded twice —
  * by `limit` hits and by the byte budget of the rendered report — and reports
  * which bound cut it short instead of silently dropping matches.
  * @throws QaDocsError when the tree is missing, the scope path is wrong, or the query is empty.
@@ -722,7 +764,18 @@ export async function searchDocumentation(
   if (query === "") {
     throw new QaDocsError("invalid-request", INVALID_QUERY);
   }
-  const needle = query.toLowerCase();
+  if (query.length > MAX_QUERY_PATTERN_CHARS) {
+    throw new QaDocsError("invalid-request", QUERY_TOO_LONG);
+  }
+  if (!isSafeSearchPattern(query)) {
+    throw new QaDocsError("invalid-request", UNSAFE_PATTERN);
+  }
+  let pattern: RegExp;
+  try {
+    pattern = new RegExp(query, "iu");
+  } catch {
+    throw new QaDocsError("invalid-request", INVALID_PATTERN);
+  }
   const limit = clamp(
     request.limit ?? QA_DOCS_SEARCH_DEFAULT_LIMIT,
     1,
@@ -780,7 +833,8 @@ export async function searchDocumentation(
     }
     const identity = docsIdentityOf(pathFromDocs);
     for (const [index, line] of lines.entries()) {
-      if (!line.toLowerCase().includes(needle)) continue;
+      pattern.lastIndex = 0;
+      if (!pattern.test(line)) continue;
       const hit: QaDocsHit = {
         path: reportPath(pathFromDocs),
         line: index + 1,
@@ -896,13 +950,13 @@ export function createDocsSearchTool(
 ): ToolDefinition {
   return defineTool({
     name: "docs_search",
-    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.${defaultVersionNote(options)}`,
+    description: `Search the stand's documentation, which lives ${docsLayout(options)}. Use it — not memory and not a glob sweep over guessed paths — whenever a question is about the product, a version or a module. Query is a case-insensitive, safe grep-style regular expression: use alternatives such as \`brigadir|brigada\`, character classes and anchors instead of writing several words as one literal phrase; grouping and repetition are refused to keep execution bounded. Hits are lines, tagged with the module and version parsed from the path (${QA_DOCS_DIRECTORY}/<module>/<version>/…); pass version and module to stay inside one edition, and path to stay inside one subtree. Output is bounded by limit and by a byte budget, and a truncated result says so.${defaultVersionNote(options)}`,
     parameters: {
       query: {
         type: "string",
         required: true,
         description:
-          "Phrase to look for, matched case-insensitively inside single lines of documentation files.",
+          "Case-insensitive safe grep-style regular expression matched inside single lines, e.g. `brigadir|brigada`. Spaces are literal; use `|` for alternatives. Grouping and repetition are not accepted.",
       },
       version: {
         type: "string",
@@ -916,7 +970,7 @@ export function createDocsSearchTool(
       },
       path: {
         type: "string",
-        description: `Narrow the search to one subtree, e.g. \`${QA_DOCS_DIRECTORY}/platform/3.8\` or \`platform/3.8\`.`,
+        description: `Narrow the search to one subtree, e.g. \`${QA_DOCS_DIRECTORY}/platform/3.8\`, \`platform/3.8\`, or an absolute path inside the configured documentation root.`,
       },
       limit: {
         type: "number",
