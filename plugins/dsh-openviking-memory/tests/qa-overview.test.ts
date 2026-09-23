@@ -88,7 +88,9 @@ function fixture(options: FixtureOptions = {}): Fixture {
     status: 200,
   });
   const source: MemoryOverviewSource = {
-    config: { user: options.headerUser ?? "" },
+    config: {
+      user: options.headerUser ?? options.user ?? "account-a",
+    },
     fetchJSON: async (path) => {
       paths.push(path);
       if (path.startsWith("/api/v1/system/status")) {
@@ -100,7 +102,10 @@ function fixture(options: FixtureOptions = {}): Fixture {
             error: { message: options.statusError ?? "unreachable" },
           };
         }
-        return ok({ initialized: true, user: options.user ?? "" });
+        return ok({
+          initialized: true,
+          user: options.user ?? options.headerUser ?? "account-a",
+        });
       }
       if (path.startsWith("/api/v1/fs/ls")) {
         const query = new URLSearchParams(path.slice(path.indexOf("?") + 1));
@@ -153,6 +158,35 @@ describe("memory overview reader", () => {
     expect(view.groups[1]?.items.map((item) => item.name)).toEqual(["tone"]);
     expect(view.totals.sections).toBe(2);
     expect(view.totals.memories).toBe(9);
+  });
+
+  it("counts every bounded section before truncating the browser rows", async () => {
+    const memories = Array.from({ length: 14 }, (_unused, index) => [
+      entry(`section-${index}`, { folder: true }),
+      entry(`section-${index}/note.md`),
+    ]).flat();
+    const { source } = fixture({ memories });
+
+    const view = await readUserMemoryOverview(source, { scoped: true });
+
+    expect(view.groups).toHaveLength(12);
+    expect(view.totals).toEqual({ sections: 14, memories: 14, sessions: 0 });
+  });
+
+  it("admits when a server listing reaches its bound", async () => {
+    const memories = Array.from({ length: 400 }, (_unused, index) =>
+      entry(`note-${index}.md`),
+    );
+    const sessions = Array.from({ length: 200 }, (_unused, index) =>
+      storedSession(`dsh-${index}`, "2026-09-22T10:00:00.000Z"),
+    );
+    const { source } = fixture({ memories, sessions });
+
+    const view = await readUserMemoryOverview(source, { scoped: true });
+
+    expect(view.truncated).toEqual({ memories: true, sessions: true });
+    expect(view.totals.memories).toBe(400);
+    expect(view.totals.sessions).toBe(200);
   });
 
   it("keeps loose notes, but not the files that are not about the account", async () => {
@@ -257,14 +291,24 @@ describe("memory overview reader", () => {
     expect(view.profile?.text).toHaveLength(1200);
   });
 
-  it("reports a store that answers as somebody else", async () => {
-    const { source } = fixture({ headerUser: "account-a", user: "shared" });
+  it("reads no content when a scoped store answers as somebody else", async () => {
+    const { source, paths } = fixture({
+      headerUser: "account-a",
+      user: "shared",
+      memories: [entry("identity.md"), entry("private.md")],
+      sessions: [storedSession("dsh-private", "2026-09-22T10:00:00.000Z")],
+      files: { "identity.md": "must not be returned" },
+    });
 
     const view = await readUserMemoryOverview(source, { scoped: true });
 
     expect(view.connected).toBe(true);
     expect(view.accountApplies).toBe(false);
     expect(view.serverIdentity).toBe("shared");
+    expect(view.profile).toBeNull();
+    expect(view.groups).toEqual([]);
+    expect(view.sessions).toEqual([]);
+    expect(paths).toEqual(["/api/v1/system/status"]);
   });
 
   it("does not claim isolation nobody asked for", async () => {
@@ -288,10 +332,10 @@ describe("memory overview reader", () => {
 
   it("treats an unreadable listing as a store that cannot answer", async () => {
     const source: MemoryOverviewSource = {
-      config: { user: "" },
+      config: { user: "account-a" },
       fetchJSON: async (path) => {
         if (path.startsWith("/api/v1/system/status")) {
-          return { ok: true, result: { user: "" }, status: 200 };
+          return { ok: true, result: { user: "account-a" }, status: 200 };
         }
         return {
           ok: false,

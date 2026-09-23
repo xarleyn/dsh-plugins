@@ -95,8 +95,12 @@ class FakeGateway extends Service {
   readonly contributions: unknown[] = [];
   /** The namespaces this gateway has mounted, in mount order. */
   readonly namespaces: FakeNamespace[] = [];
+  unmounts = 0;
 
-  constructor(ctx: Context) {
+  constructor(
+    ctx: Context,
+    private readonly mountRelease?: Promise<void>,
+  ) {
     super(ctx, "remote");
   }
 
@@ -111,7 +115,9 @@ class FakeGateway extends Service {
       },
     });
     await fiber.await();
+    await this.mountRelease;
     return async () => {
+      this.unmounts += 1;
       await fiber.dispose();
     };
   }
@@ -122,7 +128,9 @@ class FakeGateway extends Service {
  * with the two services the face declares, and a gateway the test can mount
  * before or after the entry.
  */
-function createClientApp() {
+function createClientApp(
+  options: { readonly mountRelease?: Promise<void> } = {},
+) {
   const root = new Context();
   const cards: CardRegistration[] = [];
   const sections: SectionRegistration[] = [];
@@ -153,12 +161,15 @@ function createClientApp() {
     get namespace(): FakeNamespace | undefined {
       return gateway?.namespaces[0];
     },
+    get unmounts(): number {
+      return gateway?.unmounts ?? 0;
+    },
     /** Mount the gateway client, the way a browser assembly does. */
     mountGateway(): void {
       root.plugin({
         name: "gateway",
         apply: (ctx: Context) => {
-          gateway = new FakeGateway(ctx);
+          gateway = new FakeGateway(ctx, options.mountRelease);
         },
       });
     },
@@ -285,5 +296,30 @@ describe("client activation", () => {
     // Disposing the entry unmounts the contribution and the page with it.
     await fiber.dispose();
     expect(qaStyle?.remove).toHaveBeenCalled();
+    expect(app.unmounts).toBe(1);
+  });
+
+  it("unmounts a contribution that resolves after the entry was disposed", async () => {
+    let releaseMount = (): void => undefined;
+    const mountRelease = new Promise<void>((resolve) => {
+      releaseMount = resolve;
+    });
+    const app = createClientApp({ mountRelease });
+    const fiber = app.applyEntry();
+    await fiber.await();
+
+    app.mountGateway();
+    await vi.waitFor(() => {
+      expect(app.namespace).toBeDefined();
+    });
+
+    await fiber.dispose();
+    expect(app.unmounts).toBe(0);
+
+    releaseMount();
+    await vi.waitFor(() => {
+      expect(app.unmounts).toBe(1);
+    });
+    expect(app.sections).toHaveLength(0);
   });
 });

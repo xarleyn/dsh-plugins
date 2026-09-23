@@ -7,6 +7,7 @@
  */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -50,6 +51,7 @@ const OVERVIEW: QaUserMemoryOverview = {
     },
   ],
   totals: { sections: 1, memories: 1, sessions: 1 },
+  truncated: { memories: false, sessions: false },
   error: null,
 };
 
@@ -108,9 +110,10 @@ describe("account-scoped memory page", () => {
     render(<Page token="token-a" />);
 
     await waitFor(() => {
-      expect(screen.getByText(/сервер памяти его не применяет/u)).toBeDefined();
+      expect(screen.getByText(/содержимое памяти не показано/u)).toBeDefined();
     });
     expect(screen.getByText(/deepseek-harness/u)).toBeDefined();
+    expect(screen.queryByText("Ассистент отвечает по-русски.")).toBeNull();
   });
 
   it("says so when the deployment does not separate accounts", async () => {
@@ -205,5 +208,63 @@ describe("account-scoped memory page", () => {
     await waitFor(() => {
       expect(remote.userMemoryOverview).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it("ignores an old token response and keeps the newer request busy", async () => {
+    let resolveOld: (value: RemoteResult<QaUserMemoryOverview>) => void = () =>
+      undefined;
+    let resolveNew: (value: RemoteResult<QaUserMemoryOverview>) => void = () =>
+      undefined;
+    const oldResponse = new Promise<RemoteResult<QaUserMemoryOverview>>(
+      (resolve) => {
+        resolveOld = resolve;
+      },
+    );
+    const newResponse = new Promise<RemoteResult<QaUserMemoryOverview>>(
+      (resolve) => {
+        resolveNew = resolve;
+      },
+    );
+    const remote = remoteWith({
+      userMemoryOverview: vi.fn((token: string) =>
+        token === "token-old" ? oldResponse : newResponse,
+      ),
+    });
+    const Page = createMemoryOverviewSection(remote);
+    const rendered = render(<Page token="token-old" />);
+
+    await waitFor(() => {
+      expect(remote.userMemoryOverview).toHaveBeenCalledWith("token-old");
+    });
+    rendered.rerender(<Page token="token-new" />);
+    await waitFor(() => {
+      expect(remote.userMemoryOverview).toHaveBeenCalledWith("token-new");
+    });
+
+    await act(async () => {
+      resolveOld(
+        ok({
+          ...OVERVIEW,
+          profile: { ...OVERVIEW.profile!, text: "old account" },
+        }),
+      );
+    });
+    expect(screen.queryByText("old account")).toBeNull();
+    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      resolveNew(
+        ok({
+          ...OVERVIEW,
+          profile: { ...OVERVIEW.profile!, text: "new account" },
+        }),
+      );
+    });
+    expect(await screen.findByText("new account")).toBeDefined();
+    expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
+      false,
+    );
   });
 });

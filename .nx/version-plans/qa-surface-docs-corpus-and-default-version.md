@@ -32,3 +32,23 @@ call that asked for another edition or another subtree still decides for itself.
 The settings card gains a "Документация" section with the switch, the version
 and the effective corpus root, so an operator sees which edition the stand's
 answers come from and where the corpus actually is.
+
+Changing the corpus root or default edition now affects already running QA
+tools instead of waiting for a plugin restart. A configured root may have any
+directory name while tool paths remain the stable `docs/...` spelling;
+uppercase `V2` editions match `v2`, excluded editions are pruned before they can
+spend the walk budget, and an explicit path is no longer described as the
+stand's default edition.
+
+The first message of a newly created chat no longer disappears. Claiming the
+new session updates chat ownership, but that list update no longer reloads
+account access and disposes the session controller between admission and the
+prompt. The optimistic question stays visible throughout the handoff. Removing
+a chat from the browser history now opens an accessible confirmation that says
+the conversation remains on the stand, with explicit cancel and delete actions.
+
+Role-bound chats only receive tools declared by their role or explicitly
+granted through its policy; attaching a dynamic catalog to an agent no longer
+silently expands a role's tool ceiling. Integration request timeouts are also
+bounded by the largest duration Node can schedule faithfully, so an overflowing
+value cannot turn into an immediate timer.

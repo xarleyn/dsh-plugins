@@ -13,10 +13,14 @@ about their memory: the profile the store keeps about the account, the sections
 it files memories under, and the conversations it learned from, all read
 through the client that speaks as that account.
 
-The answer is honest about what it is showing. The account travels as
+The account boundary now fails closed. The account travels as
 `X-OpenViking-User`, and a store in API-key mode strips that header and answers
-as its own user; the page compares the two and says so, naming the shared space
-rather than presenting other accounts' memories as the reader's own.
+as its own user; if the store does not confirm the requested account, the Remote
+returns no profile, memories or session summaries and the page explains why the
+content is hidden. A stale response for a previous account can no longer replace
+the current page, and unloading or hot-reloading the client releases its Remote
+mount. Totals are calculated before the browser list is shortened and say when
+the server-side listing limit prevents an exact total.
 
 The Remote surface shrinks to one read-only method (`userMemoryOverview`);
 `setUserMemorySettings` and `resetUserMemorySettings` are gone, and the

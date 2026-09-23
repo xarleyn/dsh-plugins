@@ -17,7 +17,7 @@
 
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { QaMemoryOverviewGroup, QaUserMemoryOverview } from "../types.js";
 
@@ -165,6 +165,18 @@ function MemoryOverview(props: {
     );
   }
 
+  if (view.scoped && !view.accountApplies) {
+    return (
+      <p className="ovm-qa__error">
+        Сервер памяти не подтвердил учётную запись
+        {view.serverIdentity === ""
+          ? ""
+          : `: он отвечает как «${view.serverIdentity}»`}
+        . Чтобы не раскрыть чужие данные, содержимое памяти не показано.
+      </p>
+    );
+  }
+
   const empty =
     view.groups.length === 0 &&
     view.sessions.length === 0 &&
@@ -202,6 +214,13 @@ function MemoryOverview(props: {
         <p className="ovm-qa__notice">
           Разделение памяти по пользователям в этом развёртывании выключено: все
           аккаунты пользуются одной памятью.
+        </p>
+      ) : null}
+
+      {view.truncated.memories || view.truncated.sessions ? (
+        <p className="ovm-qa__notice">
+          Сервер достиг лимита выдачи: счётчики показывают минимум, а не
+          гарантированно полный итог.
         </p>
       ) : null}
 
@@ -277,11 +296,14 @@ export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
     const [overview, setOverview] = useState<QaUserMemoryOverview | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const requestGeneration = useRef(0);
 
     const load = useCallback(async () => {
+      const generation = ++requestGeneration.current;
       setBusy(true);
       try {
         const result = await remote.userMemoryOverview(token);
+        if (generation !== requestGeneration.current) return;
         if (result.ok) {
           setOverview(result.value);
           setError(null);
@@ -290,15 +312,19 @@ export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
           setError(failureMessage(result));
         }
       } catch {
+        if (generation !== requestGeneration.current) return;
         setOverview(null);
         setError(GENERIC_FAILURE);
       } finally {
-        setBusy(false);
+        if (generation === requestGeneration.current) setBusy(false);
       }
     }, [remote, token]);
 
     useEffect(() => {
       void load();
+      return () => {
+        requestGeneration.current += 1;
+      };
     }, [load]);
 
     return (

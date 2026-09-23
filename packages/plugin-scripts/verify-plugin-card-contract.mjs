@@ -36,13 +36,13 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
    */
   assert.match(
     client,
-    /dsh-plugin-card dsh-plugin-card--open/u,
-    "client bundle must render the shell's open state (the `dsh-plugin-card dsh-plugin-card--open` class pair)",
+    /(?:\?|&&)[^;\n]{0,240}["']dsh-plugin-card dsh-plugin-card--open["']/u,
+    "client bundle must conditionally render the shell's open-state class pair",
   );
   assert.match(
     client,
-    /aria-expanded/u,
-    "client bundle's card header must toggle: no `aria-expanded` anywhere in the bundle",
+    /(?:jsx|jsxs|createElement)\)?\s*\(\s*["']button["']\s*,\s*\{(?=[^}]{0,800}dsh-plugin-card__header)(?=[^}]{0,800}aria-expanded)[^}]{0,800}\}/u,
+    "client bundle must render `dsh-plugin-card__header` and `aria-expanded` on the same button",
   );
 
   assert.doesNotMatch(

@@ -3,7 +3,9 @@ import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/cli
 import { isDelegatedSession } from "../lineage.js";
 import { QaAuditRowBadge } from "../audit/QaAuditRowBadge.js";
 import { auditMark, type QaAuditSummary } from "../audit/types.js";
+import { QaSettingsButton } from "../user-settings/fields.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
+import { QaModal } from "./QaModal.js";
 import { relativeTime } from "./format.js";
 import { QaSidebarHandle, useQaSidebarWidth } from "./QaWidthHandle.js";
 
@@ -271,15 +273,15 @@ export const QaSidebar = memo(
       normalizedQuery === ""
         ? props.rows
         : props.rows.filter((row) => rowMatches(row, normalizedQuery));
-    const confirmingVisible =
-      confirmingId !== null &&
-      props.rows.some((row) => row.id === confirmingId);
+    const confirmingRow =
+      confirmingId === null
+        ? undefined
+        : props.rows.find((row) => row.id === confirmingId);
     const sections: readonly QaSidebarSection[] =
       props.groupByOwner === true
         ? buildOwnerSections(visibleRows)
         : [{ name: "", rows: visibleRows }];
     const renderRow = (row: QaChatRow) => {
-      const confirming = confirmingVisible && confirmingId === row.id;
       return (
         <div
           key={row.id}
@@ -323,35 +325,14 @@ export const QaSidebar = memo(
           {props.onDelete === undefined ? null : (
             <button
               type="button"
-              className={
-                confirming
-                  ? "dsh-qa-sidebar__item-delete dsh-qa-sidebar__item-delete--confirm"
-                  : "dsh-qa-sidebar__item-delete"
-              }
-              aria-label={
-                confirming ? "Подтвердить удаление чата" : "Удалить чат"
-              }
-              title={
-                confirming ? "Нажмите ещё раз для удаления" : "Удалить чат"
-              }
-              onClick={() => {
-                if (confirming) {
-                  setConfirmingId(null);
-                  props.onDelete?.(row.id);
-                  return;
-                }
-                setConfirmingId(row.id);
-              }}
+              className="dsh-qa-sidebar__item-delete"
+              aria-label="Удалить чат"
+              title="Удалить чат"
+              onClick={() => setConfirmingId(row.id)}
             >
-              {confirming ? (
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m3.5 8.5 3 3L12.5 5" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
-                </svg>
-              )}
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
+              </svg>
             </button>
           )}
         </div>
@@ -487,6 +468,34 @@ export const QaSidebar = memo(
           open={changelogOpen}
           onClose={() => setChangelogOpen(false)}
         />
+        <QaModal
+          open={confirmingRow !== undefined}
+          title="Удалить чат"
+          closeLabel="Закрыть подтверждение удаления чата"
+          onClose={() => setConfirmingId(null)}
+          footer={
+            <>
+              <QaSettingsButton
+                label="Отмена"
+                onClick={() => setConfirmingId(null)}
+              />
+              <QaSettingsButton
+                tone="danger"
+                label="Удалить из истории"
+                onClick={() => {
+                  if (confirmingRow === undefined) return;
+                  setConfirmingId(null);
+                  props.onDelete?.(confirmingRow.id);
+                }}
+              />
+            </>
+          }
+        >
+          <p className="dsh-qa-settings__lead">
+            Удалить чат «{confirmingRow?.title ?? "Новый чат"}» из истории в
+            этом браузере? Сам разговор останется на стенде.
+          </p>
+        </QaModal>
       </nav>
     );
   },

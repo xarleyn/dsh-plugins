@@ -452,8 +452,11 @@ export class QaSurface extends TypertRemoteService {
       activationSkill: this.getConfig().tools.activationSkill,
       activationMode: this.getConfig().tools.activationMode,
       activationPresets: this.getConfig().tools.activationPresets,
-      docsRoot: this.getConfig().tools.docsRoot,
-      docsDefaultVersion: docsDefaultVersionOf(this.getConfig().tools),
+      // Settings can change without recreating the plugin. The catalog keeps
+      // these readers so an already-activated tool uses the current corpus and
+      // default edition rather than the boot-time snapshot.
+      docsRoot: () => this.getConfig().tools.docsRoot,
+      docsDefaultVersion: () => docsDefaultVersionOf(this.getConfig().tools),
     });
     ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
     // The root index gains one head script: non-loopback hostnames continue

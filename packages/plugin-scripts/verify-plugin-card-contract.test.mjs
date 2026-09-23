@@ -33,7 +33,7 @@ test("rejects a bundle that keeps the stylesheet but never renders the shell", (
   ].join("\n");
   assert.throws(() => {
     verifyPluginCardContract(styled);
-  }, /open state/u);
+  }, /open-state/u);
 });
 
 test("rejects a card whose header does not toggle", () => {
@@ -41,6 +41,19 @@ test("rejects a card whose header does not toggle", () => {
   assert.throws(() => {
     verifyPluginCardContract(withoutToggle);
   }, /aria-expanded/u);
+});
+
+test("rejects unrelated shell marker strings elsewhere in the bundle", () => {
+  const unrelated = [
+    ...CANONICAL_SHELL_RULES,
+    `const path = "m3.5 5.25 3.5 3.5 3.5-3.5";`,
+    `const unused = "dsh-plugin-card dsh-plugin-card--open";`,
+    `jsx("button", { className: "dsh-plugin-card__header" });`,
+    `jsx("div", { "aria-expanded": open });`,
+  ].join("\n");
+  assert.throws(() => {
+    verifyPluginCardContract(unrelated);
+  }, /conditionally render|same button/u);
 });
 
 test("rejects a bundle missing a canonical shell rule", () => {

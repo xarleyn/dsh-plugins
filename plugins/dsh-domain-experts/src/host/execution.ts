@@ -452,14 +452,19 @@ export function unrestrictableToolNames(
   return names.length === 0 ? undefined : names;
 }
 
-/** The names from `named` this filter actually carries. */
+/**
+ * Refused allow-list names that may be dropped without weakening policy.
+ * A refused deny-list name must stay fatal: removing it can make an own-layer
+ * tool callable and would turn the expert's explicit deny into an allow.
+ */
 function filterNamesIn(
   filter: ToolFilter | undefined,
   named: readonly string[],
 ): readonly string[] {
   if (filter === undefined) return [];
-  const mine = new Set([...(filter.allow ?? []), ...(filter.deny ?? [])]);
-  return named.filter((name) => mine.has(name));
+  const allowed = new Set(filter.allow ?? []);
+  const denied = new Set(filter.deny ?? []);
+  return named.filter((name) => allowed.has(name) && !denied.has(name));
 }
 
 /** The same filter without `dropped`; `undefined` stays `undefined`. */
@@ -490,7 +495,8 @@ function withToolFilter<T extends { readonly toolFilter?: ToolFilter }>(
 
 /**
  * Start a child, and when the runtime refuses the tool filter itself, start it
- * once more without the names the runtime named.
+ * once more without refused allow-list names. Refused deny-list names remain
+ * fatal because dropping one would weaken the expert's explicit policy.
  *
  * A filter may only name what the child INHERITS: `restrict()` rejects a name
  * that is the child's own, and a child composes its parent's preset into its

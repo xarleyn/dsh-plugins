@@ -659,14 +659,16 @@ export class QaPolicyAdmission {
             : () => grants.dispose();
         disposeGuard = agent.ctx.tools.guard((execution) => {
           const subject = execution.agent;
-          // A catalogue tool rides on the agent itself: no role list carries it
-          // and the mask cannot name it, so reading it here is what makes it
-          // callable — in a role-bound chat exactly as in an account-free one.
-          // A name the catalogue did not attach is still the role's to allow.
+          // A catalogue tool rides on the agent itself and the mask cannot name
+          // it. Account-free deployments keep admitting their active catalogue;
+          // a role-bound chat must still carry the tool in its base or activated
+          // grant, otherwise attachment would silently widen the role.
           return qaToolDenial(
             grants?.effectiveTools() ?? allowed,
             execution.name,
-            subject === undefined ? [] : this.dynamicToolNames(subject),
+            capability === undefined && subject !== undefined
+              ? this.dynamicToolNames(subject)
+              : [],
           );
         });
         // The conversation's ceiling, which also bounds the agents delegated
@@ -676,23 +678,19 @@ export class QaPolicyAdmission {
         // session's own policy list rides along for the names the admission
         // appends to it (the provenance reporter), which a role does not list.
         //
-        // The catalog's names ride along for the same reason: they are attached
-        // to the agent by this plugin's own activation, and the grants admit
-        // them for as long as the policy holds. A ceiling that omitted them
-        // would deny every call to a tool the chat both owns and can see — the
-        // documentation readers among them — and the refusal would name a
-        // capability profile the caller cannot see the gap in.
+        // Account-free chats retain their catalogue reach. A role-bound
+        // conversation is bounded by the snapshotted base and grantable sets;
+        // including the whole catalogue here would make role omission useless.
         this.ceilings.set(
           sessionId,
           new Set([
             ...policy.allow,
             ...(capability === undefined
-              ? this.principalScopedTools
+              ? [...this.principalScopedTools, ...this.knownDynamicToolNames()]
               : [
                   ...capability.policy.tools,
                   ...capability.policy.grantableTools,
                 ]),
-            ...this.knownDynamicToolNames(),
           ]),
         );
         // A role snapshot cannot change for this session, but a restarted Host

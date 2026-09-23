@@ -396,14 +396,20 @@ export function InstanceListField(props: {
   const [drafts, setDrafts] = useState<readonly InstanceDraft[]>(() =>
     props.instances.map((row) => ({ ...row })),
   );
+  const storedCount = useRef(props.instances.length);
   useEffect(() => {
     // Rows the Host stores, plus the rows this card added and has not committed
     // yet: an unfinished row is the operator's draft, and a refuel from the
     // store must not take it off the screen.
-    setDrafts((current) => [
-      ...props.instances.map((row) => ({ ...row })),
-      ...current.slice(props.instances.length),
-    ]);
+    setDrafts((current) => {
+      const accepted = Math.max(
+        0,
+        props.instances.length - storedCount.current,
+      );
+      const pending = current.slice(storedCount.current + accepted);
+      storedCount.current = props.instances.length;
+      return [...props.instances.map((row) => ({ ...row })), ...pending];
+    });
   }, [props.instances]);
   /**
    * Writes the rows the Host can take — every stored row, plus the drafts that
@@ -411,14 +417,17 @@ export function InstanceListField(props: {
    * to make the Host refuse the whole array, which is why «добавить» looked
    * like it did nothing.
    */
-  const commit = (next: readonly InstanceDraft[]) => {
+  const commit = (
+    next: readonly InstanceDraft[],
+    unsetWhenEmpty = next.length === 0,
+  ) => {
     setDrafts(next);
     const takeable = next.filter(
       (row, at) =>
-        at < props.instances.length || instanceDraftMissing(row).length === 0,
+        at < storedCount.current || instanceDraftMissing(row).length === 0,
     );
     if (takeable.length === 0) {
-      if (next.length === 0) props.unset(props.path);
+      if (unsetWhenEmpty) props.unset(props.path);
       return;
     }
     props.write(
@@ -443,7 +452,8 @@ export function InstanceListField(props: {
           // The map walks the drafts, so the stored counterpart of a row is the
           // instance at the same index; a commit compares against that, never
           // against the draft the input already shows.
-          const stored = props.instances[index];
+          const stored =
+            index < storedCount.current ? props.instances[index] : undefined;
           return (
             <li key={`${index}:${row.id}`} className="qai-op__instance">
               <span className="qai-op__instance-cell">
@@ -555,12 +565,17 @@ export function InstanceListField(props: {
                 className="qai-op__row-remove"
                 disabled={props.disabled}
                 onClick={() => {
-                  commit(drafts.filter((_, at) => at !== index));
+                  const removedStored = index < storedCount.current;
+                  if (removedStored) storedCount.current -= 1;
+                  commit(
+                    drafts.filter((_, at) => at !== index),
+                    removedStored,
+                  );
                 }}
               >
                 убрать
               </button>
-              {index >= props.instances.length ? (
+              {index >= storedCount.current ? (
                 <span className="qai-op__pending">
                   {draftNote(instanceDraftMissing(row))}
                 </span>

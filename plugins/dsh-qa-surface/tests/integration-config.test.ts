@@ -51,7 +51,7 @@ describe("integration config", () => {
     ).not.toThrow();
   });
 
-  it("has no ceiling on how long an ask may wait", () => {
+  it("allows long waits up to Node's faithful timer ceiling", () => {
     // The wait is not a budget the deployment spends: an integration asking a
     // long question must be able to allow it, and a ceiling here only ever cut
     // a legitimate answer off.
@@ -60,6 +60,12 @@ describe("integration config", () => {
       integration: { enabled: true, requestTimeoutMs: 1_800_000 },
     });
     expect(config.integration.requestTimeoutMs).toBe(1_800_000);
+    expect(() =>
+      resolveConfig({
+        accounts: { enabled: true },
+        integration: { enabled: true, requestTimeoutMs: 2_147_483_648 },
+      }),
+    ).toThrow(/requestTimeoutMs/u);
   });
 
   it("bounds every operator-tuned limit", () => {

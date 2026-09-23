@@ -158,6 +158,37 @@ test("a bare-string export target is checked as well", async () => {
   );
 });
 
+test("nested import, require and array export targets are all checked", async () => {
+  const directory = join(globalThis.fixtureRoot, "exports-conditional");
+  await writeFixture(directory, {
+    manifest: {
+      exports: {
+        ".": {
+          types: "./lib-index.d.ts",
+          node: {
+            import: "./lib-index.js",
+            require: ["./lib-index.cjs", "./lib-index-fallback.cjs"],
+          },
+        },
+        "./package.json": "./package.json",
+      },
+    },
+  });
+  await writeFile(join(directory, "lib-index.d.ts"), "export {};\n");
+  await writeFile(join(directory, "lib-index.cjs"), "module.exports = {};\n");
+  const options = baseOptions(directory, { exportsBuilt: true });
+
+  await assert.rejects(
+    runVerifyPackage(options),
+    /must be built: \.\/lib-index-fallback\.cjs/u,
+  );
+  await writeFile(
+    join(directory, "lib-index-fallback.cjs"),
+    "module.exports = {};\n",
+  );
+  await runVerifyPackage(options);
+});
+
 test("a drifting bundle patch identity fails the gate", async () => {
   const directory = join(globalThis.fixtureRoot, "patch-drift");
   await writeFixture(directory, {

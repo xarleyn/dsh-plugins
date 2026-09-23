@@ -15,12 +15,12 @@ export interface QaToolsOptions {
   readonly activationMode: string;
   readonly activationPresets: readonly string[];
   /** Documentation root the readers use; `""` reads each chat's own `docs/`. */
-  readonly docsRoot: string;
+  readonly docsRoot: string | (() => string);
   /**
    * Version a search falls back to when the model named neither `version` nor
    * `path`; `""` searches every edition the corpus carries.
    */
-  readonly docsDefaultVersion: string;
+  readonly docsDefaultVersion: string | (() => string);
 }
 
 /**

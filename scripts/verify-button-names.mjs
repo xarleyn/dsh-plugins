@@ -38,12 +38,7 @@ const skippedDirectories = new Set([
   "tests",
 ]);
 
-/**
- * `aria-label="…"` in JSX, `"aria-label": "…"` in an attributes object, and
- * `"aria-labelledby"`/`title` in both spellings.
- */
-const nameAttribute =
-  /(?:^|[^A-Za-z0-9_$-])["']?(?:aria-label|aria-labelledby|title)["']?\s*[:=]/u;
+const accessibleNameKey = "(?:aria-label|aria-labelledby|title)";
 /** A JSX comment renders nothing, so `{/* … *\/}` is never a name. */
 const jsxComment = /\{\s*\/\*[\s\S]*?\*\/\s*\}/gu;
 const textCharacter = /[0-9A-Za-z\u00c0-\u024f\u0400-\u04ff]/u;
@@ -183,6 +178,41 @@ function topLevelArguments(region) {
   return trimmed;
 }
 
+/** An explicit name value that cannot produce a non-empty accessible name. */
+function emptyNameValue(value) {
+  const trimmed = value.trim();
+  if (/^(?:undefined|null|false)$/u.test(trimmed)) return true;
+  if (/^(?:""|''|``)$/u.test(trimmed)) return true;
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return emptyNameValue(trimmed.slice(1, -1));
+  }
+  return false;
+}
+
+/** Whether the opening site itself carries a usable naming attribute. */
+function hasNameAttribute(attributes, kind) {
+  if (kind === "jsx") {
+    const pattern = new RegExp(
+      `(?:^|\\s)${accessibleNameKey}\\s*=\\s*(\\{[^}]*\\}|"[^"]*"|'[^']*')`,
+      "gu",
+    );
+    return [...attributes.matchAll(pattern)].some(
+      (match) => !emptyNameValue(match[1] ?? ""),
+    );
+  }
+
+  if (!attributes.startsWith("{") || !attributes.endsWith("}")) return false;
+  const properties = topLevelArguments(attributes.slice(1, -1));
+  const pattern = new RegExp(
+    `^["']?${accessibleNameKey}["']?\\s*:\\s*([\\s\\S]+)$`,
+    "u",
+  );
+  return properties.some((property) => {
+    const match = pattern.exec(property);
+    return match !== null && !emptyNameValue(match[1] ?? "");
+  });
+}
+
 /** Name verdict for the children arguments of `createElement("button", …)`. */
 function callChildrenVerdict(region) {
   const arguments_ = topLevelArguments(region);
@@ -236,7 +266,7 @@ export function auditButtonNames(source) {
       }
       // A spread attribute can carry the label, so the site is out of reach.
       if (attributes.includes("...")) continue;
-      if (nameAttribute.test(attributes)) continue;
+      if (hasNameAttribute(attributes, kind)) continue;
       const reason =
         kind === "jsx"
           ? jsxChildrenVerdict(children)

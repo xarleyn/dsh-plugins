@@ -23,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactElement,
@@ -39,6 +40,7 @@ import {
   Toggle,
   type ControlProps,
 } from "./operator-controls.js";
+import { draftNote, profileDraftMissing } from "./operator-drafts.js";
 
 /** The face the slot entry injects into this card. */
 export interface OperatorCardFace {
@@ -404,25 +406,42 @@ function ServiceProfilesField(props: {
   overridden: (path: readonly string[]) => boolean;
 }): ReactElement {
   const [drafts, setDrafts] = useState<readonly ProfileDraft[]>(props.profiles);
+  const storedCount = useRef(props.profiles.length);
   useEffect(() => {
-    setDrafts(props.profiles);
+    setDrafts((current) => {
+      const accepted = Math.max(0, props.profiles.length - storedCount.current);
+      const pending = current.slice(storedCount.current + accepted);
+      storedCount.current = props.profiles.length;
+      return [...props.profiles, ...pending];
+    });
   }, [props.profiles]);
-  const commit = (next: readonly ProfileDraft[]) => {
+  const commit = (
+    next: readonly ProfileDraft[],
+    unsetWhenEmpty = next.length === 0,
+  ) => {
     setDrafts(next);
-    if (next.length === 0) {
-      props.unset(["managedServiceCredentials", "profiles"]);
+    const persisted = next.slice(0, storedCount.current);
+    if (persisted.some((row) => profileDraftMissing(row).length > 0)) return;
+    const takeable = [
+      ...persisted,
+      ...next
+        .slice(storedCount.current)
+        .filter((row) => profileDraftMissing(row).length === 0),
+    ];
+    if (takeable.length === 0) {
+      if (unsetWhenEmpty) {
+        props.unset(["managedServiceCredentials", "profiles"]);
+      }
       return;
     }
     props.write(
       ["managedServiceCredentials", "profiles"],
-      next.map(profileWire),
+      takeable.map(profileWire),
     );
   };
   const edit = (index: number, patch: Partial<ProfileDraft>) => {
     commit(
-      props.profiles.map((row, at) =>
-        at === index ? { ...row, ...patch } : row,
-      ),
+      drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)),
     );
   };
   const commitRecord = (
@@ -432,23 +451,16 @@ function ServiceProfilesField(props: {
   ) => {
     if (rows.length === 0) {
       commit(
-        props.profiles.map((row, at) =>
-          at === index ? { ...row, [key]: [] } : row,
-        ),
+        drafts.map((row, at) => (at === index ? { ...row, [key]: [] } : row)),
       );
       return;
     }
     commit(
-      props.profiles.map((row, at) =>
+      drafts.map((row, at) =>
         at === index
           ? {
               ...row,
-              [key]:
-                key === "resources"
-                  ? resourceRecord(rows)
-                  : Object.fromEntries(
-                      rows.map(([operation]) => [operation, "deny"]),
-                    ),
+              [key]: rows,
             }
           : row,
       ),
@@ -463,7 +475,7 @@ function ServiceProfilesField(props: {
         ) : null}
       </span>
       <ul className="qai-op__profiles">
-        {props.profiles.map((row, index) => (
+        {drafts.map((row, index) => (
           <li key={`${index}:${row.id}`} className="qai-op__profile">
             <div className="qai-op__profile-head">
               <strong>{row.label || row.id || "новый профиль"}</strong>
@@ -484,7 +496,12 @@ function ServiceProfilesField(props: {
                 className="qai-op__row-remove"
                 disabled={props.disabled}
                 onClick={() => {
-                  commit(props.profiles.filter((_, at) => at !== index));
+                  const removedStored = index < storedCount.current;
+                  if (removedStored) storedCount.current -= 1;
+                  commit(
+                    drafts.filter((_, at) => at !== index),
+                    removedStored,
+                  );
                 }}
               >
                 убрать
@@ -509,9 +526,8 @@ function ServiceProfilesField(props: {
                     );
                   }}
                   onBlur={() => {
-                    const id = row.id.trim();
                     const next = drafts[index]?.id.trim() ?? "";
-                    if (next !== "" && next !== id) edit(index, { id: next });
+                    edit(index, { id: next });
                   }}
                 />
               </span>
@@ -550,11 +566,8 @@ function ServiceProfilesField(props: {
                     );
                   }}
                   onBlur={() => {
-                    const instance = row.instance.trim();
                     const next = drafts[index]?.instance.trim() ?? "";
-                    if (next !== "" && next !== instance) {
-                      edit(index, { instance: next });
-                    }
+                    edit(index, { instance: next });
                   }}
                 />
               </span>
@@ -576,11 +589,8 @@ function ServiceProfilesField(props: {
                     );
                   }}
                   onBlur={() => {
-                    const label = row.label.trim();
                     const next = drafts[index]?.label.trim() ?? "";
-                    if (next !== "" && next !== label) {
-                      edit(index, { label: next });
-                    }
+                    edit(index, { label: next });
                   }}
                 />
               </span>
@@ -602,11 +612,8 @@ function ServiceProfilesField(props: {
                     );
                   }}
                   onBlur={() => {
-                    const secretFile = row.secretFile.trim();
                     const next = drafts[index]?.secretFile.trim() ?? "";
-                    if (next !== "" && next !== secretFile) {
-                      edit(index, { secretFile: next });
-                    }
+                    edit(index, { secretFile: next });
                   }}
                 />
               </span>
@@ -628,11 +635,8 @@ function ServiceProfilesField(props: {
                     );
                   }}
                   onBlur={() => {
-                    const secretEnv = row.secretEnv.trim();
                     const next = drafts[index]?.secretEnv.trim() ?? "";
-                    if (next !== "" && next !== secretEnv) {
-                      edit(index, { secretEnv: next });
-                    }
+                    edit(index, { secretEnv: next });
                   }}
                 />
               </span>
@@ -681,6 +685,12 @@ function ServiceProfilesField(props: {
               }}
               overridden={props.overridden}
             />
+            {index >= storedCount.current ||
+            profileDraftMissing(row).length > 0 ? (
+              <span className="qai-op__pending">
+                {draftNote(profileDraftMissing(row))}
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -691,7 +701,7 @@ function ServiceProfilesField(props: {
           disabled={props.disabled}
           onClick={() => {
             commit([
-              ...props.profiles,
+              ...drafts,
               {
                 id: "",
                 provider: "gitlab",
@@ -890,6 +900,7 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
     hint?: string,
   ): ReactElement => (
     <Toggle
+      key={path.join(".")}
       label={label}
       hint={hint}
       path={path}

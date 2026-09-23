@@ -236,7 +236,7 @@ export function memoryGroups(
     });
   }
 
-  return groups.slice(0, MAX_GROUPS);
+  return groups;
 }
 
 /**
@@ -281,6 +281,7 @@ function emptyOverview(
     groups: [],
     sessions: [],
     totals: { sections: 0, memories: 0, sessions: 0 },
+    truncated: { memories: false, sessions: false },
     error,
   };
 }
@@ -305,7 +306,10 @@ async function list(
   source: MemoryOverviewSource,
   uri: string,
   options: { readonly recursive?: boolean; readonly nodeLimit: number },
-): Promise<readonly ListingEntry[] | null> {
+): Promise<{
+  readonly entries: readonly ListingEntry[];
+  readonly truncated: boolean;
+} | null> {
   const query = new URLSearchParams({
     uri,
     output: "agent",
@@ -327,7 +331,13 @@ async function list(
     const entry = readEntry(raw, root);
     if (entry !== undefined) entries.push(entry);
   }
-  return entries;
+  // The API exposes no continuation marker. Reaching the requested limit is
+  // therefore conservatively reported as truncation: claiming completeness
+  // here would be worse than admitting that one exact-limit result may be all.
+  return {
+    entries,
+    truncated: response.result.length >= options.nodeLimit,
+  };
 }
 
 /** The profile the page shows: the first profile file the store actually has. */
@@ -384,34 +394,50 @@ export async function readUserMemoryOverview(
     return emptyOverview(options.scoped, status.error, false);
   }
 
-  const memories = await list(source, MEMORIES_URI, {
+  const expected = source.config.user.trim();
+  const identityMatches = expected !== "" && status.identity === expected;
+  const accountApplies = options.scoped && identityMatches;
+  if (options.scoped && !identityMatches) {
+    // In per-account mode an identity mismatch is an authorization boundary,
+    // not a warning. Do not ask the store for content that may belong to a
+    // deployment-wide account, much less return it to the signed-in caller.
+    return {
+      ...emptyOverview(true, null, true),
+      serverIdentity: status.identity,
+    };
+  }
+
+  const memoryListing = await list(source, MEMORIES_URI, {
     recursive: true,
     nodeLimit: MEMORY_NODE_LIMIT,
   });
-  if (memories === null) {
+  if (memoryListing === null) {
     return emptyOverview(options.scoped, "the memory listing failed", false);
   }
-  const sessions = await list(source, SESSIONS_URI, {
+  const sessionListing = await list(source, SESSIONS_URI, {
     nodeLimit: SESSION_NODE_LIMIT,
   });
 
-  const profile = await readProfile(source, memories);
-  const groups = memoryGroups(memories, profile?.name ?? null);
-  const all = memorySessions(sessions ?? []);
-  const expected = source.config.user;
+  const profile = await readProfile(source, memoryListing.entries);
+  const allGroups = memoryGroups(memoryListing.entries, profile?.name ?? null);
+  const allSessions = memorySessions(sessionListing?.entries ?? []);
 
   return {
     connected: true,
     scoped: options.scoped,
-    accountApplies: expected !== "" && status.identity === expected,
+    accountApplies,
     serverIdentity: status.identity,
     profile,
-    groups,
-    sessions: all.slice(0, MAX_SESSIONS),
+    groups: allGroups.slice(0, MAX_GROUPS),
+    sessions: allSessions.slice(0, MAX_SESSIONS),
     totals: {
-      sections: groups.length,
-      memories: groups.reduce((sum, group) => sum + group.total, 0),
-      sessions: all.length,
+      sections: allGroups.length,
+      memories: allGroups.reduce((sum, group) => sum + group.total, 0),
+      sessions: allSessions.length,
+    },
+    truncated: {
+      memories: memoryListing.truncated,
+      sessions: sessionListing?.truncated ?? false,
     },
     error: null,
   };

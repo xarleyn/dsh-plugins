@@ -75,6 +75,20 @@ test("reports a button whose children are only an icon or nothing at all", () =>
   );
 });
 
+test("rejects empty, undefined and nested lookalike name attributes", () => {
+  for (const source of [
+    `<button aria-label=""><IconCheck /></button>`,
+    `<button aria-label={undefined}><IconCheck /></button>`,
+    `<button title={null}><IconCheck /></button>`,
+    `<button data-meta={{ title: "not the button" }}><IconCheck /></button>`,
+    `createElement("button", { "aria-label": "" }, IconCheck())`,
+    `createElement("button", { "aria-label": undefined }, IconCheck())`,
+    `createElement("button", { data: { title: "nested" } }, IconCheck())`,
+  ]) {
+    assert.notDeepEqual(reasons(source), [], source);
+  }
+});
+
 test("reads the same button written with createElement", () => {
   assert.deepEqual(
     reasons(

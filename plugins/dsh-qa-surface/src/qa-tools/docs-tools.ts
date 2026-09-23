@@ -289,7 +289,7 @@ function versionFor(
 }
 
 function normalizeVersion(value: string): string {
-  return value.replace(/^v/u, "").toLowerCase();
+  return value.toLowerCase().replace(/^v/u, "");
 }
 
 /**
@@ -448,12 +448,16 @@ async function docsTargetOf(
     throw new QaDocsError("outside-docs", OUTSIDE_DOCS);
   }
   const normalized = trimmed.replace(/\\/gu, "/").replace(/^\.\//u, "");
-  const inside =
-    normalized === QA_DOCS_DIRECTORY ||
-    normalized.startsWith(`${QA_DOCS_DIRECTORY}/`)
-      ? normalized
-      : `${QA_DOCS_DIRECTORY}/${normalized}`;
-  const spelled = resolve(root.workspace, inside);
+  // `docs/` is the stable public spelling, not necessarily the configured
+  // directory's basename. Resolve both accepted spellings from the canonical
+  // root itself so `/srv/published-corpus` still reads `docs/module/file.md`.
+  const pathFromDocs =
+    normalized === QA_DOCS_DIRECTORY
+      ? ""
+      : normalized.startsWith(`${QA_DOCS_DIRECTORY}/`)
+        ? normalized.slice(QA_DOCS_DIRECTORY.length + 1)
+        : normalized;
+  const spelled = resolve(root.docs, pathFromDocs);
   if (!pathIsInside(spelled, root.docs)) {
     throw new QaDocsError("outside-docs", OUTSIDE_DOCS);
   }
@@ -617,6 +621,7 @@ function isNonTextName(name: string): boolean {
 async function visitDocumentation(
   target: QaDocsTarget,
   accept: (pathFromDocs: string) => boolean,
+  descend: (pathFromDocs: string) => boolean,
   visit: (
     file: string,
     pathFromDocs: string,
@@ -657,22 +662,31 @@ async function visitDocumentation(
     }).catch(() => []);
     entries.sort(entryComparator(serviceScope));
     for (const entry of entries) {
-      entriesSeen += 1;
-      if (entriesSeen > MAX_WALK_ENTRIES) {
-        return { filesScanned, skipped, stopped: true };
-      }
       const child = join(scope.absolute, entry.name);
       const pathFromDocs = join(scope.pathFromDocs, entry.name);
       if (entry.isSymbolicLink()) {
+        entriesSeen += 1;
+        if (entriesSeen > MAX_WALK_ENTRIES) {
+          return { filesScanned, skipped, stopped: true };
+        }
         skipped += 1;
         continue;
       }
       if (entry.isDirectory()) {
+        if (!descend(pathFromDocs)) continue;
+        entriesSeen += 1;
+        if (entriesSeen > MAX_WALK_ENTRIES) {
+          return { filesScanned, skipped, stopped: true };
+        }
         pending.push({ absolute: child, pathFromDocs });
         continue;
       }
       if (!entry.isFile()) continue;
       if (!accept(pathFromDocs)) continue;
+      entriesSeen += 1;
+      if (entriesSeen > MAX_WALK_ENTRIES) {
+        return { filesScanned, skipped, stopped: true };
+      }
       if (isNonTextName(entry.name)) {
         skipped += 1;
         continue;
@@ -729,6 +743,27 @@ export async function searchDocumentation(
     if (module !== "" && !moduleMatches(identity, module)) return false;
     return true;
   };
+  const wantedScope = (pathFromDocs: string): boolean => {
+    // `docsIdentityOf` expects a file path. A synthetic leaf makes the current
+    // directory participate as a scope while still allowing an ancestor that
+    // has not reached its module/version segment yet.
+    const identity = docsIdentityOf(join(pathFromDocs, "__scope__"));
+    if (
+      version !== "" &&
+      identity.version !== undefined &&
+      !versionMatches(identity, version)
+    ) {
+      return false;
+    }
+    if (
+      module !== "" &&
+      identity.module !== undefined &&
+      !moduleMatches(identity, module)
+    ) {
+      return false;
+    }
+    return true;
+  };
   const visit = async (
     file: string,
     pathFromDocs: string,
@@ -766,7 +801,7 @@ export async function searchDocumentation(
     }
     return "continue";
   };
-  const walk = await visitDocumentation(scope, wanted, visit);
+  const walk = await visitDocumentation(scope, wanted, wantedScope, visit);
   return {
     ...identityOf(
       version === "" ? undefined : version,
@@ -963,8 +998,15 @@ export function createDocsSearchTool(
  * looked in 3.8", which the report has to keep.
  */
 function defaultedVersion(options: QaDocsOptions, args: unknown): boolean {
-  const asked = ((args ?? {}) as { readonly version?: unknown }).version;
+  const request = (args ?? {}) as {
+    readonly version?: unknown;
+    readonly path?: unknown;
+  };
+  const asked = request.version;
   if (typeof asked === "string" && asked.trim() !== "") return false;
+  if (typeof request.path === "string" && request.path.trim() !== "") {
+    return false;
+  }
   return (options.defaultVersion ?? "").trim() !== "";
 }
 
