@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 /**
  * One schema step. Versions are dense and increasing; every step is applied
@@ -10,6 +11,21 @@ export interface SqliteMigration {
   readonly version: number;
   /** SQL for this step; may hold several statements. */
   readonly up: string;
+}
+
+/** How a store reports what it did to the database file. */
+export interface SqliteDatabaseOptions {
+  /**
+   * The plugin's own logger, from `@yadsh/dsh-plugin-log`. Omitting it keeps
+   * the store silent, which is what every store that predates this option did.
+   */
+  readonly logger?: PluginLoggerLike;
+  /**
+   * Prefix of the events this store writes (`<label>/db-opened`), so two
+   * databases of one plugin stay tellable apart in one log. Defaults to the
+   * file's stem.
+   */
+  readonly label?: string;
 }
 
 /** The bookkeeping table every QA database carries. */
@@ -45,16 +61,27 @@ export class SqliteStoreError extends Error {
  *
  * WAL is enabled for that same second-process case: readers do not block the
  * writer and the writer does not block readers.
+ *
+ * What happens to the file is reported to the logger a store is given, because
+ * a schema step that ran silently is a deployment fact nobody can recover
+ * afterwards: an operator reading logs on a stand needs to see which database
+ * was opened at which version, and which migrations that open applied.
  */
 export class SqliteDatabase {
   private readonly connection: DatabaseSync;
+  private readonly logger: PluginLoggerLike | undefined;
+  private readonly label: string;
   private depth = 0;
   private closed = false;
 
   constructor(
     readonly filePath: string,
     migrations: readonly SqliteMigration[],
+    options: SqliteDatabaseOptions = {},
   ) {
+    this.logger = options.logger;
+    this.label =
+      options.label ?? path.basename(filePath, path.extname(filePath));
     mkdirSync(path.dirname(filePath), { recursive: true });
     this.connection = new DatabaseSync(filePath);
     this.connection.exec("PRAGMA journal_mode = WAL");
@@ -65,7 +92,12 @@ export class SqliteDatabase {
     this.connection.exec(
       `CREATE TABLE IF NOT EXISTS ${META_TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
     );
-    this.migrate(migrations);
+    const applied = this.migrate(migrations);
+    this.logger?.info(`${this.label}/db-opened`, {
+      file: filePath,
+      schemaVersion: this.schemaVersion,
+      appliedMigrations: applied,
+    });
   }
 
   /** The live connection, for stores that prepare their own statements. */
@@ -130,23 +162,30 @@ export class SqliteDatabase {
     this.connection.close();
   }
 
-  private migrate(migrations: readonly SqliteMigration[]): void {
+  private migrate(migrations: readonly SqliteMigration[]): readonly number[] {
     const ordered = [...migrations].sort(
       (left, right) => left.version - right.version,
     );
     const highest = ordered.at(-1)?.version ?? 0;
     const current = this.schemaVersion;
     if (current > highest) {
+      this.logger?.error(`${this.label}/db-refused`, {
+        file: this.filePath,
+        schemaVersion: current,
+        highestKnownVersion: highest,
+      });
       throw new SqliteStoreError(
         `${this.filePath} was written by a newer schema (version ${current}, this build knows ${highest}); refusing to open it`,
       );
     }
+    const applied: number[] = [];
     for (const migration of ordered) {
       if (migration.version <= current) continue;
       this.transaction(() => {
         this.connection.exec(migration.up);
         this.setMeta(SCHEMA_VERSION_KEY, String(migration.version));
       });
+      applied.push(migration.version);
     }
     // A brand-new file records its version even when no step had to run, so
     // "new" and "already at the current version" stay distinguishable.
@@ -154,6 +193,7 @@ export class SqliteDatabase {
       this.transaction(() => this.setMeta(SCHEMA_VERSION_KEY, String(highest)));
     }
     this.restrictPermissions();
+    return applied;
   }
 
   /**
