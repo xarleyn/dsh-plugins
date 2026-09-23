@@ -48,7 +48,9 @@
     "access": "public",
     "registry": "https://registry.npmjs.org/"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@yadsh/dsh-plugin-log": "workspace:^"
+  },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "react": "^18.2.0"

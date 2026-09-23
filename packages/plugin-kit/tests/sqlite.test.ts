@@ -163,3 +163,108 @@ describe("SqliteDatabase", () => {
     expect(() => store.transaction(() => undefined)).toThrow(/closed/u);
   });
 });
+
+/** A logger that keeps what the store reported, in the order it reported it. */
+function recordingLogger(): {
+  readonly events: {
+    level: "debug" | "info" | "warn" | "error";
+    event: string;
+    fields: Record<string, unknown>;
+  }[];
+  debug(event: string, fields?: Record<string, unknown>): void;
+  info(event: string, fields?: Record<string, unknown>): void;
+  warn(event: string, fields?: Record<string, unknown>): void;
+  error(event: string, fields?: Record<string, unknown>): void;
+} {
+  const events: {
+    level: "debug" | "info" | "warn" | "error";
+    event: string;
+    fields: Record<string, unknown>;
+  }[] = [];
+  const push =
+    (level: "debug" | "info" | "warn" | "error") =>
+    (event: string, fields: Record<string, unknown> = {}): void => {
+      events.push({ level, event, fields });
+    };
+  return {
+    events,
+    debug: push("debug"),
+    info: push("info"),
+    warn: push("warn"),
+    error: push("error"),
+  };
+}
+
+describe("SqliteDatabase logging", () => {
+  it("reports the open, the version reached and the steps that ran", () => {
+    const logger = recordingLogger();
+    new SqliteDatabase(tempFile("store.db"), MIGRATIONS, { logger }).close();
+
+    expect(logger.events).toEqual([
+      {
+        level: "info",
+        event: "store/db-opened",
+        fields: expect.objectContaining({
+          schemaVersion: 2,
+          appliedMigrations: [1, 2],
+        }),
+      },
+    ]);
+  });
+
+  it("names an reopened database without claiming migrations it did not run", () => {
+    const file = tempFile("notes.db");
+    new SqliteDatabase(file, MIGRATIONS).close();
+    const logger = recordingLogger();
+    new SqliteDatabase(file, MIGRATIONS, { logger }).close();
+
+    expect(logger.events).toEqual([
+      {
+        level: "info",
+        event: "notes/db-opened",
+        fields: expect.objectContaining({ appliedMigrations: [] }),
+      },
+    ]);
+  });
+
+  it("uses the label a store is given, so two databases tell apart", () => {
+    const logger = recordingLogger();
+    new SqliteDatabase(tempFile(), MIGRATIONS, {
+      logger,
+      label: "domain-experts-memory",
+    }).close();
+
+    expect(logger.events[0]?.event).toBe("domain-experts-memory/db-opened");
+  });
+
+  it("records the refusal it is about to raise", () => {
+    const file = tempFile("store.db");
+    new SqliteDatabase(file, [
+      ...MIGRATIONS,
+      { version: 3, up: "CREATE TABLE later (id TEXT PRIMARY KEY)" },
+    ]).close();
+
+    const logger = recordingLogger();
+    expect(() => new SqliteDatabase(file, MIGRATIONS, { logger })).toThrow(
+      /newer schema/u,
+    );
+    expect(logger.events).toEqual([
+      {
+        level: "error",
+        event: "store/db-refused",
+        fields: expect.objectContaining({
+          schemaVersion: 3,
+          highestKnownVersion: 2,
+        }),
+      },
+    ]);
+  });
+
+  it("stays silent when no logger is given", () => {
+    // Every store written before this option exists passes two arguments; a
+    // required logger would have turned an additive change into their break.
+    expect(() =>
+      new SqliteDatabase(tempFile(), MIGRATIONS).close(),
+    ).not.toThrow();
+  });
+});
