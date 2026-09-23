@@ -660,7 +660,8 @@ export class QaAccessService {
           baseTools: policy.tools,
           grantableTools: policy.grantableTools,
           // The catalog's names ride on the agent itself, so no mask can carry
-          // them; the guard admits them for as long as the policy holds.
+          // them. The execution guard still admits only names present in the
+          // role's base set or in a successfully activated grant.
           agentLocalTools: new Set(this.options.dynamicToolNames?.() ?? []),
           descriptors: catalog.skillMetadata,
           logger: this.options.logger,

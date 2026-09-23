@@ -128,9 +128,23 @@ function registerAccountScope(ctx: Context): () => void {
     const gateway = (gatewayCtx as unknown as ClientFace).remote;
     if (gateway === undefined || typeof gateway.$mount !== "function") return;
 
+    let stopped = false;
+    let unmount: (() => Promise<void>) | undefined;
+    const stopMount = (): void => {
+      stopped = true;
+      const dispose = unmount;
+      unmount = undefined;
+      if (dispose !== undefined) void dispose().catch(() => undefined);
+    };
+
     void gateway
       .$mount(openvikingMemoryRemote)
       .then((disposeMount) => {
+        if (stopped) {
+          void disposeMount().catch(() => undefined);
+          return;
+        }
+        unmount = disposeMount;
         try {
           gatewayCtx.inject([REMOTE_NAMESPACE, ...QA_SERVICES], (scopedCtx) => {
             const scoped = scopedCtx as unknown as ClientFace;
@@ -157,10 +171,14 @@ function registerAccountScope(ctx: Context): () => void {
         } catch {
           // The entry was disposed while the mount was still in flight: give
           // the contribution back instead of leaving it mounted with no page.
-          void disposeMount();
+          stopMount();
         }
       })
       .catch(() => undefined);
+
+    // This disposer belongs to the gateway injection instance. Cordis invokes
+    // it both on normal plugin cleanup and when that gateway disappears.
+    return stopMount;
   });
 
   return () => {

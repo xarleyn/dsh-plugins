@@ -16,17 +16,15 @@ function escapeRegExp(text) {
 }
 
 /**
- * The file paths an `exports` entry promises: a bare string target, or the
- * `types`/`default` conditions of an object target. Conditions the browser
- * resolves differently (`import`/`require`) are not checked separately - the
- * build writes them from the same source.
+ * Every file path an `exports` entry promises. Conditional exports may nest
+ * `import`/`require`, environment conditions and arrays arbitrarily; each leaf
+ * is a public target and must exist in the built package.
  */
 function exportTargets(target) {
   if (typeof target === "string") return [target];
-  return Object.entries(target ?? {})
-    .filter(([condition]) => condition === "types" || condition === "default")
-    .map(([, path]) => path)
-    .filter((path) => typeof path === "string");
+  if (Array.isArray(target)) return target.flatMap(exportTargets);
+  if (typeof target !== "object" || target === null) return [];
+  return Object.values(target).flatMap(exportTargets);
 }
 
 /**

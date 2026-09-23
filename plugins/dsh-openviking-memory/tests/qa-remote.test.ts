@@ -155,7 +155,7 @@ describe("account-scoped memory Remote", () => {
     expect(reads[0]?.headers["X-OpenViking-User"]).toBe("account-a");
   });
 
-  it("reports a store that answers as somebody else", async () => {
+  it("does not return shared content when scoped identity does not match", async () => {
     harness = await harnessWithAccounts({
       fetchImpl: storeTransport("deepseek-harness"),
     });
@@ -165,6 +165,12 @@ describe("account-scoped memory Remote", () => {
     expect(view.connected).toBe(true);
     expect(view.accountApplies).toBe(false);
     expect(view.serverIdentity).toBe("deepseek-harness");
+    expect(view.profile).toBeNull();
+    expect(view.groups).toEqual([]);
+    expect(view.sessions).toEqual([]);
+    expect(harness.requests.map((request) => request.path)).toEqual([
+      "/api/v1/system/status",
+    ]);
   });
 
   it("reports an unscoped deployment", async () => {

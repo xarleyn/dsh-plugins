@@ -28,12 +28,16 @@ export interface QaToolsSelfcheckDeps {
    * Documentation root the two readers use, or `""` for the `docs/` directory
    * inside each chat's own workspace.
    */
-  readonly docsRoot?: string;
+  readonly docsRoot?: string | (() => string);
   /**
    * Version a search without `version` and without `path` stays inside, or `""`
    * for a search across every edition the corpus carries.
    */
-  readonly docsDefaultVersion?: string;
+  readonly docsDefaultVersion?: string | (() => string);
+}
+
+function current(value: string | (() => string) | undefined): string {
+  return typeof value === "function" ? value() : (value ?? "");
 }
 
 function createSelfcheckTool(
@@ -109,6 +113,14 @@ function createSelfcheckTool(
 export function createQaToolCatalog(
   deps: QaToolsSelfcheckDeps,
 ): readonly QaToolDescriptor[] {
+  const docsOptions = {
+    get root(): string {
+      return current(deps.docsRoot);
+    },
+    get defaultVersion(): string {
+      return current(deps.docsDefaultVersion);
+    },
+  };
   return [
     {
       definition: createSelfcheckTool(deps),
@@ -116,15 +128,12 @@ export function createQaToolCatalog(
       tags: ["activation", "diagnostics"],
     },
     {
-      definition: createDocsSearchTool({
-        root: deps.docsRoot ?? "",
-        defaultVersion: deps.docsDefaultVersion ?? "",
-      }),
+      definition: createDocsSearchTool(docsOptions),
       group: "documentation",
       tags: ["docs", "search"],
     },
     {
-      definition: createDocsReadTool({ root: deps.docsRoot ?? "" }),
+      definition: createDocsReadTool(docsOptions),
       group: "documentation",
       tags: ["docs", "read"],
     },

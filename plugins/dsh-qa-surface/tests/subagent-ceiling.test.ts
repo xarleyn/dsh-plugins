@@ -56,8 +56,14 @@ function harness(
     readonly catalogTools?: readonly string[];
     /** The catalogue names that agent actually carries right now. */
     readonly attachedTools?: readonly string[];
+    /** Catalogue tools the role explicitly carries in its base set. */
+    readonly roleTools?: readonly string[];
   } = {},
 ) {
+  const rolePolicy = {
+    ...ROLE_POLICY,
+    tools: [...ROLE_POLICY.tools, ...(options.roleTools ?? [])],
+  };
   const captured: Captured = { guards: [] };
   const sessions: ((session: never) => void)[] = [];
   const session = {
@@ -121,7 +127,7 @@ function harness(
     options.ceiling === false
       ? undefined
       : async () => ({
-          policy: ROLE_POLICY,
+          policy: rolePolicy,
           skills: new Map(),
           skillMetadata: new Map(),
           adminPreview: false,
@@ -132,7 +138,7 @@ function harness(
             ({
               dispose: () => undefined,
               effectiveTools: () =>
-                new Set([...ROLE_POLICY.tools, ...ROLE_POLICY.grantableTools]),
+                new Set([...rolePolicy.tools, ...rolePolicy.grantableTools]),
             }) as never,
         }),
     () => options.catalogTools ?? [],
@@ -200,31 +206,43 @@ describe("conversation ceiling", () => {
     ).toMatch(/capability profile/u);
   });
 
-  it("admits exactly the catalogue tools the agent carries", async () => {
+  it("does not let attached catalogue tools widen a role", async () => {
     const { admission, captured, agent } = harness({
       catalogTools: ["docs_search", "docs_read", "file_delete"],
       attachedTools: ["docs_search", "docs_read"],
     });
     await admission.secureSession("token", "session-root");
 
-    // A catalogue tool rides on the agent itself: no role list carries it and
-    // no restriction can name it, so both layers — the profile guard and the
-    // conversation ceiling — have to read it from the agent's own catalogue,
-    // or a call to a tool the chat both owns and can see is refused as outside
-    // a profile the caller cannot see the gap in.
+    // Attachment is visibility, not authorization: this role omitted every
+    // catalogue tool, so the guard must still deny the ones the agent carries.
+    expect(
+      denial(captured, { name: "docs_search", arguments: {}, agent }),
+    ).toMatch(/capability profile/u);
+    expect(
+      denial(captured, { name: "docs_read", arguments: {}, agent }),
+    ).toMatch(/capability profile/u);
+    expect(
+      denial(captured, { name: "file_delete", arguments: {}, agent }),
+    ).toMatch(/capability profile/u);
+    // The rest of the ceiling is untouched by that admission.
+    expect(
+      denial(captured, { name: "dsh_git_history", arguments: {}, agent }),
+    ).toMatch(/capability profile/u);
+  });
+
+  it("admits an attached catalogue tool the role explicitly grants", async () => {
+    const { admission, captured, agent } = harness({
+      catalogTools: ["docs_search", "docs_read"],
+      attachedTools: ["docs_search", "docs_read"],
+      roleTools: ["docs_search"],
+    });
+    await admission.secureSession("token", "session-root");
+
     expect(
       denial(captured, { name: "docs_search", arguments: {}, agent }),
     ).toBeUndefined();
     expect(
       denial(captured, { name: "docs_read", arguments: {}, agent }),
-    ).toBeUndefined();
-    // A catalogue name this agent does not carry stays the role's to allow.
-    expect(
-      denial(captured, { name: "file_delete", arguments: {}, agent }),
-    ).toMatch(/execution profile/u);
-    // The rest of the ceiling is untouched by that admission.
-    expect(
-      denial(captured, { name: "dsh_git_history", arguments: {}, agent }),
     ).toMatch(/capability profile/u);
   });
 

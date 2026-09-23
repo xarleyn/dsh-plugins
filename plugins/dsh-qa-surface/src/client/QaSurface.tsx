@@ -236,6 +236,14 @@ export function QaSurface(props: QaSurfaceProps) {
     accounts?.getSnapshot ?? noopAccountsSnapshot,
   );
   const accountsStage = accountsSnapshot.stage;
+  // Access depends on the authenticated principal, not on the account store's
+  // chat-ownership revision. Claiming a freshly created chat updates ownedIds;
+  // treating that publication as a new principal tears down the session
+  // controller in the middle of its first send.
+  const accessPrincipal =
+    accountsSnapshot.stage === "authed"
+      ? `${accountsSnapshot.user.id}:${accountsSnapshot.user.role}`
+      : null;
   const adminRoute = isAdminPath(route.pathname, config.route.path);
   const [access, setAccess] = useState<QaCurrentAccess>();
   const [selectedSubrole, setSelectedSubrole] = useState<string | null>(null);
@@ -282,7 +290,7 @@ export function QaSurface(props: QaSurfaceProps) {
   });
 
   useEffect(() => {
-    if (accountsSnapshot.stage !== "authed") {
+    if (accessPrincipal === null) {
       setAccess(undefined);
       setSelectedSubrole(null);
       clear();
@@ -297,7 +305,7 @@ export function QaSurface(props: QaSurfaceProps) {
     return () => {
       live = false;
     };
-  }, [accounts, accountsSnapshot, props.accessApi, clear]);
+  }, [accessPrincipal, accounts, props.accessApi, clear]);
 
   /**
    * Leave the preview for the account's own default profile.

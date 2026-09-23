@@ -65,6 +65,67 @@ const RELEASE_TYPE_ALIASES = new Map([
   ["fix!", "major"],
 ]);
 
+/** End of one balanced object literal, ignoring quoted braces. */
+function objectEnd(source, open) {
+  let depth = 0;
+  let quote = null;
+  for (let index = open; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote !== null) {
+      if (character === quote && source[index - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "/") {
+      index = source.indexOf("\n", index + 2);
+      if (index === -1) return -1;
+      continue;
+    }
+    if (character === "/" && source[index + 1] === "*") {
+      index = source.indexOf("*/", index + 2);
+      if (index === -1) return -1;
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+    if (character === "/") {
+      // Verification manifests commonly carry RegExp literals in
+      // `legacyPatterns`; braces inside them are pattern text, not objects.
+      quote = "/";
+      continue;
+    }
+    if (character === "{") depth += 1;
+    else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) return index + 1;
+    }
+  }
+  return -1;
+}
+
+/** A real `clientBundle.cardContract` inside a `runVerifyPackage({...})` call. */
+function runnerUsesCardContract(source) {
+  for (const call of source.matchAll(/\brunVerifyPackage\s*\(/gu)) {
+    const callStart = (call.index ?? 0) + call[0].length;
+    const optionsStart = source.indexOf("{", callStart);
+    if (optionsStart === -1) continue;
+    const optionsEnd = objectEnd(source, optionsStart);
+    if (optionsEnd === -1) continue;
+    const options = source.slice(optionsStart, optionsEnd);
+    for (const clientBundle of options.matchAll(/\bclientBundle\s*:\s*\{/gu)) {
+      const bundleStart =
+        (clientBundle.index ?? 0) + clientBundle[0].length - 1;
+      const bundleEnd = objectEnd(options, bundleStart);
+      if (bundleEnd === -1) continue;
+      const bundle = options.slice(bundleStart, bundleEnd);
+      if (/\bcardContract\s*:/u.test(bundle)) return true;
+    }
+  }
+  return false;
+}
+
 const REQUIRED_PLUGIN_SCRIPTS = [
   "lint",
   "typecheck",
@@ -765,11 +826,7 @@ export function validateClientContractGates(directory, manifest) {
       walkFiles(scripts)
         .filter((file) => file.endsWith(".mjs"))
         .map((file) => readFileSync(file, "utf8"))
-        .some(
-          (content) =>
-            content.includes("runVerifyPackage") &&
-            /cardContract\s*:/u.test(content),
-        );
+        .some(runnerUsesCardContract);
     if (!routed) {
       errors.push(
         `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,

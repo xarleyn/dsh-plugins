@@ -1098,6 +1098,31 @@ test("the shared runner's cardContract option satisfies the card gate", async ()
   } finally {
     await rm(withoutRunner.root, { recursive: true, force: true });
   }
+
+  const wrongLevel = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: {
+      "verify-package.mjs": [
+        'import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";',
+        "await runVerifyPackage({",
+        '  packageName: "@yadsh/dsh-fixture",',
+        "  clientBundle: { moduleLoaderId: true },",
+        "  cardContract: { legacyPatterns: [] },",
+        "});",
+      ].join("\n"),
+    },
+    sourceFiles: cardSource,
+  });
+  try {
+    const errors = validateClientContractGates(
+      wrongLevel.directory,
+      wrongLevel.manifest,
+    );
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /verify-plugin-card-contract/u);
+  } finally {
+    await rm(wrongLevel.root, { recursive: true, force: true });
+  }
 });
 
 test("a plugin without a client bundle or card owes neither gate", async () => {

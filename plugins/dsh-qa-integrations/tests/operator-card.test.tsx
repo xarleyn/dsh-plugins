@@ -430,4 +430,101 @@ describe("integrations operator card", () => {
     // An unfinished row stays a local draft, so nothing is committed yet.
     expect(stub.writes).toEqual([]);
   });
+
+  it("keeps an unfinished instance draft local when the stored row is removed", () => {
+    const stub = renderCard({ value: RESOLVED });
+    expand();
+    const section = screen
+      .getByText("Инстансы GitLab")
+      .closest(".qai-op__section") as HTMLElement;
+    const add = section.querySelector(
+      ".qai-op__instances ~ span button",
+    ) as HTMLButtonElement;
+    fireEvent.click(add);
+    expect(section.querySelectorAll(".qai-op__instance")).toHaveLength(2);
+    stub.writes.splice(0);
+
+    const removeStored = section.querySelector(
+      ".qai-op__instance .qai-op__row-remove",
+    ) as HTMLButtonElement;
+    fireEvent.click(removeStored);
+
+    expect(stub.writes).toEqual([
+      { op: "unset", path: ["gitlab", "instances"] },
+    ]);
+    expect(section.querySelectorAll(".qai-op__instance")).toHaveLength(1);
+  });
+
+  it("shows a new service profile as a local draft without storing it", () => {
+    const stub = renderCard({
+      value: {
+        ...RESOLVED,
+        managedServiceCredentials: {
+          enabled: true,
+          defaultForNewConnections: true,
+          profiles: [],
+        },
+      },
+    });
+    expand();
+    fireEvent.click(screen.getByText("Сервисные доступы"));
+    fireEvent.click(screen.getByRole("button", { name: "добавить профиль" }));
+
+    expect(document.querySelectorAll(".qai-op__profile")).toHaveLength(1);
+    expect(screen.getByText(/не сохранено — нужно: id/u)).toBeDefined();
+    expect(stub.writes).toEqual([]);
+  });
+
+  it("edits the controlled service-profile row and stores its wire shape", () => {
+    const stub = renderCard({
+      value: {
+        ...RESOLVED,
+        managedServiceCredentials: {
+          enabled: true,
+          defaultForNewConnections: true,
+          profiles: [
+            {
+              id: "qa-gitlab-readonly",
+              provider: "gitlab",
+              instance: "corp",
+              label: "QA GitLab",
+              enabled: true,
+              resources: { projects: ["demo/repository"] },
+            },
+          ],
+        },
+      },
+    });
+    expand();
+    fireEvent.click(screen.getByText("Сервисные доступы"));
+    const id = document.querySelector(
+      ".qai-op__profile input[type='text']",
+    ) as HTMLInputElement;
+
+    fireEvent.change(id, { target: { value: "qa-gitlab-audit" } });
+    expect(id.value).toBe("qa-gitlab-audit");
+    expect(stub.writes).toEqual([]);
+    fireEvent.click(
+      document.querySelector(
+        ".qai-op__profile input[type='checkbox']",
+      ) as HTMLInputElement,
+    );
+
+    expect(stub.writes).toEqual([
+      {
+        op: "set",
+        path: ["managedServiceCredentials", "profiles"],
+        value: [
+          {
+            id: "qa-gitlab-audit",
+            provider: "gitlab",
+            instance: "corp",
+            label: "QA GitLab",
+            enabled: false,
+            resources: { projects: ["demo/repository"] },
+          },
+        ],
+      },
+    ]);
+  });
 });

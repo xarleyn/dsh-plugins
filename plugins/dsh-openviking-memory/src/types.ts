@@ -77,6 +77,11 @@ export interface QaUserMemoryOverview {
     readonly memories: number;
     readonly sessions: number;
   };
+  /** Whether a server-side listing limit may have hidden further entries. */
+  readonly truncated: {
+    readonly memories: boolean;
+    readonly sessions: boolean;
+  };
   /** Why nothing could be read; present exactly when `connected` is false. */
   readonly error: string | null;
 }

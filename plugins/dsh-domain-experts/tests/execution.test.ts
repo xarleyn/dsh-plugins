@@ -390,6 +390,25 @@ describe("execution: refusals", () => {
     expect(harness.audits.recent()[0]?.degraded).toContain("TOOL_UNFILTERABLE");
   });
 
+  it("fails closed when the runtime cannot enforce an explicit deny", async () => {
+    const definition = domainOf("payments", {
+      tools: { allow: ["read"], deny: ["shell"] },
+    });
+    const harness = harnessOf(definition, {
+      failOnce: new Error(
+        'tools.restrict() names unknown global tool "shell"; known global tools: domain_expert, read',
+      ),
+    });
+
+    await expect(run(harness, definition)).rejects.toMatchObject({
+      code: "WORKER_UNAVAILABLE",
+    });
+    expect(harness.subagents.started).toHaveLength(0);
+    expect(harness.audits.recent()[0]?.degraded ?? []).not.toContain(
+      "TOOL_UNFILTERABLE",
+    );
+  });
+
   it("reads the refused names out of the runtime's own wording", () => {
     // Verbatim from a deployment whose chat preset mounts the filesystem
     // readers and the skill catalog on the agent plane.

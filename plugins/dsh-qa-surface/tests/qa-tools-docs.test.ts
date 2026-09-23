@@ -344,6 +344,27 @@ describe("docs_search", () => {
     cleanup();
   });
 
+  it("keeps the docs/ public path when the configured root has another basename", async () => {
+    const { workspace, cleanup } = fixture();
+    const published = path.join(workspace, "published-corpus");
+    mkdirSync(path.join(published, "platform", "V2"), { recursive: true });
+    writeFileSync(
+      path.join(published, "platform", "V2", "auth.md"),
+      "The configured corpus is reachable.\n",
+    );
+    const root = await docsRootOf({}, { root: published });
+
+    const result = await searchDocumentation(root, {
+      query: "configured corpus",
+      path: "docs/platform/V2",
+      version: "v2",
+    });
+    expect(result.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/V2/auth.md",
+    ]);
+    cleanup();
+  });
+
   it("refuses a configured root that is not there, and one that is not a path", async () => {
     const { workspace, cleanup } = fixture();
     const missing = await refusal(
@@ -496,6 +517,35 @@ describe("docs_search over a published corpus", () => {
 });
 
 describe("docs_search: the deployment's default version", () => {
+  it("reads the current default version instead of a boot-time snapshot", async () => {
+    const { workspace, cleanup } = fixture();
+    let defaultVersion = "3.8";
+    const tool = createDocsSearchTool({
+      get defaultVersion() {
+        return defaultVersion;
+      },
+    });
+    const execution = { agent: agentWithCwd(workspace) } as never;
+
+    const first = (await tool.execute(
+      { query: "token is issued" },
+      execution,
+    )) as unknown as QaDocsSearchResult;
+    defaultVersion = "4.0";
+    const second = (await tool.execute(
+      { query: "token is issued" },
+      execution,
+    )) as unknown as QaDocsSearchResult;
+
+    expect(first.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/3.8/auth.md",
+    ]);
+    expect(second.hits.map((hit) => hit.path)).toEqual([
+      "docs/platform/4.0/auth.md",
+    ]);
+    cleanup();
+  });
+
   it("keeps a search without version and without path inside the default edition", async () => {
     const { workspace, cleanup } = fixture();
     const tool = createDocsSearchTool({ defaultVersion: "3.8" });
@@ -544,6 +594,9 @@ describe("docs_search: the deployment's default version", () => {
     expect((value as QaDocsSearchResult).hits.map((hit) => hit.path)).toEqual([
       "docs/platform/4.0/auth.md",
     ]);
+    expect(
+      render(tool, value, { query: "token is issued", path: "platform/4.0" }),
+    ).not.toContain("the stand's default");
     cleanup();
   });
 
@@ -711,6 +764,10 @@ describe("docsIdentityOf", () => {
     expect(docsIdentityOf("platform/v2.0/a/b.md")).toEqual({
       module: "platform",
       version: "v2.0",
+    });
+    expect(docsIdentityOf("platform/V2/a.md")).toEqual({
+      module: "platform",
+      version: "V2",
     });
     expect(docsIdentityOf("billing/tokens.md")).toEqual({ module: "billing" });
     expect(docsIdentityOf("readme.md")).toEqual({});
