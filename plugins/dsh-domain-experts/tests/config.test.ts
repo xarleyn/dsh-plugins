@@ -1,5 +1,7 @@
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MEMORY_DB_FILE,
   DEFAULT_MEMORY_PROVIDER,
   DEFAULT_SUBAGENT_PROVIDER,
   SETTINGS_NAMESPACE,
@@ -7,6 +9,13 @@ import {
   resolveConfig,
 } from "../src/config.js";
 import { ConfigSchema } from "../src/config.js";
+
+/** Where a deployment that named no database puts its memory file. */
+const defaultMemoryDbPath = (): string =>
+  path.join(
+    process.env.DSH_HOME?.trim() || process.cwd(),
+    DEFAULT_MEMORY_DB_FILE,
+  );
 
 describe("config: defaults", () => {
   it("uses the documented defaults for an empty entry", () => {
@@ -17,6 +26,7 @@ describe("config: defaults", () => {
       defaultMaxParallel: 3,
       defaultCrossDomainMode: "expert-only",
       defaultMemoryProvider: DEFAULT_MEMORY_PROVIDER,
+      memoryDbPath: defaultMemoryDbPath(),
       recallLimit: 5,
       auditLimit: 200,
     });
@@ -36,6 +46,7 @@ describe("config: defaults", () => {
       "defaultMaxParallel",
       "defaultMemoryProvider",
       "enabled",
+      "memoryDbPath",
       "recallLimit",
       "subagentProvider",
     ]);
@@ -64,6 +75,26 @@ describe("config: overrides", () => {
       recallLimit: 12,
       auditLimit: 7,
     });
+  });
+
+  it("keeps a memory database the deployment names, trimmed", () => {
+    expect(
+      resolveConfig({ memoryDbPath: "  /var/lib/dsh/memory.db  " })
+        .memoryDbPath,
+    ).toBe("/var/lib/dsh/memory.db");
+  });
+
+  it("puts the memory database in the DSH home when one is set", () => {
+    const previous = process.env.DSH_HOME;
+    process.env.DSH_HOME = "/home/dsh";
+    try {
+      expect(resolveConfig().memoryDbPath).toBe(
+        path.join("/home/dsh", DEFAULT_MEMORY_DB_FILE),
+      );
+    } finally {
+      if (previous === undefined) delete process.env.DSH_HOME;
+      else process.env.DSH_HOME = previous;
+    }
   });
 
   it("refuses an unknown cross-domain mode instead of narrowing it silently", () => {

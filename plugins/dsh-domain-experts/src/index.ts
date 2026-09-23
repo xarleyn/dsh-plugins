@@ -33,6 +33,11 @@ import {
   createBuiltinMemoryProvider,
   type MemoryTable,
 } from "./host/memory/builtin.js";
+import {
+  SQLITE_MEMORY_PROVIDER_ID,
+  createSqliteMemoryProvider,
+  type SqliteMemoryProvider,
+} from "./host/memory/sqlite.js";
 import { MemoryProviderRegistry } from "./host/memory/registry.js";
 import { delegationVerdictOf, parallelBudgetOf } from "./host/policy.js";
 import { DomainRegistry } from "./host/registry.js";
@@ -150,6 +155,14 @@ export class DomainExpertsService extends TypertRemoteService {
   private readonly memoryTable = deferredMemoryTable(() =>
     this.requireMemoryTable(),
   );
+  /**
+   * The SQLite memory provider, present only when the deployment asks for it.
+   *
+   * Opening its database for a deployment that keeps its memory in the storage
+   * unit would create a file nothing reads, so the provider — and with it the
+   * one-time import from the unit — exists only when it is the configured one.
+   */
+  private readonly sqliteMemory: SqliteMemoryProvider | undefined;
   private toolAvailability = false;
 
   constructor(ctx: Context, entry: PluginConfig = {}) {
@@ -172,6 +185,16 @@ export class DomainExpertsService extends TypertRemoteService {
     this.memoryProviders.register(
       createBuiltinMemoryProvider(this.memoryTable, () => Date.now()),
     );
+    this.sqliteMemory =
+      resolved.defaultMemoryProvider === SQLITE_MEMORY_PROVIDER_ID
+        ? createSqliteMemoryProvider({
+            filePath: resolved.memoryDbPath,
+            logger: this.logger,
+          })
+        : undefined;
+    if (this.sqliteMemory !== undefined) {
+      this.memoryProviders.register(this.sqliteMemory);
+    }
 
     this.registerTools();
     this.applyEnabled();
@@ -236,6 +259,7 @@ export class DomainExpertsService extends TypertRemoteService {
         domains: new DomainRegistry(domainsTableOf(storage)),
         memory: memoryTableOf(storage),
       };
+      this.importMemoryFromUnit(handles);
       this.storageHandles = handles;
       this.logger.info("domain-experts/storage-open", {
         domains: handles.domains.list().length,
@@ -253,10 +277,34 @@ export class DomainExpertsService extends TypertRemoteService {
     }
   }
 
+  /**
+   * Copy the storage unit's memory into the SQLite provider, once per database.
+   *
+   * The unit keeps its records: that copy is how a deployment switches back,
+   * and a memory the operator cannot point at afterwards is not a migration but
+   * a loss. A failed verification throws, the transaction behind it rolls back,
+   * and this open is reported as `STORAGE_UNAVAILABLE` rather than serving an
+   * expert from a database that might be missing something.
+   */
+  private importMemoryFromUnit(handles: StorageHandles): void {
+    const provider = this.sqliteMemory;
+    if (provider === undefined) return;
+    const report = provider.importFromUnit(handles.memory);
+    this.logger.info("domain-experts/memory-migrated", {
+      outcome: report.outcome,
+      records: report.records,
+      namespaces: report.namespaces,
+      file: provider.filePath,
+    });
+  }
+
   private async closeStorage(): Promise<void> {
     const handles = this.storageHandles;
     this.storageHandles = undefined;
     this.storagePromise = undefined;
+    // The provider's own database: opened at load, so it closes on unload even
+    // when the storage unit never came up.
+    this.sqliteMemory?.close();
     if (handles === undefined) return;
     try {
       await handles.storage.close();
@@ -937,6 +985,23 @@ export {
   memoryKeyOf,
   BUILTIN_MEMORY_PROVIDER_ID,
 } from "./host/memory/builtin.js";
+export {
+  createSqliteMemoryProvider,
+  SQLITE_MEMORY_PROVIDER_ID,
+  type MemoryImportReport,
+  type SqliteMemoryProvider,
+  type SqliteMemoryProviderOptions,
+} from "./host/memory/sqlite.js";
+export {
+  buildMemoryRecord,
+  clampLimit,
+  compareRecords,
+  compareScored,
+  countHits,
+  searchTextOf,
+  tokenize,
+  type MemoryTable,
+} from "./host/memory/shared.js";
 export { WorkerRegistry, type DomainWorker } from "./host/workers/registry.js";
 export { parseExpertAnswer, textOfBlocks } from "./host/result.js";
 export {
