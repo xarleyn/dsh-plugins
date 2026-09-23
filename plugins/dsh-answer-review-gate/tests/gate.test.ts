@@ -327,6 +327,18 @@ describe("AnswerReviewGate lifecycle", () => {
     expect(face.started).toHaveLength(0);
   });
 
+  it("does not start the automatic reviewer when the user explicitly opts out", async () => {
+    const face = new ScriptedFace();
+    const gate = makeGate(face);
+    const session = surfaceOf(
+      userLine("Исправь ошибку, ревью не нужно"),
+      assistantLine(TEXT_A),
+    );
+
+    expect(await stopAt(gate, session, 1)).toBeNull();
+    expect(face.started).toHaveLength(0);
+  });
+
   it("enforces the round limit and never reviews two candidates at once", async () => {
     const face = new ScriptedFace();
     const steers: SteerRecord[] = [];

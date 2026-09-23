@@ -95,6 +95,7 @@ export class IntegrationBroker {
     providerId: IntegrationProviderId,
   ): IntegrationSummary {
     const provider = this.providers.get(providerId);
+    this.ensureDefaultServiceBinding(principal, providerId);
     const integration = this.repository.find(principal, providerId);
     const service = this.serviceSummary(providerId, integration);
     if (integration === undefined) {
@@ -536,6 +537,7 @@ export class IntegrationBroker {
       readonly sourceSessionId: string;
     },
   ): Promise<IntegrationToolResult> {
+    this.ensureDefaultServiceBinding(principal, request.provider);
     const integration = this.requireConnected(principal, request.provider);
     const provider = this.providers.get(request.provider);
     const capability = provider.operationCapability(request.operation);
@@ -710,6 +712,46 @@ export class IntegrationBroker {
     const portal = this.providers.get(providerId).instancePortal?.(instanceId);
     if (portal === undefined || portal === "") return undefined;
     return registry.find(providerId, portal);
+  }
+
+  /**
+   * Provision the one unambiguous managed profile for an account that has
+   * never made a choice for this provider. This is deliberately synchronous:
+   * it stores only the server-owned binding and policy; the secret remains
+   * lazy and the first real call still exercises the authenticated provider.
+   */
+  private ensureDefaultServiceBinding(
+    principal: IntegrationPrincipal,
+    providerId: IntegrationProviderId,
+  ): void {
+    if (!this.defaultForNewConnections) return;
+    if (this.repository.find(principal, providerId) !== undefined) return;
+    if (this.repository.serviceOptedOut(principal, providerId)) return;
+    const profiles =
+      this.serviceCredentials
+        ?.list()
+        .filter(
+          (profile) => profile.provider === providerId && profile.enabled,
+        ) ?? [];
+    // More than one instance needs a user choice; guessing would cross the
+    // deployment boundary the settings form exists to make explicit.
+    if (profiles.length !== 1) return;
+    const profile = profiles[0]!;
+    this.repository.connect({
+      principal,
+      provider: providerId,
+      secret: null,
+      tenantId: profile.portal,
+      externalUserId: `service:${profile.id}`,
+      displayName: profile.label,
+      capabilities: this.serviceCapabilities(providerId),
+      credentialSource: "service",
+      serviceProfileId: profile.id,
+    });
+    this.logger.info("credential.default-bound", {
+      provider: providerId,
+      serviceProfile: profile.id,
+    });
   }
 
   private resolveService(

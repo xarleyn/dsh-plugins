@@ -151,6 +151,7 @@
     "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
+    "mermaid": "^11.12.2",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

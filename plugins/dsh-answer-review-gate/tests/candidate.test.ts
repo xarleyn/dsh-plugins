@@ -3,9 +3,32 @@ import { describe, expect, it } from "vitest";
 import {
   candidateHash,
   collectCandidate,
+  declinesAnswerReview,
   normalizeCandidateText,
   type CandidateSession,
 } from "../src/candidate.js";
+
+describe("declinesAnswerReview", () => {
+  it.each([
+    "Сделай без ревью",
+    "Ревью не нужно, сразу отдай результат",
+    "Не запускайте автоматическое ревью",
+    "No automatic review, please",
+    "Don't run the auto review",
+    "Review is not required",
+  ])("recognises an explicit opt-out: %s", (request) => {
+    expect(declinesAnswerReview(request)).toBe(true);
+  });
+
+  it.each([
+    "Проведи ревью перед ответом",
+    "Объясни, почему ревью не запустилось вчера",
+    "Review the implementation",
+    null,
+  ])("does not infer an opt-out from: %s", (request) => {
+    expect(declinesAnswerReview(request)).toBe(false);
+  });
+});
 
 interface FakeEvent {
   readonly type: string;

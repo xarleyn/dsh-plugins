@@ -13,6 +13,7 @@
 import {
   candidateHash,
   collectCandidate,
+  declinesAnswerReview,
   type CandidateSession,
 } from "./candidate.js";
 import type { ResolvedAnswerReviewGateConfig } from "./config.js";
@@ -174,6 +175,14 @@ export class AnswerReviewGate {
 
     if (collected === null || collected.text.length < config.minCandidateChars)
       return null;
+    if (declinesAnswerReview(collected.requestText)) {
+      this.deps.logger.info("gate.skipped-user-opt-out", {
+        sessionId,
+        turn,
+        userTurn: state.userTurn,
+      });
+      return null;
+    }
     const hash = candidateHash(collected.text);
     if (state.lastPassedHash === hash) {
       this.deps.logger.info("gate.candidate-already-passed", {
