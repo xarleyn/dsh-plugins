@@ -1,3 +1,20 @@
+## 0.2.2 (2026-09-23)
+
+### 🩹 Fixes
+
+- Domain expert execution now fails closed when the runtime cannot enforce an ([7843693](https://github.com/xarleyn/dsh-plugins/commit/7843693))
+  explicitly denied tool. A refusal no longer retries with a list that accidentally
+  puts the denied name back into the worker's allowed set.
+
+  The integrations operator card keeps new instance and service-credential rows
+  as local drafts until they are complete. Controlled profile fields no longer
+  snap back to the stored value, and deleting a stored instance cannot shift an
+  unfinished draft into the payload sent to the Host.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.1 (2026-09-22)
 
 ### 🩹 Fixes
