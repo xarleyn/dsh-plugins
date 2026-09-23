@@ -992,6 +992,10 @@ export {
   type SqliteMemoryProvider,
   type SqliteMemoryProviderOptions,
 } from "./host/memory/sqlite.js";
+// The scorer and the record builder travel with the provider they keep honest:
+// a third-party memory provider added through `registerMemoryProvider` has to
+// answer with the same records in the same order, and cannot be held to that by
+// a contract it has to reimplement.
 export {
   buildMemoryRecord,
   clampLimit,
