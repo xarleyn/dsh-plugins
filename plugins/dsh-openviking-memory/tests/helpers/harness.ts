@@ -82,6 +82,8 @@ export interface Harness {
   /** The isolated per-account settings file this instance reads and writes. */
   readonly settingsPath: string;
   readonly listeners: Map<string, RecordedListener>;
+  /** Registration options captured for each event listener. */
+  readonly listenerOptions: Map<string, unknown>;
   readonly disposers: {
     readonly name: string;
     readonly dispose: () => unknown;
@@ -211,6 +213,7 @@ export async function createHarness(
     ctx.provide("settings", options.settings);
   }
   const listeners = new Map<string, RecordedListener>();
+  const listenerOptions = new Map<string, unknown>();
   const disposers: {
     readonly name: string;
     readonly dispose: () => unknown;
@@ -223,6 +226,7 @@ export async function createHarness(
     configurable: true,
     value: (name: string, listener: RecordedListener, opts?: unknown) => {
       listeners.set(name, listener);
+      listenerOptions.set(name, opts);
       return (originalOn as (n: string, l: never, o?: unknown) => unknown)(
         name,
         listener as never,
@@ -274,6 +278,7 @@ export async function createHarness(
     plugin,
     settingsPath,
     listeners,
+    listenerOptions,
     disposers,
     requests,
     mounted,

@@ -278,7 +278,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
       await this.runtime.flush(session);
     });
 
-    ctx.on("tools/pre-execute", guardVikingUri);
+    // A profile plugin is mounted through a scoped Cordis context, while the
+    // tool execution is routed to the agent's scope.  Keep this policy global
+    // so every agent using the shared OpenViking bridge is protected; without
+    // the explicit option the listener only sees calls in the plugin's scope.
+    ctx.on("tools/pre-execute", guardVikingUri, { global: true });
 
     // Mounted last, and deliberately not awaited: the bridge's apply blocks on
     // its first tools/list, so a server that accepts the connection but never
