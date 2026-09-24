@@ -32,6 +32,10 @@ const client: UserConfig = {
       specifier !== "react/jsx-runtime",
   },
   outputOptions: {
+    // DSH fetches and evaluates only this classic ModuleLoader entrypoint.
+    // Relative chunks are not materialized as independent loader modules, so
+    // keep dynamic Mermaid dependencies inside the one registered factory.
+    codeSplitting: false,
     entryFileNames: "client.js",
     sourcemapExcludeSources: false,
     banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(PACKAGE_NAME)}, factory: (require) => {`,
