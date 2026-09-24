@@ -283,7 +283,9 @@ export function createWebFetchExtractor(
     matches(context) {
       const meta = presentationRecord(context.presentation);
       return (
-        context.toolName === "web_fetch" ||
+        ["web_fetch", "web_fetch_file", "web_fetch_image"].includes(
+          context.toolName,
+        ) ||
         (typeof meta?.url === "string" && typeof meta.statusCode === "number")
       );
     },

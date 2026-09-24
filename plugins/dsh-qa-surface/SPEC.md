@@ -2939,7 +2939,7 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   `SkillRegistry` — visibility per cwd and per account, invocation flags,
   refresh after a save, a hand edit, removal, skipped malformed files, and the
   watcher's coalescing and bound.
-- `tests/qa-user-settings.test.tsx`, `tests/qa-skills.test.tsx`: the dialog
+- `tests/client/settings/qa-user-settings.test.tsx`, `tests/qa-skills.test.tsx`: the dialog
   sections and profile migration, the catalog (empty, search, warnings,
   failures), the editor (seeding, blocking validation, save payload, preview,
   exit guard, delete confirmation, conflict reload) and the tool picker.
@@ -2947,7 +2947,7 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   what caught the YAML bundling above, and it reports the page console when the
   surface never appears. It runs the default read-only composition, so accounts
   — and with them the settings dialog — are not exercised live yet.
-- `tests/qa-styles.test.ts`: every `--dsh-qa-*` reference is declared, the
+- `tests/client/surface/qa-styles.test.ts`: every `--dsh-qa-*` reference is declared, the
   dialog rules use themed aliases with no hard-coded colors, and the legacy
   profile classes are gone.
 - `verify-package.mjs`: the six remote ids, the provider module and its
@@ -3029,16 +3029,16 @@ carries the actor and the revision it produced.
 
 ### 48.5 Verification
 
-- `tests/admin-skill-files.test.ts`: refusals for a role without the
+- `tests/admin/admin-skill-files.test.ts`: refusals for a role without the
   permission, the shared store's path and discovery label, the mark on the
   owner's catalog and its clearing by the owner's save, the audit rows and
   their images, a refused save writing no row, removal into the trash, an
   unknown account, draft validation, and the sidecar sitting beside (not among)
   the skills.
-- `tests/qa-admin-console-skill-files.test.tsx`: the shared catalog, the user
+- `tests/client/admin-console/qa-admin-console-skill-files.test.tsx`: the shared catalog, the user
   picker gating a personal store, the owner and path header, the refusal copy
   with no editor, and the nav entry staying out of a reviewer's console.
-- `tests/qa-skills-page.test.tsx`: the owner sees the mark, and sees none on a
+- `tests/client/settings/qa-skills-page.test.tsx`: the owner sees the mark, and sees none on a
   skill they wrote.
-- `tests/admin-routes.test.ts` and `tests/personal-skills-service.test.ts`: the
+- `tests/client/admin-console/admin-routes.test.ts` and `tests/personal-skills/personal-skills-service.test.ts`: the
   new route round-trips, and discovery reports both roots.

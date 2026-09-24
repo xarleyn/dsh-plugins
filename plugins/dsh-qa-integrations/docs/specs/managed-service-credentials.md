@@ -45,13 +45,19 @@ Deviations from this document, and why:
   (`ServiceCredentialUnavailable`, `SensitiveReadRequiresPersonalCredential`, …)
   while keeping the specification's vocabulary; §29 lists the same set in
   `SCREAMING_SNAKE`;
-- §27 rate limiting is not implemented: it belongs to phase 7 and to the same
-  hardening pass as credential health checks. Nothing else in the first
-  milestone depends on it.
+- §27 rate limiting covers the service mode, which is the bottleneck it was
+  written for: `managedServiceCredentials.rateLimit` limits one principal on one
+  provider and one shared credential in total, and both balances are read before
+  either is written, so a user refused by the shared ceiling keeps their own
+  allowance. The `per-integration-binding` and `per-upstream-instance` levels of
+  its list collapse into those two here: the store keeps one binding per
+  (principal, provider) and the registry resolves one profile per
+  (provider, instance). Personal-mode calls stay unthrottled — upstream sets
+  that frequency itself.
 
 Deferred, by design: Bitrix24, Jira, Confluence and the remaining providers offer
 no service mode (their cards show nothing about it); the Atlassian strategy split
-of §35; cross-principal caching; per-service rate limiting.
+of §35; cross-principal caching.
 
 ## 1. Goal
 

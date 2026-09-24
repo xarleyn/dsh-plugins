@@ -28,6 +28,8 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaFeedbackHarvestEntry,
+  QaFeedbackHarvestResult,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -56,7 +58,7 @@ import { allows } from "./permissions.js";
 import { aggregateQuality, type QaConversationFact } from "./metrics.js";
 import { paginate } from "./paging.js";
 import { deriveQueue, type QaToolFailureSignal } from "./queue.js";
-import type { QaQualityStore } from "./quality-store.js";
+import { QA_FEEDBACK_RATINGS, type QaQualityStore } from "./quality-store.js";
 import type { QaAdminRedactor } from "./redaction.js";
 import { defaultAdminRedactor } from "./redaction.js";
 import {
@@ -88,9 +90,38 @@ export const QA_ADMIN_PAGE_MAX = 100;
  */
 export const QA_ADMIN_SCAN_LIMIT = 200;
 
-/** How long one projected log may serve the list and metrics before re-reading. */
+/**
+ * How long one projected log may serve the list and metrics before it is read
+ * again — and only while the Harness still holds that conversation. A log no
+ * process holds cannot gain events, so re-reading it is pure cost: on a
+ * deployment with a durable store one read pays for a listing of every stored
+ * session and a replay of the whole log before it reaches the one conversation
+ * asked for. Reading the scan window again on every page load is what took the
+ * aggregate pages minutes; keeping what cannot have changed is what makes the
+ * next load free.
+ */
 const TRANSCRIPT_TTL_MS = 30_000;
-const TRANSCRIPT_CACHE_MAX = 128;
+
+/**
+ * How many projections the cache holds. It has to cover one scan window with
+ * room for a page of summaries: a cache narrower than the window evicts the
+ * conversations a pass has already read, and the next pass pays for them again.
+ */
+const TRANSCRIPT_CACHE_MAX = QA_ADMIN_SCAN_LIMIT + QA_ADMIN_PAGE_MAX;
+
+/**
+ * What one harvest request may carry. The browser replays its ratings in
+ * batches far below this; the ceiling is what a caller that ignored them is
+ * refused outright, rather than half-applied.
+ */
+const MAX_HARVEST_BATCH = 500;
+
+/** One harvested identifier, or undefined when the entry cannot be filed. */
+function harvestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
 
 interface QaServiceClock {
   now(): number;
@@ -109,6 +140,26 @@ interface IndexedConversation {
   readonly createdAtIso: string;
   readonly effectiveTools?: readonly string[];
   readonly effectiveSkills?: readonly string[];
+}
+
+/** What one pass over the scan window answers for the aggregate pages. */
+interface QaAggregateRows {
+  readonly facts: readonly QaConversationFact[];
+  readonly failures: readonly QaToolFailureSignal[];
+}
+
+/**
+ * One aggregate pass, shared by every caller waiting for the same window. A
+ * reviewer who gives up on a page that has not answered and opens the next one
+ * used to start a second scan while the first was still reading; two concurrent
+ * scans of the newest logs is exactly the load that parks the remaining
+ * administrative calls behind them.
+ */
+interface QaRunningScan {
+  readonly window: readonly string[];
+  readonly promise: Promise<QaAggregateRows>;
+  /** The cancellation of each caller waiting for this pass. */
+  readonly waiting: Set<AbortSignal | undefined>;
 }
 
 export interface QaAdminServiceOptions {
@@ -211,8 +262,31 @@ function reviewStatusOf(
     : "reviewed";
 }
 
+/**
+ * Whether a running pass has no caller left to answer. A caller that passed no
+ * cancellation cannot leave, so it keeps the pass alive.
+ */
+function nobodyWaits(waiting: ReadonlySet<AbortSignal | undefined>): boolean {
+  for (const signal of waiting) {
+    if (signal === undefined || !signal.aborted) return false;
+  }
+  return true;
+}
+
+function sameWindow(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
+
 export class QaAdminService {
   private readonly redactor: QaAdminRedactor;
+  /** The aggregate pass running now, shared by the callers waiting for it. */
+  private scanning: QaRunningScan | undefined;
   private readonly transcripts = new Map<
     string,
     { readonly at: number; readonly project: QaProjectedTranscript }
@@ -319,7 +393,22 @@ export class QaAdminService {
       .filter((row): row is IndexedConversation => row !== undefined);
   }
 
-  /** One conversation's projected log, cached for the TTL unless asked fresh. */
+  /**
+   * One conversation's projected log, held across calls.
+   *
+   * A log the Harness no longer holds is finished — nothing can append to it —
+   * so its projection stays valid until the cache evicts it or the conversation
+   * is deleted. Only a log this process is still writing is re-read once the TTL
+   * expires. A cache hit counts as a use: an aggregate pass walks the whole
+   * window, and evicting by read time would drop the conversations the pages ask
+   * for most often and then read them again.
+   *
+   * The one answer this can hold back is a conversation resumed and finished
+   * between two page loads: its counters lag until the log is read for another
+   * reason. The conversation itself is never affected — the detail view always
+   * reads the log — and what the aggregate pages show instead is the newest
+   * projection of every finished conversation, which is the cheaper lie.
+   */
   private async transcript(
     conversationId: string,
     fresh = false,
@@ -329,30 +418,110 @@ export class QaAdminService {
   > {
     const cached = this.transcripts.get(conversationId);
     const now = this.options.clock?.now() ?? Date.now();
-    if (!fresh && cached !== undefined && now - cached.at < TRANSCRIPT_TTL_MS) {
-      return { ok: true, project: cached.project };
+    if (cached !== undefined) {
+      const stale =
+        fresh ||
+        (this.options.sessionLog.live(conversationId) &&
+          now - cached.at >= TRANSCRIPT_TTL_MS);
+      if (!stale) {
+        this.retain(conversationId, cached);
+        return { ok: true, project: cached.project };
+      }
+      this.transcripts.delete(conversationId);
     }
     const result = await this.options.sessionLog.read(conversationId);
     if (!result.ok) {
-      this.transcripts.delete(conversationId);
       return { ok: false, reason: result.reason };
     }
     const project = projectTranscript(result.events, this.redactor);
-    this.transcripts.set(conversationId, { at: now, project });
-    if (this.transcripts.size > TRANSCRIPT_CACHE_MAX) {
-      const oldest = [...this.transcripts.entries()].sort(
-        (left, right) => left[1].at - right[1].at,
-      )[0];
-      if (oldest !== undefined) this.transcripts.delete(oldest[0]);
-    }
+    this.retain(conversationId, {
+      at: this.options.clock?.now() ?? Date.now(),
+      project,
+    });
     return { ok: true, project };
   }
 
-  private async facts(
+  /** Insert or re-touch one projection, keeping the cache inside its budget. */
+  private retain(
+    conversationId: string,
+    entry: { readonly at: number; readonly project: QaProjectedTranscript },
+  ): void {
+    this.transcripts.delete(conversationId);
+    this.transcripts.set(conversationId, entry);
+    while (this.transcripts.size > TRANSCRIPT_CACHE_MAX) {
+      const oldest = this.transcripts.keys().next();
+      if (oldest.done === true) break;
+      this.transcripts.delete(oldest.value);
+    }
+  }
+
+  /**
+   * The aggregate rows of the newest scan window, read in one pass.
+   *
+   * The message counts and the tool failures come from the same projections, so
+   * one walk fills both. While a walk runs, a caller that wants the same window
+   * joins it rather than starting a second scan of the deployment's logs, and the
+   * walk stops once no caller waits for it: a scan nobody is reading is only ever
+   * a load on the store.
+   */
+  private async scanOf(
     rows: readonly IndexedConversation[],
-  ): Promise<readonly QaConversationFact[]> {
+    signal: AbortSignal | undefined,
+  ): Promise<QaAggregateRows> {
+    signal?.throwIfAborted();
+    const window = [...rows]
+      .sort((left, right) => right.createdAt - left.createdAt)
+      .slice(0, QA_ADMIN_SCAN_LIMIT);
+    const ids = window.map((row) => row.conversationId);
+    const running = this.scanning;
+    if (
+      running !== undefined &&
+      !nobodyWaits(running.waiting) &&
+      sameWindow(running.window, ids)
+    ) {
+      running.waiting.add(signal);
+      try {
+        return await running.promise;
+      } finally {
+        running.waiting.delete(signal);
+      }
+    }
     const facts: QaConversationFact[] = [];
-    for (const row of rows) {
+    const failures: QaToolFailureSignal[] = [];
+    const waiting = new Set<AbortSignal | undefined>([signal]);
+    const promise = this.walk(window, waiting, facts, failures);
+    const pass: QaRunningScan = { window: ids, promise, waiting };
+    this.scanning = pass;
+    void promise
+      .catch(() => undefined)
+      .then(() => {
+        if (this.scanning === pass) this.scanning = undefined;
+      });
+    try {
+      return await promise;
+    } finally {
+      waiting.delete(signal);
+    }
+  }
+
+  /**
+   * Walk one scan window, filling the counts and the failure signals as it goes.
+   *
+   * `waiting` is the caller set of the pass this walk belongs to: the walk gives
+   * up between two reads once every caller has left, so a reviewer who abandons a
+   * page that has not answered does not keep the deployment reading logs for an
+   * answer nobody will see.
+   */
+  private async walk(
+    window: readonly IndexedConversation[],
+    waiting: ReadonlySet<AbortSignal | undefined>,
+    facts: QaConversationFact[],
+    failures: QaToolFailureSignal[],
+  ): Promise<QaAggregateRows> {
+    for (const row of window) {
+      if (nobodyWaits(waiting)) {
+        throw new Error("qa admin aggregate scan abandoned: no caller left");
+      }
       const transcript = await this.transcript(row.conversationId);
       facts.push({
         conversationId: row.conversationId,
@@ -365,22 +534,30 @@ export class QaAdminService {
           : 0,
         createdAt: row.createdAt,
       });
+      if (transcript.ok) {
+        failures.push(
+          ...this.failuresOf(row.conversationId, transcript.project),
+        );
+      }
     }
-    return facts;
+    return { facts, failures };
   }
 
   // -------------------------------------------------------------------------
   // Overview and metrics
   // -------------------------------------------------------------------------
 
-  async overview(token: string): Promise<QaAdminOverview> {
+  async overview(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<QaAdminOverview> {
     this.require(token, "conversations.read.all");
     const rows = await this.index();
-    const metrics = await this.metricsOf(rows);
+    const metrics = await this.metricsOf(rows, signal);
     const fresh = [...this.options.quality().allFeedback()].sort(
       (left, right) => right.createdAt.localeCompare(left.createdAt),
     );
-    const queue = await this.queueRows(rows);
+    const queue = await this.queueRows(rows, signal);
     return Object.freeze({
       metrics,
       alerts: this.alertsOf(metrics),
@@ -393,22 +570,23 @@ export class QaAdminService {
     });
   }
 
-  async metrics(token: string): Promise<QaQualityMetrics> {
+  async metrics(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<QaQualityMetrics> {
     this.require(token, "analytics.read");
-    return this.metricsOf(await this.index());
+    return this.metricsOf(await this.index(), signal);
   }
 
   private async metricsOf(
     rows: readonly IndexedConversation[],
+    signal: AbortSignal | undefined,
   ): Promise<QaQualityMetrics> {
     const quality = this.options.quality();
     // Feedback and reviews are exact; the message counts come from the bounded
     // log scan and are labelled as such where they are shown.
-    const scanned = [...rows]
-      .sort((left, right) => right.createdAt - left.createdAt)
-      .slice(0, QA_ADMIN_SCAN_LIMIT);
     return aggregateQuality({
-      conversations: await this.facts(scanned),
+      conversations: (await this.scanOf(rows, signal)).facts,
       feedback: quality.allFeedback(),
       reviews: quality.allReviews(),
     });
@@ -771,8 +949,10 @@ export class QaAdminService {
     query: QaConversationQuery,
     cursor: string | undefined,
     limit: number | undefined,
+    signal?: AbortSignal,
   ): Promise<QaAdminPage<QaConversationSummary>> {
     this.require(token, "conversations.read.all");
+    signal?.throwIfAborted();
     const rows = await this.index();
     const quality = this.options.quality();
     const feedback = quality.allFeedback();
@@ -783,19 +963,24 @@ export class QaAdminService {
     const ratingFilter = given(query.rating);
     const reviewFilter = given(query.reviewStatus);
     const search = given(query.search) ?? "";
+    const searching = search.trim() !== "";
     const from = epochOf(given(query.from) ?? undefined);
     const to = epochOf(given(query.to) ?? undefined);
     // A search may name a title, which only the log knows, so the candidate
-    // set is bounded by the newest logs before the text is available.
-    const searchable =
-      search.trim() === ""
-        ? rows
-        : [...rows]
-            .sort((left, right) => right.createdAt - left.createdAt)
-            .slice(0, QA_ADMIN_SCAN_LIMIT);
+    // set is bounded by the newest logs before the text is available. Without
+    // search text no filter here needs a log at all — and reading one per
+    // candidate to answer a page of twenty-five rows made this call cost every
+    // conversation the deployment stores, each read paying for a listing of all
+    // of them before it reaches the one log asked for.
+    const searchable = searching
+      ? [...rows]
+          .sort((left, right) => right.createdAt - left.createdAt)
+          .slice(0, QA_ADMIN_SCAN_LIMIT)
+      : rows;
 
     const candidates: IndexedConversation[] = [];
     for (const row of searchable) {
+      signal?.throwIfAborted();
       if (userIdFilter !== undefined && row.userId !== userIdFilter) continue;
       if (subroleFilter !== undefined && row.subroleId !== subroleFilter) {
         continue;
@@ -817,10 +1002,13 @@ export class QaAdminService {
       ) {
         continue;
       }
-      // One projection per candidate, reused by the search match and then by
-      // the summary of a page row: the read is cached either way.
-      const transcript = await this.transcript(row.conversationId);
-      const title = transcript.ok ? transcript.project.title : undefined;
+      // Only a search reads a candidate's log, and the projection stays cached
+      // for the summary of the rows that survive the filter.
+      let title: string | undefined;
+      if (searching) {
+        const transcript = await this.transcript(row.conversationId);
+        title = transcript.ok ? transcript.project.title : undefined;
+      }
       if (
         !matches(
           search,
@@ -848,6 +1036,7 @@ export class QaAdminService {
     });
     const items: QaConversationSummary[] = [];
     for (const row of page.items) {
+      signal?.throwIfAborted();
       items.push(await this.summaryOf(row, feedback, reviews));
     }
     return {
@@ -1056,7 +1245,9 @@ export class QaAdminService {
     accounts.forgetSessions(new Set(targets));
     const qualityRows = this.options.quality().dropConversations(targets);
     for (const sessionId of targets) this.options.dropSources?.(sessionId);
-    this.transcripts.delete(conversationId);
+    // A removed log is never read again, so its projection must not survive to
+    // answer a later page: the cache holds it as if the conversation existed.
+    for (const sessionId of targets) this.transcripts.delete(sessionId);
     this.options.quality().appendAudit({
       actorId: actor.id,
       action: "conversation.deleted",
@@ -1100,18 +1291,6 @@ export class QaAdminService {
     return signals;
   }
 
-  private async failureSignals(
-    rows: readonly IndexedConversation[],
-  ): Promise<readonly QaToolFailureSignal[]> {
-    const signals: QaToolFailureSignal[] = [];
-    for (const row of rows) {
-      const transcript = await this.transcript(row.conversationId);
-      if (!transcript.ok) continue;
-      signals.push(...this.failuresOf(row.conversationId, transcript.project));
-    }
-    return signals;
-  }
-
   // -------------------------------------------------------------------------
   // Feedback
   // -------------------------------------------------------------------------
@@ -1144,6 +1323,84 @@ export class QaAdminService {
       userId: actor.id,
     });
     return record;
+  }
+
+  /**
+   * Replay the ratings a browser still holds from the window in which a thumbs
+   * never reached the Host.
+   *
+   * A harvest never overwrites. The browser's map stores no timestamp, so an
+   * entry may well be a rating the same user has since filed together with a
+   * reason and a comment; replacing that record with the bare thumbs would
+   * delete exactly what a reviewer reads. An entry the Host already answers for
+   * is counted as present and left alone.
+   *
+   * One unusable or foreign entry costs that entry alone: a browser keeps
+   * ratings of chats it no longer owns, and the rest of the replay must not be
+   * lost because of them.
+   */
+  harvestFeedback(
+    token: string,
+    entries: readonly QaFeedbackHarvestEntry[],
+  ): QaFeedbackHarvestResult {
+    const { accounts, actor } = this.require(token, "conversations.read.own");
+    if (!Array.isArray(entries)) {
+      throw new TypeError("entries must be an array");
+    }
+    if (entries.length > MAX_HARVEST_BATCH) {
+      throw new QaAccountsError("auth-required", "harvest batch is too large");
+    }
+    const quality = this.options.quality();
+    let recorded = 0;
+    let present = 0;
+    let rejected = 0;
+    for (const entry of entries) {
+      const conversationId = harvestId(entry?.conversationId);
+      const messageId = harvestId(entry?.messageId);
+      const rating = entry?.rating;
+      if (
+        conversationId === undefined ||
+        messageId === undefined ||
+        !QA_FEEDBACK_RATINGS.includes(rating)
+      ) {
+        rejected += 1;
+        continue;
+      }
+      if (accounts.ownerIdOf(conversationId) !== actor.id) {
+        rejected += 1;
+        continue;
+      }
+      if (
+        quality.feedbackOf(conversationId, messageId, actor.id) !== undefined
+      ) {
+        present += 1;
+        continue;
+      }
+      try {
+        quality.rateFeedback(
+          { conversationId, messageId, userId: actor.id },
+          { rating },
+        );
+        recorded += 1;
+      } catch (error) {
+        // The store re-validates what it is given, and one row it refuses is
+        // that row's problem rather than the batch's.
+        this.options.logger.warn("admin.feedback-harvest-entry-refused", {
+          conversationId,
+          messageId,
+          userId: actor.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        rejected += 1;
+      }
+    }
+    this.options.logger.info("admin.feedback-harvested", {
+      userId: actor.id,
+      recorded,
+      present,
+      rejected,
+    });
+    return { recorded, present, rejected };
   }
 
   async feedback(
@@ -1247,6 +1504,7 @@ export class QaAdminService {
 
   private async queueRows(
     rows?: readonly IndexedConversation[],
+    signal?: AbortSignal,
   ): Promise<readonly QaReviewQueueRow[]> {
     const conversations = rows ?? (await this.index());
     const quality = this.options.quality();
@@ -1256,14 +1514,11 @@ export class QaAdminService {
       feedback: quality.allFeedback(),
       reviews,
       manual: quality.manualQueue(),
-      failures: await this.failureSignals(
-        [...conversations]
-          .sort((left, right) => right.createdAt - left.createdAt)
-          .slice(0, QA_ADMIN_SCAN_LIMIT),
-      ),
+      failures: (await this.scanOf(conversations, signal)).failures,
     });
     const result: QaReviewQueueRow[] = [];
     for (const item of queue) {
+      signal?.throwIfAborted();
       const row = byId.get(item.conversationId);
       if (row === undefined) continue;
       const transcript = await this.transcript(item.conversationId);
@@ -1293,9 +1548,10 @@ export class QaAdminService {
     token: string,
     cursor: string | undefined,
     limit: number | undefined,
+    signal?: AbortSignal,
   ): Promise<QaAdminPage<QaReviewQueueRow>> {
     this.require(token, "reviews.read");
-    const rows = await this.queueRows();
+    const rows = await this.queueRows(await this.index(), signal);
     return paginate({
       rows,
       keyOf: (row) => `${row.priority}:${row.raisedAt}`,

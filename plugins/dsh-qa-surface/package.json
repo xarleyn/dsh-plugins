@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-qa-surface",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "A focused end-user QA surface backed by native DeepSeek Harness sessions",
   "repository": {
     "type": "git",
@@ -151,6 +151,7 @@
     "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
+    "mermaid": "^11.12.2",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },

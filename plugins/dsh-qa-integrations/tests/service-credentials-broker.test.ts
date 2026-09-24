@@ -31,6 +31,49 @@ describe("managed service credentials: broker", () => {
     });
   });
 
+  it("provisions a new principal on the managed credential before settings are opened", async () => {
+    const { broker, seen } = buildHarness(
+      path.join(root, "auto-default.db"),
+      PROFILE_INPUT(),
+    );
+    const alice = { userId: "alice-auto" };
+
+    expect(broker.summary(alice, "acme")).toMatchObject({
+      status: "connected",
+      credentialSource: "service",
+      externalAccountName: "Acme Read-only",
+    });
+    await expect(
+      broker.call(alice, {
+        provider: "acme",
+        operation: "records.get",
+        input: { project: "alpha" },
+        sourceSessionId: "session-auto",
+      }),
+    ).resolves.toMatchObject({ data: { named: "alpha" } });
+    expect(seen.at(-1)?.credentialSource).toBe("service");
+  });
+
+  it("keeps an explicit disconnect opted out of automatic service binding", async () => {
+    const { broker } = buildHarness(
+      path.join(root, "auto-opt-out.db"),
+      PROFILE_INPUT(),
+    );
+    const alice = { userId: "alice-opt-out" };
+    expect(broker.summary(alice, "acme").status).toBe("connected");
+    expect(broker.disconnect(alice, "acme")).toBe(true);
+
+    expect(broker.summary(alice, "acme").status).toBe("not_connected");
+    await expect(
+      broker.call(alice, {
+        provider: "acme",
+        operation: "records.get",
+        input: { project: "alpha" },
+        sourceSessionId: "session-opt-out",
+      }),
+    ).rejects.toMatchObject({ code: "IntegrationNotConnected" });
+  });
+
   it("keeps an existing connection on its own credential after an upgrade", async () => {
     const file = path.join(root, "upgrade.db");
     const before = buildHarness(file, { enabled: true, profiles: [] });

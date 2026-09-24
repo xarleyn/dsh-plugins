@@ -75,6 +75,25 @@ export const UNCLASSIFIED_OPERATION: OperationSecurityMetadata = Object.freeze({
 export type ServiceResourceBoundary = IntegrationServiceBoundary;
 
 /**
+ * Request ceiling of the service mode, as operator configuration resolves it.
+ * A rate of `0` leaves that dimension unbounded.
+ */
+export interface ServiceRateLimitConfig {
+  /** What one real user may ask of one provider through any managed credential. */
+  readonly perPrincipal: {
+    readonly requestsPerMinute: number;
+  };
+  /**
+   * What one shared upstream identity may carry in total, and how many calls
+   * may be in flight against it at once.
+   */
+  readonly perCredential: {
+    readonly requestsPerMinute: number;
+    readonly maxConcurrent: number;
+  };
+}
+
+/**
  * One administrator-managed credential. It belongs to the deployment, not to a
  * user: a user cannot create one, cannot change its secret, cannot move its
  * upstream identity and cannot pick one by id.

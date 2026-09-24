@@ -22,7 +22,9 @@ Numbered guarantees:
 2. An audit directory copied into the audit root becomes visible without a DSH
    restart, without a plugin reload, and without any command.
 3. An audit binds to the session its `analysis.json` names in
-   `trajectory.sessionId`. Nothing else outranks that.
+   `trajectory.sessionId`. Nothing else outranks that. A declared id missing the
+   harness' `session-` prefix is read as the prefixed id when the corpus holds
+   exactly that one — the spelling is corrected, the choice of session never is.
 4. Only when the analysis cannot name a session is the directory name
    consulted — as an exact session id, then as a unique prefix. A prefix
    matching more than one session binds to none.

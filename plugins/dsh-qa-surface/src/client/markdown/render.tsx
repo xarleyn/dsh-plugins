@@ -4,6 +4,7 @@ import type { MarkdownBlock, MarkdownListItem } from "./blocks.js";
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
+import { MermaidBlock } from "./MermaidBlock.js";
 import { renderTexToReact } from "./math.js";
 import {
   codeChip,
@@ -74,6 +75,9 @@ function renderBlock(
             {renderTexToReact(block.text, true)}
           </div>
         );
+      }
+      if (block.lang?.toLowerCase() === "mermaid") {
+        return <MermaidBlock key={key} code={block.text} />;
       }
       return (
         <CodeBlock

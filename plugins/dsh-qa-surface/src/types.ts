@@ -1770,6 +1770,28 @@ export interface QaMessageFeedbackInput {
   readonly comment?: string;
 }
 
+/**
+ * One rating a browser still holds locally: a verdict given while the surface
+ * had no way to file it, replayed by the harvest. Reasons never ride along —
+ * the browser's map only ever stored the thumbs.
+ */
+export interface QaFeedbackHarvestEntry {
+  readonly conversationId: string;
+  /** The durable log position, exactly as a live rating carries it. */
+  readonly messageId: string;
+  readonly rating: QaFeedbackRating;
+}
+
+/** What one harvest write did; the counts answer for the whole batch. */
+export interface QaFeedbackHarvestResult {
+  /** Ratings the Host stored now. Replaying the same batch stores none. */
+  readonly recorded: number;
+  /** Entries the Host already held a rating for, left as they were. */
+  readonly present: number;
+  /** Entries refused: not the caller's conversation, or unusable. */
+  readonly rejected: number;
+}
+
 /** Review workflow state of a conversation or one of its messages. */
 export type QaReviewStatus =
   "unreviewed" | "in_review" | "reviewed" | "needs_followup";

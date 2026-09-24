@@ -329,6 +329,7 @@ export class QaIntegrations extends TypertRemoteService {
       providers,
       this.serviceCredentials,
       this.defaultForNewConnections,
+      config.managedServiceCredentials.rateLimit,
     );
     this.syncTools(config);
     if (

@@ -130,6 +130,17 @@ export interface QaAccountsControllerOptions {
    */
   readonly legacyChatIds?: () => readonly string[];
   readonly forgetChat?: (sessionId: string) => void;
+  /**
+   * Replay this browser's locally held ratings onto the account it just signed
+   * in as, for the chats that account owns. Runs once per account: the surface
+   * is usable while it is in flight, and a failure costs only the retry the
+   * next login performs.
+   */
+  readonly harvestRatings?: (context: {
+    readonly token: string;
+    readonly accountId: string;
+    readonly ownedIds: readonly string[];
+  }) => Promise<void>;
 }
 
 /**
@@ -545,7 +556,7 @@ export class QaAccountsController {
     }
   }
 
-  /** Own the account, migrate the legacy index, then project authed. */
+  /** Own the account, migrate the legacy index, replay held ratings, then auth. */
   private async enterSession(
     token: string,
     user: QaAccountUserPublic,
@@ -553,6 +564,7 @@ export class QaAccountsController {
     const migration = this.options.legacyChatIds?.() ?? [];
     let ownedIds: readonly string[] = [];
     let ownership: readonly QaOwnershipEntry[] = [];
+    let ownershipKnown = false;
     try {
       const claimed = await this.options.remote.accountsClaimSessions(
         token,
@@ -565,6 +577,7 @@ export class QaAccountsController {
       }
       const ids = await this.options.remote.accountsOwnedSessions(token);
       ownedIds = ids.ok ? ids.value.ids : [];
+      ownershipKnown = ids.ok;
       // The cross-user ownership view is a separate operator opt-in. A
       // refusal only costs the grouping, never the admin's own chats.
       if (
@@ -575,6 +588,21 @@ export class QaAccountsController {
       }
     } catch (error) {
       console.warn("dsh-qa-surface: chat migration claim failed", error);
+    }
+    // An ownership list that never arrived would read as "nothing of yours is
+    // here", so the replay waits for a login that actually knows the answer.
+    if (ownershipKnown) {
+      try {
+        // Its own failure boundary: ratings a browser still holds are worth a
+        // replay, but never worth withholding the session the user asked for.
+        await this.options.harvestRatings?.({
+          token,
+          accountId: user.id,
+          ownedIds,
+        });
+      } catch (error) {
+        console.warn("dsh-qa-surface: rating harvest failed", error);
+      }
     }
     if (this.disposed) return;
     this.publish({

@@ -70,7 +70,7 @@ are not evidence about what this run will do.)
 **`dsh-qa-surface` plans need a matching curated entry** in
 `plugins/dsh-qa-surface/src/client/components/QaChangelog.tsx` in the *same*
 change — the hygiene gate enforces it, and
-`plugins/dsh-qa-surface/tests/qa-sidebar-changelog.test.tsx` pins the details:
+`plugins/dsh-qa-surface/tests/client/components/qa-sidebar-changelog.test.tsx` pins the details:
 `QA_CHANGELOG[0]` must be the next planned version, `QA_VERSION` must equal
 `package.json.version`, the entries from the current version down must equal the
 versions parsed out of `CHANGELOG.md`, and entries *below* the current version

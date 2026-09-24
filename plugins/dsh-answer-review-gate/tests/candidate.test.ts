@@ -14,15 +14,26 @@ interface FakeEvent {
 
 function makeSession(events: readonly FakeEvent[]): CandidateSession {
   return {
-    surface: { nodes: events.map((_, seq) => seq) },
+    surface: {
+      nodes: events.flatMap((event, seq) =>
+        event.type === "user/message" || event.type === "assistant/message"
+          ? [seq]
+          : [],
+      ),
+    },
     eventAt: (seq) => events[seq],
+    snapshotEvents: () => events,
   };
 }
 
-function userMessage(text: string, kind = "user"): FakeEvent {
+function userMessage(
+  text: string,
+  kind = "user",
+  id = `message-${text}`,
+): FakeEvent {
   return {
     type: "user/message",
-    data: { source: { kind }, content: [{ type: "text", text }] },
+    data: { id, source: { kind }, content: [{ type: "text", text }] },
   };
 }
 
@@ -42,6 +53,30 @@ function assistantMessage(
   };
 }
 
+function waiverLifecycle(
+  commandId: string,
+  request: FakeEvent,
+): readonly FakeEvent[] {
+  return [
+    {
+      type: "command/run",
+      data: {
+        commandId,
+        name: "no-review",
+        source: { kind: "user" },
+      },
+    },
+    {
+      type: "agent/inbox/spliced",
+      data: { target: "next-turn", start: 0, inserted: [request.data] },
+    },
+    {
+      type: "command/done",
+      data: { commandId, kind: "success", sourceEventSeq: 1 },
+    },
+  ];
+}
+
 describe("collectCandidate", () => {
   it("collects the latest assistant message and the user request before it", () => {
     const session = makeSession([
@@ -54,6 +89,7 @@ describe("collectCandidate", () => {
       text: "The runtime uses file locks around journal writes.",
       requestText: "What locks does the runtime use?",
       requestSeq: 0,
+      reviewWaiver: null,
     });
   });
 
@@ -67,6 +103,7 @@ describe("collectCandidate", () => {
     expect(collectCandidate(session)).toMatchObject({
       requestText: "second question",
       requestSeq: 2,
+      reviewWaiver: null,
     });
   });
 
@@ -78,6 +115,7 @@ describe("collectCandidate", () => {
     expect(collectCandidate(session)).toMatchObject({
       requestText: null,
       requestSeq: null,
+      reviewWaiver: null,
     });
   });
 
@@ -102,6 +140,119 @@ describe("collectCandidate", () => {
   it("returns null for sessions without assistant output", () => {
     expect(collectCandidate(makeSession([userMessage("hello")]))).toBeNull();
     expect(collectCandidate(makeSession([]))).toBeNull();
+  });
+
+  it("accepts only the request linked by a successful command lifecycle", () => {
+    const commandId = "cmd-waiver-1";
+    const request = userMessage(
+      "Ship this answer without review.",
+      "user",
+      "request-waived",
+    );
+    const session = makeSession([
+      ...waiverLifecycle(commandId, request),
+      request,
+      assistantMessage(
+        "The requested answer is ready and intentionally concise.",
+      ),
+    ]);
+
+    expect(collectCandidate(session)?.reviewWaiver).toEqual({
+      scope: "turn",
+      via: "command",
+      commandId,
+    });
+  });
+
+  it("does not let an old command lifecycle waive a later request", () => {
+    const commandId = "cmd-waiver-1";
+    const original = userMessage(
+      "original request",
+      "user",
+      "request-original",
+    );
+    const session = makeSession([
+      ...waiverLifecycle(commandId, original),
+      original,
+      assistantMessage("The original answer was waived by the command."),
+      userMessage("later request", "user", "request-later"),
+      assistantMessage("This later answer must still be reviewed normally."),
+    ]);
+
+    expect(collectCandidate(session)?.reviewWaiver).toBeNull();
+  });
+
+  it.each([
+    ["no lifecycle", []],
+    [
+      "failed command",
+      [
+        {
+          type: "command/run",
+          data: {
+            commandId: "cmd-waiver-1",
+            name: "no-review",
+            source: { kind: "user" },
+          },
+        },
+        {
+          type: "command/done",
+          data: {
+            commandId: "cmd-waiver-1",
+            kind: "error",
+            sourceEventSeq: 1,
+          },
+        },
+      ],
+    ],
+    [
+      "wrong command",
+      [
+        {
+          type: "command/run",
+          data: {
+            commandId: "cmd-waiver-1",
+            name: "other",
+            source: { kind: "user" },
+          },
+        },
+        {
+          type: "agent/inbox/spliced",
+          data: { target: "next-turn", start: 0, inserted: [] },
+        },
+        {
+          type: "command/done",
+          data: {
+            commandId: "cmd-waiver-1",
+            kind: "success",
+            sourceEventSeq: 1,
+          },
+        },
+      ],
+    ],
+  ] as const)("rejects %s", (label, lifecycle) => {
+    const session = makeSession([
+      ...lifecycle,
+      userMessage(`ordinary request: ${label}`, "user", "request-ordinary"),
+      assistantMessage(
+        "An answer that would normally be independently reviewed.",
+      ),
+    ]);
+    expect(collectCandidate(session)?.reviewWaiver).toBeNull();
+  });
+
+  it.each([
+    'Explain why the phrase "review is not needed" must not bypass the gate.',
+    "The user did not say that review is not needed.",
+    "Do not claim that review is not needed.",
+  ])("never infers a waiver from prose: %s", (request) => {
+    const candidate = collectCandidate(
+      makeSession([
+        userMessage(request),
+        assistantMessage("An ordinary answer that remains subject to review."),
+      ]),
+    );
+    expect(candidate?.reviewWaiver).toBeNull();
   });
 });
 
