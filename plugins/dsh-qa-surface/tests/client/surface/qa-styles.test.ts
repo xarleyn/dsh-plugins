@@ -52,6 +52,12 @@ describe("QA surface stylesheet", () => {
     expect(QA_SURFACE_STYLES).toContain(
       ".dsh-qa-modal__panel--settings{width:min(840px,100%);height:min(640px,calc(100vh - 48px))}",
     );
+    expect(QA_SURFACE_STYLES).toContain(
+      ".dsh-qa-modal__footer button{appearance:none",
+    );
+    expect(QA_SURFACE_STYLES).toContain(
+      ".dsh-qa-modal__footer .dsh-qa-modal__primary{border-color:transparent;background:var(--dsh-qa-accent)",
+    );
     expect(dialogRules.join("")).toContain("var(--dsw-alias-border-l2)");
   });
 
