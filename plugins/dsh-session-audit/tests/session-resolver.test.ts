@@ -30,6 +30,57 @@ describe("SessionResolver", () => {
     expect(listed).toBe(false);
   });
 
+  it("puts back a session prefix the producer left off", async () => {
+    const result = await resolverWith([SESSION, SIBLING]).resolve(
+      "41b4e63f-9e35-4406-927b-25a60b7be2c2",
+      "session-41b4e63f",
+    );
+
+    expect(result).toEqual({ status: "resolved", sessionId: SESSION });
+  });
+
+  it("matches the prefixed form as a whole id, never as a prefix", async () => {
+    const result = await resolverWith([SESSION, SIBLING]).resolve(
+      "41b4e63f",
+      "session-41b4e63f",
+    );
+
+    // Two sessions start that way, and a repair that guessed would be a lie
+    // about someone's work rather than an invisible audit.
+    expect(result).toEqual({ status: "resolved", sessionId: "41b4e63f" });
+  });
+
+  it("keeps a declared id the corpus does not spell that way", async () => {
+    const result = await resolverWith([SIBLING]).resolve(
+      "41b4e63f-9e35-4406-927b-25a60b7be2c2",
+      "audit-imported",
+    );
+
+    expect(result).toEqual({
+      status: "resolved",
+      sessionId: "41b4e63f-9e35-4406-927b-25a60b7be2c2",
+    });
+  });
+
+  it("binds a prefix-less id even when the corpus cannot be listed", async () => {
+    const resolver = new SessionResolver({
+      listSessionIds: async () => {
+        throw new Error("sessionQuery is unavailable");
+      },
+      allowDirectoryPrefixMatch: true,
+    });
+
+    const result = await resolver.resolve(
+      "41b4e63f-9e35-4406-927b-25a60b7be2c2",
+      "session-41b4e63f",
+    );
+
+    expect(result).toEqual({
+      status: "resolved",
+      sessionId: "41b4e63f-9e35-4406-927b-25a60b7be2c2",
+    });
+  });
+
   it("binds a directory named for the full session id when the analysis is silent", async () => {
     const result = await resolverWith([SESSION, "session-1"]).resolve(
       null,
