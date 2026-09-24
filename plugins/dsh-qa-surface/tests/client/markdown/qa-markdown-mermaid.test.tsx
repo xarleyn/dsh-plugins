@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("mermaid", () => ({ default: mocks }));
 
-import { Markdown } from "../src/client/components/Markdown.js";
+import { Markdown } from "../../../src/client/components/Markdown.js";
 
 describe("Mermaid markdown preview", () => {
   beforeEach(() => {

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { StoredSessionEvent } from "../src/admin/conversation-log.js";
+import type { StoredSessionEvent } from "../../src/admin/conversation-log.js";
 import {
   staticSessionLogReader,
   type QaSessionLogReader,
   type QaStoredSessionHeader,
-} from "../src/admin/session-log.js";
+} from "../../src/admin/session-log.js";
 import { harness, logFor } from "./admin-service.helpers.js";
 
 /** Let every already-scheduled continuation run. */

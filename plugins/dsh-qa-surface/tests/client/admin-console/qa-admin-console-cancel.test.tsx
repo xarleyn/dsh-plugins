@@ -3,8 +3,8 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { Mock } from "vitest";
 import { adminApi, renderConsole } from "./qa-admin-console.helpers.js";
-import type { RemoteResult } from "../src/client/types.js";
-import type { QaAdminOverview } from "../src/types.js";
+import type { RemoteResult } from "../../../src/client/types.js";
+import type { QaAdminOverview } from "../../../src/types.js";
 
 /**
  * Leaving an aggregate page must stop waiting for it. The overview, the
