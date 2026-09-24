@@ -14,6 +14,7 @@ import {
   candidateHash,
   collectCandidate,
   type CandidateSession,
+  type CollectedCandidate,
 } from "./candidate.js";
 import type { ResolvedAnswerReviewGateConfig } from "./config.js";
 import { DelegationTracker } from "./delegation-tracker.js";
@@ -101,7 +102,7 @@ export interface AnswerReviewGateDeps {
 
 /** Outcome of one boundary decision, for the event handler's audit log. */
 export type BoundaryOutcome =
-  "pass" | "revise" | "failure" | "suppressed-pending-work" | null;
+  "pass" | "revise" | "waived" | "failure" | "suppressed-pending-work" | null;
 
 export class AnswerReviewGate {
   readonly delegation = new DelegationTracker();
@@ -172,9 +173,34 @@ export class AnswerReviewGate {
       return "suppressed-pending-work";
     }
 
-    if (collected === null || collected.text.length < config.minCandidateChars)
-      return null;
+    if (collected === null) return null;
     const hash = candidateHash(collected.text);
+    if (
+      collected.reviewWaiver !== null &&
+      config.waiver.enabled &&
+      (config.failMode !== "closed" || config.waiver.allowedInClosedMode)
+    ) {
+      this.record(config, {
+        time: this.deps.now(),
+        sessionId,
+        turn,
+        candidateHash: hash,
+        round: state.round,
+        backend: "waiver",
+        reviewer: "none",
+        durationMs: 0,
+        outcome: "waived",
+        waiverReason: "user-command",
+      });
+      this.deps.logger.info("gate.waived", {
+        sessionId,
+        turn,
+        userTurn: state.userTurn,
+        commandId: collected.reviewWaiver.commandId,
+      });
+      return "waived";
+    }
+    if (collected.text.length < config.minCandidateChars) return null;
     if (state.lastPassedHash === hash) {
       this.deps.logger.info("gate.candidate-already-passed", {
         sessionId,
@@ -224,7 +250,7 @@ export class AnswerReviewGate {
     sessionId: string,
     turn: number,
     hash: string,
-    collected: { readonly text: string; readonly requestText: string | null },
+    collected: CollectedCandidate,
     state: GateSessionState,
     signal: AbortSignal,
     config: ResolvedAnswerReviewGateConfig,

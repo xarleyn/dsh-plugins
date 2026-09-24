@@ -205,3 +205,62 @@ describe("image downloads (the web_fetch_image transport)", () => {
     expect(server.requests).toHaveLength(0);
   });
 });
+
+describe("generic downloads (the web_fetch_file transport)", () => {
+  test("stores any successful content type over the authenticated rule", async () => {
+    const PDF_BYTES = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+    const server = await track(
+      await startFixture({
+        "/secure/report.pdf": {
+          bodyBytes: PDF_BYTES,
+          headers: { "content-type": "application/pdf" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const file = await provider.fetchFile({
+      url: `${server.origin}/secure/report.pdf`,
+    });
+    expect(file).toMatchObject({
+      statusCode: 200,
+      mediaType: "application/pdf",
+      name: "report.pdf",
+    });
+    expect([...file.bytes]).toEqual([...PDF_BYTES]);
+    expect(server.requests[0]?.headers.authorization).toBe(`Bearer ${SECRET}`);
+  });
+
+  test("can retain an ordinary HTML page when the caller needs a file", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/page.html": {
+          body: "<html><body>Runbook</body></html>",
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const file = await provider.fetchFile({
+      url: `${server.origin}/secure/page.html`,
+    });
+    expect(file.mediaType).toBe("text/html");
+    expect(new TextDecoder().decode(file.bytes)).toContain("Runbook");
+  });
+
+  test("does not store an HTTP error page as a downloaded file", async () => {
+    const server = await track(
+      await startFixture({
+        "/secure/missing.pdf": {
+          status: 404,
+          body: "not found",
+          headers: { "content-type": "text/plain" },
+        },
+      }),
+    );
+    const { provider } = newProvider(configWith([fixtureRule(server.origin)]));
+    const message = await expectCode("AUTH_FETCH_FILE_DOWNLOAD_FAILED", () =>
+      provider.fetchFile({ url: `${server.origin}/secure/missing.pdf` }),
+    );
+    expect(message).toContain("HTTP 404");
+  });
+});

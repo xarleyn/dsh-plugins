@@ -63,6 +63,12 @@ export interface AnswerReviewGateConfig {
    * special-casing top-level agents.
    */
   readonly excludedAgents?: string[];
+  readonly waiver?: {
+    /** Register and honor the explicit `/no-review <request>` command. */
+    readonly enabled?: boolean;
+    /** Permit a waiver while `failMode` is `closed`. Off by default. */
+    readonly allowedInClosedMode?: boolean;
+  };
   readonly audit?: {
     /** Keep an in-memory ring of review decisions. */
     readonly enabled?: boolean;
@@ -89,6 +95,10 @@ export interface ResolvedAnswerReviewGateConfig {
   readonly trackBackgroundDelegations: boolean;
   readonly minCandidateChars: number;
   readonly excludedAgents: readonly string[];
+  readonly waiver: {
+    readonly enabled: boolean;
+    readonly allowedInClosedMode: boolean;
+  };
   readonly audit: {
     readonly enabled: boolean;
     readonly maxEntries: number;
@@ -113,6 +123,10 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
   trackBackgroundDelegations: true,
   minCandidateChars: 80,
   excludedAgents: [],
+  waiver: {
+    enabled: true,
+    allowedInClosedMode: false,
+  },
   audit: {
     enabled: true,
     maxEntries: 500,
@@ -159,6 +173,7 @@ export function resolveAnswerReviewGateConfig(
 ): ResolvedAnswerReviewGateConfig {
   const entry = raw ?? {};
   const reviewer = entry.reviewer ?? {};
+  const waiver = entry.waiver ?? {};
   const audit = entry.audit ?? {};
   const defaults = ANSWER_REVIEW_GATE_DEFAULTS;
   return {
@@ -196,6 +211,10 @@ export function resolveAnswerReviewGateConfig(
       defaults.minCandidateChars,
     ),
     excludedAgents: cleanList(entry.excludedAgents),
+    waiver: {
+      enabled: waiver.enabled !== false,
+      allowedInClosedMode: waiver.allowedInClosedMode === true,
+    },
     audit: {
       enabled: audit.enabled !== false,
       maxEntries: clampInteger(
@@ -291,6 +310,20 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
       .array(z.string())
       .default([])
       .description("Session-id substrings that are never reviewed."),
+    waiver: z
+      .object({
+        enabled: z
+          .boolean()
+          .default(true)
+          .description(
+            "Register and honor the explicit /no-review command for one request.",
+          ),
+        allowedInClosedMode: z
+          .boolean()
+          .default(false)
+          .description("Allow user review waivers while failMode is closed."),
+      })
+      .default({ enabled: true, allowedInClosedMode: false }),
     audit: z
       .object({
         enabled: z

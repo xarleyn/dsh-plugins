@@ -207,7 +207,7 @@ export function AdminQuality(props: {
   readonly token: string;
 }) {
   const resource = useAdminResource(
-    () => props.api.metrics(props.token),
+    (signal) => props.api.metrics(props.token, signal),
     [props.api, props.token],
   );
   const metrics: QaQualityMetrics | undefined = resource.data;
