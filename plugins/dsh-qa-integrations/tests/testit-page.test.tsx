@@ -128,6 +128,7 @@ describe("Integrations Test IT card", () => {
     await screen.findByLabelText("API-токен Test IT");
     expect(screen.queryByLabelText("Инсталляция Test IT")).toBeNull();
     expect(screen.getByText(/Инсталляция: Test IT Cloud/u)).not.toBeNull();
+    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
   });
 
   it("keeps the capability rows honest and patchable", async () => {

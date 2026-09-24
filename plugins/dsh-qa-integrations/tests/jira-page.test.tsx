@@ -130,6 +130,7 @@ describe("Integrations Jira card", () => {
       ),
     ).toBeDefined();
     expect(screen.queryByLabelText("Сайт Jira")).toBeNull();
+    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
     fireEvent.change(screen.getByLabelText("Аккаунт Atlassian (e-mail)"), {
       target: { value: "alice@example.com" },
     });
