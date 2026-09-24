@@ -37,8 +37,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Gitea does not populate github.workflow for push events, so the action
+      # cannot infer which successful workflow run anchors NX_BASE.
       - name: Set affected SHAs
         uses: nrwl/nx-set-shas@v4
+        with:
+          workflow-id: ci.yml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
