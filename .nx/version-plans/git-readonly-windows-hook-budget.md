@@ -31,5 +31,14 @@ failed on that name. The fixture now strips those six keys from the environment
 of every `git` it starts, so the identity it pins in repository config is the
 identity commits carry.
 
-No runtime behavior changed: both fixes live in test configuration and test
+A third failure the same runs exposed was not a timeout at all: one of the
+fixture's setup `git` calls came back failed with nothing on stderr, which
+dropped its whole test file and left those tests reported skipped. git writes a
+diagnosis whenever it chooses to refuse, so silence means the child died before
+refusing anything. The fixture now reports the exit code and signal it used to
+discard, and retries a setup command only on that silence — twice with a short
+backoff. Commands past setup keep failing on their first error, because a retried
+commit would leave two commits where the snapshot compares against one.
+
+No runtime behavior changed: these fixes live in test configuration and test
 fixtures.
