@@ -1,3 +1,99 @@
+## 0.13.0 (2026-09-24)
+
+### 🚀 Features
+
+- QA conversations now render Mermaid diagrams with secure source fallback, ([aafad8b](https://github.com/xarleyn/dsh-plugins/commit/aafad8b))
+  documentation search accepts safe grep-style alternatives and canonical paths,
+  and the role-change dialog uses the surface's normal controls.
+
+  Managed integration defaults are provisioned for new users without overriding
+  an explicit disconnect, the structured `/no-review <request>` command bypasses
+  the automatic review gate for exactly one durably linked request, and
+  authenticated fetching can retain arbitrary successful responses as durable
+  file attachments while keeping grants administrator-controlled.
+
+- Recover the answer ratings that stayed behind in people's browsers. ([#226](https://github.com/xarleyn/dsh-plugins/issues/226))
+
+  Every thumbs given between per-message feedback shipping and the fix that
+  started sending it to the Host lives only in `localStorage`, and nothing reads
+  it any more. A browser's ratings map is chat-scoped and keyed by the answer's
+  browser id, `assistant:<log position>`, so a rating of a chat this account owns
+  can still be traced back to the durable row it judges — but only once, because
+  the map carries no timestamp and no reasons, so it cannot tell a lost rating
+  from one the Host already holds a fuller version of. Replaying it through the
+  ordinary rating write would replace a negative verdict with its reason and
+  comment by the bare thumbs.
+
+  The Host therefore gained an insert-only write, `adminHarvestFeedback`: it
+  records a rating nobody has filed yet, reports what it already holds instead of
+  rewriting it, and refuses a conversation the token does not own entry by entry,
+  so one foreign chat cannot lose the rest of the batch. On the first login of an
+  account the surface reads its local maps through that write — only the chats the
+  account owns, only the ids that name a log position, in batches — and marks the
+  account as read afterwards, so the replay never repeats and a failed pass is
+  retried by the next login rather than lost. Ratings whose answer id names no log
+  position, and the deployment-wide map the first releases wrote, stay in the
+  browser: guessing which chat a thumbs belonged to would put words in the
+  reviewer's mouth.
+
+
+### 🩹 Fixes
+
+- The administrative console's aggregate pages answer without re-reading the ([#249](https://github.com/xarleyn/dsh-plugins/issues/249))
+  deployment's conversation logs.
+
+  «Обзор», «Разговоры», «Аналитика» and «Очередь разбора» took minutes to open on
+  a stand with real history (over four and a half minutes observed), and while one
+  of them was loading the other administrative calls waited behind it, because the
+  browser gives a single origin only a handful of connections.
+
+  The cost was in conversation-log reads, and two things made it unbounded. The
+  conversation list read the log of every reserved conversation to filter a list
+  that no filter had asked anything of — a title matters only while somebody is
+  searching, and a page shows twenty-five rows. The aggregate pages read the newest
+  two hundred logs again on every load, each of those reads being a full listing of
+  every stored session plus a replay of the log asked for, and reading one page
+  evicted the projections another page had just built because the cache was smaller
+  than the scan window it serves.
+
+  The list now reads logs only where a filter needs one: without search text a page
+  costs its own rows. A conversation the Harness no longer holds cannot gain
+  messages, so its projection is kept instead of expiring after the TTL — which
+  still applies to a conversation being written. The counts and the tool-failure
+  signals are collected in one pass over the window, and a caller that asks for a
+  window already being scanned joins that pass rather than starting a second scan.
+  All four of those calls now carry the browser's cancellation: leaving a page that
+  has not answered stops the scan between two logs instead of finishing it for an
+  answer nobody will read.
+
+- The sources of a turn are collected from a real session journal again. ([d17bced](https://github.com/xarleyn/dsh-plugins/commit/d17bced))
+
+  The host pairs a tool result with the call that produced it by the id written on
+  the result block. The Harness names that field `toolCallId` — its own validator
+  rejects a `tool/result` whose block id differs from `message.source.callId` —
+  while the plugin read `callId`, a name no real event carries. On a deployed
+  stand the pairing therefore failed for every call: nothing was collected, every
+  turn's bundle stayed empty, and everything downstream showed the consequence —
+  the sources panel had nothing to list, a file the chat had just read refused to
+  open in preview, and the answer carried no evidence. `toolCallId` is read now,
+  with `callId` kept as the fallback for a block that names the pairing that way.
+
+  The fixtures took their share of the miss. The host tests replayed a result
+  block of their own invention — `tool_result` carrying `callId`, a shape the
+  Harness never writes and its validator would reject — so an empty bundle looked
+  like a passing suite. They now carry the shape a session actually stores, and a
+  test pins collection to it, with one more for the fallback name so it stays a
+  supported path rather than a guess.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.4.0
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
 ## 0.12.0 (2026-09-23)
 
 ### 🚀 Features

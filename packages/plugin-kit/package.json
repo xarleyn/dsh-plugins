@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-kit",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Shared runtime helpers for DSH plugins: logging scaffolds, config validation, compatibility checks and SQLite store plumbing",
   "license": "MIT",
   "type": "module",
