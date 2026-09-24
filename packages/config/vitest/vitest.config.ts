@@ -32,6 +32,18 @@ import {
  *   },
  * });
  * ```
+ *
+ * Coverage is configured here so every package measures the same denominator:
+ * the `src` tree, reported as text plus a machine-readable summary. Note that
+ * `mergeConfig` concatenates arrays: a package widens the measured tree with
+ * `coverage.include` and narrows it with `coverage.exclude`, never by
+ * re-declaring `include`.
+ *
+ * No `thresholds` on purpose: a floor would turn the percentage into a gate that
+ * competes with the per-file size budget, and the first response to a red gate is
+ * a test that asserts nothing. Read the number, do not enforce it. Vitest drops
+ * the report of a red run otherwise, so `reportOnFailure` is on — the number is
+ * what the command is for, including on a platform where one suite is red.
  */
 
 /** A decorator always opens its own line; a JSDoc tag opens it with `*`. */
@@ -183,6 +195,12 @@ export const baseConfig: ViteUserConfig = {
   test: {
     globals: true,
     environment: "node",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      reportOnFailure: true,
+    },
   },
 };
 

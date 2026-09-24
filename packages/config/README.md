@@ -35,6 +35,14 @@ Plugins that need extra options should import
 `definePluginVitestConfig` from `@yadsh/dsh-config/vitest` instead of
 hand-rolling `defineConfig`.
 
+The Vitest preset also carries the coverage defaults, so every package measures
+the same denominator: the V8 provider, the `text` and `json-summary` reporters,
+and `src/**` as the instrumented tree. `pnpm run test:coverage` in any package
+prints its own percentages, and `pnpm test:coverage` at the root prints them for
+all of them. A run with a failing test still reports, because the number is what
+the command is for. Thresholds are deliberately not configured — the percentage
+is a signal to read, not a gate to satisfy.
+
 ## Development
 
 ```bash
