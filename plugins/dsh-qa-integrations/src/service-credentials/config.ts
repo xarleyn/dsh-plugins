@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../errors.js";
+import type { ServiceRateLimitConfig } from "./types.js";
 
 /**
  * One deployment-managed credential, as it appears under
@@ -34,11 +35,27 @@ export interface ManagedServiceCredentialProfileInput {
   readonly policy?: Readonly<Record<string, string | undefined>>;
 }
 
+/**
+ * Operator request ceiling of the service mode; §27 of
+ * `docs/specs/managed-service-credentials.md`.
+ */
+export interface ManagedServiceRateLimitInput {
+  readonly perPrincipal?:
+    { readonly requestsPerMinute?: number | undefined } | undefined;
+  readonly perCredential?:
+    | {
+        readonly requestsPerMinute?: number | undefined;
+        readonly maxConcurrent?: number | undefined;
+      }
+    | undefined;
+}
+
 export interface ManagedServiceCredentialsInput {
   readonly enabled?: boolean;
   /** Whether a new connection starts in service mode when a profile exists. */
   readonly defaultForNewConnections?: boolean;
   readonly profiles?: readonly ManagedServiceCredentialProfileInput[];
+  readonly rateLimit?: ManagedServiceRateLimitInput | undefined;
 }
 
 export interface ManagedServiceCredentialProfileConfig {
@@ -57,7 +74,23 @@ export interface ManagedServiceCredentialsConfig {
   readonly enabled: boolean;
   readonly defaultForNewConnections: boolean;
   readonly profiles: readonly ManagedServiceCredentialProfileConfig[];
+  readonly rateLimit: ServiceRateLimitConfig;
 }
+
+/**
+ * The design document's own §27 example, used as the shipped ceiling: a service
+ * credential is shared, so an unconfigured deployment is the case that needs
+ * the limit most. An operator who wants a dimension unbounded sets it to `0`.
+ */
+export const DEFAULT_SERVICE_RATE_LIMIT: ServiceRateLimitConfig = Object.freeze(
+  {
+    perPrincipal: Object.freeze({ requestsPerMinute: 120 }),
+    perCredential: Object.freeze({
+      requestsPerMinute: 1000,
+      maxConcurrent: 16,
+    }),
+  },
+);
 
 export const MANAGED_SERVICE_CREDENTIALS_DEFAULTS = Object.freeze({
   enabled: false,
@@ -76,6 +109,7 @@ export const managedServiceCredentialsSchema = z.object({
     .boolean()
     .default(MANAGED_SERVICE_CREDENTIALS_DEFAULTS.defaultForNewConnections),
   profiles: z.array(z.any()).default([]),
+  rateLimit: z.any().default(undefined),
 }) as unknown as z<ManagedServiceCredentialsInput>;
 
 const PROFILE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -84,6 +118,8 @@ const RESOURCE_KIND = /^[a-z][a-z0-9_]{0,31}$/u;
 const SECRET_ENV = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const MAX_PROFILES = 64;
 const MAX_RESOURCES_PER_KIND = 512;
+const MAX_REQUESTS_PER_MINUTE = 1_000_000;
+const MAX_CONCURRENT = 4096;
 
 const configError = scopedConfigError(
   "qa-integrations managed service credentials",
@@ -177,6 +213,80 @@ function normalizePolicy(
   return Object.freeze(policy);
 }
 
+/**
+ * One ceiling number. A limit is protection, so a typo here must not quietly
+ * remove it: anything that is not a plain non-negative integer is refused at
+ * load, and only `0` means "this dimension is unbounded".
+ */
+function normalizeCeiling(
+  value: unknown,
+  path: string,
+  maximum: number,
+  fallback: number,
+): number {
+  if (value === undefined) return fallback;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw configError(`rateLimit.${path} must be a non-negative integer`);
+  }
+  if (value > maximum) {
+    throw configError(`rateLimit.${path} accepts at most ${maximum}`);
+  }
+  return value;
+}
+
+function normalizeRateLimit(
+  input: ManagedServiceRateLimitInput | undefined,
+): ServiceRateLimitConfig {
+  if (
+    input !== undefined &&
+    (typeof input !== "object" || Array.isArray(input))
+  ) {
+    throw configError("rateLimit must be a mapping");
+  }
+  const perPrincipal = input?.perPrincipal;
+  if (
+    perPrincipal !== undefined &&
+    (typeof perPrincipal !== "object" ||
+      perPrincipal === null ||
+      Array.isArray(perPrincipal))
+  ) {
+    throw configError("rateLimit.perPrincipal must be a mapping");
+  }
+  const perCredential = input?.perCredential;
+  if (
+    perCredential !== undefined &&
+    (typeof perCredential !== "object" ||
+      perCredential === null ||
+      Array.isArray(perCredential))
+  ) {
+    throw configError("rateLimit.perCredential must be a mapping");
+  }
+  return Object.freeze({
+    perPrincipal: Object.freeze({
+      requestsPerMinute: normalizeCeiling(
+        perPrincipal?.requestsPerMinute,
+        "perPrincipal.requestsPerMinute",
+        MAX_REQUESTS_PER_MINUTE,
+        DEFAULT_SERVICE_RATE_LIMIT.perPrincipal.requestsPerMinute,
+      ),
+    }),
+    perCredential: Object.freeze({
+      requestsPerMinute: normalizeCeiling(
+        perCredential?.requestsPerMinute,
+        "perCredential.requestsPerMinute",
+        MAX_REQUESTS_PER_MINUTE,
+        DEFAULT_SERVICE_RATE_LIMIT.perCredential.requestsPerMinute,
+      ),
+      maxConcurrent: normalizeCeiling(
+        perCredential?.maxConcurrent,
+        "perCredential.maxConcurrent",
+        MAX_CONCURRENT,
+        DEFAULT_SERVICE_RATE_LIMIT.perCredential.maxConcurrent,
+      ),
+    }),
+  });
+}
+
 function normalizeProfile(
   input: ManagedServiceCredentialProfileInput,
   index: number,
@@ -260,6 +370,7 @@ export function resolveManagedServiceCredentials(
     profiles: Object.freeze(
       profiles.map((profile, index) => normalizeProfile(profile, index, seen)),
     ),
+    rateLimit: normalizeRateLimit(input.rateLimit),
   });
 }
 
