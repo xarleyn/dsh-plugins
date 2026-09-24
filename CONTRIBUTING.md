@@ -76,6 +76,18 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 Add a commit to that list only when its whole change is formatting and it reflowed four or more files — a `style(...)` commit, by the convention above. `scripts/repo-config.test.mjs` checks every entry still resolves on the branch and is still a formatting commit, so a rewritten history cannot leave the list silently useless.
 
+### Operating Systems
+
+Every CI job runs on `ubuntu-latest` (`jobs.*.runs-on` in `.github/workflows/ci.yml`); there is no Windows or macOS matrix. A green run therefore proves the suite passes on Linux and says nothing about the machine you are typing on — in both directions: a failure you see locally can be your platform's and still be ours to fix, and CI cannot see a regression your platform produces.
+
+The suite is OS-sensitive because the code under test is. The git suites build throwaway repositories in `beforeAll` (`dsh-git-readonly/tests/fixtures/git.ts`; the mutation suite builds two), so a file spends a dozen process spawns before its first assertion. Symlink fixtures are skipped where the platform cannot grant the privilege. Mtime comparisons depend on the timestamp resolution of the filesystem. The opt-in browser suite (`DSH_QA_BROWSER_E2E=1`) launches a real Chromium and needs its binary present. And `pnpm deps:check` plus `pnpm tarball:verify` shell out to bash — `scripts/run-bash.mjs` resolves that to Git for Windows' `bash.exe`, so Git Bash has to be installed and WSL is not used.
+
+What that asks of a contributor on Windows or macOS:
+
+- Run the tests of every package you touch on your own OS before opening a pull request — `pnpm affected:check` is the smallest honest set — and treat a failure that only your platform produces as a bug to fix, not noise to skip.
+- Where a suite is only slower here than on the runner, raise the budget in that package's `vitest.config.ts`. The shared preset sets no timeouts, so Vitest's defaults apply (10 s per hook), and a Windows disk spawning short-lived processes does exceed that. Keep the raise in the package that needs it: widening the preset would change what every plugin inherits and bury the next slow fixture.
+- Do not gate a test on `process.platform` to make a run green. A guard belongs only where the behaviour genuinely differs — the symlink tests skip because the platform cannot make the link, not because the assertion runs slowly.
+
 ---
 
 ## Adding a New Plugin
