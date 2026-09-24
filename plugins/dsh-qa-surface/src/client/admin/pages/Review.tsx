@@ -23,6 +23,7 @@ import {
   Pager,
   adminErrorMessage,
   useAdminResource,
+  useRequestSlot,
 } from "../shared.js";
 
 /**
@@ -47,10 +48,19 @@ export function AdminReviewQueue(props: {
   const [rows, setRows] = useState<readonly QaReviewQueueRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const request = useRequestSlot();
 
   const load = async (next: string | null, append: boolean) => {
-    const result = await props.api.reviewQueue(props.token, next, PAGE_SIZE);
-    if (!result.ok) return;
+    const controller = request.start();
+    const result = await props.api.reviewQueue(
+      props.token,
+      next,
+      PAGE_SIZE,
+      controller.signal,
+    );
+    // The reviewer opened another page (or left this one) while this answer was
+    // still coming: showing it would overwrite the page they are on.
+    if (controller.signal.aborted || !result.ok) return;
     setTotal(result.value.total);
     setCursor(result.value.nextCursor);
     setRows((current) =>
@@ -59,7 +69,7 @@ export function AdminReviewQueue(props: {
   };
 
   const resource = useAdminResource(
-    () => props.api.reviewQueue(props.token, null, PAGE_SIZE),
+    (signal) => props.api.reviewQueue(props.token, null, PAGE_SIZE, signal),
     [props.api, props.token],
   );
   const items = resource.data?.items ?? rows;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RemoteResult } from "../types.js";
 import { formatRelative } from "./copy.js";
 
@@ -40,12 +40,44 @@ export function adminErrorMessage(error: unknown): string {
 }
 
 /**
+ * One cancellable request slot. A page that starts a second request has stopped
+ * waiting for the first, and a page that is gone waits for nothing at all —
+ * either way the abandoned call should end instead of holding its connection and
+ * the deployment's log reader open. The aggregate pages take minutes to answer on
+ * a real store, so an abandoned page used to keep working long after the reviewer
+ * moved on, and the calls it queued behind it paid for that.
+ */
+export function useRequestSlot(): {
+  readonly start: () => AbortController;
+  readonly cancel: () => void;
+} {
+  const current = useRef<AbortController | undefined>(undefined);
+  const start = useCallback(() => {
+    current.current?.abort();
+    const controller = new AbortController();
+    current.current = controller;
+    return controller;
+  }, []);
+  const cancel = useCallback(() => {
+    current.current?.abort();
+    current.current = undefined;
+  }, []);
+  useEffect(() => cancel, [cancel]);
+  // The page keeps this object in its dependency lists, so it must not be a new
+  // literal on every render.
+  return useMemo(() => ({ start, cancel }), [start, cancel]);
+}
+
+/**
  * Load one administrative resource, keeping the previous value visible while
  * it refreshes. Reviewers page through lists while new conversations arrive;
  * blanking the table on every reload would make that unusable.
+ *
+ * `load` receives the cancellation of the call it is making: pass it on to the
+ * Remote, and a page the reviewer left stops being read on the server.
  */
 export function useAdminResource<T>(
-  load: () => Promise<RemoteResult<T>>,
+  load: (signal: AbortSignal) => Promise<RemoteResult<T>>,
   deps: readonly unknown[],
 ): {
   readonly data: T | undefined;
@@ -58,14 +90,19 @@ export function useAdminResource<T>(
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const request = useRequestSlot();
   const apply = useCallback((value: T) => {
     setData(value);
     setError(undefined);
   }, []);
   const reload = useCallback(async () => {
+    const controller = request.start();
     setLoading(true);
     try {
-      const result = await load();
+      const result = await load(controller.signal);
+      // A call this page abandoned has no answer worth showing: writing it
+      // anyway is how a stale scan replaced whatever the reviewer opened next.
+      if (controller.signal.aborted) return;
       if (result.ok) {
         setData(result.value);
         setError(undefined);
@@ -73,16 +110,18 @@ export function useAdminResource<T>(
         setError(errorMessage(result.error));
       }
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setError(errorMessage(cause));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
     // The caller owns the identity of `load`: every page passes a callback
     // rebuilt from its own state, and lists the state in `deps`.
   }, deps);
   useEffect(() => {
     void reload();
-  }, [reload]);
+    return request.cancel;
+  }, [reload, request]);
   return { data, error, loading, reload, apply };
 }
 

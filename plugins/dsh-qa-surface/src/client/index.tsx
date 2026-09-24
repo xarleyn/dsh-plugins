@@ -121,7 +121,10 @@ declare module "@deepseek-ai/cordis" {
  * keeps the wire names, so a rename on either side fails the build.
  */
 interface QaAdminRemote {
-  adminOverview(token: string): Promise<RemoteResult<QaAdminOverview>>;
+  adminOverview(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<QaAdminOverview>>;
   adminUsers(
     token: string,
     query: QaUserQuery,
@@ -150,6 +153,7 @@ interface QaAdminRemote {
     query: QaConversationQuery,
     cursor: string | null,
     limit: number | null,
+    signal?: AbortSignal,
   ): Promise<RemoteResult<QaAdminPage<QaConversationSummary>>>;
   adminConversation(
     token: string,
@@ -180,6 +184,7 @@ interface QaAdminRemote {
     token: string,
     cursor: string | null,
     limit: number | null,
+    signal?: AbortSignal,
   ): Promise<RemoteResult<QaAdminPage<QaReviewQueueRow>>>;
   adminQueueConversation(
     token: string,
@@ -190,7 +195,10 @@ interface QaAdminRemote {
     token: string,
     input: QaConversationReviewInput,
   ): Promise<RemoteResult<QaConversationReview>>;
-  adminMetrics(token: string): Promise<RemoteResult<QaQualityMetrics>>;
+  adminMetrics(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<QaQualityMetrics>>;
   adminAudit(
     token: string,
     query: QaAuditQuery,
@@ -586,7 +594,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.accessSkillActivations(token, sessionId),
       };
       const adminApi: QaAdminApi = {
-        overview: (token) => policyRemote.adminOverview(token),
+        overview: (token, signal) => policyRemote.adminOverview(token, signal),
         users: (token, query, cursor, limit) =>
           policyRemote.adminUsers(token, query, cursor, limit),
         user: (token, userId) => policyRemote.adminUser(token, userId),
@@ -596,8 +604,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.adminPasswordResetRequests(token),
         resetPassword: (token, userId, password) =>
           policyRemote.adminResetPassword(token, userId, password),
-        conversations: (token, query, cursor, limit) =>
-          policyRemote.adminConversations(token, query, cursor, limit),
+        conversations: (token, query, cursor, limit, signal) =>
+          policyRemote.adminConversations(token, query, cursor, limit, signal),
         conversation: (token, conversationId) =>
           policyRemote.adminConversation(token, conversationId),
         deleteConversation: (token, conversationId) =>
@@ -611,13 +619,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             messageId,
             input,
           ),
-        reviewQueue: (token, cursor, limit) =>
-          policyRemote.adminReviewQueue(token, cursor, limit),
+        reviewQueue: (token, cursor, limit, signal) =>
+          policyRemote.adminReviewQueue(token, cursor, limit, signal),
         queueConversation: (token, conversationId, messageId) =>
           policyRemote.adminQueueConversation(token, conversationId, messageId),
         saveReview: (token, input) =>
           policyRemote.adminSaveReview(token, input),
-        metrics: (token) => policyRemote.adminMetrics(token),
+        metrics: (token, signal) => policyRemote.adminMetrics(token, signal),
         audit: (token, query, cursor, limit) =>
           policyRemote.adminAudit(token, query, cursor, limit),
         skills: (token, scope) => policyRemote.adminSkills(token, scope),

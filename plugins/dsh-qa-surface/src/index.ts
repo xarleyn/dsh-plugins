@@ -1078,10 +1078,19 @@ export class QaSurface extends TypertRemoteService {
     return { tools };
   }
 
-  /** Counters, attention lines and the newest quality signals. */
+  /**
+   * Counters, attention lines and the newest quality signals.
+   *
+   * The Host hands the last parameter its cancellation: this call reads the
+   * newest conversation logs of the deployment, which on a real store is minutes
+   * of work, and a reviewer who leaves the page while it runs must not leave it
+   * running — every other administrative call waits behind it.
+   */
   @Remote("adminOverview")
-  adminOverview(token: string): Promise<QaAdminOverview> {
-    return this.accountRemotes.runAsync(() => this.admin.overview(token));
+  adminOverview(token: string, signal: AbortSignal): Promise<QaAdminOverview> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.overview(token, signal),
+    );
   }
 
   @Remote("adminUsers")
@@ -1139,6 +1148,7 @@ export class QaSurface extends TypertRemoteService {
     query: QaConversationQuery,
     cursor: string | null,
     limit: number | null,
+    signal: AbortSignal,
   ): Promise<QaAdminPage<QaConversationSummary>> {
     return this.accountRemotes.runAsync(() =>
       this.admin.conversations(
@@ -1146,6 +1156,7 @@ export class QaSurface extends TypertRemoteService {
         query,
         cursor ?? undefined,
         limit ?? undefined,
+        signal,
       ),
     );
   }
@@ -1228,9 +1239,15 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     cursor: string | null,
     limit: number | null,
+    signal: AbortSignal,
   ): Promise<QaAdminPage<QaReviewQueueRow>> {
     return this.accountRemotes.runAsync(() =>
-      this.admin.reviewQueue(token, cursor ?? undefined, limit ?? undefined),
+      this.admin.reviewQueue(
+        token,
+        cursor ?? undefined,
+        limit ?? undefined,
+        signal,
+      ),
     );
   }
 
@@ -1259,8 +1276,10 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("adminMetrics")
-  adminMetrics(token: string): Promise<QaQualityMetrics> {
-    return this.accountRemotes.runAsync(() => this.admin.metrics(token));
+  adminMetrics(token: string, signal: AbortSignal): Promise<QaQualityMetrics> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.metrics(token, signal),
+    );
   }
 
   @Remote("adminAudit")

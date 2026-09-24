@@ -134,6 +134,8 @@ export function harness(
     readonly extraSessions?: readonly QaStoredSessionHeader[];
     /** Replaces the whole log reader; the default is the static fixture. */
     readonly sessionLog?: QaSessionLogReader;
+    /** The clock the service measures its caches on. */
+    readonly clock?: { readonly now: () => number };
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-admin-"));
@@ -300,6 +302,7 @@ export function harness(
           },
         }),
     logger,
+    ...(catalog.clock === undefined ? {} : { clock: catalog.clock }),
   });
   accounts.reserveSession(alice.token, "session-alice", {
     subroleId: "analyst",
