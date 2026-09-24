@@ -327,21 +327,21 @@ copy, and it is the contract this implementation is tested against.
 
 ## 5. Verification
 
-- `tests/integration-tokens.test.ts` — minting stores only a digest; a forged,
+- `tests/integration/integration-tokens.test.ts` — minting stores only a digest; a forged,
   unknown, revoked or expired credential is one refusal; a disabled account and
   `revokeTokens` stop it; scopes are granted as requested and no more; one
   account's tokens are unreachable from another's; TTL and label are bounded.
-- `tests/integration-token-remotes.test.ts` — the browser seam: minting is
+- `tests/integration/integration-token-remotes.test.ts` — the browser seam: minting is
   refused with `integration-disabled` while the API is off (while the read path
   keeps answering), a list never carries the secret, an account can only revoke
   its own token, and an absent session is refused as one reason.
-- `tests/qa-integration-tokens.test.tsx` — the page: the secret is shown once
+- `tests/client/settings/qa-integration-tokens.test.tsx` — the page: the secret is shown once
   and dropped when acknowledged, copied on request, a revoke asks twice and
   leaves a record, an expired token offers no revoke, and the off state explains
   itself instead of offering a form.
-- `tests/accounts-controller-actions.test.ts` — the controller binds the account
+- `tests/accounts/accounts-controller-actions.test.ts` — the controller binds the account
   token to the three calls and turns each refusal into the copy a person reads.
-- `tests/integration-http.test.ts` — the JSON and multipart encodings (text
+- `tests/integration/integration-http.test.ts` — the JSON and multipart encodings (text
   fields, the JSON-string `context`, an inline image), the refusals (`400`,
   `413`, `415`), the body ceiling, `405` with `Allow`, the health payload's
   field names, the read route's query handling (an escaped chat id, the default
@@ -349,14 +349,14 @@ copy, and it is the contract this implementation is tested against.
   wire shape and the `404` a foreign chat becomes, an attachment named in the
   RFC 5987 `filename*` form, a part with no header separator refused instead of
   dropped, and disposal of every route.
-- `tests/integration-runner.test.ts` — the Host seam behind the read: the page
+- `tests/integration/integration-runner.test.ts` — the Host seam behind the read: the page
   projected from the durable log, the caller's cursor and window honoured, a
   chat that has written nothing yet read as empty (and its cursor left where
   the caller had it), a log that cannot be read refused instead of answered
   empty, the model catalog flattened to its routable ids, one stored read for a
   caller that pages through a chat, and a turn the session has written but
   storage has not flushed.
-- `tests/integration-transcript-reader.test.ts` — the warm window: one stored
+- `tests/integration/integration-transcript-reader.test.ts` — the warm window: one stored
   read for two pages, a read again once the window ages out, extension from a
   partial in-memory snapshot without touching storage, a cursor below the window
   answered from its tail, agreement with the whole-log projection for every
@@ -365,14 +365,14 @@ copy, and it is the contract this implementation is tested against.
   log cannot be read, a delta larger than a window read from the log, the newest
   page of a 10 000-message chat, and a probe asked from the window's own cursor
   that materializes only what lies above it.
-- `tests/integration-transcript.test.ts` — the window primitive and the
+- `tests/integration/integration-transcript.test.ts` — the window primitive and the
   projection a caller reads: order,
   the log's timestamps as ISO instants (and none invented when the log had
   none), injected context, tool traffic and reasoning left out, the same
   flattening the answer uses, `after` as an exclusive cursor, the newest page
   with `truncated` for what it left below, a cursor preserved when nothing new
   was written, events returned out of order, and the empty chat's shape.
-- `tests/integration-service.test.ts` — credential and scope refusals, the
+- `tests/integration/integration-service.test.ts` — credential and scope refusals, the
   disabled/deployment-off states, the answer shape, citation bounding, the
   publication budget cutting an over-long answer to a readable head, the
   escalation paths (empty, interrupted, timed out — the last one keeping the
@@ -382,7 +382,7 @@ copy, and it is the contract this implementation is tested against.
   and without a model catalog, a dropped connection, and the read path: the
   `sessions:read` scope, an unknown and another account's chat refused as one
   `404`, and an unreadable log reported rather than answered empty.
-- `tests/integration-attachments.test.ts` — the media-type families the parser
+- `tests/integration/integration-attachments.test.ts` — the media-type families the parser
   accepts; a caller's name reduced to a label (traversal, control characters and
   length); a text file decoded; bytes labelled as text refused; a document
   extracted through a fake pipeline that asserts the file exists while it reads
@@ -390,19 +390,19 @@ copy, and it is the contract this implementation is tested against.
   missing pipeline, a failing pipeline and an unwritable staging directory
   refused with the reason in the log; and
   every attachment inside the per-file and total text budgets.
-- `tests/integration-answer.test.ts` — the answer is the last prose of _this_
+- `tests/integration/integration-answer.test.ts` — the answer is the last prose of _this_
   turn: an intermediate tool-only step is skipped, an earlier turn's answer is
   not republished, an injected context message does not become the prompt, and
   malformed events are tolerated. Plus the publication budget: an answer that
   fits is untouched, an over-long one is cut at a paragraph or line boundary
   and marked, a hard cut keeps an unbroken answer inside the budget, and one
   early paragraph break does not shrink a full answer to a line.
-- `tests/integration-config.test.ts` — off by default, base path normalization
+- `tests/integration/integration-config.test.ts` — off by default, base path normalization
   and refusals, the accounts cross-check, and every numeric bound.
-- `tests/cli.test.ts` — `token create|list|revoke`, the secret printed once, a
+- `tests/accounts/cli.test.ts` — `token create|list|revoke`, the secret printed once, a
   second process verifying the token, and the revocation.
-- `tests/accounts-admission.test.ts`, `tests/subagent-ceiling.test.ts`,
-  `tests/user-workspace-admission.test.ts` — the admission gate's new
+- `tests/accounts/accounts-admission.test.ts`, `tests/enforcement/subagent-ceiling.test.ts`,
+  `tests/accounts/user-workspace-admission.test.ts` — the admission gate's new
   `ownerIdOf` seam.
 
 Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (195 files, 1364 tests at

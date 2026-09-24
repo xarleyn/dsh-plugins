@@ -7,7 +7,17 @@ function event(type: string, data: unknown, seq: number) {
   return { type, data, seq, time: seq };
 }
 
-function readEvents(path: string) {
+/**
+ * The events one `read` call leaves in a session journal, shaped the way the
+ * Harness shapes them: the result block is a `tool-result` carrying
+ * `toolCallId`, and the message pairs the same call through `source.callId`.
+ * `legacyPairing` names the pairing `callId` instead — the spelling the
+ * plugin's own fixtures invented and the fallback still answers.
+ */
+function readEvents(path: string, legacyPairing = false) {
+  const pairing = legacyPairing
+    ? { callId: "call-1" }
+    : { toolCallId: "call-1" };
   return [
     event("turn/start", { turn: 1 }, 0),
     event(
@@ -27,10 +37,12 @@ function readEvents(path: string) {
         turn: 1,
         step: 1,
         message: {
+          role: "user",
+          source: { kind: "tool", callId: "call-1" },
           content: [
             {
-              type: "tool_result",
-              callId: "call-1",
+              type: "tool-result",
+              ...pairing,
               isError: false,
               content: [{ type: "text", text: "# Guide" }],
             },

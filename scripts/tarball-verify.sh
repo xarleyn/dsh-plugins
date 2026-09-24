@@ -14,7 +14,9 @@
 #   5. every exported entrypoint (exports / main / types) exists in the tarball
 #   6. no workspace: / catalog: protocol leaks into the packed manifest
 #   7. the tarball installs into a clean npm environment and its entry module
-#      loads under plain Node (smoke test)
+#      loads under plain Node (smoke test). An install that fails the way a
+#      busy or lagging registry fails is retried, so the gate reports the
+#      tarball instead of the moment it was packed in.
 #
 # Usage:
 #   scripts/tarball-verify.sh <package-path> [<package-path> ...]
@@ -29,6 +31,15 @@
 #   TARBALL_VERIFY_KEEP=1               keep temp working dirs for debugging
 #   TARBALL_VERIFY_SKIP_INSTALL=1       skip gate 7 entirely
 #   TARBALL_VERIFY_SKIP_SMOKE_IMPORT=1  skip only the entry-module load check
+#   TARBALL_VERIFY_INSTALL_ATTEMPTS=N   how many times gate 7 runs npm install
+#                                       when it fails transiently (default 3;
+#                                       1 disables the retry)
+#   TARBALL_VERIFY_INSTALL_RETRY_MS=N   the first retry wait, grown by one step
+#                                       per further attempt (default 5000)
+#
+#   Once one package has spent all its attempts on a transient failure, the run
+#   stops retrying: the registry has already answered that it is not answering,
+#   and the packages after it would each pay the same dead wait.
 #
 # Requirements: node, npm, pnpm (pnpm pack performs the workspace:/catalog:
 # replacement required by gate 6), tar. Packages must be built (`pnpm build`)
@@ -63,6 +74,7 @@ fi
 FAILURES=0
 PKG_PASS=0
 PKG_FAIL=0
+RETRIES_ON=1
 
 info() { printf '%s[info]%s %s\n' "$C_CYAN" "$C_RESET" "$*"; }
 ok()   { printf '%s[ ok ]%s %s\n' "$C_GREEN" "$C_RESET" "$*"; }
@@ -109,6 +121,23 @@ for bin in node npm pnpm tar; do
   command -v "$bin" >/dev/null 2>&1 ||
     die "$bin is required (pnpm pack performs the workspace:/catalog: replacement verified by gate 6)"
 done
+
+# require_count <NAME> <value> — a tuning knob has to be a non-negative integer.
+# Called directly rather than from a command substitution, because die has to
+# end the script and not just the subshell it computed the value in.
+require_count() {
+  case "$2" in
+    ''|*[!0-9]*) die "$1 must be a non-negative integer (got '$2')" ;;
+  esac
+}
+
+# Gate 7's retry budget.
+INSTALL_ATTEMPTS="${TARBALL_VERIFY_INSTALL_ATTEMPTS:-3}"
+INSTALL_RETRY_MS="${TARBALL_VERIFY_INSTALL_RETRY_MS:-5000}"
+require_count TARBALL_VERIFY_INSTALL_ATTEMPTS "$INSTALL_ATTEMPTS"
+require_count TARBALL_VERIFY_INSTALL_RETRY_MS "$INSTALL_RETRY_MS"
+[ "$INSTALL_ATTEMPTS" -ge 1 ] ||
+  die "TARBALL_VERIFY_INSTALL_ATTEMPTS must be at least 1 — gate 7 has to try at least once"
 
 # ---------------------------------------------------------------------------
 # JSON helpers (node-backed; empty output = field absent)
@@ -303,6 +332,57 @@ collect_internal_deps() {
 # ---------------------------------------------------------------------------
 # Gate 7 — install the tarball into a clean npm environment
 # ---------------------------------------------------------------------------
+# transient_install_failure <log-file> — did npm lose the install to the
+# environment rather than to the package? A socket that died mid-fetch, a
+# registry that rate-limits or has not replicated a publish yet, and a Windows
+# file lock all answer differently a moment later; a manifest that cannot
+# resolve, a missing file and an entry module that cannot load never do, so
+# retrying those only slows the gate and blurs what it reported.
+transient_install_failure() {
+  grep -Eq \
+    'ECONNRESET|ECONNREFUSED|ECONNABORTED|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|EHOSTUNREACH|ENETUNREACH|EPIPE|EBUSY|ENOTEMPTY|EPERM|socket hang up|network timeout|EINTEGRITY|ERR_(NETWORK|SOCKET|CONNECT|TIMEOUT)|code E4(08|29)|code E5[0-9][0-9]|Too Many Requests|Request Timeout|(Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|No matching version found|notarget|ETARGET|E404|404 Not Found' \
+    "$1"
+}
+
+# npm_install_with_retry <install-dir> <log-file> [spec...] — npm install,
+# retrying only what looks like the registry or the network having a bad moment.
+npm_install_with_retry() {
+  local install_dir="$1" npm_log="$2"
+  shift 2
+  local attempt=1 delay_ms delay_s
+  while :; do
+    # Every attempt starts from a clean tree: a fetch that died halfway leaves a
+    # half-written node_modules behind, and npm can then fail on that wreckage
+    # instead of on the tarball being verified.
+    rm -rf "$install_dir/node_modules" \
+           "$install_dir/package-lock.json" \
+           "$install_dir/npm-shrinkwrap.json"
+    if (cd "$install_dir" &&
+        npm install --no-save --no-audit --no-fund --loglevel=error "$@") \
+        >"$npm_log" 2>&1; then
+      [ "$attempt" -gt 1 ] &&
+        info "gate 7 — npm install recovered on attempt $attempt"
+      return 0
+    fi
+    if [ "$RETRIES_ON" -eq 0 ]; then
+      return 1
+    fi
+    if ! transient_install_failure "$npm_log"; then
+      return 1
+    fi
+    if [ "$attempt" -ge "$INSTALL_ATTEMPTS" ]; then
+      RETRIES_ON=0
+      warn "gate 7 — a transient npm install failure survived $attempt attempt(s); later packages will not spend the same wait"
+      return 1
+    fi
+    delay_ms=$((INSTALL_RETRY_MS * attempt))
+    delay_s="$(printf '%d.%03d' "$((delay_ms / 1000))" "$((delay_ms % 1000))")"
+    warn "gate 7 — npm install failed in a way the registry can outgrow; retrying in ${delay_s}s (attempt $((attempt + 1))/$INSTALL_ATTEMPTS)"
+    sleep "$delay_s"
+    attempt=$((attempt + 1))
+  done
+}
+
 gate_install() {
   # $1 = rel dir, $2 = package name, $3 = target tgz path
   local rel="$1" name="$2" tgz="$3"
@@ -351,7 +431,8 @@ gate_install() {
 EOF
 
   npm_log="$install_dir/npm-install.log"
-  if (cd "$install_dir" && npm install --no-save --no-audit --no-fund --loglevel=error "${dep_install_args[@]}" "./$tgz_base") >"$npm_log" 2>&1; then
+  if npm_install_with_retry "$install_dir" "$npm_log" \
+       ${dep_install_args[@]+"${dep_install_args[@]}"} "./$tgz_base"; then
     ok "gate 7 — npm install from tarball succeeded"
   else
     fail "gate 7 — npm install of the tarball failed:"
@@ -661,7 +742,7 @@ verify_all() {
 }
 
 usage() {
-  sed -n '2,40p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
 }
 
 summary_and_exit() {

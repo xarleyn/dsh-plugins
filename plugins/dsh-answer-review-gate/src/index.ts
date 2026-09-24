@@ -10,8 +10,9 @@
  * are never reviewed: the decision is pure runtime state, never text
  * heuristics.
  *
- * The plugin owns no tools and no client surface: it is a lifecycle
- * requirement, not a prompt suggestion.
+ * The plugin owns no tools or client bundle. Its one user-facing surface is
+ * the explicit `/no-review <request>` host command; the gate never guesses a
+ * waiver from prose.
  */
 
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
@@ -27,6 +28,10 @@ import {
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
 import { DELEGATION_TOOL_NAME } from "./delegation-tracker.js";
 import type { DomainExpertsFace, SubagentsFace } from "./types.js";
+import {
+  registerReviewWaiverCommand,
+  type ReviewWaiverCommandRegistry,
+} from "./waiver.js";
 
 export {
   AnswerReviewGateConfigSchema,
@@ -49,6 +54,12 @@ export {
 } from "./delegation-tracker.js";
 export { ReviewAudit } from "./audit.js";
 export { ReviewerFailure } from "./types.js";
+export {
+  REVIEW_WAIVER_COMMAND,
+  collectReviewWaiver,
+  registerReviewWaiverCommand,
+} from "./waiver.js";
+export type { ReviewWaiverEvidence } from "./waiver.js";
 export type {
   DomainExpertsFace,
   ExpertRunOutcome,
@@ -85,6 +96,13 @@ export interface GateHostContext {
   ): () => void;
   /** Per-call soft service resolution (strict `get`, undefined until ACTIVE). */
   get(service: string): unknown;
+  /** Run registration on the context that owns the optional host service. */
+  inject(
+    services: readonly string[],
+    callback: (context: {
+      readonly commands: ReviewWaiverCommandRegistry;
+    }) => unknown,
+  ): unknown;
 }
 
 /**
@@ -130,6 +148,10 @@ export function apply(
       );
     },
   });
+
+  ctx.inject(["commands"], (commandContext) =>
+    registerReviewWaiverCommand(commandContext.commands, configSource),
+  );
 
   ctx.on(
     "agent/turn-stopping",
@@ -204,5 +226,7 @@ export function apply(
     failMode: config.failMode,
     maxReviewRounds: config.maxReviewRounds,
     trackBackgroundDelegations: config.trackBackgroundDelegations,
+    reviewWaiver: config.waiver.enabled,
+    waiverAllowedInClosedMode: config.waiver.allowedInClosedMode,
   });
 }

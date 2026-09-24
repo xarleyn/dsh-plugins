@@ -33,6 +33,7 @@ await runVerifyPackage({
       "agent/turn-stopping",
       "tools/result",
       "agent/inbox/inserted",
+      "commands",
     ],
   },
   extra: async ({ readFile }) => {
@@ -52,5 +53,10 @@ await runVerifyPackage({
     // Both reviewer backends are documented with their stable identifiers.
     assert.match(readme, /domain-expert/u);
     assert.match(readme, /subagent/u);
+    // A review waiver is explicit, structural and policy-controlled.
+    assert.match(readme, /\/no-review <request>/u);
+    assert.match(readme, /structured command contract/u);
+    assert.match(readme, /allowedInClosedMode/u);
+    assert.match(readme, /recordInput: false/u);
   },
 });

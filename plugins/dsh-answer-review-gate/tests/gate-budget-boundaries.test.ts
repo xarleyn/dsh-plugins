@@ -73,6 +73,7 @@ function config(
     trackBackgroundDelegations: false,
     minCandidateChars: 10,
     excludedAgents: [],
+    waiver: { enabled: true, allowedInClosedMode: false },
     audit: { enabled: false, maxEntries: 100 },
     ...overrides,
   };
@@ -167,6 +168,7 @@ function surfaceOf(...entries: readonly SurfaceEntry[]): GateAgent["session"] {
     header: { origin: "user" },
     surface: { nodes: events.map((_, seq) => seq) },
     eventAt: (seq: number) => events[seq],
+    snapshotEvents: () => events,
   } as unknown as GateAgent["session"];
 }
 
@@ -322,11 +324,13 @@ describe("review budget boundaries", () => {
       header: { origin: "user" },
       surface: { nodes: [] },
       eventAt: () => undefined,
+      snapshotEvents: () => [],
     } as unknown as GateAgent["session"];
     const missingEvent = {
       header: { origin: "user" },
       surface: { nodes: [0] },
       eventAt: () => undefined,
+      snapshotEvents: () => [],
     } as unknown as GateAgent["session"];
 
     expect(await stopAt(gate, empty, 1)).toBeNull();

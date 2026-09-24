@@ -1,3 +1,4 @@
+import path from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { CROSS_DOMAIN_MODES, type CrossDomainMode } from "./types.js";
 
@@ -7,6 +8,9 @@ export const SETTINGS_NAMESPACE = "domain-experts";
 /** Settings namespace keys are restricted to this grammar by DSH. */
 export const DEFAULT_SUBAGENT_PROVIDER = "spawn";
 export const DEFAULT_MEMORY_PROVIDER = "builtin";
+
+/** File the `sqlite` memory provider uses when the deployment names none. */
+export const DEFAULT_MEMORY_DB_FILE = "domain-experts-memory.db";
 
 /**
  * Deployment-level plugin configuration (design §23).
@@ -27,8 +31,17 @@ export interface Config {
   readonly defaultMaxParallel?: number;
   /** Cross-domain mode pre-filled on new domains. */
   readonly defaultCrossDomainMode?: string;
-  /** Memory provider id every expert uses. */
+  /**
+   * Memory provider id every expert uses. Registered when the plugin loads, so
+   * naming a provider the deployment did not start with is a restart.
+   */
   readonly defaultMemoryProvider?: string;
+  /**
+   * Database file for the `sqlite` memory provider. Empty selects
+   * `<DSH_HOME>/domain-experts-memory.db`, or the working directory when the
+   * deployment sets no home.
+   */
+  readonly memoryDbPath?: string;
   /** Memory records recalled into an expert's persona. */
   readonly recallLimit?: number;
   /** Execution audit entries kept in memory and mirrored to the log. */
@@ -42,6 +55,8 @@ export interface ResolvedConfig {
   readonly defaultMaxParallel: number;
   readonly defaultCrossDomainMode: CrossDomainMode;
   readonly defaultMemoryProvider: string;
+  /** Absolute path of the `sqlite` provider's database. */
+  readonly memoryDbPath: string;
   readonly recallLimit: number;
   readonly auditLimit: number;
 }
@@ -76,7 +91,15 @@ export const ConfigSchema: z<Config> = z.object({
   defaultMemoryProvider: z
     .string()
     .default(DEFAULT_MEMORY_PROVIDER)
-    .description("Memory provider id every expert uses."),
+    .description(
+      "Memory provider id every expert uses. Providers are registered when the plugin loads, so naming one the deployment did not start with takes a restart.",
+    ),
+  memoryDbPath: z
+    .string()
+    .default("")
+    .description(
+      `Database file of the sqlite memory provider. Empty selects <DSH_HOME>/${DEFAULT_MEMORY_DB_FILE}.`,
+    ),
   recallLimit: z
     .natural()
     .default(5)
@@ -113,6 +136,9 @@ export function resolveConfig(entry: Config = {}): ResolvedConfig {
   const memoryProvider = (
     entry.defaultMemoryProvider ?? DEFAULT_MEMORY_PROVIDER
   ).trim();
+  const dshHome = process.env.DSH_HOME?.trim();
+  const base =
+    dshHome === undefined || dshHome === "" ? process.cwd() : dshHome;
   return {
     enabled: entry.enabled ?? true,
     subagentProvider: provider === "" ? DEFAULT_SUBAGENT_PROVIDER : provider,
@@ -121,6 +147,8 @@ export function resolveConfig(entry: Config = {}): ResolvedConfig {
     defaultCrossDomainMode: mode as CrossDomainMode,
     defaultMemoryProvider:
       memoryProvider === "" ? DEFAULT_MEMORY_PROVIDER : memoryProvider,
+    memoryDbPath:
+      entry.memoryDbPath?.trim() || path.join(base, DEFAULT_MEMORY_DB_FILE),
     recallLimit,
     auditLimit: Math.max(1, auditLimit),
   };

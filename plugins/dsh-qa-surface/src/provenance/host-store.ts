@@ -62,8 +62,13 @@ interface LineageRecord extends SubagentInfo {
 function eventCallId(event: SessionEvent<"tool/result">): string | undefined {
   const block = event.data.message.content[0] as unknown as {
     readonly callId?: unknown;
+    readonly toolCallId?: unknown;
   };
-  return typeof block.callId === "string" ? block.callId : undefined;
+  // The Harness names the block's pairing field `toolCallId` and its validator
+  // requires it to equal `message.source.callId`; `callId` is read as well so a
+  // journal written while the block carried that name still collects sources.
+  const callId = block.toolCallId ?? block.callId;
+  return typeof callId === "string" ? callId : undefined;
 }
 
 function eventResult(event: SessionEvent<"tool/result">): unknown {

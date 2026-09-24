@@ -92,7 +92,7 @@ export interface PendingDelegation {
 
 /** Outcome of one gate decision at a turn-stopping boundary. */
 export type ReviewAuditOutcome =
-  "pass" | "revise" | "suppressed-pending-work" | "failure";
+  "pass" | "revise" | "waived" | "suppressed-pending-work" | "failure";
 
 /** One audit record (`SPEC.md`, "Audit"). Never carries prompt/response text. */
 export interface ReviewAuditEntry {
@@ -111,6 +111,8 @@ export interface ReviewAuditEntry {
   readonly outcome: ReviewAuditOutcome;
   /** Failure reason when `outcome` is `failure`. */
   readonly failureReason?: string;
+  /** Provenance of an accepted turn-scoped review waiver. */
+  readonly waiverReason?: "user-command";
   /** Issue counts by severity for `pass`/`revise` outcomes. */
   readonly issueCounts?: Readonly<Record<ReviewSeverity, number>>;
 }

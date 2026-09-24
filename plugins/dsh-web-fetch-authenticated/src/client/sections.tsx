@@ -229,6 +229,15 @@ export function StatusSection({
             : String(report.unmatchedPolicy)}
         </Meta>
       </MetaLine>
+      <div className="wfa-note">
+        <b>Available content:</b> <code>web_fetch</code> reads HTML, plain text,
+        JSON, XML and extracts DOCX/ODT text; <code>web_fetch_file</code> stores
+        successful PDF, Office, spreadsheet, presentation, archive, log,
+        HTML/JSON/XML and other binary responses as immutable files;{" "}
+        <code>web_fetch_image</code> returns PNG, JPEG, WebP and GIF as images.
+        Every tool uses the same rule, credential, network, redirect and byte
+        limits.
+      </div>
       {report.configErrors.length > 0 && (
         <div className="wfa-error">
           {report.configErrors.map((error, index) => (

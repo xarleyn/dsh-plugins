@@ -12,6 +12,7 @@ import {
   type ManagedServiceCredentialsInput,
 } from "../src/service-credentials/config.js";
 import { ServiceCredentialRegistry } from "../src/service-credentials/registry.js";
+import { ServiceRateLimiter } from "../src/service-credentials/rate-limit.js";
 import { operationCapabilityServiceState } from "../src/service-credentials/state.js";
 import type {
   OperationSecurityMetadata,
@@ -207,6 +208,8 @@ export function buildHarness(
   options: {
     readonly secret?: string;
     readonly capabilities?: readonly string[];
+    /** Clock of the request ceiling; a suite that counts minutes supplies one. */
+    readonly now?: () => number;
   } = {},
 ): Harness {
   const providers = new IntegrationProviderRegistry();
@@ -224,21 +227,27 @@ export function buildHarness(
   );
   const repository = new IntegrationRepository(filePath);
   repositories.push(repository);
+  const managed = resolveManagedServiceCredentials(input);
   const registry = new ServiceCredentialRegistry(
-    resolveManagedServiceCredentials(input),
+    managed,
     (provider, instance) =>
       provider === "acme" && instance === "acme-app"
         ? "acme.example"
         : undefined,
     { env: { ACME_SERVICE_TOKEN: options.secret ?? "service-token-value" } },
   );
+  const rateLimits = new ServiceRateLimiter(managed.rateLimit, options.now);
   return {
     broker: new IntegrationBroker(
       repository,
       new SecretStore(new MemoryKeyProvider(new Map([[1, HARNESS_KEY]]), 1)),
       providers,
       fakeLogger(),
-      { serviceCredentials: registry, defaultForNewConnections: true },
+      {
+        serviceCredentials: registry,
+        defaultForNewConnections: true,
+        rateLimits,
+      },
     ),
     registry,
     seen,

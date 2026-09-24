@@ -1,3 +1,25 @@
+## 0.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- QA conversations now render Mermaid diagrams with secure source fallback, ([aafad8b](https://github.com/xarleyn/dsh-plugins/commit/aafad8b))
+  documentation search accepts safe grep-style alternatives and canonical paths,
+  and the role-change dialog uses the surface's normal controls.
+
+  Managed integration defaults are provisioned for new users without overriding
+  an explicit disconnect, the structured `/no-review <request>` command bypasses
+  the automatic review gate for exactly one durably linked request, and
+  authenticated fetching can retain arbitrary successful responses as durable
+  file attachments while keeping grants administrator-controlled.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.4.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.3 (2026-09-22)
 
 ### 🩹 Fixes

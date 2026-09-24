@@ -23,6 +23,7 @@ import type { CredentialResolver } from "./credentials/resolver.js";
 import { resolveConfig, ConfigSchema } from "./config.js";
 import { AuthenticatedFetchProvider } from "./provider.js";
 import { createFetchImageTool } from "./tools/fetch-image.js";
+import { createFetchFileTool } from "./tools/fetch-file.js";
 import { diagnose as runDiagnose, testRule as runTest } from "./testing.js";
 import { validateConfig } from "./rule-validation.js";
 import { observedFetchProviderId } from "./dsh-compat/web-status.js";
@@ -38,7 +39,13 @@ import type {
 
 export { AUTHENTICATED_FETCH_PROVIDER_ID } from "./provider.js";
 export { AuthenticatedFetchProvider } from "./provider.js";
-export type { FetchedImage } from "./provider.js";
+export type { FetchedFile, FetchedImage } from "./provider.js";
+export {
+  createFetchFileTool,
+  FETCH_FILE_TOOL_NAME,
+  type FetchFileToolOptions,
+  type FileDownloader,
+} from "./tools/fetch-file.js";
 export {
   createFetchImageTool,
   FETCH_IMAGE_TOOL_NAME,
@@ -49,6 +56,7 @@ export {
   IMAGE_MEDIA_TYPES,
   imageAcceptHeader,
   imageNameFromUrl,
+  fileNameFromUrl,
   sniffImageMediaType,
   type ImageMediaType,
 } from "./images.js";
@@ -149,16 +157,25 @@ export class WebFetchAuthenticated
     // without a durable attachment store has nowhere to keep the image and
     // nothing that could render it back to the model.
     ctx.inject(["tools", "attachments"], (toolCtx) => {
-      const remove = toolCtx.tools.register(
+      const removeImage = toolCtx.tools.register(
         createFetchImageTool({
           ctx,
           downloader: provider,
           attachments: toolCtx.attachments,
         }),
       );
+      const removeFile = toolCtx.tools.register(
+        createFetchFileTool({
+          downloader: provider,
+          attachments: toolCtx.attachments,
+        }),
+      );
       ctx.effect(
-        () => () => remove(),
-        "dsh-web-fetch-authenticated.fetch-image-tool",
+        () => () => {
+          removeFile();
+          removeImage();
+        },
+        "dsh-web-fetch-authenticated.download-tools",
       );
     });
 
