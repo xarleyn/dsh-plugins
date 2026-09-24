@@ -94,9 +94,39 @@ for the domains themselves). Changes apply to subsequent operations.
 | `defaultMaxDepth` | number | `3` | Delegation depth cap pre-filled on new domains. |
 | `defaultMaxParallel` | number | `3` | Parallel experts allowed per calling session when the caller is not itself an expert. |
 | `defaultCrossDomainMode` | string | `expert-only` | Cross-domain mode pre-filled on new domains: `disabled`, `expert-only` or `direct-read`. |
-| `defaultMemoryProvider` | string | `builtin` | Memory provider id every expert uses. |
+| `defaultMemoryProvider` | string | `builtin` | Memory provider id every expert uses. Providers are registered when the plugin loads, so naming one the deployment did not start with takes a restart. |
+| `memoryDbPath` | string | `<DSH_HOME>/domain-experts-memory.db` | Database file the `sqlite` memory provider owns. |
 | `recallLimit` | number | `5` | Memory records recalled into an expert's persona. |
 | `auditLimit` | number | `200` | Execution audit entries kept in memory and mirrored to the log. |
+
+### Where memory lives
+
+Two carriers ship with the plugin, and a deployment selects one:
+
+| `defaultMemoryProvider` | Records live in | Cost of a write |
+| --- | --- | --- |
+| `builtin` | the `memory` table of the plugin's storage unit — the storage backend holds the whole unit in memory and rewrites it on every change | the size of everything stored |
+| `sqlite` | one database file of the plugin's own (`memoryDbPath`), one row per record | one row |
+
+Switching to `sqlite` imports what the unit already holds, once, before the
+plugin serves anything: the copy runs in a single transaction and is checked
+record by record — text, tags, both timestamps — and a record that does not
+survive the copy fails the open loudly (`STORAGE_UNAVAILABLE`, naming what
+disagreed) instead of leaving an expert reading a half-filled database. The unit
+keeps its records afterwards: that copy is how a deployment goes back, and it is
+retired only by the operator, never by the plugin.
+
+Ranking does not move with the carrier. Both providers score a record by how
+many query terms appear in its key, text and tags, order by that score and then
+by the newest update, and break a tie by namespace and key — so an expert that
+recalled three notes before a switch recalls the same three, in the same order.
+`memory-parity.test.ts` holds the two providers to that promise over a fixed
+query set, and it is the check to repeat on a stand before switching it.
+
+For a deployment that manages its own data: the database needs the same treatment
+as the plugin's other SQLite stores — its `-wal` and `-shm` sidecars travel with
+it, and it is copied while the stack is stopped. A domain seed that re-seeds the
+storage unit no longer touches memory held by the `sqlite` provider.
 
 Domain definitions are **not** plugin configuration: they are durable records in
 the plugin's own storage domain, edited in the Domain Experts tab. That keeps an

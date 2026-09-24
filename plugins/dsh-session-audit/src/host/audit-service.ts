@@ -233,18 +233,23 @@ export class AuditService implements SessionAuditProvider {
 
     const errors: AuditError[] = [...parsed.errors];
     const declared = getAuditSessionId(parsed.analysis);
+    const resolution = await this.resolver.resolve(declared, found.name);
+    // The directory is compared against the session the audit is actually bound
+    // to. A producer that dropped the `session-` prefix disagrees with its own
+    // directory only until the resolver puts the prefix back.
+    const bound =
+      resolution.status === "resolved" ? resolution.sessionId : declared;
     if (
-      declared !== null &&
-      !SessionResolver.directoryAgreesWithSession(found.name, declared)
+      bound !== null &&
+      !SessionResolver.directoryAgreesWithSession(found.name, bound)
     ) {
       errors.push({
         code: "SESSION_ID_MISMATCH",
-        message: `directory ${JSON.stringify(found.name)} does not name the session ${JSON.stringify(declared)} recorded in the analysis; the analysis wins`,
+        message: `directory ${JSON.stringify(found.name)} does not name the session ${JSON.stringify(bound)} recorded in the analysis; the analysis wins`,
         severity: "warning",
       });
     }
 
-    const resolution = await this.resolver.resolve(declared, found.name);
     const modifiedAt = new Date(
       Math.max(found.analysis.mtimeMs, found.report.mtimeMs),
     ).toISOString();

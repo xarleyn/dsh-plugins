@@ -158,7 +158,17 @@ export interface QaAccessApi {
  * the page renders.
  */
 export interface QaAdminApi {
-  overview(token: string): Promise<RemoteResult<QaAdminOverview>>;
+  /**
+   * The four aggregate pages (`overview`, `conversations`, `reviewQueue`,
+   * `metrics`) take the caller's cancellation: each of them reads the newest
+   * conversation logs of the deployment, which is minutes of work on a real
+   * store, and a page that has been left must stop waiting for the answer
+   * instead of holding the request — and the deployment's log reader — open.
+   */
+  overview(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<QaAdminOverview>>;
   users(
     token: string,
     query: QaUserQuery,
@@ -192,6 +202,7 @@ export interface QaAdminApi {
     query: QaConversationQuery,
     cursor: string | null,
     limit: number | null,
+    signal?: AbortSignal,
   ): Promise<RemoteResult<QaAdminPage<QaConversationSummary>>>;
   conversation(
     token: string,
@@ -222,6 +233,7 @@ export interface QaAdminApi {
     token: string,
     cursor: string | null,
     limit: number | null,
+    signal?: AbortSignal,
   ): Promise<RemoteResult<QaAdminPage<QaReviewQueueRow>>>;
   queueConversation(
     token: string,
@@ -232,7 +244,10 @@ export interface QaAdminApi {
     token: string,
     input: QaConversationReviewInput,
   ): Promise<RemoteResult<QaConversationReview>>;
-  metrics(token: string): Promise<RemoteResult<QaQualityMetrics>>;
+  metrics(
+    token: string,
+    signal?: AbortSignal,
+  ): Promise<RemoteResult<QaQualityMetrics>>;
   audit(
     token: string,
     query: QaAuditQuery,
