@@ -23,6 +23,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@types/node": "catalog:tooling",
     "eslint": "catalog:tooling",
@@ -33,6 +34,7 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   }
 }
