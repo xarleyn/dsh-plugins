@@ -63,6 +63,45 @@ describe("builtin memory: writes", () => {
   });
 });
 
+describe("builtin memory: correcting a stored record", () => {
+  it("rewrites text and tags in place and keeps the record's age", async () => {
+    const { table, provider } = providerOf();
+    const original = await provider.remember(
+      "domain/payments",
+      "cutoff",
+      "The batch closes at 14:00.",
+      ["batch"],
+    );
+    const corrected = await provider.replace(
+      "domain/payments",
+      "cutoff",
+      "The batch closes at 15:00.",
+      ["batch", "corrected"],
+    );
+    expect(corrected?.key).toBe("cutoff");
+    expect(corrected?.text).toBe("The batch closes at 15:00.");
+    expect(corrected?.tags).toEqual(["batch", "corrected"]);
+    expect(corrected?.createdAt).toBe(original.createdAt);
+    expect(corrected?.updatedAt).toBeGreaterThan(original.updatedAt);
+    expect(table.get(memoryKeyOf("domain/payments", "cutoff"))).toEqual(
+      corrected,
+    );
+  });
+
+  it("refuses to create a record nobody stored", async () => {
+    const { table, provider } = providerOf();
+    const corrected = await provider.replace(
+      "domain/payments",
+      "never-written",
+      "An operator typed over a stale row.",
+    );
+    expect(corrected).toBeUndefined();
+    expect(
+      table.get(memoryKeyOf("domain/payments", "never-written")),
+    ).toBeUndefined();
+  });
+});
+
 describe("builtin memory: namespace isolation", () => {
   it("never returns a record from another namespace", async () => {
     const { provider } = providerOf();
