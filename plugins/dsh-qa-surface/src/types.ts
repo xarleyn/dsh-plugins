@@ -943,6 +943,17 @@ export interface QaSurfaceConfig {
     /** Cookie-less /qa navigations go through the one-time ?token= exchange. */
     readonly cookieBootstrap?: boolean;
   };
+  /** Notices for a turn that ended in one of this browser's own chats. */
+  readonly notifications?: {
+    /** Master switch: with it off no channel raises anything. */
+    readonly enabled?: boolean;
+    /**
+     * Allow the desktop (operating-system) channel on this stand at all.
+     * A reader's own choice only applies while this is on: it is the answer
+     * for a shared laptop, where a personal notice is everybody's notice.
+     */
+    readonly allowOs?: boolean;
+  };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
   readonly notes?: QaNotesConfig;
@@ -1112,6 +1123,11 @@ export interface ResolvedQaSurfaceConfig {
   readonly entry: {
     readonly redirectNonLoopback: boolean;
     readonly cookieBootstrap: boolean;
+  };
+  /** Channels a finished turn of this browser's own chats may use. */
+  readonly notifications: {
+    readonly enabled: boolean;
+    readonly allowOs: boolean;
   };
   readonly tools: {
     readonly dynamicActivation: boolean;

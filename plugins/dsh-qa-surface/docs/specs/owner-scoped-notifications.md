@@ -1,6 +1,7 @@
 # SPEC / PLAN — Owner-scoped turn-completion notifications
 
-**Status:** draft (investigation + design record; no implementation yet).
+**Status:** partly implemented — Phases 1 and 2 shipped, the rest is
+open (§12).
 **Target:** `@yadsh/dsh-qa-surface`.
 **Tracker:** issue #306 «Замена плагина dsh-notification».
 **Primary goal:** let a chat's owner learn that a turn has ended, without the
@@ -527,3 +528,50 @@ three channels, and rolls out in five phases behind a host kill
 switch. The external `dsh-notification` plugin becomes unnecessary
 once Phase 3 ships; this repository never depends on it, so its
 removal is a deployment action, not a code change.
+
+## 12. Implementation status
+
+**Shipped (0.13.0): Phases 1 and 2, plus the desktop channel.** One
+differ over the sidebar's own rows
+(`src/client/notifications/turn-completion-source.ts`) covers both
+scopes §3.1 separated, because `buildChatRows` is already the
+projection §3.2 asks for — `chatIds()` (the account's owned list with
+accounts on, this browser's own index without them) intersected with
+the host list. The bound chat is in it, and no foreign chat ever is;
+the admin's read of other users' chats never widens it, because
+`chatIds()` does not. `notification-dispatcher.ts`
+applies §3.1's channel rules (nothing for the chat on screen while the
+window is active; the desktop only for a page that is hidden or behind
+another window); `QaTurnNotice.tsx` is the in-app line, `use-turn-
+notifications.ts` the wiring. `config.notifications`
+(`enabled`, `allowOs`) is §3.5's host block.
+
+**Where this departs from the design above.**
+
+- §3.5's account-level `QaAccountNotifications` is not there yet, so no
+  `accounts` field, no `accountsUpdateNotifications` remote, no
+  `NotificationSettingsPage`: the reader's own answer lives in
+  `localStorage` (R4 — `starters` has no browser-side precedent either,
+  and a control that needed a signed-in account would leave an
+  anonymous stand with no mute switch at all). Consequence: choices do
+  not follow a user across browsers yet.
+- The permission prompt is raised from a button on the notice itself,
+  once per browser — the "explicit user action" §3.3 asks for, without
+  waiting for the settings page it had imagined.
+- §3.4's reason is always "готово": the host list carries no outcome
+  classification, and inventing "остановлено"/"ошибка" from a phase the
+  browser cannot read would be a guess.
+- No sound, no title badge (Phase 4), no cross-tab election (R9): two
+  tabs of one account can both report the same settled chat.
+- R2 stays unmeasured. The background source reads the same
+  `summary.running` the sidebar's spinner already reads, so it cannot
+  see less than the page shows; whether the host bumps the list in the
+  moment a *non-bound* chat settles is still a live-stand question.
+
+**Left.** Phase 3 (the account block, its remote and migration, the
+settings page, and promoting «Настройки уведомлений» out of
+`GeneralSettingsPage`), Phase 4, the operator toggle for
+`config.notifications`, the "the agent is waiting for your answer"
+signal (§9.2), subagent settlement notices (§9.3), and Phase 6 —
+taking `dsh-notification` off the stand, which is a deployment action
+and not a change in this repository.

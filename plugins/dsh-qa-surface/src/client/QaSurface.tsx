@@ -72,6 +72,8 @@ import { collectChatFiles, countChatAttachments } from "./chat-files.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
+import { QaTurnNotice } from "./components/QaTurnNotice.js";
+import { useQaTurnNotifications } from "./notifications/use-turn-notifications.js";
 import {
   QA_TURN_FOLLOW_PX,
   QaTurnRail,
@@ -860,6 +862,19 @@ export function QaSurface(props: QaSurfaceProps) {
       ),
     [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
   );
+  // A turn that ends in one of this browser's own chats gets a notice: the
+  // sidebar dot going out is otherwise the only sign, and it is easy to miss
+  // from behind another window. These are the sidebar's own rows, so a chat
+  // this page would not list can never raise one.
+  const turnNotices = useQaTurnNotifications({
+    chats: chatRows,
+    notifications: config.notifications,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:notifications`,
+    paused: state.phase === "reconnecting",
+    activeSessionId,
+    onSwitch: handleSwitch,
+  });
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until
@@ -1067,6 +1082,14 @@ export function QaSurface(props: QaSurfaceProps) {
   return (
     <>
       {welcomeNotice}
+      <QaTurnNotice
+        items={turnNotices.items}
+        onOpen={turnNotices.onOpen}
+        onDismiss={turnNotices.onDismiss}
+        {...(turnNotices.onEnableDesktop === undefined
+          ? {}
+          : { onEnableDesktop: turnNotices.onEnableDesktop })}
+      />
       {settingsDialog === undefined ? null : (
         <QaUserSettingsDialog
           open={settingsOpen}

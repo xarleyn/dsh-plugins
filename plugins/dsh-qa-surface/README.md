@@ -218,6 +218,13 @@ config:
     # Let the /qa route run the one-time ?token= host-cookie exchange itself,
     # so transparent entry works without the deploy proxy.
     cookieBootstrap: true
+  # Turn-completion notices for the chats of this browser's own history.
+  notifications:
+    # Off: a finished turn stays silent on both channels.
+    enabled: true
+    # Off: the page never hands a finished turn to the operating system,
+    # whatever a reader chose there.
+    allowOs: true
   lockdown:
     enabled: true
     enforceFixedAgentPreset: true
