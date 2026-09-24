@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   readBoundedJson,
   readBoundedText,
-} from "../src/providers/shared/http.js";
+} from "../src/providers/kernel/read-policy.js";
 
 const JSON_HEADERS = { "content-type": "application/json" };
 

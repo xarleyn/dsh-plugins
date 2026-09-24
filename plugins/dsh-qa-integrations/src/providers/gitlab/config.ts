@@ -1,5 +1,6 @@
 import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../../errors.js";
+import { findEndpoint, resolveEndpointList } from "../kernel/address.js";
 
 /**
  * One GitLab deployment the operator allows. A user never types a host: the
@@ -71,81 +72,22 @@ export type GitlabConfigInput = Partial<GitlabFlags> & {
   readonly ciRead?: boolean;
 };
 
-const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
-const MAX_INSTANCES = 16;
-
 const configError = scopedConfigError("gitlab integration config");
 
 /**
- * Canonicalize one configured instance. Everything here is operator input, so a
- * typo must fail loudly at load: a silently dropped instance would leave users
- * with a provider they cannot connect to and no explanation.
+ * The instance list as the operator writes it, validated and canonicalized by
+ * the shared address policy: id grammar, HTTPS rule, credential-free absolute
+ * URL, trailing-slash folding.
  */
-function normalizeInstance(
-  input: unknown,
-  index: number,
-  allowInsecureHttp: boolean,
-  seen: Set<string>,
-): GitlabInstance {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw configError(`instances[${index}] must be a mapping`);
-  }
-  const record = input as Record<string, unknown>;
-  const id = typeof record["id"] === "string" ? record["id"].trim() : "";
-  if (!INSTANCE_ID.test(id)) {
-    throw configError(
-      `instances[${index}].id must be lowercase latin, digits or dashes`,
-    );
-  }
-  if (seen.has(id)) throw configError(`instances[${index}].id is a duplicate`);
-  seen.add(id);
-  const raw = typeof record["baseUrl"] === "string" ? record["baseUrl"] : "";
-  let url: URL;
-  try {
-    url = new URL(raw.trim());
-  } catch {
-    throw configError(`instances[${index}].baseUrl must be an absolute URL`);
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw configError(`instances[${index}].baseUrl must use HTTP or HTTPS`);
-  }
-  if (url.protocol === "http:" && !allowInsecureHttp) {
-    throw configError(
-      `instances[${index}].baseUrl needs HTTPS; set allowInsecureHttp for a development instance`,
-    );
-  }
-  if (url.username !== "" || url.password !== "" || url.search !== "") {
-    throw configError(
-      `instances[${index}].baseUrl must carry no credentials or query`,
-    );
-  }
-  // A trailing slash would double up when the API root is appended; the WHATWG
-  // URL parser has already folded away any `..` segments.
-  const path = url.pathname.replace(/\/+$/u, "");
-  const label =
-    typeof record["label"] === "string" ? record["label"].trim() : "";
-  return Object.freeze({
-    id,
-    label: label === "" ? url.host : label,
-    baseUrl: `${url.origin}${path}`,
-  });
-}
-
 function normalizeInstances(
   input: unknown,
   allowInsecureHttp: boolean,
 ): readonly GitlabInstance[] {
-  if (input === undefined || input === null) return GITLAB_DEFAULTS.instances;
-  if (!Array.isArray(input)) throw configError("instances must be a list");
-  if (input.length > MAX_INSTANCES) {
-    throw configError(`instances accepts at most ${MAX_INSTANCES} entries`);
-  }
-  const seen = new Set<string>();
-  return Object.freeze(
-    input.map((entry, index) =>
-      normalizeInstance(entry, index, allowInsecureHttp, seen),
-    ),
-  );
+  return resolveEndpointList(input, allowInsecureHttp, {
+    error: configError,
+    field: "instances",
+    noun: "instance",
+  });
 }
 
 /**
@@ -225,10 +167,10 @@ export function resolveGitlabConfig(
   });
 }
 
-/** The configured instance a stored credential names, or a fail-closed error. */
+/** The configured instance a stored credential names, or undefined. */
 export function gitlabInstance(
   flags: GitlabFlags,
   instanceId: string,
 ): GitlabInstance | undefined {
-  return flags.instances.find((item) => item.id === instanceId);
+  return findEndpoint(flags.instances, instanceId);
 }

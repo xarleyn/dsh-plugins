@@ -37,6 +37,10 @@ const DIALECT_SOURCE = readFileSync(
   new URL("../src/providers/jira/dialect.ts", import.meta.url),
   "utf8",
 );
+const READ_POLICY_SOURCE = readFileSync(
+  new URL("../src/providers/kernel/read-policy.ts", import.meta.url),
+  "utf8",
+);
 
 /** Endpoints that must never appear: writes, JQL execution, raw passthrough. */
 const FORBIDDEN_PATH =
@@ -235,8 +239,14 @@ describe("Jira capability catalog", () => {
   });
 
   it("sends the token in the Authorization header of a GET and nowhere else", () => {
-    expect(TRANSPORT_SOURCE).toMatch(/method: "GET"/u);
-    expect(TRANSPORT_SOURCE).toMatch(/redirect: "error"/u);
+    // The bounded GET and the refusal to follow a redirect are the kernel's
+    // policy, so they are asserted on the one implementation they live in;
+    // what belongs to Jira is that its secret travels through that loop and
+    // that the provider opens no second socket of its own.
+    expect(READ_POLICY_SOURCE).toMatch(/method: "GET"/u);
+    expect(READ_POLICY_SOURCE).toMatch(/redirect: "error"/u);
+    expect(TRANSPORT_SOURCE).toMatch(/fetchWithRetries\(this\.fetcher/u);
+    expect(TRANSPORT_SOURCE).not.toMatch(/\bfetch\(/u);
     expect(TRANSPORT_SOURCE).toMatch(
       /authorizationFor\(dialect, credential\)/u,
     );
