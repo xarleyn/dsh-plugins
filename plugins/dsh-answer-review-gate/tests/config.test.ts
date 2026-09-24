@@ -95,9 +95,14 @@ describe("resolveAnswerReviewGateConfig", () => {
       enabled: false,
       trackBackgroundDelegations: false,
       excludedAgents: ["  reviewer-agent  ", "", "keep-me"],
+      waiver: { enabled: false, allowedInClosedMode: true },
     });
     expect(resolved.enabled).toBe(false);
     expect(resolved.trackBackgroundDelegations).toBe(false);
     expect(resolved.excludedAgents).toEqual(["reviewer-agent", "keep-me"]);
+    expect(resolved.waiver).toEqual({
+      enabled: false,
+      allowedInClosedMode: true,
+    });
   });
 });

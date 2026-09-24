@@ -35,6 +35,28 @@ User → primary agent → research / tools / background subagents
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
+## Explicit one-request waiver
+
+When deployment policy permits it, a user can send one request without the
+automatic reviewer:
+
+```text
+/no-review <request>
+```
+
+The command may carry the same image or file attachments as an ordinary
+request. It immediately shows a notice that the answer will not be
+independently verified, then submits `<request>` as the real user message.
+The waiver applies to that request only.
+
+This is a structured command contract, not natural-language detection. The
+successful `command/done.sourceEventSeq` must point to the durable
+`agent/inbox/spliced` event that admitted the exact user-message id, and the
+same lifecycle must start with a human-issued `command/run` for `no-review`.
+Phrases such as “review is not needed”, including quoted or negated mentions,
+never bypass the gate. A failed command, unrelated message, or old command
+lifecycle does not bypass it either.
+
 ## Reviewer backends
 
 ### `reviewer.backend: domain-expert` (default)
@@ -94,6 +116,9 @@ failMode: warn
 trackBackgroundDelegations: true
 minCandidateChars: 80
 excludedAgents: []
+waiver:
+  enabled: true
+  allowedInClosedMode: false
 audit:
   enabled: true
   maxEntries: 500
@@ -113,6 +138,8 @@ audit:
 | `trackBackgroundDelegations` | Suppress review while the session's background work is pending. |
 | `minCandidateChars` | Candidates shorter than this skip review. |
 | `excludedAgents` | Session-id substrings that are never reviewed (reviewer children are exempt structurally). |
+| `waiver.enabled` | Register and honor `/no-review <request>` for exactly one request. |
+| `waiver.allowedInClosedMode` | Permit the command while `failMode: closed`; default `false`. |
 | `audit.enabled` / `audit.maxEntries` | In-memory audit ring of decisions (metadata only — never prompt or response text). |
 
 ## Requirements
@@ -131,8 +158,9 @@ The `--profile` flag is required.
 ## Compatibility
 
 - DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see `compatibility.json`).
-- Uses the `agent/turn-stopping`, `tools/result` and `agent/inbox/inserted`
-  lifecycle seams only — no DSH core changes.
+- Uses the `commands` host service plus the `agent/turn-stopping`,
+  `tools/result` and `agent/inbox/inserted` lifecycle seams — no DSH core
+  changes.
 
 ## Security model
 
@@ -147,13 +175,16 @@ The `--profile` flag is required.
   the primary remains responsible for checking reviewer evidence rather than
   blindly obeying it.
 - Audit records contain decision metadata only (session, turn, candidate
-  hash, rounds, durations, verdict) — no prompt or response text.
+  hash, rounds, durations, verdict or structured waiver reason) — no prompt or
+  response text. `/no-review` also sets `recordInput: false`, so its lifecycle
+  record does not duplicate the request text; the normal user message remains
+  the sole authoritative copy.
 
 ## Scope of Phase 1
 
 Shipped: turn-stopping gate, both reviewer backends, candidate hashing,
 REVISE-via-steer, round limit, recursion protection, background-delegation
-suppression, in-memory audit, tests. Deferred to later phases: durable
+suppression, structured one-request waiver, in-memory audit, tests. Deferred to later phases: durable
 /replayable review state, evidence bundle, full metrics export, and a UI badge.
 
 See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-answer-review-gate/SPEC.md)

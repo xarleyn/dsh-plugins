@@ -8,6 +8,7 @@ import {
 import type { ReviewAudit } from "../src/audit.js";
 import type { ResolvedAnswerReviewGateConfig } from "../src/config.js";
 import type {
+  ReviewAuditEntry,
   ReviewVerdict,
   SubagentRunHandle,
   SubagentRunResult,
@@ -57,6 +58,7 @@ function config(
     trackBackgroundDelegations: true,
     minCandidateChars: 10,
     excludedAgents: [],
+    waiver: { enabled: true, allowedInClosedMode: false },
     audit: { enabled: true, maxEntries: 100 },
     ...overrides,
   };
@@ -67,27 +69,28 @@ function sessionOf(
   request = "the question",
   origin = "user",
 ) {
+  const events = [
+    {
+      type: "user/message",
+      data: {
+        id: "request-default",
+        source: { kind: "user" },
+        content: [{ type: "text", text: request }],
+      },
+    },
+    {
+      type: "assistant/message",
+      data: {
+        message: { content: [{ type: "text", text: candidate }] },
+        stream: [],
+      },
+    },
+  ];
   return {
     header: { origin },
-    surface: {
-      nodes: [0, 1],
-    },
-    eventAt: (seq: number) =>
-      seq === 0
-        ? {
-            type: "user/message",
-            data: {
-              source: { kind: "user" },
-              content: [{ type: "text", text: request }],
-            },
-          }
-        : {
-            type: "assistant/message",
-            data: {
-              message: { content: [{ type: "text", text: candidate }] },
-              stream: [],
-            },
-          },
+    surface: { nodes: [0, 1] },
+    eventAt: (seq: number) => events[seq],
+    snapshotEvents: () => events,
   } as unknown as GateAgent["session"];
 }
 
@@ -143,11 +146,12 @@ function makeGate(
   face: ScriptedFace,
   overrides: Partial<ResolvedAnswerReviewGateConfig> = {},
   steers: SteerRecord[] = [],
+  auditEntries: ReviewAuditEntry[] = [],
 ) {
   const audit: ReviewAudit = {
     resize: () => {},
-    record: () => {},
-    list: () => [],
+    record: (entry: ReviewAuditEntry) => auditEntries.push(entry),
+    list: () => auditEntries,
   } as unknown as ReviewAudit;
   const gate = new AnswerReviewGate({
     config: () => config(overrides),
@@ -200,11 +204,12 @@ function assistantLine(text: string): SurfaceEntry {
  * revision — of the request that precedes it.
  */
 function surfaceOf(...entries: readonly SurfaceEntry[]): GateAgent["session"] {
-  const events = entries.map((entry) =>
+  const events = entries.map((entry, seq) =>
     entry.kind === "user"
       ? {
           type: "user/message",
           data: {
+            id: `request-${String(seq)}`,
             source: { kind: "user" },
             content: [{ type: "text", text: entry.text }],
           },
@@ -218,6 +223,62 @@ function surfaceOf(...entries: readonly SurfaceEntry[]): GateAgent["session"] {
     header: { origin: "user" },
     surface: { nodes: events.map((_, seq) => seq) },
     eventAt: (seq: number) => events[seq],
+    snapshotEvents: () => events,
+  } as unknown as GateAgent["session"];
+}
+
+function waivedSurface(
+  request: string,
+  candidate: string,
+  commandId = "cmd-waiver-1",
+): GateAgent["session"] {
+  const events = [
+    {
+      type: "command/run",
+      data: {
+        commandId,
+        name: "no-review",
+        source: { kind: "user" },
+      },
+    },
+    {
+      type: "agent/inbox/spliced",
+      data: {
+        target: "next-turn",
+        start: 0,
+        inserted: [
+          {
+            id: "request-waived",
+            role: "user",
+            source: { kind: "user" },
+            content: [{ type: "text", text: request }],
+          },
+        ],
+      },
+    },
+    {
+      type: "command/done",
+      data: { commandId, kind: "success", sourceEventSeq: 1 },
+    },
+    {
+      type: "user/message",
+      data: {
+        id: "request-waived",
+        role: "user",
+        source: { kind: "user" },
+        content: [{ type: "text", text: request }],
+      },
+    },
+    {
+      type: "assistant/message",
+      data: { message: { content: [{ type: "text", text: candidate }] } },
+    },
+  ];
+  return {
+    header: { origin: "user" },
+    surface: { nodes: [3, 4] },
+    eventAt: (seq: number) => events[seq],
+    snapshotEvents: () => events,
   } as unknown as GateAgent["session"];
 }
 
@@ -327,16 +388,77 @@ describe("AnswerReviewGate lifecycle", () => {
     expect(face.started).toHaveLength(0);
   });
 
-  it("does not start the automatic reviewer when the user explicitly opts out", async () => {
+  it("waives review only for a structurally verified command request", async () => {
+    const face = new ScriptedFace();
+    const auditEntries: ReviewAuditEntry[] = [];
+    const gate = makeGate(face, {}, [], auditEntries);
+
+    expect(
+      await stopAt(
+        gate,
+        waivedSurface("Fix the bug without review.", TEXT_A),
+        1,
+      ),
+    ).toBe("waived");
+    expect(face.started).toHaveLength(0);
+    expect(auditEntries).toMatchObject([
+      {
+        outcome: "waived",
+        backend: "waiver",
+        reviewer: "none",
+        waiverReason: "user-command",
+      },
+    ]);
+    expect(JSON.stringify(auditEntries)).not.toContain("Fix the bug");
+  });
+
+  it("does not infer a waiver from quoted or negated prose", async () => {
     const face = new ScriptedFace();
     const gate = makeGate(face);
-    const session = surfaceOf(
-      userLine("Исправь ошибку, ревью не нужно"),
-      assistantLine(TEXT_A),
+    const pending = stopAt(
+      gate,
+      surfaceOf(
+        userLine(
+          'Explain why "review is not needed" must not disable the gate.',
+        ),
+        assistantLine(TEXT_A),
+      ),
+      1,
     );
+    expect(face.started).toHaveLength(1);
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+  });
 
-    expect(await stopAt(gate, session, 1)).toBeNull();
-    expect(face.started).toHaveLength(0);
+  it("ignores a valid waiver when deployment policy disables it", async () => {
+    for (const overrides of [
+      { waiver: { enabled: false, allowedInClosedMode: false } },
+      {
+        failMode: "closed" as const,
+        waiver: { enabled: true, allowedInClosedMode: false },
+      },
+    ]) {
+      const face = new ScriptedFace();
+      const gate = makeGate(face, overrides);
+      const pending = stopAt(
+        gate,
+        waivedSurface("Still require review.", TEXT_A),
+        1,
+      );
+      expect(face.started).toHaveLength(1);
+      await face.settle(face.resultOf(PASS));
+      expect(await pending).toBe("pass");
+    }
+  });
+
+  it("reconstructs the waiver from the durable log after a gate restart", async () => {
+    const session = waivedSurface("Skip review after restart.", TEXT_A);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const face = new ScriptedFace();
+      const gate = makeGate(face);
+      expect(await stopAt(gate, session, 1)).toBe("waived");
+      expect(face.started).toHaveLength(0);
+    }
   });
 
   it("enforces the round limit and never reviews two candidates at once", async () => {
