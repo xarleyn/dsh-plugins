@@ -1,9 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
+import type { MemoryTable } from "../src/host/memory/shared.js";
 import type { DomainExpertsStorage } from "../src/host/storage.js";
 import { DomainExpertsService } from "../src/index.js";
-import { emptyDomainDraft, type DomainDefinition } from "../src/types.js";
-import { domainTableOf, memoryRecordTableOf } from "./helpers/fakes.js";
+import {
+  emptyDomainDraft,
+  type DomainDefinition,
+  type MemoryRecord,
+} from "../src/types.js";
+import {
+  domainTableOf,
+  memoryRecordTableOf,
+  memoryTable,
+} from "./helpers/fakes.js";
+import { productionShapedRecords } from "./helpers/memory-fixture.js";
 
 /**
  * Wiring under a real Cordis context.
@@ -339,5 +352,152 @@ describe("wiring: degraded storage", () => {
 
     release();
     await expect(pending).resolves.toMatchObject({ id: "payments" });
+  });
+});
+
+describe("wiring: sqlite memory", () => {
+  const files: string[] = [];
+  const services: DomainExpertsService[] = [];
+
+  function dbPath(): string {
+    const dir = mkdtempSync(path.join(tmpdir(), "dsh-memory-wiring-"));
+    files.push(dir);
+    return path.join(dir, "domain-experts-memory.db");
+  }
+
+  /** A service wired to a unit holding these records, on its own database. */
+  function harnessHolding(
+    records: readonly MemoryRecord[],
+    config: Record<string, unknown>,
+  ): {
+    readonly harness: Harness;
+    readonly table: MemoryTable;
+  } {
+    const table = memoryTable<MemoryRecord>(
+      records.map((record) => [`${record.namespace}::${record.key}`, record]),
+    );
+    const tables: Record<string, unknown> = {
+      domains: domainTableOf([["payments", DEFINITION]]),
+      memory: table,
+    };
+    const storage = {
+      name: "domain_experts",
+      table: (name: string) => tables[name],
+      close: () => Promise.resolve(),
+    } as unknown as DomainExpertsStorage;
+    const harness = harnessOf({
+      storage: () => Promise.resolve(storage),
+      config,
+    });
+    services.push(harness.service);
+    return { harness, table: table as unknown as MemoryTable };
+  }
+
+  afterEach(() => {
+    // A provider holds its file open, and a test that failed mid-way never
+    // reached the cleanup at its own end.
+    for (const service of services.splice(0)) service["sqliteMemory"]?.close();
+    for (const dir of files.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves a domain's memory from the database the unit was imported into", async () => {
+    const { harness, table } = harnessHolding(productionShapedRecords(), {
+      defaultMemoryProvider: "sqlite",
+      memoryDbPath: dbPath(),
+    });
+
+    // Any Remote method opens the storage, and the one-time import rides with it.
+    await harness.service.listDomains();
+    expect(
+      harness.service.catalog().memoryProviders.map((provider) => provider.id),
+    ).toEqual(["builtin", "sqlite"]);
+
+    const before = await harness.service.inspectMemory("payments", "", 50);
+    expect(before.ok).toBe(true);
+    expect(before.namespaces).toEqual([
+      { namespace: "domain/payments", access: "read-write", records: 2 },
+    ]);
+    expect(before.records.map((record) => record.key)).toEqual([
+      "settlement-window-v2",
+      "settlement-window",
+    ]);
+
+    const written = await harness.service["memoryProviders"]
+      .require("sqlite")
+      .remember(
+        "domain/payments",
+        "cutoff",
+        "Кutoff переехал вместе с памятью.",
+        ["review"],
+      );
+    const after = await harness.service.inspectMemory("payments", "", 50);
+    expect(after.records.map((record) => record.key)).toEqual([
+      "cutoff",
+      "settlement-window-v2",
+      "settlement-window",
+    ]);
+    expect(after.records[0]?.text).toBe(written.text);
+
+    // The unit still holds its copy — that is the rollback path, not litter —
+    // and the new write did not go back into it.
+    expect([...table.entries()]).toHaveLength(30);
+    expect([...table.entries()].some(([key]) => key.endsWith("::cutoff"))).toBe(
+      false,
+    );
+  });
+
+  it("creates no database for a deployment that keeps memory in the unit", async () => {
+    const filePath = dbPath();
+    const { harness } = harnessHolding(productionShapedRecords(), {});
+
+    await harness.service.listDomains();
+    await harness.service.inspectMemory("payments", "", 10);
+
+    expect(existsSync(filePath)).toBe(false);
+    expect(
+      harness.service.catalog().memoryProviders.map((provider) => provider.id),
+    ).toEqual(["builtin"]);
+  });
+
+  it("refuses the deployment rather than serving from a half-copied database", async () => {
+    // A unit a person edited by hand: a timestamp where the copy stores an
+    // integer. The import's own verification fails, and the plugin reports
+    // storage unavailable instead of answering from a partial database.
+    const broken: MemoryRecord = {
+      namespace: "domain/payments",
+      key: "cutoff",
+      text: "note",
+      tags: [],
+      createdAt: "1758000000000" as unknown as number,
+      updatedAt: 2,
+    };
+    const table = memoryTable<MemoryRecord>([
+      ["domain/payments::cutoff", broken],
+    ]);
+    const tables: Record<string, unknown> = {
+      domains: domainTableOf([["payments", DEFINITION]]),
+      memory: table,
+    };
+    const harness = harnessOf({
+      storage: () =>
+        Promise.resolve({
+          name: "domain_experts",
+          table: (name: string) => tables[name],
+          close: () => Promise.resolve(),
+        } as unknown as DomainExpertsStorage),
+      config: {
+        defaultMemoryProvider: "sqlite",
+        memoryDbPath: dbPath(),
+      },
+    });
+    services.push(harness.service);
+
+    const listed = await harness.service.listDomains();
+    expect(listed.ok).toBe(false);
+    expect(listed.code).toBe("STORAGE_UNAVAILABLE");
+    expect(listed.message).toMatch(/failed verification/u);
+    expect([...table.entries()]).toHaveLength(1);
   });
 });

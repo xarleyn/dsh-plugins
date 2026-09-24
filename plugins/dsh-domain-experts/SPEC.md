@@ -98,6 +98,15 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
     `settings.plugins.tab`, so the bundle carries no card shell.
 28. Every agent-visible tool declares `output { schema, render }`, and a refusal
     carries its stable error code in the message the model receives.
+29. Changing the carrier of memory changes what it costs, not what it answers.
+    Both providers score by the number of query terms present in a record's key,
+    text and tags, order by score and then by the newest update, and break a tie
+    by namespace and key; the same fixed queries return the same records in the
+    same order on either carrier.
+30. An import into another carrier verifies or refuses. Records are copied in one
+    transaction and compared field by field inside it; a mismatch rolls the copy
+    back, leaves the source holding everything, and fails the open loudly rather
+    than serving an expert from a partial store.
 
 ## 2. Data model
 
@@ -108,6 +117,14 @@ One storage unit, `domain_experts` (the unit-name grammar is
 | --- | --- | --- |
 | `domains` | domain id | `DomainDefinition` |
 | `memory` | `<namespace>::<key>` | `MemoryRecord` |
+
+That is the built-in carrier. A deployment may point memory at the `sqlite`
+provider instead, which keeps the same `MemoryRecord` shape — so the unit stays
+at version `1` — in a file of its own: table `domain_memory`, primary key
+`(namespace, key)`, an index on `(namespace, updated_at)`, tags as JSON and a
+stored search text the scorer defines. The unit's `memory` table remains the
+source the import reads and the copy a rollback returns to; the plugin never
+deletes it. See `README.md`, "Where memory lives".
 
 - **Unit version** is `1` and moves together with `DOMAIN_RECORD_VERSION`.
   A breaking record change bumps both and lists the previous version in
@@ -246,6 +263,7 @@ audit ring mirrored to the plugin log.
 | Scope-provider registry | Implemented | Built-in `filesystem`; extension API on the service |
 | Filesystem scope metadata + path containment | Implemented | `path-guard.ts`, `resolveWithinRoot` |
 | Memory provider registry + built-in backend | Implemented | Namespace-partitioned records |
+| Memory on a SQLite carrier | Implemented | `src/host/memory/sqlite.ts`; one-time verified import from the unit; shared scorer keeps ranking identical |
 | Worker registry | Implemented | MVP workers are generic tool references |
 | `domain_expert` on the native subagent runtime | Implemented | Persona, tool mask, depth cap, model options |
 | Cross-domain delegation | Implemented | Same tool, policy-enforced; `domain_delegate` alias |
