@@ -45,14 +45,42 @@ export interface TempRepo {
   dispose(): Promise<void>;
 }
 
+/**
+ * Ambient git identity keys, removed from every fixture `git` process.
+ *
+ * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` outrank both the repository `user.name`
+ * config set below and the per-commit `-c user.name=` override, so a caller
+ * that exports a bot identity (CI bots, agent harnesses) would silently become
+ * the author of every fixture commit and break the assertions on it. The
+ * fixture pins identity in the repository config, so it must own it.
+ */
+const IDENTITY_ENV_KEYS: readonly string[] = [
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_AUTHOR_DATE",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "GIT_COMMITTER_DATE",
+];
+
+function fixtureGitEnv(base: NodeJS.ProcessEnv = process.env) {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value === undefined || IDENTITY_ENV_KEYS.includes(key)) continue;
+    env[key] = value;
+  }
+  return env;
+}
+
 export async function createTempRepo(): Promise<TempRepo> {
   const dir = await mkdtemp(join(tmpdir(), "dsh-git-readonly-"));
+  const env = fixtureGitEnv();
   const runGit = (args: readonly string[], cwd: string) =>
     new Promise<string>((resolve, reject) => {
       execFile(
         "git",
         [...args],
-        { cwd, windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+        { cwd, env, windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
         (error, stdout, stderr) => {
           if (error !== null) {
             reject(
