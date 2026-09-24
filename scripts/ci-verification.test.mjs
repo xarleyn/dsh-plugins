@@ -36,6 +36,11 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
     workflow,
     /concurrency:\s+group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\s+cancel-in-progress: true/u,
   );
+  assert.match(
+    workflow,
+    /- name: Set affected SHAs\s+uses: nrwl\/nx-set-shas@v4\s+with:\s+workflow-id: ci\.yml/u,
+    "push events on Gitea must not rely on an unavailable github.workflow value",
+  );
   assert.match(workflow, /max-parallel: 20/u);
   assert.match(
     workflow,
