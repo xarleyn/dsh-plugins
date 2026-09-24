@@ -25,6 +25,7 @@ export type QaAdminRoute =
   | { readonly page: "review" }
   | { readonly page: "feedback" }
   | { readonly page: "quality" }
+  | { readonly page: "memory" }
   | { readonly page: "audit" };
 
 /** The console's own base path under the surface route. */
@@ -109,6 +110,8 @@ export function parseAdminRoute(
       return { page: "feedback" };
     case "analytics":
       return { page: "quality" };
+    case "memory":
+      return { page: "memory" };
     case "audit":
       return { page: "audit" };
     default:
@@ -153,6 +156,8 @@ export function adminPath(
         return "/quality/feedback";
       case "quality":
         return "/quality/analytics";
+      case "memory":
+        return "/memory";
       case "audit":
         return "/audit";
     }
@@ -171,6 +176,7 @@ export function adminSectionOf(
   | "review"
   | "feedback"
   | "quality"
+  | "memory"
   | "audit" {
   switch (route.page) {
     case "user":

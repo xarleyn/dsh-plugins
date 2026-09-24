@@ -84,6 +84,10 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaFeedbackHarvestEntry,
   QaFeedbackHarvestResult,
   QaFeedbackQuery,
@@ -238,6 +242,32 @@ interface QaAdminRemote {
   ): Promise<
     RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
   >;
+  adminMemoryScopes(
+    token: string,
+  ): Promise<RemoteResult<readonly QaExpertMemoryScope[]>>;
+  adminMemoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<RemoteResult<QaExpertMemoryPage>>;
+  adminMemoryCorrect(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<RemoteResult<QaExpertMemoryRecord>>;
+  adminMemoryForget(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<RemoteResult<number>>;
+  adminMemoryWipe(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<RemoteResult<number>>;
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
@@ -643,6 +673,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             ? { ok: true, value: result.value.tools }
             : { ok: false, error: result.error };
         },
+        memoryScopes: (token) => policyRemote.adminMemoryScopes(token),
+        memoryRecords: (token, namespace, query, limit, offset) =>
+          policyRemote.adminMemoryRecords(
+            token,
+            namespace,
+            query,
+            limit,
+            offset,
+          ),
+        correctMemory: (token, namespace, key, draft) =>
+          policyRemote.adminMemoryCorrect(token, namespace, key, draft),
+        forgetMemory: (token, namespace, keys) =>
+          policyRemote.adminMemoryForget(token, namespace, keys),
+        wipeMemory: (token, namespace, expectedRecords) =>
+          policyRemote.adminMemoryWipe(token, namespace, expectedRecords),
       };
       const sourceApi: QaSourceApi = {
         sources: (token, sessionId) =>

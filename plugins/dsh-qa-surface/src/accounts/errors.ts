@@ -32,7 +32,13 @@ export type QaAccountsErrorReason =
   /** The Harness still holds the conversation open, so its log would come back. */
   | "conversation-live"
   /** This deployment cannot remove stored conversations at all. */
-  | "conversation-not-removable";
+  | "conversation-not-removable"
+  /** The record an operator edited is no longer the one stored. */
+  | "memory-record-unknown"
+  /** Expert memory is not reachable: no plugin composed it, or its store is down. */
+  | "memory-unavailable"
+  /** The Host refused the memory edit itself, not who asked for it. */
+  | "invalid-memory";
 
 export class QaAccountsError extends Error {
   constructor(
