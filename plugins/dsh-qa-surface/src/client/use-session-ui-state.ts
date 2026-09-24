@@ -49,11 +49,13 @@ export interface QaSessionUiState {
 
 /**
  * Per-chat UI state: composer attachments, variant offsets, the rail mark and
- * the drawers. Everything here describes the chat it was made in, so a
- * session change clears it instead of leaking a draft, an attachment or a
- * drawer from one conversation into the next.
+ * the drawers. Everything here describes the chat it was made in, so a chat
+ * change clears it instead of leaking a draft, an attachment or a drawer from
+ * one conversation into the next. The key is the surface's chat identity, not
+ * the session id: a new chat only creates its session on the first prompt, and
+ * the attachments of that prompt must survive the hand-off.
  */
-export function useSessionUiState(sessionId: string | null): QaSessionUiState {
+export function useSessionUiState(chatKey: number): QaSessionUiState {
   /** Per group: how many answers back from the newest is shown (0 = newest). */
   const [variantOffsets, setVariantOffsets] = useState<Record<string, number>>(
     {},
@@ -102,7 +104,7 @@ export function useSessionUiState(sessionId: string | null): QaSessionUiState {
     setDrawerCompleteness(null);
     setDrawerDetail(null);
     setPendingAttachments([]);
-  }, [sessionId, setPendingAttachments]);
+  }, [chatKey, setPendingAttachments]);
 
   // Whatever is still attached dies with the surface, and its URLs with it.
   useEffect(

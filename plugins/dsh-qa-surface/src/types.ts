@@ -1708,6 +1708,14 @@ export interface QaPendingQuestion {
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
+  /**
+   * Identity of the chat the surface is showing, bumped only when the user
+   * moves between chats. A draft that creates its session on the first prompt
+   * keeps its key, because the composer holds an unsent question in component
+   * state: remounting it on the new session id would throw that text away
+   * before the Host has accepted anything.
+   */
+  readonly chatKey: number;
   readonly messages: readonly QaMessage[];
   /** Immediate send feedback, kept outside the durable transcript. */
   readonly pendingMessage: QaPendingUserMessage | null;

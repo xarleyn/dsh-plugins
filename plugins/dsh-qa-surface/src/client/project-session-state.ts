@@ -15,6 +15,8 @@ import { projectTranscript } from "./QaTranscriptAdapter.js";
 export interface QaBoundProjectionInput {
   readonly connected: boolean;
   readonly sessionId: string;
+  /** Chat identity from the controller; see `QaSessionState.chatKey`. */
+  readonly chatKey: number;
   readonly sessionSnapshot: ReturnType<SessionFace["getSnapshot"]>;
   readonly conversationSnapshot: ConversationSnapshot | undefined;
   /** Turn bundles with the Host provenance already merged in (Host wins). */
@@ -120,6 +122,7 @@ export function projectBoundSessionState(
   return {
     phase,
     sessionId: input.sessionId,
+    chatKey: input.chatKey,
     messages,
     pendingMessage: null,
     error,
