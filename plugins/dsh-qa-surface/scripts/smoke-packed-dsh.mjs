@@ -493,8 +493,24 @@ async function runBrowserPass({
     await page
       .getByRole("heading", { name: "Чем могу помочь?", exact: true })
       .waitFor();
-    await page.getByRole("textbox", { name: "Задать вопрос" }).waitFor();
-    const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
+    // The slash-command palette gives the textarea a combobox role. Locate it
+    // by its stable accessible label so this smoke covers both palette states.
+    const prompt = page.getByLabel("Задать вопрос", { exact: true });
+    try {
+      await prompt.waitFor();
+    } catch (error) {
+      const composer = await page
+        .locator(".dsh-qa-composer-slot")
+        .evaluate((node) => ({
+          hidden: node.hidden,
+          text: node.textContent,
+          html: node.innerHTML.slice(0, 1_000),
+        }));
+      throw new Error(
+        `QA composer was unavailable: ${JSON.stringify(composer)}; console=${errors.join(" | ") || "(nothing)"}`,
+        { cause: error },
+      );
+    }
     const send = page.getByRole("button", { name: "Отправить", exact: true });
     await send.waitFor();
     const compatibility = page.locator(".dsh-qa-compatibility");
@@ -954,6 +970,18 @@ try {
       cwd: workspacePath,
       env: dshEnv,
     },
+  );
+  // This disposable profile writes its complete patch before boot and never
+  // mutates it while DSH is running. Startup reload avoids making the packed
+  // browser gate depend on the platform's optional Cordis HMR service.
+  const profileManifestPath = join(dshHome, "profiles", "web", "package.json");
+  const profileManifest = JSON.parse(
+    await readFile(profileManifestPath, "utf8"),
+  );
+  profileManifest.dsh.profile.patchReload = "startup";
+  await writeFile(
+    profileManifestPath,
+    `${JSON.stringify(profileManifest, null, 2)}\n`,
   );
   await writeFile(
     join(dshHome, "profiles", "web", "cordis.patch.yml"),

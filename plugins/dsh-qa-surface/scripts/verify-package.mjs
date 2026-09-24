@@ -354,6 +354,11 @@ assert.match(
   client,
   /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-surface"/u,
 );
+assert.doesNotMatch(
+  client,
+  /require\s*\(\s*["']\.[^"']+["']\s*\)/u,
+  "client bundle must be self-contained because DSH does not materialize relative runtime chunks",
+);
 assert.match(
   client,
   new RegExp(`const QA_VERSION = "${escapedVersion}"`, "u"),
