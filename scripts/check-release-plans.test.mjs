@@ -197,6 +197,28 @@ describe("version plan gate", () => {
     assert.match(result.output, /3 project\(s\) were released/u);
   });
 
+  test("a release tag the base already outruns does not reopen released work", () => {
+    const { root } = createFixture();
+    git(root, "tag", "release/2026-09-14");
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    const released = commit(
+      root,
+      "feat: change alpha, released without its tag",
+    );
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    commit(root, "feat: change beta");
+
+    const result = check(root, released);
+
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /@fixture\/dsh-beta: 1 file\(s\) since /u);
+    assert.doesNotMatch(result.output, /@fixture\/dsh-alpha/u);
+    assert.match(
+      result.output,
+      /release tag release\/2026-09-14 predates the base/u,
+    );
+  });
+
   test("a plan file covers an unreleased change", () => {
     const { root, base } = createFixture();
     editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
