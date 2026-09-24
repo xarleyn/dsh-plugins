@@ -26,14 +26,26 @@ interface SteerRecord {
 
 function makeHost(services: Record<string, unknown>) {
   const events: CapturedEvent[] = [];
+  const commands: unknown[] = [];
   const host: GateHostContext = {
     on(event, handler) {
       events.push({ event, handler: handler as (payload: never) => unknown });
       return () => {};
     },
     get: (service) => services[service],
+    inject(serviceNames, callback) {
+      if (!serviceNames.includes("commands")) return undefined;
+      return callback({
+        commands: {
+          register(definition) {
+            commands.push(definition);
+            return () => {};
+          },
+        },
+      });
+    },
   };
-  return { host, events };
+  return { host, events, commands };
 }
 
 function dispatch(
@@ -79,27 +91,29 @@ function domainFace(
 
 function agentWithCandidate(sessionId: string, text: string): GateAgent {
   const steers: { source: unknown; text: string }[] = [];
+  const events = [
+    {
+      type: "user/message",
+      data: {
+        source: { kind: "user" },
+        content: [{ type: "text", text: "the question" }],
+      },
+    },
+    {
+      type: "assistant/message",
+      data: {
+        message: { content: [{ type: "text", text }] },
+        stream: [],
+      },
+    },
+  ];
   const agent: GateAgent = {
     id: sessionId,
     session: {
       header: { origin: "user" },
       surface: { nodes: [0, 1] },
-      eventAt: (seq: number) =>
-        seq === 0
-          ? {
-              type: "user/message",
-              data: {
-                source: { kind: "user" },
-                content: [{ type: "text", text: "the question" }],
-              },
-            }
-          : {
-              type: "assistant/message",
-              data: {
-                message: { content: [{ type: "text", text }] },
-                stream: [],
-              },
-            },
+      eventAt: (seq: number) => events[seq],
+      snapshotEvents: () => events,
     } as unknown as GateAgent["session"],
     steer: (message) => {
       steers.push({
@@ -143,7 +157,7 @@ async function runWiredGate(options: {
 
 describe("plugin wiring", () => {
   it("registers the lifecycle seams globally", () => {
-    const { host, events } = makeHost({});
+    const { host, events, commands } = makeHost({});
     apply(host);
     expect(events.map((item) => item.event).sort()).toEqual([
       "agent/disposed",
@@ -151,12 +165,20 @@ describe("plugin wiring", () => {
       "agent/turn-stopping",
       "tools/result",
     ]);
+    expect(commands).toMatchObject([
+      {
+        name: "no-review",
+        input: { hint: "<request>", attachments: true },
+        recordInput: false,
+      },
+    ]);
   });
 
   it("registers nothing when disabled", () => {
-    const { host, events } = makeHost({});
+    const { host, events, commands } = makeHost({});
     apply(host, { enabled: false });
     expect(events).toHaveLength(0);
+    expect(commands).toHaveLength(0);
   });
 
   it("reviews a candidate through the domain-expert backend and passes on PASS", async () => {
