@@ -88,6 +88,7 @@
     "node": "^22.19.0 || >=24.0.0"
   },
   "dependencies": {
+    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "zod": "^4.4.3"
   },

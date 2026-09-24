@@ -27,7 +27,12 @@ bundle, which keeps published browser bundles self-contained.
   write the same file from a second process), a `BEGIN IMMEDIATE` transaction
   wrapper, a schema version with one-time migrations, a refusal to open a
   database written by a newer build, and `chmod 0600`, because credential
-  material tends to live in these files. Requires Node's built-in `node:sqlite`
+  material tends to live in these files. Give it the plugin's
+  `@yadsh/dsh-plugin-log` logger (third argument, with an optional `label`) and
+  every open reports the file, the schema version it reached and the migrations
+  it actually applied; a refusal is recorded before it is raised. Without a
+  logger the helper stays silent, as it was for every store written before the
+  option existed. Requires Node's built-in `node:sqlite`
   (`engines: ^22.19.0 || >=24.0.0`), so import it from host code only.
 - `./client` subpath: the shared settings-card scaffolding for browser
   bundles — canonical `dsh-plugin-card` shell CSS (`PLUGIN_CARD_SHELL_CSS`),
