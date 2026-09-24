@@ -82,7 +82,18 @@ Server-side, `dsh-settings` replaced the `installSettingsSection` helper with
 `SettingsProvider.installSection`, the session log became format v3
 (`session.snapshotEvents()`/`session.surface` instead of `session.events`),
 and `dsh-tools` renamed the `code` presentation family to `ptc`. The plugins
-no longer run on `0.1.1-rc.2` hosts.
+no longer run on `0.1.1-rc.2` hosts. Note that the `SettingsProvider.installSection`
+contract recorded above is itself removed in `0.1.7-rc.1`, see below.
+
+## DSH 0.1.7-rc.1 migration
+
+`0.1.7-rc.1` was investigated but **not adopted**: the repository stays on
+`0.1.5-rc.2`. The `dsh-settings` rewrite removes `SettingsProvider`,
+`installSection`, `ctx.settingsScope` and the `settings.plugin.item` slot, which
+is the surface 12 plugins register configuration UI on, so the cutover is a
+redesign rather than a version bump. See
+[DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) for the measured breakage, the
+replacement recipe, and the open card-chrome decision.
 
 ## Upgrade rules
 
