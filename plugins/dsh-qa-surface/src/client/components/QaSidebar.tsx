@@ -239,6 +239,17 @@ export const QaSidebar = memo(
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
     const nav = useRef<HTMLElement | null>(null);
+    const chatList = useRef<HTMLDivElement | null>(null);
+    // The control the confirmation opened from. Rows shift up under a pointer
+    // that stays still while chats are removed, so the dialog has to remember
+    // which control it came from to hand the keyboard back to.
+    const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+    const closeDeleteConfirmation = () => {
+      const trigger = deleteTrigger.current;
+      deleteTrigger.current = null;
+      setConfirmingId(null);
+      trigger?.focus({ preventScroll: true });
+    };
     const sidebarWidth = useQaSidebarWidth({
       active: !collapsed,
       root: nav,
@@ -326,9 +337,12 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
-              aria-label="Удалить чат"
-              title="Удалить чат"
-              onClick={() => setConfirmingId(row.id)}
+              aria-label={`Удалить чат «${row.title}»`}
+              title={`Удалить чат «${row.title}»`}
+              onClick={(event) => {
+                deleteTrigger.current = event.currentTarget;
+                setConfirmingId(row.id);
+              }}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
@@ -395,7 +409,14 @@ export const QaSidebar = memo(
             </button>
           )}
         </div>
-        <div className="dsh-qa-sidebar__list">
+        <div
+          className="dsh-qa-sidebar__list"
+          ref={chatList}
+          // A confirmed deletion removes the focused control, so focus goes to
+          // the list itself: the next Tab continues among the chats instead of
+          // restarting from the top of the document.
+          tabIndex={-1}
+        >
           {props.rows.length === 0 ? (
             <p className="dsh-qa-sidebar__empty">Здесь пока пусто</p>
           ) : visibleRows.length === 0 ? (
@@ -470,22 +491,29 @@ export const QaSidebar = memo(
         />
         <QaModal
           open={confirmingRow !== undefined}
-          title="Удалить чат"
+          // Not «Удалить чат»: that is the name of every row control, and a
+          // dialog sharing it cannot be told apart from the button behind it.
+          title="Подтвердите удаление чата"
           closeLabel="Закрыть подтверждение удаления чата"
-          onClose={() => setConfirmingId(null)}
+          onClose={closeDeleteConfirmation}
           footer={
             <>
               <QaSettingsButton
                 label="Отмена"
-                onClick={() => setConfirmingId(null)}
+                onClick={closeDeleteConfirmation}
               />
               <QaSettingsButton
                 tone="danger"
                 label="Удалить из истории"
                 onClick={() => {
                   if (confirmingRow === undefined) return;
+                  const sessionId = confirmingRow.id;
+                  // Its trigger is about to leave the list with the chat, so it
+                  // cannot take the focus back; the list holds it instead.
+                  deleteTrigger.current = null;
                   setConfirmingId(null);
-                  props.onDelete?.(confirmingRow.id);
+                  chatList.current?.focus({ preventScroll: true });
+                  props.onDelete?.(sessionId);
                 }}
               />
             </>
