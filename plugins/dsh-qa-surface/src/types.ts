@@ -252,7 +252,8 @@ export interface QaEffectiveCapabilityPolicy {
   readonly skills: readonly string[];
   /**
    * Visible skills a person may invoke with `/name`, including skills that
-   * opted out of model invocation and therefore stay out of the catalog.
+   * opted out of model invocation and therefore stay out of the catalog. The
+   * skills this account owns are always here for it, role grant or not.
    */
   readonly userSkills: readonly string[];
   readonly sources: {

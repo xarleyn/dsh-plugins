@@ -33,6 +33,7 @@ import {
   enabledSubroles,
   normalizeCapabilityConfig,
   normalizeUserAccess,
+  personalUserSkillNames,
   resolveCapabilityPolicy,
   resolveSkillAccess,
 } from "./model.js";
@@ -171,6 +172,7 @@ function freezePolicy(
 function retainInstalledSnapshot(
   stored: QaEffectiveCapabilityPolicy,
   catalog: CapabilityCatalogSnapshot,
+  personalUserSkills: readonly string[],
 ): QaEffectiveCapabilityPolicy {
   const tool = (values: readonly string[]) =>
     values.filter((id) => catalog.toolIds.has(id));
@@ -183,7 +185,12 @@ function retainInstalledSnapshot(
     tools: tool(stored.tools),
     grantableTools: tool(stored.grantableTools),
     skills: modelSkill(stored.skills),
-    userSkills: anySkill(stored.userSkills),
+    // The frozen part of the user list is what the role granted then and the
+    // catalog still has; the personal part is read live, so a skill the account
+    // added today is invocable in a chat that started last week.
+    userSkills: [
+      ...new Set([...anySkill(stored.userSkills), ...personalUserSkills]),
+    ],
     sources: {
       systemTools: tool(stored.sources.systemTools),
       commonTools: tool(stored.sources.commonTools),
@@ -630,6 +637,7 @@ export class QaAccessService {
               tools: catalog.toolIds,
               skills: catalog.skillIds,
               userSkills: catalog.userSkillIds,
+              ownSkills: catalog.ownUserSkillIds,
             },
             skillMetadata: catalog.skillMetadata,
             revision: policyRevision(
@@ -638,7 +646,11 @@ export class QaAccessService {
               catalog.toolIds,
             ),
           })
-        : retainInstalledSnapshot(record.capabilitySnapshot, catalog);
+        : retainInstalledSnapshot(
+            record.capabilitySnapshot,
+            catalog,
+            personalUserSkillNames(config, catalog.ownUserSkillIds),
+          );
     if (record?.capabilitySnapshot === undefined) {
       accounts.updateSessionAccess(sessionId, { capabilitySnapshot: policy });
       this.options.logger.info("access.policy-snapshotted", {
