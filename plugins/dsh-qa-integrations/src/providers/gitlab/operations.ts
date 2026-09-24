@@ -8,7 +8,7 @@ import {
   requiredText,
 } from "../../coerce.js";
 import { IntegrationError } from "../../errors.js";
-import { looksBinary } from "../shared/http.js";
+import { looksBinary, withinCap } from "../kernel/read-policy.js";
 import {
   arrayOf,
   booleanOf,
@@ -1050,7 +1050,7 @@ export const GITLAB_PROJECTIONS: Readonly<Record<string, GitlabProjection>> =
 /** Byte size of a project's file that this deployment is willing to hand over. */
 export function fileByteLimit(requested: unknown, flags: GitlabFlags): number {
   const asked = optionalInteger(requested, "maxBytes", 1_024, 4_194_304);
-  return Math.min(asked ?? flags.maxFileBytes, flags.maxFileBytes);
+  return withinCap(asked, flags.maxFileBytes, flags.maxFileBytes);
 }
 
 /** Byte size of a job log this deployment is willing to hand over. */
@@ -1059,5 +1059,5 @@ export function jobLogByteLimit(
   flags: GitlabFlags,
 ): number {
   const asked = optionalInteger(requested, "maxBytes", 1_024, 4_194_304);
-  return Math.min(asked ?? flags.maxJobLogBytes, flags.maxJobLogBytes);
+  return withinCap(asked, flags.maxJobLogBytes, flags.maxJobLogBytes);
 }

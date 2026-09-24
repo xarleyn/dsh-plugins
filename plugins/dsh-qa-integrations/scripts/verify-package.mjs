@@ -22,6 +22,10 @@ for (const file of [
   "lib/typert.remote-client.d.ts",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
+  "lib/providers/kernel/address.js",
+  "lib/providers/kernel/errors.js",
+  "lib/providers/kernel/read-policy.js",
+  "lib/providers/kernel/token.js",
   "lib/providers/bitrix24/index.js",
   "lib/providers/bitrix24/catalog.js",
   "lib/providers/bitrix24/operations.js",
@@ -462,16 +466,16 @@ for (const path of gitlabPaths) {
 // Every GitLab operation is a GET; the only write-shaped surface left in the
 // provider is the connect form, which never reaches a model tool.
 assert.doesNotMatch(gitlabCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
-const sharedHttp = await readFile(
-  new URL("src/providers/shared/http.ts", root),
+const readPolicy = await readFile(
+  new URL("src/providers/kernel/read-policy.ts", root),
   "utf8",
 );
 const gitlabTransport = await readFile(
   new URL("src/providers/gitlab/transport.ts", root),
   "utf8",
 );
-assert.match(sharedHttp, /method: "GET"/u);
-assert.match(sharedHttp, /redirect: "error"/u);
+assert.match(readPolicy, /method: "GET"/u);
+assert.match(readPolicy, /redirect: "error"/u);
 assert.match(gitlabTransport, /"private-token": token/u);
 
 // One directory per integration: the shared engine must not know any provider.
@@ -485,6 +489,10 @@ for (const file of [
   "src/secrets/key-provider.ts",
   "src/providers/contract.ts",
   "src/providers/registry.ts",
+  "src/providers/kernel/address.ts",
+  "src/providers/kernel/errors.ts",
+  "src/providers/kernel/read-policy.ts",
+  "src/providers/kernel/token.ts",
 ]) {
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
@@ -569,7 +577,9 @@ for (const entry of await readdir(new URL("src/providers", root), {
   withFileTypes: true,
 })) {
   const provider = entry.name;
-  if (provider === "shared" || !entry.isDirectory()) continue;
+  if (provider === "shared" || provider === "kernel" || !entry.isDirectory()) {
+    continue;
+  }
   const dir = new URL(`src/providers/${provider}/`, root);
   for await (const file of providerSources(dir)) {
     const source = await readFile(file.url, "utf8");
@@ -583,7 +593,7 @@ for (const entry of await readdir(new URL("src/providers", root), {
     assert.doesNotMatch(
       source,
       READS_RESPONSE_STREAM,
-      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/shared/http.ts owns that policy`,
+      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/kernel/read-policy.ts owns that policy`,
     );
   }
 }
@@ -596,7 +606,9 @@ for (const entry of await readdir(new URL("src/providers", root), {
   withFileTypes: true,
 })) {
   const provider = entry.name;
-  if (provider === "shared" || !entry.isDirectory()) continue;
+  if (provider === "shared" || provider === "kernel" || !entry.isDirectory()) {
+    continue;
+  }
   const fixture = await readFile(
     new URL(`tests/${provider}/conformance.test.ts`, root),
     "utf8",
@@ -706,8 +718,8 @@ const teamcityTransport = await readFile(
   new URL("src/providers/teamcity/transport.ts", root),
   "utf8",
 );
-assert.match(sharedHttp, /method: "GET"/u);
-assert.match(sharedHttp, /redirect: "error"/u);
+assert.match(readPolicy, /method: "GET"/u);
+assert.match(readPolicy, /redirect: "error"/u);
 assert.match(teamcityTransport, /authorization: `Bearer \$\{token\}`/u);
 const teamcityHost = await readFile(
   new URL("src/providers/teamcity/index.ts", root),
@@ -974,8 +986,10 @@ const jiraTransport = await readFile(
   new URL("src/providers/jira/transport.ts", root),
   "utf8",
 );
-assert.match(jiraTransport, /method: "GET"/u);
-assert.match(jiraTransport, /redirect: "error"/u);
+// The request goes through the kernel loop — GET-only, `redirect: "error"` and
+// the bounded retries are asserted on `kernel/read-policy.ts` above, where the
+// single implementation lives; the provider supplies its own foldings only.
+assert.match(jiraTransport, /fetchWithRetries\(this\.fetcher/u);
 // The HTTP boundary builds no scheme of its own: which product answers decides
 // whether the secret is an HTTP Basic pair over `email:token` or a bearer
 // token, and that decision lives in one place.

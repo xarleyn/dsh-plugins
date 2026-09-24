@@ -1,7 +1,7 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
-import { readBoundedJson } from "../shared/http.js";
+import { readBoundedJson } from "../kernel/read-policy.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
