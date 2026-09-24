@@ -129,6 +129,26 @@ describe("integrations plugin entry", () => {
     expect(tools).toEqual([]);
   });
 
+  it("takes one provider's tools away without touching the others", async () => {
+    const { tools, install, setSource } = await host(
+      { enabled: true },
+      { withSettings: true },
+    );
+    await settle();
+    setSource({ enabled: true });
+    install?.hooks.onChange();
+    const of = (provider: string) =>
+      tools.filter((name) => name.startsWith(`${provider}_`));
+    expect(of("teamcity").length).toBeGreaterThan(0);
+    expect(of("gitlab").length).toBeGreaterThan(0);
+    // The operator's switch means the model loses this provider's tools too:
+    // a mounted tool whose provider is gone could only ever refuse a call.
+    setSource({ enabled: true, teamcity: { enabled: false } });
+    install?.hooks.onChange();
+    expect(of("teamcity")).toEqual([]);
+    expect(of("gitlab").length).toBeGreaterThan(0);
+  });
+
   it("closes the store when the plugin is disposed", async () => {
     const directory = await mkdtemp(join(tmpdir(), "qa-integrations-dispose-"));
     // The spy keeps calling through, so the handle is really released and the
