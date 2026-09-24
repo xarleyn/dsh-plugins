@@ -335,11 +335,12 @@ export function createJiraCard(remote: JiraRemote) {
         </div>
       );
     },
-    notConfiguredHint: () => (
-      <p className="dsh-qa-integrations__hint">
-        Оператор не настроил ни одного сайта Jira, подключать нечего. Адреса
-        сайтов задаются в конфигурации развёртывания.
-      </p>
-    ),
+    notConfiguredHint: (state) =>
+      state.extra.sites.length === 0 ? (
+        <p className="dsh-qa-integrations__hint">
+          Оператор не настроил ни одного сайта Jira, подключать нечего. Адреса
+          сайтов задаются в конфигурации развёртывания.
+        </p>
+      ) : null,
   });
 }

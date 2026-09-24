@@ -189,6 +189,45 @@ describe("GitLab card: managed service credential", () => {
     );
   });
 
+  it("names the personal-token path instead of hiding it behind the checkbox", async () => {
+    const seen = recorded();
+    const Card = createGitlabCard(remote(seen));
+    render(<Card token="qa-account-token" />);
+
+    const checkbox = await screen.findByLabelText(
+      "Использовать сервисный токен",
+    );
+    expect(checkbox).toHaveProperty("checked", true);
+    expect(screen.queryByLabelText("Personal access token GitLab")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Ввести свой токен" }));
+    expect(
+      await screen.findByLabelText("Personal access token GitLab"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Ввести свой токен" }),
+    ).toBeNull();
+    expect(
+      screen.getByLabelText("Использовать сервисный токен"),
+    ).toHaveProperty("checked", false);
+
+    fireEvent.change(screen.getByLabelText("Personal access token GitLab"), {
+      target: { value: "glpat-abcdefghij0123456789" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Сохранить и проверить" }),
+    );
+    await waitFor(() =>
+      expect(seen.saves).toEqual([
+        {
+          instanceId: "corp",
+          token: "glpat-abcdefghij0123456789",
+          useServiceCredential: false,
+        },
+      ]),
+    );
+  });
+
   it("shows no service option where the deployment manages none", async () => {
     const Card = createGitlabCard(
       remote(recorded(), {

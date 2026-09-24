@@ -142,6 +142,7 @@ describe("Integrations Confluence card", () => {
     render(<Card token="qa-account-token" />);
     expect(await screen.findByText("Сайт: Sandbox")).toBeDefined();
     expect(screen.queryByLabelText("Сайт Confluence")).toBeNull();
+    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
     fireEvent.change(screen.getByLabelText("Почта аккаунта Atlassian"), {
       target: { value: "alice@example.com" },
     });
