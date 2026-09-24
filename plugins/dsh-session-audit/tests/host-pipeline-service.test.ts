@@ -268,6 +268,47 @@ describe("AuditService refresh", () => {
     expect(audit?.summary.auditId).toBe("session-0ad608a8");
   });
 
+  it("binds an audit whose producer wrote the session id without the prefix", async () => {
+    const { service } = testService(root);
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(SESSION_ID.replace(/^session-/u, "")),
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    // The bare uuid is the same session spelled wrong, not a different one, so
+    // the audit reaches its session's view instead of sitting under a key no
+    // client ever asks with.
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAuditSummary(OTHER_SESSION_ID)).toBeNull();
+    // Repairing the spelling is not the two files disagreeing about which
+    // session they mean, so the record carries no mismatch warning.
+    expect(
+      service.registry.get(AUDIT_DIRECTORY)?.errors.map((error) => error.code),
+    ).toEqual([]);
+  });
+
+  it("still binds a prefix-less id published under a directory named for it", async () => {
+    const { service } = testService(root);
+    const bareSessionId = SESSION_ID.replace(/^session-/u, "");
+    // A producer that names its directory after the id it declares puts the bare
+    // uuid in the path, so neither file spells the session the way the harness
+    // does. The binding is still recoverable from the analysis alone.
+    await writeAudit(root, bareSessionId, {
+      analysis: analysis(bareSessionId),
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    const unattached = service.registry
+      .unattached()
+      .map((record) => record.auditId);
+    expect(unattached).not.toContain(bareSessionId);
+  });
+
   it("leaves an unattachable audit unresolved and out of every session", async () => {
     const { service } = testService(root, { sessions: [] });
     await writeAudit(root, "session-unknown", {
