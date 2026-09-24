@@ -343,6 +343,10 @@ export type DomainErrorCode =
   | "SCOPE_PROVIDER_MISSING"
   | "MEMORY_PROVIDER_MISSING"
   | "MEMORY_SCOPE_DENIED"
+  /** A model-authored note that says nothing checkable was offered to store. */
+  | "MEMORY_NOISE_REFUSED"
+  /** Maintenance named a key that no longer holds a record. */
+  | "MEMORY_RECORD_MISSING"
   | "WORKER_UNAVAILABLE"
   | "DELEGATION_DENIED"
   | "DELEGATION_DEPTH_EXCEEDED"
@@ -490,6 +494,24 @@ export interface MemoryClearResult {
   readonly code: string;
   readonly message: string;
   readonly cleared: number;
+}
+
+/**
+ * One memory namespace as maintenance sees it: which expert owns it, whether it
+ * takes writes, and how much is in it.
+ */
+export interface MemoryScopeView {
+  readonly domainId: string;
+  readonly domainName: string;
+  readonly namespace: string;
+  readonly access: "read-write" | "read-only";
+  readonly records: number;
+}
+
+/** A page of one namespace's records, plus how many the filter matched. */
+export interface MemoryPageView {
+  readonly records: readonly MemoryRecord[];
+  readonly total: number;
 }
 
 export interface DraftInspectionResult {

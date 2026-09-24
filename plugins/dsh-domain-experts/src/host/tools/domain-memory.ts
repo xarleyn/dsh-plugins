@@ -1,6 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { MemoryRecord } from "../../types.js";
 import { DomainExpertsError } from "../errors.js";
+import { checkMemoryText } from "../memory/quality.js";
 import { memoryEntries } from "../resolver.js";
 import {
   callerSessionIdOf,
@@ -56,7 +57,7 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
   return defineTool({
     name: "domain_memory",
     description:
-      "Read or write the memory of the domain expert you are running as. Only the namespaces configured for that expert are reachable, and only its own namespace accepts writes — the domain's common and shared namespaces are read for everyone and written by nobody. Use it to record a durable finding or to recall what this domain already knows. Record what holds for the domain whatever the caller asks; a tool, source or path that was missing for this run says nothing about the domain, so answer with it instead of recording it.",
+      "Read or write the memory of the domain expert you are running as. Only the namespaces configured for that expert are reachable, and only its own namespace accepts writes — the domain's common and shared namespaces are read for everyone and written by nobody. Use it to record a durable finding or to recall what this domain already knows. Record what holds for the domain whatever the caller asks; a tool, source or path that was missing for this run says nothing about the domain, so answer with it instead of recording it. A write is refused when the text is not a finding — an acknowledgement, a placeholder, or a note that nothing was found.",
     parameters: {
       action: {
         type: "string",
@@ -204,13 +205,9 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
           }
           case "write": {
             const key = (args.key ?? "").trim();
-            const text = (args.text ?? "").trim();
-            if (text === "") {
-              throw new DomainExpertsError(
-                "TASK_REJECTED",
-                "domain_memory write needs non-empty text.",
-              );
-            }
+            // Scope before substance: a refusal that names the namespace is the
+            // one the expert can act on without re-reading its own config, and
+            // checking the text first would hide it behind a noise verdict.
             if (
               active.memoryOwner.mode === "per-user" &&
               active.memoryOwner.userId === undefined
@@ -236,6 +233,14 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
                 );
               }
             }
+            const check = checkMemoryText(args.text ?? "");
+            if (check.verdict !== "ok") {
+              throw new DomainExpertsError(
+                "MEMORY_NOISE_REFUSED",
+                `domain_memory write refused (${check.verdict}): ${check.message}`,
+              );
+            }
+            const text = check.text;
             const record = await provider.remember(
               writable,
               key === "" ? derivedKey(text) : key,

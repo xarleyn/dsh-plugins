@@ -78,6 +78,22 @@ describe("tools: domain_memory", () => {
     });
   });
 
+  it("refuses a note that records no finding, and stores nothing", async () => {
+    const harness = expertHarness();
+    const tool = createDomainMemoryTool(harness.dependencies);
+    const error = await call(
+      tool,
+      { action: "write", key: "noise", text: "ок" },
+      AGENT,
+    ).catch((thrown: unknown) => thrown);
+    expect((error as Error).message).toContain("[MEMORY_NOISE_REFUSED]");
+    // The refusal has to be readable as an instruction: a model that only sees
+    // "rejected" re-phrases the same noise and writes it again.
+    expect((error as Error).message).toContain("acknowledgement");
+    const listed = await call(tool, { action: "list" }, AGENT);
+    expect(listed["records"]).toEqual([]);
+  });
+
   it("derives a key when none is given", async () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
@@ -142,7 +158,7 @@ describe("tools: domain_memory", () => {
     const tool = createDomainMemoryTool(harness.dependencies);
     await expect(
       call(tool, { action: "write", key: "k", text: "  " }, AGENT),
-    ).rejects.toThrowError(/\[TASK_REJECTED\]/u);
+    ).rejects.toThrowError(/\[MEMORY_NOISE_REFUSED\]/u);
     await expect(call(tool, { action: "forget" }, AGENT)).rejects.toThrowError(
       /\[TASK_REJECTED\]/u,
     );
@@ -151,7 +167,11 @@ describe("tools: domain_memory", () => {
   it("forgets one key and reports whether it existed", async () => {
     const harness = expertHarness();
     const tool = createDomainMemoryTool(harness.dependencies);
-    await call(tool, { action: "write", key: "k", text: "t" }, AGENT);
+    await call(
+      tool,
+      { action: "write", key: "k", text: "Settlement closes at 14:00." },
+      AGENT,
+    );
     await expect(
       call(tool, { action: "forget", key: "k" }, AGENT),
     ).resolves.toMatchObject({
