@@ -94,11 +94,18 @@ async function setup(options: {
     }),
   );
   ctx.tools.register(globalTool("browser_open"));
+  ctx.tools.register(globalTool("shell"));
   ctx.skills.register({
     name: "allowed-skill",
     description: "Allowed instructions",
     source: "runtime",
     content: "Follow allowed instructions.",
+  });
+  ctx.skills.register({
+    name: "personal-notes",
+    description: "The account's own instructions",
+    source: "runtime",
+    content: "Follow my own notes.",
   });
   ctx.skills.register({
     name: "hidden-skill",
@@ -160,6 +167,23 @@ async function setup(options: {
           version: 1,
           audience: { type: "common" },
           tools: { requires: ["browser_open", "shell"] },
+        }),
+      ],
+      [
+        "personal-notes",
+        descriptor("personal-notes", {
+          version: 1,
+          audience: { type: "common" },
+          tools: { requires: ["shell"] },
+        }),
+      ],
+      [
+        "personal-notes",
+        descriptor("personal-notes", {
+          version: 1,
+          // No audience: the role never named this one, and its tool is only
+          // reachable through what the role can grant.
+          tools: { requires: ["shell"] },
         }),
       ],
       [
@@ -290,6 +314,44 @@ describe("QA skill policy consumer", () => {
     expect(grants.effectiveTools()).toEqual(
       new Set(["read", "skill", "browser_open"]),
     );
+    dispose();
+  });
+
+  it("honours a personal skill's gesture and caps its tools at the role", async () => {
+    const { ctx, agent, discovered, grants, records } = await setup({
+      harnessGesture: ["personal-notes"],
+    });
+    const dispose = installQaSkillPolicy({
+      agent,
+      // The access model names this skill in the account's user list because
+      // the account owns it; the role's own lists never did, and the tool the
+      // skill asks for is outside what this role can ever hand out.
+      policy: { ...policy, userSkills: ["personal-notes"] },
+      discovered,
+      grants,
+      logger: logger(),
+    });
+    const decision = await propose(ctx, agent, [
+      createUserMessage({
+        content: [{ type: "text", text: "/personal-notes summarise" }],
+        source: { kind: "user" },
+      }),
+    ]);
+    if (decision.kind !== "enter") throw new Error("expected enter");
+    expect(
+      decision.messages.some(
+        ({ source }) => source.kind === "skill-invocation",
+      ),
+    ).toBe(true);
+    expect(grants.effectiveTools()).toEqual(new Set(["read", "skill"]));
+    expect(records.at(-1)).toMatchObject({
+      outcome: "activated",
+      skillName: "personal-notes",
+      origin: "user",
+      requestedTools: ["shell"],
+      grantedTools: [],
+      deniedTools: ["shell"],
+    });
     dispose();
   });
 

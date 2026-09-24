@@ -276,6 +276,12 @@ export interface CapabilityAvailability {
   readonly skills: ReadonlySet<string>;
   /** Installed skills a person may invoke; defaults to the model-facing set. */
   readonly userSkills?: ReadonlySet<string>;
+  /**
+   * User-invocable skills the account of this session owns. They join
+   * `userSkills` for their owner whatever the role lists, because a personal
+   * skill belongs to one account and cannot be named in a shared role at all.
+   */
+  readonly ownSkills?: ReadonlySet<string>;
 }
 
 export interface ResolveCapabilityPolicyInput {
@@ -352,6 +358,33 @@ function resolveVisibleSkills(
   };
 }
 
+/**
+ * The personal layer of one session's user-invoke list.
+ *
+ * Only an outright administrator withdrawal reaches a skill the account owns:
+ * the role overlay edits per-role audiences, and a personal skill is not a role
+ * grant, while `disabled` withdraws the name from the deployment for everyone,
+ * its owner included.
+ * @param config - the role configuration the policy is resolved against.
+ * @param ownSkills - the account's own user-invocable skills, if any.
+ */
+export function personalUserSkillNames(
+  config: QaCapabilityConfig,
+  ownSkills: ReadonlySet<string> | undefined,
+): readonly string[] {
+  if (ownSkills === undefined) return Object.freeze([]);
+  const withdrawn = new Set(
+    config.skillOverrides
+      .filter(({ disabled }) => disabled)
+      .map(({ skillName }) => skillName),
+  );
+  return Object.freeze(
+    [...ownSkills]
+      .filter((name) => !withdrawn.has(name))
+      .sort((left, right) => left.localeCompare(right)),
+  );
+}
+
 export function resolveCapabilityPolicy({
   config,
   subroleId,
@@ -390,9 +423,15 @@ export function resolveCapabilityPolicy({
     installed.tools,
   );
   const skills = available(configuredSkills, installed.skills);
+  const userInstalled = installed.userSkills ?? installed.skills;
   const userSkills = available(
-    configuredSkills,
-    installed.userSkills ?? installed.skills,
+    [
+      ...new Set([
+        ...configuredSkills,
+        ...personalUserSkillNames(config, installed.ownSkills),
+      ]),
+    ],
+    userInstalled,
   );
 
   // The filtered skill loader is transport for the selected skill set. It is
@@ -432,10 +471,7 @@ export function resolveCapabilityPolicy({
       [...new Set([...configuredBase, ...configuredGrantable])],
       installed.tools,
     ),
-    missingSkills: missing(
-      configuredSkills,
-      installed.userSkills ?? installed.skills,
-    ),
+    missingSkills: missing(configuredSkills, userInstalled),
     policyRevision: revision ?? "",
   });
 }

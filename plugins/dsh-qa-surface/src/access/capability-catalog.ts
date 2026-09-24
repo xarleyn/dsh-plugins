@@ -7,6 +7,7 @@ import type {
   QaCapabilitySourceKind,
   QaSkillDescriptor,
 } from "../types.js";
+import { QA_USER_SKILLS_SOURCE } from "../personal-skills/provider.js";
 import { parseQaSkillMetadata } from "./skill-metadata.js";
 
 export interface CapabilityCatalogSnapshot {
@@ -16,6 +17,12 @@ export interface CapabilityCatalogSnapshot {
   readonly skillIds: ReadonlySet<string>;
   /** Installed skills a person may invoke, including model-hidden ones. */
   readonly userSkillIds: ReadonlySet<string>;
+  /**
+   * The subset {@link userSkillIds} this account owns: what its own skills root
+   * contributes, never the deployment's shared root. The access model hands
+   * these to their owner without a role grant.
+   */
+  readonly ownUserSkillIds: ReadonlySet<string>;
   readonly skills: ReadonlyMap<string, SkillSummary>;
   /** Normalized `metadata.qa-surface` of every discovered skill. */
   readonly skillMetadata: ReadonlyMap<string, QaSkillDescriptor>;
@@ -128,6 +135,9 @@ export class QaCapabilityCatalog {
     const skillList =
       registry === undefined ? [] : (await registry.snapshot(lookup)).skills;
     const skills = new Map(skillList.map((skill) => [skill.name, skill]));
+    const userInvocable = skillList.filter(
+      ({ invocation }) => invocation.userInvocable,
+    );
     const skillDescriptors: QaCapabilityDescriptor[] = skillList.map(
       (skill) => ({
         type: "skill",
@@ -152,9 +162,10 @@ export class QaCapabilityCatalog {
           .filter(({ invocation }) => invocation.modelInvocable)
           .map(({ name }) => name),
       ),
-      userSkillIds: new Set(
-        skillList
-          .filter(({ invocation }) => invocation.userInvocable)
+      userSkillIds: new Set(userInvocable.map(({ name }) => name)),
+      ownUserSkillIds: new Set(
+        userInvocable
+          .filter(({ source }) => source === QA_USER_SKILLS_SOURCE)
           .map(({ name }) => name),
       ),
       skills,

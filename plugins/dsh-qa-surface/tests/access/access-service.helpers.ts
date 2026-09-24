@@ -3,12 +3,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccounts } from "../../src/accounts/store.js";
 import { QaAccessService } from "../../src/access/service.js";
 import type { QaPresetScopeLease } from "../../src/access/capability-catalog.js";
 import { QaRoleRepository } from "../../src/access/role-repository.js";
 import type { QaSessionLogReader } from "../../src/admin/session-log.js";
+import {
+  QA_USER_SKILLS_PROVIDER,
+  QA_USER_SKILLS_SOURCE,
+} from "../../src/personal-skills/provider.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 function harness(
   options: {
@@ -38,7 +43,7 @@ function harness(
   const admin = accounts.register("admin@example.com", "password-1");
   const user = accounts.register("user@example.com", "password-1");
   const tools = new Set(["read", "search", "analytics", "git", "skill"]);
-  const skills = new Map([
+  const skills = new Map<string, SkillSummary>([
     [
       "company",
       {
@@ -59,7 +64,7 @@ function harness(
         provider: "test",
       },
     ],
-  ] as const);
+  ]);
   const ctx = {
     tools: {
       schemas: (scope?: unknown) => [
@@ -149,6 +154,21 @@ function harness(
   return { service, accounts, admin, user, tools, skills };
 }
 
+/**
+ * Add one skill the account owns to the registry the harness serves, exactly as
+ * the personal-skills provider publishes it: its own skills root, invocable by
+ * the person and not offered to the model.
+ */
+function personal(skills: Map<string, SkillSummary>, name: string): void {
+  skills.set(name, {
+    name,
+    description: `Personal ${name}`,
+    invocation: { modelInvocable: false, userInvocable: true },
+    source: QA_USER_SKILLS_SOURCE,
+    provider: QA_USER_SKILLS_PROVIDER,
+  });
+}
+
 function fakeAgent(): Agent {
   return {
     session: { header: {}, id: "session" },
@@ -171,4 +191,4 @@ function reader(
   };
 }
 
-export { fakeAgent, harness, reader };
+export { fakeAgent, harness, personal, reader };
