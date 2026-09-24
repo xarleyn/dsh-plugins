@@ -60,6 +60,10 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -292,6 +296,39 @@ export interface QaAdminApi {
     token: string,
     scope: QaAdminSkillScope,
   ): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
+  /**
+   * What the domain experts remembered.
+   *
+   * The namespaces come from the experts' own definitions, so a namespace the
+   * console can list is one an expert claims; `memory.read` opens the list and
+   * `memory.manage` the corrections.
+   */
+  memoryScopes(
+    token: string,
+  ): Promise<RemoteResult<readonly QaExpertMemoryScope[]>>;
+  memoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<RemoteResult<QaExpertMemoryPage>>;
+  correctMemory(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<RemoteResult<QaExpertMemoryRecord>>;
+  forgetMemory(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<RemoteResult<number>>;
+  wipeMemory(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<RemoteResult<number>>;
 }
 
 /**

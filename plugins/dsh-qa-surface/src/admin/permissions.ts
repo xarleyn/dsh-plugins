@@ -30,6 +30,11 @@ const PERMISSIONS: Readonly<Record<QaAccountRole, readonly QaPermission[]>> = {
     // `settings.manage` already carries, but it is kept separate so a future
     // "skill curator" role can hold it without also holding deployment config.
     "skills.manage",
+    // Expert memory is read by a reviewer because that is who sees an expert
+    // repeat a wrong answer; correcting it stays with the admin, because what a
+    // domain remembers is injected into every later answer of that domain.
+    "memory.read",
+    "memory.manage",
   ],
   // A reviewer reads every conversation and answers them; accounts, role
   // configuration and deployment settings stay out of reach.
@@ -39,6 +44,7 @@ const PERMISSIONS: Readonly<Record<QaAccountRole, readonly QaPermission[]>> = {
     "reviews.read",
     "reviews.write",
     "analytics.read",
+    "memory.read",
   ],
   user: ["conversations.read.own"],
 };

@@ -1082,8 +1082,9 @@ can see what a conversation actually gained.
 
 `/qa/admin` is the review and administration surface. It is part of the QA page
 itself, not a separate application, and it is open to `admin` and `reviewer`
-accounts. Reviewer sees conversations, the review queue, feedback and
-analytics; only an administrator sees users, capability policies and audit.
+accounts. Reviewer sees conversations, the review queue, feedback, analytics and
+the experts' memory as it was recorded; only an administrator sees users,
+capability policies and audit, and corrects what an expert remembered.
 
 The console covers the quality loop end to end:
 
@@ -1115,6 +1116,14 @@ The console covers the quality loop end to end:
 - **Analytics** — rating coverage, positive share overall and per subrole,
   issue distribution and a daily trend. These are user-satisfaction signals;
   the console never presents them as accuracy.
+- **Expert memory** — what each domain expert recorded for itself, which the
+  plugin feeds back into every later answer of that domain. Searchable by key,
+  text and tag; a record's text and tags can be corrected in place, and one
+  record, a ticked selection or a whole namespace can be deleted. A reviewer
+  reads it — noticing a remembered inaccuracy is a review finding — and only an
+  administrator writes it. Wiping a namespace confirms the count the page
+  showed, and every write is audited with the line as it was before. The
+  section is empty on a stand that composes no domain experts.
 - **Audit** — one timeline of authorization changes, account status, subrole
   assignments, policy edits and review verdicts, each with its before/after
   image.

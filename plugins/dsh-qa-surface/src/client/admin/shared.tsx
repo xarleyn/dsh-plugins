@@ -36,6 +36,15 @@ export function adminErrorMessage(error: unknown): string {
   if (/reason: conversation-not-removable/u.test(message)) {
     return "На этом стенде удаление разговоров недоступно: журналы хранятся не файлами.";
   }
+  if (/reason: memory-unavailable/u.test(message)) {
+    return "Память экспертов на этом стенде недоступна: плагин доменов не установлен, выключен или его хранилище не открылось.";
+  }
+  if (/reason: memory-record-unknown/u.test(message)) {
+    return "Этой записи уже нет — кто-то изменил память домена, пока страница была открыта. Обновите список.";
+  }
+  if (/reason: invalid-memory/u.test(message)) {
+    return "Плагин доменов отклонил правку.";
+  }
   return message;
 }
 
