@@ -68,6 +68,27 @@ describe("QA composer", () => {
     expect(screen.queryByRole("button", { name: "Отправить" })).toBeNull();
   });
 
+  it("offers a queue send beside Stop while a turn runs", async () => {
+    const send = vi.fn(async () => true);
+    mount({
+      canSend: true,
+      canStop: true,
+      running: true,
+      status: "Скребу…",
+      onSend: send,
+    });
+    const field = screen.getByLabelText("Задать вопрос");
+    fireEvent.change(field, { target: { value: "пока отвечают" } });
+    const queued = screen.getByRole("button", { name: "Отправить в очередь" });
+    expect((queued as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Остановить" })).toBeTruthy();
+    // Enter still works while the agent talks: the message waits its turn.
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("пока отвечают", [], null),
+    );
+  });
+
   it("renders the running status inside the composer", () => {
     mount({
       canSend: false,

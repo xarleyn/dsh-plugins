@@ -13,6 +13,11 @@ Session and Agent Loop.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
+- queues a question asked while the assistant is still answering: the strip
+  above the composer lists what waits for the next turn, and each row can be
+  edited, sent into the running turn, or dropped. The queue is the Host
+  session's own state, so nothing is stored here and a message never reads as
+  both queued and sent;
 - renders assistant Markdown with this plugin's own GFM grammar — headings
   through `######`, nested and task lists, tables, quotes, images, autolinks,
   reference links, TeX math (`$…$`, `$$…$$`, ```math fences, through a bundled

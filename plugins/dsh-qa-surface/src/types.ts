@@ -1705,6 +1705,26 @@ export interface QaPendingQuestion {
   readonly createdAt: number;
 }
 
+/**
+ * One message that waits for the agent's next turn. Rows the Host already
+ * admitted carry their durable occurrence id, which is what a queue operation
+ * addresses; a row still in flight carries a browser id and edits nothing.
+ */
+export interface QaQueueRow {
+  readonly id: string;
+  /** Short single-line text for the strip; newlines are folded away. */
+  readonly preview: string;
+  /** Full text to edit, or null when the row is not plain text. */
+  readonly text: string | null;
+  /** Attachments the row carries besides its text. */
+  readonly attachments: number;
+  /** Set for a local row the Host queue has not echoed back yet. */
+  readonly sending: boolean;
+}
+
+/** What the queue strip may ask the Host to do with one waiting message. */
+export type QaQueueOperation = "edit" | "remove" | "steer";
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -1728,6 +1748,14 @@ export interface QaSessionState {
   readonly compatibilityReadOnly?: boolean;
   readonly canSend: boolean;
   readonly canStop: boolean;
+  /**
+   * Messages waiting for the next turn, oldest first. Sending while the agent
+   * runs lands here instead of in the transcript, so the strip beside the
+   * composer is the only place the user can still see them.
+   */
+  readonly queue: readonly QaQueueRow[];
+  /** Whether a queue operation may be issued on this binding right now. */
+  readonly canEditQueue: boolean;
   /** Bumped whenever this browser's chat index changes (add/forget). */
   readonly chatsRevision: number;
   /** Tool-derived sources of the current chat (web targets and files read). */
