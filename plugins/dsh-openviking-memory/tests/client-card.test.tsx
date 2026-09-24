@@ -206,6 +206,27 @@ describe("controls and writes", () => {
     });
   });
 
+  it("switches per-account memory scoping from the card", async () => {
+    const { scope } = makeScope({ value: { ...CONFIG, qaUserScoping: false } });
+    openCard(scope);
+
+    const toggle = labeledInput("qaUserScoping");
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+    await waitFor(() => {
+      expect(scope.set).toHaveBeenCalledWith("qaUserScoping", true);
+    });
+  });
+
+  it("keeps per-account scoping on when the deployment never named it", () => {
+    // `qaUserScoping` defaults to on, and the card must not read an unset value
+    // as "off" — that would show the switch flipped the wrong way round.
+    const { scope } = makeScope();
+    openCard(scope);
+    expect(labeledInput("qaUserScoping").checked).toBe(true);
+  });
+
   it("commits a text draft on blur and clears an emptied one", async () => {
     const { scope } = makeScope();
     openCard(scope);
