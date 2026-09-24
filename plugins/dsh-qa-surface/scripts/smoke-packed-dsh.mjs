@@ -704,6 +704,129 @@ async function runBrowserPass({
     if (new URL(page.url()).pathname !== "/qa/child") {
       throw new Error(`child QA navigation was not restored: ${page.url()}`);
     }
+    // The palette the surface carries for itself. The Host's own Appearance row
+    // lives in the settings this overlay suppresses, so every one of the three
+    // preferences has to reach the Host token sheet from `/qa` alone — proven
+    // by the colours the surface ends up painting, not by the click.
+    const palette = page.getByRole("group", { name: "Тема оформления" });
+    await palette.waitFor({ timeout: 15_000 });
+    const themeStorageKey = "dsh-qa-surface.session:v1:/qa:theme";
+    const paintedPalette = () =>
+      page.locator("main.dsh-qa-surface").evaluate((node) => ({
+        background: globalThis.getComputedStyle(node).backgroundColor,
+        foreground: globalThis.getComputedStyle(node).color,
+        darkPalette:
+          globalThis.document.body.hasAttribute("data-ds-dark-theme"),
+        scheme: globalThis.document.documentElement.style.colorScheme,
+      }));
+    const pressedPalette = async () => {
+      const pressed = [];
+      for (const label of ["Светлая тема", "Тёмная тема", "Системная тема"]) {
+        if (
+          await palette
+            .getByRole("button", { name: label, pressed: true })
+            .count()
+        )
+          pressed.push(label);
+      }
+      return pressed;
+    };
+    /**
+     * The palette reaches the document from an effect, after React processed
+     * the click (or after the OS answered), so the pass waits for the body
+     * attribute to agree before it measures colours — otherwise the assertion
+     * races the repaint and reports a stale document.
+     */
+    const awaitPalette = async (dark) => {
+      await page.waitForFunction(
+        (expected) =>
+          globalThis.document.body.hasAttribute("data-ds-dark-theme") ===
+          expected,
+        dark,
+        { timeout: 10_000 },
+      );
+      return paintedPalette();
+    };
+    const choosePalette = async (label, dark) => {
+      await palette.getByRole("button", { name: label }).click();
+      return awaitPalette(dark);
+    };
+    // Nobody has touched the control yet, so the stand must still be wearing
+    // the palette the Host booted it in: the surface writes nothing until this
+    // browser chooses, and the control reports the palette on screen rather
+    // than a preference nobody picked.
+    const booted = await paintedPalette();
+    if (
+      (await page.evaluate(
+        (key) => globalThis.localStorage.getItem(key),
+        themeStorageKey,
+      )) !== null ||
+      (await pressedPalette()).join() !==
+        (booted.darkPalette ? "Тёмная тема" : "Светлая тема")
+    ) {
+      throw new Error(
+        `an untouched stand was repainted by the surface: ${JSON.stringify(booted)}`,
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    const lightPalette = await choosePalette("Светлая тема", false);
+    const darkPalette = await choosePalette("Тёмная тема", true);
+    if (lightPalette.darkPalette || !darkPalette.darkPalette) {
+      throw new Error(
+        `the palette control did not reach the token sheet: light=${JSON.stringify(lightPalette)} dark=${JSON.stringify(darkPalette)}`,
+      );
+    }
+    if (
+      lightPalette.background === darkPalette.background ||
+      lightPalette.foreground === darkPalette.foreground
+    ) {
+      throw new Error(
+        `light and dark painted the same colours: ${JSON.stringify({ lightPalette, darkPalette })}`,
+      );
+    }
+    // `system` owns no colours of its own: it answers the OS, both ways, and it
+    // stays the pressed cube while the OS decides which palette that is.
+    const systemLight = await choosePalette("Системная тема", false);
+    if (
+      systemLight.darkPalette ||
+      systemLight.background !== lightPalette.background ||
+      (await pressedPalette()).join() !== "Системная тема"
+    ) {
+      throw new Error(
+        `the system palette ignored a light OS: ${JSON.stringify(systemLight)}`,
+      );
+    }
+    await page.emulateMedia({ colorScheme: "dark" });
+    const systemDark = await awaitPalette(true);
+    if (
+      !systemDark.darkPalette ||
+      systemDark.background !== darkPalette.background ||
+      (await pressedPalette()).join() !== "Системная тема"
+    ) {
+      throw new Error(
+        `the system palette did not follow the OS into dark: ${JSON.stringify(systemDark)}`,
+      );
+    }
+    // The choice is this browser's, so a reload paints it before anyone
+    // touches the control — against an emulated dark OS with a stored
+    // preference, which is the answer the Host's own choice cannot produce.
+    await choosePalette("Светлая тема", false);
+    await page.reload();
+    await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    const reloaded = await awaitPalette(false);
+    if (
+      reloaded.darkPalette ||
+      reloaded.background !== lightPalette.background ||
+      (await pressedPalette()).join() !== "Светлая тема"
+    ) {
+      throw new Error(
+        `the palette choice did not survive the reload: ${JSON.stringify(reloaded)}`,
+      );
+    }
+    await page.evaluate((key) => {
+      globalThis.localStorage.removeItem(key);
+    }, themeStorageKey);
+    await page.emulateMedia({ colorScheme: null });
     if (errors.length > 0)
       throw new Error(`browser errors:\n${errors.join("\n")}`);
   } finally {

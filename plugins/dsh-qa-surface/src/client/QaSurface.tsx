@@ -60,6 +60,8 @@ import { QaQuestions } from "./components/QaQuestions.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
+import { QaThemeSwitcher } from "./components/QaThemeSwitcher.js";
+import { useQaThemePreference } from "./theme-preference.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 import {
@@ -259,6 +261,15 @@ export function QaSurface(props: QaSurfaceProps) {
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
   const stateKey = qaStorageNamespace(config);
+  // The palette belongs to the surface, so it is only painted while the
+  // surface is what the visitor is looking at: outside its own route the
+  // overlay is mounted and invisible, and flipping the Host document's
+  // attributes from there would be the QA stand restyling the harness.
+  const theme = useQaThemePreference({
+    active: route.active,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:theme`,
+  });
   const isAdmin =
     accountsSnapshot.stage === "authed" &&
     accountsSnapshot.user.role === "admin";
@@ -1191,6 +1202,12 @@ export function QaSurface(props: QaSurfaceProps) {
                     }}
                   />
                 )
+              }
+              themeSwitcher={
+                <QaThemeSwitcher
+                  preference={theme.preference}
+                  onSelect={theme.select}
+                />
               }
               administration={
                 accountsSnapshot.stage === "authed" &&

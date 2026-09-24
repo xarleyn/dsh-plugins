@@ -61,6 +61,28 @@ describe("QA surface stylesheet", () => {
     expect(dialogRules.join("")).toContain("var(--dsw-alias-border-l2)");
   });
 
+  it("keeps the palette control on the host theme tokens", () => {
+    // The control is the thing that switches the palette, so it has to read
+    // correctly in both of them: a literal color would pin one theme's look
+    // into the other, which is exactly what the choice is for.
+    const rules = [
+      ...QA_SURFACE_STYLES.matchAll(/\.dsh-qa-theme[^{}]*\{[^}]*\}/gu),
+    ].map((match) => match[0] ?? "");
+    expect(rules.length).toBeGreaterThanOrEqual(6);
+    expect(
+      rules.filter((rule) => /#[0-9a-f]{3,8}|rgba?\(/iu.test(rule)),
+    ).toEqual([]);
+    const sheet = rules.join("");
+    for (const token of [
+      "var(--dsw-alias-border-l2)",
+      "var(--dsw-alias-bg-layer-2)",
+      "var(--dsw-alias-interactive-bg-active)",
+      "var(--dsw-alias-label-primary)",
+    ]) {
+      expect(sheet).toContain(token);
+    }
+  });
+
   it("keeps the legacy profile shell out of the bundle", () => {
     expect(QA_SURFACE_STYLES).not.toContain("dsh-qa-profile");
   });
