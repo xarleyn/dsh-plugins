@@ -58,6 +58,7 @@ import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaApproval } from "./components/QaApproval.js";
 import { QaQuestions } from "./components/QaQuestions.js";
 import { QaComposer } from "./components/QaComposer.js";
+import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
@@ -593,6 +594,21 @@ export function QaSurface(props: QaSurfaceProps) {
   }, [controller]);
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),
+    [controller],
+  );
+  const handleQueueEdit = useCallback(
+    (id: string, text: string) =>
+      controller?.queueAction(id, "edit", text) ?? Promise.resolve(null),
+    [controller],
+  );
+  const handleQueueSendNow = useCallback(
+    (id: string) =>
+      controller?.queueAction(id, "steer") ?? Promise.resolve(null),
+    [controller],
+  );
+  const handleQueueRemove = useCallback(
+    (id: string) =>
+      controller?.queueAction(id, "remove") ?? Promise.resolve(null),
     [controller],
   );
   const handleAnswerApproval = useCallback(
@@ -1370,6 +1386,16 @@ export function QaSurface(props: QaSurfaceProps) {
                     className="dsh-qa-composer-slot"
                     hidden={state.questions.length > 0}
                   >
+                    {/* Queued messages are not in the transcript yet, so this is
+                    the only place they are on the screen at all. */}
+                    <QaQueueDock
+                      rows={state.queue}
+                      running={state.phase === "running"}
+                      canEdit={state.canEditQueue}
+                      onEdit={handleQueueEdit}
+                      onSendNow={handleQueueSendNow}
+                      onRemove={handleQueueRemove}
+                    />
                     {/* Keyed by chat: the composer's draft text is chat-local, so a
                     switch remounts it empty instead of carrying text across. The
                     chat key survives a draft creating its session on the first
