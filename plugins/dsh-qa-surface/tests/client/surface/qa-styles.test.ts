@@ -89,4 +89,25 @@ describe("QA surface stylesheet", () => {
       ".dsh-qa-composer-slot[hidden]{display:none}",
     );
   });
+
+  it("takes the unrevealed row action out of the hit test", () => {
+    // A chat row carries its delete control at its right edge and shows it on
+    // hover only. Transparency alone does not step out of the way: measured in
+    // Chromium, a click that reached that edge with no pointer over the row
+    // pressed the control, because an invisible button still answers clicks.
+    // The control now takes pointer input exactly when the row reveals it, so
+    // such a click falls through to the chat itself; the keyboard path is
+    // unchanged, because focusing the control is itself a revealing condition.
+    const hidden = /\.dsh-qa-sidebar__item-delete\{[^}]*\}/u.exec(
+      QA_SURFACE_STYLES,
+    )?.[0];
+    expect(hidden).toContain("opacity:0");
+    expect(hidden).toContain("pointer-events:none");
+    const revealed =
+      /\.dsh-qa-sidebar__item:hover \.dsh-qa-sidebar__item-delete[^{]*\{[^}]*\}/u.exec(
+        QA_SURFACE_STYLES,
+      )?.[0];
+    expect(revealed).toContain("opacity:1");
+    expect(revealed).toContain("pointer-events:auto");
+  });
 });
