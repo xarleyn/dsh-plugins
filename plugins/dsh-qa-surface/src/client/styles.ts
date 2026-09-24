@@ -219,6 +219,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-modal__footer button:disabled{opacity:.5;cursor:default}
 .dsh-qa-modal__footer .dsh-qa-modal__primary{border-color:transparent;background:var(--dsh-qa-accent);color:var(--dsh-qa-accent-contrast)}
 .dsh-qa-modal__footer .dsh-qa-modal__primary:hover:not(:disabled){border-color:transparent;background:var(--dsh-qa-accent-hover);color:var(--dsh-qa-accent-contrast)}
+.dsh-qa-request-queue__notice{margin:12px 0 0;color:var(--dsw-alias-label-secondary);font-size:14px;line-height:1.6}
 .dsh-qa-changelog__entry{padding-top:10px}
 .dsh-qa-changelog__version{display:flex;align-items:baseline;gap:8px;margin:0 0 2px;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:20px}
 .dsh-qa-changelog__date{color:var(--dsw-alias-label-tertiary);font-size:12px;font-weight:400;line-height:16px}

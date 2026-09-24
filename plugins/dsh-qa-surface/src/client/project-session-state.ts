@@ -5,6 +5,7 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaQueueRow,
+  QaQueueStatus,
   QaSessionState,
   QaSlashView,
   QaSubagentView,
@@ -37,6 +38,13 @@ export interface QaBoundProjectionInput {
   readonly approvals: readonly QaPendingApproval[];
   readonly questions: readonly QaPendingQuestion[];
   readonly operationError: string | null;
+  /**
+   * A send the stand had no room for. The dialog is the whole of what the
+   * visitor learns: the question never reached the Host, so the transcript has
+   * no row to carry the refusal on. Distinct from `queue`, the waiting rows of
+   * this chat.
+   */
+  readonly requestQueue: QaQueueStatus | null;
   readonly policyReady: boolean;
   /** Historical binding retained for transcript access after policy drift. */
   readonly compatibilityReadOnly?: boolean;
@@ -236,6 +244,7 @@ export function projectBoundSessionState(
     viewingSubagent: input.viewingSubagent,
     approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
     questions,
+    requestQueue: input.requestQueue,
     // A read-only binding issues no Host operation at all, and running a
     // command is one — the policy gate closes the palette with everything else.
     slash:

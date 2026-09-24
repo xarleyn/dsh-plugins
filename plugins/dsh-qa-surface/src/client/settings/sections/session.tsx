@@ -1,10 +1,17 @@
 /**
- * Session: which chat a visitor gets, and which agent and model serve it.
+ * Session: which chat a visitor gets, which agent and model serve it, and how
+ * many questions that model serves at once.
  * Provider and model are written as one mutation because the Host refuses
  * either of them alone.
  */
 
-import { Notice, Section, SelectField, TextField } from "../fields.js";
+import {
+  Notice,
+  NumberField,
+  Section,
+  SelectField,
+  TextField,
+} from "../fields.js";
 import { describeSessionPolicy } from "../format.js";
 import {
   overriddenAny,
@@ -144,6 +151,17 @@ export function SessionSection(props: ConfigProps) {
           testId="qa-settings-session-workspace-id"
           onChange={(value) => {
             props.write(["session", "workspaceId"], value);
+          }}
+        />
+        <NumberField
+          label="Максимум одновременных вопросов"
+          value={config?.session?.maxActiveRequests ?? 0}
+          min={0}
+          max={50}
+          disabled={disabled}
+          hint="Сколько вопросов стенд отвечает сразу; 0 — без ограничения. Локальной модели это нужно, чтобы третий вопрос не замедлял остальные: когда все места заняты, новый вопрос не отправляется и остаётся в поле ввода, а браузер показывает очередь."
+          onChange={(value) => {
+            props.write(["session", "maxActiveRequests"], value);
           }}
         />
       </div>

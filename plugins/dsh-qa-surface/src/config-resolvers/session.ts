@@ -1,8 +1,19 @@
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
-import { isAbsoluteDirectoryPath, optionalText } from "./shared.js";
+import {
+  assertIntInRange,
+  isAbsoluteDirectoryPath,
+  optionalText,
+} from "./shared.js";
 
 type SessionSlice = ResolvedQaSurfaceConfig["session"];
+
+/**
+ * Ceiling of `session.maxActiveRequests`. The floor is 0 — "no ceiling" — and
+ * the cap only keeps a mistyped value from becoming a silently meaningless
+ * one: a stand that answers sixty chat turns at once has no queue to configure.
+ */
+export const QA_MAX_ACTIVE_REQUESTS_MAX = 50;
 
 /** Resolve the session domain: policy, pinning, and model selection. */
 export function resolveSession(input: QaSurfaceConfig): SessionSlice {
@@ -41,6 +52,15 @@ export function resolveSession(input: QaSurfaceConfig): SessionSlice {
   if (storageKey === "") {
     throw new TypeError("dsh-qa-surface: session.storageKey cannot be empty");
   }
+  const maxActiveRequests =
+    input.session?.maxActiveRequests ??
+    DEFAULT_QA_SURFACE_CONFIG.session.maxActiveRequests;
+  assertIntInRange(
+    "session.maxActiveRequests",
+    maxActiveRequests,
+    0,
+    QA_MAX_ACTIVE_REQUESTS_MAX,
+  );
   return Object.freeze({
     policy,
     storageKey,
@@ -51,5 +71,6 @@ export function resolveSession(input: QaSurfaceConfig): SessionSlice {
     provider,
     model,
     reasoningEffort: optionalText(input.session?.reasoningEffort),
+    maxActiveRequests,
   });
 }
