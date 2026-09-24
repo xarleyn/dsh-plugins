@@ -23,6 +23,7 @@ import {
   Stamp,
   adminErrorMessage,
   useAdminResource,
+  useRequestSlot,
 } from "../shared.js";
 import { ReviewPanel } from "./Review.js";
 
@@ -63,9 +64,11 @@ export function AdminConversations(props: {
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const request = useRequestSlot();
 
   const load = useCallback(
     async (next: string | null, append: boolean) => {
+      const controller = request.start();
       setLoading(true);
       const query: QaConversationQuery = {
         userId: props.userId ?? null,
@@ -80,7 +83,11 @@ export function AdminConversations(props: {
         query,
         next,
         PAGE_SIZE,
+        controller.signal,
       );
+      // A page the reviewer changed or left while this was still being read on
+      // the server has no answer worth showing.
+      if (controller.signal.aborted) return;
       setLoading(false);
       if (!result.ok) {
         setError(adminErrorMessage(result.error));
@@ -94,6 +101,7 @@ export function AdminConversations(props: {
       );
     },
     [
+      request,
       props.api,
       props.token,
       props.userId,
