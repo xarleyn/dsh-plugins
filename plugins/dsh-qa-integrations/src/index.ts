@@ -361,8 +361,15 @@ export class QaIntegrations extends TypertRemoteService {
    * edit never churns the Host tool registry.
    */
   private syncTools(config: ResolvedQaIntegrationsConfig): void {
+    // The providers this configuration kept: switching one off takes its tools
+    // away from the model too, so a disabled integration leaves nothing mounted
+    // that every call could only refuse.
+    const enabledProviders = this.providerRegistry
+      .list()
+      .map((provider) => provider.id);
     const toolOptions = {
       bitrix24CrmCommentWrite: config.bitrix24.crmCommentWrite,
+      enabledProviders,
     };
     const names = config.enabled ? integrationToolNames(toolOptions) : [];
     const signature = names.join(",");

@@ -47,16 +47,28 @@ export const INTEGRATIONS_DISCLOSURE =
 /** Credential help per provider id; empty until the Host answers. */
 type CredentialHelpMap = ReadonlyMap<string, CredentialHelp | null>;
 
+/** What one read of the deployment tells the page. */
+interface DeploymentProviders {
+  /** Credential help per provider id; empty until the answer arrives. */
+  readonly helps: CredentialHelpMap;
+  /** The providers the service offers, or undefined while unknown. */
+  readonly offered: readonly string[] | undefined;
+}
+
 /**
- * Read the credential help once per mount. It is a display-only payload: when
- * the call fails, or a provider declares none, the cards render their plain
- * credential fields — which is why nothing here may block the form.
+ * Read the deployment once per mount: the provider cards and the credential
+ * help each one shows. Both are a display-only payload: when the call fails, or
+ * a provider declares no help, the cards render their plain credential fields —
+ * which is why nothing here may block the form.
  */
-function useCredentialHelp(
+function useDeploymentProviders(
   remote: CredentialHelpRemote,
   token: string,
-): CredentialHelpMap {
-  const [helps, setHelps] = useState<CredentialHelpMap>(() => new Map());
+): DeploymentProviders {
+  const [state, setState] = useState<DeploymentProviders>(() => ({
+    helps: new Map(),
+    offered: undefined,
+  }));
   // The remote proxy keeps one identity in practice, but the token is what
   // decides when to read, so the call goes through a ref and stays the only
   // dependency of the effect.
@@ -67,27 +79,29 @@ function useCredentialHelp(
     void (async () => {
       const result = await remoteRef.current.providers(token);
       if (cancelled || !result.ok) return;
-      setHelps(
-        new Map(
+      setState({
+        helps: new Map(
           result.value.map((provider) => [
             provider.id,
             provider.credentialHelp,
           ]),
         ),
-      );
+        offered: result.value.map((provider) => provider.id),
+      });
     })().catch(() => undefined);
     return () => {
       cancelled = true;
     };
   }, [token]);
-  return helps;
+  return state;
 }
 
 /**
- * One card per provider the deployment mounted. The list comes from the host
- * (`describe`), so a provider the operator switched off simply never renders and
- * the client carries no knowledge of which exist. The credential help each card
- * shows comes from the same host, per provider.
+ * One card per provider the deployment mounted. The starting list comes from the
+ * host (`describe`), and each mount re-reads what the service offers, so a
+ * provider the operator switched off stops rendering and the client carries no
+ * knowledge of which exist. The credential help each card shows comes from the
+ * same host, per provider.
  *
  * Both mounts share this component: the page of the QA settings dialog, where
  * the account gate lives, and the host's plugin-configuration card.
@@ -101,29 +115,35 @@ export function createProviderCards(remote: IntegrationsClientRemote) {
   const TestitCard = createTestitCard(remote);
   const WeblateCard = createWeblateCard(remote);
   return function ProviderCards({ token, providers }: ProviderCardsProps) {
-    const help = useCredentialHelp(remote, token);
-    const helpFor = (id: string) => help.get(id) ?? null;
+    const { helps, offered } = useDeploymentProviders(remote, token);
+    const helpFor = (id: string) => helps.get(id) ?? null;
+    // The list below is what the page was built from; `offered` is what the
+    // service still has. A provider the operator switches off stops rendering
+    // without waiting for the page to reload, and a read that has not answered
+    // keeps every card rather than blanking the forms.
+    const shown = (id: string): boolean =>
+      providers.includes(id) && (offered === undefined || offered.includes(id));
     return (
       <>
-        {providers.includes("bitrix24") ? (
+        {shown("bitrix24") ? (
           <Bitrix24Card token={token} help={helpFor("bitrix24")} />
         ) : null}
-        {providers.includes("confluence") ? (
+        {shown("confluence") ? (
           <ConfluenceCard token={token} help={helpFor("confluence")} />
         ) : null}
-        {providers.includes("gitlab") ? (
+        {shown("gitlab") ? (
           <GitlabCard token={token} help={helpFor("gitlab")} />
         ) : null}
-        {providers.includes("teamcity") ? (
+        {shown("teamcity") ? (
           <TeamcityCard token={token} help={helpFor("teamcity")} />
         ) : null}
-        {providers.includes("jira") ? (
+        {shown("jira") ? (
           <JiraCard token={token} help={helpFor("jira")} />
         ) : null}
-        {providers.includes("testit") ? (
+        {shown("testit") ? (
           <TestitCard token={token} help={helpFor("testit")} />
         ) : null}
-        {providers.includes("weblate") ? (
+        {shown("weblate") ? (
           <WeblateCard token={token} help={helpFor("weblate")} />
         ) : null}
       </>

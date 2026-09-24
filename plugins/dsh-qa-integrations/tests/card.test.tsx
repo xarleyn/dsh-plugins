@@ -151,6 +151,40 @@ describe("Integrations plugin card", () => {
     expect(screen.queryByText("Bitrix24")).toBeNull();
   });
 
+  it("drops a provider the service stopped offering", async () => {
+    // The page was built for both providers, and the operator switched one off
+    // while the dialog stayed open: the card must go with the button under it,
+    // because the service no longer has a provider to connect to.
+    const Card = createIntegrationsCard(
+      {
+        ...remote([]),
+        providers: async () => ({
+          ok: true,
+          value: [
+            {
+              id: "gitlab",
+              displayName: "GitLab",
+              enabled: true,
+              authModes: ["token"],
+              capabilities: [],
+              credentialHelp: null,
+            },
+          ],
+        }),
+      } as unknown as IntegrationsClientRemote,
+      ["gitlab", "teamcity"],
+      session(AUTHED),
+    );
+    render(<Card />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
+    );
+    expect(await screen.findByText("GitLab")).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByText("TeamCity")).toBeNull();
+    });
+  });
+
   it("explains the account gate instead of showing forms that could only fail", () => {
     const Card = createIntegrationsCard(
       remote([]),
