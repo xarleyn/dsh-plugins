@@ -351,13 +351,17 @@ official plugin; any change to the MCP tool contracts.
     → The bridge was mounted with the deployment identity, so the write is
     filed in the deployment space and no account's page claims it as its own;
     the plugin's own requests for that session keep using the account space.
-17. **Card on the operator face.** Open the stand's loopback face
-    (`Settings → Plugins → Plugin configuration`) on the machine that serves it.
+17. **Card on the operator face.** On the machine that serves the deployment,
+    open its loopback URL — with the QA kiosk overlay off, that port serves the
+    native UI — and look under **Settings → Plugins → Plugin configuration**.
     → The OpenViking Memory card renders, including its multi-user section. A
-    browser reaching the same deployment over the network gets no card at all —
-    the settings directory is loopback-only, and the QA overlay does not mount
-    the native settings tree — which is why the switches are the operator's and
-    the account face stays read-only (§2.2).
+    browser reaching the same deployment over the network gets no card at all:
+    the Host serves its settings directory to a loopback page only, and the QA
+    overlay does not mount the native settings tree — which is why the switches
+    are the operator's and the account face stays read-only (§2.2). Recording
+    the card as "missing on a stand" is therefore a statement about which face
+    was opened, not about the registration: the registration is what §2.1
+    covers, and it is asserted by a test.
 
 ## 7. Implementation status
 
