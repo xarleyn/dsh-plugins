@@ -43,7 +43,7 @@ export function AdminOverview(props: {
   readonly onOpenQueue: () => void;
 }) {
   const { data, error, reload } = useAdminResource(
-    () => props.api.overview(props.token),
+    (signal) => props.api.overview(props.token, signal),
     [props.api, props.token],
   );
   return (
