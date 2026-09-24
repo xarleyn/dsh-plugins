@@ -4,8 +4,8 @@ import {
   harvestLocalRatings,
   ratingsHarvested,
   type HarvestStorage,
-} from "../src/client/rating-harvest.js";
-import type { QaFeedbackHarvestEntry } from "../src/types.js";
+} from "../../src/client/rating-harvest.js";
+import type { QaFeedbackHarvestEntry } from "../../src/types.js";
 
 const NAMESPACE = "dsh-qa-surface.session:v1:/qa";
 const MARKER = `${NAMESPACE}:ratings-harvested:u-1`;
