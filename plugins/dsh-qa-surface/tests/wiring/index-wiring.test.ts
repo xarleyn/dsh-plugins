@@ -47,6 +47,13 @@ interface Route {
 async function world(entry: Record<string, unknown> = {}) {
   const ctx = new Context();
   const agents = new Map<string, Record<string, unknown>>();
+  /**
+   * The chats the harness holds live right now, split the way the Host splits
+   * them: `liveRoots` are the top-level turns a request ceiling counts, and
+   * `liveChildren` are the delegated experts riding underneath one of them.
+   */
+  const liveRoots: Record<string, unknown>[] = [];
+  const liveChildren: Record<string, unknown>[] = [];
   const routes: Route[] = [];
   const registeredTools: string[] = [];
   const created: Record<string, unknown>[] = [];
@@ -83,7 +90,8 @@ async function world(entry: Record<string, unknown> = {}) {
 
   ctx.provide("agents", {
     get: (id: unknown) => agents.get(String(id)),
-    list: () => [...agents.values()],
+    list: () => [...agents.values(), ...liveRoots, ...liveChildren],
+    roots: () => liveRoots,
   } as never);
   ctx.provide("sessions", {
     get: (id: unknown) => agents.get(String(id))?.session,
@@ -171,6 +179,10 @@ async function world(entry: Record<string, unknown> = {}) {
     routes,
     presentation: () => presentation,
     surface: started,
+    /** Put a top-level turn on the stand, answering or not. */
+    liveRoots,
+    /** Put a delegated expert underneath one, which shares its place. */
+    liveChildren,
     /** Make every chat look like one the Host can no longer wake up. */
     stopResuming: () => {
       resumable = false;
@@ -254,6 +266,35 @@ describe("wiring: the host entry point", () => {
     );
     expect(QA_SURFACE_SETTINGS_NAMESPACE).toBe("dsh-qa-surface");
     expect(patch).toContain(`id: ${QA_SURFACE_SETTINGS_NAMESPACE}`);
+  });
+});
+
+describe("wiring: the request ceiling is counted on the Host", () => {
+  it("counts the top-level turns the harness reports, and only those", async () => {
+    const { surface, liveRoots, liveChildren, dispose } = await world({
+      session: { maxActiveRequests: 2 },
+    });
+    // Nothing was ever sent through this plugin, so every place the answer
+    // counts arrived by another road: the HTTP API, another account, another
+    // surface. That is why the read lives here and not in the browser.
+    liveRoots.push({ status: "idle" }, { status: "running" });
+    // A delegated expert is a live agent and not a root: it rides the turn that
+    // delegated it, and counting it would bill one conversation twice.
+    liveChildren.push({ status: "running" }, { status: "running" });
+    expect(surface.queueStatus()).toEqual({ limit: 2, active: 1, full: false });
+    liveRoots.push({ status: "running" });
+    expect(surface.queueStatus()).toMatchObject({ active: 2, full: true });
+    await dispose();
+  });
+
+  it("reports a stand without a ceiling as never full", async () => {
+    const { surface, liveRoots, dispose } = await world();
+    for (let index = 0; index < 9; index += 1)
+      liveRoots.push({ status: "running" });
+    // The default config sets no ceiling, so the browser is told the truth
+    // rather than a full stand it would have to refuse a visitor over.
+    expect(surface.queueStatus()).toEqual({ limit: 0, active: 9, full: false });
+    await dispose();
   });
 });
 
