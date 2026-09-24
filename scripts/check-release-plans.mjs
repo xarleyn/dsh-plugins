@@ -172,6 +172,25 @@ export function changedFiles(repoRoot, from, to, directory) {
     { allowFailure: false },
   ).map(toPosixPath);
 }
+
+/** True when `ancestor` is reachable from `descendant`. */
+function isAncestorOf(repoRoot, ancestor, descendant) {
+  return (
+    git(repoRoot, ["merge-base", "--is-ancestor", ancestor, descendant], {
+      allowFailure: true,
+    }) !== undefined
+  );
+}
+
+/**
+ * A starting ref that never lands earlier than `floor`. When one ref contains
+ * the other the newer one is the honest start; refs that diverged keep the
+ * candidate, because neither has absorbed the other's releases yet.
+ */
+function notBefore(repoRoot, candidate, floor) {
+  return isAncestorOf(repoRoot, candidate, floor) ? floor : candidate;
+}
+
 /**
  * Paths Nx itself ignores when it decides whether a project is touched. A
  * release commit only rewrites versions and changelogs, so a gate that counted
@@ -195,6 +214,12 @@ function planIgnoreMatchers(repoRoot) {
  * first wave ships, the per-project tags of the previous release scheme keep
  * this meaning. A project without any reachable tag has never shipped, so its
  * whole change against the base is unreleased.
+ *
+ * A tag is only a starting point while the base does not already sit past it.
+ * A remote that never received a release's tag still has that release in its
+ * default branch, and resolving the range back to the older tag reopens every
+ * project the release already consumed: the gate then asks a pull request for
+ * plans of work it never touched.
  */
 export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
   const ignoreMatchers = planIgnoreMatchers(repoRoot);
@@ -202,11 +227,20 @@ export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
 
   return publishableReleaseProjects(repoRoot).map((project) => {
     const tag = waveTag ?? lastReleaseTag(repoRoot, project.name, head);
-    const from = tag ?? base;
+    const from = tag ? notBefore(repoRoot, tag, base) : base;
     const files = changedFiles(repoRoot, from, head, project.directory).filter(
       (file) => !ignoreMatchers.some((matcher) => matcher.test(file)),
     );
-    return { ...project, tag, from, files };
+    const superseded = Boolean(tag) && from !== tag;
+    return {
+      ...project,
+      tag,
+      from,
+      since: superseded
+        ? `since ${base} (release tag ${tag} predates the base)`
+        : `since ${tag ?? base}`,
+      files,
+    };
   });
 }
 
@@ -333,8 +367,8 @@ function report(result, { verbose = false } = {}) {
     ];
     for (const project of result.missing) {
       const since = project.tag
-        ? `since ${project.tag}`
-        : `since ${result.base} (never released)`;
+        ? project.since
+        : `${project.since} (never released)`;
       lines.push(
         `  ${project.name}: ${project.files.length} file(s) ${since}`,
         `    ${describeFiles(project.files)}`,
@@ -357,16 +391,14 @@ function report(result, { verbose = false } = {}) {
   if (verbose) {
     for (const project of result.covered) {
       lines.push(
-        `  covered: ${project.name} (${project.files.length} file(s) since ${project.tag})`,
+        `  covered: ${project.name} (${project.files.length} file(s) ${project.since})`,
         ...result.planned
           .get(project.name)
           .map((entry) => `    ${entry.bump} in ${entry.plan}`),
       );
     }
     for (const project of result.released) {
-      lines.push(
-        `  released: ${project.name} (no change since ${project.tag ?? result.base})`,
-      );
+      lines.push(`  released: ${project.name} (no change ${project.since})`);
     }
   }
   if (result.uncommitted.length > 0) {
