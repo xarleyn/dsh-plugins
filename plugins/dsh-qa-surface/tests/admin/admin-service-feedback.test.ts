@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { harness } from "./admin-service.helpers.js";
-import type { QaFeedbackHarvestEntry } from "../src/types.js";
+import type { QaFeedbackHarvestEntry } from "../../src/types.js";
 
 describe("feedback and reviews", () => {
   it("records a rating on the owner's own message and updates it in place", async () => {
