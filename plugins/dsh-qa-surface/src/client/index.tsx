@@ -19,6 +19,7 @@ import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
 import { QaChatIndex } from "./chat-index.js";
+import { harvestLocalRatings } from "./rating-harvest.js";
 import { isDelegatedSession } from "./lineage.js";
 import type { QaSurfaceFace } from "./QaSurface.js";
 import { QaSurfaceGuard } from "./QaSurfaceGuard.js";
@@ -83,6 +84,8 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaFeedbackHarvestEntry,
+  QaFeedbackHarvestResult,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -168,6 +171,11 @@ interface QaAdminRemote {
     messageId: string,
     input: QaMessageFeedbackInput,
   ): Promise<RemoteResult<QaMessageFeedback>>;
+  /** Insert-only replay of the ratings a browser still holds. */
+  adminHarvestFeedback(
+    token: string,
+    entries: readonly QaFeedbackHarvestEntry[],
+  ): Promise<RemoteResult<QaFeedbackHarvestResult>>;
   adminReviewQueue(
     token: string,
     cursor: string | null,
@@ -749,6 +757,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             window.localStorage,
             qaStorageNamespace(snapshot),
           ).forgetChat(sessionId);
+        },
+        harvestRatings: async ({ token, accountId, ownedIds }) => {
+          // A thumbs given while the surface could not file it exists only in
+          // this browser, and only as a verdict: read it out once, for the
+          // chats this account owns, and never offer it to that account again.
+          const snapshot = config.getSnapshot().config;
+          await harvestLocalRatings({
+            storage: window.localStorage,
+            namespace: qaStorageNamespace(snapshot),
+            accountId,
+            ownedIds,
+            send: (batch) => policyRemote.adminHarvestFeedback(token, batch),
+          });
         },
       });
       // Publish the account this controller tracks to the extension service, so
