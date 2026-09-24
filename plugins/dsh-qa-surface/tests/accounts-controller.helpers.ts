@@ -119,6 +119,11 @@ function controller(
     legacyChatIds?: () => readonly string[];
     forgetChat?: (id: string) => void;
     showOtherUsersChats?: boolean;
+    harvestRatings?: (context: {
+      token: string;
+      accountId: string;
+      ownedIds: readonly string[];
+    }) => Promise<void>;
   } = {},
 ): QaAccountsController {
   const { showOtherUsersChats = false, ...controllerOptions } = options;
