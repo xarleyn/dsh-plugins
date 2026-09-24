@@ -15,12 +15,16 @@ lost suites to `Hook timed out in 10000ms`. Vitest marks the tests of such a
 file skipped while counting the file itself as failed, which is how the 22.09
 full-run slice read as six failures.
 
-It is the load that the budgets could not cover, not the git work: with eight
-projects running at once, process creation and file I/O get expensive enough
-that the heaviest snapshot test costs a second on an idle machine and crossed
-thirty seconds inside a full run. The package now budgets 120s per test and 90s
-per hook. CI never sees either number, because #250 moved the pipeline to one
-project per job on Linux, where nothing competes for the runner.
+It is the load that the budgets could not cover, not the git work: process
+creation and file I/O get expensive enough that the heaviest snapshot test costs
+a second on an idle machine and measured 52s inside a full run, and the two
+heaviest files reached 139s and 103s. The package now budgets 120s per test and
+90s per hook, and runs its suites on two Vitest workers rather than one per
+logical CPU. Every worker builds its repositories with real `git` children, so
+the suite was inflating the load it then failed to meet, and a `git` child that
+comes back non-zero without a word is not a thing any budget forgives. CI never
+sees either number, because #250 moved the pipeline to one project per job on
+Linux, where nothing competes for the runner.
 
 The throwaway repositories were also not hermetic. `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` outrank both the `user.name` the fixture writes into the
@@ -36,9 +40,10 @@ fixture's setup `git` calls came back failed with nothing on stderr, which
 dropped its whole test file and left those tests reported skipped. git writes a
 diagnosis whenever it chooses to refuse, so silence means the child died before
 refusing anything. The fixture now reports the exit code and signal it used to
-discard, and retries a setup command only on that silence — twice with a short
-backoff. Commands past setup keep failing on their first error, because a retried
-commit would leave two commits where the snapshot compares against one.
+discard, and retries a setup command only on that silence — up to three more
+attempts with a short backoff. Commands past setup keep failing on their first
+error, because a retried commit would leave two commits where the snapshot
+compares against one.
 
 No runtime behavior changed: these fixes live in test configuration and test
 fixtures.
