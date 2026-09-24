@@ -25,6 +25,7 @@ export const AUTH_FETCH_ERROR_CODES = {
   unsupportedContent: "AUTH_FETCH_UNSUPPORTED_CONTENT",
   notAnImage: "AUTH_FETCH_NOT_AN_IMAGE",
   imageTooLarge: "AUTH_FETCH_IMAGE_TOO_LARGE",
+  fileDownloadFailed: "AUTH_FETCH_FILE_DOWNLOAD_FAILED",
   documentTooLarge: "AUTH_FETCH_DOCUMENT_TOO_LARGE",
   documentUnreadable: "AUTH_FETCH_DOCUMENT_UNREADABLE",
   timeout: "AUTH_FETCH_TIMEOUT",
@@ -148,6 +149,17 @@ export function imageTooLarge(maxBytes: number): WebError {
   return new WebError(
     `the image exceeds the maximum of ${maxBytes} bytes`,
     AUTH_FETCH_ERROR_CODES.imageTooLarge,
+  );
+}
+
+/** A generic download answered with an HTTP error page, not a file to retain. */
+export function fileDownloadFailed(
+  contentType: string | null,
+  statusCode: number,
+): WebError {
+  return new WebError(
+    `the authenticated file download failed (HTTP ${statusCode}, ${contentType === null ? "no content type" : `content type "${contentType}"`})`,
+    AUTH_FETCH_ERROR_CODES.fileDownloadFailed,
   );
 }
 

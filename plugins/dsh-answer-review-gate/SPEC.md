@@ -86,6 +86,39 @@ Review должен быть незаметен пользователю по у
 
 Пользователь получает только исправленный final answer.
 
+## Явный waiver на один запрос
+
+Пользователь может явно отправить один запрос без автоматического review:
+
+```text
+/no-review <request>
+```
+
+Это host command, а не фраза, которую primary agent или gate интерпретирует из
+текста. Обработчик команды:
+
+1. пишет штатный `command/run` с human source и без `args`
+   (`recordInput: false`);
+2. через `agent.followup` создаёт обычный human `user/message`, а его admission
+   сохраняется штатным `agent/inbox/spliced`;
+3. возвращает sequence admission-события, и штатный command runtime пишет его
+   в `command/done.sourceEventSeq`;
+4. показывает пользователю явное предупреждение, что ответ не будет независимо
+   проверен.
+
+Gate принимает waiver только при строгой цепочке
+`command/run(no-review, user) → agent/inbox/spliced(exact message id) →
+command/done(success, sourceEventSeq) → user/message(same id)`. Никакие
+нестандартные поля не добавляются в source сообщения. Неуспешная команда,
+ссылка на другое сообщение, старый lifecycle или текст вроде «ревью не нужно»
+не являются waiver. Поэтому quoted text, отрицание и обсуждение самой функции
+никогда не отключают review случайно. Команда принимает штатные вложения и
+действует только на созданный ею запрос.
+
+Deployment policy может полностью отключить waiver. При `failMode: closed` он
+по умолчанию запрещён и разрешается только отдельной настройкой
+`waiver.allowedInClosedMode`.
+
 ---
 
 # Critical subagent lifecycle requirement
@@ -559,6 +592,11 @@ interface Config {
 
   excludedAgents: string[]
 
+  waiver: {
+    enabled: boolean
+    allowedInClosedMode: boolean
+  }
+
   audit: {
     enabled: boolean
     maxEntries: number
@@ -583,6 +621,10 @@ reviewPolicy: all-substantive
 
 excludedAgents:
   - answer-reviewer
+
+waiver:
+  enabled: true
+  allowedInClosedMode: false
 
 audit:
   enabled: true
@@ -706,9 +748,13 @@ review duration
 verdict
 issue counts
 failure type
+waiver reason
 ```
 
 Do not persist full prompts/responses by default if they may contain sensitive content.
+
+Waiver audit records contain only candidate hash and metadata. They must not
+contain the command input or user request text.
 
 ---
 
@@ -813,6 +859,11 @@ reviewer agent is excluded
 max rounds enforced
 review failure obeys failMode
 malformed verdict never becomes PASS
+plain text never infers a waiver
+waiver requires matching successful command lifecycle
+failed/unlinked/replayed command lifecycles are rejected
+waiver survives restart from the durable log
+closed-mode waiver policy is enforced
 ```
 
 ## Lifecycle tests
@@ -959,3 +1010,7 @@ MVP is complete when all of the following hold:
 8. Review loop has a hard maximum.
 9. Primary remains responsible for checking reviewer evidence rather than blindly obeying it.
 10. No changes to DSH core are required.
+11. `/no-review <request>` suppresses review only for the exact request linked
+    through `command/done.sourceEventSeq` and emits an auditable `waived`
+    outcome without prompt text.
+12. Natural-language mentions of skipping review never alter gate policy.

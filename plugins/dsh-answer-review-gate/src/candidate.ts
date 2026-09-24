@@ -13,8 +13,14 @@ import { createHash } from "node:crypto";
 
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 
+import {
+  collectReviewWaiver,
+  type ReviewWaiverEvidence,
+  type WaiverSession,
+} from "./waiver.js";
+
 /** Minimal structural view of a session the collector reads. */
-export interface CandidateSession {
+export interface CandidateSession extends WaiverSession {
   /** Model-visible event sequences in order. */
   readonly surface: { readonly nodes: readonly number[] };
   eventAt(
@@ -37,6 +43,8 @@ export interface CollectedCandidate {
    * PASS receipt must be keyed by this, never by the agent-turn counter.
    */
   readonly requestSeq: number | null;
+  /** Verified structured waiver for this exact request, when present. */
+  readonly reviewWaiver: ReviewWaiverEvidence | null;
 }
 
 /** Model-visible text of one content-block list. */
@@ -71,11 +79,21 @@ export function collectCandidate(
     if (data.message === undefined) return null;
     const text = textOfBlocks(data.message.content);
     if (text === "") return null;
-    const request = collectUserRequest(session, nodes[i]!);
+    const candidateSeq = nodes[i]!;
+    const request = collectUserRequest(session, candidateSeq);
     return {
       text,
       requestText: request?.text ?? null,
       requestSeq: request?.seq ?? null,
+      reviewWaiver:
+        request === null
+          ? null
+          : collectReviewWaiver(
+              session,
+              request.messageId,
+              request.seq,
+              candidateSeq,
+            ),
     };
   }
   return null;
@@ -85,7 +103,11 @@ export function collectCandidate(
 function collectUserRequest(
   session: CandidateSession,
   beforeSeq: number,
-): { readonly text: string; readonly seq: number } | null {
+): {
+  readonly text: string;
+  readonly seq: number;
+  readonly messageId: string | null;
+} | null {
   const nodes = session.surface.nodes;
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
     const seq = nodes[i]!;
@@ -93,12 +115,19 @@ function collectUserRequest(
     const event = session.eventAt(seq);
     if (event === undefined || event.type !== "user/message") continue;
     const data = event.data as {
+      readonly id?: unknown;
       readonly source?: { readonly kind?: string };
       readonly content?: readonly ContentBlock[];
     };
     if (data.source?.kind !== "user") continue;
     const text = textOfBlocks(data.content ?? []);
-    if (text !== "") return { text, seq };
+    if (text !== "") {
+      return {
+        text,
+        seq,
+        messageId: typeof data.id === "string" ? data.id : null,
+      };
+    }
   }
   return null;
 }

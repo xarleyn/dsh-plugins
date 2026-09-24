@@ -252,6 +252,28 @@ describe("structured extractors", () => {
     expect(source?.snippet).toBe("Docker - настройки");
   });
 
+  it.each(["web_fetch_file", "web_fetch_image"])(
+    "keeps downloads from %s in the source drawer",
+    (toolName) => {
+      const collector = new QaSourceCollector({
+        sessionId: "session-1",
+        turn: 2,
+        registry: createDefaultSourceExtractorRegistry(),
+      });
+      const url = "https://jira.example.corp/secure/attachment/report.pdf";
+      collector.observe({
+        toolName,
+        args: { url },
+        result: [{ type: "text", text: "Downloaded attachment" }],
+        origin: { ...parentOrigin, toolName },
+      });
+
+      expect(collector.snapshot().sources).toMatchObject([
+        { id: `web:${url}`, uri: url, evidence: "fetched" },
+      ]);
+    },
+  );
+
   it("extracts structured Jira, Confluence and knowledge records", () => {
     const registry = createDefaultSourceExtractorRegistry();
     const cases = [

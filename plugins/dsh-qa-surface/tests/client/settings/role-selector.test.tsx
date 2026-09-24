@@ -51,6 +51,11 @@ describe("QA role selector", () => {
     expect(
       screen.getByText(/Смена роли начинает новый разговор/u),
     ).toBeTruthy();
+    expect(screen.getByRole("dialog").className).toBe("dsh-qa-modal");
+    expect(
+      screen.getByRole("button", { name: "Начать новый чат как Developer" })
+        .className,
+    ).toContain("dsh-qa-modal__primary");
     fireEvent.click(screen.getByText("Начать новый чат как Developer"));
     expect(onSelect).toHaveBeenCalledWith("developer");
   });

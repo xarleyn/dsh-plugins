@@ -209,10 +209,9 @@ request never costs the page — the prose is served with an
 `_[attachment list unavailable]_` marker. `cleanup: strict` serves neither links
 nor the list.
 
-Downloading an attachment is refused by the harness for every binary body: the
-`WebFetchBody` union is `html | text` and owned by `@deepseek-ai/dsh-web`, so no
-provider can hand bytes to the model. This plugin therefore extracts the text
-inside the provider and returns it as `text`:
+The normal `web_fetch` result is text-only: the `WebFetchBody` union is
+`html | text` and owned by `@deepseek-ai/dsh-web`. This plugin therefore
+extracts supported document text inside the provider and returns it as `text`:
 
 - **Supported**: Word `.docx`/`.docm`/`.dotx` and OpenDocument `.odt` — the
   document is inflated in memory (no external binary, no temporary file) and
@@ -223,6 +222,21 @@ inside the provider and returns it as `text`:
   bare "unsupported content type".
 - **Not a document**: everything else keeps the plain
   `AUTH_FETCH_UNSUPPORTED_CONTENT` behavior.
+
+### Files: `web_fetch_file`
+
+For a PDF, spreadsheet, presentation, archive, log, unsupported Office file,
+or an ordinary HTML/JSON/XML response whose exact bytes are needed, the plugin
+registers `web_fetch_file(url)` while durable attachment storage is available.
+It runs the same authenticated rule, SSRF, DNS pinning, redirect, timeout and
+response-size pipeline as `web_fetch`, then saves the successful response as an
+immutable file attachment. Non-2xx responses and bodies above the matched
+rule's byte cap are refused and are never stored.
+
+The settings card lists these content families so operators can see which of
+the three tools to grant. Registration does not grant access by itself:
+administrators still decide which roles or grantable skills receive
+`web_fetch_file`, just as they do for `web_fetch_image`.
 
 ### Images: `web_fetch_image`
 
