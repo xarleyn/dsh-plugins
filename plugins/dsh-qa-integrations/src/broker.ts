@@ -3,6 +3,11 @@ import { IntegrationError, type IntegrationErrorCode } from "./errors.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
 import type { IntegrationRepository } from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
+import { DEFAULT_SERVICE_RATE_LIMIT } from "./service-credentials/config.js";
+import {
+  ServiceRateLimitError,
+  ServiceRateLimiter,
+} from "./service-credentials/rate-limit.js";
 import {
   evaluateServiceOperation,
   narrowBoundary,
@@ -15,6 +20,7 @@ import {
   type ResolvedServiceCredential,
   type ServiceCredentialHealth,
   type ServiceCredentialProfile,
+  type ServiceRateLimitConfig,
   type ServiceResourceBoundary,
 } from "./service-credentials/types.js";
 import type {
@@ -38,12 +44,18 @@ export interface BrokerOptions {
   readonly serviceCredentials?: ServiceCredentialRegistry | undefined;
   /** Whether a new connection starts in service mode when a profile exists. */
   readonly defaultForNewConnections?: boolean | undefined;
+  /**
+   * Ceiling of service-mode calls. Injectable for the same reason the registry
+   * takes its environment: the tests need a clock that is not the wall clock.
+   */
+  readonly rateLimits?: ServiceRateLimiter | undefined;
 }
 
 /** In-process broker boundary; no caller outside it receives decrypted secrets. */
 export class IntegrationBroker {
   private serviceCredentials: ServiceCredentialRegistry | undefined;
   private defaultForNewConnections: boolean;
+  private readonly rateLimits: ServiceRateLimiter;
 
   constructor(
     private readonly repository: IntegrationRepository,
@@ -54,6 +66,8 @@ export class IntegrationBroker {
   ) {
     this.serviceCredentials = options.serviceCredentials;
     this.defaultForNewConnections = options.defaultForNewConnections ?? true;
+    this.rateLimits =
+      options.rateLimits ?? new ServiceRateLimiter(DEFAULT_SERVICE_RATE_LIMIT);
   }
 
   /**
@@ -67,10 +81,12 @@ export class IntegrationBroker {
     providers: IntegrationProviderRegistry,
     serviceCredentials: ServiceCredentialRegistry | undefined,
     defaultForNewConnections: boolean,
+    rateLimit: ServiceRateLimitConfig,
   ): void {
     this.providers = providers;
     this.serviceCredentials = serviceCredentials;
     this.defaultForNewConnections = defaultForNewConnections;
+    this.rateLimits.configure(rateLimit);
   }
 
   listProviders(): readonly IntegrationProviderSummary[] {
@@ -576,6 +592,12 @@ export class IntegrationBroker {
         "Integration operation is denied by policy",
       );
     }
+    // The allowance is spent here rather than at the top of the call: a request
+    // the policy already refused must not cost anybody anything.
+    const releaseSlot =
+      resolved === undefined
+        ? undefined
+        : this.acquireServiceCallSlot(principal, request, resolved);
     try {
       const credential =
         resolved === undefined
@@ -637,6 +659,55 @@ export class IntegrationBroker {
         credentialSource: integration.credentialSource,
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
+      });
+      throw error;
+    } finally {
+      releaseSlot?.();
+    }
+  }
+
+  /**
+   * Spend one unit of the service-mode ceiling before the call leaves for
+   * upstream. Both sides of the limit are consulted together: one principal may
+   * not exhaust the quota the whole deployment shares, and the shared quota is
+   * not a per-user budget the operator never granted.
+   *
+   * A refusal is audited the way every other service-mode denial is, with the
+   * real principal — the limit is decided here, so upstream never learns the
+   * request existed.
+   */
+  private acquireServiceCallSlot(
+    principal: IntegrationPrincipal,
+    request: {
+      readonly provider: IntegrationProviderId;
+      readonly operation: string;
+      readonly sourceSessionId: string;
+    },
+    resolved: ResolvedServiceCredential,
+  ): () => void {
+    try {
+      return this.rateLimits.acquire({
+        principal: principal.userId,
+        provider: request.provider,
+        profileId: resolved.profile.id,
+      });
+    } catch (error) {
+      this.repository.audit({
+        ownerUserId: principal.userId,
+        provider: request.provider,
+        operation: request.operation,
+        result: "denied",
+        credentialSource: "service",
+        serviceProfileId: resolved.profile.id,
+        sourceSessionId: request.sourceSessionId,
+      });
+      this.logger.warn("credential.rate_limited", {
+        provider: request.provider,
+        operation: request.operation,
+        serviceProfile: resolved.profile.id,
+        ...(error instanceof ServiceRateLimitError
+          ? { limit: error.reason }
+          : {}),
       });
       throw error;
     }
