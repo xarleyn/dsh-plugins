@@ -204,6 +204,56 @@ describe("settings section", () => {
     expect(captured.length).toBeGreaterThan(0);
   });
 
+  it("moves a session that is already open onto its account space", async () => {
+    const owners: Record<string, string> = { "dsh-session-1": "account-a" };
+    const { installed, service } = settingsService();
+    harness = await createHarness(
+      { qaUserScoping: false, user: "shared-account" },
+      {
+        settings: service,
+        qaSurface: {
+          principalForSession: (sessionId) => {
+            const userId = owners[sessionId];
+            return userId === undefined ? undefined : { userId };
+          },
+          principalForToken: () => undefined,
+        },
+      },
+    );
+    await vi.waitFor(() => {
+      expect(installed).toHaveLength(1);
+    });
+
+    const { agent } = createFakeAgent({ sessionId: "dsh-session-1" });
+    await emit(harness, "agent/session-start", { agent });
+    for (const request of harness.requests) {
+      expect(request.headers["X-OpenViking-User"]).toBe("shared-account");
+    }
+
+    // The operator flips the card's Multi-user memory switch.
+    installed[0]?.setSource(() => ({
+      qaUserScoping: true,
+      user: "shared-account",
+      qaUserSettingsPath: harness?.settingsPath,
+    }));
+    installed[0]?.onChange();
+
+    const payload = preStepPayload(agent, [
+      userMessage("what did we decide about the release plan?"),
+    ]);
+    await emit(harness, "agent/pre-step", payload, () =>
+      Promise.resolve(enterDecision(payload.messages)),
+    );
+
+    // The switch reaches the session that was open before it was flipped: the
+    // option is read per request, so no chat keeps the old space.
+    const recalls = harness.requestsFor("/api/v1/search/search");
+    expect(recalls.length).toBeGreaterThan(0);
+    for (const request of recalls) {
+      expect(request.headers["X-OpenViking-User"]).toBe("account-a");
+    }
+  });
+
   it("re-reads the configuration of a session that is already running", async () => {
     const { installed, service } = settingsService();
     harness = await createHarness({}, { settings: service });
