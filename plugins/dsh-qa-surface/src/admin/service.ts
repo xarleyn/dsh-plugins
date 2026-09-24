@@ -28,6 +28,8 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaFeedbackHarvestEntry,
+  QaFeedbackHarvestResult,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -56,7 +58,7 @@ import { allows } from "./permissions.js";
 import { aggregateQuality, type QaConversationFact } from "./metrics.js";
 import { paginate } from "./paging.js";
 import { deriveQueue, type QaToolFailureSignal } from "./queue.js";
-import type { QaQualityStore } from "./quality-store.js";
+import { QA_FEEDBACK_RATINGS, type QaQualityStore } from "./quality-store.js";
 import type { QaAdminRedactor } from "./redaction.js";
 import { defaultAdminRedactor } from "./redaction.js";
 import {
@@ -91,6 +93,20 @@ export const QA_ADMIN_SCAN_LIMIT = 200;
 /** How long one projected log may serve the list and metrics before re-reading. */
 const TRANSCRIPT_TTL_MS = 30_000;
 const TRANSCRIPT_CACHE_MAX = 128;
+
+/**
+ * What one harvest request may carry. The browser replays its ratings in
+ * batches far below this; the ceiling is what a caller that ignored them is
+ * refused outright, rather than half-applied.
+ */
+const MAX_HARVEST_BATCH = 500;
+
+/** One harvested identifier, or undefined when the entry cannot be filed. */
+function harvestId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
 
 interface QaServiceClock {
   now(): number;
@@ -1144,6 +1160,84 @@ export class QaAdminService {
       userId: actor.id,
     });
     return record;
+  }
+
+  /**
+   * Replay the ratings a browser still holds from the window in which a thumbs
+   * never reached the Host.
+   *
+   * A harvest never overwrites. The browser's map stores no timestamp, so an
+   * entry may well be a rating the same user has since filed together with a
+   * reason and a comment; replacing that record with the bare thumbs would
+   * delete exactly what a reviewer reads. An entry the Host already answers for
+   * is counted as present and left alone.
+   *
+   * One unusable or foreign entry costs that entry alone: a browser keeps
+   * ratings of chats it no longer owns, and the rest of the replay must not be
+   * lost because of them.
+   */
+  harvestFeedback(
+    token: string,
+    entries: readonly QaFeedbackHarvestEntry[],
+  ): QaFeedbackHarvestResult {
+    const { accounts, actor } = this.require(token, "conversations.read.own");
+    if (!Array.isArray(entries)) {
+      throw new TypeError("entries must be an array");
+    }
+    if (entries.length > MAX_HARVEST_BATCH) {
+      throw new QaAccountsError("auth-required", "harvest batch is too large");
+    }
+    const quality = this.options.quality();
+    let recorded = 0;
+    let present = 0;
+    let rejected = 0;
+    for (const entry of entries) {
+      const conversationId = harvestId(entry?.conversationId);
+      const messageId = harvestId(entry?.messageId);
+      const rating = entry?.rating;
+      if (
+        conversationId === undefined ||
+        messageId === undefined ||
+        !QA_FEEDBACK_RATINGS.includes(rating)
+      ) {
+        rejected += 1;
+        continue;
+      }
+      if (accounts.ownerIdOf(conversationId) !== actor.id) {
+        rejected += 1;
+        continue;
+      }
+      if (
+        quality.feedbackOf(conversationId, messageId, actor.id) !== undefined
+      ) {
+        present += 1;
+        continue;
+      }
+      try {
+        quality.rateFeedback(
+          { conversationId, messageId, userId: actor.id },
+          { rating },
+        );
+        recorded += 1;
+      } catch (error) {
+        // The store re-validates what it is given, and one row it refuses is
+        // that row's problem rather than the batch's.
+        this.options.logger.warn("admin.feedback-harvest-entry-refused", {
+          conversationId,
+          messageId,
+          userId: actor.id,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        rejected += 1;
+      }
+    }
+    this.options.logger.info("admin.feedback-harvested", {
+      userId: actor.id,
+      recorded,
+      present,
+      rejected,
+    });
+    return { recorded, present, rejected };
   }
 
   async feedback(

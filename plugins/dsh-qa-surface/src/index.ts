@@ -120,6 +120,8 @@ import type {
   QaConversationReviewInput,
   QaConversationSummary,
   QaCurrentAccess,
+  QaFeedbackHarvestEntry,
+  QaFeedbackHarvestResult,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -1204,6 +1206,20 @@ export class QaSurface extends TypertRemoteService {
   ): QaMessageFeedback {
     return this.accountRemotes.run(() =>
       this.admin.rateMessage(token, conversationId, messageId, input),
+    );
+  }
+
+  /**
+   * Replay the ratings a browser still holds from before a thumbs reached the
+   * Host. Insert-only: what the deployment already records is never rewritten.
+   */
+  @Remote("adminHarvestFeedback")
+  adminHarvestFeedback(
+    token: string,
+    entries: readonly QaFeedbackHarvestEntry[],
+  ): QaFeedbackHarvestResult {
+    return this.accountRemotes.run(() =>
+      this.admin.harvestFeedback(token, entries),
     );
   }
 
