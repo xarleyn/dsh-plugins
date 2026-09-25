@@ -283,6 +283,20 @@ export class QaAccounts {
     this.file = this.database.loadAll();
   }
 
+  /**
+   * The authorization state as the database holds it right now.
+   *
+   * Every credential check reads through here, because what decides one — the
+   * token version and the disabled flag — is a row another process may have
+   * changed since this store last read. Refreshing inside the check rather than
+   * in whichever method the caller happened to invoke first is what keeps a
+   * revoked token from surviving in the in-memory model.
+   */
+  private authState(): AccountsFile {
+    this.reloadIfChanged();
+    return this.file;
+  }
+
   private pruneAuthAttempts(): void {
     const cutoff = Date.now() - 60_000;
     let stale = 0;
@@ -381,10 +395,10 @@ export class QaAccounts {
   }
 
   whoami(token: string): QaWhoamiResult {
-    this.reloadIfChanged();
-    const userId = this.verifyToken(token);
+    const file = this.authState();
+    const userId = verifyToken(file.secret, token, file.users);
     if (userId === null) return { authenticated: false };
-    const user = this.file.users.find((candidate) => candidate.id === userId);
+    const user = file.users.find((candidate) => candidate.id === userId);
     return user === undefined || user.disabled === true
       ? { authenticated: false }
       : { authenticated: true, user: toPublic(user) };
@@ -393,7 +407,8 @@ export class QaAccounts {
   /** Resolve a token to its user, or null for absent/invalid/expired ones. */
   verifyToken(token: string): string | null {
     // Signature, expiry and token-version mechanics live in token.ts.
-    return verifyToken(this.file.secret, token, this.file.users);
+    const file = this.authState();
+    return verifyToken(file.secret, token, file.users);
   }
 
   private mintToken(userId: string): string {
@@ -405,13 +420,21 @@ export class QaAccounts {
     });
   }
 
-  /** The account behind a token, or an auth-required refusal. */
+  /**
+   * The account behind a token, or an auth-required refusal.
+   *
+   * The check reads the current authorization state, so the refusal lands on the
+   * call that presents a revoked token rather than on whichever method reloaded
+   * first. The personal-skill remotes gate on this call alone, which is what
+   * made the difference a security one.
+   */
   requireUser(token: string): StoredUser {
-    const userId = this.verifyToken(token);
+    const file = this.authState();
+    const userId = verifyToken(file.secret, token, file.users);
     const user =
       userId === null
         ? undefined
-        : this.file.users.find((candidate) => candidate.id === userId);
+        : file.users.find((candidate) => candidate.id === userId);
     if (user === undefined || user.disabled === true) {
       throw new QaAccountsError(
         "auth-required",
@@ -423,7 +446,6 @@ export class QaAccounts {
 
   /** Public identity behind a token; used by server-side access services. */
   currentUser(token: string): QaAccountUserPublic {
-    this.reloadIfChanged();
     return toPublic(this.requireUser(token));
   }
 

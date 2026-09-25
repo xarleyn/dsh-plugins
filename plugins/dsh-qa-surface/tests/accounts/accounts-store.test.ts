@@ -179,6 +179,50 @@ describe("QA accounts store", () => {
     );
   });
 
+  it("refuses a token the other store revoked on the call that presents it", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-accounts-"));
+    const filePath = path.join(dir, "qa-accounts.db");
+    const options = { sessionTtlDays: 30, allowRegistration: true };
+    const host = new QaAccounts(filePath, options);
+    const session = host.register("op@example.com", "password-1");
+    expect(host.whoami(session.token)).toMatchObject({ authenticated: true });
+
+    // The CLI is a second process over the same database. It revokes the
+    // account, and the Host reads nothing in between — so the revocation has to
+    // be caught by the authorization check itself. The personal-skill remotes
+    // gate on `requireUser` and on nothing else.
+    const cli = new QaAccounts(filePath, {
+      sessionTtlDays: 30,
+      allowRegistration: false,
+    });
+    cli.revokeTokens("op@example.com");
+
+    expect(host.verifyToken(session.token)).toBeNull();
+    expect(host.whoami(session.token)).toEqual({ authenticated: false });
+    const gated = [
+      () => host.requireUser(session.token),
+      () => host.currentUser(session.token),
+      () =>
+        host.ensureSessionAccess(session.token, "s-1", {
+          createdAt: Date.now(),
+        }),
+      () => host.ownedSessionIds(session.token),
+      () => host.claimSessions(session.token, ["s-2"]),
+      () => host.listOwnership(session.token),
+      () => host.listServiceTokens(session.token),
+      () => host.mintServiceToken(session.token, { label: "ci" }),
+      () =>
+        host.updateOwnProfile(session.token, {
+          fullName: "",
+          identities: {},
+          instructions: "",
+        }),
+    ];
+    for (const access of gated) {
+      expect(reasonOf(access)).toBe("auth-required");
+    }
+  });
+
   it("claims unowned sessions first-come and reports foreign conflicts", () => {
     const accounts = store();
     const a = accounts.register("a@b.co", "password-1");

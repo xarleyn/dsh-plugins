@@ -191,6 +191,9 @@ function toServiceToken(row: ServiceTokenRow): StoredServiceToken {
   };
 }
 
+/** How many times a read is retried before a stale model is handed back. */
+const CONSISTENT_READ_ATTEMPTS = 4;
+
 /** One ownership record as it is written, before it becomes a row. */
 export interface OwnershipWrite {
   readonly sessionId: string;
@@ -267,13 +270,36 @@ export class QaAccountsDatabase {
     return this.readDataVersion() === this.observedDataVersion;
   }
 
-  /** Take the current data version as the baseline a caller's model reflects. */
-  markLoaded(): void {
-    this.observedDataVersion = this.readDataVersion();
+  /** Every account, ownership record and skill activation, as one snapshot. */
+  loadAll(): AccountsFile {
+    for (let attempt = 0; attempt < CONSISTENT_READ_ATTEMPTS; attempt += 1) {
+      const versionBefore = this.readDataVersion();
+      const file = this.readModel();
+      if (this.readDataVersion() === versionBefore) {
+        this.observedDataVersion = versionBefore;
+        return file;
+      }
+      // The version moved while the rows were being read, so the model above
+      // combines two database states and cannot be labeled current. Read again.
+    }
+    // Another connection is committing faster than this store can read. Hand
+    // back a model whose baseline is deliberately the version it does *not*
+    // reflect, so the next access reloads rather than trusting it.
+    return this.readModel();
   }
 
-  /** Every account, ownership record and skill activation, in one read. */
-  loadAll(): AccountsFile {
+  /**
+   * The accounts model, read as the rows stand right now.
+   *
+   * Read through {@link loadAll}, never on its own: in autocommit every
+   * statement is a snapshot of its own, so these SELECTs are only one state
+   * when no other connection committed while they ran — which is exactly what
+   * the surrounding `PRAGMA data_version` check proves. The baseline used to be
+   * taken *after* the reads, which labeled a model of two states, and the token
+   * versions in it, as current: a token revoked by the `qa-accounts` CLI into
+   * this window kept working until some later write moved the version again.
+   */
+  private readModel(): AccountsFile {
     const users = asRows<AccountRow>(
       this.storage.db.prepare("SELECT * FROM qa_accounts ORDER BY seq").all(),
     );
@@ -314,7 +340,6 @@ export class QaAccountsDatabase {
             }),
       };
     }
-    this.markLoaded();
     return {
       version: 1,
       secret: this.secret,
