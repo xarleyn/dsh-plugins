@@ -14,9 +14,9 @@ import type {
   ArchivedToolResult,
   OriginalResultArchive,
 } from "../../src/archive/types.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
-import { DEFAULT_SHAPE_TOOLS } from "../../src/config.js";
-import type { ResolvedJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
+import { DEFAULT_SHAPE_TOOLS } from "../../src/config/index.js";
+import type { ResolvedJevCompactionConfig } from "../../src/config/index.js";
 import type {
   JevAnswers,
   JevQuestion,

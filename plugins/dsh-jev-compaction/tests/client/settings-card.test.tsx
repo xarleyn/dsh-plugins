@@ -14,7 +14,7 @@ import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { JevCompactionConfig } from "../../src/config.js";
+import type { JevCompactionConfig } from "../../src/config/index.js";
 import { JevCompactionCard } from "../../src/client/card.js";
 
 afterEach(cleanup);

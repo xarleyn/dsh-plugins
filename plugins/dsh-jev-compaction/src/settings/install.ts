@@ -2,8 +2,8 @@
  * Host-side settings surface for the plugin (result-shaping SPEC §33-§34).
  *
  * On 0.1.7 a plugin's configuration *is* its settings namespace: the fields the
- * browser card edits carry `.volatile()` (`../config.ts`), the Host serves them
- * live under this entry's id, and the card writes them through
+ * browser card edits carry `.volatile()` (`../config/schema.ts`), the Host
+ * serves them live under this entry's id, and the card writes them through
  * `ctx.configForms`. There is nothing to install any more — the section, its
  * schema and its hooks were all the plugin's own copy of state the Host now
  * owns. What is left is the presentation choice: this plugin ships its own
