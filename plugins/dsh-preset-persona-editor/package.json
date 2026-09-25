@@ -95,7 +95,7 @@
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",

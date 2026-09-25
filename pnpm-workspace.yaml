@@ -112,6 +112,9 @@ catalogs:
     '@deepseek-ai/dsh-web': '0.1.5-rc.2'
     '@deepseek-ai/dsh-workspace': '0.1.5-rc.2'
 
+  runtime:
+    zod: '^4.4.3'
+
   tooling:
     typescript: '^5.9.2'
     '@swc-node/register': '^1.12.1'
