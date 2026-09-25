@@ -147,6 +147,40 @@ describe("docs_search", () => {
     cleanup();
   });
 
+  it("accepts the character classes and anchors the tool description offers", async () => {
+    const { workspace, cleanup } = fixture();
+    const root = await rootOf(workspace);
+    const characterClass = await searchDocumentation(root, {
+      query: "[a-z]oken",
+      path: "docs/platform/3.8",
+    });
+    expect(characterClass.hits.map((hit) => hit.text)).toEqual([
+      "The token is issued per session.",
+      "A second line about tokens.",
+    ]);
+    const lineStart = await searchDocumentation(root, {
+      query: "^# auth",
+      version: "3.8",
+    });
+    expect(lineStart.hits.map((hit) => hit.text)).toEqual(["# Auth"]);
+    const lineEnd = await searchDocumentation(root, {
+      query: "session\\.$",
+      path: "docs/platform/3.8",
+    });
+    expect(lineEnd.hits.map((hit) => hit.line)).toEqual([3]);
+    cleanup();
+  });
+
+  it("refuses a query past the pattern budget before it walks the tree", async () => {
+    const { workspace, cleanup } = fixture();
+    const error = await refusal(
+      searchDocumentation(await rootOf(workspace), { query: "a".repeat(513) }),
+    );
+    expect(error.code).toBe("invalid-request");
+    expect(error.message).toContain("512");
+    cleanup();
+  });
+
   it("refuses an invalid regular expression with an actionable message", async () => {
     const { workspace, cleanup } = fixture();
     const error = await refusal(
@@ -719,6 +753,32 @@ describe("docs_read", () => {
       version: "3.8",
       text: "The token is issued per session.",
     });
+    cleanup();
+  });
+
+  it("offers the model the same path spellings docs_search offers", () => {
+    // Both tools resolve through one fence, so both have to say so: a reader
+    // of docs_read alone would otherwise believe an absolute path is search-only.
+    const spelled = (tool: ToolDefinition) =>
+      (
+        tool.parameters as unknown as {
+          properties: Record<string, { readonly description?: string }>;
+        }
+      ).properties["path"]?.description;
+    expect(spelled(createDocsReadTool())).toContain("absolute path");
+    expect(spelled(createDocsSearchTool())).toContain("absolute path");
+  });
+
+  it("refuses an absolute file path outside the documentation tree", async () => {
+    // docs_read shares docs_search's fence: an absolute path is only a
+    // spelling, never a way out of the tree the stand publishes.
+    const { workspace, outside, cleanup } = fixture();
+    const error = await refusal(
+      readDocumentation(await rootOf(workspace), {
+        path: path.join(outside, "secret.md"),
+      }),
+    );
+    expect(error.code).toBe("outside-docs");
     cleanup();
   });
 
