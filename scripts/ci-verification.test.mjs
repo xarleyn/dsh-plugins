@@ -18,7 +18,7 @@ const canonicalClient = [
   'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
 ].join("\n");
 
-test("the PR workflow fans affected projects out into a bounded matrix", async () => {
+test("the CI workflow fans the projects it verifies out into a bounded matrix", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/ci.yml", import.meta.url),
     "utf8",
@@ -30,11 +30,22 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   );
   assert.match(
     workflow,
-    /DSH_PROJECTS_JSON="\$affected_json" node scripts\/workspace-packages\.mjs --format=github-matrix/u,
+    /DSH_PROJECTS_JSON="\$projects_json" node scripts\/workspace-packages\.mjs --format=github-matrix/u,
   );
   assert.match(
     workflow,
-    /concurrency:\s+group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\s+cancel-in-progress: true/u,
+    /concurrency:\s+group: ci-\$\{\{ github\.workflow \}\}-\$\{\{ github\.ref \}\}\s+cancel-in-progress: \$\{\{ github\.event_name != 'push' \}\}/u,
+    "a cancelled push run leaves main unverified, so a newer push must queue behind it",
+  );
+  assert.match(
+    workflow,
+    /if \[ "\$GITHUB_EVENT_NAME" = "push" \]; then\s+projects_json="\$\(pnpm nx show projects --json\)"/u,
+    "a push verifies the whole workspace; an affected set measured from the last green run hides whatever that run never reached",
+  );
+  assert.match(
+    workflow,
+    /projects_json="\$\(pnpm nx show projects --affected --base="\$NX_BASE" --head="\$NX_HEAD" --json\)"/u,
+    "a pull request still answers only for its own change",
   );
   assert.match(
     workflow,
@@ -84,8 +95,8 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   );
   assert.ok(
     workflow.indexOf("- name: Check version plans") <
-      workflow.indexOf("- name: Select affected projects"),
-    "the version plan check must run before the affected projects are selected",
+      workflow.indexOf("- name: Select projects to verify"),
+    "the version plan check must run before the projects to verify are selected",
   );
   assert.doesNotMatch(
     workflow,
@@ -101,7 +112,7 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
     workflow,
     /- name: Verify project tarball\s+if: matrix\.publishable\s+env:\s+PACKAGE_DIRECTORY: \$\{\{ matrix\.directory \}\}\s+run: pnpm tarball:verify:packages "\$PACKAGE_DIRECTORY"/u,
   );
-  assert.match(workflow, /name: Verify affected projects\s+if: always\(\)/u);
+  assert.match(workflow, /name: Verify projects\s+if: always\(\)/u);
 });
 
 test("the PR workflow also builds pull requests that target a release branch", async () => {
