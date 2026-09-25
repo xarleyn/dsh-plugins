@@ -205,6 +205,45 @@ function rowMatches(row: QaChatRow, query: string): boolean {
 }
 
 /**
+ * How each chat is named by the controls acting on it, keyed by id. A title is
+ * not unique — every chat reads «Новый чат» until its first answer lands — so
+ * a repeated title is numbered by its place in the list, which is the order
+ * the reader is shown. The numbering runs over every chat rather than only the
+ * rows a search leaves visible, so one chat's name does not change because
+ * another is filtered out, and a lone match still says how many share it.
+ */
+function nameChats(rows: readonly QaChatRow[]): Map<string, string> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.title, (totals.get(row.title) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    const ordinal = (seen.get(row.title) ?? 0) + 1;
+    seen.set(row.title, ordinal);
+    const total = totals.get(row.title) ?? 1;
+    names.set(
+      row.id,
+      total > 1 ? `«${row.title}» (${ordinal} из ${total})` : `«${row.title}»`,
+    );
+  }
+  return names;
+}
+
+/**
+ * The name of one chat among the chats this browser lists. A row the list does
+ * not hold is the chat nobody has named yet, and that one reads «Новый чат».
+ */
+function nameOfChat(
+  names: ReadonlyMap<string, string>,
+  row: QaChatRow | undefined,
+): string {
+  if (row === undefined) return "«Новый чат»";
+  return names.get(row.id) ?? `«${row.title}»`;
+}
+
+/**
  * Whether two sidebar row lists show the same thing. Rows are rebuilt on
  * every surface render (relative timestamps drift), so the memoized sidebar
  * compares by content and skips frames that only move the transcript.
@@ -239,6 +278,17 @@ export const QaSidebar = memo(
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
     const nav = useRef<HTMLElement | null>(null);
+    const chatList = useRef<HTMLDivElement | null>(null);
+    // The control the confirmation opened from. Rows shift up under a pointer
+    // that stays still while chats are removed, so the dialog has to remember
+    // which control it came from to hand the keyboard back to.
+    const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+    const closeDeleteConfirmation = () => {
+      const trigger = deleteTrigger.current;
+      deleteTrigger.current = null;
+      setConfirmingId(null);
+      trigger?.focus({ preventScroll: true });
+    };
     const sidebarWidth = useQaSidebarWidth({
       active: !collapsed,
       root: nav,
@@ -269,6 +319,7 @@ export const QaSidebar = memo(
       );
     }
     const normalizedQuery = query.trim().toLowerCase();
+    const chatNames = nameChats(props.rows);
     const visibleRows =
       normalizedQuery === ""
         ? props.rows
@@ -282,6 +333,7 @@ export const QaSidebar = memo(
         ? buildOwnerSections(visibleRows)
         : [{ name: "", rows: visibleRows }];
     const renderRow = (row: QaChatRow) => {
+      const name = nameOfChat(chatNames, row);
       return (
         <div
           key={row.id}
@@ -326,9 +378,12 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
-              aria-label="Удалить чат"
-              title="Удалить чат"
-              onClick={() => setConfirmingId(row.id)}
+              aria-label={`Удалить чат ${name}`}
+              title={`Удалить чат ${name}`}
+              onClick={(event) => {
+                deleteTrigger.current = event.currentTarget;
+                setConfirmingId(row.id);
+              }}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
@@ -395,7 +450,14 @@ export const QaSidebar = memo(
             </button>
           )}
         </div>
-        <div className="dsh-qa-sidebar__list">
+        <div
+          className="dsh-qa-sidebar__list"
+          ref={chatList}
+          // A confirmed deletion removes the focused control, so focus goes to
+          // the list itself: the next Tab continues among the chats instead of
+          // restarting from the top of the document.
+          tabIndex={-1}
+        >
           {props.rows.length === 0 ? (
             <p className="dsh-qa-sidebar__empty">Здесь пока пусто</p>
           ) : visibleRows.length === 0 ? (
@@ -470,30 +532,37 @@ export const QaSidebar = memo(
         />
         <QaModal
           open={confirmingRow !== undefined}
-          title="Удалить чат"
+          // Not «Удалить чат»: that is the name of every row control, and a
+          // dialog sharing it cannot be told apart from the button behind it.
+          title="Подтвердите удаление чата"
           closeLabel="Закрыть подтверждение удаления чата"
-          onClose={() => setConfirmingId(null)}
+          onClose={closeDeleteConfirmation}
           footer={
             <>
               <QaSettingsButton
                 label="Отмена"
-                onClick={() => setConfirmingId(null)}
+                onClick={closeDeleteConfirmation}
               />
               <QaSettingsButton
                 tone="danger"
                 label="Удалить из истории"
                 onClick={() => {
                   if (confirmingRow === undefined) return;
+                  const sessionId = confirmingRow.id;
+                  // Its trigger is about to leave the list with the chat, so it
+                  // cannot take the focus back; the list holds it instead.
+                  deleteTrigger.current = null;
                   setConfirmingId(null);
-                  props.onDelete?.(confirmingRow.id);
+                  chatList.current?.focus({ preventScroll: true });
+                  props.onDelete?.(sessionId);
                 }}
               />
             </>
           }
         >
           <p className="dsh-qa-settings__lead">
-            Удалить чат «{confirmingRow?.title ?? "Новый чат"}» из истории в
-            этом браузере? Сам разговор останется на стенде.
+            Удалить чат {nameOfChat(chatNames, confirmingRow)} из истории в этом
+            браузере? Сам разговор останется на стенде.
           </p>
         </QaModal>
       </nav>
