@@ -1,9 +1,11 @@
+import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -261,5 +263,30 @@ describe("qa-attach-sessions", () => {
     writeFileSync(file, Buffer.from("not zstd"));
     expect(readSessionHeader(file)).toBeUndefined();
     expect(collectSessions(home)).toEqual([]);
+  });
+
+  it("plans when launched the way a package manager launches it", () => {
+    // The installed bin is a link, so the path handed to the process never
+    // equals the file's realpath. A guard that compares the paths as spelled ran
+    // the module without calling main: empty output, exit 0, no repair applied.
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-attach-bin-"));
+    homes.push(dir);
+    const link = path.join(dir, "qa-attach-sessions");
+    try {
+      symlinkSync(
+        path.resolve(process.cwd(), "scripts/attach-workspace-sessions.mjs"),
+        link,
+      );
+    } catch (error) {
+      console.warn(
+        `qa-attach-sessions: this filesystem refused a link (${String(error)}); launch probe skipped`,
+      );
+      return;
+    }
+    const started = spawnSync(process.execPath, [link, "--help"], {
+      encoding: "utf8",
+    });
+    expect(started.status).toBe(0);
+    expect(started.stdout).toMatch(/^Usage: qa-attach-sessions/u);
   });
 });
