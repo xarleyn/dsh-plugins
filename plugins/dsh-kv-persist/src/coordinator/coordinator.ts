@@ -665,11 +665,43 @@ export class SingleSlotCoordinator {
     }
   }
 
-  /** Shutdown (SPEC §58): stop work, cancel timers, final checkpoint. */
+  /**
+   * Shutdown (SPEC §58): stop accepting work, cancel timers, run the final
+   * checkpoint. Waiting for that checkpoint is bounded (SPEC §59) by
+   * `checkpoint.shutdownGraceMs`, because the checkpoint queues behind the slot
+   * lease and a stream that never closes would otherwise hold the Cordis
+   * disposer forever. Only the wait is abandoned: the checkpoint keeps running
+   * and still writes when the lease frees.
+   */
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#cancelIdleTimer();
-    await this.#flushOwned("shutdown").catch(() => undefined);
+    if (!this.#config.checkpoint.onShutdown) return;
+    const graceMs = this.#config.checkpoint.shutdownGraceMs;
+    const checkpointing = this.#flushOwned("shutdown").catch(
+      (error: unknown) => {
+        // A broken checkpoint must not fail the unload (SPEC §32); it stays
+        // observable here and in `saveFailures`.
+        this.#logger.warn("kv.session.shutdown_flush_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    let stopGrace: () => void = () => undefined;
+    const graceExpired = new Promise<"abandoned">((resolve) => {
+      const timer = setTimeout(() => resolve("abandoned"), graceMs);
+      // A pending grace must never keep the host process alive.
+      timer.unref?.();
+      stopGrace = () => clearTimeout(timer);
+    });
+    const outcome = await Promise.race([
+      checkpointing.then(() => "settled" as const),
+      graceExpired,
+    ]);
+    stopGrace();
+    if (outcome === "abandoned") {
+      this.#logger.warn("kv.session.shutdown_flush_abandoned", { graceMs });
+    }
   }
 
   // ——— internals ———————————————————————————————————————————————————————
