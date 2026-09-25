@@ -137,6 +137,7 @@ export function useAdminResource<T>(
 /** A status chip; the modifier class carries the semantic colour. */
 export function Badge(props: {
   readonly tone?: "neutral" | "positive" | "negative" | "warning";
+  readonly testId?: string;
   readonly children: React.ReactNode;
 }) {
   return (
@@ -144,14 +145,25 @@ export function Badge(props: {
       className={`dsh-qa-admin__badge${
         props.tone === undefined ? "" : ` dsh-qa-admin__badge--${props.tone}`
       }`}
+      data-testid={props.testId ?? "qa-admin-badge"}
     >
       {props.children}
     </span>
   );
 }
 
-export function Empty(props: { readonly children: React.ReactNode }) {
-  return <p className="dsh-qa-admin__empty">{props.children}</p>;
+export function Empty(props: {
+  readonly testId?: string;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <p
+      className="dsh-qa-admin__empty"
+      data-testid={props.testId ?? "qa-admin-empty"}
+    >
+      {props.children}
+    </p>
+  );
 }
 
 /** A relative timestamp with the exact one available on hover. */
@@ -159,6 +171,7 @@ export function Stamp(props: { readonly value: string | undefined }) {
   return (
     <time
       className="dsh-qa-admin__stamp"
+      data-testid="qa-admin-stamp"
       dateTime={props.value}
       title={props.value}
     >
@@ -167,9 +180,16 @@ export function Stamp(props: { readonly value: string | undefined }) {
   );
 }
 
-export function ErrorLine(props: { readonly message: string | undefined }) {
+export function ErrorLine(props: {
+  readonly message: string | undefined;
+  readonly testId?: string;
+}) {
   return props.message === undefined ? null : (
-    <p className="dsh-qa-admin__error" role="alert">
+    <p
+      className="dsh-qa-admin__error"
+      data-testid={props.testId ?? "qa-admin-error"}
+      role="alert"
+    >
       {props.message}
     </p>
   );
@@ -188,17 +208,26 @@ export function Pager(props: {
   readonly onReset: () => void;
 }) {
   return (
-    <div className="dsh-qa-admin__pager">
-      <span>
+    <div className="dsh-qa-admin__pager" data-testid="qa-admin-pager">
+      <span data-testid="qa-admin-pager-count">
         Показано {props.shown} из {props.total}
       </span>
       {props.hasMore ? (
-        <button type="button" disabled={props.loading} onClick={props.onMore}>
+        <button
+          type="button"
+          data-testid="qa-admin-pager-more"
+          disabled={props.loading}
+          onClick={props.onMore}
+        >
           Показать ещё
         </button>
       ) : null}
       {props.shown > 0 && props.hasMore ? (
-        <button type="button" onClick={props.onReset}>
+        <button
+          type="button"
+          data-testid="qa-admin-pager-reset"
+          onClick={props.onReset}
+        >
           Сначала
         </button>
       ) : null}
@@ -209,10 +238,11 @@ export function Pager(props: {
 /** One labeled filter control in a table toolbar. */
 export function FilterField(props: {
   readonly label: string;
+  readonly testId: string;
   readonly children: React.ReactNode;
 }) {
   return (
-    <label className="dsh-qa-admin__filter">
+    <label className="dsh-qa-admin__filter" data-testid={props.testId}>
       <span>{props.label}</span>
       {props.children}
     </label>
