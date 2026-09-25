@@ -1043,6 +1043,65 @@ test("a card source demands a script that runs the card-contract gate", async ()
   }
 });
 
+test("every card slot spelling keeps the card gate armed", async () => {
+  const withoutCardGate = [
+    "assert.match(client, /window\\.__ModuleLoader__\\.load/u);",
+    "assert.equal(name, '@yadsh/dsh-fixture');",
+  ].join("\n");
+
+  // The Host renamed the settings-card slot, and a card may equally stay on the
+  // feature tab, so every spelling a registration arrives under has to arm the
+  // gate — otherwise the contract quietly stops being enforced.
+  const cardSources = {
+    "settings.plugin.item": 'renderSlot("settings.plugin.item", Card);\n',
+    "plugins.row.config": 'renderSlot("plugins.row.config", Card);\n',
+    "settings.plugins.tab": [
+      'import { CardShell } from "@yadsh/dsh-plugin-kit/client";',
+      'renderSlot("settings.plugins.tab", CardShell);',
+      "",
+    ].join("\n"),
+  };
+  for (const [slot, source] of Object.entries(cardSources)) {
+    const fixture = await pluginFixture({
+      manifest: clientManifest,
+      scriptFiles: { "verify-package.mjs": withoutCardGate },
+      sourceFiles: { "client/card.tsx": source },
+    });
+    try {
+      const errors = validateClientContractGates(
+        fixture.directory,
+        fixture.manifest,
+      );
+      assert.equal(errors.length, 1, `"${slot}" must demand the card gate`);
+      assert.ok(
+        errors[0].includes(`"${slot}"`),
+        `the error must name the slot it found, got ${errors[0]}`,
+      );
+      assert.match(errors[0], /verify-plugin-card-contract/u);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  }
+
+  // The tab slot is also the home of feature-owned pages that render no card
+  // shell at all, and the contract asserts a shell they never claim.
+  const featureTab = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: { "verify-package.mjs": withoutCardGate },
+    sourceFiles: {
+      "client/index.tsx": 'renderSlot("settings.plugins.tab", FeaturePage);\n',
+    },
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(featureTab.directory, featureTab.manifest),
+      [],
+    );
+  } finally {
+    await rm(featureTab.root, { recursive: true, force: true });
+  }
+});
+
 test("the shared runner's cardContract option satisfies the card gate", async () => {
   const cardSource = {
     "client/card.tsx": 'renderSlot("settings.plugin.item", Card);\n',
