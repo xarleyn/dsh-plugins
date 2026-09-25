@@ -94,7 +94,7 @@ performance question: the Nx cache has restored green output for tasks that fail
 so a cached run is not evidence.
 
 ```bash
-NX_SKIP_NX_CACHE=true pnpm check      # lint, format, typecheck, test, build, verify, deps:check
+NX_SKIP_NX_CACHE=true pnpm check      # lint, format, typecheck, test, build, check:files, verify, deps:check
 pnpm test:release                     # workflow/script contract tests — via pnpm, never `node --test`
 pnpm release:check                    # plan gate, reads commits
 pnpm tarball:verify                   # every package; or tarball:verify:packages plugins/<dir>

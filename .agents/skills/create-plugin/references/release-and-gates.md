@@ -2,7 +2,8 @@
 
 ## Gates map (what catches what)
 
-`pnpm check` = lint → format → typecheck → test → build → verify → deps:check.
+`pnpm check` = lint → format → typecheck → test → build → check:files → verify
+→ deps:check.
 It does NOT run `tarball:verify`, `release:check`, or the browser smoke — run
 those separately before pushing. Per-project equivalent (what CI's matrix
 runs): `pnpm nx run-many -t lint typecheck test build verify
@@ -14,6 +15,7 @@ package name).
 | --- | --- |
 | `pnpm verify:logging` | plugin must depend on `@yadsh/dsh-plugin-log` (exactly `workspace:^`, in `dependencies`) and import it somewhere in `src/**`; forbidden in `src/client/**`. Scans ALL `plugins/*` — no opt-out |
 | `pnpm verify:packages` (hygiene) | canonical metadata (`repository{type,url,directory}`, `homepage`, `bugs.url`, scope `@yadsh/`, description naming DeepSeek Harness/DSH, canonical keywords `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` + feature words, lowercase, no dupes); required files exist AND are in `files` (`cordis.patch.yml`, `compatibility.json`, `LICENSE`, `README.md`); `exports["./package.json"]`; `types === exports["."].types` in the standard `lib/` layout; `compatibility.node === engines.node` verbatim; scripts contract (`lint`, `typecheck`, `test`, `build`, `verify` — nx derives targets from them); docs must NOT be in `files`; published README links must resolve inside the tarball (use absolute GitHub URLs for non-published docs); `plugins.json` matches manifests; every `.nx/version-plans/*.md` parses as Nx reads it (fence, known package, valid bump, changelog message); a qa-surface plan requires a newer `QaChangelog.tsx` entry; `dsh.client` ⇒ a script asserting the full-name registration; `settings.plugin.item` card ⇒ a script running the card contract |
+| `pnpm check:files` | a source file over 1200 lines, a test file over 800, a generated browser bundle over a runaway limit (800 and 400 warn). The files already over budget when the gate landed are the allowlist inside `scripts/check-file-budget.mjs`, and it only shrinks: split the oversized file instead of raising a threshold or adding a path |
 | `pnpm deps:check` | plugins never become dependencies of shared packages; `@deepseek-ai/*` runtime packages are peers, not dependencies; no cross-package relative imports; includes `pnpm dedupe --check` — after touching dependencies run `pnpm install` (and `pnpm dedupe` if you removed one), or this gate reddens on a dirty lockfile |
 | `pnpm tarball:verify` | gates 1–7 on the packed tarball: canonical metadata, `dsh.bundle.patch`, every declared `exports` subpath present in the tarball, clean `npm install`, bare-Node import smoke. Gate 5 is the ONLY gate that compares `exports` against the real build — a copied exports map pointing at a module you never had passes everything until this gate (first push/CI) |
 | `pnpm release:check` | every publishable project with commits its newest reachable release tag does not cover carries a COMMITTED version plan |

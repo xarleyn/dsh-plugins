@@ -1,0 +1,281 @@
+/**
+ * File size budget.
+ *
+ * A file that nobody measures grows on its own: the qa-surface type module
+ * passed 2000 lines one commit at a time, and each commit was small enough to
+ * review on its own. Line count is a weak proxy for complexity, but it is the
+ * only proxy that costs nothing to check, and it is the number that decides
+ * whether a reader can hold a module in their head at all.
+ *
+ * So the budget is deliberately blunt, and deliberately split by what a file
+ * is for:
+ *
+ * - a source file gets 1200 lines before the run fails, and a warning from 800
+ *   on, because 800 is where a module stops being one thing;
+ * - a test file gets a tighter budget, because a test reads top to bottom as a
+ *   list of cases and a long list is a missing helper or a missing second file
+ *   (`0 test files over 400 lines` was an audit's own claim, and it went stale
+ *   within a week);
+ * - a generated browser bundle gets a runaway limit and nothing else. It is
+ *   derived, so its size is a symptom of what the source budget already
+ *   measures; the only thing worth failing on is a bundle that swallowed a
+ *   dependency tree it was supposed to import.
+ *
+ * Files already over budget are listed in `legacyOverBudget` and stay silent:
+ * the gate exists to stop the next 400 lines, not to re-litigate the last
+ * 2000, and a check that is red on the day it lands is a check that gets
+ * switched off. An entry leaves the list when its file is split or deleted, and
+ * nothing else — growing a file that is already exempt is free, so the refactor
+ * cards own these paths, not the gate.
+ */
+import { readdir, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const workspaceRoot = fileURLToPath(new URL("../", import.meta.url));
+const packageRoots = ["plugins", "packages"];
+const sourceExtensions = /\.[cm]?[jt]sx?$/u;
+const skippedDirectories = new Set(["node_modules", "dist", "coverage"]);
+
+/** Line limits per file kind; `warn` costs a report line, `fail` costs the run. */
+export const budgets = {
+  source: { label: "source", warn: 800, fail: 1200 },
+  test: { label: "test", warn: 400, fail: 800 },
+  // The largest bundle today is the qa-surface client at ~66k lines, so this is
+  // a runaway tripwire and not a size goal.
+  bundle: { label: "generated bundle", warn: 20000, fail: 100000 },
+};
+
+/** Directories inside a package that a budget of `kind` applies to. */
+const budgetedDirectories = [
+  { directory: "src", kind: "source" },
+  { directory: "tests", kind: "test" },
+];
+
+/**
+ * Bundled browser artifacts a build writes under `lib/`. They exist only after
+ * a build, so a run without one measures nothing here.
+ */
+const generatedArtifacts = ["lib/client.js", "lib/typert.remote-client.js"];
+
+/** Sources over their hard budget when the gate landed; see the header. */
+export const legacyOverBudget = new Set([
+  "plugins/dsh-jev-compaction/src/config.ts",
+  "plugins/dsh-qa-browser/src/host/session-manager.ts",
+  "plugins/dsh-qa-integrations/src/client/operator-card.tsx",
+  "plugins/dsh-qa-integrations/src/index.ts",
+  "plugins/dsh-qa-integrations/src/providers/bitrix24/tools.ts",
+  "plugins/dsh-qa-integrations/src/providers/testit/operations.ts",
+  "plugins/dsh-qa-surface/src/accounts/store.ts",
+  "plugins/dsh-qa-surface/src/admin/service.ts",
+  "plugins/dsh-qa-surface/src/client/QaSessionController.ts",
+  "plugins/dsh-qa-surface/src/client/QaSurface.tsx",
+  "plugins/dsh-qa-surface/src/client/admin/QaAdmin.tsx",
+  "plugins/dsh-qa-surface/src/index.ts",
+  "plugins/dsh-qa-surface/src/types.ts",
+  "plugins/dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts",
+  "plugins/dsh-session-scope/src/client.ts",
+  "plugins/dsh-web-fetch-authenticated/src/adapters/confluence.ts",
+  "plugins/dsh-web-fetch-authenticated/src/client/sections.tsx",
+]);
+
+/**
+ * Count lines the way `wc -l` reads a file: a closing newline ends the last
+ * line instead of opening an empty one, so a number this gate prints is a
+ * number a reader can reproduce by hand.
+ */
+export function countLines(text) {
+  const lines = text.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  return lines.length;
+}
+
+async function directoryEntries(directory) {
+  return readdir(directory, { withFileTypes: true }).catch((error) => {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  });
+}
+
+async function sourcesUnder(directory) {
+  const files = [];
+  for (const entry of await directoryEntries(directory)) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      if (skippedDirectories.has(entry.name)) continue;
+      files.push(...(await sourcesUnder(path)));
+    } else if (sourceExtensions.test(entry.name)) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
+async function measure(path, repoRoot, kind) {
+  const text = await readFile(path, "utf8");
+  return {
+    path: relative(repoRoot, path).split(sep).join("/"),
+    kind,
+    lines: countLines(text),
+  };
+}
+
+/** Every measured file of the workspace, with its POSIX-relative path. */
+export async function collectMeasuredFiles(repoRoot = workspaceRoot) {
+  const measured = [];
+  for (const root of packageRoots) {
+    const packages = await directoryEntries(join(repoRoot, root));
+    for (const entry of packages) {
+      if (!entry.isDirectory()) continue;
+      const packageDirectory = join(root, entry.name);
+      for (const { directory, kind } of budgetedDirectories) {
+        for (const file of await sourcesUnder(
+          join(repoRoot, packageDirectory, directory),
+        )) {
+          measured.push(await measure(file, repoRoot, kind));
+        }
+      }
+      for (const artifact of generatedArtifacts) {
+        const path = join(repoRoot, packageDirectory, artifact);
+        if (!existsSync(path)) continue;
+        measured.push(await measure(path, repoRoot, "bundle"));
+      }
+    }
+  }
+  return measured;
+}
+
+/**
+ * Classify every workspace file against its budget.
+ *
+ * Returns `{ measured, exempt, warnings, failures }`; a `failures` entry is the
+ * list the CLI prints and the tests assert, and a `warnings` entry never costs
+ * a run. `allowlist` is a parameter so a test can prove what an exemption does
+ * without depending on the paths committed below.
+ */
+export async function auditFileBudget(
+  repoRoot = workspaceRoot,
+  { allowlist = legacyOverBudget } = {},
+) {
+  const measured = await collectMeasuredFiles(repoRoot);
+  const exempt = [];
+  const warnings = [];
+  const failures = [];
+  const seen = new Set();
+
+  for (const file of measured) {
+    const budget = budgets[file.kind];
+    seen.add(file.path);
+    const entry = { ...file, limit: budget.fail };
+    if (allowlist.has(file.path)) {
+      exempt.push(file);
+      if (file.lines <= budget.fail) {
+        warnings.push({
+          ...file,
+          limit: budget.fail,
+          reason: "within budget, drop it from legacyOverBudget",
+        });
+      }
+      continue;
+    }
+    if (file.lines > budget.fail) {
+      failures.push(entry);
+    } else if (file.lines > budget.warn) {
+      warnings.push({
+        ...file,
+        limit: budget.warn,
+        reason: "over warning budget",
+      });
+    }
+  }
+
+  for (const path of allowlist) {
+    if (!seen.has(path)) {
+      failures.push({
+        path,
+        kind: "source",
+        lines: 0,
+        limit: 0,
+        reason:
+          "allowlisted file does not exist, drop it from legacyOverBudget",
+      });
+    }
+  }
+
+  const bySize = (left, right) => right.lines - left.lines;
+  return {
+    measured,
+    exempt: exempt.sort(bySize),
+    warnings: warnings.sort(bySize),
+    failures: failures.sort(bySize),
+  };
+}
+
+function describe(entry) {
+  if (entry.reason !== undefined) return `${entry.path}: ${entry.reason}`;
+  const { label } = budgets[entry.kind];
+  return `${entry.path}: ${entry.lines} lines (${label} budget ${entry.limit})`;
+}
+
+/** One line per kind, so a green run does not spend 40 lines on warnings. */
+function summarize(warnings) {
+  const lines = [];
+  for (const [kind, budget] of Object.entries(budgets)) {
+    const ofKind = warnings.filter((warning) => warning.kind === kind);
+    if (ofKind.length === 0) continue;
+    const noun = ofKind.length === 1 ? "file" : "files";
+    const largest = ofKind[0];
+    lines.push(
+      `file budget: ${ofKind.length} ${budget.label} ${noun} over ${budget.warn} lines (largest ${largest.path} at ${largest.lines})`,
+    );
+  }
+  return lines;
+}
+
+/**
+ * Assert every measured file is within its budget. Throws with the offending
+ * `path: lines` list, in the shape the other repository gates report failures.
+ */
+export async function checkFileBudget(
+  repoRoot = workspaceRoot,
+  options = undefined,
+) {
+  const report = await auditFileBudget(repoRoot, options);
+  if (report.failures.length > 0) {
+    throw new Error(
+      `file budget failed:\n- ${report.failures.map(describe).join("\n- ")}`,
+    );
+  }
+  return report;
+}
+
+export async function main(
+  argv = process.argv.slice(2),
+  repoRoot = workspaceRoot,
+) {
+  const report = await auditFileBudget(repoRoot);
+  const listed = argv.includes("--list-warnings");
+  for (const line of listed
+    ? report.warnings.map((warning) => `file budget: warn ${describe(warning)}`)
+    : summarize(report.warnings)) {
+    console.log(line);
+  }
+  if (report.failures.length > 0) {
+    for (const failure of report.failures) {
+      console.error(`file budget: ${describe(failure)}`);
+    }
+    console.error(
+      `file budget failed: ${report.failures.length} files over budget — split them, or move a legacy split out of legacyOverBudget`,
+    );
+    return 1;
+  }
+  console.log(
+    `file budget verified for ${report.measured.length} files (${report.exempt.length} legacy exemptions)`,
+  );
+  return 0;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exitCode = await main();
+}
