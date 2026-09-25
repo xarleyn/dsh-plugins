@@ -141,6 +141,11 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   session resolves later. The pair is what separates a chat that merely started
   early from one no account is ever going to claim, and only the second case
   keeps a deployment's memory permanently out of every account space.
+  not belong to. Without a QA surface, or with `qaUserScoping: false`, the
+  deployment-wide identity of §2 is unchanged. Which `viking://user/<space>` the
+  profile is read from is remembered per identity — endpoint, account and user —
+  and never process-wide: the header alone does not redirect a path that was
+  resolved for somebody else, and a re-pointed endpoint is asked again.
 - **The account-scoped page.** The card of §2.1 is discovered from the Host
   settings directory, which a browser reaching the deployment over the network
   never gets, and a QA overlay does not render the native settings tree at all.
@@ -244,7 +249,7 @@ The plugin stores no OpenViking data of its own. Two local artefacts:
 
 | Artefact | Location | Format | Failure policy |
 | --- | --- | --- | --- |
-| Pending writes | `$OPENVIKING_PENDING_DIR` (default `~/.openviking/pending`), mode `0700`, files `0600` | one JSON file per queued operation: `{ type, sessionId, payload, createdAt, retries, dedupKey }` | corrupted entries are skipped, never rewritten; exhausted or non-retryable entries are deleted |
+| Pending writes | `$OPENVIKING_PENDING_DIR` (default `~/.openviking/pending`), mode `0700`, files `0600` | one JSON file per queued operation: `{ type, sessionId, payload, createdAt, retries, dedupKey, user }` | `user` is the identity the replay sends as, so a backlog survives a restart whose sessions are not back; an entry older than that field is replayed only to a session this process has attributed, or to a deployment that has never spoken as an account; corrupted entries are skipped, never rewritten; exhausted or non-retryable entries are deleted |
 | Plugin log | `<$DSH_HOME>/logs/dsh-openviking-memory/<date>.log` | NDJSON | best effort; logging never affects protocol or plugin behaviour |
 
 Two memo files under the OpenViking state dir (`context-face.json`,
@@ -305,7 +310,8 @@ official plugin; any change to the MCP tool contracts.
    tracks zero sessions for it.
 6. **Server outage.** Stop OpenViking mid-session, send turns, restart it.
    → The turns queue locally; the drainer replays them once health returns
-   without restarting DSH; a commit follows.
+   without restarting DSH, each write to the space it was queued in; a commit
+   follows.
 7. **Invalid configuration.** Set `scoreThreshold: 2`.
    → DSH refuses to load the plugin and reports a validation error for that
    field.
