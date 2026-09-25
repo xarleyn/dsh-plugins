@@ -1,4 +1,11 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { constants, zstdCompressSync, zstdDecompressSync } from "node:zlib";
@@ -87,5 +94,35 @@ describe("qa-repair-sessions", () => {
     expect(readFileSync(`${file}.pre-plugin-event-repair.bak`)).toEqual(
       original,
     );
+  });
+
+  it("repairs when launched the way a package manager launches it", () => {
+    // The installed bin is a link, so the path the process is handed never
+    // equals the file's realpath. A launch guard that compares the paths as
+    // spelled runs the module without calling main: empty output, exit 0, and
+    // the operator concludes the stand has nothing to report.
+    const dir = mkdtempSync(path.join(tmpdir(), "qa-repair-bin-"));
+    const link = path.join(dir, "qa-repair-sessions");
+    try {
+      symlinkSync(
+        path.resolve(process.cwd(), "scripts/repair-session-events.mjs"),
+        link,
+      );
+    } catch (error) {
+      rmSync(dir, { recursive: true, force: true });
+      console.warn(
+        `qa-repair-sessions: this filesystem refused a link (${String(error)}); launch probe skipped`,
+      );
+      return;
+    }
+    try {
+      const started = spawnSync(process.execPath, [link, "--help"], {
+        encoding: "utf8",
+      });
+      expect(started.status).toBe(0);
+      expect(started.stdout).toMatch(/^Usage: qa-repair-sessions/u);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

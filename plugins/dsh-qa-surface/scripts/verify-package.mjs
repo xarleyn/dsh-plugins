@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import QaSurface, { name, resolveConfig } from "../lib/index.js";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
@@ -60,6 +64,7 @@ const manifest = JSON.parse(
   await readFile(new URL("package.json", root), "utf8"),
 );
 assert.equal(manifest.name, "@yadsh/dsh-qa-surface");
+assert.equal(manifest.bin["qa-accounts"], "./lib/cli.js");
 assert.equal(
   manifest.bin["qa-repair-sessions"],
   "./scripts/repair-session-events.mjs",
@@ -541,4 +546,84 @@ assert.deepEqual(
   "every default allow-listed tool must have a reviewed capability entry",
 );
 
-console.log("verify-package: all gates passed");
+// Each bin must run when a package manager launches it the way it launches
+// everything else: through a `node_modules/.bin` link, whose path never equals
+// the linked file's realpath. An entry guard that compares the paths as spelled
+// executes the module body without ever calling `main`, which the operator sees
+// as an empty success — no output, exit 0 — so the launch is checked here, where
+// it fails the pack instead of the deployment.
+const binLaunches = [
+  {
+    bin: "qa-accounts",
+    file: "lib/cli.js",
+    argv: ["--help"],
+    pattern: /^Usage:/u,
+  },
+  {
+    bin: "qa-accounts",
+    file: "lib/cli.js",
+    // `--help` never opens the database: probe a command that does, the way the
+    // kit's own hint line does.
+    argv: (db) => ["--file", db, "list"],
+    pattern: /^no accounts yet/u,
+  },
+  {
+    bin: "qa-repair-sessions",
+    file: "scripts/repair-session-events.mjs",
+    argv: ["--help"],
+    pattern: /^Usage: qa-repair-sessions/u,
+  },
+  {
+    bin: "qa-attach-sessions",
+    file: "scripts/attach-workspace-sessions.mjs",
+    argv: ["--help"],
+    pattern: /^Usage: qa-attach-sessions/u,
+  },
+];
+const dbDir = await mkdtemp(path.join(tmpdir(), "qa-bin-db-"));
+const unlinked = [];
+for (const launch of binLaunches) {
+  const target = fileURLToPath(new URL(launch.file, root));
+  // The kit hands the link to the kernel, not to node: the shebang is what makes
+  // a bare `qa-accounts list` reach node at all.
+  assert.match(
+    await readFile(target, "utf8"),
+    /^#!\/usr\/bin\/env node/u,
+    `${launch.bin} must carry a node shebang to run from PATH`,
+  );
+  const argv =
+    typeof launch.argv === "function"
+      ? launch.argv(path.join(dbDir, "qa-accounts.db"))
+      : launch.argv;
+  const dir = await mkdtemp(path.join(tmpdir(), "qa-bin-"));
+  const link = path.join(dir, launch.bin);
+  let started;
+  try {
+    await symlink(target, link);
+    started = spawnSync(process.execPath, [link, ...argv], {
+      encoding: "utf8",
+    });
+  } catch (error) {
+    unlinked.push(`${launch.bin} (${error.code ?? error.message})`);
+    continue;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.equal(
+    started.status,
+    0,
+    `${launch.bin} through .bin exited ${String(started.status)}: ${String(started.stderr ?? started.error ?? "")}`,
+  );
+  assert.match(
+    started.stdout,
+    launch.pattern,
+    `${launch.bin} through .bin printed nothing for ${argv.join(" ")}`,
+  );
+}
+await rm(dbDir, { recursive: true, force: true });
+
+console.log(
+  unlinked.length === 0
+    ? "verify-package: all gates passed"
+    : `verify-package: all gates passed, except the .bin launches this filesystem refused: ${unlinked.join(", ")}`,
+);
