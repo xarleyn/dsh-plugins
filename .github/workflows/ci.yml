@@ -10,13 +10,16 @@ permissions:
   actions: read
   contents: read
 
+# A pull request is superseded by the next push to its branch. Main is not: a
+# cancelled run verifies nothing, and the next run only reaches back to the last
+# successful one, so a burst of merges could leave main unverified.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   prepare:
-    name: Prepare affected projects
+    name: Prepare projects to verify
     runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.projects.outputs.count }}
@@ -79,12 +82,23 @@ jobs:
       - name: Check version plans
         run: pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
-      - name: Select affected projects
+      # A pull request is only asked about its own change: the base branch was
+      # verified when it moved. A push is the verification of the branch itself,
+      # so it takes the whole workspace. Selecting a push by `--affected` was a
+      # mask, not an optimization — the affected set is measured from the last
+      # *successful* run of this workflow, so once a run finishes without ever
+      # reaching a project, that project drops out of every later run on main
+      # until some pull request happens to name it again.
+      - name: Select projects to verify
         id: projects
         shell: bash
         run: |
-          affected_json="$(pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json)"
-          DSH_PROJECTS_JSON="$affected_json" node scripts/workspace-packages.mjs --format=github-matrix >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            projects_json="$(pnpm nx show projects --json)"
+          else
+            projects_json="$(pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json)"
+          fi
+          DSH_PROJECTS_JSON="$projects_json" node scripts/workspace-packages.mjs --format=github-matrix >> "$GITHUB_OUTPUT"
 
   projects:
     name: Project / ${{ matrix.project }}
@@ -124,7 +138,7 @@ jobs:
         run: pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"
 
   verify:
-    name: Verify affected projects
+    name: Verify projects
     if: always()
     needs: [prepare, projects]
     runs-on: ubuntu-latest
