@@ -518,6 +518,68 @@ describe("redaction", () => {
       "warn:[dsh-redact-mirror] redact.mirror_only apiKey=[Redacted]",
     ]);
   });
+
+  it("drops a record whose fields cannot be read instead of emitting them raw", async () => {
+    const dir = await newDir();
+    const mirrored: string[] = [];
+    const published: PluginLogRecord[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-redact-unreadable") published.push(record);
+    });
+    const logger = createPluginLogger({
+      pluginId: "dsh-redact-unreadable",
+      dir,
+      level: "info",
+      console: "info",
+      consoleSink: (level, message) => mirrored.push(`${level}:${message}`),
+      redact: ["apiKey"],
+    });
+
+    // Reading the record is the caller's own code: the copy walks every
+    // property, so a throwing getter reaches `write` from inside the redactor.
+    const fields: Record<string, unknown> = {
+      apiKey: SECRET,
+      get boom(): never {
+        throw new Error("unreadable field");
+      },
+    };
+    expect(() => logger.warn("redact.unreadable", fields)).not.toThrow();
+    await logger.close();
+    unsubscribe();
+
+    // No sink shows the event, because no sink may show its fields unredacted.
+    expect(published).toEqual([]);
+    expect(await readLogLines(dir)).toEqual([]);
+    expect(mirrored).toEqual([
+      "warn:[dsh-redact-unreadable] logging.fields_unreadable",
+    ]);
+  });
+
+  it("never reads the fields of a record no sink consumes", async () => {
+    const dir = await newDir();
+    let reads = 0;
+    const logger = createPluginLogger({
+      pluginId: "dsh-redact-untouched",
+      dir,
+      level: "error",
+      console: "silent",
+      redact: ["apiKey"],
+    });
+    const fields = {
+      get apiKey(): string {
+        reads += 1;
+        return SECRET;
+      },
+    };
+
+    logger.debug("redact.untouched", fields);
+    await logger.close();
+
+    // Below the level and below a silent mirror nothing reads the record, so
+    // `write` never reaches into the caller's object for it.
+    expect(reads).toBe(0);
+    expect(await readdir(dir)).toEqual([]);
+  });
 });
 
 describe("getPluginLogger", () => {
@@ -696,7 +758,7 @@ describe("plugin log record bus", () => {
     return logger;
   }
 
-  it("publishes a frozen copy and leaves the caller's object usable", () => {
+  it("publishes a frozen top-level copy and leaves the caller's object usable", () => {
     const plain = create("dsh-records-caller-copy");
     const redacting = create("dsh-records-caller-redacted", "info", [
       "nested.token",
@@ -728,6 +790,38 @@ describe("plugin log record bus", () => {
     }).not.toThrow();
     expect(Object.isFrozen(fields)).toBe(false);
     expect(Object.isFrozen(fields.nested)).toBe(false);
+
+    // The copy is top-level only, so a record is no deep snapshot: a nested
+    // value the caller still owns keeps changing under a subscriber, and only
+    // an object the redactor cloned along a path is cut off from it.
+    expect(published[0]?.fields["apiKey"]).toBe("raw");
+    expect(published[0]?.fields["nested"]).toBe(fields.nested);
+    expect(published[0]?.fields["nested"]).toEqual({ token: "rewritten" });
+    expect(published[1]?.fields["nested"]).not.toBe(fields.nested);
+    expect(published[1]?.fields["nested"]).toEqual({ token: "[Redacted]" });
+  });
+
+  it("drops a record whose fields it cannot copy", () => {
+    const logger = create("dsh-records-unreadable");
+    const events: string[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-records-unreadable") {
+        events.push(record.event);
+      }
+    });
+
+    // The copy the record is built from reads every property, so a logger with
+    // no `redact` configured can still be handed a getter that throws; logging
+    // never surfaces that to the plugin, and the record is dropped instead.
+    const fields = {
+      get boom(): never {
+        throw new Error("unreadable field");
+      },
+    };
+    expect(() => logger.info("record.unreadable", fields)).not.toThrow();
+    unsubscribe();
+
+    expect(events).toEqual([]);
   });
 
   it("delivers every recorded record with its module, fields and a rising sequence", () => {
