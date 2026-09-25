@@ -102,6 +102,9 @@ const AUDIT_ACTIONS: readonly QaAdminAuditAction[] = [
   "skill.created",
   "skill.updated",
   "skill.deleted",
+  "memory.corrected",
+  "memory.deleted",
+  "memory.wiped",
 ];
 
 /**

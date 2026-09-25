@@ -29,6 +29,7 @@ describe("admin console routes", () => {
       ["/qa/admin/review", "review"],
       ["/qa/admin/quality/feedback", "feedback"],
       ["/qa/admin/quality/analytics", "quality"],
+      ["/qa/admin/memory", "memory"],
       ["/qa/admin/audit", "audit"],
     ];
     for (const [path, page] of cases) {
@@ -70,6 +71,7 @@ describe("admin console routes", () => {
       { page: "review" },
       { page: "feedback" },
       { page: "quality" },
+      { page: "memory" },
       { page: "audit" },
     ] as const;
     for (const route of routes) {
@@ -108,6 +110,7 @@ describe("admin console routes", () => {
     expect(adminSectionOf({ page: "skills" })).toBe("access");
     expect(adminSectionOf({ page: "skill-files" })).toBe("access");
     expect(adminSectionOf({ page: "review" })).toBe("review");
+    expect(adminSectionOf({ page: "memory" })).toBe("memory");
   });
 });
 

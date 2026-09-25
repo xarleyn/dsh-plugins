@@ -81,7 +81,7 @@ The plugin registers three agent-facing tools.
 | --- | --- |
 | `domain_expert` | Ask one domain's expert to investigate, answer or review something. Called from inside an expert it is a delegation, and the caller's cross-domain policy decides whether it is allowed. |
 | `domain_experts_list` | Identifiers, names and one-line descriptions of the enabled domains. Scope, memory and policy stay out of the model's view. |
-| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the caller's own namespace accepts writes — that is the account's namespace where the deployment keeps memory per account. |
+| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the caller's own namespace accepts writes — that is the account's namespace where the deployment keeps memory per account. A write that records nothing — an acknowledgement, a placeholder, an echoed command, «nothing was found», a text too short to carry a fact — is refused with the reason, because whatever is stored is recalled into every later answer of that domain. |
 
 `domain_delegate` is accepted as a tool-policy alias for `domain_expert` so a
 configuration written against the design vocabulary is not reported as
@@ -134,6 +134,17 @@ For a deployment that manages its own data: the database needs the same treatmen
 as the plugin's other SQLite stores — its `-wal` and `-shm` sidecars travel with
 it, and it is copied while the stack is stopped. A domain seed that re-seeds the
 storage unit no longer touches memory held by the `sqlite` provider.
+
+What an expert recorded is maintenance data, not a write-once log. The service
+exposes a host-plane seam for it — `ctx.domainExperts.memoryAdmin` — which lists
+every namespace the enabled experts declare, searches one, corrects a record in
+place, and deletes one record, a named set, or a whole namespace. It is not a
+Remote: a browser must not hold an unauthenticated write endpoint over the store
+that feeds every expert's prompt, so the calling surface — the QA console in
+`@yadsh/dsh-qa-surface`, behind its own permission check — carries the identity.
+Writes reach only a namespace some enabled expert owns as its private one, a
+correction of a record that vanished meanwhile is refused instead of re-created,
+and an operator's edit is never filtered as a model's would be.
 
 Domain definitions are **not** plugin configuration: they are durable records in
 the plugin's own storage domain, edited in the Domain Experts tab. That keeps an

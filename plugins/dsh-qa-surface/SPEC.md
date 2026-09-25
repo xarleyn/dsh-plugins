@@ -3076,3 +3076,71 @@ carries the actor and the revision it produced.
   skill they wrote.
 - `tests/client/admin-console/admin-routes.test.ts` and `tests/personal-skills/personal-skills-service.test.ts`: the
   new route round-trips, and discovery reports both roots.
+
+## 49. Expert memory maintenance
+
+### 49.1 Motivation
+
+A domain expert writes its own durable notes, and a weak model writes noise: a
+bare acknowledgement, a placeholder, a "nothing was found". Whatever is stored is
+injected into every later answer of that domain, so a wrong line keeps producing
+wrong answers until a person removes it. Until now the only lever was the
+plugin's own settings page, which the QA overlay does not reach: the console is
+the surface an operator actually has.
+
+### 49.2 Reach and authorization
+
+- Two permissions, not one: `memory.read` (admin, reviewer) and `memory.manage`
+  (admin only). The split is the review workflow — a reviewer is who notices that
+  an expert keeps repeating an inaccuracy, and reading is their half of the job;
+  what a domain remembers reaches other people's answers, so writing stays with
+  the deployment's administrator.
+- The console reaches memory through `ctx.get("domainExperts")` resolved per call
+  and typed structurally in `src/integration/expert-memory.ts` — no package
+  dependency, because a stand that composes no experts must still boot its
+  console, and its memory page answers `memory-unavailable` instead.
+- The sibling plugin's `@Remote` surface is deliberately **not** called from the
+  browser: those methods take no token and check no permission, being written for
+  a trusted in-Harness caller. This console answers a browser on a LAN port, so
+  it carries the identity and calls the host-plane `memoryAdmin` seam behind
+  `QaAdminService.require`.
+- Remotes on `qaSurface`: `adminMemoryScopes`, `adminMemoryRecords`,
+  `adminMemoryCorrect`, `adminMemoryForget`, `adminMemoryWipe`.
+- The plugin's refusals cross as reasons, never as messages:
+  `MEMORY_SCOPE_DENIED` → `forbidden`, `MEMORY_RECORD_MISSING` →
+  `memory-record-unknown`, `STORAGE_UNAVAILABLE`/`MEMORY_PROVIDER_MISSING` →
+  `memory-unavailable`, `TASK_REJECTED` → `invalid-memory`. A memory refusal
+  names namespaces and a storage refusal names a database file; neither belongs
+  in a browser. A fault with no recognized code is re-thrown untouched, so a
+  defect is not dressed up as a deployment state.
+- Wiping a namespace confirms the record count the page showed. Memory an expert
+  wrote while the operator was reading is not memory they agreed to erase.
+
+### 49.3 The page
+
+`src/client/admin/pages/ExpertMemory.tsx`, nav «Память экспертов» in the
+Качество group, route `/admin/memory`. A namespace picker over the experts that
+declare memory, a filter over key, text and tags, and the record list newest
+first. Editing is inline — the console keeps no modal editors — and covers the
+text and the tags only: the key is what the audit trail and the expert's own
+`forget` calls address. Rows tick for a bulk delete; a read-only namespace shows
+its records with no write control, and a reviewer sees the list without any of
+them. Audit rows `memory.corrected`, `memory.deleted`, `memory.wiped` carry the
+actor and the record image (`namespace`, `key`, `tags`, `updatedAt`, the head of
+the text); a bulk deletion records the keys and the count rather than copying
+every page it removed.
+
+### 49.4 Verification
+
+- `tests/admin/admin-expert-memory.test.ts`: every call refused to a plain
+  account, a reviewer reading and writing nothing (the seam is never reached),
+  the `memory-unavailable` answer with no experts composed, both images in the
+  audit row, the keys-only snapshot of a bulk delete, a wipe whose confirmed
+  count moved, and each refusal arriving with its reason.
+- `tests/client/admin-console/qa-admin-console-expert-memory.test.tsx`: the list
+  over the first expert, the namespace picker, an inline correction and its
+  read-back, the save staying dead for an unchanged or blank draft, deletion
+  gated by the confirmation, the bulk control appearing only once something is
+  ticked, the reviewer's console without a write control, and the empty and
+  unavailable copies.
+- `tests/client/admin-console/admin-routes.test.ts`: the new route round-trips.

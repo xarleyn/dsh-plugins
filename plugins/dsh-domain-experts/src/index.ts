@@ -30,6 +30,7 @@ import {
   type ExpertRunInput,
   type SubagentsFace,
 } from "./host/execution.js";
+import { createMemoryAdmin, type MemoryAdmin } from "./host/memory/admin.js";
 import {
   createBuiltinMemoryProvider,
   type MemoryTable,
@@ -173,6 +174,16 @@ export class DomainExpertsService extends TypertRemoteService {
   private toolAvailability = false;
   private surface: QaPrincipalSurface | undefined;
   private surfaceChecked = false;
+  /**
+   * Operator-facing memory maintenance (design §15).
+   *
+   * Not a `@Remote` on purpose: this writes into the store that feeds every
+   * expert's prompt, so it is reached from another plugin's host-plane service,
+   * behind that plugin's own permission check. Its dependencies resolve through
+   * `this` on each call, so a deployment that switches provider or adds a domain
+   * is answered from the new state rather than a snapshot of the first one.
+   */
+  readonly memoryAdmin: MemoryAdmin;
 
   constructor(ctx: Context, entry: PluginConfig = {}) {
     super(ctx, "domainExperts", { namespace: "domainExperts" });
@@ -204,6 +215,12 @@ export class DomainExpertsService extends TypertRemoteService {
     if (this.sqliteMemory !== undefined) {
       this.memoryProviders.register(this.sqliteMemory);
     }
+    this.memoryAdmin = createMemoryAdmin({
+      definitions: async () => (await this.opened()).domains.list(),
+      provider: () =>
+        this.memoryProviders.require(this.config().defaultMemoryProvider),
+      logger: this.logger,
+    });
 
     this.registerTools();
     this.applyEnabled();

@@ -20,6 +20,7 @@ import {
 import { AdminReviewQueue } from "./pages/Review.js";
 import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
 import { AdminSkillFiles } from "./pages/SkillFiles.js";
+import { AdminExpertMemory } from "./pages/ExpertMemory.js";
 import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
 
 type Page = QaAdminRoute["page"];
@@ -52,7 +53,8 @@ const NAV: readonly {
     | "reviews.read"
     | "analytics.read"
     | "audit.read"
-    | "skills.manage";
+    | "skills.manage"
+    | "memory.read";
 }[] = [
   {
     page: "overview",
@@ -114,6 +116,12 @@ const NAV: readonly {
     group: "Качество",
     permission: "analytics.read",
   },
+  {
+    page: "memory",
+    label: "Память экспертов",
+    group: "Качество",
+    permission: "memory.read",
+  },
   { page: "audit", label: "Аудит", group: "Система", permission: "audit.read" },
 ];
 
@@ -128,6 +136,7 @@ const CONSOLE_PAGES = new Set<Page>([
   "review",
   "feedback",
   "quality",
+  "memory",
   "audit",
 ]);
 
@@ -146,7 +155,11 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
     return (
       permission === "conversations.read.all" ||
       permission === "reviews.read" ||
-      permission === "analytics.read"
+      permission === "analytics.read" ||
+      // A reviewer reads expert memory because that is where a wrong answer
+      // starts repeating itself; the `memory.manage` check the Host makes on
+      // every write is what keeps the edit away from them.
+      permission === "memory.read"
     );
   }
   // A plain user never reaches the console; the Host refuses every
@@ -160,6 +173,15 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
  * this decides what to draw, not what is allowed.
  */
 function canDeleteConversation(role: QaAccountRole | undefined): boolean {
+  return role === undefined || role === "admin";
+}
+
+/**
+ * Whether the console draws the memory-edit controls. `memory.read` opens the
+ * list for a reviewer as well; only `memory.manage` — the admin role — writes,
+ * and the Host re-checks that on every call.
+ */
+function canManageMemory(role: QaAccountRole | undefined): boolean {
   return role === undefined || role === "admin";
 }
 
@@ -1366,6 +1388,12 @@ export function QaAdmin(props: {
             </>
           ) : adminApi !== undefined && page === "skill-files" ? (
             <AdminSkillFiles api={adminApi} token={props.token} />
+          ) : adminApi !== undefined && page === "memory" ? (
+            <AdminExpertMemory
+              api={adminApi}
+              token={props.token}
+              canManage={canManageMemory(props.role)}
+            />
           ) : page === "skills" ? (
             <>
               <div className="dsh-qa-admin__title-row">

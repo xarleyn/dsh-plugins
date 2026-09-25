@@ -28,6 +28,21 @@ export interface DomainMemoryProvider {
     text: string,
     tags?: readonly string[],
   ): Promise<MemoryRecord>;
+  /**
+   * Rewrite the record one key already holds, or answer `undefined` when no
+   * record carries it.
+   *
+   * {@link remember} upserts, which is what a model writing a finding wants;
+   * maintenance needs the opposite. An operator correcting a note whose key a
+   * concurrent writer has just deleted must report the miss, not leave behind a
+   * one-word record nobody wrote on purpose.
+   */
+  replace(
+    namespace: string,
+    key: string,
+    text: string,
+    tags?: readonly string[],
+  ): Promise<MemoryRecord | undefined>;
   forget(namespace: string, key: string): Promise<boolean>;
   clear(namespace: string): Promise<number>;
 }
