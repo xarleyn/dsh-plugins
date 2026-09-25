@@ -417,18 +417,16 @@ describe("header palette control", () => {
         }
       />,
     );
-    const row = container.querySelector(".dsh-qa-header__title-row");
+    const row = screen.getByTestId("qa-surface-header-title-row");
     const theme = container.querySelector(".dsh-qa-theme");
-    expect(row?.contains(theme ?? null)).toBe(true);
+    expect(row.contains(theme ?? null)).toBe(true);
     expect(theme?.previousElementSibling?.getAttribute("data-testid")).toBe(
       "role",
     );
     // Not in the right-hand action cluster, which is what runs off the edge of
     // a phone-sized header first.
     expect(
-      container
-        .querySelector(".dsh-qa-header__actions")
-        ?.contains(theme ?? null),
+      screen.getByTestId("qa-surface-header-actions").contains(theme ?? null),
     ).toBe(false);
   });
 });

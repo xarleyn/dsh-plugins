@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { useRef } from "react";
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   QaWidthHandle,
@@ -216,14 +216,14 @@ describe("QA content width", () => {
       onCommit: vi.fn(),
       onEnd: vi.fn(),
     };
-    const { container } = render(
+    render(
       <>
         <QaWidthHandle side="left" {...handlers} />
         <QaWidthHandle side="right" {...handlers} />
       </>,
     );
-    expect(container.querySelector('[data-width-handle="left"]')).toBeTruthy();
-    expect(container.querySelector('[data-width-handle="right"]')).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-width-handle-left")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-width-handle-right")).toBeTruthy();
   });
 
   it("resizes symmetrically and commits the final width", () => {
@@ -244,11 +244,8 @@ describe("QA content width", () => {
       onCommit: vi.fn(),
       onEnd: vi.fn(),
     };
-    const { container } = render(<QaWidthHandle side="right" {...handlers} />);
-    const handle = container.querySelector<HTMLElement>(
-      '[data-width-handle="right"]',
-    );
-    expect(handle).not.toBeNull();
+    render(<QaWidthHandle side="right" {...handlers} />);
+    const handle = screen.getByTestId("qa-surface-width-handle-right");
     Object.defineProperties(handle, {
       setPointerCapture: {
         value: vi.fn(() => {
@@ -280,15 +277,15 @@ describe("QA content width", () => {
       return event;
     };
 
-    fireEvent(handle!, pointerEvent("pointerdown", 100));
-    fireEvent(handle!, pointerEvent("pointermove", 120, 90));
+    fireEvent(handle, pointerEvent("pointerdown", 100));
+    fireEvent(handle, pointerEvent("pointermove", 120, 90));
     animationFrame?.(0);
     expect(handlers.onDrag).toHaveBeenCalledWith(720);
     expect(
-      handle?.style.getPropertyValue("--dsh-qa-width-handle-pointer-y"),
+      handle.style.getPropertyValue("--dsh-qa-width-handle-pointer-y"),
     ).toBe("80px");
 
-    fireEvent(handle!, pointerEvent("pointerup", 130));
+    fireEvent(handle, pointerEvent("pointerup", 130));
     expect(handlers.onCommit).toHaveBeenCalledWith(740);
     expect(handlers.onEnd).toHaveBeenCalledOnce();
     requestFrame.mockRestore();
