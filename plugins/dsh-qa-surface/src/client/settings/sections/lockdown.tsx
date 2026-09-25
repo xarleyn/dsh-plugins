@@ -39,10 +39,11 @@ export function LockdownSection(props: ConfigProps) {
     <Section
       title="Блокировка"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-lockdown"
+      aside={resetAside(props, paths, "qa-settings-lockdown-reset")}
     >
       {enabled ? null : (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-lockdown-notice-disabled">
           Блокировка выключена. Сессии помощника больше не закрепляются за
           read-only профилем, белым списком инструментов и подтверждением
           «never»: их определяет обычная политика харнесса. Включайте только на
@@ -55,6 +56,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           label="Закреплять политику"
           hint="Перед активацией страницы сессия приводится к выбранному ниже профилю."
+          testId="qa-settings-lockdown-enabled"
           onChange={(value) => {
             props.write(["lockdown", "enabled"], value);
           }}
@@ -65,6 +67,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="qa-read-only"
           hint="Пресет харнесса, которым закрепляется сессия. Обязателен при включённой блокировке и должен разрешаться в выбранный режим песочницы с подтверждением «never»."
+          testId="qa-settings-lockdown-permission-preset"
           onChange={(value) => {
             props.write(["lockdown", "permissionPreset"], value);
           }}
@@ -75,6 +78,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           options={SANDBOX_MODES}
           hint={describeSandbox(sandbox).hint}
+          testId="qa-settings-lockdown-sandbox-mode"
           onChange={(value) => {
             props.write(["lockdown", "sandboxMode"], value);
           }}
@@ -84,6 +88,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           label="Фиксировать пресет агента"
           hint="Посетитель не может выбрать другого агента."
+          testId="qa-settings-lockdown-enforce-fixed-agent-preset"
           onChange={(value) => {
             props.write(["lockdown", "enforceFixedAgentPreset"], value);
           }}
@@ -93,6 +98,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           label="Фиксировать рабочее пространство"
           hint="Каталог сессии задаёт развёртывание, а не браузер."
+          testId="qa-settings-lockdown-enforce-fixed-workspace"
           onChange={(value) => {
             props.write(["lockdown", "enforceFixedWorkspace"], value);
           }}
@@ -102,6 +108,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           label="Фиксировать модель"
           hint="Провайдер и модель берутся из конфигурации страницы."
+          testId="qa-settings-lockdown-enforce-fixed-model"
           onChange={(value) => {
             props.write(["lockdown", "enforceFixedModel"], value);
           }}
@@ -111,6 +118,7 @@ export function LockdownSection(props: ConfigProps) {
           disabled={disabled}
           label="Разрешить сброс сессии"
           hint="Нужен кнопке «новый чат» в разделе интерфейса."
+          testId="qa-settings-lockdown-allow-session-reset"
           onChange={(value) => {
             props.write(["lockdown", "allowSessionReset"], value);
           }}
@@ -123,19 +131,24 @@ export function LockdownSection(props: ConfigProps) {
         placeholder="read, grep, glob"
         hint="Имена через запятую или по одному в строке. Пустой список не разрешает ничего: агент отвечает только текстом."
         parse={parseCommaList}
+        testId="qa-settings-lockdown-tool-policy-allow"
         onCommit={(values) => {
           props.write(["lockdown", "toolPolicy", "allow"], values);
         }}
       />
       {(lockdown?.toolPolicy?.allow?.length ?? 0) === 0 ? (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-lockdown-notice-no-tools">
           Белый список пуст: помощник отвечает, не вызывая инструментов.
         </Notice>
       ) : null}
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-lockdown-advanced"
+      >
         <summary>Зафиксировано в цепочке политики</summary>
         <div className="qa-card-advanced-content">
           <Facts
+            testId="qa-settings-lockdown-fixed-facts"
             items={[
               {
                 label: "Подтверждения",
