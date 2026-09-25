@@ -4,16 +4,13 @@
 
 The first message of a newly created chat no longer disappears without a trace.
 
-"New chat" spends no session: the chat is created by the first prompt, and that
-was the moment the message died. The composer kept its unsent text as component
-state keyed by the bound session, so binding the freshly created session
-rebuilt the field empty — the question vanished from the browser before the
-Host had accepted anything, and the chat came up empty with no error in the
-interface and nothing on the wire. The composer and the per-chat state beside
-it are keyed by the chat now, which a draft keeps through its own lazy session;
-the text and the attachments are handed back only when the session has taken
-the prompt.
+Pressing "New chat" creates no conversation of its own: the chat appears with
+the first question sent into it, and that hand-off is where the question died.
+As soon as the new chat was created, its composer was rebuilt empty, so the
+question left the browser before the stand had admitted it — no answer, no
+error on screen, nothing on the wire. The question now stays in the field until
+the chat has admitted it, and the files attached to it survive that hand-off.
 
-A submission that cannot be sent is said out loud instead of being dropped: a
-chat still being created and a chat that is no longer open both answer with the
-reason, and the draft stays in the field to be sent again.
+A question that could not be sent says so instead of vanishing: a chat that is
+still being created and a chat that is no longer open both answer with the
+reason, and the field keeps the question so it can be sent again.
