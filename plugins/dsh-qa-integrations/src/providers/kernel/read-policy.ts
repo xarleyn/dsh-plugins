@@ -212,6 +212,30 @@ export async function readBoundedJson<T>(
 }
 
 /**
+ * Whether a folded transport failure earns another attempt. Re-spending a
+ * deadline is a latency decision, not a detail of the API behind it, so the
+ * kernel holds the two rules a deployment chooses between and a provider names
+ * its choice — an upstream that answers in five different ways here cannot say
+ * what one `timeoutMs` promised the operator.
+ */
+export type TransportRetriable = (error: IntegrationError) => boolean;
+
+/**
+ * The default, and the rule a provider gets when it names no other: one
+ * deadline is the whole budget. A call this deployment already gave up on is
+ * not re-sent, so one read costs `timeoutMs` rather than `retries × timeoutMs`.
+ */
+export const DEADLINE_IS_THE_BUDGET: TransportRetriable = (error) =>
+  error.code !== "UpstreamTimeout";
+
+/**
+ * The rule for an upstream more often busy than gone: every transport fault
+ * earns another attempt, and the worst case of one read is `retries ×
+ * timeoutMs` — a longer wait, paid for by the answers it still gets.
+ */
+export const RESEND_AFTER_EVERY_FAULT: TransportRetriable = () => true;
+
+/**
  * How a provider folds transport outcomes into its own safe domain errors:
  * each transport keeps the wording, the shared loop keeps the mechanics.
  */
@@ -224,8 +248,11 @@ export interface FetchRetryPolicy {
     error: unknown,
     timedOut: boolean,
   ) => IntegrationError;
-  /** Whether a folded transport failure earns another attempt. */
-  readonly retriable: (error: IntegrationError) => boolean;
+  /**
+   * Whether a folded transport failure earns another attempt; {@link
+   * DEADLINE_IS_THE_BUDGET} unless the provider names its choice.
+   */
+  readonly retriable?: TransportRetriable;
   /** Fold a non-2xx answer into the provider's safe domain error. */
   readonly statusFailure: (response: Response) => IntegrationError;
 }
@@ -258,6 +285,7 @@ export async function fetchWithRetries<T>(
   policy: FetchRetryPolicy,
   read: ResponseRead<T>,
 ): Promise<T> {
+  const retriable = policy.retriable ?? DEADLINE_IS_THE_BUDGET;
   for (let attempt = 0; ; attempt += 1) {
     let timedOut = false;
     const controller = new AbortController();
@@ -278,7 +306,7 @@ export async function fetchWithRetries<T>(
         });
       } catch (error) {
         const failure = policy.transportFailure(error, timedOut);
-        if (attempt >= policy.retries || !policy.retriable(failure)) {
+        if (attempt >= policy.retries || !retriable(failure)) {
           throw failure;
         }
         await sleep(retryDelay(attempt));

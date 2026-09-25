@@ -56,6 +56,20 @@ describe("testit instance list", () => {
         ],
       }),
     ).toThrow(/no credentials or query/u);
+    // Test IT was the one installation list that refused a fragment; the rule
+    // now lives in the shared address policy, so it is pinned here to prove the
+    // migration carried it rather than folded it away.
+    expect(() =>
+      resolveTestitConfig({
+        instances: [
+          {
+            id: "a",
+            label: "A",
+            baseUrl: "https://team.example/#/test-management",
+          },
+        ],
+      }),
+    ).toThrow(/no fragment/u);
   });
 
   it("refuses plain HTTP unless the deployment is a development one", () => {

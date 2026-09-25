@@ -1,5 +1,6 @@
 import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../../errors.js";
+import { findEndpoint, resolveEndpointList } from "../kernel/address.js";
 
 /**
  * One Weblate deployment the operator allows. A user never types a host: the
@@ -68,82 +69,24 @@ export const WEBLATE_DEFAULTS: WeblateFlags = Object.freeze({
   retries: 2,
 });
 
-const INSTANCE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
-const MAX_INSTANCES = 16;
-
 const configError = scopedConfigError("weblate integration config");
 
 /**
- * Canonicalize one configured instance. Everything here is operator input, so a
- * typo must fail loudly at load: a silently dropped instance would leave users
- * with a provider they cannot connect to and no explanation.
+ * The instance list as the operator wrote it, validated and canonicalized by the
+ * shared address policy: id grammar, HTTPS rule, a URL carrying no credentials,
+ * query or fragment, trailing-slash folding. Weblate is often mounted under a
+ * subpath, which is why the shared fold keeps the path and drops only the
+ * trailing slash.
  */
-function normalizeInstance(
-  input: unknown,
-  index: number,
-  allowInsecureHttp: boolean,
-  seen: Set<string>,
-): WeblateInstance {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw configError(`instances[${index}] must be a mapping`);
-  }
-  const record = input as Record<string, unknown>;
-  const id = typeof record["id"] === "string" ? record["id"].trim() : "";
-  if (!INSTANCE_ID.test(id)) {
-    throw configError(
-      `instances[${index}].id must be lowercase latin, digits or dashes`,
-    );
-  }
-  if (seen.has(id)) throw configError(`instances[${index}].id is a duplicate`);
-  seen.add(id);
-  const raw = typeof record["baseUrl"] === "string" ? record["baseUrl"] : "";
-  let url: URL;
-  try {
-    url = new URL(raw.trim());
-  } catch {
-    throw configError(`instances[${index}].baseUrl must be an absolute URL`);
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw configError(`instances[${index}].baseUrl must use HTTP or HTTPS`);
-  }
-  if (url.protocol === "http:" && !allowInsecureHttp) {
-    throw configError(
-      `instances[${index}].baseUrl needs HTTPS; set allowInsecureHttp for a development instance`,
-    );
-  }
-  if (url.username !== "" || url.password !== "" || url.search !== "") {
-    throw configError(
-      `instances[${index}].baseUrl must carry no credentials or query`,
-    );
-  }
-  // Weblate is often mounted under a subpath, so the path stays; a trailing
-  // slash would double up when the API root is appended, and the WHATWG URL
-  // parser has already folded away any `..` segments.
-  const path = url.pathname.replace(/\/+$/u, "");
-  const label =
-    typeof record["label"] === "string" ? record["label"].trim() : "";
-  return Object.freeze({
-    id,
-    label: label === "" ? url.host : label,
-    baseUrl: `${url.origin}${path}`,
-  });
-}
-
 function normalizeInstances(
   input: unknown,
   allowInsecureHttp: boolean,
 ): readonly WeblateInstance[] {
-  if (input === undefined || input === null) return WEBLATE_DEFAULTS.instances;
-  if (!Array.isArray(input)) throw configError("instances must be a list");
-  if (input.length > MAX_INSTANCES) {
-    throw configError(`instances accepts at most ${MAX_INSTANCES} entries`);
-  }
-  const seen = new Set<string>();
-  return Object.freeze(
-    input.map((entry, index) =>
-      normalizeInstance(entry, index, allowInsecureHttp, seen),
-    ),
-  );
+  return resolveEndpointList(input, allowInsecureHttp, {
+    error: configError,
+    field: "instances",
+    noun: "instance",
+  });
 }
 
 /**
@@ -220,5 +163,5 @@ export function weblateInstance(
   flags: WeblateFlags,
   instanceId: string,
 ): WeblateInstance | undefined {
-  return flags.instances.find((item) => item.id === instanceId);
+  return findEndpoint(flags.instances, instanceId);
 }
