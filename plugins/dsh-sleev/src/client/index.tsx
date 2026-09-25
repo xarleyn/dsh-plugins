@@ -149,6 +149,7 @@ type SleevSettingsCardProps = PropsRuntime<"settings.plugins.tab"> &
 
 function SettingsField(props: {
   readonly id: string;
+  readonly testId: string;
   readonly label: string;
   readonly hint: string;
   readonly state: SleevSettingsFieldState;
@@ -160,7 +161,7 @@ function SettingsField(props: {
   readonly children: ReactNode;
 }): ReactNode {
   return (
-    <div className="dsh-sleev-field">
+    <div className="dsh-sleev-field" data-testid={props.testId}>
       <div className="dsh-sleev-field-head">
         <label htmlFor={props.id} className="dsh-sleev-label">
           {props.label}
@@ -172,6 +173,7 @@ function SettingsField(props: {
               type="button"
               className="dsh-sleev-reset"
               disabled={!props.writable}
+              data-testid="sleev-field-reset"
               onClick={props.onReset}
             >
               {props.resetLabel}
@@ -181,7 +183,9 @@ function SettingsField(props: {
       </div>
       {props.children}
       {props.state.invalid ? (
-        <p className="dsh-sleev-error">{props.invalidLabel}</p>
+        <p className="dsh-sleev-error" data-testid="sleev-field-error">
+          {props.invalidLabel}
+        </p>
       ) : null}
       <p className="dsh-sleev-hint">{props.hint}</p>
     </div>
@@ -222,13 +226,18 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
       }
     >
       {!state.writable ? (
-        <p className="dsh-sleev-read-only" role="status">
+        <p
+          className="dsh-sleev-read-only"
+          role="status"
+          data-testid="sleev-read-only"
+        >
           {props.t("readOnly")}
         </p>
       ) : null}
 
       <SettingsField
         id="sleev-routes"
+        testId="sleev-routes-field"
         label={props.t("routes")}
         hint={props.t("routesHint")}
         {...common("routes")}
@@ -238,12 +247,14 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           className="dsh-sleev-input"
           value={state.routes.text}
           disabled={!state.writable}
+          data-testid="sleev-routes"
           onChange={edit("routes")}
         />
       </SettingsField>
 
       <SettingsField
         id="sleev-route-prefixes"
+        testId="sleev-route-prefixes-field"
         label={props.t("routePrefixes")}
         hint={props.t("routePrefixesHint")}
         {...common("routePrefixes")}
@@ -253,12 +264,14 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           className="dsh-sleev-input"
           value={state.routePrefixes.text}
           disabled={!state.writable}
+          data-testid="sleev-route-prefixes"
           onChange={edit("routePrefixes")}
         />
       </SettingsField>
 
       <SettingsField
         id="sleev-max-recent-calls"
+        testId="sleev-max-recent-calls-field"
         label={props.t("maxRecentCalls")}
         hint={props.t("maxRecentCallsHint")}
         invalidLabel={props.t("invalidNumber")}
@@ -273,12 +286,14 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           value={state.maxRecentCalls.text}
           disabled={!state.writable}
           aria-invalid={state.maxRecentCalls.invalid}
+          data-testid="sleev-max-recent-calls"
           onChange={edit("maxRecentCalls")}
         />
       </SettingsField>
 
       <SettingsField
         id="sleev-log-level"
+        testId="sleev-log-level-field"
         label={props.t("logLevel")}
         hint={props.t("logLevelHint")}
         {...common("logLevel")}
@@ -288,6 +303,7 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           className="dsh-sleev-input"
           value={state.logLevel.text}
           disabled={!state.writable}
+          data-testid="sleev-log-level"
           onChange={edit("logLevel")}
         >
           <option value="off">{props.t("logOff")}</option>
@@ -298,7 +314,11 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
 
       <div className="dsh-sleev-footer">
         {state.failed ? (
-          <p className="dsh-sleev-save-error" role="status">
+          <p
+            className="dsh-sleev-save-error"
+            role="status"
+            data-testid="sleev-save-error"
+          >
             {props.t("saveFailed")}
           </p>
         ) : null}
@@ -306,6 +326,7 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           type="button"
           className="dsh-sleev-button dsh-sleev-discard"
           disabled={!state.dirty || state.saving}
+          data-testid="sleev-discard"
           onClick={props.discard}
         >
           {props.t("discard")}
@@ -314,6 +335,7 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           type="button"
           className="dsh-sleev-button dsh-sleev-save"
           disabled={blocked}
+          data-testid="sleev-save"
           onClick={props.save}
         >
           {props.t(state.saving ? "saving" : "save")}
