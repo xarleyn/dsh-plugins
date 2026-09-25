@@ -23,7 +23,12 @@ import {
   SUBAGENT_UNSUPPORTED_CODE,
   unsupportedCapability,
 } from "./errors.js";
-import { resolveExpert, type ResolverDependencies } from "./resolver.js";
+import {
+  memoryOwnerOf,
+  resolveExpert,
+  type MemoryOwner,
+  type ResolverDependencies,
+} from "./resolver.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
 
 /** The subagent surface this plugin consumes from the host context. */
@@ -51,6 +56,15 @@ export interface ActiveRun {
   readonly background: boolean;
   /** Parallel budget the caller's own configuration allows. */
   readonly maxParallel: number;
+  /**
+   * Whose memory namespaces this run reads and writes.
+   *
+   * Carried by the run rather than re-resolved per call: a child's session was
+   * never attested by an account, so `domain_memory` inside it has to ask the
+   * run, not the session, and the persona the child was started with has to
+   * agree with the answer.
+   */
+  readonly memoryOwner: MemoryOwner;
 }
 
 /**
@@ -112,6 +126,20 @@ export interface ExecutionDependencies {
   readonly audits: AuditRing;
   readonly logger: LogSink;
   readonly now: () => number;
+  /**
+   * Whether this deployment keeps a memory namespace per account.
+   *
+   * The operator's answer, not the session's: it decides whether the domain's
+   * own namespace is the writable one or the read-only common tier.
+   */
+  readonly perUserMemory: boolean;
+  /**
+   * The account a session belongs to, or `undefined`.
+   *
+   * Only a chat an account itself attested answers; the caller of an expert is
+   * such a chat, and the plugin never accepts an account from the model.
+   */
+  principalOf(sessionId: string): string | undefined;
 }
 
 export interface ExpertRunInput {
@@ -155,6 +183,11 @@ export async function runExpert(
     );
   }
 
+  const memoryOwner = memoryOwnerOf(
+    dependencies.perUserMemory,
+    dependencies.tracker.find(callerSessionId)?.memoryOwner,
+    dependencies.principalOf(callerSessionId),
+  );
   const profile = await resolveExpert(
     dependencies.resolver,
     {
@@ -162,6 +195,7 @@ export async function runExpert(
       workspaceDir: input.parent.session.header.cwd ?? "",
       callerDomain: input.callerDomain,
       depth,
+      memoryOwner,
     },
     input.request,
   );
@@ -224,6 +258,7 @@ export async function runExpert(
       request,
       startedAt,
       depth,
+      memoryOwner,
     );
   }
 
@@ -253,6 +288,7 @@ export async function runExpert(
     depth,
     background: false,
     maxParallel: definition.delegation.maxParallel,
+    memoryOwner,
   });
 
   const childSessionId = String(run.id);
@@ -312,6 +348,7 @@ async function startBackground(
   request: SubagentStartRequest,
   startedAt: number,
   depth: number,
+  memoryOwner: MemoryOwner,
 ): Promise<DomainExpertResult> {
   const definition = input.definition;
   const degradations = [...profile.degradations];
@@ -369,6 +406,7 @@ async function startBackground(
     depth,
     background: true,
     maxParallel: definition.delegation.maxParallel,
+    memoryOwner,
   });
   const durationMs = dependencies.now() - startedAt;
   recordAudit(dependencies, input, {

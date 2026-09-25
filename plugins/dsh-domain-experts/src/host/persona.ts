@@ -166,6 +166,23 @@ function scopeSection(input: PersonaInput): string {
   return lines.join("\n");
 }
 
+/**
+ * What may be recorded, and where.
+ *
+ * A memory namespace is read by later runs of whoever can reach it, so an
+ * observation about this particular caller — a tool that was refused, a source
+ * that was not mounted, a path that could not be read — becomes a false rule of
+ * the domain the moment it is recorded as one. The namespaces themselves are
+ * enforced; this is the part only the instruction can carry.
+ */
+const MEMORY_RECORDING_RULE = [
+  "Before you record anything, decide who the note is true for.",
+  "- True for the domain whatever the caller: how it works, what it guarantees, where the authority sits, a decision and its reason. That is what the writable namespace is for.",
+  "- True only for this run or this caller — a tool that was refused or missing, a source that was unavailable, a permission you hit, a path you could not read: that is a property of this caller's access, not of the domain, so do not record it as one. Say it in your answer, and leave it out of memory.",
+  "- Never restate a note you were given: recalling it already told you it was recorded.",
+  "A remembered note is evidence about one account's experience unless it says otherwise; weigh it below the documentation and the source.",
+].join("\n");
+
 function memorySection(
   entries: readonly ResolvedMemoryEntry[],
   snippets: readonly MemoryRecord[],
@@ -175,8 +192,9 @@ function memorySection(
     lines.push("Your memory namespaces:");
     for (const entry of entries) {
       const access = entry.access === "read-write" ? "read/write" : "read-only";
-      lines.push(`- ${entry.namespace} (${access})`);
+      lines.push(`- ${entry.namespace} (${access}): ${entry.note}`);
     }
+    lines.push("", MEMORY_RECORDING_RULE);
   }
   if (snippets.length > 0) {
     lines.push("", "Notes recorded earlier, most relevant first:");

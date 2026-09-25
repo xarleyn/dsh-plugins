@@ -201,6 +201,45 @@ describe("persona: composition", () => {
     expect(persona).toContain("[domain/payments/batch-cutoff]");
   });
 
+  it("refuses a caller-scoped observation the standing of a domain rule", () => {
+    const persona = compose();
+    expect(persona).toContain(
+      "Before you record anything, decide who the note is true for.",
+    );
+    expect(persona).toContain("a tool that was refused or missing");
+    expect(persona).toContain("leave it out of memory");
+  });
+
+  it("names the namespace access and its note when listing them", () => {
+    const persona = compose(
+      {},
+      {
+        memory: [
+          {
+            namespace: "domain/payments/u/user-a",
+            access: "read-write",
+            enforcement: "enforced",
+            provider: "namespace",
+            note: "Private to one account of this domain.",
+          },
+          {
+            namespace: "domain/payments",
+            access: "read-only",
+            enforcement: "enforced",
+            provider: "namespace",
+            note: "What this domain knows for every account.",
+          },
+        ],
+      },
+    );
+    expect(persona).toContain(
+      "- domain/payments/u/user-a (read/write): Private to one account of this domain.",
+    );
+    expect(persona).toContain(
+      "- domain/payments (read-only): What this domain knows for every account.",
+    );
+  });
+
   it("tells an expert with cross-domain access to ask the owning expert", () => {
     const persona = compose();
     expect(persona).toContain("Cross-domain mode: expert-only");

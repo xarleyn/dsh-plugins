@@ -42,6 +42,12 @@ export interface Config {
    * deployment sets no home.
    */
   readonly memoryDbPath?: string;
+  /**
+   * Keep a separate memory namespace per account, in a deployment that has
+   * accounts. What one account's expert learned stays its own; the domain's own
+   * namespace and the shared ones stay readable.
+   */
+  readonly perUserMemory?: boolean;
   /** Memory records recalled into an expert's persona. */
   readonly recallLimit?: number;
   /** Execution audit entries kept in memory and mirrored to the log. */
@@ -57,6 +63,7 @@ export interface ResolvedConfig {
   readonly defaultMemoryProvider: string;
   /** Absolute path of the `sqlite` provider's database. */
   readonly memoryDbPath: string;
+  readonly perUserMemory: boolean;
   readonly recallLimit: number;
   readonly auditLimit: number;
 }
@@ -99,6 +106,12 @@ export const ConfigSchema: z<Config> = z.object({
     .default("")
     .description(
       `Database file of the sqlite memory provider. Empty selects <DSH_HOME>/${DEFAULT_MEMORY_DB_FILE}.`,
+    ),
+  perUserMemory: z
+    .boolean()
+    .default(true)
+    .description(
+      "Keep a separate memory namespace per account, where the deployment has accounts. An account's notes stay its own; the domain's and the shared namespaces stay readable.",
     ),
   recallLimit: z
     .natural()
@@ -149,6 +162,7 @@ export function resolveConfig(entry: Config = {}): ResolvedConfig {
       memoryProvider === "" ? DEFAULT_MEMORY_PROVIDER : memoryProvider,
     memoryDbPath:
       entry.memoryDbPath?.trim() || path.join(base, DEFAULT_MEMORY_DB_FILE),
+    perUserMemory: entry.perUserMemory ?? true,
     recallLimit,
     auditLimit: Math.max(1, auditLimit),
   };

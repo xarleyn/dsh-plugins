@@ -548,3 +548,15 @@ export function emptyDomainDraft(id: string, now = 0): DomainDefinition {
 export function defaultMemoryNamespace(id: string): string {
   return `domain/${id}`;
 }
+
+/**
+ * The memory namespace of one account inside a domain.
+ *
+ * `domain/payments` is what the payments domain knows for everyone;
+ * `domain/payments/u/<account>` is what one account's expert learned for that
+ * account. Keeping the layout in one function is what lets the tool, the
+ * persona and the inspector agree about where a note went.
+ */
+export function userMemoryNamespace(namespace: string, userId: string): string {
+  return `${namespace}/u/${userId}`;
+}
