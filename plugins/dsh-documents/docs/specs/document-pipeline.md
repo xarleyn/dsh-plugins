@@ -789,7 +789,9 @@ Extracted Markdown должен проходить normalization layer.
 
 ## 17.1 Generated documents
 
-Markdown может ссылаться на:
+Markdown может ссылаться на asset. Путь в примере — иллюстративный, он
+отсчитывается от `document.md` внутри сгенерированного артефакта, а не от
+файлов этого репозитория:
 
 ```md
 ![Screenshot](assets/login-error.png)
@@ -814,7 +816,7 @@ artifact/
     └── image-002.jpeg
 ```
 
-Markdown:
+Markdown в `document.md` ссылается на asset тем же относительным путём:
 
 ```md
 ![Image](assets/image-001.png)
