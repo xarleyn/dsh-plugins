@@ -23,10 +23,13 @@ and release decision.
   manifests (`^4.0.2` for Cordis and `>=0.1.5-rc.2 <0.2.0` for DSH packages).
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
-`catalog:runtime` is not a DSH catalog: it holds the third-party libraries that
-plugins ship as ordinary `dependencies` because the host provides no equivalent
-(currently `zod`), so one shared range replaces a literal repeated in every
-manifest.
+`catalog:runtime` is not a DSH catalog: it holds a third-party runtime range that
+more than one plugin ships as ordinary `dependencies` because the host provides
+no equivalent (currently `zod`), so one edit moves every consumer. Packing
+rewrites the catalog back to its range, so the published manifest stays byte
+identical. A library only one package needs keeps a literal range in that
+manifest — there is nothing to share — and `pnpm deps:check` lists those literals
+instead of forbidding them (SPEC §27.12).
 
 Every imported DSH runtime is a `peerDependency`; the matching development copy
 is a `devDependency`. Runtime packages must not be placed in ordinary

@@ -547,8 +547,12 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build/ver
 Базовая линия и политика — `docs/COMPATIBILITY.md`. Правила плагина:
 
 1. **Пиры — только из `catalog:dsh`**, dev-копии — из `catalog:dsh-dev`.
-   Сторонние рантайм-библиотеки в `dependencies` — из `catalog:runtime`.
-   Вручную диапазоны не писать.
+   Общий сторонний рантайм-диапазон — из `catalog:runtime` (сегодня это `zod`).
+   Библиотека, нужная одному пакету, держит литерал в его манифесте: делить
+   нечего, а `pnpm deps:check` печатает такой список (§27.12), чтобы он оставался
+   видимым решением, а не случайностью. `react`/`react-dom` в пирах остаются
+   литералами намеренно — публикуемый peer-диапазон шире точной версии, которую
+   каталог закрепляет для сборок.
 2. **`compatibility.json` в корне плагина** отражает реальность:
 
 ```json
@@ -743,6 +747,7 @@ docs: add plugin guidelines
 | §27.9 | Нет кросс-пакетных относительных/абсолютных импортов | `pnpm deps:check` |
 | §27.10 | Workspace-пакеты потребляются через `exports` | `pnpm deps:check` |
 | §27.11 | Плагин не зависит от плагина, если ребро явно не разрешено | `pnpm deps:check` + `plugin-dependency-allowlist.json` |
+| §27.12 | Диапазон, закреплённый в каталоге, не переписывается литералом (пиры — исключение); прочие литералы гейт перечисляет как список | `pnpm deps:check` |
 | Tarball 1–7 | lib есть; манифест корректен; патч объявлен и упакован; exports существуют; нет `workspace:`/`catalog:` утечек; чистая установка + smoke-импорт | `scripts/tarball-verify.sh` |
 | Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `pnpm release:check`, `release.yml` |
 
