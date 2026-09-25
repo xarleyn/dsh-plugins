@@ -64,6 +64,10 @@ Session and Agent Loop.
   provider this plugin registers instead of the filesystem one, so no account
   can see another's, and `allowed-tools` is stored as declared but never
   grants anything the session does not already allow;
+- carries its own light/dark/system palette control in the header: the Host's
+  Appearance row lives in the settings this surface suppresses, so `/qa` would
+  otherwise open in whichever theme the application happened to boot with (see
+  [Theme](#theme));
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;
@@ -508,6 +512,46 @@ attached-documents note is the one that sends a `.docx` or `.pdf` from the chat
 to the document pipeline instead of the plain file reader, which refuses those
 formats as binary. The source-priority note is the one that says an answer
 belongs to the documentation or the expert before it belongs to memory.
+
+### Theme
+
+Three cubes in the header, next to the role control: light, dark, and follow
+the system. The surface needs its own because the Host keeps its Appearance row
+inside the settings — and the QA overlay is precisely what suppresses the native
+shell, while the kiosk never mounts it. Without these cubes the stand opens in
+whichever palette the application booted with and a visitor has nowhere to
+answer that.
+
+The choice belongs to the browser, not to the deployment. It is stored under
+this stand's own localStorage namespace (`<storageKey>:v1:<route>:theme`) and
+never written to the Host user-settings document: a stand is shared by everyone
+who reaches it, and one person's eyes are not a configuration. A browser that
+never touched the control stores nothing and writes nothing at all — the stand
+keeps the palette the application booted it in, so an untouched deployment looks
+exactly as it did before. The control then reports the palette on screen instead
+of claiming a preference nobody picked.
+
+What a click writes is the Host's own palette contract — `color-scheme` on the
+root and the dark-palette attribute on the body, the two fields the Host's theme
+presenter owns — which is why everything follows it: the cards, the transcript,
+the drawers and the dialogs are painted from `--dsw-alias-*` tokens, and those
+tokens are declared under exactly those selectors. The font-size axis and a
+theme's own token overrides stay the Host's. `system` resolves through
+`prefers-color-scheme` and keeps listening, so a laptop going dark at dusk takes
+the chat with it. Once a preference is chosen the control marks the *preference*,
+never the resolved palette, so «Системная тема» stays pressed while the operating
+system decides which theme that is.
+
+The document is borrowed, not owned: what a click writes is put back when the
+surface stops being what the visitor sees — the route changing inside the
+application, or the overlay unmounting. Off its own route this control is not on
+screen to undo itself, and a harness left in a QA stand's palette would stay in
+it for the rest of the visit. The palette put back is the one the document wore
+when the choice was applied, retaken on every repaint, so the Host's own answer
+wins again the moment the visitor leaves.
+
+One consequence worth knowing: the control is part of the header, so a deployment
+that hides the header (`ui.showHeader: false`) hides the only way to reach it.
 
 ### Starter messages
 

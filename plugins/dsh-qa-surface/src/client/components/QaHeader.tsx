@@ -48,6 +48,8 @@ export interface QaHeaderProps {
   readonly viewingSubagent: boolean;
   readonly onCloseSubagent: () => void;
   readonly roleSelector?: ReactNode;
+  /** The palette choice, next to the role it belongs to on screen. */
+  readonly themeSwitcher?: ReactNode;
   readonly administration?: { readonly onOpen: () => void };
   readonly agentCount: number;
   readonly agentsOpen: boolean;
@@ -91,6 +93,7 @@ export function QaHeader({
   viewingSubagent,
   onCloseSubagent,
   roleSelector,
+  themeSwitcher,
   administration,
   agentCount,
   agentsOpen,
@@ -132,6 +135,7 @@ export function QaHeader({
             </span>
           ) : null}
           {roleSelector}
+          {themeSwitcher}
           <button
             type="button"
             className="dsh-qa-header__agents"
