@@ -31,13 +31,16 @@
   workflow's checks on main.
 ## File size budget
 
-- A source file under `plugins/*/src` or `packages/*/src` must stay within 1200
-  lines (800 warns) and a file under its `tests/` within 800 (400 warns); a
-  generated browser bundle is held to a runaway limit only.
-  `scripts/check-file-budget.mjs`, run as `pnpm check:files`, names the files
-  that were already over budget when the gate landed, and that list only
-  shrinks: split the oversized file instead of raising a threshold or adding a
-  path to it.
+- A source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts` or
+  `packages/*/scripts` must stay within 1400 lines (1200 warns) and a file under
+  `tests/` within 900 (700 warns); a generated browser bundle is held to a
+  runaway line limit only, and no budget is measured in bytes. The thresholds,
+  the scope and the reason of every exemption are in `docs/VERIFICATION.md`.
+- `scripts/check-file-budget.mjs`, run as `pnpm check:files`, carries the files
+  that were already over budget when the gate landed, each with its reason on the
+  same line, and that list only shrinks: split the oversized file instead of
+  raising a threshold or adding a path to it. Growing an allowlisted file is
+  neither an error nor a warning — the refactor cards own those paths.
 
 ## QA surface release notes
 
