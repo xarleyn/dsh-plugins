@@ -279,6 +279,12 @@ function requireRecord(
  * Settle `read` no later than `signal`. A body stream that stops delivering
  * chunks has no other way out: the fetch already succeeded, so nothing in the
  * read itself observes the request deadline.
+ *
+ * This deadline lives here, next to the read it guards. The Integrations
+ * transports (`plugins/dsh-qa-integrations/src/providers/shared/http.ts`)
+ * loop over the same body reads without one, so a stalled upstream hangs that
+ * plugin while this one ends in budget; the class is not closed until both
+ * copies are, either by a shared helper or by fixing that call site too.
  */
 function withinDeadline<T>(read: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(signal.reason);
