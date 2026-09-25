@@ -2,7 +2,7 @@
  * The scanner, the registry and the service: the SPEC §73 scenarios, plus the
  * §74 security cases that belong to the pipeline rather than to a component.
  */
-import { writeFile } from "node:fs/promises";
+import { stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AuditRegistryEvent } from "@yadsh/dsh-audit-core";
@@ -88,18 +88,24 @@ describe("AuditService refresh", () => {
       report: REPORT,
     });
     await service.refresh();
-    const before = await service.getSessionAuditSummary(SESSION_ID);
 
+    const analysisPath = join(root, AUDIT_DIRECTORY, "analysis.json");
     await writeFile(
-      join(root, AUDIT_DIRECTORY, "analysis.json"),
+      analysisPath,
       JSON.stringify(analysis(SESSION_ID, { verdict: "poor" })),
       "utf8",
     );
+    // The summary's stamp is the newest of the two artefacts' mtimes, so a
+    // rewrite that lands inside the original's millisecond leaves it where it
+    // was: pinning the instant keeps this a test of the service, not of the
+    // resolution of the filesystem clock.
+    const stamp = new Date((await stat(analysisPath)).mtimeMs + 60_000);
+    await utimes(analysisPath, stamp, stamp);
     await service.refresh();
 
     const after = await service.getSessionAuditSummary(SESSION_ID);
     expect(after?.verdict).toBe("poor");
-    expect(after?.modifiedAt).not.toBe(before?.modifiedAt);
+    expect(after?.modifiedAt).toBe(stamp.toISOString());
   });
 
   it("does not re-read or re-emit when only the mtime moved", async () => {
@@ -231,15 +237,27 @@ describe("AuditService refresh", () => {
       report: REPORT,
     });
     await service.refresh();
-    await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
+    // Two audits stamped in the same millisecond tie, and the tie breaks on the
+    // id, which would put the older one first: the second audit is stamped at
+    // an instant this test chooses.
+    const newerStamp = new Date(
+      (await stat(join(root, AUDIT_DIRECTORY, "REPORT.md"))).mtimeMs + 60_000,
+    );
+    const second = await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
       analysis: analysis(SESSION_ID, { verdict: "good" }),
       report: REPORT,
     });
+    for (const artefact of ["analysis.json", "REPORT.md"]) {
+      await utimes(join(second, artefact), newerStamp, newerStamp);
+    }
     await service.refresh();
 
     const audits = await service.listSessionAudits(SESSION_ID);
 
-    expect(audits).toHaveLength(2);
+    expect(audits.map((audit) => audit.auditId)).toEqual([
+      `${AUDIT_DIRECTORY}-2`,
+      AUDIT_DIRECTORY,
+    ]);
     expect((await service.getSessionAuditSummary(SESSION_ID))?.verdict).toBe(
       "good",
     );
