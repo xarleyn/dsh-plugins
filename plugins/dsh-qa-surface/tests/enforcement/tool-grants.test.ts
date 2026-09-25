@@ -187,6 +187,67 @@ describe("dynamic skill tool grants", () => {
     });
   });
 
+  it("counts a required tool the base set already holds", async () => {
+    // The policy subtracts the base set from the ceiling, so `read` is absent
+    // from grantableTools even though the session holds it. Such a requirement
+    // is met, not denied: a strict skill must activate on the tools it sees.
+    const { ctx, agent, grants, records } = await setup({
+      registered: ["read", "browser_open"],
+      baseTools: ["read"],
+      grantableTools: ["browser_open"],
+      descriptors: [
+        descriptor("strict-base-only", {
+          version: 1,
+          audience: { type: "common" },
+          tools: {
+            requires: ["read"],
+            grant: { lifecycle: "session", requireAll: true },
+          },
+        }),
+      ],
+    });
+    expect(grants.activate("strict-base-only", "model")).toMatchObject({
+      status: "activated",
+      grant: { grantedTools: ["read"], deniedTools: [] },
+    });
+    expect(visible(ctx, agent)).toEqual(["read"]);
+    expect(records.at(-1)).toMatchObject({
+      outcome: "activated",
+      grantedTools: ["read"],
+      deniedTools: [],
+    });
+  });
+
+  it("activates a strict skill over a base and grantable mix", async () => {
+    const { ctx, agent, grants } = await setup({
+      registered: ["read", "browser_open", "browser_click"],
+      baseTools: ["read", "browser_click"],
+      grantableTools: ["browser_open"],
+      descriptors: [
+        descriptor("strict-mixed", {
+          version: 1,
+          audience: { type: "common" },
+          tools: {
+            requires: ["browser_click", "browser_open"],
+            grant: { lifecycle: "session", requireAll: true },
+          },
+        }),
+      ],
+    });
+    expect(grants.activate("strict-mixed", "model")).toMatchObject({
+      status: "activated",
+      grant: {
+        grantedTools: ["browser_click", "browser_open"],
+        deniedTools: [],
+      },
+    });
+    expect(visible(ctx, agent)).toEqual([
+      "read",
+      "browser_open",
+      "browser_click",
+    ]);
+  });
+
   it("never grants a tool outside the role ceiling", async () => {
     const { ctx, agent, grants } = await setup({
       registered: ["read", "shell"],
