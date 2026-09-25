@@ -7,13 +7,14 @@ import {
   lstatSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import {
   constants as zlibConstants,
   zstdCompressSync,
@@ -247,10 +248,29 @@ export function main(argv = process.argv.slice(2)) {
   return 0;
 }
 
-if (
-  process.argv[1] !== undefined &&
-  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url
-) {
+/**
+ * Was this file started as the process entry point, however the launcher spelled
+ * it? Node resolves the entry with `fs.realpath`, so a package-manager bin link
+ * (`node_modules/.bin/qa-repair-sessions` pointing at this file) reaches the
+ * process as a path that never equals `import.meta.url`. Comparing the paths as
+ * spelled left such a run executing the module body without ever calling `main`:
+ * no output, no error, exit 0. Resolving both sides makes a link behave like the
+ * file it links.
+ */
+function startedAsEntry() {
+  const entry = process.argv[1];
+  if (entry === undefined) return false;
+  try {
+    return (
+      realpathSync(path.resolve(entry)) ===
+      realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+}
+
+if (startedAsEntry()) {
   try {
     process.exitCode = main();
   } catch (error) {
