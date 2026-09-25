@@ -47,6 +47,8 @@ export default async function generatePlugin(
     throw new Error(`Plugin directory already exists: ${projectRoot}`);
   }
 
+  // Each declared path below is produced by the `build` script emitted for the
+  // same option set; `scripts/verify-package.mjs` re-checks them after a build.
   const exportsMap: Record<string, ExportTarget> = {
     ".": {
       types: "./lib/index.d.ts",
@@ -55,10 +57,9 @@ export default async function generatePlugin(
   };
 
   if (options.client) {
-    exportsMap["./client"] = {
-      types: "./lib/client.d.ts",
-      default: "./lib/client.js",
-    };
+    // tsdown writes this bundle; tsc does not emit declarations for the client
+    // entrypoint, so the subpath promises no `types` target it cannot keep.
+    exportsMap["./client"] = "./lib/client.js";
   }
   exportsMap["./package.json"] = "./package.json";
 
@@ -67,12 +68,16 @@ export default async function generatePlugin(
   };
 
   const devDependencies: Record<string, string> = {
-    "@deepseek-ai/cordis": "catalog:dsh",
+    // The peer range below is what a consumer installs against; this dev copy
+    // is pinned so the workspace typechecks against one exact host release.
+    "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@types/node": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     eslint: "catalog:tooling",
     typescript: "catalog:tooling",
   };
 
+  // Only the browser bundle needs a bundler; the host entry is plain tsc emit.
   if (options.client) {
     devDependencies.tsdown = "catalog:tooling";
   }
@@ -85,7 +90,9 @@ export default async function generatePlugin(
   ];
 
   const scripts: Record<string, string> = {
-    build: "tsc -p tsconfig.build.json && tsdown",
+    build: options.client
+      ? "tsc -p tsconfig.build.json && tsdown"
+      : "tsc -p tsconfig.build.json",
     lint: `eslint ${lintTargets.join(" ")}`,
     typecheck: "tsc --noEmit",
   };
@@ -170,6 +177,7 @@ export default async function generatePlugin(
         extends: options.client
           ? "@yadsh/dsh-config/tsconfig/client"
           : "@yadsh/dsh-config/tsconfig/node",
+        compilerOptions: { noEmit: true },
         include: ["src", ...(withTests ? ["tests"] : [])],
       },
       null,
@@ -182,8 +190,14 @@ export default async function generatePlugin(
     JSON.stringify(
       {
         extends: "./tsconfig.json",
-        compilerOptions: { rootDir: "src", outDir: "lib" },
+        compilerOptions: {
+          noEmit: false,
+          rootDir: "src",
+          outDir: "lib",
+        },
         include: ["src"],
+        // The browser entrypoint ships as the tsdown bundle, never as tsc emit.
+        ...(options.client ? { exclude: ["src/client"] } : {}),
       },
       null,
       2,
@@ -192,25 +206,28 @@ export default async function generatePlugin(
 
   tree.write(
     `${projectRoot}/src/index.ts`,
-    `import { getPluginLogger } from "@yadsh/dsh-plugin-log";
+    `import type { Context } from "@deepseek-ai/cordis";
+import { createHostLoggerSink, getPluginLogger } from "@yadsh/dsh-plugin-log";
+
+export const name = "dsh-${pluginName}";
+export const inject: readonly string[] = [];
 
 export type ${names(pluginName).className}Config = Record<string, unknown>;
 
-const logger = getPluginLogger({ pluginId: "dsh-${pluginName}" });
-
-export async function initialize(
+/** Cordis entrypoint: the returned function disposes this plugin instance. */
+export function apply(
+  ctx: Context,
   config: ${names(pluginName).className}Config = {},
-): Promise<void> {
-  logger.info("plugin.initialized", {
-    configKeys: Object.keys(config),
+): () => Promise<void> {
+  const logger = getPluginLogger({
+    pluginId: name,
+    consoleSink: createHostLoggerSink(ctx.logger),
   });
+  logger.info("plugin.applied", { configKeys: Object.keys(config) });
+  return async () => {
+    await logger.close();
+  };
 }
-
-export async function dispose(): Promise<void> {
-  await logger.close();
-}
-
-export { logger };
 `,
   );
 
@@ -290,10 +307,14 @@ assert.doesNotMatch(
     `import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 
+const packageRoot = new URL("../", import.meta.url);
 const manifest = JSON.parse(
-  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  await readFile(new URL("package.json", packageRoot), "utf8"),
 );
-const patch = await readFile(new URL("../cordis.patch.yml", import.meta.url), "utf8");
+const patch = await readFile(
+  new URL("cordis.patch.yml", packageRoot),
+  "utf8",
+);
 
 assert.equal(manifest.name, ${JSON.stringify(packageName)});
 assert.equal(manifest.dsh?.bundle?.patch, "./cordis.patch.yml");
@@ -301,8 +322,24 @@ assert.ok(Object.hasOwn(manifest.exports, "."));
 assert.match(patch, /id: dsh-${pluginName}\\b/u);
 assert.match(patch, new RegExp(\`name: ['"]\${manifest.name}['"]\`, "u"));
 
-for (const path of ["../lib/index.js", "../lib/index.d.ts", "../README.md", "../LICENSE"]) {
-  await access(new URL(path, import.meta.url));
+// A subpath no build step produces is a promise the published package cannot
+// keep, so every path the public surface names must exist after a build.
+const exportTargets = (target) => {
+  if (typeof target === "string") return [target];
+  if (Array.isArray(target)) return target.flatMap(exportTargets);
+  if (target === null || typeof target !== "object") return [];
+  return Object.values(target).flatMap(exportTargets);
+};
+
+for (const [subpath, target] of Object.entries(manifest.exports)) {
+  if (subpath === "./package.json") continue;
+  for (const path of exportTargets(target)) {
+    await access(new URL(path, packageRoot));
+  }
+}
+
+for (const path of ["lib/index.js", "lib/index.d.ts", "README.md", "LICENSE"]) {
+  await access(new URL(path, packageRoot));
 }
 
 console.log("verify-package: all gates passed");
@@ -361,12 +398,30 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 ## Installation
 
 \`\`\`bash
-dsh plugin add ${packageName}
+dsh plugin --profile <profile> add ${packageName}
+\`\`\`
+
+\`--profile\` is required: \`dsh plugin add <package>\` rejects a call without one.
+To install from a checkout of this monorepo instead:
+
+\`\`\`bash
+pnpm --filter ${packageName} build
+dsh plugin --profile <profile> add ./plugins/dsh-${pluginName}
+\`\`\`
+
+To remove the plugin:
+
+\`\`\`bash
+dsh plugin --profile <profile> remove ${packageName}
 \`\`\`
 
 ## Configuration
 
 Configure the plugin under the \`${pluginName}\` key in the DSH profile.
+
+## Specification
+
+See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/${projectRoot}/SPEC.md).
 
 ## Compatibility
 
@@ -386,6 +441,71 @@ MIT
 `,
   );
 
+  const specExtraRequirements = options.client
+    ? "\n- A browser realm reached through `window.__ModuleLoader__`"
+    : "";
+  const specClientEntrypoint = options.client
+    ? `
+
+\`src/client/index.tsx\` is the browser entrypoint. \`tsdown\` bundles it into
+\`lib/client.js\`, a classic script that registers itself under the full package
+name \`${packageName}\`. It is published as the \`./client\` subpath and declared
+through \`dsh.client\`; it never imports Node-only modules. Host-side file
+logging is unavailable in this realm.`
+    : "";
+  const specBuildContract = options.client
+    ? "`tsc` emits `lib/index.js` and `lib/index.d.ts`; `tsdown` emits `lib/client.js`"
+    : "`tsc` emits `lib/index.js` and `lib/index.d.ts`";
+  const specVerifyContract =
+    "every `exports` target exists in the built tree and the bundle patch " +
+    `names this package${options.client ? "; the client bundle registers itself under the full package name" : ""}`;
+
+  tree.write(
+    `${projectRoot}/SPEC.md`,
+    `# dsh-${pluginName} — specification
+
+## 1. Purpose
+
+${options.description ?? `DSH plugin: ${pluginName}.`}
+
+## 2. Requirements
+
+- DeepSeek Harness \`>=0.1.5-rc.2 <0.2.0\`
+- Node.js \`^22.19.0 || >=24.0.0\`
+- Cordis \`^4.0.2\`${specExtraRequirements}
+
+## 3. Entrypoints
+
+\`src/index.ts\` is the host Cordis entrypoint. It exports \`name\`, \`inject\` and
+\`apply(ctx, config)\`; the returned function disposes that plugin instance, so
+restarting the entrypoint never leaks a logger or a listener.${specClientEntrypoint}
+
+## 4. Configuration
+
+The plugin reads the \`${pluginName}\` key of the DSH profile
+(\`${names(pluginName).className}Config\`).
+
+## 5. Build and verification
+
+| Script | Contract it holds |
+| --- | --- |
+| \`pnpm build\` | ${specBuildContract} |
+| \`pnpm verify\` | ${specVerifyContract} |
+| \`pnpm check\` | lint, typecheck${withTests ? ", test" : ""}, build and verify in one run |
+
+## 6. Compatibility
+
+\`compatibility.json\` records the tested DeepSeek Harness releases and the Node
+range this package is verified against.
+
+## Open work
+
+- [ ] Replace the scaffolded entrypoint behaviour with the real plugin logic.
+- [ ] Expand the configuration schema beyond \`Record<string, unknown>\`.
+- [ ] Cover each requirement above with a test in \`tests/\`.
+`,
+  );
+
   if (withTests) {
     tree.write(
       `${projectRoot}/vitest.config.ts`,
@@ -393,12 +513,48 @@ MIT
     );
     tree.write(
       `${projectRoot}/tests/index.test.ts`,
-      `import { describe, expect, it } from "vitest";
-import { initialize } from "../src/index";
+      `/** Entrypoint contract: the exports DSH installs, and a clean dispose. */
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { Context } from "@deepseek-ai/cordis";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { apply, inject, name } from "../src/index.js";
+
+let dshHome: string;
+let previousHome: string | undefined;
+
+beforeEach(async () => {
+  dshHome = await mkdtemp(join(tmpdir(), "dsh-${pluginName}-entry-"));
+  previousHome = process.env["DSH_HOME"];
+  process.env["DSH_HOME"] = dshHome;
+});
+
+afterEach(async () => {
+  if (previousHome === undefined) delete process.env["DSH_HOME"];
+  else process.env["DSH_HOME"] = previousHome;
+  await rm(dshHome, { recursive: true, force: true });
+});
+
+function makeContext(): Context {
+  const logger = () => {};
+  return { logger: { debug: logger, info: logger, warn: logger, error: logger } } as unknown as Context;
+}
 
 describe("${pluginName}", () => {
-  it("initializes without errors", async () => {
-    await expect(initialize()).resolves.toBeUndefined();
+  it("exposes the Cordis entrypoint surface", () => {
+    expect(name).toBe("dsh-${pluginName}");
+    expect(inject).toEqual([]);
+    expect(typeof apply).toBe("function");
+  });
+
+  it("applies and disposes without errors", async () => {
+    const dispose = apply(makeContext(), {});
+    expect(dispose).toBeTypeOf("function");
+    await expect(dispose()).resolves.toBeUndefined();
   });
 });
 `,
