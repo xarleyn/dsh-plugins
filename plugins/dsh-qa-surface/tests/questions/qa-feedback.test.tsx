@@ -127,7 +127,7 @@ function surfacePhase(): string {
 }
 
 /**
- * Carry the surface past one link of its bootstrap. Reaching a rendered answer
+ * Carry the surface past one link of its bootstrap. Reaching the rating control
  * means waiting on a chain of remotes — the account stage, the access profile,
  * the session bind and its policy attestation — and each link commits a render,
  * so the chain only advances when the test hands the event loop back to React.
