@@ -23,6 +23,11 @@ and release decision.
   manifests (`^4.0.2` for Cordis and `>=0.1.5-rc.2 <0.2.0` for DSH packages).
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
+`catalog:runtime` is not a DSH catalog: it holds the third-party libraries that
+plugins ship as ordinary `dependencies` because the host provides no equivalent
+(currently `zod`), so one shared range replaces a literal repeated in every
+manifest.
+
 Every imported DSH runtime is a `peerDependency`; the matching development copy
 is a `devDependency`. Runtime packages must not be placed in ordinary
 `dependencies`, because the host must provide a single compatible framework
