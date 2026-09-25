@@ -211,6 +211,27 @@ plugin A          plugin B          plugin C
 
 Avoid plugin-to-plugin coupling unless the dependency represents a deliberate extension API.
 
+A deliberate extension API is a piece of the provider's own feature surface that
+it publishes for other plugins to mount into — a panel slot, a settings page, a
+Remote client, a service face — and documents as a supported consumer contract.
+Such a dependency is allowed when every one of these holds:
+
+- The provider exports the surface through its declared `exports` map (§27.10);
+  imports from its sources stay forbidden (§27.8).
+- The provider documents the surface in its README/SPEC as supported and keeps it
+  backward compatible: reshaping it is a major bump of the provider, and its
+  version plan names the consuming plugins.
+- The consumer declares the dependency in its own manifest (§27.6) and, for a
+  client surface, lists the provider in `dsh.client.inject` so the loader brings
+  the provider up before its bundle applies.
+- The graph stays acyclic (§27.5), and the surface stays feature-specific. Code
+  that is genuinely general belongs in `packages/*`: a plugin others must
+  install is not a shared library.
+
+The sanctioned edges live in the allowlist of
+[`docs/PLUGIN_GUIDELINES.md`](./docs/PLUGIN_GUIDELINES.md#31-границы-монорепо-и-зависимости);
+a new edge is added to that list by the same change that introduces it.
+
 Do not create cycles such as:
 
 ```text
@@ -812,7 +833,6 @@ Optional flags:
 --client
 --description
 --scope
---with-ui
 --with-tests
 ```
 
