@@ -950,7 +950,10 @@ Browser is a network-capable tool. Policy MUST run:
 - on popup/new-page targets;
 - after redirect destination resolution;
 - for downloads where URL is known;
-- for relevant DevTools/network actions.
+- for relevant DevTools/network actions;
+- before a WebSocket handshake, which the HTTP request route never sees;
+- and no service worker may run in a policy-gated context, because a worker
+  dials from outside every page and therefore outside page-scoped routing.
 
 Suggested config:
 

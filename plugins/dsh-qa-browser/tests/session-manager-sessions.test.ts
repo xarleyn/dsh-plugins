@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { QaBrowserError } from "../src/errors.js";
 
-import { createHarness } from "./session-manager.helpers.js";
+import { createHarness, type FakeContext } from "./session-manager.helpers.js";
 
 describe("QaBrowserSessionManager", () => {
   it("creates one isolated context per DSH session and keeps independent tabs", async () => {
@@ -74,6 +74,38 @@ describe("QaBrowserSessionManager", () => {
     await manager.ensureSession("crash");
     expect(manager.getSession("crash")?.status).toBe("ready");
     await manager.dispose();
+  });
+
+  it("closes a session whose creation was still running when it disposed", async () => {
+    const { manager, provider } = createHarness();
+    // A creation the disposal has to join: the context it registers is not in
+    // the session map while it is being built, so a sweep that reads the map
+    // first would stop the provider and leave the session running behind it.
+    let openBuild: () => void = () => undefined;
+    const build = new Promise<void>((resolve) => {
+      openBuild = () => resolve();
+    });
+    const buildContext = provider.createContext.bind(provider);
+    const built: FakeContext[] = [];
+    provider.createContext = async (options) => {
+      await build;
+      const context = await buildContext(options);
+      built.push(context);
+      return context;
+    };
+
+    const creating = manager.ensureSession("late");
+    // The disposal has to be joined, not awaited after the creation: the point
+    // is that the two are running at the same time.
+    const disposing = manager.dispose();
+    openBuild();
+    await creating;
+    await disposing;
+
+    expect(built).toHaveLength(1);
+    expect(built[0]?.closed).toBe(true);
+    expect(provider.stops).toBe(1);
+    expect(manager.getSession("late")).toBeNull();
   });
 
   it("binds semantic refs to a revision and refuses stale actions", async () => {

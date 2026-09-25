@@ -901,6 +901,10 @@ export class QaBrowserSessionManager {
     this.disposed = true;
     if (this.idleTimer !== undefined) clearInterval(this.idleTimer);
     this.crashDisposer();
+    // A session whose creation is still running is not in the map yet, so the
+    // sweep below would never see the context it is about to register: joining
+    // the creations first is what keeps them inside this disposal.
+    await Promise.allSettled([...this.creating.values()]);
     const ids = [...this.sessions.keys()];
     await Promise.allSettled(
       ids.map((sessionId) => this.closeSession(sessionId)),
