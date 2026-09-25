@@ -137,15 +137,16 @@ interface QualityFileShape {
 }
 
 /** The four record families the store keeps, one row each. */
-type QualityRowKind = "feedback" | "review" | "queue" | "audit";
+export type QualityRowKind = "feedback" | "review" | "queue" | "audit";
 
 /** How many rows of each family survive; the oldest fall off first. */
-const ROW_CAPS: Readonly<Record<QualityRowKind, number>> = Object.freeze({
-  feedback: MAX_FEEDBACK,
-  review: MAX_REVIEWS,
-  queue: MAX_QUEUE,
-  audit: MAX_AUDIT,
-});
+export const QA_ROW_CAPS: Readonly<Record<QualityRowKind, number>> =
+  Object.freeze({
+    feedback: MAX_FEEDBACK,
+    review: MAX_REVIEWS,
+    queue: MAX_QUEUE,
+    audit: MAX_AUDIT,
+  });
 
 /**
  * The families a conversation owns. The audit trail is deliberately not one
@@ -694,16 +695,31 @@ export class QaQualityStore {
     });
   }
 
+  /**
+   * Drop the rows that overflow their family's cap.
+   *
+   * The rows to give up are the oldest by rank, not everything below
+   * `MAX(seq) - cap`. That range only equals the overflow while every sequence
+   * value is taken, and the store itself vacates values: an updated record
+   * moves to the end of the order and leaves its old value behind, and a
+   * dropped record leaves a hole. A range cut pays for each of those gaps with
+   * a real record, so a family at its cap loses one every time a record it
+   * already holds is re-rated — feedback disappears without anything new
+   * arriving to displace it.
+   */
   private applyCap(kind: QualityRowKind): void {
     this.storage.db
       .prepare(
         `DELETE FROM quality_rows
           WHERE kind = ?
-            AND seq <= (
-              SELECT MAX(seq) - ? FROM quality_rows WHERE kind = ?
+            AND seq < (
+              SELECT seq FROM quality_rows
+               WHERE kind = ?
+               ORDER BY seq DESC
+               LIMIT 1 OFFSET ?
             )`,
       )
-      .run(kind, ROW_CAPS[kind], kind);
+      .run(kind, kind, QA_ROW_CAPS[kind] - 1);
   }
 
   private rowsOf(kind: QualityRowKind): readonly unknown[] {
@@ -823,7 +839,7 @@ export class QaQualityStore {
       ).count;
     const problems: string[] = [];
     const check = (kind: QualityRowKind, wanted: number) => {
-      const kept = Math.min(wanted, ROW_CAPS[kind]);
+      const kept = Math.min(wanted, QA_ROW_CAPS[kind]);
       if (count(kind) !== kept) {
         problems.push(`expected ${kept} ${kind} rows, imported ${count(kind)}`);
       }
