@@ -397,11 +397,16 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-role-selector select:focus-visible,.dsh-qa-header__admin:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
 /* The surface's own palette choice, sized to the role control it sits beside.
    Every colour here is a themed alias, so the control reads the same in the
-   light and the dark palette it is switching between. */
+   light and the dark palette it is switching between. The pressed cube borrows
+   the pairing .dsh-qa-preview__toggle already ships for its own aria-pressed
+   state — bg-layer-1 on a bg-layer-2 track, icon lifted to label-primary —
+   because an unknown var(--dsw-alias-*) drops its whole declaration at
+   computed-value time without a word of complaint, and the only symptom would
+   be a theme switcher that never shows which theme is on. */
 .dsh-qa-theme{display:inline-flex;align-items:center;gap:2px;flex:none;height:30px;padding:2px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-qa-theme__option{appearance:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:6px;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .dsh-qa-theme__option:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-qa-theme__option[aria-pressed="true"]{background:var(--dsw-alias-interactive-bg-active);color:var(--dsw-alias-label-primary)}
+.dsh-qa-theme__option[aria-pressed="true"]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}
 .dsh-qa-theme__option:focus-visible{outline:2px solid var(--dsh-qa-accent);outline-offset:1px}
 .dsh-qa-theme__option svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__admin{white-space:nowrap}
