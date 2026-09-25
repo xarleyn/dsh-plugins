@@ -8,15 +8,10 @@
  * change — the card adds no persistence of its own.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
-
-// Rendering the whole card in jsdom costs seconds, and the shared CI runner is
-// about three times slower than a developer machine: the two heaviest tests
-// measure 1.8s locally and 5.6s there, against the 5s default budget.
-vi.setConfig({ testTimeout: 30_000 });
 
 /** The slot props the Host supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
@@ -115,6 +110,18 @@ function expand(): void {
   );
 }
 
+/**
+ * The `<details>` block one provider owns, found by its section title. A label
+ * query is priced by the tree it walks: over the whole document — a thousand
+ * nodes of seven providers — it measures ~2s here against tens of milliseconds
+ * inside the owning section. Those seconds were a test timeout on any runner
+ * slower than a developer machine, which is what the widened `testTimeout` in
+ * this file used to paper over. Every knob belongs to one provider anyway.
+ */
+function sectionOf(title: string): HTMLElement {
+  return screen.getByText(title).closest(".qai-op__section") as HTMLElement;
+}
+
 const RESOLVED = {
   enabled: false,
   timeoutMs: 15000,
@@ -163,7 +170,11 @@ describe("integrations operator card", () => {
     expect(screen.getByText("по умолчанию")).toBeDefined();
     // The general section mounts open and the disabled plugin shows it.
     expect(
-      (screen.getByLabelText(/Плагин включён/u) as HTMLInputElement).checked,
+      (
+        within(sectionOf("Общие")).getByLabelText(
+          /Плагин включён/u,
+        ) as HTMLInputElement
+      ).checked,
     ).toBe(false);
   });
 
@@ -205,7 +216,8 @@ describe("integrations operator card", () => {
     fireEvent.click(limits.querySelector("summary") as HTMLElement);
     expect(limits.open).toBe(true);
     expect(
-      (screen.getByLabelText("Потолок файла, байт") as HTMLInputElement).value,
+      (within(limits).getByLabelText("Потолок файла, байт") as HTMLInputElement)
+        .value,
     ).toBe("131072");
   });
 
@@ -233,15 +245,20 @@ describe("integrations operator card", () => {
     ]) {
       expect(screen.getByText(label)).toBeDefined();
     }
-    for (const label of [
-      "CI: чтение",
-      "Версии: чтение",
-      "Агенты: чтение",
-      "Переходы: чтение",
-      "Автотесты: чтение",
-      "Скриншоты: чтение",
-    ]) {
-      expect(screen.getByLabelText(label)).toBeDefined();
+    // A capability of each provider, read through the checklist that owns it —
+    // which is what "its deployment knobs" means here.
+    for (const [provider, capability] of [
+      ["Confluence", "Версии: чтение"],
+      ["GitLab", "CI: чтение"],
+      ["TeamCity", "Агенты: чтение"],
+      ["Jira", "Переходы: чтение"],
+      ["Test IT", "Автотесты: чтение"],
+      ["Weblate", "Скриншоты: чтение"],
+    ] as const) {
+      const checks = sectionOf(provider).querySelector(
+        ".qai-op__group--checks",
+      ) as HTMLElement;
+      expect(within(checks).getByLabelText(capability)).toBeDefined();
     }
   });
 
@@ -250,7 +267,9 @@ describe("integrations operator card", () => {
     expand();
     // The Bitrix24 section is collapsed until opened.
     fireEvent.click(screen.getByText("Bitrix24"));
-    const crm = screen.getByLabelText("CRM: чтение") as HTMLInputElement;
+    const crm = within(sectionOf("Bitrix24")).getByLabelText(
+      "CRM: чтение",
+    ) as HTMLInputElement;
     expect(crm.checked).toBe(true);
     fireEvent.click(crm);
     expect(stub.writes).toEqual([
@@ -261,7 +280,9 @@ describe("integrations operator card", () => {
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(screen.getByLabelText(/Плагин включён/u));
+    fireEvent.click(
+      within(sectionOf("Общие")).getByLabelText(/Плагин включён/u),
+    );
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
     ]);
@@ -286,7 +307,9 @@ describe("integrations operator card", () => {
     expect(
       screen.getByText(/^Хост не принимает правки из этого браузера/u),
     ).toBeDefined();
-    const toggle = screen.getByLabelText(/Плагин включён/u) as HTMLInputElement;
+    const toggle = within(sectionOf("Общие")).getByLabelText(
+      /Плагин включён/u,
+    ) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
   });
 
