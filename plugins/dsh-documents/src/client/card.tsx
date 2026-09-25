@@ -113,12 +113,14 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
   const reset = (
     paths: readonly (readonly string[])[],
+    testId?: string,
   ): ReactElement | null => {
     const dirty = overridden(paths);
     return (
       <button
         type="button"
         className="dsh-docs-btn link"
+        data-testid={testId}
         disabled={disabled || !dirty}
         onClick={() => {
           void scope.mutate(
@@ -147,7 +149,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
       bodyClassName="dsh-docs-body"
     >
       {snapshot.status === "unavailable" ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="docs-settings-unavailable">
           Раздел настроек недоступен этому браузеру: значения ниже не читаются и
           не записываются.
         </Notice>
@@ -155,11 +157,16 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Конвейер"
-        reset={reset([["enabled"], ["create", "defaultPdfMode"]])}
+        testId="docs-pipeline"
+        reset={reset(
+          [["enabled"], ["create", "defaultPdfMode"]],
+          "docs-pipeline-reset",
+        )}
       >
         <Toggle
           label="Конвейер документов"
           hint="Пять инструментов: создание DOCX/PDF из Markdown, извлечение Markdown, документ по ссылке, конвертация и просмотр структуры. Пока выключено, инструменты не регистрируются."
+          testId="docs-pipeline-enabled"
           checked={enabled}
           disabled={disabled}
           onChange={(value) => {
@@ -168,6 +175,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         />
         <SelectField
           label="PDF по умолчанию"
+          testId="docs-pipeline-pdf-mode"
           value={
             config?.create?.defaultPdfMode ??
             DEFAULT_DOCUMENTS_CONFIG.create.defaultPdfMode
@@ -183,17 +191,22 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Извлечение"
-        reset={reset([
-          ["extraction", "defaultMode"],
-          ["extraction", "ocr"],
-          ["extraction", "extractImages"],
-          ["extraction", "extractTables"],
-          ["extraction", "maxInlineChars"],
-        ])}
+        testId="docs-extraction"
+        reset={reset(
+          [
+            ["extraction", "defaultMode"],
+            ["extraction", "ocr"],
+            ["extraction", "extractImages"],
+            ["extraction", "extractTables"],
+            ["extraction", "maxInlineChars"],
+          ],
+          "docs-extraction-reset",
+        )}
       >
         <Grid>
           <SelectField
             label="Режим извлечения"
+            testId="docs-extraction-mode"
             value={
               config?.extraction?.defaultMode ??
               DEFAULT_DOCUMENTS_CONFIG.extraction.defaultMode
@@ -207,6 +220,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           />
           <SelectField
             label="OCR"
+            testId="docs-extraction-ocr"
             value={
               config?.extraction?.ocr ?? DEFAULT_DOCUMENTS_CONFIG.extraction.ocr
             }
@@ -221,6 +235,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Извлекать изображения"
           hint="Найденные картинки сохраняются в папке артефакта, ссылки в Markdown переписываются на них."
+          testId="docs-extraction-images"
           checked={
             config?.extraction?.extractImages ??
             DEFAULT_DOCUMENTS_CONFIG.extraction.extractImages
@@ -233,6 +248,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Извлекать таблицы"
           hint="Таблицы разбираются структурно, а не как текст подряд."
+          testId="docs-extraction-tables"
           checked={
             config?.extraction?.extractTables ??
             DEFAULT_DOCUMENTS_CONFIG.extraction.extractTables
@@ -244,6 +260,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         />
         <NumberField
           label="Символов в ответе"
+          testId="docs-extraction-max-chars"
           value={
             config?.extraction?.maxInlineChars ??
             DEFAULT_DOCUMENTS_CONFIG.extraction.maxInlineChars
@@ -261,18 +278,23 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
       <Section
         title="Разборщики"
         hint="Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в логе при старте."
-        reset={reset([
-          ["docling", "enabled"],
-          ["docling", "baseUrl"],
-          ["pandoc", "executable"],
-          ["libreoffice", "executable"],
-          ["markitdown", "enabled"],
-          ["markitdown", "executable"],
-        ])}
+        testId="docs-parsers"
+        reset={reset(
+          [
+            ["docling", "enabled"],
+            ["docling", "baseUrl"],
+            ["pandoc", "executable"],
+            ["libreoffice", "executable"],
+            ["markitdown", "enabled"],
+            ["markitdown", "executable"],
+          ],
+          "docs-parsers-reset",
+        )}
       >
         <Toggle
           label="Разборщик Docling"
           hint="Основной сервис разбора PDF и DOCX; без него остаётся запасной быстрый разборщик, если он включён."
+          testId="docs-parsers-docling"
           checked={
             config?.docling?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.docling.enabled
           }
@@ -283,6 +305,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         />
         <TextField
           label="Адрес Docling"
+          testId="docs-parsers-docling-url"
           value={config?.docling?.baseUrl ?? ""}
           placeholder={DEFAULT_DOCUMENTS_CONFIG.docling.baseUrl}
           disabled={
@@ -300,6 +323,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Grid>
           <TextField
             label="pandoc"
+            testId="docs-parsers-pandoc"
             value={config?.pandoc?.executable ?? ""}
             placeholder={DEFAULT_DOCUMENTS_CONFIG.pandoc.executable}
             disabled={fieldDisabled}
@@ -309,6 +333,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           />
           <TextField
             label="LibreOffice"
+            testId="docs-parsers-libreoffice"
             value={config?.libreoffice?.executable ?? ""}
             placeholder={DEFAULT_DOCUMENTS_CONFIG.libreoffice.executable}
             disabled={fieldDisabled}
@@ -320,6 +345,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Быстрый разборщик (markitdown)"
           hint="Запасной путь, когда Docling недоступен. Требует установленного markitdown."
+          testId="docs-parsers-markitdown"
           checked={
             config?.markitdown?.enabled ??
             DEFAULT_DOCUMENTS_CONFIG.markitdown.enabled
@@ -334,16 +360,21 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
       <Section
         title="Артефакты"
         hint="Каждая операция складывает исходник, результат, вложения и manifest.json в один каталог."
-        reset={reset([
-          ["storage", "root"],
-          ["storage", "retainSource"],
-          ["storage", "retainInputs"],
-          ["retention", "enabled"],
-          ["retention", "maxAgeDays"],
-        ])}
+        testId="docs-artifacts"
+        reset={reset(
+          [
+            ["storage", "root"],
+            ["storage", "retainSource"],
+            ["storage", "retainInputs"],
+            ["retention", "enabled"],
+            ["retention", "maxAgeDays"],
+          ],
+          "docs-artifacts-reset",
+        )}
       >
         <TextField
           label="Каталог артефактов"
+          testId="docs-artifacts-root"
           value={config?.storage?.root ?? ""}
           placeholder="<рабочая папка сессии>/.qa/artifacts/documents"
           disabled={fieldDisabled}
@@ -358,6 +389,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Хранить исходный Markdown"
           hint="Копия Markdown остаётся рядом с готовыми файлами."
+          testId="docs-artifacts-retain-source"
           checked={
             config?.storage?.retainSource ??
             DEFAULT_DOCUMENTS_CONFIG.storage.retainSource
@@ -370,6 +402,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Хранить входной файл"
           hint="Загруженный или скачанный документ остаётся в артефакте, а не только его текст."
+          testId="docs-artifacts-retain-inputs"
           checked={
             config?.storage?.retainInputs ??
             DEFAULT_DOCUMENTS_CONFIG.storage.retainInputs
@@ -382,6 +415,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Toggle
           label="Удалять старые документы"
           hint="Уборка работает только при заданном каталоге артефактов: в разложении по сессиям плагин не знает о других рабочих папках."
+          testId="docs-artifacts-retention"
           checked={
             config?.retention?.enabled ??
             DEFAULT_DOCUMENTS_CONFIG.retention.enabled
@@ -393,6 +427,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         />
         <NumberField
           label="Хранить, дней"
+          testId="docs-artifacts-max-age-days"
           value={
             config?.retention?.maxAgeDays ??
             DEFAULT_DOCUMENTS_CONFIG.retention.maxAgeDays
@@ -415,18 +450,23 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Шаблоны и лимиты"
-        reset={reset([
-          ["templates", "root"],
-          ["templates", "default"],
-          ["limits", "maxInputBytes"],
-          ["limits", "maxMarkdownChars"],
-          ["limits", "maxPages"],
-          ["limits", "maxExtractedImages"],
-        ])}
+        testId="docs-templates"
+        reset={reset(
+          [
+            ["templates", "root"],
+            ["templates", "default"],
+            ["limits", "maxInputBytes"],
+            ["limits", "maxMarkdownChars"],
+            ["limits", "maxPages"],
+            ["limits", "maxExtractedImages"],
+          ],
+          "docs-templates-reset",
+        )}
       >
         <Grid>
           <TextField
             label="Каталог шаблонов"
+            testId="docs-templates-root"
             value={config?.templates?.root ?? ""}
             placeholder="<рабочая папка сессии>/document-templates"
             disabled={fieldDisabled}
@@ -440,6 +480,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           />
           <TextField
             label="Шаблон по умолчанию"
+            testId="docs-templates-default"
             value={
               config?.templates?.default ??
               DEFAULT_DOCUMENTS_CONFIG.templates.default
@@ -454,6 +495,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Grid>
           <NumberField
             label="Максимум входного файла, байт"
+            testId="docs-templates-max-input-bytes"
             value={
               config?.limits?.maxInputBytes ??
               DEFAULT_DOCUMENTS_CONFIG.limits.maxInputBytes
@@ -467,6 +509,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           />
           <NumberField
             label="Максимум Markdown, символов"
+            testId="docs-templates-max-markdown-chars"
             value={
               config?.limits?.maxMarkdownChars ??
               DEFAULT_DOCUMENTS_CONFIG.limits.maxMarkdownChars
@@ -482,6 +525,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
         <Grid>
           <NumberField
             label="Максимум страниц"
+            testId="docs-templates-max-pages"
             value={
               config?.limits?.maxPages ??
               DEFAULT_DOCUMENTS_CONFIG.limits.maxPages
@@ -495,6 +539,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           />
           <NumberField
             label="Максимум картинок"
+            testId="docs-templates-max-images"
             value={
               config?.limits?.maxExtractedImages ??
               DEFAULT_DOCUMENTS_CONFIG.limits.maxExtractedImages
