@@ -6,6 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
 
+import { unreleasedProjects } from "./check-release-plans.mjs";
+
 const script = fileURLToPath(
   new URL("./check-release-plans.mjs", import.meta.url),
 );
@@ -195,6 +197,87 @@ describe("version plan gate", () => {
 
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /3 project\(s\) were released/u);
+  });
+
+  test("a release tag the base already outruns does not reopen released work", () => {
+    const { root } = createFixture();
+    git(root, "tag", "release/2026-09-14");
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    const released = commit(
+      root,
+      "feat: change alpha, released without its tag",
+    );
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    commit(root, "feat: change beta");
+
+    const result = check(root, released);
+
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /@fixture\/dsh-beta: 1 file\(s\) since /u);
+    assert.doesNotMatch(result.output, /@fixture\/dsh-alpha/u);
+    assert.match(
+      result.output,
+      /release tag release\/2026-09-14 is already in the base/u,
+    );
+  });
+
+  test("a branch that released its own work is still measured from its tag", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    commit(root, "chore(release): publish alpha");
+    git(root, "tag", "release/2026-09-14");
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    commit(root, "feat: change beta after the release");
+
+    const result = check(root, base);
+
+    assert.equal(result.status, 1, result.output);
+    assert.match(
+      result.output,
+      /@fixture\/dsh-beta: 1 file\(s\) since release\/2026-09-14$/mu,
+    );
+    assert.doesNotMatch(result.output, /is already in the base/u);
+    assert.doesNotMatch(result.output, /@fixture\/dsh-alpha/u);
+  });
+
+  test("a base that diverged from the tagged line does not move the start", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-beta", "export const x = 2;\n");
+    const diverged = commit(root, "feat: change beta on the base side");
+    git(root, "checkout", "--quiet", "-b", "released", base);
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    commit(root, "chore(release): publish alpha");
+    git(root, "tag", "release/2026-09-14");
+
+    const result = check(root, diverged);
+
+    assert.equal(result.status, 0, result.output);
+    assert.match(result.output, /3 project\(s\) were released/u);
+    assert.doesNotMatch(result.output, /is already in the base/u);
+  });
+
+  test("a comparison git cannot answer fails instead of keeping the older tag", () => {
+    const { root, base } = createFixture();
+    editSource(root, "plugins/dsh-alpha", "export const x = 2;\n");
+    commit(root, "chore(release): publish alpha");
+    git(root, "tag", "release/2026-09-14");
+
+    assert.throws(
+      () =>
+        unreleasedProjects({
+          repoRoot: root,
+          base: "no-such-ref",
+          head: "HEAD",
+        }),
+      /cannot tell whether release\/2026-09-14 is reachable from no-such-ref/u,
+    );
+
+    const alpha = unreleasedProjects({
+      repoRoot: root,
+      base,
+      head: "HEAD",
+    }).find((project) => project.name === "@fixture/dsh-alpha");
+    assert.equal(alpha?.from, "release/2026-09-14");
   });
 
   test("a plan file covers an unreleased change", () => {
