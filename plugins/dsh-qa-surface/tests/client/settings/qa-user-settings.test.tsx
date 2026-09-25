@@ -59,6 +59,7 @@ function skillDocument(
     extraFrontmatter: {},
     sourcePath: "/workspace/.dsh/skills/api-testing/SKILL.md",
     preview: "---\nname: api-testing\n---\n\n1. Шаг\n",
+    truncated: false,
     ...overrides,
   };
 }

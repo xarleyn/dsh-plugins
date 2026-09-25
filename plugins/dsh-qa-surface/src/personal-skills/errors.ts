@@ -9,6 +9,7 @@ export type QaPersonalSkillErrorReason =
   | "skill-not-found"
   | "skill-exists"
   | "skill-conflict"
+  | "skill-truncated"
   | "skill-name-invalid"
   | "skill-invalid"
   | "storage-unavailable";

@@ -496,6 +496,7 @@ export type QaSkillDiagnosticCode =
   | "file-too-large"
   | "frontmatter-missing"
   | "skill-file-missing"
+  | "skill-file-truncated"
   | "frontmatter-invalid"
   | "unknown-field"
   | "resource-unsupported";
@@ -598,6 +599,12 @@ export interface QaSkillDocument extends QaSkillSummary {
   readonly sourcePath: string;
   /** The canonical file the serializer writes, built from the parsed content. */
   readonly preview: string;
+  /**
+   * True when the stored file is larger than the Host's read ceiling, so `body`
+   * and `preview` describe its head only. A save over such a document erases
+   * the unread tail, and the Host refuses it until the client confirms.
+   */
+  readonly truncated: boolean;
 }
 
 /** One tool the picker can offer, with this deployment's availability. */
@@ -619,6 +626,13 @@ export interface QaSkillDraftInput {
   readonly body: string;
   /** Echo of the revision the editor read; a stale one is refused. */
   readonly expectedRevision: string | null;
+  /**
+   * The client's acknowledgement that it is saving from an incomplete copy: the
+   * stored `SKILL.md` is over the read ceiling, so the draft carries the head
+   * of the file and a save would drop everything the read never loaded. A write
+   * without it is refused.
+   */
+  readonly confirmPartialOverwrite?: boolean;
 }
 
 /**

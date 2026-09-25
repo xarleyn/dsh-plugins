@@ -2871,6 +2871,11 @@ merges from.
   description, a legacy invocation key the shipped parser throws on. A file
   the harness would refuse never reaches the model catalog; it stays open in
   the editor with that reason attached.
+- A file larger than the read ceiling is loaded as its head, and the read says
+  so: the size the validator compares is the file's size on disk, never the
+  length of what was loaded, and `skill-file-truncated` is reported beside it.
+  A save therefore cannot mistake a prefix for a document and write the file
+  back without its tail — see §47.5.
 
 ### 47.4 Tool declaration is not a grant
 
@@ -2893,8 +2898,14 @@ enforce anything.
 - `src/personal-skills/service.ts` — `QaPersonalSkills`: list, get, create,
   update (rename included, resources moved with the directory), remove (into
   the trash), tools, validate, and the discovery reads. Revision is
-  `sha256(file bytes)`; an update compares the revision the editor read and
-  refuses a stale one.
+  `sha256(file bytes)` — the whole file, hashed through a bounded buffer so an
+  oversized one costs no memory — and an update compares the revision the
+  editor read and refuses a stale one, a change behind the read ceiling
+  included. Overwriting a document the read only loaded partly is refused
+  outright (`skill-truncated`) unless the draft carries
+  `confirmPartialOverwrite`, which is what the editor's second save click sets
+  after naming the loss; a removal needs no such flag because the whole
+  directory goes to the trash unchanged.
 - `src/personal-skills/provider.ts` — the `qa-user-skills` provider
   (`ctx.skills.registerProvider`), rank 50 so a personal skill wins a
   same-named duplicate inside the QA scope, `source: "qa-user"`; the
@@ -2934,7 +2945,9 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   (quoting, Unicode, foreign-field preservation), tool-list normalization,
   draft validation, path traversal and symlink escapes, service CRUD,
   conflict, rename with resources, trash, per-account isolation, the operator
-  limit, and the reason-marker refusals.
+  limit, the read ceiling (a partly loaded file is reported as one, its
+  revision covers every byte on disk, and a save over it is refused until the
+  draft confirms), and the reason-marker refusals.
 - `tests/personal-skills-provider.test.ts`: the provider against the real
   `SkillRegistry` — visibility per cwd and per account, invocation flags,
   refresh after a save, a hand edit, removal, skipped malformed files, and the
