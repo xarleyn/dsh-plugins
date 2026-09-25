@@ -301,26 +301,10 @@ SettingsForm.prototype.actions = function () {
       this.stage(field, { op: "set", value: value });
     },
     resetField: (field: string) => {
-      const spec = specOf(field);
-      if (spec.kind === "text" || spec.kind === "number") {
-        if (spec.multiline === true) {
-          // A template resets to the composition default by dropping the user
-          // override, not by writing a copy of the default into the user layer.
-          this.stage(field, { op: "clear" });
-          return;
-        }
-        const cleared = this.clearedValue(field);
-        this.stage(field, {
-          op: "set",
-          text:
-            spec.kind === "number"
-              ? formatNumber(cleared)
-              : formatText(cleared),
-          clear: true,
-        });
-      } else {
-        this.stage(field, { op: "clear" });
-      }
+      // Every kind resets the same way: drop the user override so the field
+      // follows the composition base. Writing a copy of the base into the user
+      // layer would pin the value and make the reset a new override.
+      this.stage(field, { op: "clear" });
     },
     save: () => {
       return this.save();
