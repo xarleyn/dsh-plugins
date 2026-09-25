@@ -8,6 +8,7 @@ import {
 import { AuditRing } from "../src/host/audit.js";
 import { DomainExpertsError } from "../src/host/errors.js";
 import { DomainRegistry } from "../src/host/registry.js";
+import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
 import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
 import { ScopeProviderRegistry } from "../src/host/scopes/registry.js";
@@ -56,6 +57,10 @@ interface Harness {
 function harnessOf(
   definition: DomainDefinition = PAYMENTS,
   options: Parameters<typeof fakeSubagents>[0] = {},
+  memory: {
+    readonly perUser?: boolean;
+    readonly principals?: Record<string, string>;
+  } = {},
 ): Harness {
   const clock = fixedClock();
   const subagents = fakeSubagents(options);
@@ -92,6 +97,8 @@ function harnessOf(
       audits,
       logger: recordingLogger(log),
       now: () => 9_000,
+      perUserMemory: memory.perUser ?? false,
+      principalOf: (sessionId) => memory.principals?.[sessionId],
     },
   };
 }
@@ -230,6 +237,7 @@ describe("execution: results and bookkeeping", () => {
       depth: 1,
       background: false,
       maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
     const target = domainOf("inventory");
     await run(harness, target, { callerDomain: "payments", depth: 1 });
@@ -449,5 +457,55 @@ describe("execution: refusals", () => {
       failWith: new Error("disk on fire"),
     });
     await expect(run(harness)).rejects.toThrowError("disk on fire");
+  });
+});
+
+describe("execution: whose memory a run gets", () => {
+  it("hands an attributed caller's account namespace to the child", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        perUser: true,
+        principals: { "session-1": "user-a" },
+      },
+    );
+    await run(harness);
+    const persona = harness.subagents.started[0]?.request.persona ?? "";
+    expect(persona).toContain("- domain/payments/u/user-a (read/write)");
+    expect(persona).toContain("- domain/payments (read-only)");
+  });
+
+  it("keeps the domain namespace writable without account scoping", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        perUser: false,
+        principals: { "session-1": "user-a" },
+      },
+    );
+    await run(harness);
+    const persona = harness.subagents.started[0]?.request.persona ?? "";
+    expect(persona).toContain("- domain/payments (read/write)");
+    expect(persona).not.toContain("/u/user-a");
+  });
+
+  it("inherits the account through a delegated run whose session nobody attested", async () => {
+    const harness = harnessOf(PAYMENTS, {}, { perUser: true });
+    harness.tracker.register({
+      domainId: "payments",
+      childSessionId: "session-1",
+      callerSessionId: "root-session",
+      callerDomain: null,
+      path: ["payments"],
+      depth: 1,
+      background: false,
+      maxParallel: 3,
+      memoryOwner: { mode: "per-user", userId: "user-a" },
+    });
+    await run(harness, PAYMENTS, { background: true, id: "session-1" });
+    const child = harness.tracker.find("child-session-bg");
+    expect(child?.memoryOwner).toEqual({ mode: "per-user", userId: "user-a" });
   });
 });

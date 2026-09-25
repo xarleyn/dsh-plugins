@@ -74,13 +74,17 @@ export function ScopeInspector({
         )}
       </Section>
 
-      <Section title="Memory">
+      <Section
+        title="Memory"
+        note="What an expert may read and write, namespace by namespace. An account-scoped deployment records each account's notes under the domain namespace and reads the domain namespace itself as the common tier."
+      >
         <table className="dx-table">
           <thead>
             <tr>
               <th>Namespace</th>
               <th>Access</th>
               <th>Enforcement</th>
+              <th>Note</th>
             </tr>
           </thead>
           <tbody>
@@ -91,6 +95,7 @@ export function ScopeInspector({
                 <td>
                   <EnforcementChip enforcement={entry.enforcement} />
                 </td>
+                <td>{entry.note}</td>
               </tr>
             ))}
           </tbody>

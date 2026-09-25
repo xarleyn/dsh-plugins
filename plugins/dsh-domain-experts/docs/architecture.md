@@ -22,6 +22,7 @@ src/
 │   ├── execution.ts    ctx.subagents orchestration, run tracker, audit emit
 │   ├── audit.ts        bounded audit ring
 │   ├── result.ts       structured-answer parser
+│   ├── qa-principal.ts optional host seam: which account a session belongs to
 │   ├── scopes/         provider registry, filesystem provider, path guard
 │   ├── memory/         provider registry, built-in namespace-partitioned store
 │   ├── workers/        worker registry (scope-enforcement claims)

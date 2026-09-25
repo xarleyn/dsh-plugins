@@ -27,6 +27,7 @@ describe("config: defaults", () => {
       defaultCrossDomainMode: "expert-only",
       defaultMemoryProvider: DEFAULT_MEMORY_PROVIDER,
       memoryDbPath: defaultMemoryDbPath(),
+      perUserMemory: true,
       recallLimit: 5,
       auditLimit: 200,
     });
@@ -47,6 +48,7 @@ describe("config: defaults", () => {
       "defaultMemoryProvider",
       "enabled",
       "memoryDbPath",
+      "perUserMemory",
       "recallLimit",
       "subagentProvider",
     ]);

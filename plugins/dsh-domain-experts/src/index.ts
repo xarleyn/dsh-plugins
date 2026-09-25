@@ -26,6 +26,7 @@ import { DomainExpertsError, errorMessageOf } from "./host/errors.js";
 import {
   RunTracker,
   runExpert,
+  type ExecutionDependencies,
   type ExpertRunInput,
   type SubagentsFace,
 } from "./host/execution.js";
@@ -43,10 +44,16 @@ import { delegationVerdictOf, parallelBudgetOf } from "./host/policy.js";
 import { DomainRegistry } from "./host/registry.js";
 import { summarizeDomain } from "./host/schema.js";
 import {
+  DEPLOYMENT_MEMORY_OWNER,
   memoryEntries,
   resolveExpert,
+  type MemoryOwner,
   type ResolverDependencies,
 } from "./host/resolver.js";
+import {
+  asQaPrincipalSurface,
+  type QaPrincipalSurface,
+} from "./host/qa-principal.js";
 import { createFilesystemProvider } from "./host/scopes/filesystem.js";
 import { ScopeProviderRegistry } from "./host/scopes/registry.js";
 import {
@@ -164,6 +171,8 @@ export class DomainExpertsService extends TypertRemoteService {
    */
   private readonly sqliteMemory: SqliteMemoryProvider | undefined;
   private toolAvailability = false;
+  private surface: QaPrincipalSurface | undefined;
+  private surfaceChecked = false;
 
   constructor(ctx: Context, entry: PluginConfig = {}) {
     super(ctx, "domainExperts", { namespace: "domainExperts" });
@@ -408,6 +417,73 @@ export class DomainExpertsService extends TypertRemoteService {
     };
   }
 
+  private executionDependencies(
+    domains: DomainRegistry,
+  ): ExecutionDependencies {
+    return {
+      resolver: this.resolverDependencies(domains),
+      subagents: this.subagentsFace(),
+      subagentProvider: this.config().subagentProvider,
+      tracker: this.tracker,
+      audits: this.audits,
+      logger: this.logger,
+      now: Date.now,
+      perUserMemory: this.perUserMemory(),
+      principalOf: (sessionId) => this.principalOf(sessionId),
+    };
+  }
+
+  // -------------------------------------------------------------- identity
+
+  /**
+   * The QA surface, resolved on first use and remembered.
+   *
+   * A deployment without one owns a single memory space for the whole
+   * installation, exactly as it did before per-account memory existed; that is
+   * an answer, not a failure to look up.
+   */
+  private principalSurface(): QaPrincipalSurface | undefined {
+    if (!this.surfaceChecked) {
+      this.surfaceChecked = true;
+      this.surface = asQaPrincipalSurface(this.ctx.get("qaSurface"));
+      if (this.surface !== undefined) {
+        this.logger.info("domain-experts/qa-principals-active", {
+          perUserMemory: this.config().perUserMemory,
+        });
+      }
+    }
+    return this.surface;
+  }
+
+  /**
+   * The account a session was attested by, or `undefined`.
+   *
+   * Never read from a tool argument or a browser request: the caller's own
+   * session is the only thing asked, which is what keeps another account's
+   * namespace out of reach of a crafted id.
+   */
+  private principalOf(sessionId: string): string | undefined {
+    return this.principalSurface()?.principalForSession(sessionId)?.userId;
+  }
+
+  /** Whether this deployment keeps a memory namespace per account. */
+  private perUserMemory(): boolean {
+    return this.config().perUserMemory && this.principalSurface() !== undefined;
+  }
+
+  /**
+   * The owner a resolution without a caller session stands for: the UI's
+   * preview and its memory inspector.
+   *
+   * It has no account to name — a settings page is not a chat — so it shows the
+   * domain tier, and the entry note says what an attributed run gets instead.
+   */
+  private unattributedOwner(): MemoryOwner {
+    return this.perUserMemory()
+      ? { mode: "per-user", userId: undefined }
+      : DEPLOYMENT_MEMORY_OWNER;
+  }
+
   /**
    * The persisted definition, waiting for the one-time storage open.
    *
@@ -461,18 +537,7 @@ export class DomainExpertsService extends TypertRemoteService {
     input: ExpertRunInput,
   ): Promise<DomainExpertResult> {
     const handles = await this.opened();
-    return await runExpert(
-      {
-        resolver: this.resolverDependencies(handles.domains),
-        subagents: this.subagentsFace(),
-        subagentProvider: this.config().subagentProvider,
-        tracker: this.tracker,
-        audits: this.audits,
-        logger: this.logger,
-        now: Date.now,
-      },
-      input,
-    );
+    return await runExpert(this.executionDependencies(handles.domains), input);
   }
 
   private subagentsFace(): SubagentsFace {
@@ -537,6 +602,7 @@ export class DomainExpertsService extends TypertRemoteService {
           workspaceDir: "",
           callerDomain: null,
           depth: 1,
+          memoryOwner: this.unattributedOwner(),
         },
       );
       return { ok: true, code: "", message: "", profile };
@@ -565,6 +631,7 @@ export class DomainExpertsService extends TypertRemoteService {
             workspaceDir: "",
             callerDomain: null,
             depth: 1,
+            memoryOwner: this.unattributedOwner(),
           },
         );
         // Report the tools the expert will actually see, not just the ones the
@@ -748,7 +815,7 @@ export class DomainExpertsService extends TypertRemoteService {
     try {
       const handles = await this.opened();
       const definition = handles.domains.requireEnabled(domainId.trim());
-      const entries = memoryEntries(definition);
+      const entries = memoryEntries(definition, this.unattributedOwner());
       const requested = namespace.trim();
       const target = entries.filter(
         (entry) => requested === "" || entry.namespace === requested,
@@ -803,7 +870,7 @@ export class DomainExpertsService extends TypertRemoteService {
     try {
       const handles = await this.opened();
       const definition = handles.domains.requireEnabled(domainId.trim());
-      const writable = memoryEntries(definition).find(
+      const writable = memoryEntries(definition, this.unattributedOwner()).find(
         (entry) => entry.access === "read-write",
       );
       const requested =
@@ -813,7 +880,9 @@ export class DomainExpertsService extends TypertRemoteService {
       if (writable === undefined || requested !== writable.namespace) {
         throw new DomainExpertsError(
           "MEMORY_SCOPE_DENIED",
-          `Only the private namespace of domain "${definition.id}" can be cleared.`,
+          `Only the domain's own namespace${
+            writable === undefined ? "" : ` "${writable.namespace}"`
+          } can be cleared from this page; an account's namespace is not reachable here.`,
           { refs: [requested] },
         );
       }
@@ -854,15 +923,7 @@ export class DomainExpertsService extends TypertRemoteService {
         );
       }
       const result = await runExpert(
-        {
-          resolver: this.resolverDependencies(handles.domains),
-          subagents: this.subagentsFace(),
-          subagentProvider: this.config().subagentProvider,
-          tracker: this.tracker,
-          audits: this.audits,
-          logger: this.logger,
-          now: Date.now,
-        },
+        this.executionDependencies(handles.domains),
         {
           parent,
           definition,
@@ -952,9 +1013,12 @@ export { DomainRegistry } from "./host/registry.js";
 export { composePersona, BASE_POLICY, ANSWER_FORMAT } from "./host/persona.js";
 export {
   memoryEntries,
+  memoryOwnerOf,
   resolveExpert,
+  DEPLOYMENT_MEMORY_OWNER,
   EXPERT_INFRASTRUCTURE_TOOLS,
   TOOL_ALIASES,
+  type MemoryOwner,
   type ResolverDependencies,
   type ResolveInput,
 } from "./host/resolver.js";
