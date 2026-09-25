@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  ACME_PROFILE,
   PROFILE_INPUT,
   buildHarness,
   repositories,
@@ -72,6 +73,61 @@ describe("managed service credentials: broker", () => {
         sourceSessionId: "session-opt-out",
       }),
     ).rejects.toMatchObject({ code: "IntegrationNotConnected" });
+  });
+
+  it("leaves a new principal alone when the deployment offers no default", async () => {
+    // `defaultForNewConnections` is the operator's switch, not the broker's
+    // opinion: with it off, a managed profile stays something a user picks.
+    const { broker } = buildHarness(path.join(root, "auto-off.db"), {
+      enabled: true,
+      defaultForNewConnections: false,
+      profiles: [{ ...ACME_PROFILE }],
+    });
+    const alice = { userId: "alice-default-off" };
+
+    expect(broker.summary(alice, "acme").status).toBe("not_connected");
+    await expect(
+      broker.call(alice, {
+        provider: "acme",
+        operation: "records.get",
+        input: { project: "alpha" },
+        sourceSessionId: "session-default-off",
+      }),
+    ).rejects.toMatchObject({ code: "IntegrationNotConnected" });
+
+    // A connect the user starts does not land on the shared credential either,
+    // and asking for it by name is the only way to get there.
+    const personal = await broker.connect(alice, "acme", { token: "" });
+    expect(personal.credentialSource).toBe("personal");
+    const chosen = await broker.connect(
+      { userId: "carol-default-off" },
+      "acme",
+      { token: "" },
+      { useServiceCredential: true },
+    );
+    expect(chosen.credentialSource).toBe("service");
+  });
+
+  it("does not guess a profile when the deployment publishes several", async () => {
+    // Two instances of one provider is exactly the choice the settings form
+    // exists to make explicit, so automation stands down.
+    const { broker } = buildHarness(path.join(root, "auto-ambiguous.db"), {
+      enabled: true,
+      defaultForNewConnections: true,
+      profiles: [
+        { ...ACME_PROFILE },
+        {
+          ...ACME_PROFILE,
+          id: "acme-second",
+          instance: "acme-alt",
+          label: "Acme Second",
+        },
+      ],
+    });
+
+    expect(broker.summary({ userId: "alice-ambiguous" }, "acme").status).toBe(
+      "not_connected",
+    );
   });
 
   it("keeps an existing connection on its own credential after an upgrade", async () => {
