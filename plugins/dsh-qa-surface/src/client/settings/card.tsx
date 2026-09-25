@@ -251,14 +251,23 @@ export function QaSettingsCard({ form, describe }: CardProps) {
       bodyClassName="qa-card-body"
     >
       {settings.status === "loading" ? (
-        <p className="qa-card-muted">Загружаю настройки помощника…</p>
+        <p className="qa-card-muted" data-testid="qa-settings-loading">
+          Загружаю настройки помощника…
+        </p>
       ) : (
         <>
           {writeError !== null ? (
-            <div className="qa-card-error">{writeError}</div>
+            <div
+              className="qa-card-error"
+              data-testid="qa-settings-write-error"
+            >
+              {writeError}
+            </div>
           ) : null}
           {hostError !== null ? (
-            <div className="qa-card-error">{hostError}</div>
+            <div className="qa-card-error" data-testid="qa-settings-host-error">
+              {hostError}
+            </div>
           ) : null}
           <StatusSection
             effective={effective}
@@ -294,6 +303,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
               <button
                 type="button"
                 className="qa-card-btn"
+                data-testid="qa-settings-reset-all"
                 disabled={!writable}
                 onClick={resetAll}
               >

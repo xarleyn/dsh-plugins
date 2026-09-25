@@ -35,7 +35,8 @@ export function SessionSection(props: ConfigProps) {
     <Section
       title="Сессия"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-session"
+      aside={resetAside(props, paths, "qa-settings-session-reset")}
     >
       <div className="qa-card-grid">
         <SelectField
@@ -44,6 +45,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           options={SESSION_POLICIES}
           hint={policyCopy.hint}
+          testId="qa-settings-session-policy"
           onChange={(value) => {
             props.write(["session", "policy"], value);
           }}
@@ -53,6 +55,7 @@ export function SessionSection(props: ConfigProps) {
           value={config?.session?.storageKey ?? ""}
           disabled={disabled}
           hint="Префикс ключей localStorage и sessionStorage. Смена ключа разводит историю этого браузера с прежней."
+          testId="qa-settings-session-storage-key"
           onChange={(value) => {
             props.write(["session", "storageKey"], value);
           }}
@@ -65,6 +68,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="session-…"
           hint="Обязателен для фиксированной политики: без него конфигурация отвергается."
+          testId="qa-settings-session-fixed-session-id"
           onChange={(value) => {
             props.write(["session", "fixedSessionId"], value);
           }}
@@ -76,6 +80,7 @@ export function SessionSection(props: ConfigProps) {
           value={config?.session?.agentPreset ?? ""}
           disabled={disabled}
           hint="Пресет, которым создаётся сессия помощника. Пусто — пресет по умолчанию."
+          testId="qa-settings-session-agent-preset"
           onChange={(value) => {
             props.write(["session", "agentPreset"], value);
           }}
@@ -86,6 +91,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="low, medium, high…"
           hint="Значение для выбранной модели. Пусто — как решает пресет."
+          testId="qa-settings-session-reasoning-effort"
           onChange={(value) => {
             props.write(["session", "reasoningEffort"], value);
           }}
@@ -96,6 +102,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="deepseek"
           hint="Задаётся вместе с моделью: по отдельности хост отвергает конфигурацию, поэтому поле сохраняет оба значения сразу."
+          testId="qa-settings-session-provider"
           onChange={(value) => {
             props.writeMany([
               { path: ["session", "provider"], value },
@@ -109,6 +116,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="deepseek-chat"
           hint="Сохраняется вместе с провайдером по той же причине."
+          testId="qa-settings-session-model"
           onChange={(value) => {
             props.writeMany([
               { path: ["session", "provider"], value: provider },
@@ -122,6 +130,7 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="D:\qa"
           hint="Абсолютный путь. Взаимоисключим с рабочим пространством ниже."
+          testId="qa-settings-session-cwd"
           onChange={(value) => {
             props.write(["session", "cwd"], value);
           }}
@@ -132,19 +141,26 @@ export function SessionSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="workspace-…"
           hint="Зарегистрированное рабочее пространство харнесса. Взаимоисключимо с каталогом выше."
+          testId="qa-settings-session-workspace-id"
           onChange={(value) => {
             props.write(["session", "workspaceId"], value);
           }}
         />
       </div>
       {provider !== "" && model === "" ? (
-        <Notice tone="warn">
+        <Notice
+          tone="warn"
+          testId="qa-settings-session-notice-provider-without-model"
+        >
           Провайдер задан без модели — хост отвергнет такую конфигурацию.
           Заполните модель или очистите провайдера.
         </Notice>
       ) : null}
       {cwd !== "" && workspaceId !== "" ? (
-        <Notice tone="warn">
+        <Notice
+          tone="warn"
+          testId="qa-settings-session-notice-cwd-and-workspace"
+        >
           Заданы и рабочий каталог, и рабочее пространство: сессия не может
           следовать обоим. Очистите одно из полей.
         </Notice>

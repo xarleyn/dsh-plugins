@@ -68,10 +68,12 @@ export function StatusSection(props: StatusProps) {
     <Section
       title="Состояние"
       modified={false}
+      testId="qa-settings-status"
       aside={
         <button
           type="button"
           className="qa-card-btn"
+          data-testid="qa-settings-status-refresh"
           disabled={props.refreshing}
           onClick={props.onRefresh}
         >
@@ -79,14 +81,23 @@ export function StatusSection(props: StatusProps) {
         </button>
       }
     >
-      <div className="qa-card-status">
+      <div className="qa-card-status" data-testid="qa-settings-status-chips">
         <Chip
           label="Страница"
           value={enabled ? "включена" : "выключена"}
           tone={enabled ? undefined : "off"}
+          testId="qa-settings-status-page"
         />
-        <Chip label="Маршрут" value={enabled ? routePath : "—"} />
-        <Chip label="Сессия" value={shortPolicy(policy)} />
+        <Chip
+          label="Маршрут"
+          value={enabled ? routePath : "—"}
+          testId="qa-settings-status-route"
+        />
+        <Chip
+          label="Сессия"
+          value={shortPolicy(policy)}
+          testId="qa-settings-status-session"
+        />
         <Chip
           label="Блокировка"
           value={
@@ -97,24 +108,38 @@ export function StatusSection(props: StatusProps) {
                 : "только чтение"
           }
           tone={lockdown ? undefined : "off"}
+          testId="qa-settings-status-lockdown"
         />
-        <Chip label="Аккаунты" value={accounts ? "включены" : "выключены"} />
+        <Chip
+          label="Аккаунты"
+          value={accounts ? "включены" : "выключены"}
+          testId="qa-settings-status-accounts"
+        />
         <Chip
           label="Вопросы модели"
           value={questions === "interactive" ? "формой в чате" : "отклоняются"}
           tone={questions === "interactive" ? undefined : "off"}
+          testId="qa-settings-status-questions"
         />
-        <Chip label="Инструменты" value={formatCount(tools)} />
-        <Chip label="Проверено" value={formatClock(props.refreshedAt)} />
+        <Chip
+          label="Инструменты"
+          value={formatCount(tools)}
+          testId="qa-settings-status-tools"
+        />
+        <Chip
+          label="Проверено"
+          value={formatClock(props.refreshedAt)}
+          testId="qa-settings-status-checked-at"
+        />
       </div>
       {effective === null ? (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-status-notice-host-silent">
           Хост ещё не ответил: значения взяты из настроек. Как только он
           ответит, здесь появится конфигурация, с которой работает страница.
         </Notice>
       ) : null}
       {questions === "interactive" && questionToolAllowed === false ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-status-notice-tool-missing">
           Вопросы включены, но инструмент {questionTool} не входит в список
           разрешённых (lockdown.toolPolicy.allow): модель не сможет задать
           вопрос, и форма не появится. Добавьте инструмент в список или
@@ -122,7 +147,7 @@ export function StatusSection(props: StatusProps) {
         </Notice>
       ) : null}
       {questions !== "interactive" && questionToolAllowed === true ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-status-notice-tool-refused">
           Инструмент {questionTool} разрешён, а вопросы выключены: каждый запрос
           модели будет отклонён. Включите «Вопросы модели» в разделе
           «Взаимодействие» или уберите инструмент из списка разрешённых.

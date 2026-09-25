@@ -25,7 +25,7 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard();
     openCard();
 
-    const access = section("Доступ и маршрут");
+    const access = section("qa-settings-access");
     fireEvent.click(
       within(access).getByRole("checkbox", { name: /Страница включена/u }),
     );
@@ -40,7 +40,7 @@ describe("QA Surface card", () => {
     await renderCard({ refuse: true });
     openCard();
 
-    const access = section("Доступ и маршрут");
+    const access = section("qa-settings-access");
     fireEvent.click(
       within(access).getByRole("checkbox", { name: /Страница включена/u }),
     );
@@ -67,9 +67,12 @@ describe("QA Surface card", () => {
     await renderCard();
     openCard();
 
-    const enabled = within(section("Доступ и маршрут")).getByRole("checkbox", {
-      name: /Страница включена/u,
-    });
+    const enabled = within(section("qa-settings-access")).getByRole(
+      "checkbox",
+      {
+        name: /Страница включена/u,
+      },
+    );
     fireEvent.click(enabled);
     await settle();
     fireEvent.click(enabled);
@@ -81,7 +84,7 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard();
     openCard();
 
-    const session = section("Сессия");
+    const session = section("qa-settings-session");
     const model = within(session).getByLabelText(/Модель/u);
     fireEvent.change(model, { target: { value: "deepseek-chat" } });
     fireEvent.blur(model);
@@ -103,7 +106,7 @@ describe("QA Surface card", () => {
     });
     openCard();
 
-    const accounts = section("Аккаунты");
+    const accounts = section("qa-settings-accounts");
     fireEvent.click(
       within(accounts).getByRole("checkbox", {
         name: /Отдельное рабочее пространство/u,
@@ -125,19 +128,20 @@ describe("QA Surface card", () => {
     await renderCard();
     openCard();
     expect(
-      within(section("Аккаунты")).getByText(/Для персональных рабочих/u),
-    ).toBeTruthy();
+      screen.getByTestId("qa-settings-accounts-notice-per-user-gaps")
+        .textContent,
+    ).toMatch(/Для персональных рабочих/u);
   });
 
   it("refuses the reset button the lockdown cross-check would reject", async () => {
     await renderCard();
     openCard();
-    const ui = section("Интерфейс");
+    const ui = section("qa-settings-interface");
     const showReset = within(ui).getByRole("checkbox", {
       name: /Кнопка нового чата/u,
     });
     expect((showReset as HTMLInputElement).disabled).toBe(true);
-    expect(within(ui).getByText(/Разрешить сброс сессии/u)).toBeTruthy();
+    expect(ui.textContent).toMatch(/Разрешить сброс сессии/u);
   });
 
   it("warns while the lockdown is switched off", async () => {
@@ -150,6 +154,8 @@ describe("QA Surface card", () => {
       },
     });
     openCard();
-    expect(screen.getByText(/Блокировка выключена/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-lockdown-notice-disabled").textContent,
+    ).toMatch(/Блокировка выключена/u);
   });
 });
