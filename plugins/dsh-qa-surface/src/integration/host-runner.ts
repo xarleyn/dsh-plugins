@@ -17,7 +17,7 @@ import type { QaPolicyAdmission } from "../secure-session.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 import { prepareQaUserWorkspace } from "../user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
-import { answerAfter, lastPromptSeq } from "./answer.js";
+import { answerAfter, answerForRequest, lastPromptSeq } from "./answer.js";
 import { attachmentPromptParts } from "./attachments.js";
 import type {
   QaFileAttachment,
@@ -271,19 +271,25 @@ export function createQaIntegrationRunner(
       if (!read.ok) {
         throw new Error(`the session log is unavailable (${read.reason})`);
       }
-      // The prompt's own event may be missing from an empty snapshot, so the
-      // floor is the later of the cursor taken before the question and the
-      // newest human prompt the log knows about. Either way the answer is the
-      // last assistant message after it, and no earlier turn can be read as
-      // this one's answer.
-      const projected = answerAfter(
-        read.events,
-        Math.max(floor, lastPromptSeq(read.events)),
-      );
+      // This request's own turn answers it. The harness echoes the prompt's rpc
+      // id onto the durable user row, so the turn is found by that id instead of
+      // by "the newest prompt in the log": two questions in flight on one chat
+      // commit two turns, and reading the newest of them answers each caller with
+      // the other's turn. The cursor fallback is for the one case correlation
+      // cannot serve — a prompt whose row the read did not reach yet — and it is
+      // the later of the cursor taken before the question and the newest human
+      // prompt, so no earlier turn can be read as this one's answer.
+      const projected = answerForRequest(read.events, requestId) ?? {
+        ...answerAfter(
+          read.events,
+          Math.max(floor, lastPromptSeq(read.events)),
+        ),
+        turn: null,
+      };
       return Object.freeze({
         chatId,
         answer: projected.answer,
-        sources: sourcesOf(chatId),
+        sources: sourcesOf(chatId, projected.turn),
         interrupted: projected.interrupted,
       });
     },
@@ -308,15 +314,23 @@ export function createQaIntegrationRunner(
   };
 
   /**
-   * The evidence of the chat's latest turn, for the bridge's citations. The
-   * provenance store materializes one bundle per turn; the newest is the one
-   * that belongs to the answer just written. A deployment that switched
-   * source collection off answers with an empty list rather than no answer.
+   * The evidence of one turn, for the bridge's citations. The provenance store
+   * materializes one bundle per turn, so the bundle named by the turn that
+   * answered is the one that belongs to the answer just written — the newest
+   * bundle is only the same thing while one turn is the last one in the chat.
+   * `turn` is null when the answer came from a log that named no turn for it,
+   * and the newest bundle is then the best the citation has. A deployment that
+   * switched source collection off answers with an empty list rather than no
+   * answer.
    */
-  function sourcesOf(sessionId: string): readonly QaSourceReference[] {
+  function sourcesOf(
+    sessionId: string,
+    turn: number | null,
+  ): readonly QaSourceReference[] {
     try {
       const bundles = options.provenance.bundles(sessionId);
-      return bundles.at(-1)?.sources ?? [];
+      if (turn === null) return bundles.at(-1)?.sources ?? [];
+      return bundles.find((bundle) => bundle.turn === turn)?.sources ?? [];
     } catch (error) {
       logger.warn("integration.sources-unavailable", {
         sessionId,

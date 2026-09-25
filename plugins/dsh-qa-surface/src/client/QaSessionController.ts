@@ -444,6 +444,11 @@ export class QaSessionController {
           return false;
         }
         receipts = outcome.receipts;
+        // The upload was an external round-trip: the user may have left this
+        // chat or closed the surface while it ran. Re-checked before anything is
+        // written to the state and before the prompt is sent, so a draft meant
+        // for the abandoned chat cannot land in it or in its replacement.
+        if (this.disposed || this.session !== target) return false;
       }
       this.admissionPending = true;
       this.publish();
@@ -527,6 +532,11 @@ export class QaSessionController {
           return false;
         }
         receipts = outcome.receipts;
+        // The upload was an external round-trip: the user may have left this
+        // chat or closed the surface while it ran. Re-checked before the command
+        // reaches the Host, so a command meant for the abandoned chat cannot run
+        // in it or in its replacement.
+        if (this.disposed || this.session !== target) return false;
       }
       const result = await this.slashApi.execute(
         this.accounts?.token() ?? "",
