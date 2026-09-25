@@ -120,9 +120,8 @@ const SURFACE_MOUNT_BUDGET_MS = 60_000;
 /** One surface phase, so a failure can name where the surface stopped. */
 function surfacePhase(): string {
   return (
-    document
-      .querySelector<HTMLElement>(".dsh-qa-surface")
-      ?.getAttribute("data-phase") ?? "unmounted"
+    screen.queryByTestId("qa-surface-root")?.getAttribute("data-phase") ??
+    "unmounted"
   );
 }
 
