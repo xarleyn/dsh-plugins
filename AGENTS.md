@@ -11,6 +11,25 @@
 - Report the exact verification commands and their results in the final
   handoff.
 
+## CI workflows stay GitHub-shaped
+
+- The public GitHub Actions run is the release pipeline: it publishes the
+  packages and gates the wave. A Gitea Actions mirror run is a convenience copy
+  on a self-hosted runner and has no authority over the shipped artifact.
+- Therefore the shape of `.github/workflows/*` is defined by what GitHub needs.
+  Do not restructure a matrix, a job split, or an artifact name to work around a
+  Gitea Actions limitation, even when the mirror run is red or oversized because
+  of it. Fix the mirror on the mirror's side (runner capacity, the status the
+  board assigns to mirror runs) or ask the owner.
+- Adding a step, or making a step's condition depend on the event type, stays
+  within GitHub's shape and is fine. Replacing
+  `matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}` with a fixed bucket
+  list, so that a host which cannot expand it still fans out, is not.
+- A mirror run that fails for reasons the changed code does not cause is not a
+  blocker for the pull request: mark the pull request `ci-external` and say
+  which run and job were examined. Do not "fix" such redness by weakening the
+  workflow's checks on main.
+
 ## QA surface release notes
 
 - Every user-visible `@yadsh/dsh-qa-surface` change that adds or updates an Nx
