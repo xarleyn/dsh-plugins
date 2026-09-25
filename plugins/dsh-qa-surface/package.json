@@ -153,7 +153,7 @@
     "@yadsh/dsh-plugin-log": "workspace:^",
     "mermaid": "^11.12.2",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",

@@ -91,7 +91,7 @@
     "@yadsh/dsh-audit-ui": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "chokidar": "^4.0.3",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",

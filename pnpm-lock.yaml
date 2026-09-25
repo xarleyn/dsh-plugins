@@ -168,6 +168,10 @@ catalogs:
     typescript:
       specifier: ^7.0.2
       version: 7.0.2
+  runtime:
+    zod:
+      specifier: ^4.4.3
+      version: 4.5.2
   tooling:
     '@eslint/js':
       specifier: 10.0.1
@@ -666,7 +670,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -757,7 +761,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1078,7 +1082,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1178,7 +1182,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1290,7 +1294,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1369,7 +1373,7 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1445,7 +1449,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1524,7 +1528,7 @@ importers:
         specifier: catalog:tooling
         version: 1.62.1
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1609,7 +1613,7 @@ importers:
         specifier: workspace:^
         version: link:../dsh-qa-surface
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1709,7 +1713,7 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -1857,7 +1861,7 @@ importers:
         specifier: ^4.0.3
         version: 4.0.3
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -2177,7 +2181,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
@@ -2226,7 +2230,7 @@ importers:
         specifier: workspace:^
         version: link:../../packages/plugin-log
       zod:
-        specifier: ^4.4.3
+        specifier: catalog:runtime
         version: 4.5.2
     devDependencies:
       '@deepseek-ai/cordis':
