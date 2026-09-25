@@ -191,13 +191,19 @@ describe("classic browser bundle", () => {
     );
     // One configured site means no selector: the card names it, says which
     // product answers there, and asks for the credential alone.
+    const card = "qa-integrations-provider-card-confluence";
     expect(await screen.findByLabelText("Atlassian API token")).toBeDefined();
-    expect(screen.getByText("Сайт: Company")).toBeDefined();
-    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
-    expect(screen.getByText("Confluence")).toBeDefined();
+    expect(screen.getByTestId(`${card}-instance-static`).textContent).toContain(
+      "Сайт: Company",
+    );
+    expect(screen.getByTestId(`${card}-deployment`).textContent).toBe(
+      "Развёртывание: Atlassian Cloud",
+    );
+    expect(screen.getByTestId(`${card}-title`).textContent).toBe("Confluence");
     // A refused read is answered with the taxonomy the card renders, so a
     // deployment whose site cannot be reached still explains itself.
-    await screen.findByText(/Confluence не нашёл страницу/u);
+    const error = await screen.findByTestId(`${card}-error`);
+    expect(error.textContent).toContain("Confluence не нашёл страницу");
     expect(screen.queryByText("Показать токен")).toBeNull();
     rendered.unmount();
   });
