@@ -947,6 +947,9 @@ The implementation should enforce the following:
 ```
 
 10. Internal package consumption must happen through declared package exports.
+11. A plugin must not depend on another plugin unless that edge is declared with
+    a reason in `plugin-dependency-allowlist.json`. Every dependency field counts,
+    and a missing file means no such edge is allowed.
 
 ---
 

@@ -20,7 +20,13 @@
  */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -54,15 +60,19 @@ function writeJson(file, value) {
 /**
  * One temporary workspace root. `members` and `sources` are keyed by
  * workspace-relative paths, so a case reads as the tree it describes.
+ * `allowlist` is the §27.11 exception file, written when a case passes one.
  */
 async function fixture({
   workspace = WORKSPACE_YAML,
+  allowlist = null,
   members = {},
   sources = {},
 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "dsh-deps-boundary-"));
   if (workspace !== null)
     writeFile(path.join(root, "pnpm-workspace.yaml"), workspace);
+  if (allowlist !== null)
+    writeJson(path.join(root, "plugin-dependency-allowlist.json"), allowlist);
   for (const [relative, manifest] of Object.entries(members)) {
     writeJson(path.join(root, relative, "package.json"), manifest);
   }
@@ -132,6 +142,7 @@ function compliant(overrides = {}) {
     // A `null` workspace means "write no pnpm-workspace.yaml at all", so the
     // default is applied only when the case says nothing about it.
     workspace: "workspace" in overrides ? overrides.workspace : WORKSPACE_YAML,
+    allowlist: "allowlist" in overrides ? overrides.allowlist : null,
     members: {
       "packages/shared": sharedPackage(),
       "packages/test-kit": testKitPackage(),
@@ -147,6 +158,27 @@ function compliant(overrides = {}) {
         "export const one = [shared, extra, local];\n",
       ...overrides.sources,
     },
+  };
+}
+
+/** A second plugin, for the cases about one plugin reaching for another. */
+function otherPluginPackage(overrides = {}) {
+  return {
+    name: "@yadsh/dsh-two",
+    version: "0.0.0",
+    exports: { ".": "./lib/index.js" },
+    ...overrides,
+  };
+}
+
+/** The §27.11 file that lets `dsh-one` depend on `dsh-two`. */
+function allowlistWith(...edges) {
+  return {
+    edges: edges.map(([from, to]) => ({
+      from,
+      to,
+      reason: "dsh-two publishes the extension point dsh-one consumes.",
+    })),
   };
 }
 
@@ -180,6 +212,174 @@ test("a shared package must not depend on a plugin (§27.2)", async () => {
       );
       assert.match(result.stdout, /Summary: FAILED/u);
     },
+  );
+});
+
+test("an undeclared plugin→plugin dependency is caught (§27.11)", async () => {
+  await withFixture(
+    compliant({
+      members: {
+        "plugins/two": otherPluginPackage(),
+        "plugins/one": pluginPackage({
+          dependencies: {
+            "@yadsh/dsh-shared": "workspace:*",
+            "@yadsh/dsh-two": "workspace:*",
+          },
+        }),
+      },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 1);
+      assert.match(result.stdout, /\[§27\.11\]/u);
+      assert.match(
+        result.stdout,
+        /plugin '@yadsh\/dsh-one' depends on plugin '@yadsh\/dsh-two' \(plugins\/one\/package\.json → dependencies\.@yadsh\/dsh-two\), which plugin-dependency-allowlist\.json does not allow/u,
+      );
+      assert.match(
+        result.stdout,
+        /move the shared code to a packages\/\* member/u,
+      );
+    },
+  );
+
+  // A dependency field is a dependency field: a dev-only edge couples the
+  // release cycles just the same and needs the same written-down reason.
+  await withFixture(
+    compliant({
+      members: {
+        "plugins/two": otherPluginPackage(),
+        "plugins/one": pluginPackage({
+          dependencies: { "@yadsh/dsh-shared": "workspace:*" },
+          devDependencies: { "@yadsh/dsh-two": "workspace:*" },
+        }),
+      },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stdout,
+        /\[§27\.11\] plugin '@yadsh\/dsh-one' depends on plugin '@yadsh\/dsh-two' \(plugins\/one\/package\.json → devDependencies\./u,
+      );
+    },
+  );
+});
+
+test("a plugin→plugin edge written down with a reason is allowed (§27.11)", async () => {
+  await withFixture(
+    compliant({
+      allowlist: allowlistWith(["@yadsh/dsh-one", "@yadsh/dsh-two"]),
+      members: {
+        "plugins/two": otherPluginPackage(),
+        "plugins/one": pluginPackage({
+          dependencies: {
+            "@yadsh/dsh-shared": "workspace:*",
+            "@yadsh/dsh-two": "workspace:*",
+          },
+        }),
+      },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(result.stdout, /no dependency rule violations found/u);
+    },
+  );
+});
+
+test("the allow-list is held to its own hygiene (§27.11)", async () => {
+  await withFixture(
+    compliant({
+      allowlist: {
+        edges: [
+          { from: "@yadsh/dsh-one", to: "@yadsh/dsh-gone", reason: "kept" },
+          { from: "@yadsh/dsh-one", to: "@yadsh/dsh-shared", reason: "kept" },
+          { from: "@yadsh/dsh-one", to: "@yadsh/dsh-two" },
+          { from: "@yadsh/dsh-one" },
+        ],
+      },
+      members: { "plugins/two": otherPluginPackage() },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stdout,
+        /edges\[0\] names '@yadsh\/dsh-gone', which is not a workspace member/u,
+      );
+      assert.match(
+        result.stdout,
+        /edges\[1\] names '@yadsh\/dsh-shared', which is packages\/shared and not a plugin/u,
+      );
+      assert.match(
+        result.stdout,
+        /edges\[2\] \(@yadsh\/dsh-one → @yadsh\/dsh-two\) has no 'reason'/u,
+      );
+      assert.match(result.stdout, /edges\[3\] must name both 'from' and 'to'/u);
+    },
+  );
+
+  await withFixture(
+    compliant({ allowlist: { edges: "not-an-array" } }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 1);
+      assert.match(
+        result.stdout,
+        /plugin-dependency-allowlist\.json: expected an "edges" array/u,
+      );
+    },
+  );
+});
+
+/** Every `plugins/*` manifest of a real workspace root, keyed by package name. */
+function shippedPluginManifests(root) {
+  const manifests = new Map();
+  for (const entry of readdirSync(path.join(root, "plugins"), {
+    withFileTypes: true,
+  })) {
+    if (!entry.isDirectory()) continue;
+    const file = path.join(root, "plugins", entry.name, "package.json");
+    if (!existsSync(file)) continue;
+    const pkg = JSON.parse(readFileSync(file, "utf8"));
+    manifests.set(pkg.name, pkg);
+  }
+  return manifests;
+}
+
+test("the allow-list this repository ships matches its own manifests", () => {
+  // Exception file and manifests are one fact, so they are compared in both
+  // directions: an edge added without an entry, and an entry whose edge was
+  // dropped, each fail here rather than in a live install.
+  const manifests = shippedPluginManifests(repoRoot);
+  const shipped = new Set();
+  for (const pkg of manifests.values()) {
+    for (const field of [
+      "dependencies",
+      "devDependencies",
+      "peerDependencies",
+      "optionalDependencies",
+    ]) {
+      for (const name of Object.keys(pkg[field] ?? {})) {
+        if (manifests.has(name) && name !== pkg.name) {
+          shipped.add(`${pkg.name} → ${name}`);
+        }
+      }
+    }
+  }
+  const allowed = new Set(
+    JSON.parse(
+      readFileSync(
+        path.join(repoRoot, "plugin-dependency-allowlist.json"),
+        "utf8",
+      ),
+    ).edges.map((edge) => `${edge.from} → ${edge.to}`),
+  );
+  assert.deepEqual(
+    [...shipped].sort(),
+    [...allowed].sort(),
+    "plugin-dependency-allowlist.json must carry exactly the plugin→plugin edges this workspace ships",
   );
 });
 
