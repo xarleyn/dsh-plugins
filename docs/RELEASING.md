@@ -167,9 +167,14 @@ runner yet:
   versions, adopts what npm already has, and publishes the rest.
 - If **Verify the published versions install** fails, the wave reached npm but
   a consumer cannot resolve it: the message names the range npm could not
-  satisfy. Those versions stay published, so fix the manifest and release
-  again — the rerun adopts the versions npm has and publishes the fix as the
-  next version.
+  satisfy and says whether the polling ran out. A range the wave itself
+  publishes is the registry's CDN still behind — the step polls each such
+  version for up to five minutes before giving up, so a failure there means the
+  wait ran out rather than that the wave is broken: confirm the version on npm
+  first, rerun the failed job only once the registry serves it, and treat a
+  second refusal as a real failure. Any other range is a manifest mistake, and
+  those versions stay published, so fix the manifest and release again — the
+  rerun adopts the versions npm has and publishes the fix as the next version.
 
 Publication succeeded but the branch did not move, which is the one state that
 needs an explicit decision:

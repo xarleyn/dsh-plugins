@@ -22,6 +22,12 @@ const DEPENDENCY_FIELDS = ["dependencies", "optionalDependencies"];
 const WORKSPACE_SCOPE = "@yadsh/";
 const REPOSITORY = "xarleyn/dsh-plugins";
 const RELEASE_WORKFLOW = ".github/workflows/release.yml";
+// A freshly published version answers "no matching version" for a minute or
+// three while npm's CDN catches up, so the install check polls instead of
+// failing the wave: delays double from the first step and stop at the cap.
+const REPLICATION_LAG_STEP_MS = 5_000;
+const REPLICATION_LAG_MAX_STEP_MS = 60_000;
+const REPLICATION_LAG_BUDGET_MS = 300_000;
 
 function write(line) {
   process.stdout.write(`${line}\n`);
@@ -543,15 +549,42 @@ function sleep(milliseconds) {
   });
 }
 
+/** The spec npm could not resolve, or nothing when the refusal says otherwise. */
+function unservedSpec(output) {
+  for (const line of output.split(/\r?\n/u)) {
+    const [, spec] =
+      /No matching version found for (.+?)\.?$/u.exec(line) ?? [];
+    if (spec) return spec;
+  }
+  return undefined;
+}
+
 /**
  * Whether npm's refusal is the registry not having caught up with a publish
  * instead of a version nobody made. npm names the spec it could not resolve,
- * and the two cases look identical apart from which spec that is.
+ * and the two cases look identical apart from which spec that is: a spec this
+ * wave published is the CDN being behind, any other spec is a range nothing
+ * offers and waiting would not change.
  */
-export function replicationLag(row, output) {
-  return output.includes(
-    `No matching version found for ${row.name}@${row.version}`,
-  );
+export function replicationLag(row, output, waveVersions = new Map()) {
+  const spec = unservedSpec(output);
+  if (!spec) return false;
+
+  const separator = spec.lastIndexOf("@");
+  if (separator <= 0) return false;
+  const name = spec.slice(0, separator);
+  const range = spec.slice(separator + 1);
+
+  if (name === row.name && range === row.version) return true;
+
+  const version = waveVersions.get(name);
+  if (version === undefined) return false;
+  try {
+    return satisfiesRange(version, range);
+  } catch {
+    // A range this gate cannot read still names a version the wave published.
+    return version === range;
+  }
 }
 
 /** The published rows a consumer cannot install, with npm's own answer. */
@@ -561,34 +594,59 @@ export async function verifyInstalls(
     install = runInstall,
     onEvent = write,
     wait = sleep,
-    attempts = 5,
-    retryDelayMs = 15_000,
+    lagStepMs = REPLICATION_LAG_STEP_MS,
+    lagBudgetMs = REPLICATION_LAG_BUDGET_MS,
   } = {},
 ) {
+  const waveVersions = new Map(rows.map((row) => [row.name, row.version]));
   const failures = [];
 
   for (const row of rows) {
     let result;
-    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    let attempts = 0;
+    let waitedMs = 0;
+
+    for (;;) {
       result = await install(row);
-      if (result.ok) break;
-      // The registry serves a version published seconds ago from a cache that
-      // has not caught up yet, and npm answers that with the same "no matching
-      // version" it gives a version nobody ever published. Only the version
-      // this run asked for is retried: a dependency range that cannot resolve
-      // is a different failure, and waiting would not change it.
-      if (attempt === attempts || !replicationLag(row, result.output)) break;
-      onEvent(
-        `Waiting for ${row.name}@${row.version}: npm has not caught up with the publish yet`,
+      attempts += 1;
+      if (result.ok || !replicationLag(row, result.output, waveVersions)) break;
+
+      const delay = Math.min(
+        lagStepMs * 2 ** (attempts - 1),
+        REPLICATION_LAG_MAX_STEP_MS,
       );
-      await wait(retryDelayMs);
+      if (waitedMs + delay > lagBudgetMs) {
+        // The ceiling answers the question the first refusal could not: a
+        // version nobody published and a CDN still behind look the same only
+        // until the wave stops waiting.
+        onEvent(
+          `Giving up on ${row.name}@${row.version}: npm had not served it after ${attempts} attempt(s) and ${Math.round(waitedMs / 1000)}s of polling, the ${Math.round(lagBudgetMs / 1000)}s ceiling`,
+        );
+        break;
+      }
+
+      onEvent(
+        `Waiting for ${row.name}@${row.version}: attempt ${attempts} says npm has not caught up with the publish yet, polling again in ${Math.round(delay / 1000)}s (${Math.round(waitedMs / 1000)}s of ${Math.round(lagBudgetMs / 1000)}s spent)`,
+      );
+      await wait(delay);
+      waitedMs += delay;
     }
 
     if (result.ok) {
-      onEvent(`Installs ${row.name}@${row.version}`);
+      onEvent(
+        attempts === 1
+          ? `Installs ${row.name}@${row.version}`
+          : `Installs ${row.name}@${row.version} after ${attempts} attempt(s), ${Math.round(waitedMs / 1000)}s waiting for npm`,
+      );
       continue;
     }
-    failures.push({ ...row, output: result.output });
+    failures.push({
+      ...row,
+      output: result.output,
+      attempts,
+      waitedMs,
+      lagged: replicationLag(row, result.output, waveVersions),
+    });
   }
 
   return failures;
@@ -672,13 +730,25 @@ async function main(argv = process.argv.slice(2)) {
           .split(/\r?\n/u)
           .find((line) => line.trim() !== "")
           ?.trim();
+        const detail = (reason ?? firstLine ?? "npm refused the install").slice(
+          0,
+          300,
+        );
+        const polled = item.lagged
+          ? `npm was polled ${item.attempts} time(s) over ${Math.round(item.waitedMs / 1000)}s and still has not served it — `
+          : "";
+        fail(`  ${item.name}@${item.version}: ${polled}${detail}`);
+      }
+      if (failures.some((item) => item.lagged)) {
         fail(
-          `  ${item.name}@${item.version}: ${(reason ?? firstLine ?? "npm refused the install").slice(0, 300)}`,
+          `A version this wave published stayed unserved past the ${Math.round(REPLICATION_LAG_BUDGET_MS / 1000)}s polling ceiling: a CDN behind a publish that did land answers like a version nobody published. Check the package on the registry before rerunning, and read a second refusal as a real failure.`,
         );
       }
-      fail(
-        "The wave is on npm but is not installable; fix it and release again.",
-      );
+      if (failures.some((item) => !item.lagged)) {
+        fail(
+          "The wave is on npm but is not installable; fix it and release again.",
+        );
+      }
       return 1;
     }
     write(`install check: ${rows.length} published version(s) install`);

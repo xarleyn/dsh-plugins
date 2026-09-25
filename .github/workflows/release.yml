@@ -452,6 +452,9 @@ jobs:
       # Publishing is the only claim the release makes about npm; the claim is
       # worth checking with the tool a consumer uses. Every version this wave
       # resolved has to install, peers aside, before the commit is pushed.
+      # npm serves a version it just accepted from a CDN that needs a minute or
+      # three to catch up, so the script polls a "no matching version" it can
+      # attribute to this wave instead of failing the run on the first answer.
       - name: Verify the published versions install
         if: inputs.dry_run == false
         run: node scripts/publish-release.mjs --verify-install --tsv="$RUNNER_TEMP/release-packages.tsv"
