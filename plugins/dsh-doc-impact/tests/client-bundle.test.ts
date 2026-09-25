@@ -77,6 +77,15 @@ function fakeScope(initial: ScopeState) {
       state = { ...state, user, value };
       emit();
     },
+    /** Move the composition base under the form, the way an entry config edit does. */
+    async setBase(field: string, value: unknown) {
+      const base = { ...(state.base ?? {}), [field]: value };
+      const effective = { ...(state.value ?? {}) };
+      if (state.user === undefined || !Object.hasOwn(state.user, field))
+        effective[field] = value;
+      state = { ...state, base, value: effective };
+      emit();
+    },
   };
 }
 
@@ -235,6 +244,77 @@ describe("client bundle", () => {
     await face.save();
     expect(scope.unsets).toEqual(["mode"]);
     expect(face.hooks.docImpactCard.getSnapshot().dirty).toBe(false);
+  });
+
+  it("resets every field kind by dropping the user layer, not by copying the base into it", async () => {
+    const bundle = await loadBundle();
+    const scope = fakeScope({
+      status: "ready",
+      value: {
+        configFile: ".dsh/from-user.yml",
+        mode: "require-review",
+        maxSnapshotFiles: 300,
+        debug: true,
+        reminderTemplate: "Custom: {body}",
+      },
+      base: {
+        configFile: ".dsh/from-base.yml",
+        mode: "remind",
+        maxSnapshotFiles: 100,
+        debug: false,
+      },
+      user: {
+        configFile: ".dsh/from-user.yml",
+        mode: "require-review",
+        maxSnapshotFiles: 300,
+        debug: true,
+        reminderTemplate: "Custom: {body}",
+      },
+      writable: true,
+    });
+    const ctx = makeCtx(scope);
+    bundle.factory(fakeReact).apply(ctx);
+    const face = ctx.registered[0]!.options!.inject!() as {
+      hooks: { docImpactCard: { getSnapshot: () => Record<string, any> } };
+      resetField: (field: string) => void;
+      save: () => Promise<void>;
+    };
+    const snapshot = () => face.hooks.docImpactCard.getSnapshot();
+
+    for (const field of [
+      "configFile", // text
+      "mode", // choice
+      "maxSnapshotFiles", // number
+      "debug", // bool
+      "reminderTemplate", // multiline text
+    ]) {
+      face.resetField(field);
+      const state = snapshot().fields[field];
+      expect(state.overridden, field).toBe(false);
+      expect(state.invalid, field).toBe(false);
+    }
+    // The draft previews the base it would fall back to, without claiming an override.
+    expect(snapshot().fields.maxSnapshotFiles.text).toBe("100");
+    expect(snapshot().fields.configFile.text).toBe(".dsh/from-base.yml");
+
+    await face.save();
+    expect(scope.sets).toEqual([]);
+    expect([...scope.unsets].sort()).toEqual(
+      [
+        "configFile",
+        "debug",
+        "maxSnapshotFiles",
+        "mode",
+        "reminderTemplate",
+      ].sort(),
+    );
+    expect(snapshot().dirty).toBe(false);
+
+    // A reset field keeps following the base afterwards: moving it to 200 is
+    // visible, which a base copied into the user layer would have frozen.
+    scope.setBase("maxSnapshotFiles", 200);
+    expect(snapshot().fields.maxSnapshotFiles.value).toBe(200);
+    expect(snapshot().fields.maxSnapshotFiles.overridden).toBe(false);
   });
 
   it("blocks saving an invalid number and reports the invalid draft", async () => {
