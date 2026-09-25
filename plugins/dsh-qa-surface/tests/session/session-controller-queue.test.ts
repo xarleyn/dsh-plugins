@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { resolveConfig } from "../src/resolve-config.js";
-import { QaSessionController } from "../src/client/QaSessionController.js";
-import type { QaImageDraft } from "../src/types.js";
+import { resolveConfig } from "../../src/resolve-config.js";
+import { QaSessionController } from "../../src/client/QaSessionController.js";
+import type { QaImageDraft } from "../../src/types.js";
 import {
   harness,
   queuedMessage,
   type FakeSessionSnapshot,
   type QaSessionTestWorld,
-} from "./helpers/session-fakes.js";
+} from "../helpers/session-fakes.js";
 
 type QueueWorld = QaSessionTestWorld & { controller: QaSessionController };
 
