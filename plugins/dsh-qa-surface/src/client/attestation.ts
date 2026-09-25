@@ -84,8 +84,16 @@ export function proofMatchesConfig(
   lockdown: ResolvedQaSurfaceConfig["lockdown"],
   sessionId: string,
 ): boolean {
+  if (proof.sessionId !== sessionId) return false;
+  if (!lockdown.enabled) {
+    // A lockdown that is off pins nothing, so the Host answers with the
+    // vacuous proof and there are no facts here to compare: which session it
+    // admitted is all this call can say, and the admission itself — account
+    // identity and ownership, which the Host checks whatever the lockdown
+    // state — is the reason the browser asks.
+    return true;
+  }
   return (
-    proof.sessionId === sessionId &&
     proof.enabled &&
     proof.agentPresetMatches &&
     proof.workspaceMatches &&
