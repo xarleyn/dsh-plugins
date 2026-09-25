@@ -53,6 +53,16 @@ test("the PR workflow fans affected projects out into a bounded matrix", async (
   assert.match(workflow, /- name: Check formatting\s+run: pnpm format/u);
   assert.match(
     workflow,
+    /- name: Check file size budget\s+run: pnpm check:files/u,
+    "a file that outgrew its budget has to fail a run, not only a review",
+  );
+  assert.ok(
+    workflow.indexOf("- name: Check file size budget") <
+      workflow.indexOf("- name: Select affected projects"),
+    "the budget gate belongs to the prepare job, so the size of a pull request is reported without building every project",
+  );
+  assert.match(
+    workflow,
     /- name: Verify plugin logging contract\s+run: pnpm verify:logging/u,
   );
   assert.match(

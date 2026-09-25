@@ -28,7 +28,7 @@ node scripts/publish-release.mjs --check --tsv="$TMPDIR/rows.tsv"
 
 | Command | Covers | Does **not** cover |
 | --- | --- | --- |
-| `pnpm check` | `lint`, `format`, `typecheck`, `test`, `build`, `verify` (→ `verify:packages`, `verify:logging`, per-package `verify`), `deps:check` | `tarball:verify`, `release:check`, the browser smoke |
+| `pnpm check` | `lint`, `format`, `typecheck`, `test`, `build`, `check:files`, `verify` (→ `verify:packages`, `verify:logging`, per-package `verify`), `deps:check` | `tarball:verify`, `release:check`, the browser smoke |
 | `pnpm test:release` | the release/CI workflow contracts: publish-before-push order, the fan-out, the plan gate, the publication gate, wave notes | whether the workflow actually runs |
 | `pnpm release:check` | a committed plan for every publishable project whose newest reachable release tag does not cover its commits | uncommitted work — it reads commits |
 | `pnpm tarball:verify` | gates 1–7 on the packed tarball, including `exports` vs the real build and "no `workspace:`/`catalog:` leaks into the manifest" | anything about the registry |
