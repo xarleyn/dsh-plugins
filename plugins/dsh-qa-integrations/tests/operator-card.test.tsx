@@ -8,7 +8,7 @@
  * change — the card adds no persistence of its own.
  */
 
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
@@ -110,16 +110,70 @@ function expand(): void {
   );
 }
 
+/** The caption an element carries, normalised the way the queries compare it. */
+function captionOf(node: Element): string {
+  return (node.textContent ?? "").replace(/\s+/gu, " ").trim();
+}
+
 /**
- * The `<details>` block one provider owns, found by its section title. A label
- * query is priced by the tree it walks: over the whole document — a thousand
- * nodes of seven providers — it measures ~2s here against tens of milliseconds
- * inside the owning section. Those seconds were a test timeout on any runner
- * slower than a developer machine, which is what the widened `testTimeout` in
- * this file used to paper over. Every knob belongs to one provider anyway.
+ * The `<details>` block one provider owns, found by its section title — one
+ * pass over the eight sections instead of a name lookup over the thousand nodes
+ * of the whole card. Every knob belongs to one provider anyway.
  */
 function sectionOf(title: string): HTMLElement {
-  return screen.getByText(title).closest(".qai-op__section") as HTMLElement;
+  const sections = [
+    ...document.querySelectorAll<HTMLElement>(".qai-op__section"),
+  ].filter(
+    (section) =>
+      captionOf(section.querySelector(".qai-op__section-title") ?? section) ===
+      title,
+  );
+  expect(sections, `sections titled ${title}`).toHaveLength(1);
+  return sections[0] as HTMLElement;
+}
+
+/**
+ * The control a caption inside `scope` is bound to — what `getByLabelText`
+ * answers, taken from the label's side rather than the control's. The library
+ * asks every labelable element of the scope for its `labels`, and jsdom answers
+ * that by scanning all two hundred `<label>` elements of this card once per
+ * control: 40–150 ms for the first lookup of a provider, whatever subtree the
+ * query was scoped to. A `<label>` already knows the control it binds — that is
+ * what a click on the caption uses — so one walk of the captions says the same
+ * thing for a fraction of a millisecond. What `get` adds on top is kept: a
+ * caption that binds nothing, or binds two controls, fails here.
+ */
+function labelledControl(
+  scope: HTMLElement,
+  caption: string | RegExp,
+): HTMLElement {
+  const controls = new Set<HTMLElement | null>();
+  for (const label of scope.querySelectorAll("label")) {
+    const text = captionOf(label);
+    const bound =
+      caption instanceof RegExp ? caption.test(text) : text === caption;
+    if (bound) controls.add((label as HTMLLabelElement).control);
+  }
+  const bound = [...controls].filter(
+    (control): control is HTMLElement => control !== null,
+  );
+  expect(bound, `controls bound to ${caption}`).toHaveLength(1);
+  return bound[0] as HTMLElement;
+}
+
+/**
+ * The `<button>` captioned `caption`. `getByRole("button", {name})` computes the
+ * accessible name of every button of the mounted card before it answers, which
+ * costs a quarter of a second here. A button that carries no `aria-label` is
+ * named by its contents, so comparing contents says the same thing; the shell's
+ * header button is named by `aria-label` and stays a role query in `expand`.
+ */
+function buttonWithCaption(caption: string): HTMLElement {
+  const hits = [...document.querySelectorAll("button")].filter(
+    (button) => captionOf(button) === caption,
+  );
+  expect(hits, `buttons captioned ${caption}`).toHaveLength(1);
+  return hits[0] as HTMLElement;
 }
 
 const RESOLVED = {
@@ -171,7 +225,8 @@ describe("integrations operator card", () => {
     // The general section mounts open and the disabled plugin shows it.
     expect(
       (
-        within(sectionOf("Общие")).getByLabelText(
+        labelledControl(
+          sectionOf("Общие"),
           /Плагин включён/u,
         ) as HTMLInputElement
       ).checked,
@@ -216,7 +271,7 @@ describe("integrations operator card", () => {
     fireEvent.click(limits.querySelector("summary") as HTMLElement);
     expect(limits.open).toBe(true);
     expect(
-      (within(limits).getByLabelText("Потолок файла, байт") as HTMLInputElement)
+      (labelledControl(limits, "Потолок файла, байт") as HTMLInputElement)
         .value,
     ).toBe("131072");
   });
@@ -232,9 +287,16 @@ describe("integrations operator card", () => {
       "Test IT",
       "Weblate",
     ]) {
-      fireEvent.click(screen.getByText(provider));
+      fireEvent.click(
+        sectionOf(provider).querySelector(
+          ".qai-op__section-title",
+        ) as HTMLElement,
+      );
     }
-    // One representative of each kind, in each provider that has it.
+    // One representative of each kind, in each provider that has it. The
+    // captions are read in one pass: six name lookups over the whole card were
+    // most of what this case used to cost.
+    const captions = [...document.querySelectorAll("label")].map(captionOf);
     for (const label of [
       "Инстансы GitLab",
       "Сайты Confluence",
@@ -243,7 +305,10 @@ describe("integrations operator card", () => {
       "Инсталляции Test IT",
       "Инстансы Weblate",
     ]) {
-      expect(screen.getByText(label)).toBeDefined();
+      expect(
+        captions.filter((caption) => caption === label),
+        `connection editor of ${label}`,
+      ).toHaveLength(1);
     }
     // A capability of each provider, read through the checklist that owns it —
     // which is what "its deployment knobs" means here.
@@ -258,7 +323,7 @@ describe("integrations operator card", () => {
       const checks = sectionOf(provider).querySelector(
         ".qai-op__group--checks",
       ) as HTMLElement;
-      expect(within(checks).getByLabelText(capability)).toBeDefined();
+      expect(labelledControl(checks, capability)).toBeDefined();
     }
   });
 
@@ -267,7 +332,8 @@ describe("integrations operator card", () => {
     expand();
     // The Bitrix24 section is collapsed until opened.
     fireEvent.click(screen.getByText("Bitrix24"));
-    const crm = within(sectionOf("Bitrix24")).getByLabelText(
+    const crm = labelledControl(
+      sectionOf("Bitrix24"),
       "CRM: чтение",
     ) as HTMLInputElement;
     expect(crm.checked).toBe(true);
@@ -280,9 +346,7 @@ describe("integrations operator card", () => {
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(
-      within(sectionOf("Общие")).getByLabelText(/Плагин включён/u),
-    );
+    fireEvent.click(labelledControl(sectionOf("Общие"), /Плагин включён/u));
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
     ]);
@@ -307,7 +371,8 @@ describe("integrations operator card", () => {
     expect(
       screen.getByText(/^Хост не принимает правки из этого браузера/u),
     ).toBeDefined();
-    const toggle = within(sectionOf("Общие")).getByLabelText(
+    const toggle = labelledControl(
+      sectionOf("Общие"),
       /Плагин включён/u,
     ) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
@@ -491,7 +556,7 @@ describe("integrations operator card", () => {
     });
     expand();
     fireEvent.click(screen.getByText("Сервисные доступы"));
-    fireEvent.click(screen.getByRole("button", { name: "добавить профиль" }));
+    fireEvent.click(buttonWithCaption("добавить профиль"));
 
     expect(document.querySelectorAll(".qai-op__profile")).toHaveLength(1);
     expect(screen.getByText(/не сохранено — нужно: id/u)).toBeDefined();
