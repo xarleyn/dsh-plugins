@@ -59,6 +59,14 @@ function AttachIcon() {
   );
 }
 
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M9 13.5v-9m0 0L5.5 8M9 4.5 12.5 8" />
+    </svg>
+  );
+}
+
 /**
  * Memoized with the default shallow compare: every prop is a scalar, a
  * stable array or a stable callback, so a stream of transcript frames never
@@ -381,18 +389,31 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
                 <rect x="5.25" y="5.25" width="7.5" height="7.5" rx="1.5" />
               </svg>
             </button>
-          ) : (
+          ) : null}
+          {/* A running turn does not take the question now, it queues it, so
+          the field stays writable and the button has to say what it does. */}
+          {props.running && props.showStop && props.canSend ? (
             <button
               type="button"
               className="dsh-qa-composer__action dsh-qa-composer__action--send"
-              aria-label="Отправить"
-              title="Отправить"
+              aria-label="Отправить в очередь"
+              title="Отправить в очередь"
+              disabled={submitting || !hasContent}
+              onClick={() => void send()}
+            >
+              <SendIcon />
+            </button>
+          ) : null}
+          {props.running && props.showStop ? null : (
+            <button
+              type="button"
+              className="dsh-qa-composer__action dsh-qa-composer__action--send"
+              aria-label={props.running ? "Отправить в очередь" : "Отправить"}
+              title={props.running ? "Отправить в очередь" : "Отправить"}
               disabled={!props.canSend || submitting || !hasContent}
               onClick={() => void send()}
             >
-              <svg viewBox="0 0 18 18" aria-hidden="true">
-                <path d="M9 13.5v-9m0 0L5.5 8M9 4.5 12.5 8" />
-              </svg>
+              <SendIcon />
             </button>
           )}
         </div>
