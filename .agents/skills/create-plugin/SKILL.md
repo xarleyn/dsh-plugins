@@ -44,8 +44,9 @@ and prefer the newer rule.
 
 ## After the generator — mandatory manual work
 
-- `README.md`: the install command must carry the required `--profile` flag —
-  the CLI rejects a bare `dsh plugin add`:
+- `README.md`: the scaffold prints `dsh plugin --profile <profile> add ...`,
+  because the CLI rejects a bare `dsh plugin add` — substitute the real profile
+  and keep the flag in every install/remove command you add:
   - host-only plugin: `dsh plugin --profile <profile> add @yadsh/dsh-<name>`
   - plugin with `dsh.client`: `dsh plugin --profile web add @yadsh/dsh-<name>`
 - `dsh.client` is scaffolded as `{ platform: "web" }` only. Real plugins also
