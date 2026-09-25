@@ -8,7 +8,7 @@ import {
   readBoundedJson,
   readBoundedText,
   type BoundedText,
-} from "../shared/http.js";
+} from "../kernel/read-policy.js";
 import {
   testitInstance,
   type TestitFlags,

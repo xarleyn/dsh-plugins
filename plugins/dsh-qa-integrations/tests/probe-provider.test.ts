@@ -335,8 +335,11 @@ describe("probe-provider dialer", () => {
 });
 
 describe("probe-provider coverage", () => {
+  // The directories every provider draws from rather than competes with: no
+  // catalog, no identity operation, so nothing for the probe to dial.
+  const SHARED_LAYERS = new Set(["kernel", "shared"]);
   const directories = readdirSync(PROVIDERS_DIRECTORY, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && entry.name !== "shared")
+    .filter((entry) => entry.isDirectory() && !SHARED_LAYERS.has(entry.name))
     .map((entry) => entry.name)
     .sort();
 

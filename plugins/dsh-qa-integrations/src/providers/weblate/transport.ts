@@ -5,7 +5,7 @@ import {
   causeCode,
   fetchWithRetries,
   readBoundedJson,
-} from "../shared/http.js";
+} from "../kernel/read-policy.js";
 import {
   weblateInstance,
   type WeblateFlags,

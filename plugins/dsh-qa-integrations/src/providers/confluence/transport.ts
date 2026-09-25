@@ -1,6 +1,11 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
-import { backoff, readBoundedJson, retryDelay, sleep } from "../shared/http.js";
+import {
+  backoff,
+  readBoundedJson,
+  retryDelay,
+  sleep,
+} from "../kernel/read-policy.js";
 import {
   confluenceInstance,
   type ConfluenceFlags,

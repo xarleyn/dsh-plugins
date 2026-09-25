@@ -77,6 +77,20 @@ export function retryDelay(attempt: number): number {
 }
 
 /**
+ * A requested ceiling folded into the deployment's own, never past it: a
+ * request naming no ceiling gets the default, one naming more than the cap
+ * gets the cap rather than an error — an operator asking for more only wants
+ * the maximum.
+ */
+export function withinCap(
+  requested: number | undefined,
+  fallback: number,
+  cap: number,
+): number {
+  return Math.min(requested ?? fallback, cap);
+}
+
+/**
  * Read a body without letting upstream decide how much memory the broker
  * spends. A body over the cap is reported as truncated instead of surfacing a
  * raw `content-length` nobody can verify.
