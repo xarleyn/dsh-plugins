@@ -172,6 +172,11 @@ describe("DomTranslator", () => {
       dependency: "data-x",
     },
     {
+      scope: '[data-testid="l10n-scope-host"]',
+      markup: '<span data-testid="l10n-scope-host">Enviar</span>',
+      dependency: "data-testid",
+    },
+    {
       scope: '[data-x="space and ] bracket"]',
       markup: '<span data-x="space and ] bracket">Enviar</span>',
       dependency: "data-x",
