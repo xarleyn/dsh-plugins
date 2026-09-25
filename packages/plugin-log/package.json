@@ -47,6 +47,7 @@
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
   },
   "dependencies": {
+    "@pinojs/redact": "^0.4.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
