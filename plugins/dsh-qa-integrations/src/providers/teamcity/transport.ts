@@ -7,7 +7,7 @@ import {
   readBoundedJson,
   readBoundedText,
   type BoundedText,
-} from "../shared/http.js";
+} from "../kernel/read-policy.js";
 import type { TeamCityFlags } from "./config.js";
 import { canonicalServerUrl, serverUrlProblem } from "./network.js";
 
