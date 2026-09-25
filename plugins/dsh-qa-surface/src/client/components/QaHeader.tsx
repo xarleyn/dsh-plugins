@@ -30,10 +30,18 @@ export function QaSubagentBanner({
   readonly onClose: () => void;
 }) {
   return (
-    <div className="dsh-qa-agentview" role="status">
+    <div
+      className="dsh-qa-agentview"
+      data-testid="qa-surface-subagent-banner"
+      role="status"
+    >
       <RobotBadge />
       <span>Просмотр субагента</span>
-      <button type="button" onClick={onClose}>
+      <button
+        type="button"
+        data-testid="qa-surface-subagent-banner-back"
+        onClick={onClose}
+      >
         ← В чат
       </button>
     </div>
@@ -114,20 +122,39 @@ export function QaHeader({
   onReset,
 }: QaHeaderProps) {
   return (
-    <header className="dsh-qa-header">
-      <div className="dsh-qa-header__inner">
-        <div className="dsh-qa-header__title-row">
+    <header className="dsh-qa-header" data-testid="qa-surface-header">
+      <div
+        className="dsh-qa-header__inner"
+        data-testid="qa-surface-header-inner"
+      >
+        <div
+          className="dsh-qa-header__title-row"
+          data-testid="qa-surface-header-title-row"
+        >
           {logoUrl === null ? null : (
-            <img className="dsh-qa-header__logo" src={logoUrl} alt="" />
+            <img
+              className="dsh-qa-header__logo"
+              data-testid="qa-surface-header-logo"
+              src={logoUrl}
+              alt=""
+            />
           )}
-          {title === null ? null : <h1 title={title}>{title}</h1>}
+          {title === null ? null : (
+            <h1 title={title} data-testid="qa-surface-header-title">
+              {title}
+            </h1>
+          )}
           {viewingSubagent ? (
-            <span className="dsh-qa-header__viewing">
+            <span
+              className="dsh-qa-header__viewing"
+              data-testid="qa-surface-header-viewing"
+            >
               <RobotBadge />
               Просмотр субагента
               <button
                 type="button"
                 className="dsh-qa-header__back"
+                data-testid="qa-surface-header-back"
                 onClick={onCloseSubagent}
               >
                 ← В чат
@@ -139,6 +166,7 @@ export function QaHeader({
           <button
             type="button"
             className="dsh-qa-header__agents"
+            data-testid="qa-surface-header-agents"
             disabled={agentCount === 0}
             aria-expanded={agentsOpen}
             onClick={onToggleAgents}
@@ -154,6 +182,7 @@ export function QaHeader({
             <button
               type="button"
               className="dsh-qa-header__sources"
+              data-testid="qa-surface-header-sources"
               disabled={sourcesCount === 0 && sourcesComplete}
               aria-expanded={sourcesOpen}
               onClick={onOpenSources}
@@ -171,6 +200,7 @@ export function QaHeader({
           <button
             type="button"
             className="dsh-qa-header__files"
+            data-testid="qa-surface-header-files"
             disabled={!filesEnabled}
             aria-expanded={filesOpen}
             onClick={onOpenFiles}
@@ -188,11 +218,15 @@ export function QaHeader({
             gaps, which parked «Файлы» in the middle of the row, away from the
             tabs it belongs to.
           */}
-          <div className="dsh-qa-header__actions">
+          <div
+            className="dsh-qa-header__actions"
+            data-testid="qa-surface-header-actions"
+          >
             {showReset ? (
               <button
                 type="button"
                 className="dsh-qa-header__reset"
+                data-testid="qa-surface-header-reset"
                 disabled={resetDisabled}
                 onClick={onReset}
               >
@@ -203,6 +237,7 @@ export function QaHeader({
               <button
                 type="button"
                 className="dsh-qa-header__admin"
+                data-testid="qa-surface-header-admin"
                 onClick={administration.onOpen}
               >
                 Администрирование
@@ -213,6 +248,7 @@ export function QaHeader({
               <button
                 type="button"
                 className="dsh-qa-header__settings"
+                data-testid="qa-surface-header-settings"
                 title={settings.label}
                 onClick={settings.onOpen}
               >
@@ -227,7 +263,10 @@ export function QaHeader({
         </div>
         {/* Not a tablist yet: the tab bar is a single current page marker, and
         an aria-label without a widget role would never be announced. */}
-        <div className="dsh-qa-header__tabs">
+        <div
+          className="dsh-qa-header__tabs"
+          data-testid="qa-surface-header-tabs"
+        >
           <span aria-current="page">Чат</span>
         </div>
       </div>
